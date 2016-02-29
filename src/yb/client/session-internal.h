@@ -31,16 +31,16 @@ class Batcher;
 class ErrorCollector;
 } // internal
 
-class KuduSession::Data {
+class YBSession::Data {
  public:
   explicit Data(sp::shared_ptr<KuduClient> client);
   ~Data();
 
-  void Init(const sp::shared_ptr<KuduSession>& session);
+  void Init(const sp::shared_ptr<YBSession>& session);
 
   // Swap in a new Batcher instance, returning the old one in '*old_batcher', unless it is
   // NULL.
-  void NewBatcher(const sp::shared_ptr<KuduSession>& session,
+  void NewBatcher(const sp::shared_ptr<YBSession>& session,
                   scoped_refptr<internal::Batcher>* old_batcher);
 
   // Called by Batcher when a flush has finished.
@@ -75,7 +75,7 @@ class KuduSession::Data {
   std::unordered_set<internal::Batcher*> flushed_batchers_;
 
   FlushMode flush_mode_;
-  yb::client::KuduSession::ExternalConsistencyMode external_consistency_mode_;
+  yb::client::YBSession::ExternalConsistencyMode external_consistency_mode_;
 
   // Timeout for the next batch.
   int timeout_ms_;

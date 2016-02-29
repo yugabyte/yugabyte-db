@@ -95,8 +95,8 @@ DEFINE_string(table_name, "lineitem",
 namespace yb {
 
 using client::KuduColumnSchema;
-using client::KuduRowResult;
-using client::KuduSchema;
+using client::YBRowResult;
+using client::YBSchema;
 
 using std::unordered_map;
 
@@ -160,10 +160,10 @@ void Tpch1(RpcLineItemDAO *dao) {
   int matching_rows = 0;
   slice_map_map results;
   Result *r;
-  vector<KuduRowResult> rows;
+  vector<YBRowResult> rows;
   while (scanner->HasMore()) {
     scanner->GetNext(&rows);
-    for (const KuduRowResult& row : rows) {
+    for (const YBRowResult& row : rows) {
       matching_rows++;
 
       SliceMapKey l_returnflag;

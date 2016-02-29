@@ -145,7 +145,7 @@ KuduColumnSpec* KuduColumnSpec::Type(KuduColumnSchema::DataType type) {
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::Default(KuduValue* v) {
+KuduColumnSpec* KuduColumnSpec::Default(YBValue* v) {
   data_->has_default = true;
   delete data_->default_val;
   data_->default_val = v;
@@ -256,17 +256,17 @@ Status KuduColumnSpec::ToColumnSchema(KuduColumnSchema* col) const {
 
 
 ////////////////////////////////////////////////////////////
-// KuduSchemaBuilder
+// YBSchemaBuilder
 ////////////////////////////////////////////////////////////
 
-class YB_NO_EXPORT KuduSchemaBuilder::Data {
+class YB_NO_EXPORT YBSchemaBuilder::Data {
  public:
   Data() : has_key_col_names(false) {
   }
 
   ~Data() {
     // Rather than delete the specs here, we have to do it in
-    // ~KuduSchemaBuilder(), to avoid a circular dependency in the
+    // ~YBSchemaBuilder(), to avoid a circular dependency in the
     // headers declaring friend classes with nested classes.
   }
 
@@ -276,13 +276,13 @@ class YB_NO_EXPORT KuduSchemaBuilder::Data {
   vector<KuduColumnSpec*> specs;
 };
 
-KuduSchemaBuilder::KuduSchemaBuilder()
+YBSchemaBuilder::YBSchemaBuilder()
   : data_(new Data()) {
 }
 
-KuduSchemaBuilder::~KuduSchemaBuilder() {
+YBSchemaBuilder::~YBSchemaBuilder() {
   for (KuduColumnSpec* spec : data_->specs) {
-    // Can't use STLDeleteElements because KuduSchemaBuilder
+    // Can't use STLDeleteElements because YBSchemaBuilder
     // is a friend of KuduColumnSpec in order to access its destructor.
     // STLDeleteElements is a free function and therefore can't access it.
     delete spec;
@@ -290,20 +290,20 @@ KuduSchemaBuilder::~KuduSchemaBuilder() {
   delete data_;
 }
 
-KuduColumnSpec* KuduSchemaBuilder::AddColumn(const std::string& name) {
+KuduColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
   auto c = new KuduColumnSpec(name);
   data_->specs.push_back(c);
   return c;
 }
 
-KuduSchemaBuilder* KuduSchemaBuilder::SetPrimaryKey(
+YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
     const std::vector<std::string>& key_col_names) {
   data_->has_key_col_names = true;
   data_->key_col_names = key_col_names;
   return this;
 }
 
-Status KuduSchemaBuilder::Build(KuduSchema* schema) {
+Status YBSchemaBuilder::Build(YBSchema* schema) {
   vector<KuduColumnSchema> cols;
   cols.resize(data_->specs.size(), KuduColumnSchema());
   for (int i = 0; i < cols.size(); i++) {
@@ -451,39 +451,39 @@ KuduColumnSchema::DataType KuduColumnSchema::type() const {
 
 
 ////////////////////////////////////////////////////////////
-// KuduSchema
+// YBSchema
 ////////////////////////////////////////////////////////////
 
-KuduSchema::KuduSchema()
+YBSchema::YBSchema()
   : schema_(nullptr) {
 }
 
-KuduSchema::KuduSchema(const KuduSchema& other)
+YBSchema::YBSchema(const YBSchema& other)
   : schema_(nullptr) {
   CopyFrom(other);
 }
 
-KuduSchema::KuduSchema(const Schema& schema)
+YBSchema::YBSchema(const Schema& schema)
   : schema_(new Schema(schema)) {
 }
 
-KuduSchema::~KuduSchema() {
+YBSchema::~YBSchema() {
   delete schema_;
 }
 
-KuduSchema& KuduSchema::operator=(const KuduSchema& other) {
+YBSchema& YBSchema::operator=(const YBSchema& other) {
   if (&other != this) {
     CopyFrom(other);
   }
   return *this;
 }
 
-void KuduSchema::CopyFrom(const KuduSchema& other) {
+void YBSchema::CopyFrom(const YBSchema& other) {
   delete schema_;
   schema_ = new Schema(*other.schema_);
 }
 
-Status KuduSchema::Reset(const vector<KuduColumnSchema>& columns, int key_columns) {
+Status YBSchema::Reset(const vector<KuduColumnSchema>& columns, int key_columns) {
   vector<ColumnSchema> cols_private;
   for (const KuduColumnSchema& col : columns) {
     cols_private.push_back(*col.col_);
@@ -496,12 +496,12 @@ Status KuduSchema::Reset(const vector<KuduColumnSchema>& columns, int key_column
   return Status::OK();
 }
 
-bool KuduSchema::Equals(const KuduSchema& other) const {
+bool YBSchema::Equals(const YBSchema& other) const {
   return this == &other ||
       (schema_ && other.schema_ && schema_->Equals(*other.schema_));
 }
 
-KuduColumnSchema KuduSchema::Column(size_t idx) const {
+KuduColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
   KuduColumnStorageAttributes attrs(FromInternalEncodingType(col.attributes().encoding),
                                     FromInternalCompressionType(col.attributes().compression));
@@ -510,19 +510,19 @@ KuduColumnSchema KuduSchema::Column(size_t idx) const {
                           attrs);
 }
 
-KuduPartialRow* KuduSchema::NewRow() const {
+KuduPartialRow* YBSchema::NewRow() const {
   return new KuduPartialRow(schema_);
 }
 
-size_t KuduSchema::num_columns() const {
+size_t YBSchema::num_columns() const {
   return schema_->num_columns();
 }
 
-size_t KuduSchema::num_key_columns() const {
+size_t YBSchema::num_key_columns() const {
   return schema_->num_key_columns();
 }
 
-void KuduSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
+void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
   indexes->clear();
   indexes->resize(num_key_columns());
   for (int i = 0; i < num_key_columns(); i++) {

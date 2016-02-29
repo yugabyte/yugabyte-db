@@ -230,7 +230,7 @@ public class KuduTableInputFormat extends InputFormat<NullWritable, RowResult>
     this.nameServer = conf.get(NAME_SERVER_KEY);
     this.cacheBlocks = conf.getBoolean(SCAN_CACHE_BLOCKS, false);
 
-    this.client = new KuduClient.KuduClientBuilder(masterAddresses)
+    this.client = new KuduClient.YBClientBuilder(masterAddresses)
         .defaultOperationTimeoutMs(operationTimeoutMs)
         .build();
     try {
@@ -373,7 +373,7 @@ public class KuduTableInputFormat extends InputFormat<NullWritable, RowResult>
     private final NullWritable currentKey = NullWritable.get();
     private RowResult currentValue;
     private RowResultIterator iterator;
-    private KuduScanner scanner;
+    private YBScanner scanner;
     private TableSplit split;
 
     @Override

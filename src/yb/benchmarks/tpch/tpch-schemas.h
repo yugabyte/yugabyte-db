@@ -76,9 +76,9 @@ enum {
   kCommentColIdx
 };
 
-inline client::KuduSchema CreateLineItemSchema() {
-  client::KuduSchemaBuilder b;
-  client::KuduSchema s;
+inline client::YBSchema CreateLineItemSchema() {
+  client::YBSchemaBuilder b;
+  client::YBSchema s;
 
   b.AddColumn(kOrderKeyColName)->Type(kInt64)->NotNull();
   b.AddColumn(kLineNumberColName)->Type(kInt32)->NotNull();

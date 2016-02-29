@@ -28,16 +28,16 @@ namespace yb {
 class Schema;
 
 namespace client {
-class KuduSchema;
+class YBSchema;
 
 // Log any pending errors in the given session, and then crash the current
 // process.
-void LogSessionErrorsAndDie(const sp::shared_ptr<KuduSession>& session,
+void LogSessionErrorsAndDie(const sp::shared_ptr<YBSession>& session,
                             const Status& s);
 
 // Flush the given session. If any errors occur, log them and crash
 // the process.
-inline void FlushSessionOrDie(const sp::shared_ptr<KuduSession>& session) {
+inline void FlushSessionOrDie(const sp::shared_ptr<YBSession>& session) {
   Status s = session->Flush();
   if (PREDICT_FALSE(!s.ok())) {
     LogSessionErrorsAndDie(session, s);
@@ -50,10 +50,10 @@ void ScanTableToStrings(KuduTable* table, std::vector<std::string>* row_strings)
 // Count the number of rows in the table in LEADER_ONLY mode.
 int64_t CountTableRows(KuduTable* table);
 
-void ScanToStrings(KuduScanner* scanner, std::vector<std::string>* row_strings);
+void ScanToStrings(YBScanner* scanner, std::vector<std::string>* row_strings);
 
-// Convert a yb::Schema to a yb::client::KuduSchema.
-KuduSchema KuduSchemaFromSchema(const Schema& schema);
+// Convert a yb::Schema to a yb::client::YBSchema.
+YBSchema YBSchemaFromSchema(const Schema& schema);
 
 } // namespace client
 } // namespace yb

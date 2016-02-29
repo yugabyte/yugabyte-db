@@ -73,7 +73,7 @@ public class MiniKuduCluster implements AutoCloseable {
 
     startCluster(numMasters, numTservers);
 
-    syncClient = new KuduClient.KuduClientBuilder(getMasterAddresses())
+    syncClient = new KuduClient.YBClientBuilder(getMasterAddresses())
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
         .defaultOperationTimeoutMs(defaultTimeoutMs)
         .build();

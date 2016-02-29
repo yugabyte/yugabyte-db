@@ -20,10 +20,10 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestKuduSession extends BaseKuduTest {
+public class TestYBSession extends BaseKuduTest {
   // Generate a unique table name
   private static final String TABLE_NAME_PREFIX =
-      TestKuduSession.class.getName()+"-"+System.currentTimeMillis();
+      TestYBSession.class.getName()+"-"+System.currentTimeMillis();
 
   private KuduTable table;
 
@@ -32,7 +32,7 @@ public class TestKuduSession extends BaseKuduTest {
     String tableName = TABLE_NAME_PREFIX + "-testBasicOps";
     table = createTable(tableName, basicSchema, new CreateTableOptions());
 
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     for (int i = 0; i < 10; i++) {
       session.apply(createInsert(i));
     }
@@ -55,7 +55,7 @@ public class TestKuduSession extends BaseKuduTest {
     String tableName = TABLE_NAME_PREFIX + "-testBatchWithSameRow";
     table = createTable(tableName, basicSchema, new CreateTableOptions());
 
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.setFlushMode(SessionConfiguration.FlushMode.MANUAL_FLUSH);
 
     // Insert 25 rows, one per batch, along with 50 updates for each, and a delete at the end,
@@ -103,7 +103,7 @@ public class TestKuduSession extends BaseKuduTest {
     table = createTable(tableName, basicSchema, builder);
 
     // Configure the session to background flush as often as it can (every 1ms).
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.setFlushMode(SessionConfiguration.FlushMode.AUTO_FLUSH_BACKGROUND);
     session.setFlushInterval(1);
 
@@ -121,7 +121,7 @@ public class TestKuduSession extends BaseKuduTest {
   public void testOverWritingValues() throws Exception {
     String tableName = TABLE_NAME_PREFIX + "-OverridingValues";
     table = createTable(tableName, basicSchema, null);
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     Insert insert = createInsert(0);
     PartialRow row = insert.getRow();
 
@@ -138,7 +138,7 @@ public class TestKuduSession extends BaseKuduTest {
     assertEquals(5, row.getVarLengthData().size());
     session.apply(insert);
 
-    KuduScanner scanner = syncClient.newScannerBuilder(table).build();
+    YBScanner scanner = syncClient.newScannerBuilder(table).build();
     RowResult rr = scanner.nextRows().next();
     assertEquals(magicNumber, rr.getInt(1));
     assertEquals(magicNumber, rr.getInt(2));

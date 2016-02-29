@@ -33,11 +33,11 @@ namespace yb {
 namespace tools {
 
 using client::KuduColumnSchema;
-using client::KuduInsert;
-using client::KuduSchemaBuilder;
-using client::KuduSession;
+using client::YBInsert;
+using client::YBSchemaBuilder;
+using client::YBSession;
 using client::KuduTable;
-using client::KuduTableCreator;
+using client::YBTableCreator;
 using client::sp::shared_ptr;
 using std::static_pointer_cast;
 using std::string;
@@ -50,7 +50,7 @@ class RemoteKsckTest : public KuduTest {
  public:
   RemoteKsckTest()
     : random_(SeedRandom()) {
-    KuduSchemaBuilder b;
+    YBSchemaBuilder b;
     b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
     b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
@@ -70,12 +70,12 @@ class RemoteKsckTest : public KuduTest {
     master_rpc_addr_ = mini_cluster_->mini_master()->bound_rpc_addr();
 
     // Connect to the cluster.
-    ASSERT_OK(client::KuduClientBuilder()
+    ASSERT_OK(client::YBClientBuilder()
                      .add_master_server_addr(master_rpc_addr_.ToString())
                      .Build(&client_));
 
     // Create one table.
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
                      .schema(&schema_)
                      .num_replicas(3)
@@ -109,15 +109,15 @@ class RemoteKsckTest : public KuduTest {
     if (!status.ok()) {
       promise->Set(status);
     }
-    shared_ptr<KuduSession> session(client_->NewSession());
+    shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeoutMillis(10000);
-    status = session->SetFlushMode(KuduSession::MANUAL_FLUSH);
+    status = session->SetFlushMode(YBSession::MANUAL_FLUSH);
     if (!status.ok()) {
       promise->Set(status);
     }
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
-      gscoped_ptr<KuduInsert> insert(table->NewInsert());
+      gscoped_ptr<YBInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
       status = session->Apply(insert.release());
       if (!status.ok()) {
@@ -148,12 +148,12 @@ class RemoteKsckTest : public KuduTest {
   Status GenerateRowWrites(uint64_t num_rows) {
     shared_ptr<KuduTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    shared_ptr<KuduSession> session(client_->NewSession());
+    shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeoutMillis(10000);
-    RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
-      gscoped_ptr<KuduInsert> insert(table->NewInsert());
+      gscoped_ptr<YBInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
       RETURN_NOT_OK(session->Apply(insert.release()));
 
@@ -171,7 +171,7 @@ class RemoteKsckTest : public KuduTest {
  private:
   Sockaddr master_rpc_addr_;
   std::shared_ptr<MiniCluster> mini_cluster_;
-  client::KuduSchema schema_;
+  client::YBSchema schema_;
   shared_ptr<client::KuduTable> client_table_;
   std::shared_ptr<KsckMaster> master_;
   std::shared_ptr<KsckCluster> cluster_;

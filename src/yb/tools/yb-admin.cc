@@ -67,7 +67,7 @@ using std::vector;
 using google::protobuf::RepeatedPtrField;
 
 using client::KuduClient;
-using client::KuduClientBuilder;
+using client::YBClientBuilder;
 using client::KuduTabletServer;
 using consensus::ConsensusServiceProxy;
 using consensus::RaftPeerPB;
@@ -162,7 +162,7 @@ Status ClusterAdminClient::Init() {
                                << master_hostport.ToString();
   master_proxy_.reset(new MasterServiceProxy(messenger_, master_addrs[0]));
 
-  CHECK_OK(KuduClientBuilder()
+  CHECK_OK(YBClientBuilder()
       .add_master_server_addr(master_addr_list_)
       .default_admin_operation_timeout(timeout_)
       .Build(&yb_client_));

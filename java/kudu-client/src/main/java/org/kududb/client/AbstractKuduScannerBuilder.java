@@ -30,13 +30,13 @@ import org.kududb.util.HybridTimeUtil;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public abstract class AbstractKuduScannerBuilder
-    <S extends AbstractKuduScannerBuilder<? super S, T>, T> {
+public abstract class AbstractYBScannerBuilder
+    <S extends AbstractYBScannerBuilder<? super S, T>, T> {
   final AsyncKuduClient client;
   final KuduTable table;
   final List<Tserver.ColumnRangePredicatePB> columnRangePredicates;
 
-  AsyncKuduScanner.ReadMode readMode = AsyncKuduScanner.ReadMode.READ_LATEST;
+  AsyncYBScanner.ReadMode readMode = AsyncYBScanner.ReadMode.READ_LATEST;
   int batchSizeBytes = 1024*1024;
   long limit = Long.MAX_VALUE;
   boolean prefetching = false;
@@ -50,7 +50,7 @@ public abstract class AbstractKuduScannerBuilder
   List<Integer> projectedColumnIndexes = null;
   long scanRequestTimeout;
 
-  AbstractKuduScannerBuilder(AsyncKuduClient client, KuduTable table) {
+  AbstractYBScannerBuilder(AsyncKuduClient client, KuduTable table) {
     this.client = client;
     this.table = table;
     this.columnRangePredicates = new ArrayList<>();
@@ -62,7 +62,7 @@ public abstract class AbstractKuduScannerBuilder
    * @param readMode a read mode for the scanner
    * @return this instance
    */
-  public S readMode(AsyncKuduScanner.ReadMode readMode) {
+  public S readMode(AsyncYBScanner.ReadMode readMode) {
     this.readMode = readMode;
     return (S) this;
   }

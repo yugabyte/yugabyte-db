@@ -25,30 +25,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Synchronous version of {@link AsyncKuduSession}.
+ * Synchronous version of {@link AsyncYBSession}.
  * Offers the same API but with blocking methods.<p>
  *
  * This class is <b>not</b> thread-safe.<p>
  *
- * A major difference with {@link AsyncKuduSession} is that the time spent waiting on operations is
+ * A major difference with {@link AsyncYBSession} is that the time spent waiting on operations is
  * defined by {@link #setTimeoutMillis(long)} which defaults to getting it from
  * {@link KuduClient#getDefaultOperationTimeoutMs()}.
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduSession implements SessionConfiguration {
+public class YBSession implements SessionConfiguration {
 
-  public static final Logger LOG = LoggerFactory.getLogger(KuduSession.class);
+  public static final Logger LOG = LoggerFactory.getLogger(YBSession.class);
 
-  private final AsyncKuduSession session;
+  private final AsyncYBSession session;
 
-  KuduSession(AsyncKuduSession session) {
+  YBSession(AsyncYBSession session) {
     this.session = session;
   }
 
   /**
    * Blocking call with a different behavior based on the flush mode. PleaseThrottleException is
-   * managed by this method and will not be thrown, unlike {@link AsyncKuduSession#apply}.
+   * managed by this method and will not be thrown, unlike {@link AsyncYBSession#apply}.
    * <p>
    * <ul>
    * <li>AUTO_FLUSH_SYNC: the call returns when the operation is persisted,
@@ -116,7 +116,7 @@ public class KuduSession implements SessionConfiguration {
   }
 
   @Override
-  public void setFlushMode(AsyncKuduSession.FlushMode flushMode) {
+  public void setFlushMode(AsyncYBSession.FlushMode flushMode) {
     session.setFlushMode(flushMode);
   }
 

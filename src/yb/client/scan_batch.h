@@ -37,9 +37,9 @@ class TsAdminClient;
 } // namespace tools
 
 namespace client {
-class KuduSchema;
+class YBSchema;
 
-// A batch of zero or more rows returned from a KuduScanner.
+// A batch of zero or more rows returned from a YBScanner.
 //
 // With C++11, you can iterate over the rows in the batch using a
 // range-foreach loop:
@@ -81,11 +81,11 @@ class YB_EXPORT KuduScanBatch {
 
   // Returns the projection schema for this batch.
   // All KuduScanBatch::RowPtr returned by this batch are guaranteed to have this schema.
-  const KuduSchema* projection_schema() const;
+  const YBSchema* projection_schema() const;
 
  private:
   class YB_NO_EXPORT Data;
-  friend class KuduScanner;
+  friend class YBScanner;
   friend class yb::tools::TsAdminClient;
 
   Data* data_;
@@ -143,7 +143,7 @@ class YB_EXPORT KuduScanBatch::RowPtr {
   // Raw cell access. Should be avoided unless absolutely necessary.
   const void* cell(int col_idx) const;
 
-  const KuduSchema* row_schema() const;
+  const YBSchema* row_schema() const;
 
   std::string ToString() const;
 
@@ -152,9 +152,9 @@ class YB_EXPORT KuduScanBatch::RowPtr {
   template<typename KeyTypeWrapper> friend struct SliceKeysTestSetup;
   template<typename KeyTypeWrapper> friend struct IntKeysTestSetup;
 
-  // Only invoked by KuduScanner.
+  // Only invoked by YBScanner.
   RowPtr(const Schema* schema,
-         const KuduSchema* client_projection,
+         const YBSchema* client_projection,
          const uint8_t* row_data)
       : schema_(schema),
         client_schema_(client_projection),
@@ -168,7 +168,7 @@ class YB_EXPORT KuduScanBatch::RowPtr {
   Status Get(int col_idx, typename T::cpp_type* val) const;
 
   const Schema* schema_;
-  const KuduSchema* client_schema_;
+  const YBSchema* client_schema_;
   const uint8_t* row_data_;
 };
 

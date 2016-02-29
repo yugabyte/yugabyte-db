@@ -123,11 +123,11 @@ class KuduRelation(val tableName: String,
   override def buildScan(requiredColumns: Array[String], filters: Array[Filter]): RDD[Row] = {
     kuduContext.kuduRDD(sqlContext.sparkContext, tableName, requiredColumns).map { row =>
       // TODO use indexes instead of column names since it requires one less mapping.
-      Row.fromSeq(requiredColumns.map(column => getKuduValue(row, column)))
+      Row.fromSeq(requiredColumns.map(column => getYBValue(row, column)))
     }
   }
 
-  private def getKuduValue(row: RowResult, columnName: String): Any = {
+  private def getYBValue(row: RowResult, columnName: String): Any = {
     val columnType = kuduSchemaColumnMap.getOrElse(columnName,
       throw new IllegalArgumentException(s"Couldn't find column '$columnName'")).getType
 

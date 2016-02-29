@@ -334,7 +334,7 @@ Status KuduClient::Data::GetTabletServer(KuduClient* client,
 
 Status KuduClient::Data::CreateTable(KuduClient* client,
                                      const CreateTableRequestPB& req,
-                                     const KuduSchema& schema,
+                                     const YBSchema& schema,
                                      const MonoTime& deadline) {
   CreateTableResponsePB resp;
 
@@ -350,7 +350,7 @@ Status KuduClient::Data::CreateTable(KuduClient* client,
       // response (e.g., due to failure before the successful
       // response could be sent back, or due to a I/O pause or a
       // network blip leading to a timeout, etc...)
-      KuduSchema actual_schema;
+      YBSchema actual_schema;
       string table_id;
       PartitionSchema actual_partition_schema;
       RETURN_NOT_OK_PREPEND(
@@ -568,7 +568,7 @@ class GetTableSchemaRpc : public Rpc {
   GetTableSchemaRpc(KuduClient* client,
                     StatusCallback user_cb,
                     string table_name,
-                    KuduSchema* out_schema,
+                    YBSchema* out_schema,
                     PartitionSchema* out_partition_schema,
                     string* out_id,
                     const MonoTime& deadline,
@@ -590,7 +590,7 @@ class GetTableSchemaRpc : public Rpc {
   KuduClient* client_;
   StatusCallback user_cb_;
   const string table_name_;
-  KuduSchema* out_schema_;
+  YBSchema* out_schema_;
   PartitionSchema* out_partition_schema_;
   string* out_id_;
   GetTableSchemaResponsePB resp_;
@@ -599,7 +599,7 @@ class GetTableSchemaRpc : public Rpc {
 GetTableSchemaRpc::GetTableSchemaRpc(KuduClient* client,
                                      StatusCallback user_cb,
                                      string table_name,
-                                     KuduSchema* out_schema,
+                                     YBSchema* out_schema,
                                      PartitionSchema* out_partition_schema,
                                      string* out_id,
                                      const MonoTime& deadline,
@@ -731,7 +731,7 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
 Status KuduClient::Data::GetTableSchema(KuduClient* client,
                                         const string& table_name,
                                         const MonoTime& deadline,
-                                        KuduSchema* schema,
+                                        YBSchema* schema,
                                         PartitionSchema* partition_schema,
                                         string* table_id) {
   Synchronizer sync;

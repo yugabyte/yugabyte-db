@@ -27,7 +27,7 @@
 namespace yb {
 namespace client {
 
-class KuduValue::Data {
+class YBValue::Data {
  public:
   enum Type {
     INT,
@@ -50,7 +50,7 @@ class KuduValue::Data {
   // that the type cannot be coerced.
   //
   // The returned pointer in *val_void is only guaranteed to live as long
-  // as this KuduValue object.
+  // as this YBValue object.
   Status CheckTypeAndGetPointer(const std::string& col_name,
                                 DataType t,
                                 void** val_void);
@@ -59,7 +59,7 @@ class KuduValue::Data {
   // Check that this value has the expected type 'type', returning
   // a nice error Status if not.
   Status CheckValType(const std::string& col_name,
-                      KuduValue::Data::Type type,
+                      YBValue::Data::Type type,
                       const char* type_str) const;
 
   // Check that this value is a boolean constant, and set *val_void to

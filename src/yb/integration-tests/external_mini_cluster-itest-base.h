@@ -84,7 +84,7 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
                                          cluster_->messenger(),
                                          &ts_map_));
-  client::KuduClientBuilder builder;
+  client::YBClientBuilder builder;
   ASSERT_OK(cluster_->CreateClient(builder, &client_));
 }
 

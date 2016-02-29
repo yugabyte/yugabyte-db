@@ -54,8 +54,8 @@ public class TestScannerMultiTablet extends BaseKuduTest {
 
     table = openTable(TABLE_NAME);
 
-    AsyncKuduSession session = client.newSession();
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+    AsyncYBSession session = client.newSession();
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
 
     // The data layout ends up like this:
     // tablet '', '1': no rows
@@ -102,7 +102,7 @@ public class TestScannerMultiTablet extends BaseKuduTest {
     // Test that we can close a scanner while in between two tablets. We start on the second
     // tablet and our first nextRows() will get 3 rows. At that moment we want to close the scanner
     // before getting on the 3rd tablet.
-    AsyncKuduScanner scanner = getScanner("1", "", null, null);
+    AsyncYBScanner scanner = getScanner("1", "", null, null);
     Deferred<RowResultIterator> d = scanner.nextRows();
     RowResultIterator rri = d.join(DEFAULT_SLEEP);
     assertEquals(3, rri.getNumRows());
@@ -146,7 +146,7 @@ public class TestScannerMultiTablet extends BaseKuduTest {
   @Test(timeout = 100000)
   public void testProjections() throws Exception {
     // Test with column names.
-    AsyncKuduScanner.AsyncKuduScannerBuilder builder = client.newScannerBuilder(table);
+    AsyncYBScanner.AsyncYBScannerBuilder builder = client.newScannerBuilder(table);
     builder.setProjectedColumnNames(Lists.newArrayList(schema.getColumnByIndex(0).getName(),
         schema.getColumnByIndex(1).getName()));
     buildScannerAndCheckColumnsCount(builder, 2);
@@ -163,7 +163,7 @@ public class TestScannerMultiTablet extends BaseKuduTest {
     buildScannerAndCheckColumnsCount(builder, 1);
   }
 
-  private AsyncKuduScanner getScanner(String lowerBoundKeyOne,
+  private AsyncYBScanner getScanner(String lowerBoundKeyOne,
                                       String lowerBoundKeyTwo,
                                       String exclusiveUpperBoundKeyOne,
                                       String exclusiveUpperBoundKeyTwo) {
@@ -171,12 +171,12 @@ public class TestScannerMultiTablet extends BaseKuduTest {
         exclusiveUpperBoundKeyOne, exclusiveUpperBoundKeyTwo, null);
   }
 
-  private AsyncKuduScanner getScanner(String lowerBoundKeyOne,
+  private AsyncYBScanner getScanner(String lowerBoundKeyOne,
                                       String lowerBoundKeyTwo,
                                       String exclusiveUpperBoundKeyOne,
                                       String exclusiveUpperBoundKeyTwo,
                                       ColumnRangePredicate predicate) {
-    AsyncKuduScanner.AsyncKuduScannerBuilder builder = client.newScannerBuilder(table);
+    AsyncYBScanner.AsyncYBScannerBuilder builder = client.newScannerBuilder(table);
 
     if (lowerBoundKeyOne != null) {
       PartialRow lowerBoundRow = schema.newPartialRow();
@@ -199,9 +199,9 @@ public class TestScannerMultiTablet extends BaseKuduTest {
     return builder.build();
   }
 
-  private void buildScannerAndCheckColumnsCount(AsyncKuduScanner.AsyncKuduScannerBuilder builder,
+  private void buildScannerAndCheckColumnsCount(AsyncYBScanner.AsyncYBScannerBuilder builder,
                                                 int count) throws Exception {
-    AsyncKuduScanner scanner = builder.build();
+    AsyncYBScanner scanner = builder.build();
     scanner.nextRows().join(DEFAULT_SLEEP);
     RowResultIterator rri = scanner.nextRows().join(DEFAULT_SLEEP);
     assertEquals(count, rri.next().getSchema().getColumns().size());

@@ -188,7 +188,7 @@ public class AsyncKuduClient implements AutoCloseable {
       new HashMap<String, TabletClient>();
 
   @GuardedBy("sessions")
-  private final Set<AsyncKuduSession> sessions = new HashSet<AsyncKuduSession>();
+  private final Set<AsyncYBSession> sessions = new HashSet<AsyncYBSession>();
 
   // Since the masters also go through TabletClient, we need to treat them as if they were a normal
   // table. We'll use the following fake table name to identify places where we need special
@@ -230,7 +230,7 @@ public class AsyncKuduClient implements AutoCloseable {
 
   private volatile boolean closed;
 
-  private AsyncKuduClient(AsyncKuduClientBuilder b) {
+  private AsyncKuduClient(AsyncYBClientBuilder b) {
     this.channelFactory = b.createChannelFactory();
     this.masterAddresses = b.masterAddresses;
     this.masterTable = new KuduTable(this, MASTER_TABLE_NAME_PLACEHOLDER,
@@ -513,22 +513,22 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   /**
-   * Creates a new {@link AsyncKuduScanner.AsyncKuduScannerBuilder} for a particular table.
+   * Creates a new {@link AsyncYBScanner.AsyncYBScannerBuilder} for a particular table.
    * @param table the name of the table you intend to scan.
    * The string is assumed to use the platform's default charset.
    * @return a new scanner builder for this table
    */
-  public AsyncKuduScanner.AsyncKuduScannerBuilder newScannerBuilder(KuduTable table) {
+  public AsyncYBScanner.AsyncYBScannerBuilder newScannerBuilder(KuduTable table) {
     checkIsClosed();
-    return new AsyncKuduScanner.AsyncKuduScannerBuilder(this, table);
+    return new AsyncYBScanner.AsyncYBScannerBuilder(this, table);
   }
 
   /**
-   * Package-private access point for {@link AsyncKuduScanner}s to open themselves.
+   * Package-private access point for {@link AsyncYBScanner}s to open themselves.
    * @param scanner The scanner to open.
-   * @return A deferred {@link AsyncKuduScanner.Response}
+   * @return A deferred {@link AsyncYBScanner.Response}
    */
-  Deferred<AsyncKuduScanner.Response> openScanner(final AsyncKuduScanner scanner) {
+  Deferred<AsyncYBScanner.Response> openScanner(final AsyncYBScanner scanner) {
     return sendRpcToTablet(scanner.getOpenRequest()).addErrback(
         new Callback<Exception, Exception>() {
           public Exception call(final Exception e) {
@@ -548,11 +548,11 @@ public class AsyncKuduClient implements AutoCloseable {
    * Create a new session for interacting with the cluster.
    * User is responsible for destroying the session object.
    * This is a fully local operation (no RPCs or blocking).
-   * @return a new AsyncKuduSession
+   * @return a new AsyncYBSession
    */
-  public AsyncKuduSession newSession() {
+  public AsyncYBSession newSession() {
     checkIsClosed();
-    AsyncKuduSession session = new AsyncKuduSession(this);
+    AsyncYBSession session = new AsyncYBSession(this);
     synchronized (sessions) {
       sessions.add(session);
     }
@@ -560,10 +560,10 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   /**
-   * This method is for KuduSessions so that they can remove themselves as part of closing down.
+   * This method is for YBSessions so that they can remove themselves as part of closing down.
    * @param session Session to remove
    */
-  void removeSession(AsyncKuduSession session) {
+  void removeSession(AsyncYBSession session) {
     synchronized (sessions) {
       boolean removed = sessions.remove(session);
       assert removed == true;
@@ -571,15 +571,15 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   /**
-   * Package-private access point for {@link AsyncKuduScanner}s to scan more rows.
+   * Package-private access point for {@link AsyncYBScanner}s to scan more rows.
    * @param scanner The scanner to use.
    * @return A deferred row.
    */
-  Deferred<AsyncKuduScanner.Response> scanNextRows(final AsyncKuduScanner scanner) {
+  Deferred<AsyncYBScanner.Response> scanNextRows(final AsyncYBScanner scanner) {
     final RemoteTablet tablet = scanner.currentTablet();
     final TabletClient client = clientFor(tablet);
-    final KuduRpc<AsyncKuduScanner.Response> next_request = scanner.getNextRowsRequest();
-    final Deferred<AsyncKuduScanner.Response> d = next_request.getDeferred();
+    final KuduRpc<AsyncYBScanner.Response> next_request = scanner.getNextRowsRequest();
+    final Deferred<AsyncYBScanner.Response> d = next_request.getDeferred();
     if (client == null) {
       // Oops, we no longer know anything about this client or tabletSlice.  Our
       // cache was probably invalidated while the client was scanning.  This
@@ -593,12 +593,12 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   /**
-   * Package-private access point for {@link AsyncKuduScanner}s to close themselves.
+   * Package-private access point for {@link AsyncYBScanner}s to close themselves.
    * @param scanner The scanner to close.
    * @return A deferred object that indicates the completion of the request.
-   * The {@link AsyncKuduScanner.Response} can contain rows that were left to scan.
+   * The {@link AsyncYBScanner.Response} can contain rows that were left to scan.
    */
-  Deferred<AsyncKuduScanner.Response> closeScanner(final AsyncKuduScanner scanner) {
+  Deferred<AsyncYBScanner.Response> closeScanner(final AsyncYBScanner scanner) {
     final RemoteTablet tablet = scanner.currentTablet();
     // Getting a null tablet here without being in a closed state means we were in between tablets.
     if (tablet == null) {
@@ -614,8 +614,8 @@ public class AsyncKuduClient implements AutoCloseable {
           + (tablet == null ? null : tablet));
       return Deferred.fromResult(null);
     }
-    final KuduRpc<AsyncKuduScanner.Response>  close_request = scanner.getCloseRequest();
-    final Deferred<AsyncKuduScanner.Response> d = close_request.getDeferred();
+    final KuduRpc<AsyncYBScanner.Response>  close_request = scanner.getCloseRequest();
+    final Deferred<AsyncYBScanner.Response> d = close_request.getDeferred();
     close_request.attempt++;
     client.sendRpc(close_request);
     return d;
@@ -1356,7 +1356,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * Performs a graceful shutdown of this instance.
    * <p>
    * <ul>
-   *   <li>{@link AsyncKuduSession#flush Flushes} all buffered edits.</li>
+   *   <li>{@link AsyncYBSession#flush Flushes} all buffered edits.</li>
    *   <li>Cancels all the other requests.</li>
    *   <li>Terminates all connections.</li>
    *   <li>Releases all other resources.</li>
@@ -1422,18 +1422,18 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   private Deferred<ArrayList<List<OperationResponse>>> closeAllSessions() {
-    // We create a copy because AsyncKuduSession.close will call removeSession which would get us a
+    // We create a copy because AsyncYBSession.close will call removeSession which would get us a
     // concurrent modification during the iteration.
-    Set<AsyncKuduSession> copyOfSessions;
+    Set<AsyncYBSession> copyOfSessions;
     synchronized (sessions) {
-      copyOfSessions = new HashSet<AsyncKuduSession>(sessions);
+      copyOfSessions = new HashSet<AsyncYBSession>(sessions);
     }
     if (sessions.isEmpty()) {
       return Deferred.fromResult(null);
     }
     // Guaranteed that we'll have at least one session to close.
     List<Deferred<List<OperationResponse>>> deferreds = new ArrayList<>(copyOfSessions.size());
-    for (AsyncKuduSession session : copyOfSessions ) {
+    for (AsyncYBSession session : copyOfSessions ) {
       deferreds.add(session.close());
     }
 
@@ -1976,7 +1976,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * Builder class to use in order to connect to Kudu.
    * All the parameters beyond those in the constructors are optional.
    */
-  public final static class AsyncKuduClientBuilder {
+  public final static class AsyncYBClientBuilder {
     private static final int DEFAULT_MASTER_PORT = 7051;
     private static final int DEFAULT_BOSS_COUNT = 1;
     private static final int DEFAULT_WORKER_COUNT = 2 * Runtime.getRuntime().availableProcessors();
@@ -1995,7 +1995,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * Creates a new builder for a client that will connect to the specified masters.
      * @param masterAddresses comma-separated list of "host:port" pairs of the masters
      */
-    public AsyncKuduClientBuilder(String masterAddresses) {
+    public AsyncYBClientBuilder(String masterAddresses) {
       this.masterAddresses =
           NetUtil.parseStrings(masterAddresses, DEFAULT_MASTER_PORT);
     }
@@ -2016,7 +2016,7 @@ public class AsyncKuduClient implements AutoCloseable {
      *
      * @param masterAddresses list of master addresses
      */
-    public AsyncKuduClientBuilder(List<String> masterAddresses) {
+    public AsyncYBClientBuilder(List<String> masterAddresses) {
       this.masterAddresses =
           Lists.newArrayListWithCapacity(masterAddresses.size());
       for (String address : masterAddresses) {
@@ -2034,7 +2034,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * @param timeoutMs a timeout in milliseconds
      * @return this builder
      */
-    public AsyncKuduClientBuilder defaultAdminOperationTimeoutMs(long timeoutMs) {
+    public AsyncYBClientBuilder defaultAdminOperationTimeoutMs(long timeoutMs) {
       this.defaultAdminOperationTimeoutMs = timeoutMs;
       return this;
     }
@@ -2047,7 +2047,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * @param timeoutMs a timeout in milliseconds
      * @return this builder
      */
-    public AsyncKuduClientBuilder defaultOperationTimeoutMs(long timeoutMs) {
+    public AsyncYBClientBuilder defaultOperationTimeoutMs(long timeoutMs) {
       this.defaultOperationTimeoutMs = timeoutMs;
       return this;
     }
@@ -2060,7 +2060,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * @param timeoutMs a timeout in milliseconds
      * @return this builder
      */
-    public AsyncKuduClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
+    public AsyncYBClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
       this.defaultSocketReadTimeoutMs = timeoutMs;
       return this;
     }
@@ -2074,7 +2074,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * worker count, or netty cannot start enough threads, and client will get stuck.
      * If not sure, please just use CachedThreadPool.
      */
-    public AsyncKuduClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
+    public AsyncYBClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
       this.bossExecutor = bossExecutor;
       this.workerExecutor = workerExecutor;
       return this;
@@ -2085,7 +2085,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * Optional.
      * If not provided, 1 is used.
      */
-    public AsyncKuduClientBuilder bossCount(int bossCount) {
+    public AsyncYBClientBuilder bossCount(int bossCount) {
       Preconditions.checkArgument(bossCount > 0, "bossCount should be greater than 0");
       this.bossCount = bossCount;
       return this;
@@ -2096,7 +2096,7 @@ public class AsyncKuduClient implements AutoCloseable {
      * Optional.
      * If not provided, (2 * the number of available processors) is used.
      */
-    public AsyncKuduClientBuilder workerCount(int workerCount) {
+    public AsyncYBClientBuilder workerCount(int workerCount) {
       Preconditions.checkArgument(workerCount > 0, "workerCount should be greater than 0");
       this.workerCount = workerCount;
       return this;

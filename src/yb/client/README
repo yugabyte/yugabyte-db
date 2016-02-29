@@ -22,7 +22,7 @@ This file contains some example code for the C++ client. It will
 probably be eventually removed in favor of actual runnable examples,
 but serves as a guide/docs for the client API design for now.
 
-See class docs for KuduClient, KuduSession, KuduTable for proper docs.
+See class docs for KuduClient, YBSession, KuduTable for proper docs.
 */
 
 // This is an example of explicit batching done by the client.
@@ -38,12 +38,12 @@ void ExplicitBatchingExample() {
 
   // Create a new session. All data-access operations must happen through
   // a session.
-  shared_ptr<KuduSession> session(client->NewSession());
+  shared_ptr<YBSession> session(client->NewSession());
 
   // Setting flush mode to MANUAL_FLUSH makes the session accumulate
   // all operations until the next Flush() call. This is sort of like
   // TCP_CORK.
-  CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Insert 100 rows.
   for (int i = 0; i < 100; i++) {
@@ -93,7 +93,7 @@ void ExplicitBatchingExample() {
 void BulkIngestExample() {
   scoped_refptr<KuduTable> t;
   CHECK_OK(client_->OpenTable("my_table", &t));
-  shared_ptr<KuduSession> session(client->NewSession());
+  shared_ptr<YBSession> session(client->NewSession());
 
   // If the amount of buffered data in RAM is larger than this amount,
   // blocks the writer from performing more inserts until memory has
@@ -107,7 +107,7 @@ void BulkIngestExample() {
 
   // In AUTO_FLUSH_BACKGROUND mode, the session will try to accumulate batches
   // for optimal efficiency, rather than flushing each operation.
-  CHECK_OK(session->SetFlushMode(KuduSession::AUTO_FLUSH_BACKGROUND));
+  CHECK_OK(session->SetFlushMode(YBSession::AUTO_FLUSH_BACKGROUND));
 
   for (int i = 0; i < 10000; i++) {
     gscoped_ptr<Insertion> ins = t->NewInsertion();

@@ -27,21 +27,21 @@
 #include "yb/common/partial_row.h"
 
 using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
+using yb::client::YBClientBuilder;
 using yb::client::KuduColumnSchema;
-using yb::client::KuduError;
-using yb::client::KuduInsert;
-using yb::client::KuduPredicate;
-using yb::client::KuduRowResult;
-using yb::client::KuduScanner;
-using yb::client::KuduSchema;
-using yb::client::KuduSchemaBuilder;
-using yb::client::KuduSession;
+using yb::client::YBError;
+using yb::client::YBInsert;
+using yb::client::YBPredicate;
+using yb::client::YBRowResult;
+using yb::client::YBScanner;
+using yb::client::YBSchema;
+using yb::client::YBSchemaBuilder;
+using yb::client::YBSession;
 using yb::client::KuduStatusFunctionCallback;
 using yb::client::KuduTable;
 using yb::client::KuduTableAlterer;
-using yb::client::KuduTableCreator;
-using yb::client::KuduValue;
+using yb::client::YBTableCreator;
+using yb::client::YBValue;
 using yb::client::sp::shared_ptr;
 using yb::KuduPartialRow;
 using yb::MonoDelta;
@@ -53,20 +53,20 @@ using std::vector;
 
 static Status CreateClient(const string& addr,
                            shared_ptr<KuduClient>* client) {
-  return KuduClientBuilder()
+  return YBClientBuilder()
       .add_master_server_addr(addr)
       .default_admin_operation_timeout(MonoDelta::FromSeconds(20))
       .Build(client);
 }
 
-static KuduSchema CreateSchema() {
-  KuduSchema schema;
-  KuduSchemaBuilder b;
+static YBSchema CreateSchema() {
+  YBSchema schema;
+  YBSchemaBuilder b;
   b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
   b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
   b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
   b.AddColumn("non_null_with_default")->Type(KuduColumnSchema::INT32)->NotNull()
-    ->Default(KuduValue::FromInt(12345));
+    ->Default(YBValue::FromInt(12345));
   YB_CHECK_OK(b.Build(&schema));
   return schema;
 }
@@ -87,7 +87,7 @@ static Status DoesTableExist(const shared_ptr<KuduClient>& client,
 
 static Status CreateTable(const shared_ptr<KuduClient>& client,
                           const string& table_name,
-                          const KuduSchema& schema,
+                          const YBSchema& schema,
                           int num_tablets) {
   // Generate the split keys for the table.
   vector<const KuduPartialRow*> splits;
@@ -99,7 +99,7 @@ static Status CreateTable(const shared_ptr<KuduClient>& client,
   }
 
   // Create the table.
-  KuduTableCreator* table_creator = client->NewTableCreator();
+  YBTableCreator* table_creator = client->NewTableCreator();
   Status s = table_creator->table_name(table_name)
       .schema(&schema)
       .split_rows(splits)
@@ -125,12 +125,12 @@ static void StatusCB(void* unused, const Status& status) {
 }
 
 static Status InsertRows(const shared_ptr<KuduTable>& table, int num_rows) {
-  shared_ptr<KuduSession> session = table->client()->NewSession();
-  YB_RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = table->client()->NewSession();
+  YB_RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(5000);
 
   for (int i = 0; i < num_rows; i++) {
-    KuduInsert* insert = table->NewInsert();
+    YBInsert* insert = table->NewInsert();
     KuduPartialRow* row = insert->mutable_row();
     YB_CHECK_OK(row->SetInt32("key", i));
     YB_CHECK_OK(row->SetInt32("integer_val", i * 2));
@@ -147,7 +147,7 @@ static Status InsertRows(const shared_ptr<KuduTable>& table, int num_rows) {
   session->FlushAsync(&status_cb);
 
   // Look at the session's errors.
-  vector<KuduError*> errors;
+  vector<YBError*> errors;
   bool overflow;
   session->GetPendingErrors(&errors, &overflow);
   s = overflow ? Status::IOError("Overflowed pending errors in session") :
@@ -166,28 +166,28 @@ static Status ScanRows(const shared_ptr<KuduTable>& table) {
   const int kLowerBound = 5;
   const int kUpperBound = 600;
 
-  KuduScanner scanner(table.get());
+  YBScanner scanner(table.get());
 
   // Add a predicate: WHERE key >= 5
-  KuduPredicate* p = table->NewComparisonPredicate(
-      "key", KuduPredicate::GREATER_EQUAL, KuduValue::FromInt(kLowerBound));
+  YBPredicate* p = table->NewComparisonPredicate(
+      "key", YBPredicate::GREATER_EQUAL, YBValue::FromInt(kLowerBound));
   YB_RETURN_NOT_OK(scanner.AddConjunctPredicate(p));
 
   // Add a predicate: WHERE key <= 600
   p = table->NewComparisonPredicate(
-      "key", KuduPredicate::LESS_EQUAL, KuduValue::FromInt(kUpperBound));
+      "key", YBPredicate::LESS_EQUAL, YBValue::FromInt(kUpperBound));
   YB_RETURN_NOT_OK(scanner.AddConjunctPredicate(p));
 
   YB_RETURN_NOT_OK(scanner.Open());
-  vector<KuduRowResult> results;
+  vector<YBRowResult> results;
 
   int next_row = kLowerBound;
   while (scanner.HasMoreRows()) {
     YB_RETURN_NOT_OK(scanner.NextBatch(&results));
-    for (vector<KuduRowResult>::iterator iter = results.begin();
+    for (vector<YBRowResult>::iterator iter = results.begin();
         iter != results.end();
         iter++, next_row++) {
-      const KuduRowResult& result = *iter;
+      const YBRowResult& result = *iter;
       int32_t val;
       YB_RETURN_NOT_OK(result.GetInt32("key", &val));
       if (val != next_row) {
@@ -253,7 +253,7 @@ int main(int argc, char* argv[]) {
   yb::client::SetVerboseLogLevel(0);
 
   // Create a schema.
-  KuduSchema schema(CreateSchema());
+  YBSchema schema(CreateSchema());
   YB_LOG(INFO) << "Created a schema";
 
   // Create a table with that schema.

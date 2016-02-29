@@ -41,17 +41,17 @@ namespace yb {
 namespace itest {
 
 using client::KuduClient;
-using client::KuduClientBuilder;
+using client::YBClientBuilder;
 using client::KuduColumnSchema;
-using client::KuduInsert;
-using client::KuduPredicate;
-using client::KuduScanner;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
-using client::KuduSession;
+using client::YBInsert;
+using client::YBPredicate;
+using client::YBScanner;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBSession;
 using client::KuduTable;
-using client::KuduTableCreator;
-using client::KuduValue;
+using client::YBTableCreator;
+using client::YBValue;
 using client::sp::shared_ptr;
 using std::unordered_map;
 using std::vector;
@@ -77,7 +77,7 @@ class FlexPartitioningITest : public KuduTest {
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(builder, &client_));
 
     ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
@@ -100,7 +100,7 @@ class FlexPartitioningITest : public KuduTest {
                    int num_splits) {
     // Set up the actual PK columns based on num_columns. The PK is made up
     // of all the columns.
-    KuduSchemaBuilder b;
+    YBSchemaBuilder b;
     vector<string> pk;
     for (int i = 0; i < num_columns; i++) {
       string name = Substitute("c$0", i);
@@ -108,10 +108,10 @@ class FlexPartitioningITest : public KuduTest {
       pk.push_back(name);
     }
     b.SetPrimaryKey(pk);
-    KuduSchema schema;
+    YBSchema schema;
     ASSERT_OK(b.Build(&schema));
 
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     table_creator->table_name(kTableName)
         .schema(&schema)
         .num_replicas(1);
@@ -190,11 +190,11 @@ class FlexPartitioningITest : public KuduTest {
 Status FlexPartitioningITest::InsertRandomRows() {
   CHECK(inserted_rows_.empty());
 
-  shared_ptr<KuduSession> session(client_->NewSession());
+  shared_ptr<YBSession> session(client_->NewSession());
   session->SetTimeoutMillis(10000);
-  RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (uint64_t i = 0; i < kNumRows; i++) {
-    gscoped_ptr<KuduInsert> insert(table_->NewInsert());
+    gscoped_ptr<YBInsert> insert(table_->NewInsert());
     tools::GenerateDataForRow(table_->schema(), i, &random_, insert->mutable_row());
     inserted_rows_.push_back(new KuduPartialRow(*insert->mutable_row()));
     RETURN_NOT_OK(session->Apply(insert.release()));
@@ -208,12 +208,12 @@ Status FlexPartitioningITest::InsertRandomRows() {
 }
 
 void FlexPartitioningITest::CheckScanWithColumnPredicate(Slice col_name, int lower, int upper) {
-  KuduScanner scanner(table_.get());
+  YBScanner scanner(table_.get());
   scanner.SetTimeoutMillis(60000);
   CHECK_OK(scanner.AddConjunctPredicate(table_->NewComparisonPredicate(
-      col_name, KuduPredicate::GREATER_EQUAL, KuduValue::FromInt(lower))));
+      col_name, YBPredicate::GREATER_EQUAL, YBValue::FromInt(lower))));
   CHECK_OK(scanner.AddConjunctPredicate(table_->NewComparisonPredicate(
-      col_name, KuduPredicate::LESS_EQUAL, KuduValue::FromInt(upper))));
+      col_name, YBPredicate::LESS_EQUAL, YBValue::FromInt(upper))));
 
   vector<string> rows;
   ScanToStrings(&scanner, &rows);
@@ -235,7 +235,7 @@ void FlexPartitioningITest::CheckScanWithColumnPredicate(Slice col_name, int low
 }
 
 void FlexPartitioningITest::CheckPKRangeScan(int lower, int upper) {
-  KuduScanner scanner(table_.get());
+  YBScanner scanner(table_.get());
   scanner.SetTimeoutMillis(60000);
   ASSERT_OK(scanner.AddLowerBound(*inserted_rows_[lower]));
   ASSERT_OK(scanner.AddExclusiveUpperBound(*inserted_rows_[upper]));
@@ -268,7 +268,7 @@ void FlexPartitioningITest::CheckPartitionKeyRangeScan() {
     string partition_key_start = tablet_locations.partition().partition_key_start();
     string partition_key_end = tablet_locations.partition().partition_key_end();
 
-    KuduScanner scanner(table_.get());
+    YBScanner scanner(table_.get());
     scanner.SetTimeoutMillis(60000);
     ASSERT_OK(scanner.AddLowerBoundPartitionKeyRaw(partition_key_start));
     ASSERT_OK(scanner.AddExclusiveUpperBoundPartitionKeyRaw(partition_key_end));
@@ -301,7 +301,7 @@ void FlexPartitioningITest::CheckPartitionKeyRangeScanWithPKRange(int lower, int
     string partition_key_start = tablet_locations.partition().partition_key_start();
     string partition_key_end = tablet_locations.partition().partition_key_end();
 
-    KuduScanner scanner(table_.get());
+    YBScanner scanner(table_.get());
     scanner.SetTimeoutMillis(60000);
     ASSERT_OK(scanner.AddLowerBoundPartitionKeyRaw(partition_key_start));
     ASSERT_OK(scanner.AddExclusiveUpperBoundPartitionKeyRaw(partition_key_end));

@@ -37,19 +37,19 @@ import java.util.*;
 import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
 
 /**
- * A AsyncKuduSession belongs to a specific AsyncKuduClient, and represents a context in
+ * A AsyncYBSession belongs to a specific AsyncKuduClient, and represents a context in
  * which all read/write data access should take place. Within a session,
  * multiple operations may be accumulated and batched together for better
  * efficiency. Settings like timeouts, priorities, and trace IDs are also set
  * per session.<p>
  *
- * AsyncKuduSession is separate from KuduTable because a given batch or transaction
+ * AsyncYBSession is separate from KuduTable because a given batch or transaction
  * may span multiple tables. This is particularly important in the future when
  * we add ACID support, but even in the context of batching, we may be able to
  * coalesce writes to different tables hosted on the same server into the same
  * RPC.<p>
  *
- * AsyncKuduSession is separate from AsyncKuduClient because, in a multi-threaded
+ * AsyncYBSession is separate from AsyncKuduClient because, in a multi-threaded
  * application, different threads may need to concurrently execute
  * transactions. Similar to a JDBC "session", transaction boundaries will be
  * delineated on a per-session basis -- in between a "BeginTransaction" and
@@ -68,7 +68,7 @@ import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
  * batch writer, thus delaying the response significantly.<p>
  *
  * Though we currently do not have transactional support, users will be forced
- * to use a AsyncKuduSession to instantiate reads as well as writes.  This will make
+ * to use a AsyncYBSession to instantiate reads as well as writes.  This will make
  * it more straight-forward to add RW transactions in the future without
  * significant modifications to the API.<p>
  *
@@ -80,9 +80,9 @@ import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
-public class AsyncKuduSession implements SessionConfiguration {
+public class AsyncYBSession implements SessionConfiguration {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AsyncKuduSession.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AsyncYBSession.class);
   private static final Range<Float> PERCENTAGE_RANGE = Ranges.closed(0.0f, 1.0f);
 
   private final AsyncKuduClient client;
@@ -138,7 +138,7 @@ public class AsyncKuduSession implements SessionConfiguration {
    * Package-private constructor meant to be used via AsyncKuduClient
    * @param client client that creates this session
    */
-  AsyncKuduSession(AsyncKuduClient client) {
+  AsyncYBSession(AsyncKuduClient client) {
     this.client = client;
     this.flushMode = FlushMode.AUTO_FLUSH_SYNC;
     this.consistencyMode = CLIENT_PROPAGATED;
@@ -579,7 +579,7 @@ public class AsyncKuduSession implements SessionConfiguration {
       public BatchResponse call(final BatchResponse response) {
         LOG.trace("Got a Batch response for " + request.ops.size() + " rows");
         if (response.getWriteTimestamp() != 0) {
-          AsyncKuduSession.this.client.updateLastPropagatedTimestamp(response.getWriteTimestamp());
+          AsyncYBSession.this.client.updateLastPropagatedTimestamp(response.getWriteTimestamp());
         }
 
         // Send individualized responses to all the operations in this batch.
@@ -783,7 +783,7 @@ public class AsyncKuduSession implements SessionConfiguration {
   }
 
   private void tabletInFlightDone(Slice tablet) {
-    synchronized (AsyncKuduSession.this) {
+    synchronized (AsyncYBSession.this) {
       LOG.trace("Unmarking this tablet as in flight: " + Bytes.getString(tablet));
       operationsInFlight.remove(tablet);
     }
@@ -809,7 +809,7 @@ public class AsyncKuduSession implements SessionConfiguration {
       flushTablet(this.tabletSlice, this.expectedBatch);
     }
     public String toString() {
-      return "flush commits of session " + AsyncKuduSession.this +
+      return "flush commits of session " + AsyncYBSession.this +
           " for tabletSlice " + Bytes.getString(tabletSlice);
     }
   };

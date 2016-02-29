@@ -40,7 +40,7 @@ public class RowResultIterator extends KuduRpcResponse implements Iterator<RowRe
   private int currentRow = 0;
 
   /**
-   * Package private constructor, only meant to be instantiated from AsyncKuduScanner.
+   * Package private constructor, only meant to be instantiated from AsyncYBScanner.
    * @param ellapsedMillis Time in milliseconds since RPC creation to now.
    * @param schema Schema used to parse the rows
    * @param data PB containing the data

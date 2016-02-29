@@ -42,12 +42,12 @@ using tserver::TabletServerServiceProxy;
 using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 using rpc::RpcController;
-using yb::client::KuduInsert;
+using yb::client::YBInsert;
 using yb::client::KuduClient;
-using yb::client::KuduSession;
-using yb::client::KuduStatusCallback;
+using yb::client::YBSession;
+using yb::client::YBStatusCallback;
 using yb::client::KuduTable;
-using yb::client::KuduTableCreator;
+using yb::client::YBTableCreator;
 
 FlushCB::FlushCB(InsertConsumer* consumer)
   : consumer_(consumer) {
@@ -72,7 +72,7 @@ Status InsertConsumer::Init() {
   const char *kTableName = "twitter";
   Status s = client_->OpenTable(kTableName, &table_);
   if (s.IsNotFound()) {
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     RETURN_NOT_OK_PREPEND(table_creator->table_name(kTableName)
                           .schema(&schema_)
                           .Create(),
@@ -83,7 +83,7 @@ Status InsertConsumer::Init() {
 
   session_ = client_->NewSession();
   session_->SetTimeoutMillis(1000);
-  CHECK_OK(session_->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
   initted_ = true;
   return Status::OK();
 }
@@ -100,10 +100,10 @@ void InsertConsumer::BatchFinished(const Status& s) {
   request_pending_ = false;
   if (!s.ok()) {
     bool overflow;
-    vector<client::KuduError*> errors;
+    vector<client::YBError*> errors;
     ElementDeleter d(&errors);
     session_->GetPendingErrors(&errors, &overflow);
-    for (const client::KuduError* error : errors) {
+    for (const client::YBError* error : errors) {
       LOG(WARNING) << "Failed to insert row " << error->failed_op().ToString()
                    << ": " << error->status().ToString();
     }
@@ -126,7 +126,7 @@ void InsertConsumer::ConsumeJSON(const Slice& json_slice) {
 
   string created_at = TwitterEventParser::ReformatTime(event_.tweet_event.created_at);
 
-  gscoped_ptr<KuduInsert> ins(table_->NewInsert());
+  gscoped_ptr<YBInsert> ins(table_->NewInsert());
   KuduPartialRow* r = ins->mutable_row();
   CHECK_OK(r->SetInt64("tweet_id", event_.tweet_event.tweet_id));
   CHECK_OK(r->SetStringCopy("text", event_.tweet_event.text));

@@ -39,8 +39,8 @@ using std::vector;
 namespace yb {
 
 using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduScanner;
+using client::YBClientBuilder;
+using client::YBScanner;
 using client::KuduTable;
 
 class ClientStressTest : public KuduTest {
@@ -72,10 +72,10 @@ class ClientStressTest : public KuduTest {
 
     go_latch->Wait();
 
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(scanner.AddConjunctPredicate(table->NewComparisonPredicate(
-        "key", client::KuduPredicate::GREATER_EQUAL,
-        client::KuduValue::FromInt(start_key))));
+        "key", client::YBPredicate::GREATER_EQUAL,
+        client::YBValue::FromInt(start_key))));
     ScanToStrings(&scanner, &rows);
   }
 
@@ -125,7 +125,7 @@ TEST_F(ClientStressTest, TestStartScans) {
   // is empty.
   for (int run = 1; run <= (AllowSlowTests() ? 10 : 2); run++) {
     LOG(INFO) << "Starting run " << run;
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     client::sp::shared_ptr<KuduClient> client;
     CHECK_OK(cluster_->CreateClient(builder, &client));
 

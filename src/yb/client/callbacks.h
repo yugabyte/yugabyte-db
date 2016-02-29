@@ -125,27 +125,27 @@ class YB_EXPORT KuduLoggingFunctionCallback : public KuduLoggingCallback {
 };
 
 // Interface for all status callbacks.
-class YB_EXPORT KuduStatusCallback {
+class YB_EXPORT YBStatusCallback {
  public:
-  KuduStatusCallback() {
+  YBStatusCallback() {
   }
 
-  virtual ~KuduStatusCallback() {
+  virtual ~YBStatusCallback() {
   }
 
   virtual void Run(const Status& s) = 0;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(KuduStatusCallback);
+  DISALLOW_COPY_AND_ASSIGN(YBStatusCallback);
 };
 
 // Status callback that invokes a member function pointer.
 template <typename T>
-class YB_EXPORT KuduStatusMemberCallback : public KuduStatusCallback {
+class YB_EXPORT YBStatusMemberCallback : public YBStatusCallback {
  public:
   typedef void (T::*MemberType)(const Status& s);
 
-  KuduStatusMemberCallback(T* object, MemberType member)
+  YBStatusMemberCallback(T* object, MemberType member)
     : object_(object),
       member_(member) {
   }
@@ -161,7 +161,7 @@ class YB_EXPORT KuduStatusMemberCallback : public KuduStatusCallback {
 
 // Status callback that invokes a function pointer with a single argument.
 template <typename T>
-class YB_EXPORT KuduStatusFunctionCallback : public KuduStatusCallback {
+class YB_EXPORT KuduStatusFunctionCallback : public YBStatusCallback {
  public:
   typedef void (*FunctionType)(T arg, const Status& s);
 

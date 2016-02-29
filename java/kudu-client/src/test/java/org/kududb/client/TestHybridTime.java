@@ -76,8 +76,8 @@ public class TestHybridTime extends BaseKuduTest {
    */
   @Test(timeout = 100000)
   public void test() throws Exception {
-    AsyncKuduSession session = client.newSession();
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+    AsyncYBSession session = client.newSession();
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
     session.setExternalConsistencyMode(CLIENT_PROPAGATED);
     long[] clockValues;
     long previousLogicalValue = 0;
@@ -113,7 +113,7 @@ public class TestHybridTime extends BaseKuduTest {
     }
 
     // Test timestamp propagation with Batches
-    session.setFlushMode(AsyncKuduSession.FlushMode.MANUAL_FLUSH);
+    session.setFlushMode(AsyncYBSession.FlushMode.MANUAL_FLUSH);
     keys = new String[] {"11", "22", "33"};
     for (int i = 0; i < keys.length; i++) {
       Insert insert = table.newInsert();
@@ -153,9 +153,9 @@ public class TestHybridTime extends BaseKuduTest {
   }
 
   private int scanAtSnapshot(long time) throws Exception {
-    AsyncKuduScanner.AsyncKuduScannerBuilder builder = client.newScannerBuilder(table)
+    AsyncYBScanner.AsyncYBScannerBuilder builder = client.newScannerBuilder(table)
         .snapshotTimestampRaw(time)
-        .readMode(AsyncKuduScanner.ReadMode.READ_AT_SNAPSHOT);
+        .readMode(AsyncYBScanner.ReadMode.READ_AT_SNAPSHOT);
     return countRowsInScan(builder.build());
   }
 }

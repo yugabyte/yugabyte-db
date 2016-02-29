@@ -45,9 +45,9 @@ class WriteRpc;
 } // namespace internal
 
 class KuduClient;
-class KuduSchema;
-class KuduSchemaBuilder;
-class KuduWriteOperation;
+class YBSchema;
+class YBSchemaBuilder;
+class YBWriteOperation;
 
 class YB_EXPORT KuduColumnStorageAttributes {
  public:
@@ -113,7 +113,7 @@ class YB_EXPORT KuduColumnSchema {
 
   static std::string DataTypeToString(DataType type);
 
-  // DEPRECATED: use KuduSchemaBuilder instead.
+  // DEPRECATED: use YBSchemaBuilder instead.
   // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
   // the Builder API. Currently only the Python API uses this old API.
   KuduColumnSchema(const std::string &name,
@@ -139,8 +139,8 @@ class YB_EXPORT KuduColumnSchema {
 
  private:
   friend class KuduColumnSpec;
-  friend class KuduSchema;
-  friend class KuduSchemaBuilder;
+  friend class YBSchema;
+  friend class YBSchemaBuilder;
   // KuduTableAlterer::Data needs to be a friend. Friending the parent class
   // is transitive to nested classes. See http://tiny.cloudera.com/jwtui
   friend class KuduTableAlterer;
@@ -153,7 +153,7 @@ class YB_EXPORT KuduColumnSchema {
 
 // Builder API for specifying or altering a column within a table schema.
 // This cannot be constructed directly, but rather is returned from
-// KuduSchemaBuilder::AddColumn() to specify a column within a Schema.
+// YBSchemaBuilder::AddColumn() to specify a column within a Schema.
 //
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
 class YB_EXPORT KuduColumnSpec {
@@ -167,7 +167,7 @@ class YB_EXPORT KuduColumnSpec {
   // this column, the default will also be used.
   //
   // The KuduColumnSpec takes ownership over 'value'.
-  KuduColumnSpec* Default(KuduValue* value);
+  KuduColumnSpec* Default(YBValue* value);
 
   // Set the preferred compression for this column.
   KuduColumnSpec* Compression(KuduColumnStorageAttributes::CompressionType compression);
@@ -199,8 +199,8 @@ class YB_EXPORT KuduColumnSpec {
   // Set this column to be the primary key of the table.
   //
   // This may only be used to set non-composite primary keys. If a composite
-  // key is desired, use KuduSchemaBuilder::SetPrimaryKey(). This may not be
-  // used in conjunction with KuduSchemaBuilder::SetPrimaryKey().
+  // key is desired, use YBSchemaBuilder::SetPrimaryKey(). This may not be
+  // used in conjunction with YBSchemaBuilder::SetPrimaryKey().
   //
   // Only relevant for a CreateTable operation. Primary keys may not be changed
   // after a table is created.
@@ -230,7 +230,7 @@ class YB_EXPORT KuduColumnSpec {
 
  private:
   class YB_NO_EXPORT Data;
-  friend class KuduSchemaBuilder;
+  friend class YBSchemaBuilder;
   friend class KuduTableAlterer;
 
   // This class should always be owned and deleted by one of its friends,
@@ -245,7 +245,7 @@ class YB_EXPORT KuduColumnSpec {
   Data* data_;
 };
 
-// Builder API for constructing a KuduSchema object.
+// Builder API for constructing a YBSchema object.
 // The API here is a "fluent" style of programming, such that the resulting code
 // looks somewhat like a SQL "CREATE TABLE" statement. For example:
 //
@@ -257,30 +257,30 @@ class YB_EXPORT KuduColumnSpec {
 //
 // is represented as:
 //
-//   KuduSchemaBuilder t;
+//   YBSchemaBuilder t;
 //   t.AddColumn("my_key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-//   t.AddColumn("a")->Type(KuduColumnSchema::FLOAT)->Default(KuduValue::FromFloat(1.5));
-//   KuduSchema schema;
+//   t.AddColumn("a")->Type(KuduColumnSchema::FLOAT)->Default(YBValue::FromFloat(1.5));
+//   YBSchema schema;
 //   t.Build(&schema);
 //
-class YB_EXPORT KuduSchemaBuilder {
+class YB_EXPORT YBSchemaBuilder {
  public:
-  KuduSchemaBuilder();
-  ~KuduSchemaBuilder();
+  YBSchemaBuilder();
+  ~YBSchemaBuilder();
 
   // Return a KuduColumnSpec for a new column within the Schema.
-  // The returned object is owned by the KuduSchemaBuilder.
+  // The returned object is owned by the YBSchemaBuilder.
   KuduColumnSpec* AddColumn(const std::string& name);
 
   // Set the primary key of the new Schema based on the given column names.
   // This may be used to specify a compound primary key.
-  KuduSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names);
+  YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names);
 
   // Resets 'schema' to the result of this builder.
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)
   // a bad Status will be returned.
-  Status Build(KuduSchema* schema);
+  Status Build(YBSchema* schema);
 
  private:
   class YB_NO_EXPORT Data;
@@ -288,21 +288,21 @@ class YB_EXPORT KuduSchemaBuilder {
   Data* data_;
 };
 
-class YB_EXPORT KuduSchema {
+class YB_EXPORT YBSchema {
  public:
-  KuduSchema();
+  YBSchema();
 
-  KuduSchema(const KuduSchema& other);
-  ~KuduSchema();
+  YBSchema(const YBSchema& other);
+  ~YBSchema();
 
-  KuduSchema& operator=(const KuduSchema& other);
-  void CopyFrom(const KuduSchema& other);
+  YBSchema& operator=(const YBSchema& other);
+  void CopyFrom(const YBSchema& other);
 
   // DEPRECATED: will be removed soon.
   Status Reset(const std::vector<KuduColumnSchema>& columns, int key_columns)
     WARN_UNUSED_RESULT;
 
-  bool Equals(const KuduSchema& other) const;
+  bool Equals(const YBSchema& other) const;
   KuduColumnSchema Column(size_t idx) const;
   size_t num_columns() const;
 
@@ -314,29 +314,29 @@ class YB_EXPORT KuduSchema {
 
   // Create a new row corresponding to this schema.
   //
-  // The new row refers to this KuduSchema object, so must be destroyed before
-  // the KuduSchema object.
+  // The new row refers to this YBSchema object, so must be destroyed before
+  // the YBSchema object.
   //
   // The caller takes ownership of the created row.
   KuduPartialRow* NewRow() const;
 
  private:
   friend class KuduClient;
-  friend class KuduScanner;
-  friend class KuduSchemaBuilder;
+  friend class YBScanner;
+  friend class YBSchemaBuilder;
   friend class KuduTable;
-  friend class KuduTableCreator;
-  friend class KuduWriteOperation;
+  friend class YBTableCreator;
+  friend class YBWriteOperation;
   friend class internal::GetTableSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::WriteRpc;
   friend class yb::tools::TsAdminClient;
 
-  friend KuduSchema KuduSchemaFromSchema(const Schema& schema);
+  friend YBSchema YBSchemaFromSchema(const Schema& schema);
 
 
   // For use by yb tests.
-  explicit KuduSchema(const Schema& schema);
+  explicit YBSchema(const Schema& schema);
 
   // Private since we don't want users to rely on the first N columns
   // being the keys.

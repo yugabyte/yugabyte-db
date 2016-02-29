@@ -240,7 +240,7 @@ class ExternalMiniCluster {
   // be overridden to talk to the running master.
   //
   // REQUIRES: the cluster must have already been Start()ed.
-  Status CreateClient(client::KuduClientBuilder& builder,
+  Status CreateClient(client::YBClientBuilder& builder,
                       client::sp::shared_ptr<client::KuduClient>* client);
 
   // Sets the given flag on the given daemon, which must be running.

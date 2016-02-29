@@ -33,18 +33,18 @@
 namespace yb {
 
 using client::KuduClient;
-using client::KuduClientBuilder;
+using client::YBClientBuilder;
 using client::KuduColumnSchema;
-using client::KuduError;
-using client::KuduInsert;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
-using client::KuduSession;
+using client::YBError;
+using client::YBInsert;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBSession;
 using client::KuduTable;
 using client::KuduTableAlterer;
-using client::KuduTableCreator;
-using client::KuduValue;
-using client::KuduWriteOperation;
+using client::YBTableCreator;
+using client::YBValue;
+using client::YBWriteOperation;
 using client::sp::shared_ptr;
 using std::make_pair;
 using std::map;
@@ -72,7 +72,7 @@ class AlterTableRandomized : public KuduTest {
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(builder, &client_));
   }
 
@@ -227,11 +227,11 @@ struct MirrorTable {
       : client_(std::move(client)) {}
 
   Status Create() {
-    KuduSchema schema;
-    KuduSchemaBuilder b;
+    YBSchema schema;
+    YBSchemaBuilder b;
     b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     RETURN_NOT_OK(table_creator->table_name(kTableName)
              .schema(&schema)
              .num_replicas(3)
@@ -305,7 +305,7 @@ struct MirrorTable {
       table_alterer->AddColumn(name)->Type(KuduColumnSchema::INT32);
     } else {
       table_alterer->AddColumn(name)->Type(KuduColumnSchema::INT32)->NotNull()
-        ->Default(KuduValue::FromInt(default_value));
+        ->Default(YBValue::FromInt(default_value));
     }
     ASSERT_OK(table_alterer->Alter());
 
@@ -355,12 +355,12 @@ struct MirrorTable {
 
   Status DoRealOp(const vector<pair<string, int32_t> >& data,
                   OpType op_type) {
-    shared_ptr<KuduSession> session = client_->NewSession();
+    shared_ptr<YBSession> session = client_->NewSession();
     shared_ptr<KuduTable> table;
-    RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(15 * 1000);
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    gscoped_ptr<KuduWriteOperation> op;
+    gscoped_ptr<YBWriteOperation> op;
     switch (op_type) {
       case INSERT: op.reset(table->NewInsert()); break;
       case UPDATE: op.reset(table->NewUpdate()); break;
@@ -379,7 +379,7 @@ struct MirrorTable {
       return s;
     }
 
-    std::vector<KuduError*> errors;
+    std::vector<YBError*> errors;
     ElementDeleter d(&errors);
     bool overflow;
     session->GetPendingErrors(&errors, &overflow);

@@ -46,14 +46,14 @@ class PartitionSchema;
 namespace client {
 
 class KuduLoggingCallback;
-class KuduSession;
-class KuduStatusCallback;
+class YBSession;
+class YBStatusCallback;
 class KuduTable;
 class KuduTableAlterer;
-class KuduTableCreator;
+class YBTableCreator;
 class KuduTabletServer;
-class KuduValue;
-class KuduWriteOperation;
+class YBValue;
+class YBWriteOperation;
 
 namespace internal {
 class Batcher;
@@ -104,29 +104,29 @@ Status YB_EXPORT SetInternalSignalNumber(int signum);
 //
 // Note that KuduClients are shared amongst multiple threads and, as such,
 // are stored in shared pointers.
-class YB_EXPORT KuduClientBuilder {
+class YB_EXPORT YBClientBuilder {
  public:
-  KuduClientBuilder();
-  ~KuduClientBuilder();
+  YBClientBuilder();
+  ~YBClientBuilder();
 
-  KuduClientBuilder& clear_master_server_addrs();
+  YBClientBuilder& clear_master_server_addrs();
 
   // Add RPC addresses of multiple masters.
-  KuduClientBuilder& master_server_addrs(const std::vector<std::string>& addrs);
+  YBClientBuilder& master_server_addrs(const std::vector<std::string>& addrs);
 
   // Add an RPC address of a master. At least one master is required.
-  KuduClientBuilder& add_master_server_addr(const std::string& addr);
+  YBClientBuilder& add_master_server_addr(const std::string& addr);
 
   // The default timeout used for administrative operations (e.g. CreateTable,
   // AlterTable, ...). Optional.
   //
   // If not provided, defaults to 10s.
-  KuduClientBuilder& default_admin_operation_timeout(const MonoDelta& timeout);
+  YBClientBuilder& default_admin_operation_timeout(const MonoDelta& timeout);
 
   // The default timeout for individual RPCs. Optional.
   //
   // If not provided, defaults to 5s.
-  KuduClientBuilder& default_rpc_timeout(const MonoDelta& timeout);
+  YBClientBuilder& default_rpc_timeout(const MonoDelta& timeout);
 
   // Creates the client.
   //
@@ -140,7 +140,7 @@ class YB_EXPORT KuduClientBuilder {
   // Owned.
   Data* data_;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduClientBuilder);
+  DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
 
 // The KuduClient represents a connection to a cluster. From the user
@@ -160,7 +160,7 @@ class YB_EXPORT KuduClientBuilder {
 //   addresses, etc are shared per-client.
 //
 // In order to actually access data on the cluster, callers must first
-// create a KuduSession object using NewSession(). A KuduClient may
+// create a YBSession object using NewSession(). A KuduClient may
 // have several associated sessions.
 //
 // TODO: Cluster administration functions are likely to be in this class
@@ -171,8 +171,8 @@ class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
  public:
   ~KuduClient();
 
-  // Creates a KuduTableCreator; it is the caller's responsibility to free it.
-  KuduTableCreator* NewTableCreator();
+  // Creates a YBTableCreator; it is the caller's responsibility to free it.
+  YBTableCreator* NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress
   Status IsCreateTableInProgress(const std::string& table_name,
@@ -188,7 +188,7 @@ class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
                                 bool *alter_in_progress);
 
   Status GetTableSchema(const std::string& table_name,
-                        KuduSchema* schema);
+                        YBSchema* schema);
 
   Status ListTabletServers(std::vector<KuduTabletServer*>* tablet_servers);
 
@@ -208,14 +208,14 @@ class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
   // look up its schema.
   //
   // TODO: should we offer an async version of this as well?
-  // TODO: probably should have a configurable timeout in KuduClientBuilder?
+  // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const std::string& table_name,
                    sp::shared_ptr<KuduTable>* table);
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  sp::shared_ptr<KuduSession> NewSession();
+  sp::shared_ptr<YBSession> NewSession();
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
@@ -241,12 +241,12 @@ class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
   // Returns highest HybridTime timestamp observed by the client.
   // The latest observed timestamp can be used to start a snapshot scan on a
   // table which is guaranteed to contain all data written or previously read by
-  // this client. See KuduScanner for more details on timestamps.
+  // this client. See YBScanner for more details on timestamps.
   uint64_t GetLatestObservedTimestamp() const;
 
   // Sets the latest observed HybridTime timestamp, encoded in the HybridTime format.
   // This is only useful when forwarding timestamps between clients to enforce
-  // external consistency when using KuduSession::CLIENT_PROPAGATED external consistency
+  // external consistency when using YBSession::CLIENT_PROPAGATED external consistency
   // mode.
   // To use this the user must obtain the HybridTime encoded timestamp from the first
   // client with KuduClient::GetLatestObservedTimestamp() and the set it in the new
@@ -256,11 +256,11 @@ class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
  private:
   class YB_NO_EXPORT Data;
 
-  friend class KuduClientBuilder;
-  friend class KuduScanner;
+  friend class YBClientBuilder;
+  friend class YBScanner;
   friend class KuduTable;
   friend class KuduTableAlterer;
-  friend class KuduTableCreator;
+  friend class YBTableCreator;
   friend class internal::Batcher;
   friend class internal::GetTableSchemaRpc;
   friend class internal::LookupRpc;
@@ -288,16 +288,16 @@ class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
 };
 
 // Creates a new table with the desired options.
-class YB_EXPORT KuduTableCreator {
+class YB_EXPORT YBTableCreator {
  public:
-  ~KuduTableCreator();
+  ~YBTableCreator();
 
   // Sets the name to give the table. It is copied. Required.
-  KuduTableCreator& table_name(const std::string& name);
+  YBTableCreator& table_name(const std::string& name);
 
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
-  KuduTableCreator& schema(const KuduSchema* schema);
+  YBTableCreator& schema(const YBSchema* schema);
 
   // Adds a set of hash partitions to the table.
   //
@@ -306,7 +306,7 @@ class YB_EXPORT KuduTableCreator {
   // table is created with 3 split rows, and two hash partitions with 4 and 5
   // buckets respectively, the total number of table partitions will be 80
   // (4 range partitions * 4 hash buckets * 5 hash buckets).
-  KuduTableCreator& add_hash_partitions(const std::vector<std::string>& columns,
+  YBTableCreator& add_hash_partitions(const std::vector<std::string>& columns,
                                         int32_t num_buckets);
 
   // Adds a set of hash partitions to the table.
@@ -315,7 +315,7 @@ class YB_EXPORT KuduTableCreator {
   // mapping of rows to hash buckets. Setting the seed may provide some
   // amount of protection against denial of service attacks when the hashed
   // columns contain user provided values.
-  KuduTableCreator& add_hash_partitions(const std::vector<std::string>& columns,
+  YBTableCreator& add_hash_partitions(const std::vector<std::string>& columns,
                                         int32_t num_buckets, int32_t seed);
 
   // Sets the columns on which the table will be range-partitioned.
@@ -326,7 +326,7 @@ class YB_EXPORT KuduTableCreator {
   // range partitioning.
   //
   // Optional.
-  KuduTableCreator& set_range_partition_columns(const std::vector<std::string>& columns);
+  YBTableCreator& set_range_partition_columns(const std::vector<std::string>& columns);
 
   // Sets the rows on which to pre-split the table.
   // The table creator takes ownership of the rows.
@@ -338,25 +338,25 @@ class YB_EXPORT KuduTableCreator {
   // If not provided, no range-based pre-splitting is performed.
   //
   // Optional.
-  KuduTableCreator& split_rows(const std::vector<const KuduPartialRow*>& split_rows);
+  YBTableCreator& split_rows(const std::vector<const KuduPartialRow*>& split_rows);
 
   // Sets the number of replicas for each tablet in the table.
   // This should be an odd number. Optional.
   //
   // If not provided (or if <= 0), falls back to the server-side default.
-  KuduTableCreator& num_replicas(int n_replicas);
+  YBTableCreator& num_replicas(int n_replicas);
 
   // Set the timeout for the operation. This includes any waiting
   // after the create has been submitted (i.e if the create is slow
   // to be performed for a large table, it may time out and then
   // later be successful).
-  KuduTableCreator& timeout(const MonoDelta& timeout);
+  YBTableCreator& timeout(const MonoDelta& timeout);
 
   // Wait for the table to be fully created before returning.
   // Optional.
   //
   // If not provided, defaults to true.
-  KuduTableCreator& wait(bool wait);
+  YBTableCreator& wait(bool wait);
 
   // Creates the table.
   //
@@ -369,12 +369,12 @@ class YB_EXPORT KuduTableCreator {
 
   friend class KuduClient;
 
-  explicit KuduTableCreator(KuduClient* client);
+  explicit YBTableCreator(KuduClient* client);
 
   // Owned.
   Data* data_;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduTableCreator);
+  DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };
 
 // A KuduTable represents a table on a particular cluster. It holds the current
@@ -396,12 +396,12 @@ class YB_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
   // name, the ID will distinguish the old table from the new.
   const std::string& id() const;
 
-  const KuduSchema& schema() const;
+  const YBSchema& schema() const;
 
   // Create a new write operation for this table. It is the caller's
-  // responsibility to free it, unless it is passed to KuduSession::Apply().
-  KuduInsert* NewInsert();
-  KuduUpdate* NewUpdate();
+  // responsibility to free it, unless it is passed to YBSession::Apply().
+  YBInsert* NewInsert();
+  YBUpdate* NewUpdate();
   KuduDelete* NewDelete();
 
   // Create a new comparison predicate which can be used for scanners
@@ -409,19 +409,19 @@ class YB_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
   //
   // The type of 'value' must correspond to the type of the column to which
   // the predicate is to be applied. For example, if the given column is
-  // any type of integer, the KuduValue should also be an integer, with its
+  // any type of integer, the YBValue should also be an integer, with its
   // value in the valid range for the column type. No attempt is made to cast
   // between floating point and integer values, or numeric and string values.
   //
-  // The caller owns the result until it is passed into KuduScanner::AddConjunctPredicate().
+  // The caller owns the result until it is passed into YBScanner::AddConjunctPredicate().
   // The returned predicate takes ownership of 'value'.
   //
   // In the case of an error (e.g. an invalid column name), a non-NULL value
   // is still returned. The error will be returned when attempting to add this
-  // predicate to a KuduScanner.
-  KuduPredicate* NewComparisonPredicate(const Slice& col_name,
-                                        KuduPredicate::ComparisonOp op,
-                                        KuduValue* value);
+  // predicate to a YBScanner.
+  YBPredicate* NewComparisonPredicate(const Slice& col_name,
+                                        YBPredicate::ComparisonOp op,
+                                        YBValue* value);
 
   KuduClient* client() const;
 
@@ -435,7 +435,7 @@ class YB_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
   KuduTable(const sp::shared_ptr<KuduClient>& client,
             const std::string& name,
             const std::string& table_id,
-            const KuduSchema& schema,
+            const YBSchema& schema,
             const PartitionSchema& partition_schema);
 
   // Owned.
@@ -504,19 +504,19 @@ class YB_EXPORT KuduTableAlterer {
 
 // An error which occurred in a given operation. This tracks the operation
 // which caused the error, along with whatever the actual error was.
-class YB_EXPORT KuduError {
+class YB_EXPORT YBError {
  public:
-  ~KuduError();
+  ~YBError();
 
   // Return the actual error which occurred.
   const Status& status() const;
 
   // Return the operation which failed.
-  const KuduWriteOperation& failed_op() const;
+  const YBWriteOperation& failed_op() const;
 
   // Release the operation that failed. The caller takes ownership. Must only
   // be called once.
-  KuduWriteOperation* release_failed_op();
+  YBWriteOperation* release_failed_op();
 
   // In some cases, it's possible that the server did receive and successfully
   // perform the requested operation, but the client can't tell whether or not
@@ -532,24 +532,24 @@ class YB_EXPORT KuduError {
   class YB_NO_EXPORT Data;
 
   friend class internal::Batcher;
-  friend class KuduSession;
+  friend class YBSession;
 
-  KuduError(KuduWriteOperation* failed_op, const Status& error);
+  YBError(YBWriteOperation* failed_op, const Status& error);
 
   // Owned.
   Data* data_;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduError);
+  DISALLOW_COPY_AND_ASSIGN(YBError);
 };
 
 
-// A KuduSession belongs to a specific KuduClient, and represents a context in
+// A YBSession belongs to a specific KuduClient, and represents a context in
 // which all read/write data access should take place. Within a session,
 // multiple operations may be accumulated and batched together for better
 // efficiency. Settings like timeouts, priorities, and trace IDs are also set
 // per session.
 //
-// A KuduSession's main purpose is for grouping together multiple data-access
+// A YBSession's main purpose is for grouping together multiple data-access
 // operations together into batches or transactions. It is important to note
 // the distinction between these two:
 //
@@ -568,13 +568,13 @@ class YB_EXPORT KuduError {
 // in the above documentation to clarify that batches are not transactional and
 // should only be used for efficiency.
 //
-// KuduSession is separate from KuduTable because a given batch or transaction
+// YBSession is separate from KuduTable because a given batch or transaction
 // may span multiple tables. This is particularly important in the future when
 // we add ACID support, but even in the context of batching, we may be able to
 // coalesce writes to different tables hosted on the same server into the same
 // RPC.
 //
-// KuduSession is separate from KuduClient because, in a multi-threaded
+// YBSession is separate from KuduClient because, in a multi-threaded
 // application, different threads may need to concurrently execute
 // transactions. Similar to a JDBC "session", transaction boundaries will be
 // delineated on a per-session basis -- in between a "BeginTransaction" and
@@ -591,7 +591,7 @@ class YB_EXPORT KuduError {
 // batch writer, thus delaying the response significantly.
 //
 // Though we currently do not have transactional support, users will be forced
-// to use a KuduSession to instantiate reads as well as writes.  This will make
+// to use a YBSession to instantiate reads as well as writes.  This will make
 // it more straight-forward to add RW transactions in the future without
 // significant modifications to the API.
 //
@@ -599,9 +599,9 @@ class YB_EXPORT KuduError {
 // concept of a Session familiar.
 //
 // This class is not thread-safe except where otherwise specified.
-class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
+class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
  public:
-  ~KuduSession();
+  ~YBSession();
 
   enum FlushMode {
     // Every write will be sent to the server in-band with the Apply()
@@ -693,7 +693,7 @@ class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
 
-  // Apply the write operation. Transfers the write_op's ownership to the KuduSession.
+  // Apply the write operation. Transfers the write_op's ownership to the YBSession.
   //
   // The behavior of this function depends on the current flush mode. Regardless
   // of flush mode, however, Apply may begin to perform processing in the background
@@ -706,7 +706,7 @@ class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
   // may be retrieved at any time.
   //
   // This is thread safe.
-  Status Apply(KuduWriteOperation* write_op) WARN_UNUSED_RESULT;
+  Status Apply(YBWriteOperation* write_op) WARN_UNUSED_RESULT;
 
   // Similar to the above, except never blocks. Even in the flush modes that
   // return immediately, 'cb' is triggered with the result. The callback may be
@@ -714,7 +714,7 @@ class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
   // same thread which calls ApplyAsync(). 'cb' must remain valid until it called.
   //
   // TODO: not yet implemented.
-  void ApplyAsync(KuduWriteOperation* write_op, KuduStatusCallback* cb);
+  void ApplyAsync(YBWriteOperation* write_op, YBStatusCallback* cb);
 
   // Flush any pending writes.
   //
@@ -752,7 +752,7 @@ class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
   //
   // This function is thread-safe.
   Status Flush() WARN_UNUSED_RESULT;
-  void FlushAsync(KuduStatusCallback* cb);
+  void FlushAsync(YBStatusCallback* cb);
 
   // Close the session.
   // Returns an error if there are unflushed or in-flight operations.
@@ -793,7 +793,7 @@ class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
   // Caller takes ownership of the returned errors.
   //
   // This function is thread-safe.
-  void GetPendingErrors(std::vector<KuduError*>* errors, bool* overflowed);
+  void GetPendingErrors(std::vector<YBError*>* errors, bool* overflowed);
 
   KuduClient* client() const;
 
@@ -802,18 +802,18 @@ class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
 
   friend class KuduClient;
   friend class internal::Batcher;
-  explicit KuduSession(const sp::shared_ptr<KuduClient>& client);
+  explicit YBSession(const sp::shared_ptr<KuduClient>& client);
 
   // Owned.
   Data* data_;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduSession);
+  DISALLOW_COPY_AND_ASSIGN(YBSession);
 };
 
 
 // A single scanner. This class is not thread-safe, though different
 // scanners on different threads may share a single KuduTable object.
-class YB_EXPORT KuduScanner {
+class YB_EXPORT YBScanner {
  public:
   // The possible read modes for scanners.
   enum ReadMode {
@@ -860,14 +860,14 @@ class YB_EXPORT KuduScanner {
   };
 
   // Default scanner timeout.
-  // This is set to 3x the default RPC timeout (see KuduClientBuilder::default_rpc_timeout()).
+  // This is set to 3x the default RPC timeout (see YBClientBuilder::default_rpc_timeout()).
   enum { kScanTimeoutMillis = 15000 };
 
   // Initialize the scanner. The given 'table' object must remain valid
   // for the lifetime of this scanner object.
   // TODO: should table be a const pointer?
-  explicit KuduScanner(KuduTable* table);
-  ~KuduScanner();
+  explicit YBScanner(KuduTable* table);
+  ~YBScanner();
 
   // Set the projection used for this scanner by passing the column names to read.
   //
@@ -888,7 +888,7 @@ class YB_EXPORT KuduScanner {
   // a row to be returned.
   //
   // The Scanner takes ownership of 'pred', even if a bad Status is returned.
-  Status AddConjunctPredicate(KuduPredicate* pred) WARN_UNUSED_RESULT;
+  Status AddConjunctPredicate(YBPredicate* pred) WARN_UNUSED_RESULT;
 
   // Add a lower bound (inclusive) primary key for the scan.
   // If any bound is already added, this bound is intersected with that one.
@@ -972,7 +972,7 @@ class YB_EXPORT KuduScanner {
   // now be pointing to garbage memory.
   //
   // DEPRECATED: Use NextBatch(KuduScanBatch*) instead.
-  Status NextBatch(std::vector<KuduRowResult>* rows);
+  Status NextBatch(std::vector<YBRowResult>* rows);
 
   // Fetches the next batch of results for this scanner.
   //
@@ -1026,7 +1026,7 @@ class YB_EXPORT KuduScanner {
   Status SetTimeoutMillis(int millis);
 
   // Returns the schema of the projection being scanned.
-  KuduSchema GetProjectionSchema() const;
+  YBSchema GetProjectionSchema() const;
 
   // Returns a string representation of this scan.
   std::string ToString() const;
@@ -1041,7 +1041,7 @@ class YB_EXPORT KuduScanner {
   // Owned.
   Data* data_;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduScanner);
+  DISALLOW_COPY_AND_ASSIGN(YBScanner);
 };
 
 // In-memory representation of a remote tablet server.
@@ -1061,7 +1061,7 @@ class YB_EXPORT KuduTabletServer {
   class YB_NO_EXPORT Data;
 
   friend class KuduClient;
-  friend class KuduScanner;
+  friend class YBScanner;
 
   KuduTabletServer();
 

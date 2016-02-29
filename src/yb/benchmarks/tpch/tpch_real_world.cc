@@ -94,8 +94,8 @@ DEFINE_string(tpch_table_name, "tpch_real_world",
 
 namespace yb {
 
-using client::KuduRowResult;
-using client::KuduSchema;
+using client::YBRowResult;
+using client::YBSchema;
 using strings::Substitute;
 
 class TpchRealWorld {
@@ -241,7 +241,7 @@ gscoped_ptr<RpcLineItemDAO> TpchRealWorld::GetInittedDAO() {
   int64_t increment = 6000000L * FLAGS_tpch_scaling_factor /
       FLAGS_tpch_num_inserters;
 
-  KuduSchema schema(tpch::CreateLineItemSchema());
+  YBSchema schema(tpch::CreateLineItemSchema());
   vector<const KuduPartialRow*> split_rows;
   for (int64_t i = 1; i < FLAGS_tpch_num_inserters; i++) {
     KuduPartialRow* row = schema.NewRow();
@@ -307,7 +307,7 @@ void TpchRealWorld::RunQueriesThread() {
     LOG_TIMING(INFO, log) {
       gscoped_ptr<RpcLineItemDAO::Scanner> scanner;
       dao->OpenTpch1Scanner(&scanner);
-      vector<KuduRowResult> rows;
+      vector<YBRowResult> rows;
       // We check stop_threads_ even while scanning since it can takes tens of seconds to query.
       // This means that the last timing cannot be used for reporting.
       while (scanner->HasMore() && !stop_threads_.Load()) {

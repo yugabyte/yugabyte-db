@@ -78,17 +78,17 @@ namespace yb {
 namespace tablet {
 
 using client::KuduClient;
-using client::KuduClientBuilder;
+using client::YBClientBuilder;
 using client::KuduColumnSchema;
-using client::KuduInsert;
-using client::KuduRowResult;
-using client::KuduScanner;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
-using client::KuduSession;
-using client::KuduStatusMemberCallback;
+using client::YBInsert;
+using client::YBRowResult;
+using client::YBScanner;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBSession;
+using client::YBStatusMemberCallback;
 using client::KuduTable;
-using client::KuduTableCreator;
+using client::YBTableCreator;
 using strings::Split;
 using strings::Substitute;
 
@@ -105,7 +105,7 @@ class FullStackInsertScanTest : public KuduTest {
     tables_(kNumInsertClients) {
 
     // schema has kNumIntCols contiguous columns of Int32 and Int64, in order.
-    KuduSchemaBuilder b;
+    YBSchemaBuilder b;
     b.AddColumn("key")->Type(KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
     b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
     b.AddColumn("int32_val1")->Type(KuduColumnSchema::INT32)->NotNull();
@@ -131,7 +131,7 @@ class FullStackInsertScanTest : public KuduTest {
     ASSERT_GE(kNumInsertClients, 0);
     ASSERT_GE(kNumInsertsPerClient, 0);
     NO_FATALS(InitCluster());
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
              .num_replicas(1)
@@ -165,7 +165,7 @@ class FullStackInsertScanTest : public KuduTest {
     // Start mini-cluster with 1 tserver, config client options
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     builder.add_master_server_addr(
         cluster_->mini_master()->bound_rpc_addr_str());
     builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
@@ -175,9 +175,9 @@ class FullStackInsertScanTest : public KuduTest {
   // Adds newly generated client's session and table pointers to arrays at id
   void CreateNewClient(int id) {
     ASSERT_OK(client_->OpenTable(kTableName, &tables_[id]));
-    client::sp::shared_ptr<KuduSession> session = client_->NewSession();
+    client::sp::shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(kSessionTimeoutMs);
-    ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     sessions_[id] = session;
   }
 
@@ -208,12 +208,12 @@ class FullStackInsertScanTest : public KuduTest {
 
   Random random_;
 
-  KuduSchema schema_;
+  YBSchema schema_;
   std::shared_ptr<MiniCluster> cluster_;
   client::sp::shared_ptr<KuduClient> client_;
   client::sp::shared_ptr<KuduTable> reader_table_;
   // Concurrent client insertion test variables
-  vector<client::sp::shared_ptr<KuduSession> > sessions_;
+  vector<client::sp::shared_ptr<YBSession> > sessions_;
   vector<client::sp::shared_ptr<KuduTable> > tables_;
 };
 
@@ -349,7 +349,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
   start_latch->Wait();
   // Retrieve id's session and table
-  client::sp::shared_ptr<KuduSession> session = sessions_[id];
+  client::sp::shared_ptr<YBSession> session = sessions_[id];
   client::sp::shared_ptr<KuduTable> table = tables_[id];
   // Identify start and end of keyrange id is responsible for
   int64_t start = kNumInsertsPerClient * id;
@@ -358,14 +358,14 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   ++id;
   // Use synchronizer to keep 1 asynchronous batch flush maximum
   Synchronizer sync;
-  KuduStatusMemberCallback<Synchronizer> cb(&sync, &Synchronizer::StatusCB);
+  YBStatusMemberCallback<Synchronizer> cb(&sync, &Synchronizer::StatusCB);
   // Prime the synchronizer as if it was running a batch (for for-loop code)
   cb.Run(Status::OK());
   // Maintain buffer for random string generation
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
   for (int64_t key = start; key < end; ++key) {
-    gscoped_ptr<KuduInsert> insert(table->NewInsert());
+    gscoped_ptr<YBInsert> insert(table->NewInsert());
     RandomRow(&rng, insert->mutable_row(), randstr, key, id);
     CHECK_OK(session->Apply(insert.release()));
 
@@ -393,17 +393,17 @@ void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
                                              const string& msg) {
   {
     // Warmup codegen cache
-    KuduScanner scanner(reader_table_.get());
+    YBScanner scanner(reader_table_.get());
     ASSERT_OK(scanner.SetProjectedColumns(cols));
     ASSERT_OK(scanner.Open());
     codegen::CompilationManager::GetSingleton()->Wait();
   }
-  KuduScanner scanner(reader_table_.get());
+  YBScanner scanner(reader_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns(cols));
   uint64_t nrows = 0;
   LOG_TIMING(INFO, msg) {
     ASSERT_OK(scanner.Open());
-    vector<KuduRowResult> rows;
+    vector<YBRowResult> rows;
     while (scanner.HasMoreRows()) {
       ASSERT_OK(scanner.NextBatch(&rows));
       nrows += rows.size();

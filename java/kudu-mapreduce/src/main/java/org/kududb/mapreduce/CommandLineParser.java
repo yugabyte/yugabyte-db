@@ -104,7 +104,7 @@ public class CommandLineParser {
    * @return an async kudu client
    */
   public AsyncKuduClient getAsyncClient() {
-    return new AsyncKuduClient.AsyncKuduClientBuilder(getMasterAddresses())
+    return new AsyncKuduClient.AsyncYBClientBuilder(getMasterAddresses())
         .defaultOperationTimeoutMs(getOperationTimeoutMs())
         .defaultAdminOperationTimeoutMs(getAdminOperationTimeoutMs())
         .defaultSocketReadTimeoutMs(getSocketReadTimeoutMs())
@@ -116,7 +116,7 @@ public class CommandLineParser {
    * @return a kudu client
    */
   public KuduClient getClient() {
-    return new KuduClient.KuduClientBuilder(getMasterAddresses())
+    return new KuduClient.YBClientBuilder(getMasterAddresses())
         .defaultOperationTimeoutMs(getOperationTimeoutMs())
         .defaultAdminOperationTimeoutMs(getAdminOperationTimeoutMs())
         .defaultSocketReadTimeoutMs(getSocketReadTimeoutMs())

@@ -42,7 +42,7 @@ using sp::shared_ptr;
 KuduTable::Data::Data(shared_ptr<KuduClient> client,
                       string name,
                       string id,
-                      const KuduSchema& schema,
+                      const YBSchema& schema,
                       PartitionSchema partition_schema)
     : client_(std::move(client)),
       name_(std::move(name)),

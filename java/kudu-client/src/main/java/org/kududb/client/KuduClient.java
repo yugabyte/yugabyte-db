@@ -32,7 +32,7 @@ import java.util.concurrent.Executor;
  * <p>
  * This class acts as a wrapper around {@link AsyncKuduClient}. The {@link Deferred} objects are
  * joined against using the default admin operation timeout
- * (see {@link org.kududb.client.KuduClient.KuduClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
+ * (see {@link org.kududb.client.KuduClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
@@ -189,21 +189,21 @@ public class KuduClient implements AutoCloseable {
    * Create a new session for interacting with the cluster.
    * User is responsible for destroying the session object.
    * This is a fully local operation (no RPCs or blocking).
-   * @return a synchronous wrapper around KuduSession.
+   * @return a synchronous wrapper around YBSession.
    */
-  public KuduSession newSession() {
-    AsyncKuduSession session = asyncClient.newSession();
-    return new KuduSession(session);
+  public YBSession newSession() {
+    AsyncYBSession session = asyncClient.newSession();
+    return new YBSession(session);
   }
 
   /**
-   * Creates a new {@link KuduScanner.KuduScannerBuilder} for a particular table.
+   * Creates a new {@link YBScanner.YBScannerBuilder} for a particular table.
    * @param table the name of the table you intend to scan.
    * The string is assumed to use the platform's default charset.
    * @return a new scanner builder for this table
    */
-  public KuduScanner.KuduScannerBuilder newScannerBuilder(KuduTable table) {
-    return new KuduScanner.KuduScannerBuilder(asyncClient, table);
+  public YBScanner.YBScannerBuilder newScannerBuilder(KuduTable table) {
+    return new YBScanner.YBScannerBuilder(asyncClient, table);
   }
 
   /**
@@ -244,15 +244,15 @@ public class KuduClient implements AutoCloseable {
    * Builder class to use in order to connect to Kudu.
    * All the parameters beyond those in the constructors are optional.
    */
-  public final static class KuduClientBuilder {
-    private AsyncKuduClient.AsyncKuduClientBuilder clientBuilder;
+  public final static class YBClientBuilder {
+    private AsyncKuduClient.AsyncYBClientBuilder clientBuilder;
 
     /**
      * Creates a new builder for a client that will connect to the specified masters.
      * @param masterAddresses comma-separated list of "host:port" pairs of the masters
      */
-    public KuduClientBuilder(String masterAddresses) {
-      clientBuilder = new AsyncKuduClient.AsyncKuduClientBuilder(masterAddresses);
+    public YBClientBuilder(String masterAddresses) {
+      clientBuilder = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses);
     }
 
     /**
@@ -271,8 +271,8 @@ public class KuduClient implements AutoCloseable {
      *
      * @param masterAddresses list of master addresses
      */
-    public KuduClientBuilder(List<String> masterAddresses) {
-      clientBuilder = new AsyncKuduClient.AsyncKuduClientBuilder(masterAddresses);
+    public YBClientBuilder(List<String> masterAddresses) {
+      clientBuilder = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses);
     }
 
     /**
@@ -284,7 +284,7 @@ public class KuduClient implements AutoCloseable {
      * @param timeoutMs a timeout in milliseconds
      * @return this builder
      */
-    public KuduClientBuilder defaultAdminOperationTimeoutMs(long timeoutMs) {
+    public YBClientBuilder defaultAdminOperationTimeoutMs(long timeoutMs) {
       clientBuilder.defaultAdminOperationTimeoutMs(timeoutMs);
       return this;
     }
@@ -297,7 +297,7 @@ public class KuduClient implements AutoCloseable {
      * @param timeoutMs a timeout in milliseconds
      * @return this builder
      */
-    public KuduClientBuilder defaultOperationTimeoutMs(long timeoutMs) {
+    public YBClientBuilder defaultOperationTimeoutMs(long timeoutMs) {
       clientBuilder.defaultOperationTimeoutMs(timeoutMs);
       return this;
     }
@@ -310,7 +310,7 @@ public class KuduClient implements AutoCloseable {
      * @param timeoutMs a timeout in milliseconds
      * @return this builder
      */
-    public KuduClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
+    public YBClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
       clientBuilder.defaultSocketReadTimeoutMs(timeoutMs);
       return this;
     }
@@ -324,7 +324,7 @@ public class KuduClient implements AutoCloseable {
      * worker count, or netty cannot start enough threads, and client will get stuck.
      * If not sure, please just use CachedThreadPool.
      */
-    public KuduClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
+    public YBClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
       clientBuilder.nioExecutors(bossExecutor, workerExecutor);
       return this;
     }
@@ -334,7 +334,7 @@ public class KuduClient implements AutoCloseable {
      * Optional.
      * If not provided, 1 is used.
      */
-    public KuduClientBuilder bossCount(int bossCount) {
+    public YBClientBuilder bossCount(int bossCount) {
       clientBuilder.bossCount(bossCount);
       return this;
     }
@@ -344,7 +344,7 @@ public class KuduClient implements AutoCloseable {
      * Optional.
      * If not provided, (2 * the number of available processors) is used.
      */
-    public KuduClientBuilder workerCount(int workerCount) {
+    public YBClientBuilder workerCount(int workerCount) {
       clientBuilder.workerCount(workerCount);
       return this;
     }

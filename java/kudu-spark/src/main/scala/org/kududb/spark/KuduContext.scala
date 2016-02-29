@@ -34,8 +34,8 @@ import org.kududb.mapreduce.KuduTableInputFormat
   */
 @InterfaceStability.Unstable
 class KuduContext(kuduMaster: String) extends Serializable {
-  @transient lazy val syncClient = new KuduClient.KuduClientBuilder(kuduMaster).build()
-  @transient lazy val asyncClient = new AsyncKuduClient.AsyncKuduClientBuilder(kuduMaster).build()
+  @transient lazy val syncClient = new KuduClient.YBClientBuilder(kuduMaster).build()
+  @transient lazy val asyncClient = new AsyncKuduClient.AsyncYBClientBuilder(kuduMaster).build()
 
   /**
     * Create an RDD from a Kudu table.

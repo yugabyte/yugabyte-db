@@ -44,8 +44,8 @@ namespace yb {
 namespace itest {
 
 using client::KuduClient;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
+using client::YBSchema;
+using client::YBSchemaBuilder;
 using client::KuduTable;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
@@ -96,9 +96,9 @@ string TServerDetails::ToString() const {
                     registration.rpc_addresses(0).ShortDebugString());
 }
 
-client::KuduSchema SimpleIntKeyKuduSchema() {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+client::YBSchema SimpleIntKeyYBSchema() {
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("key")->Type(client::KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
   CHECK_OK(b.Build(&s));
   return s;

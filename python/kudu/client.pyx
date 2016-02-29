@@ -187,7 +187,7 @@ cdef class Client:
         cdef:
             string c_addr
             vector[string] c_addrs
-            KuduClientBuilder builder
+            YBClientBuilder builder
             TimeDelta timeout
 
         if isinstance(addr_or_addrs, six.string_types):
@@ -237,7 +237,7 @@ cdef class Client:
           Create using kudu.schema_builder
         """
         cdef:
-            KuduTableCreator* c
+            YBTableCreator* c
             Status s
         c = self.cp.NewTableCreator()
         try:
@@ -331,7 +331,7 @@ cdef class Client:
 
     def new_session(self, flush_mode='manual', timeout_ms=5000):
         """
-        Create a new KuduSession for applying write operations.
+        Create a new YBSession for applying write operations.
 
         Parameters
         ----------
@@ -557,7 +557,7 @@ cdef class Table:
         scanner : kudu.Scanner
         """
         cdef Scanner result = Scanner(self)
-        result.scanner = new KuduScanner(self.ptr())
+        result.scanner = new YBScanner(self.ptr())
         return result
 
     cdef inline KuduTable* ptr(self):
@@ -594,9 +594,9 @@ cdef class Column:
                           self.spec.type.name))
         return result
 
-    cdef KuduValue* box_value(self, object obj) except NULL:
+    cdef YBValue* box_value(self, object obj) except NULL:
         cdef:
-            KuduValue* val
+            YBValue* val
             Slice* slc
 
         if isinstance(obj, unicode):
@@ -604,12 +604,12 @@ cdef class Column:
 
         if isinstance(obj, bytes):
             slc = new Slice(<char*> obj, len(obj))
-            val = KuduValue.CopyString(deref(slc))
+            val = YBValue.CopyString(deref(slc))
             del slc
         elif isinstance(obj, int):
-            val = KuduValue.FromInt(obj)
+            val = YBValue.FromInt(obj)
         elif isinstance(obj, float):
-            val = KuduValue.FromDouble(obj)
+            val = YBValue.FromDouble(obj)
         else:
             raise TypeError(obj)
 
@@ -617,8 +617,8 @@ cdef class Column:
 
     def __richcmp__(Column self, value, int op):
         cdef:
-            KuduPredicate* pred
-            KuduValue* val
+            YBPredicate* pred
+            YBValue* val
             Slice* col_name_slice
             ComparisonOp cmp_op
             Predicate result
@@ -652,11 +652,11 @@ cdef class Column:
 cdef class Predicate:
 
     """
-    Wrapper for a KuduPredicate. Pass to Scanner.add_predicates
+    Wrapper for a YBPredicate. Pass to Scanner.add_predicates
     """
 
     cdef:
-        KuduPredicate* pred
+        YBPredicate* pred
 
     def __cinit__(self):
         self.pred = NULL
@@ -665,7 +665,7 @@ cdef class Predicate:
         if self.pred != NULL:
             del self.pred
 
-    cdef init(self, KuduPredicate* pred):
+    cdef init(self, YBPredicate* pred):
         self.pred = pred
 
 
@@ -682,11 +682,11 @@ cdef dict _flush_modes = {
 
 cdef class Session:
     """
-    Wrapper for a client KuduSession to build up write operations to interact
+    Wrapper for a client YBSession to build up write operations to interact
     with the cluster.
     """
     cdef:
-        shared_ptr[KuduSession] s
+        shared_ptr[YBSession] s
 
     def __cinit__(self):
         pass
@@ -758,8 +758,8 @@ cdef class Session:
         errors, overflowed : list, bool
         """
         cdef:
-            KuduError error
-            vector[C_KuduError*] v_errors
+            YBError error
+            vector[C_YBError*] v_errors
             c_bool overflowed
             size_t i
 
@@ -767,7 +767,7 @@ cdef class Session:
 
         result = []
         for i in range(v_errors.size()):
-            error = KuduError()
+            error = YBError()
             error.error = v_errors[i]
             result.append(error)
 
@@ -787,7 +787,7 @@ cdef class Row:
         RowBatch parent
 
         # This object is owned by the parent RowBatch
-        KuduRowResult* row
+        YBRowResult* row
 
     def __cinit__(self, batch, table):
         self.parent = batch
@@ -865,21 +865,21 @@ cdef class Row:
             Status s
             DataType t = self.table.schema.loc_type(i)
 
-        if t == KUDU_BOOL:
+        if t == YB_BOOL:
             return self.get_bool(i)
-        elif t == KUDU_INT8:
+        elif t == YB_INT8:
             return self.get_int8(i)
-        elif t == KUDU_INT16:
+        elif t == YB_INT16:
             return self.get_int16(i)
-        elif t == KUDU_INT32:
+        elif t == YB_INT32:
             return self.get_int32(i)
-        elif t == KUDU_INT64:
+        elif t == YB_INT64:
             return self.get_int64(i)
-        elif t == KUDU_DOUBLE:
+        elif t == YB_DOUBLE:
             return self.get_double(i)
-        elif t == KUDU_FLOAT:
+        elif t == YB_FLOAT:
             return self.get_float(i)
-        elif t == KUDU_STRING:
+        elif t == YB_STRING:
             return frombytes(self.get_string(i))
         else:
             raise TypeError(t)
@@ -892,10 +892,10 @@ cdef class RowBatch:
     """
     Class holding a batch of rows from a Scanner
     """
-    # This class owns the KuduRowResult data
+    # This class owns the YBRowResult data
     cdef:
         Table table
-        vector[KuduRowResult] rows
+        vector[YBRowResult] rows
 
     def __cinit__(self, Table table):
         self.table = table
@@ -930,7 +930,7 @@ cdef class RowBatch:
         # scope we won't end up with orphaned Row objects. This isn't the best,
         # but an intermediate solution until we can do something better..
         #
-        # One alternative is to copy the KuduRowResult into the Row, but that
+        # One alternative is to copy the YBRowResult into the Row, but that
         # doesn't feel right.
         cdef Row row = Row(self, self.table)
         row.row = &self.rows[i]
@@ -946,7 +946,7 @@ cdef class Scanner:
 
     cdef:
         Table table
-        KuduScanner* scanner
+        YBScanner* scanner
         bint is_open
 
     def __cinit__(self, Table table):
@@ -995,16 +995,16 @@ cdef class Scanner:
         ----------
         pred : kudu.Predicate
         """
-        cdef KuduPredicate* clone
+        cdef YBPredicate* clone
 
-        # We clone the KuduPredicate so that the Predicate wrapper class can be
+        # We clone the YBPredicate so that the Predicate wrapper class can be
         # reused
         clone = pred.pred.Clone()
         check_status(self.scanner.AddConjunctPredicate(clone))
 
     def set_fault_tolerant(self):
         """
-        Makes the underlying KuduScanner fault tolerant.
+        Makes the underlying YBScanner fault tolerant.
         Returns a reference to itself to facilitate chaining.
 
         Returns
@@ -1069,15 +1069,15 @@ cdef class Scanner:
         return batch
 
 
-cdef class KuduError:
+cdef class YBError:
 
     """
-    Wrapper for a C++ KuduError indicating a client error resulting from
+    Wrapper for a C++ YBError indicating a client error resulting from
     applying operations in a session.
     """
 
     cdef:
-        C_KuduError* error
+        C_YBError* error
 
     def __cinit__(self):
         self.error = NULL
@@ -1091,7 +1091,7 @@ cdef class KuduError:
         raise NotImplementedError
 
     def __repr__(self):
-        return "KuduError('%s')" % (self.error.status().ToString())
+        return "YBError('%s')" % (self.error.status().ToString())
 
 
 cdef class WriteOperation:
@@ -1120,21 +1120,21 @@ cdef class WriteOperation:
         # Leave it to Cython to do the coercion and complain if it doesn't
         # work. Cython will catch many casting problems but we should verify
         # with unit tests.
-        if t == KUDU_BOOL:
+        if t == YB_BOOL:
             self.row.SetBool(i, <c_bool> value)
-        elif t == KUDU_INT8:
+        elif t == YB_INT8:
             self.row.SetInt8(i, <int8_t> value)
-        elif t == KUDU_INT16:
+        elif t == YB_INT16:
             self.row.SetInt16(i, <int16_t> value)
-        elif t == KUDU_INT32:
+        elif t == YB_INT32:
             self.row.SetInt32(i, <int32_t> value)
-        elif t == KUDU_INT64:
+        elif t == YB_INT64:
             self.row.SetInt64(i, <int64_t> value)
-        elif t == KUDU_FLOAT:
+        elif t == YB_FLOAT:
             self.row.SetFloat(i, <float> value)
-        elif t == KUDU_DOUBLE:
+        elif t == YB_DOUBLE:
             self.row.SetDouble(i, <double> value)
-        elif t == KUDU_STRING:
+        elif t == YB_STRING:
             if not cpython.PyBytes_Check(value):
                 value = value.encode('utf8')
 
@@ -1160,7 +1160,7 @@ cdef class WriteOperation:
 
 cdef class Insert(WriteOperation):
     cdef:
-        KuduInsert* op
+        YBInsert* op
 
     def __cinit__(self, Table table):
         self.op = self.table.ptr().NewInsert()
@@ -1180,7 +1180,7 @@ cdef class Insert(WriteOperation):
 
 cdef class Update(WriteOperation):
     cdef:
-        KuduUpdate* op
+        YBUpdate* op
 
     def __cinit__(self, Table table):
         self.table = table
@@ -1217,21 +1217,21 @@ cdef class Delete(WriteOperation):
 
 
 cdef inline cast_pyvalue(DataType t, object o):
-    if t == KUDU_BOOL:
+    if t == YB_BOOL:
         return BoolVal(o)
-    elif t == KUDU_INT8:
+    elif t == YB_INT8:
         return Int8Val(o)
-    elif t == KUDU_INT16:
+    elif t == YB_INT16:
         return Int16Val(o)
-    elif t == KUDU_INT32:
+    elif t == YB_INT32:
         return Int32Val(o)
-    elif t == KUDU_INT64:
+    elif t == YB_INT64:
         return Int64Val(o)
-    elif t == KUDU_DOUBLE:
+    elif t == YB_DOUBLE:
         return DoubleVal(o)
-    elif t == KUDU_FLOAT:
+    elif t == YB_FLOAT:
         return FloatVal(o)
-    elif t == KUDU_STRING:
+    elif t == YB_STRING:
         return StringVal(o)
     else:
         raise TypeError(t)

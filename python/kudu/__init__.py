@@ -17,7 +17,7 @@
 
 from kudu.client import (Client, Table, Scanner, Session,  # noqa
                          Insert, Update, Delete, Predicate,
-                         TimeDelta, KuduError,
+                         TimeDelta, YBError,
                          FLUSH_AUTO_BACKGROUND,
                          FLUSH_AUTO_SYNC,
                          FLUSH_MANUAL)

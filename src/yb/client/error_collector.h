@@ -28,8 +28,8 @@
 namespace yb {
 namespace client {
 
-class KuduError;
-class KuduInsert;
+class YBError;
+class YBInsert;
 
 namespace internal {
 
@@ -37,20 +37,20 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
  public:
   ErrorCollector();
 
-  void AddError(gscoped_ptr<KuduError> error);
+  void AddError(gscoped_ptr<YBError> error);
 
-  // See KuduSession for details.
+  // See YBSession for details.
   int CountErrors() const;
 
-  // See KuduSession for details.
-  void GetErrors(std::vector<KuduError*>* errors, bool* overflowed);
+  // See YBSession for details.
+  void GetErrors(std::vector<YBError*>* errors, bool* overflowed);
 
  private:
   friend class RefCountedThreadSafe<ErrorCollector>;
   virtual ~ErrorCollector();
 
   mutable simple_spinlock lock_;
-  std::vector<KuduError*> errors_;
+  std::vector<YBError*> errors_;
 
   DISALLOW_COPY_AND_ASSIGN(ErrorCollector);
 };

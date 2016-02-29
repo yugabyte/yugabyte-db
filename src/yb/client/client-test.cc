@@ -95,12 +95,12 @@ using tserver::MiniTabletServer;
 class ClientTest : public KuduTest {
  public:
   ClientTest() {
-    KuduSchemaBuilder b;
+    YBSchemaBuilder b;
     b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
     b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
     b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->Nullable();
     b.AddColumn("non_null_with_default")->Type(KuduColumnSchema::INT32)->NotNull()
-      ->Default(KuduValue::FromInt(12345));
+      ->Default(YBValue::FromInt(12345));
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
@@ -118,7 +118,7 @@ class ClientTest : public KuduTest {
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
-    ASSERT_OK(KuduClientBuilder()
+    ASSERT_OK(YBClientBuilder()
                      .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
                      .Build(&client_));
 
@@ -180,11 +180,11 @@ class ClientTest : public KuduTest {
 
   // Inserts 'num_rows' test rows using 'client'
   void InsertTestRows(KuduClient* client, KuduTable* table, int num_rows, int first_row = 0) {
-    shared_ptr<KuduSession> session = client->NewSession();
-    ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    shared_ptr<YBSession> session = client->NewSession();
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = first_row; i < num_rows + first_row; i++) {
-      gscoped_ptr<KuduInsert> insert(BuildTestRow(table, i));
+      gscoped_ptr<YBInsert> insert(BuildTestRow(table, i));
       ASSERT_OK(session->Apply(insert.release()));
     }
     FlushSessionOrDie(session);
@@ -197,11 +197,11 @@ class ClientTest : public KuduTest {
   }
 
   void UpdateTestRows(KuduTable* table, int lo, int hi) {
-    shared_ptr<KuduSession> session = client_->NewSession();
-    ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    shared_ptr<YBSession> session = client_->NewSession();
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
-      gscoped_ptr<KuduUpdate> update(UpdateTestRow(table, i));
+      gscoped_ptr<YBUpdate> update(UpdateTestRow(table, i));
       ASSERT_OK(session->Apply(update.release()));
     }
     FlushSessionOrDie(session);
@@ -209,8 +209,8 @@ class ClientTest : public KuduTest {
   }
 
   void DeleteTestRows(KuduTable* table, int lo, int hi) {
-    shared_ptr<KuduSession> session = client_->NewSession();
-    ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    shared_ptr<YBSession> session = client_->NewSession();
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
       gscoped_ptr<KuduDelete> del(DeleteTestRow(table, i));
@@ -220,8 +220,8 @@ class ClientTest : public KuduTest {
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
   }
 
-  gscoped_ptr<KuduInsert> BuildTestRow(KuduTable* table, int index) {
-    gscoped_ptr<KuduInsert> insert(table->NewInsert());
+  gscoped_ptr<YBInsert> BuildTestRow(KuduTable* table, int index) {
+    gscoped_ptr<YBInsert> insert(table->NewInsert());
     KuduPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2));
@@ -230,8 +230,8 @@ class ClientTest : public KuduTest {
     return insert.Pass();
   }
 
-  gscoped_ptr<KuduUpdate> UpdateTestRow(KuduTable* table, int index) {
-    gscoped_ptr<KuduUpdate> update(table->NewUpdate());
+  gscoped_ptr<YBUpdate> UpdateTestRow(KuduTable* table, int index) {
+    gscoped_ptr<YBUpdate> update(table->NewUpdate());
     KuduPartialRow* row = update->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2 + 1));
@@ -247,7 +247,7 @@ class ClientTest : public KuduTest {
   }
 
   void DoTestScanWithoutPredicates() {
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.SetProjectedColumns({ "key" }));
     LOG_TIMING(INFO, "Scanning with no predicates") {
       ASSERT_OK(scanner.Open());
@@ -272,13 +272,13 @@ class ClientTest : public KuduTest {
   }
 
   void DoTestScanWithStringPredicate() {
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.AddConjunctPredicate(
-                  client_table_->NewComparisonPredicate("string_val", KuduPredicate::GREATER_EQUAL,
-                                                        KuduValue::CopyString("hello 2"))));
+                  client_table_->NewComparisonPredicate("string_val", YBPredicate::GREATER_EQUAL,
+                                                        YBValue::CopyString("hello 2"))));
     ASSERT_OK(scanner.AddConjunctPredicate(
-                  client_table_->NewComparisonPredicate("string_val", KuduPredicate::LESS_EQUAL,
-                                                        KuduValue::CopyString("hello 3"))));
+                  client_table_->NewComparisonPredicate("string_val", YBPredicate::LESS_EQUAL,
+                                                        YBValue::CopyString("hello 3"))));
 
     LOG_TIMING(INFO, "Scanning with string predicate") {
       ASSERT_OK(scanner.Open());
@@ -299,13 +299,13 @@ class ClientTest : public KuduTest {
   }
 
   void DoTestScanWithKeyPredicate() {
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.AddConjunctPredicate(
-                  client_table_->NewComparisonPredicate("key", KuduPredicate::GREATER_EQUAL,
-                                                        KuduValue::FromInt(5))));
+                  client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
+                                                        YBValue::FromInt(5))));
     ASSERT_OK(scanner.AddConjunctPredicate(
-                  client_table_->NewComparisonPredicate("key", KuduPredicate::LESS_EQUAL,
-                                                        KuduValue::FromInt(10))));
+                  client_table_->NewComparisonPredicate("key", YBPredicate::LESS_EQUAL,
+                                                        YBValue::FromInt(10))));
 
     LOG_TIMING(INFO, "Scanning with key predicate") {
       ASSERT_OK(scanner.Open());
@@ -335,18 +335,18 @@ class ClientTest : public KuduTest {
 
   int CountRowsFromClient(KuduTable* table, KuduClient::ReplicaSelection selection,
                           int32_t lower_bound, int32_t upper_bound) {
-    KuduScanner scanner(table);
+    YBScanner scanner(table);
     CHECK_OK(scanner.SetSelection(selection));
     CHECK_OK(scanner.SetProjectedColumns(vector<string>()));
     if (lower_bound != kNoBound) {
       CHECK_OK(scanner.AddConjunctPredicate(
-                   client_table_->NewComparisonPredicate("key", KuduPredicate::GREATER_EQUAL,
-                                                         KuduValue::FromInt(lower_bound))));
+                   client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
+                                                         YBValue::FromInt(lower_bound))));
     }
     if (upper_bound != kNoBound) {
       CHECK_OK(scanner.AddConjunctPredicate(
-                   client_table_->NewComparisonPredicate("key", KuduPredicate::LESS_EQUAL,
-                                                         KuduValue::FromInt(upper_bound))));
+                   client_table_->NewComparisonPredicate("key", YBPredicate::LESS_EQUAL,
+                                                         YBValue::FromInt(upper_bound))));
     }
 
     CHECK_OK(scanner.Open());
@@ -378,7 +378,7 @@ class ClientTest : public KuduTest {
       ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas));
     }
 
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(table_name)
                             .schema(&schema_)
                             .num_replicas(num_replicas)
@@ -439,7 +439,7 @@ class ClientTest : public KuduTest {
   };
   void DoTestWriteWithDeadServer(WhichServerToKill which);
 
-  KuduSchema schema_;
+  YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
   shared_ptr<KuduClient> client_;
@@ -536,7 +536,7 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
                                          half_the_rows, half_the_rows));
 
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.Open());
   uint64_t count = 0;
 
@@ -551,7 +551,7 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
 
   // Now close the scanner and perform a scan at 'ts'
   scanner.Close();
-  ASSERT_OK(scanner.SetReadMode(KuduScanner::READ_AT_SNAPSHOT));
+  ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
   ASSERT_OK(scanner.SetSnapshotMicros(ts));
   ASSERT_OK(scanner.Open());
 
@@ -568,8 +568,8 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
 // local clock. If we are within the clock error, this should wait.
 // If we are far in the future, we should get an error.
 TEST_F(ClientTest, TestScanAtFutureTimestamp) {
-  KuduScanner scanner(client_table_.get());
-  ASSERT_OK(scanner.SetReadMode(KuduScanner::READ_AT_SNAPSHOT));
+  YBScanner scanner(client_table_.get());
+  ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
 
   // Try to perform a scan at NowLatest(). This is in the future,
   // but the server should wait until it's in the past.
@@ -597,17 +597,17 @@ TEST_F(ClientTest, TestScanMultiTablet) {
     CHECK_OK(row->SetInt32(0, i * 10));
     rows.push_back(row);
   }
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   shared_ptr<KuduTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable("TestScanMultiTablet", 1, rows, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(5000);
   for (int i = 1; i < 5; i++) {
-    gscoped_ptr<KuduInsert> insert;
+    gscoped_ptr<YBInsert> insert;
     insert = BuildTestRow(table.get(), 2 + (i * 10));
     ASSERT_OK(session->Apply(insert.release()));
     insert = BuildTestRow(table.get(), 3 + (i * 10));
@@ -633,7 +633,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    gscoped_ptr<KuduUpdate> update;
+    gscoped_ptr<YBUpdate> update;
     update = UpdateTestRow(table.get(), 2 + i * 10);
     ASSERT_OK(session->Apply(update.release()));
     update = UpdateTestRow(table.get(), 5 + i * 10);
@@ -699,7 +699,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 }
 
 TEST_F(ClientTest, TestScanEmptyTable) {
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns(vector<string>()));
   ASSERT_OK(scanner.Open());
 
@@ -719,7 +719,7 @@ TEST_F(ClientTest, TestScanEmptyTable) {
 TEST_F(ClientTest, TestScanEmptyProjection) {
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns(vector<string>()));
   ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 0);
   LOG_TIMING(INFO, "Scanning with no projected columns") {
@@ -737,7 +737,7 @@ TEST_F(ClientTest, TestScanEmptyProjection) {
 }
 
 TEST_F(ClientTest, TestProjectInvalidColumn) {
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   Status s = scanner.SetProjectedColumns({ "column-doesnt-exist" });
   ASSERT_EQ("Not found: Column: \"column-doesnt-exist\" was not found in the table schema.",
             s.ToString());
@@ -754,16 +754,16 @@ TEST_F(ClientTest, TestProjectInvalidColumn) {
 TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns({ "int_val" }));
   ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 1);
   ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), KuduColumnSchema::INT32);
   ASSERT_OK(scanner.AddConjunctPredicate(
-                client_table_->NewComparisonPredicate("key", KuduPredicate::GREATER_EQUAL,
-                                                      KuduValue::FromInt(5))));
+                client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
+                                                      YBValue::FromInt(5))));
   ASSERT_OK(scanner.AddConjunctPredicate(
-                client_table_->NewComparisonPredicate("key", KuduPredicate::LESS_EQUAL,
-                                                      KuduValue::FromInt(10))));
+                client_table_->NewComparisonPredicate("key", YBPredicate::LESS_EQUAL,
+                                                      YBValue::FromInt(10))));
 
   size_t nrows = 0;
   int32_t curr_key = 5;
@@ -791,13 +791,13 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
 TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.AddConjunctPredicate(
-                client_table_->NewComparisonPredicate("int_val", KuduPredicate::GREATER_EQUAL,
-                                                      KuduValue::FromInt(10))));
+                client_table_->NewComparisonPredicate("int_val", YBPredicate::GREATER_EQUAL,
+                                                      YBValue::FromInt(10))));
   ASSERT_OK(scanner.AddConjunctPredicate(
-                client_table_->NewComparisonPredicate("int_val", KuduPredicate::LESS_EQUAL,
-                                                      KuduValue::FromInt(20))));
+                client_table_->NewComparisonPredicate("int_val", YBPredicate::LESS_EQUAL,
+                                                      YBValue::FromInt(20))));
 
   size_t nrows = 0;
   int32_t curr_key = 10;
@@ -825,25 +825,25 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
 
 // Test adding various sorts of invalid binary predicates.
 TEST_F(ClientTest, TestInvalidPredicates) {
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
 
   // Predicate on a column that does not exist.
   Status s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate("this-does-not-exist",
-                                            KuduPredicate::EQUAL, KuduValue::FromInt(5)));
+                                            YBPredicate::EQUAL, YBValue::FromInt(5)));
   EXPECT_EQ("Not found: column not found: this-does-not-exist", s.ToString());
 
   // Int predicate on a string column.
   s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate("string_val",
-                                            KuduPredicate::EQUAL, KuduValue::FromInt(5)));
+                                            YBPredicate::EQUAL, YBValue::FromInt(5)));
   EXPECT_EQ("Invalid argument: non-string value for string column string_val",
             s.ToString());
 
   // String predicate on an int column.
   s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate("int_val",
-                                            KuduPredicate::EQUAL, KuduValue::CopyString("x")));
+                                            YBPredicate::EQUAL, YBValue::CopyString("x")));
   EXPECT_EQ("Invalid argument: non-int value for int column int_val",
             s.ToString());
 
@@ -851,8 +851,8 @@ TEST_F(ClientTest, TestInvalidPredicates) {
   s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate(
           "int_val",
-          KuduPredicate::EQUAL,
-          KuduValue::FromInt(static_cast<int64_t>(MathLimits<int32_t>::kMax) + 10)));
+          YBPredicate::EQUAL,
+          YBValue::FromInt(static_cast<int64_t>(MathLimits<int32_t>::kMax) + 10)));
   EXPECT_EQ("Invalid argument: value 2147483657 out of range for "
             "32-bit signed integer column 'int_val'", s.ToString());
 }
@@ -866,7 +866,7 @@ TEST_F(ClientTest, TestScanCloseProxy) {
 
   {
     // Open and close an empty scanner.
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     ASSERT_OK(scanner.Open());
     scanner.Close();
     CHECK_EQ(0, scanner.data_->proxy_.use_count()) << "Proxy was not reset!";
@@ -877,7 +877,7 @@ TEST_F(ClientTest, TestScanCloseProxy) {
                                          FLAGS_test_scan_num_rows));
   {
     // Open and close a scanner with rows.
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     ASSERT_OK(scanner.Open());
     scanner.Close();
     CHECK_EQ(0, scanner.data_->proxy_.use_count()) << "Proxy was not reset!";
@@ -886,7 +886,7 @@ TEST_F(ClientTest, TestScanCloseProxy) {
 
 namespace internal {
 
-static void ReadBatchToStrings(KuduScanner* scanner, vector<string>* rows) {
+static void ReadBatchToStrings(YBScanner* scanner, vector<string>* rows) {
   KuduScanBatch batch;
   ASSERT_OK(scanner->NextBatch(&batch));
   for (int i = 0; i < batch.NumRows(); i++) {
@@ -898,7 +898,7 @@ static void DoScanWithCallback(KuduTable* table,
                                const vector<string>& expected_rows,
                                const boost::function<Status(const string&)>& cb) {
   // Initialize fault-tolerant snapshot scanner.
-  KuduScanner scanner(table);
+  YBScanner scanner(table);
   ASSERT_OK(scanner.SetFaultTolerant());
   // Set a small batch size so it reads in multiple batches.
   ASSERT_OK(scanner.SetBatchSizeBytes(1));
@@ -1102,7 +1102,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a double-sided range within first tablet
   {
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(row->SetInt32(0, 5));
     ASSERT_OK(scanner.AddLowerBound(*row));
     CHECK_OK(row->SetInt32(0, 8));
@@ -1116,7 +1116,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a double-sided range spanning tablets
   {
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(row->SetInt32(0, 5));
     ASSERT_OK(scanner.AddLowerBound(*row));
     CHECK_OK(row->SetInt32(0, 15));
@@ -1130,7 +1130,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a double-sided range within second tablet
   {
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(row->SetInt32(0, 15));
     ASSERT_OK(scanner.AddLowerBound(*row));
     CHECK_OK(row->SetInt32(0, 20));
@@ -1144,7 +1144,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test a lower-bound only range.
   {
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(row->SetInt32(0, 5));
     ASSERT_OK(scanner.AddLowerBound(*row));
     vector<string> rows;
@@ -1156,7 +1156,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test an upper-bound only range in first tablet.
   {
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(row->SetInt32(0, 5));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
@@ -1168,7 +1168,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
 
   // Test an upper-bound only range in second tablet.
   {
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(row->SetInt32(0, 15));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
@@ -1215,7 +1215,7 @@ TEST_F(ClientTest, TestScannerKeepAlive) {
   ANNOTATE_BENIGN_RACE(&FLAGS_scanner_ttl_ms, "Set at runtime, for tests.");
   FLAGS_scanner_ttl_ms = 100; // 100 milliseconds
   // Start a scan but don't get the whole data back
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   // This will make sure we have to do multiple NextBatch calls to the second tablet.
   ASSERT_OK(scanner.SetBatchSizeBytes(100));
   ASSERT_OK(scanner.Open());
@@ -1285,7 +1285,7 @@ TEST_F(ClientTest, TestCloseScanner) {
   // Open the scanner, make sure it gets closed right away
   {
     SCOPED_TRACE("Implicit close");
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.Open());
     ASSERT_EQ(0, manager->CountActiveScanners());
     scanner.Close();
@@ -1295,7 +1295,7 @@ TEST_F(ClientTest, TestCloseScanner) {
   // Open the scanner, make sure we see 1 registered scanner.
   {
     SCOPED_TRACE("Explicit close");
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.SetBatchSizeBytes(0)); // won't return data on open
     ASSERT_OK(scanner.Open());
     ASSERT_EQ(1, manager->CountActiveScanners());
@@ -1306,7 +1306,7 @@ TEST_F(ClientTest, TestCloseScanner) {
   {
     SCOPED_TRACE("Close when out of scope");
     {
-      KuduScanner scanner(client_table_.get());
+      YBScanner scanner(client_table_.get());
       ASSERT_OK(scanner.SetBatchSizeBytes(0));
       ASSERT_OK(scanner.Open());
       ASSERT_EQ(1, manager->CountActiveScanners());
@@ -1321,7 +1321,7 @@ TEST_F(ClientTest, TestScanTimeout) {
   // code path and not even discover where the tablet is hosted.
   {
     client_->data_->default_rpc_timeout_ = MonoDelta::FromSeconds(0);
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     Status s = scanner.Open();
     EXPECT_TRUE(s.IsTimedOut()) << s.ToString();
     EXPECT_FALSE(scanner.data_->remote_) << "should not have located any tablet";
@@ -1334,7 +1334,7 @@ TEST_F(ClientTest, TestScanTimeout) {
 
   // The "overall operation" timed out; no replicas failed.
   {
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.SetTimeoutMillis(0));
     ASSERT_TRUE(scanner.Open().IsTimedOut());
     ASSERT_TRUE(scanner.data_->remote_) << "We should have located a tablet";
@@ -1348,7 +1348,7 @@ TEST_F(ClientTest, TestScanTimeout) {
   {
     google::FlagSaver saver;
     FLAGS_scanner_max_batch_size_bytes = 100;
-    KuduScanner scanner(client_table_.get());
+    YBScanner scanner(client_table_.get());
 
     // Set the single-RPC timeout low. Since we only have a single replica of this
     // table, we'll ignore this timeout for the actual scan calls, and use the
@@ -1367,33 +1367,33 @@ TEST_F(ClientTest, TestScanTimeout) {
   }
 }
 
-static gscoped_ptr<KuduError> GetSingleErrorFromSession(KuduSession* session) {
+static gscoped_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
   CHECK_EQ(1, session->CountPendingErrors());
-  vector<KuduError*> errors;
+  vector<YBError*> errors;
   ElementDeleter d(&errors);
   bool overflow;
   session->GetPendingErrors(&errors, &overflow);
   CHECK(!overflow);
   CHECK_EQ(1, errors.size());
-  KuduError* error = errors[0];
+  YBError* error = errors[0];
   errors.clear();
-  return gscoped_ptr<KuduError>(error);
+  return gscoped_ptr<YBError>(error);
 }
 
 // Simplest case of inserting through the client API: a single row
 // with manual batching.
 TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
-  shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_FALSE(session->HasPendingOperations());
 
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
-  gscoped_ptr<KuduInsert> insert(client_table_->NewInsert());
+  gscoped_ptr<YBInsert> insert(client_table_->NewInsert());
   // Try inserting without specifying a key: should fail.
   ASSERT_OK(insert->mutable_row()->SetInt32("int_val", 54321));
   ASSERT_OK(insert->mutable_row()->SetStringCopy("string_val", "hello world"));
 
-  KuduInsert* ptr = insert.get();
+  YBInsert* ptr = insert.get();
   Status s = session->Apply(insert.release());
   ASSERT_EQ("Illegal state: Key not specified: "
             "INSERT int32 int_val=54321, string string_val=hello world",
@@ -1401,8 +1401,8 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
 
   // Get error
   ASSERT_EQ(session->CountPendingErrors(), 1) << "Should report bad key to error container";
-  gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
-  KuduWriteOperation* failed_op = error->release_failed_op();
+  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
+  YBWriteOperation* failed_op = error->release_failed_op();
   ASSERT_EQ(failed_op, ptr) << "Should be able to retrieve failed operation";
   insert.reset(ptr);
 
@@ -1415,29 +1415,29 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
   FlushSessionOrDie(session);
 }
 
-static Status ApplyInsertToSession(KuduSession* session,
+static Status ApplyInsertToSession(YBSession* session,
                                    const shared_ptr<KuduTable>& table,
                                    int row_key,
                                    int int_val,
                                    const char* string_val) {
-  gscoped_ptr<KuduInsert> insert(table->NewInsert());
+  gscoped_ptr<YBInsert> insert(table->NewInsert());
   RETURN_NOT_OK(insert->mutable_row()->SetInt32("key", row_key));
   RETURN_NOT_OK(insert->mutable_row()->SetInt32("int_val", int_val));
   RETURN_NOT_OK(insert->mutable_row()->SetStringCopy("string_val", string_val));
   return session->Apply(insert.release());
 }
 
-static Status ApplyUpdateToSession(KuduSession* session,
+static Status ApplyUpdateToSession(YBSession* session,
                                    const shared_ptr<KuduTable>& table,
                                    int row_key,
                                    int int_val) {
-  gscoped_ptr<KuduUpdate> update(table->NewUpdate());
+  gscoped_ptr<YBUpdate> update(table->NewUpdate());
   RETURN_NOT_OK(update->mutable_row()->SetInt32("key", row_key));
   RETURN_NOT_OK(update->mutable_row()->SetInt32("int_val", int_val));
   return session->Apply(update.release());
 }
 
-static Status ApplyDeleteToSession(KuduSession* session,
+static Status ApplyDeleteToSession(YBSession* session,
                                    const shared_ptr<KuduTable>& table,
                                    int row_key) {
   gscoped_ptr<KuduDelete> del(table->NewDelete());
@@ -1446,8 +1446,8 @@ static Status ApplyDeleteToSession(KuduSession* session,
 }
 
 TEST_F(ClientTest, TestWriteTimeout) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // First time out the lookup on the master side.
   {
@@ -1457,7 +1457,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
     ASSERT_TRUE(s.IsIOError()) << "unexpected status: " << s.ToString();
-    gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+    gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
                         "GetTableLocations(client-testtb, int32 key=1, 1) "
@@ -1474,7 +1474,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
     ASSERT_TRUE(s.IsIOError());
-    gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+    gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
                         "Failed to write batch of 1 ops to tablet");
@@ -1486,11 +1486,11 @@ TEST_F(ClientTest, TestWriteTimeout) {
 // Test which does an async flush and then drops the reference
 // to the Session. This should still call the callback.
 TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   Synchronizer s;
-  KuduStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
+  YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
   session->FlushAsync(&cb);
   session.reset();
   ASSERT_OK(s.Wait());
@@ -1498,7 +1498,7 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   // Try again, this time with an error response (trying to re-insert the same row).
   s.Reset();
   session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   ASSERT_EQ(1, session->CountBufferedOperations());
   session->FlushAsync(&cb);
@@ -1508,15 +1508,15 @@ TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
 }
 
 TEST_F(ClientTest, TestSessionClose) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
   // Closing the session now should return Status::IllegalState since we
   // have a pending operation.
   ASSERT_TRUE(session->Close().IsIllegalState());
 
   Synchronizer s;
-  KuduStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
+  YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
   session->FlushAsync(&cb);
   ASSERT_OK(s.Wait());
 
@@ -1526,8 +1526,8 @@ TEST_F(ClientTest, TestSessionClose) {
 // Test which sends multiple batches through the same session, each of which
 // contains multiple rows spread across multiple tablets.
 TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   const int kNumBatches = 5;
   const int kRowsPerBatch = 10;
@@ -1564,8 +1564,8 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
 // Test a batch where one of the inserted rows succeeds while another
 // fails.
 TEST_F(ClientTest, TestBatchWithPartialError) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Insert a row with key "1"
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
@@ -1580,7 +1580,7 @@ TEST_F(ClientTest, TestBatchWithPartialError) {
   ASSERT_STR_CONTAINS(s.ToString(), "Some errors occurred");
 
   // Fetch and verify the reported error.
-  gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
   ASSERT_TRUE(error->status().IsAlreadyPresent());
   ASSERT_EQ(error->failed_op().ToString(),
             "INSERT int32 key=1, int32 int_val=1, string string_val=Attempted dup");
@@ -1598,15 +1598,15 @@ TEST_F(ClientTest, TestBatchWithPartialError) {
 
 // Test flushing an empty batch (should be a no-op).
 TEST_F(ClientTest, TestEmptyBatch) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   FlushSessionOrDie(session);
 }
 
 void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
-  shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(1000);
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Shut down the server.
   switch (which) {
@@ -1623,7 +1623,7 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
   Status s = session->Flush();
   ASSERT_TRUE(s.IsIOError()) << s.ToString();
 
-  gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
@@ -1651,8 +1651,8 @@ TEST_F(ClientTest, TestWriteWithDeadTabletServer) {
 }
 
 void ClientTest::DoApplyWithoutFlushTest(int sleep_micros) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
   SleepFor(MonoDelta::FromMicroseconds(sleep_micros));
   session.reset(); // should not crash!
@@ -1690,8 +1690,8 @@ TEST_F(ClientTest, TestApplyTooMuchWithoutFlushing) {
   // in an error.
   {
     bool got_expected_error = false;
-    shared_ptr<KuduSession> session = client_->NewSession();
-    ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    shared_ptr<YBSession> session = client_->NewSession();
+    ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (int i = 0; i < 1000000; i++) {
       Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
       if (s.IsIncomplete()) {
@@ -1709,7 +1709,7 @@ TEST_F(ClientTest, TestApplyTooMuchWithoutFlushing) {
   {
     string huge_string(10 * 1024 * 1024, 'x');
 
-    shared_ptr<KuduSession> session = client_->NewSession();
+    shared_ptr<YBSession> session = client_->NewSession();
     Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
     ASSERT_TRUE(s.IsIncomplete()) << "got unexpected status: " << s.ToString();
   }
@@ -1717,8 +1717,8 @@ TEST_F(ClientTest, TestApplyTooMuchWithoutFlushing) {
 
 // Test that update updates and delete deletes with expected use
 TEST_F(ClientTest, TestMutationsWork) {
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
   FlushSessionOrDie(session);
 
@@ -1739,8 +1739,8 @@ TEST_F(ClientTest, TestMutationsWork) {
 
 TEST_F(ClientTest, TestMutateDeletedRow) {
   vector<string> rows;
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
   FlushSessionOrDie(session);
   ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
@@ -1754,7 +1754,7 @@ TEST_F(ClientTest, TestMutateDeletedRow) {
   ASSERT_FALSE(s.ok());
   ASSERT_STR_CONTAINS(s.ToString(), "Some errors occurred");
   // verify error
-  gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
   ASSERT_EQ(error->failed_op().ToString(),
             "UPDATE int32 key=1, int32 int_val=2");
   ScanTableToStrings(client_table_.get(), &rows);
@@ -1775,8 +1775,8 @@ TEST_F(ClientTest, TestMutateDeletedRow) {
 
 TEST_F(ClientTest, TestMutateNonexistentRow) {
   vector<string> rows;
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Attempt update nonexistent row
   ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
@@ -1784,7 +1784,7 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
   ASSERT_FALSE(s.ok());
   ASSERT_STR_CONTAINS(s.ToString(), "Some errors occurred");
   // verify error
-  gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
   ASSERT_EQ(error->failed_op().ToString(),
             "UPDATE int32 key=1, int32 int_val=2");
   ScanTableToStrings(client_table_.get(), &rows);
@@ -1808,9 +1808,9 @@ TEST_F(ClientTest, TestWriteWithBadColumn) {
   ASSERT_OK(client_->OpenTable(kTableName, &table));
 
   // Try to do a write with the bad schema.
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
-  gscoped_ptr<KuduInsert> insert(table->NewInsert());
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+  gscoped_ptr<YBInsert> insert(table->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetInt32("key", 12345));
   Status s = insert->mutable_row()->SetInt32("bad_col", 12345);
   ASSERT_TRUE(s.IsNotFound());
@@ -1831,15 +1831,15 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
             ->Alter());
 
   // Try to do a write with the bad schema.
-  shared_ptr<KuduSession> session = client_->NewSession();
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  shared_ptr<YBSession> session = client_->NewSession();
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   ASSERT_OK(ApplyInsertToSession(session.get(), client_table_,
                                         12345, 12345, "x"));
   Status s = session->Flush();
   ASSERT_FALSE(s.ok());
 
   // Verify the specific error.
-  gscoped_ptr<KuduError> error = GetSingleErrorFromSession(session.get());
+  gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
   ASSERT_TRUE(error->status().IsInvalidArgument());
   ASSERT_STR_CONTAINS(error->status().ToString(),
             "Client provided column int_val[int32 NOT NULL] "
@@ -1986,7 +1986,7 @@ TEST_F(ClientTest, TestDeleteTable) {
 }
 
 TEST_F(ClientTest, TestGetTableSchema) {
-  KuduSchema schema;
+  YBSchema schema;
 
   // Verify the schema for the current table
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema));
@@ -2217,7 +2217,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
 namespace {
 
-void CheckCorrectness(KuduScanner* scanner, int expected[], int nrows) {
+void CheckCorrectness(YBScanner* scanner, int expected[], int nrows) {
   scanner->Open();
   int readrows = 0;
   KuduScanBatch batch;
@@ -2250,12 +2250,12 @@ void CheckCorrectness(KuduScanner* scanner, int expected[], int nrows) {
 
 // Randomized mutations accuracy testing
 TEST_F(ClientTest, TestRandomWriteOperation) {
-  shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(5000);
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   int row[FLAGS_test_scan_num_rows]; // -1 indicates empty
   int nrows;
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
 
   // First half-fill
   for (int i = 0; i < FLAGS_test_scan_num_rows/2; ++i) {
@@ -2317,9 +2317,9 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
 // Test whether a batch can handle several mutations in a batch
 TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
-  shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(5000);
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Test insert/update
   LOG(INFO) << "Testing insert/update in same batch, key " << 1 << ".";
@@ -2385,7 +2385,7 @@ TEST_F(ClientTest, TestMasterLookupPermits) {
 
 // Define callback for deadlock simulation, as well as various helper methods.
 namespace {
-class DLSCallback : public KuduStatusCallback {
+class DLSCallback : public YBStatusCallback {
  public:
   explicit DLSCallback(Atomic32* i) : i(i) {
   }
@@ -2401,13 +2401,13 @@ class DLSCallback : public KuduStatusCallback {
 
 // Returns col1 value of first row.
 int32_t ReadFirstRowKeyFirstCol(const shared_ptr<KuduTable>& tbl) {
-  KuduScanner scanner(tbl.get());
+  YBScanner scanner(tbl.get());
 
   scanner.Open();
   KuduScanBatch batch;
   CHECK(scanner.HasMoreRows());
   CHECK_OK(scanner.NextBatch(&batch));
-  KuduRowResult row = batch.Row(0);
+  YBRowResult row = batch.Row(0);
   int32_t val;
   CHECK_OK(row.GetInt32(1, &val));
   return val;
@@ -2415,7 +2415,7 @@ int32_t ReadFirstRowKeyFirstCol(const shared_ptr<KuduTable>& tbl) {
 
 // Checks that all rows have value equal to expected, return number of rows.
 int CheckRowsEqual(const shared_ptr<KuduTable>& tbl, int32_t expected) {
-  KuduScanner scanner(tbl.get());
+  YBScanner scanner(tbl.get());
   scanner.Open();
   KuduScanBatch batch;
   int cnt = 0;
@@ -2445,12 +2445,12 @@ int CheckRowsEqual(const shared_ptr<KuduTable>& tbl, int32_t expected) {
 
 // Return a session "loaded" with updates. Sets the session timeout
 // to the parameter value. Larger timeouts decrease false positives.
-shared_ptr<KuduSession> LoadedSession(const shared_ptr<KuduClient>& client,
+shared_ptr<YBSession> LoadedSession(const shared_ptr<KuduClient>& client,
                                       const shared_ptr<KuduTable>& tbl,
                                       bool fwd, int max, int timeout) {
-  shared_ptr<KuduSession> session = client->NewSession();
+  shared_ptr<YBSession> session = client->NewSession();
   session->SetTimeoutMillis(timeout);
-  CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
     CHECK_OK(ApplyUpdateToSession(session.get(), tbl, key, fwd));
@@ -2472,7 +2472,7 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   // Make reverse client who will make batches that update rows
   // in reverse order. Separate client used so rpc calls come in at same time.
   shared_ptr<KuduClient> rev_client;
-  ASSERT_OK(KuduClientBuilder()
+  ASSERT_OK(YBClientBuilder()
                    .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
                    .Build(&rev_client));
   shared_ptr<KuduTable> rev_table;
@@ -2481,9 +2481,9 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   // Load up some rows
   const int kNumRows = 300;
   const int kTimeoutMillis = 60000;
-  shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(kTimeoutMillis);
-  ASSERT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (int i = 0; i < kNumRows; ++i)
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, i, i,  ""));
   FlushSessionOrDie(session);
@@ -2496,8 +2496,8 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 
   // Generate sessions
   const int kNumSessions = 100;
-  shared_ptr<KuduSession> fwd_sessions[kNumSessions];
-  shared_ptr<KuduSession> rev_sessions[kNumSessions];
+  shared_ptr<YBSession> fwd_sessions[kNumSessions];
+  shared_ptr<YBSession> rev_sessions[kNumSessions];
   for (int i = 0; i < kNumSessions; ++i) {
     fwd_sessions[i] = LoadedSession(client_, client_table_, true, kNumRows, kTimeoutMillis);
     rev_sessions[i] = LoadedSession(rev_client, rev_table, true, kNumRows, kTimeoutMillis);
@@ -2538,7 +2538,7 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 }
 
 TEST_F(ClientTest, TestCreateDuplicateTable) {
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_TRUE(table_creator->table_name(kTableName)
               .schema(&schema_)
               .num_replicas(1)
@@ -2554,7 +2554,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   KuduPartialRow* split2 = schema_.NewRow();
   ASSERT_OK(split2->SetInt32("key", 2));
 
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name("foobar")
       .schema(&schema_)
       .split_rows({ split1, split2 })
@@ -2572,7 +2572,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
   KuduPartialRow* split2 = schema_.NewRow();
   ASSERT_OK(split2->SetInt32("key", 2));
 
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name("foobar")
       .schema(&schema_)
       .split_rows({ split1, split2 })
@@ -2596,13 +2596,13 @@ TEST_F(ClientTest, TestLatestObservedTimestamp) {
   // client performing a snapshot scan at that timestamp.
   shared_ptr<KuduClient> client;
   shared_ptr<KuduTable> table;
-  ASSERT_OK(KuduClientBuilder()
+  ASSERT_OK(YBClientBuilder()
       .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
       .Build(&client));
   ASSERT_EQ(client->GetLatestObservedTimestamp(), KuduClient::kNoTimestamp);
   ASSERT_OK(client->OpenTable(client_table_->name(), &table));
-  KuduScanner scanner(table.get());
-  ASSERT_OK(scanner.SetReadMode(KuduScanner::READ_AT_SNAPSHOT));
+  YBScanner scanner(table.get());
+  ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
   ASSERT_OK(scanner.SetSnapshotRaw(ts1));
   ASSERT_OK(scanner.Open());
   scanner.Close();
@@ -2613,12 +2613,12 @@ TEST_F(ClientTest, TestLatestObservedTimestamp) {
 TEST_F(ClientTest, TestClonePredicates) {
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
                                          2, 0));
-  gscoped_ptr<KuduPredicate> predicate(client_table_->NewComparisonPredicate(
+  gscoped_ptr<YBPredicate> predicate(client_table_->NewComparisonPredicate(
       "key",
-      KuduPredicate::EQUAL,
-      KuduValue::FromInt(1)));
+      YBPredicate::EQUAL,
+      YBValue::FromInt(1)));
 
-  gscoped_ptr<KuduScanner> scanner(new KuduScanner(client_table_.get()));
+  gscoped_ptr<YBScanner> scanner(new YBScanner(client_table_.get()));
   ASSERT_OK(scanner->AddConjunctPredicate(predicate->Clone()));
   ASSERT_OK(scanner->Open());
 
@@ -2631,7 +2631,7 @@ TEST_F(ClientTest, TestClonePredicates) {
 
   ASSERT_EQ(count, 1);
 
-  scanner.reset(new KuduScanner(client_table_.get()));
+  scanner.reset(new YBScanner(client_table_.get()));
   ASSERT_OK(scanner->AddConjunctPredicate(predicate->Clone()));
   ASSERT_OK(scanner->Open());
 
@@ -2705,7 +2705,7 @@ TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
 
     // As the tservers are still starting up, the scan will retry until it
     // times out. The actual error should be embedded in the returned status.
-    KuduScanner scan(client_table_.get());
+    YBScanner scan(client_table_.get());
     ASSERT_OK(scan.SetTimeoutMillis(1000));
     Status s = scan.Open();
     SCOPED_TRACE(s.ToString());

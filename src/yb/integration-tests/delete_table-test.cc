@@ -36,10 +36,10 @@
 #include "yb/util/subprocess.h"
 
 using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
-using yb::client::KuduSchema;
-using yb::client::KuduSchemaFromSchema;
-using yb::client::KuduTableCreator;
+using yb::client::YBClientBuilder;
+using yb::client::YBSchema;
+using yb::client::YBSchemaFromSchema;
+using yb::client::YBTableCreator;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadataPB;
 using yb::consensus::ConsensusStatePB;
@@ -270,7 +270,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   ASSERT_TRUE(table_names.empty()) << "table still exposed in ListTables";
 
   // 2) Should respond to GetTableSchema with a NotFound error.
-  KuduSchema schema;
+  YBSchema schema;
   Status s = client_->GetTableSchema(TestWorkload::kDefaultTableName, &schema);
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 
@@ -964,11 +964,11 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   const int kNumTablets = 2;
   vector<const KuduPartialRow*> split_rows;
   Schema schema(GetSimpleTestSchema());
-  client::KuduSchema client_schema(client::KuduSchemaFromSchema(schema));
+  client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
   KuduPartialRow* split_row = client_schema.NewRow();
   ASSERT_OK(split_row->SetInt32(0, numeric_limits<int32_t>::max() / kNumTablets));
   split_rows.push_back(split_row);
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkload::kDefaultTableName)
                           .split_rows(split_rows)
                           .schema(&client_schema)

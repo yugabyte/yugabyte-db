@@ -27,25 +27,25 @@ namespace client {
 
 using sp::shared_ptr;
 
-RowOperationsPB_Type ToInternalWriteType(KuduWriteOperation::Type type) {
+RowOperationsPB_Type ToInternalWriteType(YBWriteOperation::Type type) {
   switch (type) {
-    case KuduWriteOperation::INSERT: return RowOperationsPB_Type_INSERT;
-    case KuduWriteOperation::UPDATE: return RowOperationsPB_Type_UPDATE;
-    case KuduWriteOperation::DELETE: return RowOperationsPB_Type_DELETE;
+    case YBWriteOperation::INSERT: return RowOperationsPB_Type_INSERT;
+    case YBWriteOperation::UPDATE: return RowOperationsPB_Type_UPDATE;
+    case YBWriteOperation::DELETE: return RowOperationsPB_Type_DELETE;
     default: LOG(FATAL) << "Unexpected write operation type: " << type;
   }
 }
 
 // WriteOperation --------------------------------------------------------------
 
-KuduWriteOperation::KuduWriteOperation(const shared_ptr<KuduTable>& table)
+YBWriteOperation::YBWriteOperation(const shared_ptr<KuduTable>& table)
   : table_(table),
     row_(table->schema().schema_) {
 }
 
-KuduWriteOperation::~KuduWriteOperation() {}
+YBWriteOperation::~YBWriteOperation() {}
 
-EncodedKey* KuduWriteOperation::CreateKey() const {
+EncodedKey* YBWriteOperation::CreateKey() const {
   CHECK(row_.IsKeySet()) << "key must be set";
 
   ConstContiguousRow row(row_.schema(), row_.row_data_);
@@ -57,7 +57,7 @@ EncodedKey* KuduWriteOperation::CreateKey() const {
   return key.release();
 }
 
-int64_t KuduWriteOperation::SizeInBuffer() const {
+int64_t YBWriteOperation::SizeInBuffer() const {
   const Schema* schema = row_.schema();
   int size = 1; // for the operation type
 
@@ -82,24 +82,24 @@ int64_t KuduWriteOperation::SizeInBuffer() const {
 
 // Insert -----------------------------------------------------------------------
 
-KuduInsert::KuduInsert(const shared_ptr<KuduTable>& table)
-  : KuduWriteOperation(table) {
+YBInsert::YBInsert(const shared_ptr<KuduTable>& table)
+  : YBWriteOperation(table) {
 }
 
-KuduInsert::~KuduInsert() {}
+YBInsert::~YBInsert() {}
 
 // Update -----------------------------------------------------------------------
 
-KuduUpdate::KuduUpdate(const shared_ptr<KuduTable>& table)
-  : KuduWriteOperation(table) {
+YBUpdate::YBUpdate(const shared_ptr<KuduTable>& table)
+  : YBWriteOperation(table) {
 }
 
-KuduUpdate::~KuduUpdate() {}
+YBUpdate::~YBUpdate() {}
 
 // Delete -----------------------------------------------------------------------
 
 KuduDelete::KuduDelete(const shared_ptr<KuduTable>& table)
-  : KuduWriteOperation(table) {
+  : YBWriteOperation(table) {
 }
 
 KuduDelete::~KuduDelete() {}

@@ -44,7 +44,7 @@ class Batch extends KuduRpc<BatchResponse> implements KuduRpc.HasKey {
   final List<Operation> ops;
 
   // Operations can be added out of order to 'ops' if the tablet had to be looked up. We can detect
-  // this situation in AsyncKuduSession and set this to true.
+  // this situation in AsyncYBSession and set this to true.
   boolean needsSorting = false;
 
   /** See {@link SessionConfiguration#setIgnoreAllDuplicateRows(boolean)} */

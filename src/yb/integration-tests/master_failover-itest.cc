@@ -89,18 +89,18 @@ class MasterFailoverTest : public KuduTest {
     }
     cluster_.reset(new ExternalMiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(builder, &client_));
   }
 
   Status CreateTable(const std::string& table_name, CreateTableMode mode) {
-    KuduSchema schema;
-    KuduSchemaBuilder b;
+    YBSchema schema;
+    YBSchemaBuilder b;
     b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
     b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
     b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema)
         .timeout(MonoDelta::FromSeconds(90))
@@ -126,7 +126,7 @@ class MasterFailoverTest : public KuduTest {
     shared_ptr<KuduTable> table;
     RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name, &table),
                           "Unable to open table " + table_name);
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     RETURN_NOT_OK_PREPEND(scanner.SetProjectedColumns(vector<string>()),
                           "Unable to open an empty projection on " + table_name);
     RETURN_NOT_OK_PREPEND(scanner.Open(),

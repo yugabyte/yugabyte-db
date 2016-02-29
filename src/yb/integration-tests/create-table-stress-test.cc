@@ -37,11 +37,11 @@
 #include "yb/util/test_util.h"
 
 using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
+using yb::client::YBClientBuilder;
 using yb::client::KuduColumnSchema;
-using yb::client::KuduSchema;
-using yb::client::KuduSchemaBuilder;
-using yb::client::KuduTableCreator;
+using yb::client::YBSchema;
+using yb::client::YBSchemaBuilder;
+using yb::client::YBTableCreator;
 using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
 using yb::master::MasterServiceProxy;
@@ -61,7 +61,7 @@ const char* kTableName = "test_table";
 class CreateTableStressTest : public KuduTest {
  public:
   CreateTableStressTest() {
-    KuduSchemaBuilder b;
+    YBSchemaBuilder b;
     b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
     b.AddColumn("v1")->Type(KuduColumnSchema::INT64)->NotNull();
     b.AddColumn("v2")->Type(KuduColumnSchema::STRING)->NotNull();
@@ -90,7 +90,7 @@ class CreateTableStressTest : public KuduTest {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    ASSERT_OK(KuduClientBuilder()
+    ASSERT_OK(YBClientBuilder()
                      .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
                      .Build(&client_));
 
@@ -113,7 +113,7 @@ class CreateTableStressTest : public KuduTest {
  protected:
   client::sp::shared_ptr<KuduClient> client_;
   gscoped_ptr<MiniCluster> cluster_;
-  KuduSchema schema_;
+  YBSchema schema_;
   std::shared_ptr<Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
   TabletServerMap ts_map_;
@@ -129,7 +129,7 @@ void CreateTableStressTest::CreateBigTable(const string& table_name, int num_tab
     split_rows.push_back(row);
   }
 
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
             .split_rows(split_rows)

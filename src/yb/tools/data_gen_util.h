@@ -27,7 +27,7 @@ class KuduPartialRow;
 class Random;
 
 namespace client {
-class KuduSchema;
+class YBSchema;
 } // namespace client
 
 namespace tools {
@@ -37,14 +37,14 @@ namespace tools {
 // At the time of this writing, we only support ints, bools, and strings.
 // For the numbers / bool, the value is truncated to fit the data type.
 // For the string, we encode the number as hex.
-void WriteValueToColumn(const client::KuduSchema& schema,
+void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
                         KuduPartialRow* row);
 
 // Generate row data for an arbitrary schema. Initial column value determined
 // by the value of 'record_id'.
-void GenerateDataForRow(const client::KuduSchema& schema, uint64_t record_id,
+void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
                         Random* random, KuduPartialRow* row);
 
 } // namespace tools

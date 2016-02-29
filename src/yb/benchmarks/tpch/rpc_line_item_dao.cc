@@ -39,27 +39,27 @@ DEFINE_bool(tpch_cache_blocks_when_scanning, true,
 
 namespace yb {
 
-using client::KuduInsert;
+using client::YBInsert;
 using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduError;
-using client::KuduPredicate;
-using client::KuduRowResult;
-using client::KuduScanner;
-using client::KuduSchema;
-using client::KuduSession;
-using client::KuduStatusCallback;
-using client::KuduStatusMemberCallback;
-using client::KuduTableCreator;
-using client::KuduUpdate;
-using client::KuduValue;
+using client::YBClientBuilder;
+using client::YBError;
+using client::YBPredicate;
+using client::YBRowResult;
+using client::YBScanner;
+using client::YBSchema;
+using client::YBSession;
+using client::YBStatusCallback;
+using client::YBStatusMemberCallback;
+using client::YBTableCreator;
+using client::YBUpdate;
+using client::YBValue;
 using std::vector;
 
 namespace {
 
-class FlushCallback : public KuduStatusCallback {
+class FlushCallback : public YBStatusCallback {
  public:
-  FlushCallback(client::sp::shared_ptr<KuduSession> session, Semaphore* sem)
+  FlushCallback(client::sp::shared_ptr<YBSession> session, Semaphore* sem)
       : session_(std::move(session)),
         sem_(sem) {
     sem_->Acquire();
@@ -77,20 +77,20 @@ class FlushCallback : public KuduStatusCallback {
     int nerrs = session_->CountPendingErrors();
     if (nerrs) {
       LOG(WARNING) << nerrs << " errors occured during last batch.";
-      vector<KuduError*> errors;
+      vector<YBError*> errors;
       ElementDeleter d(&errors);
       bool overflow;
       session_->GetPendingErrors(&errors, &overflow);
       if (overflow) {
         LOG(WARNING) << "Error overflow occured";
       }
-      for (KuduError* error : errors) {
+      for (YBError* error : errors) {
         LOG(WARNING) << "FAILED: " << error->failed_op().ToString();
       }
     }
   }
 
-  client::sp::shared_ptr<KuduSession> session_;
+  client::sp::shared_ptr<YBSession> session_;
   Semaphore *sem_;
 };
 
@@ -99,15 +99,15 @@ class FlushCallback : public KuduStatusCallback {
 const Slice RpcLineItemDAO::kScanUpperBound = Slice("1998-09-02");
 
 void RpcLineItemDAO::Init() {
-  const KuduSchema schema = tpch::CreateLineItemSchema();
+  const YBSchema schema = tpch::CreateLineItemSchema();
 
-  CHECK_OK(KuduClientBuilder()
+  CHECK_OK(YBClientBuilder()
            .add_master_server_addr(master_address_)
            .default_rpc_timeout(timeout_)
            .Build(&client_));
   Status s = client_->OpenTable(table_name_, &client_table_);
   if (s.IsNotFound()) {
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(table_name_)
              .schema(&schema)
              .num_replicas(1)
@@ -120,11 +120,11 @@ void RpcLineItemDAO::Init() {
 
   session_ = client_->NewSession();
   session_->SetTimeoutMillis(timeout_.ToMilliseconds());
-  CHECK_OK(session_->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
 void RpcLineItemDAO::WriteLine(boost::function<void(KuduPartialRow*)> f) {
-  gscoped_ptr<KuduInsert> insert(client_table_->NewInsert());
+  gscoped_ptr<YBInsert> insert(client_table_->NewInsert());
   f(insert->mutable_row());
   CHECK_OK(session_->Apply(insert.release()));
   ++batch_size_;
@@ -141,7 +141,7 @@ void RpcLineItemDAO::FlushIfBufferFull() {
 }
 
 void RpcLineItemDAO::MutateLine(boost::function<void(KuduPartialRow*)> f) {
-  gscoped_ptr<KuduUpdate> update(client_table_->NewUpdate());
+  gscoped_ptr<YBUpdate> update(client_table_->NewUpdate());
   f(update->mutable_row());
   CHECK_OK(session_->Apply(update.release()));
   ++batch_size_;
@@ -158,18 +158,18 @@ void RpcLineItemDAO::FinishWriting() {
 
 void RpcLineItemDAO::OpenScanner(const vector<string>& columns,
                                  gscoped_ptr<Scanner>* out_scanner) {
-  vector<KuduPredicate*> preds;
+  vector<YBPredicate*> preds;
   OpenScanner(columns, preds, out_scanner);
 }
 
 void RpcLineItemDAO::OpenScanner(const vector<string>& columns,
-                                 const vector<KuduPredicate*>& preds,
+                                 const vector<YBPredicate*>& preds,
                                  gscoped_ptr<Scanner>* out_scanner) {
   gscoped_ptr<Scanner> ret(new Scanner);
-  ret->scanner_.reset(new KuduScanner(client_table_.get()));
+  ret->scanner_.reset(new YBScanner(client_table_.get()));
   ret->scanner_->SetCacheBlocks(FLAGS_tpch_cache_blocks_when_scanning);
   CHECK_OK(ret->scanner_->SetProjectedColumns(columns));
-  for (KuduPredicate* pred : preds) {
+  for (YBPredicate* pred : preds) {
     CHECK_OK(ret->scanner_->AddConjunctPredicate(pred));
   }
   CHECK_OK(ret->scanner_->Open());
@@ -177,25 +177,25 @@ void RpcLineItemDAO::OpenScanner(const vector<string>& columns,
 }
 
 void RpcLineItemDAO::OpenTpch1Scanner(gscoped_ptr<Scanner>* out_scanner) {
-  vector<KuduPredicate*> preds;
+  vector<YBPredicate*> preds;
   preds.push_back(client_table_->NewComparisonPredicate(
-                      tpch::kShipDateColName, KuduPredicate::LESS_EQUAL,
-                      KuduValue::CopyString(kScanUpperBound)));
+                      tpch::kShipDateColName, YBPredicate::LESS_EQUAL,
+                      YBValue::CopyString(kScanUpperBound)));
   OpenScanner(tpch::GetTpchQ1QueryColumns(), preds, out_scanner);
 }
 
 void RpcLineItemDAO::OpenTpch1ScannerForOrderKeyRange(int64_t min_key, int64_t max_key,
                                                       gscoped_ptr<Scanner>* out_scanner) {
-  vector<KuduPredicate*> preds;
+  vector<YBPredicate*> preds;
   preds.push_back(client_table_->NewComparisonPredicate(
-                      tpch::kShipDateColName, KuduPredicate::LESS_EQUAL,
-                      KuduValue::CopyString(kScanUpperBound)));
+                      tpch::kShipDateColName, YBPredicate::LESS_EQUAL,
+                      YBValue::CopyString(kScanUpperBound)));
   preds.push_back(client_table_->NewComparisonPredicate(
-                      tpch::kOrderKeyColName, KuduPredicate::GREATER_EQUAL,
-                      KuduValue::FromInt(min_key)));
+                      tpch::kOrderKeyColName, YBPredicate::GREATER_EQUAL,
+                      YBValue::FromInt(min_key)));
   preds.push_back(client_table_->NewComparisonPredicate(
-                      tpch::kOrderKeyColName, KuduPredicate::LESS_EQUAL,
-                      KuduValue::FromInt(max_key)));
+                      tpch::kOrderKeyColName, YBPredicate::LESS_EQUAL,
+                      YBValue::FromInt(max_key)));
   OpenScanner(tpch::GetTpchQ1QueryColumns(), preds, out_scanner);
 }
 
@@ -207,12 +207,12 @@ bool RpcLineItemDAO::Scanner::HasMore() {
   return has_more;
 }
 
-void RpcLineItemDAO::Scanner::GetNext(vector<KuduRowResult> *rows) {
+void RpcLineItemDAO::Scanner::GetNext(vector<YBRowResult> *rows) {
   CHECK_OK(scanner_->NextBatch(rows));
 }
 
 bool RpcLineItemDAO::IsTableEmpty() {
-  KuduScanner scanner(client_table_.get());
+  YBScanner scanner(client_table_.get());
   CHECK_OK(scanner.Open());
   return !scanner.HasMoreRows();
 }

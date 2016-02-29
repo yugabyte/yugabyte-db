@@ -32,15 +32,15 @@ namespace yb {
 namespace client {
 
 TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   ASSERT_EQ("Invalid argument: no primary key specified",
             b.Build(&s).ToString());
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32)->NotNull();
   ASSERT_EQ("Invalid argument: no primary key specified",
@@ -48,8 +48,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
   b.AddColumn("x")->Type(KuduColumnSchema::INT32);
   b.AddColumn("x")->Type(KuduColumnSchema::INT32);
@@ -58,8 +58,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_KeyNotFirstColumn) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("key")->Type(KuduColumnSchema::INT32);
   b.AddColumn("x")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();;
   b.AddColumn("x")->Type(KuduColumnSchema::INT32);
@@ -68,8 +68,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_KeyNotFirstColumn) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_TwoPrimaryKeys) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->PrimaryKey();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32)->PrimaryKey();
   ASSERT_EQ("Invalid argument: multiple columns specified for primary key: a, b",
@@ -77,8 +77,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_TwoPrimaryKeys) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->PrimaryKey();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32);
   b.SetPrimaryKey({ "a", "b" });
@@ -88,8 +88,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32);
   b.AddColumn("c")->Type(KuduColumnSchema::INT32)->NotNull();
@@ -97,8 +97,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32)->NotNull();
   b.SetPrimaryKey({ "a", "b" });
@@ -110,28 +110,28 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_DefaultValues) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32)->NotNull()
-    ->Default(KuduValue::FromInt(12345));
+    ->Default(YBValue::FromInt(12345));
   ASSERT_EQ("OK", b.Build(&s).ToString());
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_DefaultValueString) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
   b.AddColumn("b")->Type(KuduColumnSchema::STRING)->NotNull()
-    ->Default(KuduValue::CopyString("abc"));
+    ->Default(YBValue::CopyString("abc"));
   b.AddColumn("c")->Type(KuduColumnSchema::BINARY)->NotNull()
-    ->Default(KuduValue::CopyString("def"));
+    ->Default(YBValue::CopyString("def"));
   ASSERT_EQ("OK", b.Build(&s).ToString());
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("x")->Type(KuduColumnSchema::INT32)->NotNull();
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32)->NotNull();
@@ -142,8 +142,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("a")->Type(KuduColumnSchema::INT32)->NotNull();
   b.AddColumn("b")->Type(KuduColumnSchema::INT32)->NotNull();
   b.SetPrimaryKey({ "foo" });

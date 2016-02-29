@@ -49,7 +49,7 @@ public class TestKuduTableInputFormat extends BaseKuduTest {
     row.addInt(2, 3);
     row.addString(3, "a string");
     row.addBoolean(4, true);
-    AsyncKuduSession session = client.newSession();
+    AsyncYBSession session = client.newSession();
     session.apply(insert).join(DEFAULT_SLEEP);
     session.close().join(DEFAULT_SLEEP);
 

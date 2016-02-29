@@ -58,8 +58,8 @@ METRIC_DECLARE_gauge_int64(raft_term);
 namespace yb {
 namespace tserver {
 
-using client::KuduInsert;
-using client::KuduSession;
+using client::YBInsert;
+using client::YBSession;
 using client::KuduTable;
 using client::sp::shared_ptr;
 using consensus::ConsensusRequestPB;
@@ -205,16 +205,16 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     shared_ptr<KuduTable> table;
     CHECK_OK(client_->OpenTable(kTableId, &table));
 
-    shared_ptr<KuduSession> session = client_->NewSession();
+    shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(60000);
-    CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
     for (int i = 0; i < num_batches; i++) {
       uint64_t first_row_in_batch = first_row + (i * count / num_batches);
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        gscoped_ptr<KuduInsert> insert(table->NewInsert());
+        gscoped_ptr<YBInsert> insert(table->NewInsert());
         KuduPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, j));
         CHECK_OK(row->SetInt32(1, j * 2));
@@ -231,12 +231,12 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
       Status s = session->Flush();
       if (PREDICT_FALSE(!s.ok())) {
-        std::vector<client::KuduError*> errors;
+        std::vector<client::YBError*> errors;
         ElementDeleter d(&errors);
         bool overflow;
         session->GetPendingErrors(&errors, &overflow);
         CHECK(!overflow);
-        for (const client::KuduError* e : errors) {
+        for (const client::YBError* e : errors) {
           CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
         }
         inserted -= errors.size();

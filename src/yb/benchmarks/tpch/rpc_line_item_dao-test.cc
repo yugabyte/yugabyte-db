@@ -33,8 +33,8 @@
 
 namespace yb {
 
-using client::KuduRowResult;
-using client::KuduSchema;
+using client::YBRowResult;
+using client::YBSchema;
 using std::string;
 using std::vector;
 
@@ -97,7 +97,7 @@ class RpcLineItemDAOTest : public KuduTest {
   int CountRows() {
     gscoped_ptr<RpcLineItemDAO::Scanner> scanner;
     dao_->OpenScanner(vector<string>(), &scanner);
-    vector<KuduRowResult> rows;
+    vector<YBRowResult> rows;
     int count = 0;
     while (scanner->HasMore()) {
       scanner->GetNext(&rows);
@@ -112,10 +112,10 @@ class RpcLineItemDAOTest : public KuduTest {
     gscoped_ptr<RpcLineItemDAO::Scanner> scanner;
     dao_->OpenTpch1ScannerForOrderKeyRange(min_orderkey, max_orderkey,
                                           &scanner);
-    vector<KuduRowResult> rows;
+    vector<YBRowResult> rows;
     while (scanner->HasMore()) {
       scanner->GetNext(&rows);
-      for (const KuduRowResult& row : rows) {
+      for (const YBRowResult& row : rows) {
         str_rows->push_back(row.ToString());
       }
     }
@@ -151,10 +151,10 @@ TEST_F(RpcLineItemDAOTest, TestUpdate) {
   dao_->FinishWriting();
   gscoped_ptr<RpcLineItemDAO::Scanner> scanner;
   dao_->OpenScanner({ tpch::kQuantityColName }, &scanner);
-  vector<KuduRowResult> rows;
+  vector<YBRowResult> rows;
   while (scanner->HasMore()) {
     scanner->GetNext(&rows);
-    for (const KuduRowResult& row : rows) {
+    for (const YBRowResult& row : rows) {
       int32_t l_quantity;
       ASSERT_OK(row.GetInt32(0, &l_quantity));
       ASSERT_EQ(12345, l_quantity);

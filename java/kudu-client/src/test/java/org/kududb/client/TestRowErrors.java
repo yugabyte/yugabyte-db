@@ -39,7 +39,7 @@ public class TestRowErrors extends BaseKuduTest {
     String tableName = TestRowErrors.class.getName() + "-" + System.currentTimeMillis();
     createTable(tableName, basicSchema, new CreateTableOptions());
     table = openTable(tableName);
-    AsyncKuduSession session = client.newSession();
+    AsyncYBSession session = client.newSession();
 
     // Insert 3 rows to play with.
     for (int i = 0; i < 3; i++) {
@@ -55,7 +55,7 @@ public class TestRowErrors extends BaseKuduTest {
     // Now try inserting two dupes and one good row, make sure we get only two errors back.
     dupeForZero = createInsert(0);
     Insert dupeForTwo = createInsert(2);
-    session.setFlushMode(AsyncKuduSession.FlushMode.MANUAL_FLUSH);
+    session.setFlushMode(AsyncYBSession.FlushMode.MANUAL_FLUSH);
     session.apply(dupeForZero);
     session.apply(dupeForTwo);
     session.apply(createInsert(4));
@@ -76,8 +76,8 @@ public class TestRowErrors extends BaseKuduTest {
     String tableName = TestRowErrors.class.getName() + "-" + System.currentTimeMillis();
     createFourTabletsTableWithNineRows(tableName);
     table = openTable(tableName);
-    KuduSession session = syncClient.newSession();
-    session.setFlushMode(KuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+    YBSession session = syncClient.newSession();
+    session.setFlushMode(YBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
 
     int dupRows = 3;
     session.apply(createInsert(12));

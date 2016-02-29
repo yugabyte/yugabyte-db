@@ -42,12 +42,12 @@ cdef class ColumnSpec:
 
 cdef class SchemaBuilder:
     cdef:
-        KuduSchemaBuilder builder
+        YBSchemaBuilder builder
 
 
 cdef class Schema:
     cdef:
-        const KuduSchema* schema
+        const YBSchema* schema
         object parent
         bint own_schema
         map[string, int] _col_mapping

@@ -70,7 +70,7 @@ public abstract class Operation extends KuduRpc<OperationResponse> implements Ku
   private final PartialRow row;
 
   /**
-   * Package-private constructor. Subclasses need to be instantiated via AsyncKuduSession
+   * Package-private constructor. Subclasses need to be instantiated via AsyncYBSession
    * @param table table with the schema to use for this operation
    */
   Operation(KuduTable table) {

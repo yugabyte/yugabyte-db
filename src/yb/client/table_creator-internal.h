@@ -27,7 +27,7 @@ namespace yb {
 
 namespace client {
 
-class KuduTableCreator::Data {
+class YBTableCreator::Data {
  public:
   explicit Data(KuduClient* client);
   ~Data();
@@ -36,7 +36,7 @@ class KuduTableCreator::Data {
 
   std::string table_name_;
 
-  const KuduSchema* schema_;
+  const YBSchema* schema_;
 
   std::vector<const KuduPartialRow*> split_rows_;
 

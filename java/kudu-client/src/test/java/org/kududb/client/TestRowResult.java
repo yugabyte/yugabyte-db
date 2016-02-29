@@ -62,10 +62,10 @@ public class TestRowResult extends BaseKuduTest {
     row.setNull(10);
     row.addLong(11, 11l);
 
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.apply(insert);
 
-    KuduScanner scanner = syncClient.newScannerBuilder(table).build();
+    YBScanner scanner = syncClient.newScannerBuilder(table).build();
     while (scanner.hasMoreRows()) {
       RowResultIterator it = scanner.nextRows();
       assertTrue(it.hasNext());

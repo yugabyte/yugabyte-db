@@ -46,11 +46,11 @@ int KuduScanBatch::NumRows() const {
   return data_->num_rows();
 }
 
-KuduRowResult KuduScanBatch::Row(int idx) const {
+YBRowResult KuduScanBatch::Row(int idx) const {
   return data_->row(idx);
 }
 
-const KuduSchema* KuduScanBatch::projection_schema() const {
+const YBSchema* KuduScanBatch::projection_schema() const {
   return data_->client_projection_;
 }
 
@@ -217,7 +217,7 @@ const void* KuduScanBatch::RowPtr::cell(int col_idx) const {
   return row_data_ + schema_->column_offset(col_idx);
 }
 
-const KuduSchema* KuduScanBatch::RowPtr::row_schema() const {
+const YBSchema* KuduScanBatch::RowPtr::row_schema() const {
   return client_schema_;
 }
 

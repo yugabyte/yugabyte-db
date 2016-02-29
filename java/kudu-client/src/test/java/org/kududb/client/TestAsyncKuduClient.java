@@ -56,7 +56,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
 
     // Test that we can reconnect to a TS while scanning.
     // 1. Insert enough rows to have to call next() multiple times.
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.setFlushMode(SessionConfiguration.FlushMode.AUTO_FLUSH_BACKGROUND);
     int rowCount = 200;
     for (int i = 0; i < rowCount; i++) {
@@ -65,7 +65,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
     session.flush();
 
     // 2. Start a scanner with a small max num bytes.
-    AsyncKuduScanner scanner = client.newScannerBuilder(table)
+    AsyncYBScanner scanner = client.newScannerBuilder(table)
         .batchSizeBytes(1)
         .build();
     Deferred<RowResultIterator> rri = scanner.nextRows();
@@ -86,7 +86,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
     String badHostname = "some-unknown-host-hopefully";
 
     // Test that a bad hostname for the master makes us error out quickly.
-    AsyncKuduClient invalidClient = new AsyncKuduClient.AsyncKuduClientBuilder(badHostname).build();
+    AsyncKuduClient invalidClient = new AsyncKuduClient.AsyncYBClientBuilder(badHostname).build();
     try {
       invalidClient.listTabletServers().join(1000);
       fail("This should have failed quickly");

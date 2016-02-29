@@ -24,7 +24,7 @@ import org.kududb.annotations.InterfaceAudience;
 import org.kududb.tserver.Tserver;
 
 /**
- * Response type for Batch (which is used internally by AsyncKuduSession).
+ * Response type for Batch (which is used internally by AsyncYBSession).
  * Provides the Hybrid Time write timestamp returned by the Tablet Server.
  */
 @InterfaceAudience.Private
@@ -78,7 +78,7 @@ public class BatchResponse extends KuduRpcResponse {
 
   /**
    * Gives the write timestamp that was returned by the Tablet Server.
-   * @return a timestamp in milliseconds, 0 if the external consistency mode set in AsyncKuduSession
+   * @return a timestamp in milliseconds, 0 if the external consistency mode set in AsyncYBSession
    * wasn't CLIENT_PROPAGATED
    */
   public long getWriteTimestamp() {

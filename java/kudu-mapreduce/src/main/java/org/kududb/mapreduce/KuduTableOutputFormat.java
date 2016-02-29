@@ -95,7 +95,7 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
 
   private KuduClient client;
   private KuduTable table;
-  private KuduSession session;
+  private YBSession session;
   private long operationTimeoutMs;
 
   @Override
@@ -108,7 +108,7 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
         AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS);
     int bufferSpace = this.conf.getInt(BUFFER_ROW_COUNT_KEY, 1000);
 
-    this.client = new KuduClient.KuduClientBuilder(masterAddress)
+    this.client = new KuduClient.YBClientBuilder(masterAddress)
         .defaultOperationTimeoutMs(operationTimeoutMs)
         .build();
     try {
@@ -119,7 +119,7 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
           "master address= " + masterAddress, ex);
     }
     this.session = client.newSession();
-    this.session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+    this.session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
     this.session.setMutationBufferSpace(bufferSpace);
     this.session.setIgnoreAllDuplicateRows(true);
     String multitonKey = String.valueOf(Thread.currentThread().getId());
@@ -169,9 +169,9 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
   protected class TableRecordWriter extends RecordWriter<NullWritable, Operation> {
 
     private final AtomicLong rowsWithErrors = new AtomicLong();
-    private final KuduSession session;
+    private final YBSession session;
 
-    public TableRecordWriter(KuduSession session) {
+    public TableRecordWriter(YBSession session) {
       this.session = session;
     }
 

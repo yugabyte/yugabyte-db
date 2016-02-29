@@ -26,9 +26,9 @@ namespace yb {
 static const client::KuduColumnSchema::DataType kString =
     client::KuduColumnSchema::STRING;
 
-inline client::KuduSchema CreateYCSBSchema() {
-  client::KuduSchema s;
-  client::KuduSchemaBuilder b;
+inline client::YBSchema CreateYCSBSchema() {
+  client::YBSchema s;
+  client::YBSchemaBuilder b;
 
   b.AddColumn("key")->Type(kString)->NotNull()->PrimaryKey();
   b.AddColumn("field0")->Type(kString)->NotNull();

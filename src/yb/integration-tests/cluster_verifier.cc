@@ -107,18 +107,18 @@ Status ClusterVerifier::DoCheckRowCount(const std::string& table_name,
                                         ComparisonMode mode,
                                         int expected_row_count) {
   client::sp::shared_ptr<client::KuduClient> client;
-  client::KuduClientBuilder builder;
+  client::YBClientBuilder builder;
   RETURN_NOT_OK_PREPEND(cluster_->CreateClient(builder,
                                                &client),
                         "Unable to connect to cluster");
   client::sp::shared_ptr<client::KuduTable> table;
   RETURN_NOT_OK_PREPEND(client->OpenTable(table_name, &table),
                         "Unable to open table");
-  client::KuduScanner scanner(table.get());
+  client::YBScanner scanner(table.get());
   CHECK_OK(scanner.SetProjectedColumns(vector<string>()));
   RETURN_NOT_OK_PREPEND(scanner.Open(), "Unable to open scanner");
   int count = 0;
-  vector<client::KuduRowResult> rows;
+  vector<client::YBRowResult> rows;
   while (scanner.HasMoreRows()) {
     RETURN_NOT_OK_PREPEND(scanner.NextBatch(&rows), "Unable to read from scanner");
     count += rows.size();

@@ -70,7 +70,7 @@ class KuduClient::Data {
 
   Status CreateTable(KuduClient* client,
                      const master::CreateTableRequestPB& req,
-                     const KuduSchema& schema,
+                     const YBSchema& schema,
                      const MonoTime& deadline);
 
   Status IsCreateTableInProgress(KuduClient* client,
@@ -102,7 +102,7 @@ class KuduClient::Data {
   Status GetTableSchema(KuduClient* client,
                         const std::string& table_name,
                         const MonoTime& deadline,
-                        KuduSchema* schema,
+                        YBSchema* schema,
                         PartitionSchema* partition_schema,
                         std::string* table_id);
 

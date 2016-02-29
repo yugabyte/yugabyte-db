@@ -53,7 +53,7 @@ class Status;
 
 namespace client {
 class KuduClient;
-class KuduSchema;
+class YBSchema;
 class KuduTable;
 }
 
@@ -93,7 +93,7 @@ typedef std::unordered_multimap<std::string, TServerDetails*> TabletReplicaMap;
 typedef std::unordered_map<std::string, TServerDetails*> TabletServerMap;
 
 // Returns possibly the simplest imaginable schema, with a single int key column.
-client::KuduSchema SimpleIntKeyKuduSchema();
+client::YBSchema SimpleIntKeyYBSchema();
 
 // Create a populated TabletServerMap by interrogating the master.
 // Note: The bare-pointer TServerDetails values must be deleted by the caller!

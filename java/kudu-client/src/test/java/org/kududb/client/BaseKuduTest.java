@@ -83,7 +83,7 @@ public class BaseKuduTest {
     masterHostPorts = miniCluster.getMasterHostPorts();
 
     LOG.info("Creating new Kudu client...");
-    client = new AsyncKuduClient.AsyncKuduClientBuilder(masterAddresses).build();
+    client = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses).build();
     syncClient = new KuduClient(client);
     LOG.info("Waiting for tablet servers...");
     if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
@@ -137,7 +137,7 @@ public class BaseKuduTest {
    * Counts the rows from the {@code scanner} until exhaustion. It doesn't require the scanner to
    * be new, so it can be used to finish scanning a previously-started scan.
    */
-  protected static int countRowsInScan(AsyncKuduScanner scanner)
+  protected static int countRowsInScan(AsyncYBScanner scanner)
       throws Exception {
     final AtomicInteger counter = new AtomicInteger();
 
@@ -164,7 +164,7 @@ public class BaseKuduTest {
 
   protected List<String> scanTableToStrings(KuduTable table) throws Exception {
     List<String> rowStrings = Lists.newArrayList();
-    KuduScanner scanner = syncClient.newScannerBuilder(table).build();
+    YBScanner scanner = syncClient.newScannerBuilder(table).build();
     while (scanner.hasMoreRows()) {
       RowResultIterator rows = scanner.nextRows();
       for (RowResult r : rows) {
@@ -185,7 +185,7 @@ public class BaseKuduTest {
       builder.addSplitRow(splitRow);
     }
     KuduTable table = createTable(tableName, basicSchema, builder);
-    AsyncKuduSession session = client.newSession();
+    AsyncYBSession session = client.newSession();
 
     // create a table with on empty tablet and 3 tablets of 3 rows each
     for (int key1 : KEYS) {

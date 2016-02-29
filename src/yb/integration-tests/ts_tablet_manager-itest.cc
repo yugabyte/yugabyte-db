@@ -51,12 +51,12 @@ namespace yb {
 namespace tserver {
 
 using client::KuduClient;
-using client::KuduSchema;
+using client::YBSchema;
 using client::KuduTable;
-using client::KuduTableCreator;
+using client::YBTableCreator;
 using consensus::GetConsensusRole;
 using consensus::RaftPeerPB;
-using itest::SimpleIntKeyKuduSchema;
+using itest::SimpleIntKeyYBSchema;
 using master::MasterServiceProxy;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
@@ -73,13 +73,13 @@ static const int kNumReplicas = 2;
 class TsTabletManagerITest : public KuduTest {
  public:
   TsTabletManagerITest()
-      : schema_(SimpleIntKeyKuduSchema()) {
+      : schema_(SimpleIntKeyYBSchema()) {
   }
   virtual void SetUp() OVERRIDE;
   virtual void TearDown() OVERRIDE;
 
  protected:
-  const KuduSchema schema_;
+  const YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
   client::sp::shared_ptr<KuduClient> client_;
@@ -117,7 +117,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
 
   // Create the table.
   client::sp::shared_ptr<KuduTable> table;
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
             .num_replicas(kNumReplicas)

@@ -32,7 +32,7 @@ namespace yb {
 
 namespace client {
 
-class KuduScanner::Data {
+class YBScanner::Data {
  public:
   explicit Data(KuduTable* table);
   ~Data();
@@ -44,7 +44,7 @@ class KuduScanner::Data {
   void CopyPredicateBound(const ColumnSchema& col,
                           const void* bound_src, std::string* bound_dst);
 
-  // Called when KuduScanner::NextBatch or KuduScanner::Data::OpenTablet result in an RPC or
+  // Called when YBScanner::NextBatch or YBScanner::Data::OpenTablet result in an RPC or
   // server error. Returns the error status if the call cannot be retried.
   //
   // The number of parameters reflects the complexity of handling retries.
@@ -132,9 +132,9 @@ class KuduScanner::Data {
   // The projection schema used in the scan.
   const Schema* projection_;
 
-  // 'projection_' after it is converted to KuduSchema, so that users can obtain
+  // 'projection_' after it is converted to YBSchema, so that users can obtain
   // the projection without having to include common/schema.h.
-  KuduSchema client_projection_;
+  YBSchema client_projection_;
 
   Arena arena_;
   AutoReleasePool pool_;
@@ -153,7 +153,7 @@ class KuduScanner::Data {
   // Number of attempts since the last successful scan.
   int scan_attempts_;
 
-  // The deprecated "NextBatch(vector<KuduRowResult>*) API requires some local
+  // The deprecated "NextBatch(vector<YBRowResult>*) API requires some local
   // storage for the actual row data. If that API is used, this member keeps the
   // actual storage for the batch that is returned.
   KuduScanBatch batch_for_old_api_;
@@ -175,18 +175,18 @@ class KuduScanBatch::Data {
 
   Status Reset(rpc::RpcController* controller,
                const Schema* projection,
-               const KuduSchema* client_projection,
+               const YBSchema* client_projection,
                gscoped_ptr<RowwiseRowBlockPB> resp_data);
 
   int num_rows() const {
     return resp_data_.num_rows();
   }
 
-  KuduRowResult row(int idx) {
+  YBRowResult row(int idx) {
     DCHECK_GE(idx, 0);
     DCHECK_LT(idx, num_rows());
     int offset = idx * projected_row_size_;
-    return KuduRowResult(projection_, client_projection_, &direct_data_[offset]);
+    return YBRowResult(projection_, client_projection_, &direct_data_[offset]);
   }
 
   void ExtractRows(vector<KuduScanBatch::RowPtr>* rows);
@@ -210,8 +210,8 @@ class KuduScanBatch::Data {
 
   // The projection being scanned.
   const Schema* projection_;
-  // The KuduSchema version of 'projection_'
-  const KuduSchema* client_projection_;
+  // The YBSchema version of 'projection_'
+  const YBSchema* client_projection_;
 
   // The number of bytes of direct data for each row.
   size_t projected_row_size_;

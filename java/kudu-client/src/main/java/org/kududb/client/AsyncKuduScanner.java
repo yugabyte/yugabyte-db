@@ -64,7 +64,7 @@ import static org.kududb.tserver.Tserver.*;
  * end key</i>, you <b>must</b> call {@link #close} before disposing of the scanner.
  * Note that it's always safe to call {@link #close} on a scanner.
  * <p>
- * A {@code AsyncKuduScanner} is not re-usable. Should you want to scan the same rows
+ * A {@code AsyncYBScanner} is not re-usable. Should you want to scan the same rows
  * or the same table again, you must create a new one.
  *
  * <h1>A note on passing {@code byte} arrays in argument</h1>
@@ -75,9 +75,9 @@ import static org.kududb.tserver.Tserver.*;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
-public final class AsyncKuduScanner {
+public final class AsyncYBScanner {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AsyncKuduScanner.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AsyncYBScanner.class);
 
   /**
    * The possible read modes for scanners.
@@ -218,7 +218,7 @@ public final class AsyncKuduScanner {
 
   private static final AtomicBoolean PARTITION_PRUNE_WARN = new AtomicBoolean(true);
 
-  AsyncKuduScanner(AsyncKuduClient client, KuduTable table, List<String> projectedNames,
+  AsyncYBScanner(AsyncKuduClient client, KuduTable table, List<String> projectedNames,
                    List<Integer> projectedIndexes, ReadMode readMode, long scanRequestTimeout,
                    List<Tserver.ColumnRangePredicatePB> columnRangePredicates, long limit,
                    boolean cacheBlocks, boolean prefetching,
@@ -385,8 +385,8 @@ public final class AsyncKuduScanner {
 
       // We need to open the scanner first.
       return client.openScanner(this).addCallbackDeferring(
-          new Callback<Deferred<RowResultIterator>, AsyncKuduScanner.Response>() {
-            public Deferred<RowResultIterator> call(final AsyncKuduScanner.Response resp) {
+          new Callback<Deferred<RowResultIterator>, AsyncYBScanner.Response>() {
+            public Deferred<RowResultIterator> call(final AsyncYBScanner.Response resp) {
               if (!resp.more || resp.scanner_id == null) {
                 scanFinished();
                 return Deferred.fromResult(resp.data); // there might be data to return
@@ -422,7 +422,7 @@ public final class AsyncKuduScanner {
     @Override
     public RowResultIterator call(RowResultIterator arg) throws Exception {
       if (hasMoreRows()) {
-        prefetcherDeferred = client.scanNextRows(AsyncKuduScanner.this).addCallbacks
+        prefetcherDeferred = client.scanNextRows(AsyncYBScanner.this).addCallbacks
             (got_next_row, nextRowErrback());
       }
       return null;
@@ -458,7 +458,7 @@ public final class AsyncKuduScanner {
     return new Callback<Exception, Exception>() {
       public Exception call(final Exception error) {
         final AsyncKuduClient.RemoteTablet old_tablet = tablet;  // Save before invalidate().
-        String message = old_tablet + " pretends to not know " + AsyncKuduScanner.this;
+        String message = old_tablet + " pretends to not know " + AsyncYBScanner.this;
         LOG.warn(message, error);
         invalidate();  // If there was an error, don't assume we're still OK.
         return error;  // Let the error propagate.
@@ -528,7 +528,7 @@ public final class AsyncKuduScanner {
   public String toString() {
     final String tablet = this.tablet == null ? "null" : this.tablet.getTabletIdAsString();
     final StringBuilder buf = new StringBuilder();
-    buf.append("KuduScanner(table=");
+    buf.append("YBScanner(table=");
     buf.append(table.getName());
     buf.append(", tablet=").append(tablet);
     buf.append(", scannerId=").append(Bytes.pretty(scannerId));
@@ -632,7 +632,7 @@ public final class AsyncKuduScanner {
     }
 
     public String toString() {
-      return "AsyncKuduScanner$Response(scannerId=" + Bytes.pretty(scanner_id)
+      return "AsyncYBScanner$Response(scannerId=" + Bytes.pretty(scanner_id)
           + ", data=" + data + ", more=" + more +  ") ";
     }
   }
@@ -669,34 +669,34 @@ public final class AsyncKuduScanner {
       final ScanRequestPB.Builder builder = ScanRequestPB.newBuilder();
       switch (state) {
         case OPENING:
-          // Save the tablet in the AsyncKuduScanner.  This kind of a kludge but it really
+          // Save the tablet in the AsyncYBScanner.  This kind of a kludge but it really
           // is the easiest way.
-          AsyncKuduScanner.this.tablet = super.getTablet();
+          AsyncYBScanner.this.tablet = super.getTablet();
           NewScanRequestPB.Builder newBuilder = NewScanRequestPB.newBuilder();
           newBuilder.setLimit(limit); // currently ignored
           newBuilder.addAllProjectedColumns(ProtobufHelper.schemaToListPb(schema));
           newBuilder.setTabletId(ZeroCopyLiteralByteString.wrap(tablet.getTabletIdAsBytes()));
-          newBuilder.setReadMode(AsyncKuduScanner.this.getReadMode().pbVersion());
+          newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
           newBuilder.setCacheBlocks(cacheBlocks);
           // if the last propagated timestamp is set send it with the scan
           if (table.getAsyncClient().getLastPropagatedTimestamp() != AsyncKuduClient.NO_TIMESTAMP) {
             newBuilder.setPropagatedTimestamp(table.getAsyncClient().getLastPropagatedTimestamp());
           }
-          newBuilder.setReadMode(AsyncKuduScanner.this.getReadMode().pbVersion());
+          newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
 
           // if the mode is set to read on snapshot sent the snapshot timestamp
-          if (AsyncKuduScanner.this.getReadMode() == ReadMode.READ_AT_SNAPSHOT &&
-            AsyncKuduScanner.this.getSnapshotTimestamp() != AsyncKuduClient.NO_TIMESTAMP) {
-            newBuilder.setSnapTimestamp(AsyncKuduScanner.this.getSnapshotTimestamp());
+          if (AsyncYBScanner.this.getReadMode() == ReadMode.READ_AT_SNAPSHOT &&
+            AsyncYBScanner.this.getSnapshotTimestamp() != AsyncKuduClient.NO_TIMESTAMP) {
+            newBuilder.setSnapTimestamp(AsyncYBScanner.this.getSnapshotTimestamp());
           }
 
-          if (AsyncKuduScanner.this.startPrimaryKey != AsyncKuduClient.EMPTY_ARRAY &&
-              AsyncKuduScanner.this.startPrimaryKey.length > 0) {
+          if (AsyncYBScanner.this.startPrimaryKey != AsyncKuduClient.EMPTY_ARRAY &&
+              AsyncYBScanner.this.startPrimaryKey.length > 0) {
             newBuilder.setStartPrimaryKey(ZeroCopyLiteralByteString.copyFrom(startPrimaryKey));
           }
 
-          if (AsyncKuduScanner.this.endPrimaryKey != AsyncKuduClient.EMPTY_ARRAY &&
-              AsyncKuduScanner.this.endPrimaryKey.length > 0) {
+          if (AsyncYBScanner.this.endPrimaryKey != AsyncKuduClient.EMPTY_ARRAY &&
+              AsyncYBScanner.this.endPrimaryKey.length > 0) {
             newBuilder.setStopPrimaryKey(ZeroCopyLiteralByteString.copyFrom(endPrimaryKey));
           }
 
@@ -773,22 +773,22 @@ public final class AsyncKuduScanner {
   }
 
   /**
-   * A Builder class to build {@link AsyncKuduScanner}.
+   * A Builder class to build {@link AsyncYBScanner}.
    * Use {@link AsyncKuduClient#newScannerBuilder} in order to get a builder instance.
    */
-  public static class AsyncKuduScannerBuilder
-      extends AbstractKuduScannerBuilder<AsyncKuduScannerBuilder, AsyncKuduScanner> {
+  public static class AsyncYBScannerBuilder
+      extends AbstractYBScannerBuilder<AsyncYBScannerBuilder, AsyncYBScanner> {
 
-    AsyncKuduScannerBuilder(AsyncKuduClient client, KuduTable table) {
+    AsyncYBScannerBuilder(AsyncKuduClient client, KuduTable table) {
       super(client, table);
     }
 
     /**
-     * Builds an {@link AsyncKuduScanner} using the passed configurations.
-     * @return a new {@link AsyncKuduScanner}
+     * Builds an {@link AsyncYBScanner} using the passed configurations.
+     * @return a new {@link AsyncYBScanner}
      */
-    public AsyncKuduScanner build() {
-      return new AsyncKuduScanner(
+    public AsyncYBScanner build() {
+      return new AsyncYBScanner(
           client, table, projectedColumnNames, projectedColumnIndexes, readMode,
           scanRequestTimeout, columnRangePredicates, limit, cacheBlocks,
           prefetching, lowerBoundPrimaryKey, upperBoundPrimaryKey,

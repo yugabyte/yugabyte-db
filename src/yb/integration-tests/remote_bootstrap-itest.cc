@@ -49,10 +49,10 @@ DEFINE_int32(test_delete_leader_num_writer_threads, 1,
              "Number of writer threads in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 
 using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
-using yb::client::KuduSchema;
-using yb::client::KuduSchemaFromSchema;
-using yb::client::KuduTableCreator;
+using yb::client::YBClientBuilder;
+using yb::client::YBSchema;
+using yb::client::YBSchemaFromSchema;
+using yb::client::YBTableCreator;
 using yb::client::sp::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::itest::TServerDetails;
@@ -119,7 +119,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
                                           cluster_->messenger(),
                                           &ts_map_));
-  KuduClientBuilder builder;
+  YBClientBuilder builder;
   ASSERT_OK(cluster_->CreateClient(builder, &client_));
 }
 
@@ -411,14 +411,14 @@ TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstraps) {
   // Create a table with several tablets. These will all be simultaneously
   // remotely bootstrapped to a single target node from the same leader host.
   const int kNumTablets = 10;
-  KuduSchema client_schema(KuduSchemaFromSchema(GetSimpleTestSchema()));
+  YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
   vector<const KuduPartialRow*> splits;
   for (int i = 0; i < kNumTablets - 1; i++) {
     KuduPartialRow* row = client_schema.NewRow();
     ASSERT_OK(row->SetInt32(0, numeric_limits<int32_t>::max() / kNumTablets * (i + 1)));
     splits.push_back(row);
   }
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkload::kDefaultTableName)
                           .split_rows(splits)
                           .schema(&client_schema)

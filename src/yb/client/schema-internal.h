@@ -83,7 +83,7 @@ class KuduColumnSpec::Data {
   bool primary_key;
 
   bool has_default;
-  KuduValue* default_val; // Owned.
+  YBValue* default_val; // Owned.
 
   // For ALTER
   bool remove_default;

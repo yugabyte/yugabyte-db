@@ -32,7 +32,7 @@ public class TestTimeouts extends BaseKuduTest {
    */
   @Test(timeout = 100000)
   public void testLowTimeouts() throws Exception {
-    KuduClient lowTimeoutsClient = new KuduClient.KuduClientBuilder(masterAddresses)
+    KuduClient lowTimeoutsClient = new KuduClient.YBClientBuilder(masterAddresses)
         .defaultAdminOperationTimeoutMs(1)
         .defaultOperationTimeoutMs(1)
         .build();
@@ -47,7 +47,7 @@ public class TestTimeouts extends BaseKuduTest {
     createTable(TABLE_NAME, basicSchema, new CreateTableOptions());
     KuduTable table = openTable(TABLE_NAME);
 
-    KuduSession lowTimeoutSession = lowTimeoutsClient.newSession();
+    YBSession lowTimeoutSession = lowTimeoutsClient.newSession();
 
     try {
       lowTimeoutSession.apply(createBasicSchemaInsert(table, 1));
@@ -58,7 +58,7 @@ public class TestTimeouts extends BaseKuduTest {
     // Expected.
     }
 
-    KuduScanner lowTimeoutScanner = lowTimeoutsClient.newScannerBuilder(table).build();
+    YBScanner lowTimeoutScanner = lowTimeoutsClient.newScannerBuilder(table).build();
     try {
       lowTimeoutScanner.nextRows();
       fail("Should have timed out");

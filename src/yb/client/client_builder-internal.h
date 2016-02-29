@@ -26,7 +26,7 @@ namespace yb {
 
 namespace client {
 
-class KuduClientBuilder::Data {
+class YBClientBuilder::Data {
  public:
   Data();
   ~Data();

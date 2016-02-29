@@ -90,7 +90,7 @@ public class TestOutputFormatJob extends BaseKuduTest {
 
     // Make sure the data's there
     KuduTable table = openTable(TABLE_NAME);
-    AsyncKuduScanner.AsyncKuduScannerBuilder builder =
+    AsyncYBScanner.AsyncYBScannerBuilder builder =
         client.newScannerBuilder(table);
     assertEquals(2, countRowsInScan(builder.build()));
   }

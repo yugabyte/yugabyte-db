@@ -30,7 +30,7 @@ namespace yb {
 
 namespace client {
 class KuduClient;
-class KuduClientBuilder;
+class YBClientBuilder;
 }
 
 namespace master {
@@ -158,7 +158,7 @@ class MiniCluster {
   // used.
   //
   // REQUIRES: the cluster must have already been Start()ed.
-  Status CreateClient(client::KuduClientBuilder* builder,
+  Status CreateClient(client::YBClientBuilder* builder,
                       client::sp::shared_ptr<client::KuduClient>* client);
 
  private:

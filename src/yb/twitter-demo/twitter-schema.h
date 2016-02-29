@@ -25,12 +25,12 @@ namespace yb {
 namespace twitter_demo {
 
 using client::KuduColumnSchema;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
+using client::YBSchema;
+using client::YBSchemaBuilder;
 
-inline KuduSchema CreateTwitterSchema() {
-  KuduSchema s;
-  KuduSchemaBuilder b;
+inline YBSchema CreateTwitterSchema() {
+  YBSchema s;
+  YBSchemaBuilder b;
   b.AddColumn("tweet_id")->Type(KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
   b.AddColumn("text")->Type(KuduColumnSchema::STRING)->NotNull();
   b.AddColumn("source")->Type(KuduColumnSchema::STRING)->NotNull();

@@ -127,7 +127,7 @@ class TestWorkload {
   void WriteThread();
 
   ExternalMiniCluster* cluster_;
-  client::KuduClientBuilder client_builder_;
+  client::YBClientBuilder client_builder_;
   client::sp::shared_ptr<client::KuduClient> client_;
 
   int payload_bytes_;

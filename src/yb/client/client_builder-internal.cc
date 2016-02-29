@@ -21,12 +21,12 @@ namespace yb {
 
 namespace client {
 
-KuduClientBuilder::Data::Data()
+YBClientBuilder::Data::Data()
   : default_admin_operation_timeout_(MonoDelta::FromSeconds(10)),
     default_rpc_timeout_(MonoDelta::FromSeconds(5)) {
 }
 
-KuduClientBuilder::Data::~Data() {
+YBClientBuilder::Data::~Data() {
 }
 
 } // namespace client

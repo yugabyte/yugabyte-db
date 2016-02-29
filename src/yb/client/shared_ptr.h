@@ -20,7 +20,7 @@
 
 // Kudu uses c++11 features internally, but provides a client interface which
 // does not require c++11. We use std::tr1::shared_ptr in our public interface
-// to hold shared instances of KuduClient, KuduSession, and KuduTable.
+// to hold shared instances of KuduClient, YBSession, and KuduTable.
 //
 // Unfortunately, on OS X, libc++ is the default c++ standard library
 // implementation and is required when compiling with c++11, but it does not

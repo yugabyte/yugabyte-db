@@ -49,7 +49,7 @@ DEFINE_int32(num_replicas, 3, "Number of replicas per tablet server");
 namespace yb {
 namespace tserver {
 
-using client::KuduSchemaFromSchema;
+using client::YBSchemaFromSchema;
 using consensus::OpId;
 using consensus::RaftPeerPB;
 using itest::GetReplicaStatusAndCheckIfLeader;
@@ -401,7 +401,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void CreateClient(client::sp::shared_ptr<client::KuduClient>* client) {
     // Connect to the cluster.
-    ASSERT_OK(client::KuduClientBuilder()
+    ASSERT_OK(client::YBClientBuilder()
                      .add_master_server_addr(cluster_->master()->bound_rpc_addr().ToString())
                      .Build(client));
   }
@@ -410,8 +410,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void CreateTable() {
     // The tests here make extensive use of server schemas, but we need
     // a client schema to create the table.
-    client::KuduSchema client_schema(KuduSchemaFromSchema(schema_));
-    gscoped_ptr<client::KuduTableCreator> table_creator(client_->NewTableCreator());
+    client::YBSchema client_schema(YBSchemaFromSchema(schema_));
+    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableId)
              .schema(&client_schema)
              .num_replicas(FLAGS_num_replicas)

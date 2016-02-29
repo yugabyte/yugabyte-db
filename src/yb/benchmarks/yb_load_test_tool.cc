@@ -80,10 +80,10 @@ using yb::MutexLock;
 using yb::CountDownLatch;
 using yb::Slice;
 
-void ConfigureSession(KuduSession* session) {
-  session->SetFlushMode(KuduSession::FlushMode::MANUAL_FLUSH);
+void ConfigureSession(YBSession* session) {
+  session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH);
   session->SetTimeoutMillis(60000);
-  session->SetExternalConsistencyMode(KuduSession::ExternalConsistencyMode::CLIENT_PROPAGATED);
+  session->SetExternalConsistencyMode(YBSession::ExternalConsistencyMode::CLIENT_PROPAGATED);
 }
 
 class KeyIndexSet {
@@ -272,7 +272,7 @@ void MultiThreadedWriter::WaitForCompletion() {
 
 void MultiThreadedWriter::RunActionThread(int writerIndex) {
   LOG(INFO) << "Writer thread " << writerIndex << " started";
-  shared_ptr<KuduSession> session(client_->NewSession());
+  shared_ptr<YBSession> session(client_->NewSession());
   ConfigureSession(session.get());
   while (true) {
     int64 key_index = next_key_++;
@@ -280,7 +280,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
       break;
     }
 
-    gscoped_ptr<KuduInsert> insert(table_->NewInsert());
+    gscoped_ptr<YBInsert> insert(table_->NewInsert());
     string key_str(GetKeyByIndex(key_index));
     string value_str(strings::Substitute("value$0", key_index));
     insert->mutable_row()->SetString("k", key_str.c_str());
@@ -389,7 +389,7 @@ void MultiThreadedReader::Stop() {
 
 void MultiThreadedReader::RunActionThread(int readerIndex) {
   LOG(INFO) << "Reader thread " << readerIndex << " started";
-  shared_ptr<KuduSession> session(client_->NewSession());
+  shared_ptr<YBSession> session(client_->NewSession());
   ConfigureSession(session.get());
 
   // Wait until at least one row has been inserted (keys are numbered starting from 1).
@@ -429,15 +429,15 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
     }
 
     uint64_t read_ts = client_->GetLatestObservedTimestamp();
-    KuduScanner scanner(table_);
+    YBScanner scanner(table_);
     scanner.SetSelection(KuduClient::ReplicaSelection::LEADER_ONLY);
     string key_str(GetKeyByIndex(key_index));
     CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
     CHECK_OK(
       scanner.AddConjunctPredicate(
         table_->NewComparisonPredicate(
-          "k", KuduPredicate::EQUAL,
-          KuduValue::CopyString(key_str))));
+          "k", YBPredicate::EQUAL,
+          YBValue::CopyString(key_str))));
     CHECK_OK(scanner.Open());
     if (!scanner.HasMoreRows()) {
       LOG(ERROR) << "No rows found for key #" << key_index << " (read timestamp: "
@@ -501,7 +501,7 @@ int main(int argc, char* argv[]) {
 
   for (int i = 0; i < FLAGS_yb_load_test_num_iter; ++i) {
     shared_ptr<KuduClient> client;
-    CHECK_OK(KuduClientBuilder()
+    CHECK_OK(YBClientBuilder()
       .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
       .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
       .Build(&client));
@@ -510,7 +510,7 @@ int main(int argc, char* argv[]) {
 
     LOG(INFO) << "Checking if table '" << table_name << "' already exists";
     {
-      KuduSchema existing_schema;
+      YBSchema existing_schema;
       if (client->GetTableSchema(table_name, &existing_schema).ok()) {
         LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
         // Table with the same name already exists, drop it.
@@ -521,14 +521,14 @@ int main(int argc, char* argv[]) {
     }
 
     LOG(INFO) << "Building schema";
-    KuduSchemaBuilder schemaBuilder;
+    YBSchemaBuilder schemaBuilder;
     schemaBuilder.AddColumn("k")->PrimaryKey()->Type(KuduColumnSchema::STRING)->NotNull();
     schemaBuilder.AddColumn("v")->Type(KuduColumnSchema::STRING)->NotNull();
-    KuduSchema schema;
+    YBSchema schema;
     CHECK_OK(schemaBuilder.Build(&schema));
 
     LOG(INFO) << "Creating table";
-    gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
       .num_replicas(FLAGS_yb_load_test_table_num_replicas).Create();
     if (!table_creation_status.ok()) {

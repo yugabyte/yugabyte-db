@@ -36,7 +36,7 @@
 namespace yb {
 class ColumnSchema;
 namespace client {
-class KuduWriteOperation;
+class YBWriteOperation;
 template<typename KeyTypeWrapper> struct SliceKeysTestSetup;
 template<typename KeyTypeWrapper> struct IntKeysTestSetup;
 } // namespace client
@@ -192,7 +192,7 @@ class YB_EXPORT KuduPartialRow {
   friend class RowKeyUtilTest;
   friend class RowOperationsPBDecoder;
   friend class RowOperationsPBEncoder;
-  friend class client::KuduWriteOperation;   // for row_data_.
+  friend class client::YBWriteOperation;   // for row_data_.
   friend class PartitionSchema;
   template<typename KeyTypeWrapper> friend struct client::SliceKeysTestSetup;
   template<typename KeyTypeWrapper> friend struct client::IntKeysTestSetup;

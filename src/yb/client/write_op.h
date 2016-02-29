@@ -37,22 +37,22 @@ class WriteRpc;
 class KuduTable;
 
 // A write operation operates on a single table and partial row.
-// The KuduWriteOperation class itself allows the batcher to get to the
+// The YBWriteOperation class itself allows the batcher to get to the
 // generic information that it needs to process all write operations.
 //
 // On its own, the class does not represent any specific change and thus cannot
 // be constructed independently.
 //
-// KuduWriteOperation also holds shared ownership of its KuduTable to allow client's
-// scope to end while the KuduWriteOperation is still alive.
-class YB_EXPORT KuduWriteOperation {
+// YBWriteOperation also holds shared ownership of its KuduTable to allow client's
+// scope to end while the YBWriteOperation is still alive.
+class YB_EXPORT YBWriteOperation {
  public:
   enum Type {
     INSERT = 1,
     UPDATE = 2,
     DELETE = 3,
   };
-  virtual ~KuduWriteOperation();
+  virtual ~YBWriteOperation();
 
   // See KuduPartialRow API for field setters, etc.
   const KuduPartialRow& row() const { return row_; }
@@ -60,7 +60,7 @@ class YB_EXPORT KuduWriteOperation {
 
   virtual std::string ToString() const = 0;
  protected:
-  explicit KuduWriteOperation(const sp::shared_ptr<KuduTable>& table);
+  explicit YBWriteOperation(const sp::shared_ptr<KuduTable>& table);
   virtual Type type() const = 0;
 
   sp::shared_ptr<KuduTable> const table_;
@@ -81,16 +81,16 @@ class YB_EXPORT KuduWriteOperation {
   // including direct and indirect data.
   int64_t SizeInBuffer() const;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduWriteOperation);
+  DISALLOW_COPY_AND_ASSIGN(YBWriteOperation);
 };
 
 // A single row insert to be sent to the cluster.
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being inserted
 // An insert requires all key columns from the table schema to be defined.
-class YB_EXPORT KuduInsert : public KuduWriteOperation {
+class YB_EXPORT YBInsert : public YBWriteOperation {
  public:
-  virtual ~KuduInsert();
+  virtual ~YBInsert();
 
   virtual std::string ToString() const OVERRIDE { return "INSERT " + row_.ToString(); }
 
@@ -101,7 +101,7 @@ class YB_EXPORT KuduInsert : public KuduWriteOperation {
 
  private:
   friend class KuduTable;
-  explicit KuduInsert(const sp::shared_ptr<KuduTable>& table);
+  explicit YBInsert(const sp::shared_ptr<KuduTable>& table);
 };
 
 
@@ -110,9 +110,9 @@ class YB_EXPORT KuduInsert : public KuduWriteOperation {
 // Use mutable_row() to change the row being updated.
 // An update requires the key columns and at least one other column
 // in the schema to be defined.
-class YB_EXPORT KuduUpdate : public KuduWriteOperation {
+class YB_EXPORT YBUpdate : public YBWriteOperation {
  public:
-  virtual ~KuduUpdate();
+  virtual ~YBUpdate();
 
   virtual std::string ToString() const OVERRIDE { return "UPDATE " + row_.ToString(); }
 
@@ -123,7 +123,7 @@ class YB_EXPORT KuduUpdate : public KuduWriteOperation {
 
  private:
   friend class KuduTable;
-  explicit KuduUpdate(const sp::shared_ptr<KuduTable>& table);
+  explicit YBUpdate(const sp::shared_ptr<KuduTable>& table);
 };
 
 
@@ -131,7 +131,7 @@ class YB_EXPORT KuduUpdate : public KuduWriteOperation {
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being deleted
 // A delete requires just the key columns to be defined.
-class YB_EXPORT KuduDelete : public KuduWriteOperation {
+class YB_EXPORT KuduDelete : public YBWriteOperation {
  public:
   virtual ~KuduDelete();
 

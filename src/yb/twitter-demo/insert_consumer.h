@@ -34,15 +34,15 @@ namespace yb {
 namespace client {
 class KuduClient;
 class KuduTable;
-class KuduSession;
-class KuduStatusCallback;
+class YBSession;
+class YBStatusCallback;
 } // namespace client
 
 namespace twitter_demo {
 
 class InsertConsumer;
 
-class FlushCB : public client::KuduStatusCallback {
+class FlushCB : public client::YBStatusCallback {
  public:
   explicit FlushCB(InsertConsumer* consumer);
 
@@ -72,7 +72,7 @@ class InsertConsumer : public TwitterConsumer {
 
   bool initted_;
 
-  client::KuduSchema schema_;
+  client::YBSchema schema_;
   FlushCB flush_cb_;
   TwitterEventParser parser_;
 
@@ -80,7 +80,7 @@ class InsertConsumer : public TwitterConsumer {
   TwitterEvent event_;
 
   client::sp::shared_ptr<client::KuduClient> client_;
-  client::sp::shared_ptr<client::KuduSession> session_;
+  client::sp::shared_ptr<client::YBSession> session_;
   client::sp::shared_ptr<client::KuduTable> table_;
 
   simple_spinlock lock_;

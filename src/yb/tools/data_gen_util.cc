@@ -25,7 +25,7 @@
 namespace yb {
 namespace tools {
 
-void WriteValueToColumn(const client::KuduSchema& schema,
+void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
                         KuduPartialRow* row) {
@@ -61,7 +61,7 @@ void WriteValueToColumn(const client::KuduSchema& schema,
   }
 }
 
-void GenerateDataForRow(const client::KuduSchema& schema, uint64_t record_id,
+void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
                         Random* random, KuduPartialRow* row) {
   for (int col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     // We randomly generate the inserted data, except for the first column,

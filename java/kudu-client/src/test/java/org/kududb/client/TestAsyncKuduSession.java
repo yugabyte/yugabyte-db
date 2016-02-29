@@ -43,10 +43,10 @@ import static org.junit.Assert.*;
  *
  * The test creates a table with a unique(ish) name which it deletes at the end.
  */
-public class TestAsyncKuduSession extends BaseKuduTest {
+public class TestAsyncYBSession extends BaseKuduTest {
   // Generate a unique table name
   private static final String TABLE_NAME =
-      TestAsyncKuduSession.class.getName()+"-"+System.currentTimeMillis();
+      TestAsyncYBSession.class.getName()+"-"+System.currentTimeMillis();
 
   private static Schema schema = getBasicSchema();
   private static KuduTable table;
@@ -64,8 +64,8 @@ public class TestAsyncKuduSession extends BaseKuduTest {
   @Test(timeout = 100000)
   public void testBatchErrorCauseSessionStuck() throws Exception {
     try {
-      AsyncKuduSession session = client.newSession();
-      session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+      AsyncYBSession session = client.newSession();
+      session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
       session.setFlushInterval(100);
       TabletServerErrorPB error = TabletServerErrorPB.newBuilder()
           .setCode(TabletServerErrorPB.Code.UNKNOWN_ERROR)
@@ -110,7 +110,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
   @Test(timeout = 100000)
   public void test() throws Exception {
 
-    AsyncKuduSession session = client.newSession();
+    AsyncYBSession session = client.newSession();
     // disable the low watermark until we need it
     session.setMutationBufferLowWatermark(1f);
 
@@ -118,7 +118,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     // interval to be higher than the sleep time so that we don't background flush while waiting.
     // If our subsequent manual flush throws, it means the logic to block on in-flight tablet
     // lookups in flush isn't working properly.
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
     session.setFlushInterval(DEFAULT_SLEEP + 1000);
     Deferred<OperationResponse> d = session.apply(createInsert(0));
     session.flush().join(DEFAULT_SLEEP);
@@ -126,20 +126,20 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     // set back to default
     session.setFlushInterval(1000);
 
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
     for (int i = 1; i < 10; i++) {
       session.apply(createInsert(i)).join(DEFAULT_SLEEP);
     }
 
     assertEquals(10, countInRange(0, 10));
 
-    session.setFlushMode(AsyncKuduSession.FlushMode.MANUAL_FLUSH);
+    session.setFlushMode(AsyncYBSession.FlushMode.MANUAL_FLUSH);
     session.setMutationBufferSpace(10);
 
     session.apply(createInsert(10));
 
     try {
-      session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+      session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
     } catch (IllegalArgumentException ex) {
       /* expected, flush mode remains manual */
     }
@@ -161,7 +161,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     session.flush().join(DEFAULT_SLEEP);
     assertEquals(10, countInRange(10, 20)); // now everything should be there
 
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
 
     d = session.apply(createInsert(20));
     Thread.sleep(50); // waiting a minimal amount of time to make sure the interval is in effect
@@ -181,7 +181,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     buffered.join();
     assertEquals(11, countInRange(20, 31));
 
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
     Update update = createUpdate(30);
     PartialRow row = update.getRow();
     row.addInt(2, 999);
@@ -197,7 +197,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     d.join(DEFAULT_SLEEP);
     assertEquals(30, countInRange(0, 31));
 
-    session.setFlushMode(AsyncKuduSession.FlushMode.MANUAL_FLUSH);
+    session.setFlushMode(AsyncYBSession.FlushMode.MANUAL_FLUSH);
     session.setMutationBufferSpace(35);
     for (int i = 0; i < 20; i++) {
       buffered = session.apply(createDelete(i));
@@ -222,7 +222,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
 
     // Test nulls
     // add 10 rows with the nullable column set to null
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
     for (int i = 40; i < 50; i++) {
       session.apply(createInsertWithNull(i)).join(DEFAULT_SLEEP);
     }
@@ -231,7 +231,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     assertEquals(10, countNullColumns(40, 50));
 
     // Test sending edits too fast
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
     session.setMutationBufferSpace(10);
 
     // The buffer has a capacity of 10, we insert 21 rows, meaning we fill the first one,
@@ -264,7 +264,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     assertEquals(20, countInRange(71, 91));
 
     // Test empty scanner projection
-    AsyncKuduScanner scanner = getScanner(71, 91, Collections.<String>emptyList());
+    AsyncYBScanner scanner = getScanner(71, 91, Collections.<String>emptyList());
     assertEquals(20, countRowsInScan(scanner));
 
     // Test removing the connection and then do a rapid set of inserts
@@ -358,7 +358,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
 
   public static boolean exists(final int key) throws Exception {
 
-    AsyncKuduScanner scanner = getScanner(key, key + 1);
+    AsyncYBScanner scanner = getScanner(key, key + 1);
     final AtomicBoolean exists = new AtomicBoolean(false);
 
     Callback<Object, RowResultIterator> cb =
@@ -392,7 +392,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
 
   public static int countNullColumns(final int startKey, final int endKey) throws Exception {
 
-    AsyncKuduScanner scanner = getScanner(startKey, endKey);
+    AsyncYBScanner scanner = getScanner(startKey, endKey);
     final AtomicInteger ai = new AtomicInteger();
 
     Callback<Object, RowResultIterator> cb = new Callback<Object, RowResultIterator>() {
@@ -421,15 +421,15 @@ public class TestAsyncKuduSession extends BaseKuduTest {
 
   public static int countInRange(final int start, final int exclusiveEnd) throws Exception {
 
-    AsyncKuduScanner scanner = getScanner(start, exclusiveEnd);
+    AsyncYBScanner scanner = getScanner(start, exclusiveEnd);
     return countRowsInScan(scanner);
   }
 
-  private static AsyncKuduScanner getScanner(int start, int exclusiveEnd) {
+  private static AsyncYBScanner getScanner(int start, int exclusiveEnd) {
     return getScanner(start, exclusiveEnd, null);
   }
 
-  private static AsyncKuduScanner getScanner(int start, int exclusiveEnd,
+  private static AsyncYBScanner getScanner(int start, int exclusiveEnd,
                                              List<String> columnNames) {
 
     PartialRow lowerBound = schema.newPartialRow();
@@ -438,7 +438,7 @@ public class TestAsyncKuduSession extends BaseKuduTest {
     PartialRow upperBound = schema.newPartialRow();
     upperBound.addInt(schema.getColumnByIndex(0).getName(), exclusiveEnd);
 
-    AsyncKuduScanner scanner = client.newScannerBuilder(table)
+    AsyncYBScanner scanner = client.newScannerBuilder(table)
         .lowerBound(lowerBound)
         .exclusiveUpperBound(upperBound)
         .setProjectedColumnNames(columnNames)
