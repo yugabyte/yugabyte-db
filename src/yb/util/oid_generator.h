@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_OID_GENERATOR_H
-#define KUDU_UTIL_OID_GENERATOR_H
+#ifndef YB_UTIL_OID_GENERATOR_H
+#define YB_UTIL_OID_GENERATOR_H
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <string>

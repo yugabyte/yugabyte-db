@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_HEARTBEATER_H
-#define KUDU_TSERVER_HEARTBEATER_H
+#ifndef YB_TSERVER_HEARTBEATER_H
+#define YB_TSERVER_HEARTBEATER_H
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -51,4 +51,4 @@ class Heartbeater {
 
 } // namespace tserver
 } // namespace yb
-#endif /* KUDU_TSERVER_HEARTBEATER_H */
+#endif /* YB_TSERVER_HEARTBEATER_H */

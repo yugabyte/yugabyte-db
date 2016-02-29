@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef KUDU_UTIL_RANDOM_H_
-#define KUDU_UTIL_RANDOM_H_
+#ifndef YB_UTIL_RANDOM_H_
+#define YB_UTIL_RANDOM_H_
 
 #include <stdint.h>
 
@@ -229,4 +229,4 @@ class ThreadSafeRandom {
 
 }  // namespace yb
 
-#endif  // KUDU_UTIL_RANDOM_H_
+#endif // YB_UTIL_RANDOM_H_

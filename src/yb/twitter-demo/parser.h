@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TWITTER_DEMO_PARSER_H
-#define KUDU_TWITTER_DEMO_PARSER_H
+#ifndef YB_TWITTER_DEMO_PARSER_H
+#define YB_TWITTER_DEMO_PARSER_H
 
 #include <string>
 

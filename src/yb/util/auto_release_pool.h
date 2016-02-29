@@ -18,8 +18,8 @@
 // Simple pool of objects that will be deallocated when the pool is
 // destroyed
 
-#ifndef KUDU_UTIL_AUTO_RELEASE_POOL_H
-#define KUDU_UTIL_AUTO_RELEASE_POOL_H
+#ifndef YB_UTIL_AUTO_RELEASE_POOL_H
+#define YB_UTIL_AUTO_RELEASE_POOL_H
 
 #include <vector>
 

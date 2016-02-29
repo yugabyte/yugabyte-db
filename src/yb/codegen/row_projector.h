@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CODEGEN_ROW_PROJECTOR_H
-#define KUDU_CODEGEN_ROW_PROJECTOR_H
+#ifndef YB_CODEGEN_ROW_PROJECTOR_H
+#define YB_CODEGEN_ROW_PROJECTOR_H
 
 #include <iosfwd>
 #include <memory>

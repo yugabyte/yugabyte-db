@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_CRC_H_
-#define KUDU_UTIL_CRC_H_
+#ifndef YB_UTIL_CRC_H_
+#define YB_UTIL_CRC_H_
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -36,4 +36,4 @@ uint32_t Crc32c(const void* data, size_t length);
 } // namespace crc
 } // namespace yb
 
-#endif // KUDU_UTIL_CRC_H_
+#endif // YB_UTIL_CRC_H_

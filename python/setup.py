@@ -69,20 +69,20 @@ class clean(_clean):
 
 # If we're in the context of the Kudu git repository, build against the
 # latest in-tree build artifacts
-if 'KUDU_HOME' in os.environ:
-    kudu_home = os.environ['KUDU_HOME']
-    sys.stderr.write("Using KUDU_HOME directory: %s\n" % (kudu_home,))
-    if not os.path.isdir(kudu_home):
-        sys.stderr.write("%s is not a valid KUDU_HOME directory" % (kudu_home,))
+if 'YB_HOME' in os.environ:
+    yb_home = os.environ['YB_HOME']
+    sys.stderr.write("Using YB_HOME directory: %s\n" % (yb_home,))
+    if not os.path.isdir(yb_home):
+        sys.stderr.write("%s is not a valid YB_HOME directory" % (yb_home,))
         sys.exit(1)
 
-    kudu_include_dirs = [os.path.join(kudu_home, 'src')]
+    kudu_include_dirs = [os.path.join(yb_home, 'src')]
 
     if 'KUDU_BUILD' in os.environ:
         kudu_build = os.environ['KUDU_BUILD']
         sys.stderr.write("Using KUDU_BUILD directory: %s\n" % (kudu_build,))
     else:
-        kudu_build = os.path.join(kudu_home, 'build', 'latest')
+        kudu_build = os.path.join(yb_home, 'build', 'latest')
         sys.stderr.write("Using inferred KUDU_BUILD directory: %s/\n" % (kudu_build,))
     if not os.path.isdir(kudu_build):
         sys.stderr.write("%s is not a valid KUDU_BUILD directory" % (kudu_build,))

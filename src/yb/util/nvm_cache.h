@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_NVM_CACHE_H_
-#define KUDU_UTIL_NVM_CACHE_H_
+#ifndef YB_UTIL_NVM_CACHE_H_
+#define YB_UTIL_NVM_CACHE_H_
 
 #include <string>
 

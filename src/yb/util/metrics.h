@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_METRICS_H
-#define KUDU_UTIL_METRICS_H
+#ifndef YB_UTIL_METRICS_H
+#define YB_UTIL_METRICS_H
 
 /////////////////////////////////////////////////////
 // Kudu Metrics
@@ -1072,4 +1072,4 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
 
 } // namespace yb
 
-#endif // KUDU_UTIL_METRICS_H
+#endif // YB_UTIL_METRICS_H

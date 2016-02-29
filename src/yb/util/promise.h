@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_PROMISE_H
-#define KUDU_UTIL_PROMISE_H
+#ifndef YB_UTIL_PROMISE_H
+#define YB_UTIL_PROMISE_H
 
 #include "yb/gutil/macros.h"
 #include "yb/util/countdown_latch.h"
@@ -76,4 +76,4 @@ class Promise {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_PROMISE_H */
+#endif /* YB_UTIL_PROMISE_H */

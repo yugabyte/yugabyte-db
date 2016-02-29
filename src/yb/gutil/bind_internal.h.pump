@@ -13,8 +13,8 @@ $range ARITY 0..MAX_ARITY
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef KUDU_GUTIL_BIND_INTERNAL_H_
-#define KUDU_GUTIL_BIND_INTERNAL_H_
+#ifndef YB_GUTIL_BIND_INTERNAL_H_
+#define YB_GUTIL_BIND_INTERNAL_H_
 
 #include "kudu/gutil/bind_helpers.h"
 #include "kudu/gutil/callback_internal.h"
@@ -461,4 +461,4 @@ $for ARG [[
 }  // namespace internal
 }  // namespace yb
 
-#endif  // KUDU_GUTIL_BIND_INTERNAL_H_
+#endif // YB_GUTIL_BIND_INTERNAL_H_

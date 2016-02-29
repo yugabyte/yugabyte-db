@@ -287,7 +287,7 @@ Status BloomFileReader::CheckKeyPresent(const BloomKeyProbe &probe,
 }
 
 size_t BloomFileReader::memory_footprint_excluding_reader() const {
-  size_t size = kudu_malloc_usable_size(this);
+  size_t size = yb_malloc_usable_size(this);
 
   size += init_once_.memory_footprint_excluding_this();
 
@@ -295,14 +295,14 @@ size_t BloomFileReader::memory_footprint_excluding_reader() const {
   //
   // TODO: Track the iterators' memory footprint? May change with every seek;
   // not clear if it's worth doing.
-  size += kudu_malloc_usable_size(
+  size += yb_malloc_usable_size(
       const_cast<BloomFileReader*>(this)->index_iters_.c_array());
   for (int i = 0; i < index_iters_.size(); i++) {
-    size += kudu_malloc_usable_size(&index_iters_[i]);
+    size += yb_malloc_usable_size(&index_iters_[i]);
   }
 
   if (iter_locks_) {
-    size += kudu_malloc_usable_size(iter_locks_.get());
+    size += yb_malloc_usable_size(iter_locks_.get());
   }
 
   return size;

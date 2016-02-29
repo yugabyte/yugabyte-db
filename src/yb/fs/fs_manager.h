@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_FS_FS_MANAGER_H
-#define KUDU_FS_FS_MANAGER_H
+#ifndef YB_FS_FS_MANAGER_H
+#define YB_FS_FS_MANAGER_H
 
 #include <gtest/gtest_prod.h>
 #include <iosfwd>
@@ -88,8 +88,8 @@ struct FsManagerOpts {
 // or "write a new schema metadata file for table kwz".
 //
 // The current layout is:
-//    <kudu.root.dir>/data/
-//    <kudu.root.dir>/data/<prefix-0>/<prefix-2>/<prefix-4>/<name>
+//    <yb.root.dir>/data/
+//    <yb.root.dir>/data/<prefix-0>/<prefix-2>/<prefix-4>/<name>
 class FsManager {
  public:
   static const char *kWalFileNamePrefix;

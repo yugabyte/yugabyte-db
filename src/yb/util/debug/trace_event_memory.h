@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_DEBUG_TRACE_EVENT_MEMORY_H
-#define KUDU_DEBUG_TRACE_EVENT_MEMORY_H
+#ifndef YB_DEBUG_TRACE_EVENT_MEMORY_H
+#define YB_DEBUG_TRACE_EVENT_MEMORY_H
 
 // Stub for this part of chromium tracing we haven't yet
 // imported.
@@ -25,4 +25,4 @@
 
 #define INTERNAL_TRACE_MEMORY(category_group, name)
 
-#endif /* KUDU_DEBUG_TRACE_EVENT_MEMORY_H */
+#endif /* YB_DEBUG_TRACE_EVENT_MEMORY_H */

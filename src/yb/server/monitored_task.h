@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_MONITORED_TASK_H
-#define KUDU_MONITORED_TASK_H
+#ifndef YB_MONITORED_TASK_H
+#define YB_MONITORED_TASK_H
 
 #include <string>
 

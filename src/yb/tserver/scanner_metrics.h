@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_SCANNER_METRICS_H
-#define KUDU_TSERVER_SCANNER_METRICS_H
+#ifndef YB_TSERVER_SCANNER_METRICS_H
+#define YB_TSERVER_SCANNER_METRICS_H
 
 #include "yb/gutil/ref_counted.h"
 
@@ -48,4 +48,4 @@ struct ScannerMetrics {
 } // namespace tserver
 } // namespace yb
 
-#endif // KUDU_TSERVER_SCANNER_METRICS_H
+#endif // YB_TSERVER_SCANNER_METRICS_H

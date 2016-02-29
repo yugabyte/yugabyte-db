@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_BLOCKING_OPS_H
-#define KUDU_RPC_BLOCKING_OPS_H
+#ifndef YB_RPC_BLOCKING_OPS_H
+#define YB_RPC_BLOCKING_OPS_H
 
 #include <set>
 #include <string>
@@ -61,4 +61,4 @@ Status ReceiveFramedMessageBlocking(Socket* sock, faststring* recv_buf,
 } // namespace rpc
 } // namespace yb
 
-#endif  // KUDU_RPC_BLOCKING_OPS_H
+#endif // YB_RPC_BLOCKING_OPS_H

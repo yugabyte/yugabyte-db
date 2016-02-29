@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_INIT_H
-#define KUDU_UTIL_INIT_H
+#ifndef YB_UTIL_INIT_H
+#define YB_UTIL_INIT_H
 
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
@@ -31,4 +31,4 @@ Status CheckCPUFlags();
 void InitKuduOrDie();
 
 } // namespace yb
-#endif /* KUDU_UTIL_INIT_H */
+#endif /* YB_UTIL_INIT_H */

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TPCH_RPC_LINE_ITEM_DAO_H
-#define KUDU_TPCH_RPC_LINE_ITEM_DAO_H
+#ifndef YB_TPCH_RPC_LINE_ITEM_DAO_H
+#define YB_TPCH_RPC_LINE_ITEM_DAO_H
 
 #include <boost/function.hpp>
 #include <set>

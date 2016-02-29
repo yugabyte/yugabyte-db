@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_SERVICE_POOL_H
-#define KUDU_SERVICE_POOL_H
+#ifndef YB_SERVICE_POOL_H
+#define YB_SERVICE_POOL_H
 
 #include <string>
 #include <vector>

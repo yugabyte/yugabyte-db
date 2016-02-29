@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_FAULT_INJECTION_H
-#define KUDU_UTIL_FAULT_INJECTION_H
+#ifndef YB_UTIL_FAULT_INJECTION_H
+#define YB_UTIL_FAULT_INJECTION_H
 
 #include "yb/gutil/macros.h"
 
@@ -63,4 +63,4 @@ inline void MaybeInjectRandomLatency(double max_latency) {
 
 } // namespace fault_injection
 } // namespace yb
-#endif /* KUDU_UTIL_FAULT_INJECTION_H */
+#endif /* YB_UTIL_FAULT_INJECTION_H */

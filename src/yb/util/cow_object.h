@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_COW_OBJECT_H
-#define KUDU_UTIL_COW_OBJECT_H
+#ifndef YB_UTIL_COW_OBJECT_H
+#define YB_UTIL_COW_OBJECT_H
 
 #include <glog/logging.h>
 #include <algorithm>
@@ -216,4 +216,4 @@ class CowLock {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_COW_OBJECT_H */
+#endif /* YB_UTIL_COW_OBJECT_H */

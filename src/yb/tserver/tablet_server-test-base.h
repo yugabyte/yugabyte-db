@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TSERVER_TABLET_SERVER_TEST_BASE_H_
-#define KUDU_TSERVER_TABLET_SERVER_TEST_BASE_H_
+#ifndef YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
+#define YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
 
 #include <algorithm>
 #include <assert.h>
@@ -472,4 +472,4 @@ const char* TabletServerTestBase::kTabletId = "TestTablet";
 } // namespace yb
 
 
-#endif /* KUDU_TSERVER_TABLET_SERVER_TEST_BASE_H_ */
+#endif /* YB_TSERVER_TABLET_SERVER_TEST_BASE_H_ */

@@ -26,10 +26,10 @@ if [[ -z $FILE || $FILE == "-h" || $FILE == "--help" ]]; then
   echo
   echo 'Example:'
   echo
-  echo '$ cd $KUDU_HOME'
+  echo '$ cd $YB_HOME'
   echo '$ BUILD_TYPE=RELEASE ./build-support/jenkins/build-and-test.sh'
-  echo '$ KUDU_ALLOW_SLOW_TESTS=1 ./build/latest/bin/rpc-bench --gtest_repeat=10 2>&1 | tee rpc-bench-output.log'
-  echo '$ ./src/kudu/benchmarks/bin/parse_rpc_bench.sh rpc-bench-output.log'
+  echo '$ YB_ALLOW_SLOW_TESTS=1 ./build/latest/bin/rpc-bench --gtest_repeat=10 2>&1 | tee rpc-bench-output.log'
+  echo '$ ./src/yb/benchmarks/bin/parse_rpc_bench.sh rpc-bench-output.log'
   echo
   echo 'Example output:'
   echo

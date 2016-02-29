@@ -7,8 +7,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef KUDU_GUTIL_BIND_H_
-#define KUDU_GUTIL_BIND_H_
+#ifndef YB_GUTIL_BIND_H_
+#define YB_GUTIL_BIND_H_
 
 #include "yb/gutil/bind_internal.h"
 #include "yb/gutil/callback_internal.h"
@@ -17,7 +17,7 @@
 // Usage documentation
 // -----------------------------------------------------------------------------
 //
-// See kudu/gutil/callback.h for documentation.
+// See yb/gutil/callback.h for documentation.
 //
 //
 // -----------------------------------------------------------------------------
@@ -25,7 +25,7 @@
 // -----------------------------------------------------------------------------
 //
 // If you're reading the implementation, before proceeding further, you should
-// read the top comment of kudu/gutil/bind_internal.h for a definition of common
+// read the top comment of yb/gutil/bind_internal.h for a definition of common
 // terms and concepts.
 //
 // RETURN TYPES
@@ -536,4 +536,4 @@ Bind(Functor functor, const P1& p1, const P2& p2, const P3& p3, const P4& p4,
 
 }  // namespace yb
 
-#endif  // KUDU_GUTIL_BIND_H_
+#endif // YB_GUTIL_BIND_H_

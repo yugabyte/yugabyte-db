@@ -16,8 +16,8 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
-#ifndef KUDU_CLIENT_META_CACHE_H
-#define KUDU_CLIENT_META_CACHE_H
+#ifndef YB_CLIENT_META_CACHE_H
+#define YB_CLIENT_META_CACHE_H
 
 #include <boost/function.hpp>
 #include <map>
@@ -291,4 +291,4 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 } // namespace internal
 } // namespace client
 } // namespace yb
-#endif /* KUDU_CLIENT_META_CACHE_H */
+#endif /* YB_CLIENT_META_CACHE_H */

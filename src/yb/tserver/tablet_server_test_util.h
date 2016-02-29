@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_TABLET_SERVER_TEST_UTIL_H_
-#define KUDU_TSERVER_TABLET_SERVER_TEST_UTIL_H_
+#ifndef YB_TSERVER_TABLET_SERVER_TEST_UTIL_H_
+#define YB_TSERVER_TABLET_SERVER_TEST_UTIL_H_
 
 #include <memory>
 
@@ -51,4 +51,4 @@ void CreateTsClientProxies(const Sockaddr& addr,
 } // namespace tserver
 } // namespace yb
 
-#endif // KUDU_TSERVER_TABLET_SERVER_TEST_UTIL_H_
+#endif // YB_TSERVER_TABLET_SERVER_TEST_UTIL_H_

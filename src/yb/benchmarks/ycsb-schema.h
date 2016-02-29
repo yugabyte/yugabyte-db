@@ -16,8 +16,8 @@
 // under the License.
 //
 // Inline function to create the YCSB schema
-#ifndef KUDU_BENCHMARKS_YCSB_SCHEMA_H
-#define KUDU_BENCHMARKS_YCSB_SCHEMA_H
+#ifndef YB_BENCHMARKS_YCSB_SCHEMA_H
+#define YB_BENCHMARKS_YCSB_SCHEMA_H
 
 #include "yb/client/schema.h"
 

@@ -153,10 +153,10 @@ Status Status::CloneAndAppend(const Slice& msg) const {
 }
 
 size_t Status::memory_footprint_excluding_this() const {
-  return state_ ? kudu_malloc_usable_size(state_) : 0;
+  return state_ ? yb_malloc_usable_size(state_) : 0;
 }
 
 size_t Status::memory_footprint_including_this() const {
-  return kudu_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 }  // namespace yb

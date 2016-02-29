@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_VERSION_INFO_H
-#define KUDU_UTIL_VERSION_INFO_H
+#ifndef YB_UTIL_VERSION_INFO_H
+#define YB_UTIL_VERSION_INFO_H
 
 #include <string>
 
@@ -28,7 +28,7 @@ class VersionInfoPB;
 // Static functions related to fetching information about the current build.
 class VersionInfo {
  public:
-  // Get a short version string ("kudu 1.2.3 (rev abcdef...)")
+  // Get a short version string ("yb 1.2.3 (rev abcdef...)")
   static std::string GetShortVersionString();
 
   // Get a multi-line string including version info, build time, etc.
@@ -38,11 +38,11 @@ class VersionInfo {
   static void GetVersionInfoPB(VersionInfoPB* pb);
  private:
   // Get the git hash for this build. If the working directory was dirty when
-  // Kudu was built, also appends "-dirty".
+  // YB was built, also appends "-dirty".
   static std::string GetGitHash();
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(VersionInfo);
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_VERSION_INFO_H */
+#endif /* YB_UTIL_VERSION_INFO_H */

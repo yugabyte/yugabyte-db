@@ -39,7 +39,7 @@ using strings::Substitute;
 
 namespace yb {
 
-static const char* const kSlowTestsEnvVariable = "KUDU_ALLOW_SLOW_TESTS";
+static const char* const kSlowTestsEnvVariable = "YB_ALLOW_SLOW_TESTS";
 
 static const uint64 kTestBeganAtMicros = Env::Default()->NowMicros();
 

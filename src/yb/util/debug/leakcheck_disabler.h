@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
-#define KUDU_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
+#ifndef YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
+#define YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
 
 #include <gperftools/heap-checker.h>
 #include "yb/gutil/macros.h"
@@ -44,4 +44,4 @@ class ScopedLeakCheckDisabler {
 } // namespace debug
 } // namespace yb
 
-#endif // KUDU_UTIL_DEBUG_LEAKCHECK_DISABLER_H_
+#endif // YB_UTIL_DEBUG_LEAKCHECK_DISABLER_H_

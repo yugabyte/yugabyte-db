@@ -22,7 +22,7 @@ set -x
 # Time marker for both stderr and stdout
 date 1>&2
 
-export KUDU_HOME=${KUDU_HOME:-/usr/lib/kudu}
+export YB_HOME=${YB_HOME:-/usr/lib/kudu}
 
 CMD=$1
 shift 2
@@ -40,7 +40,7 @@ function readconf {
   IFS='=' read key value <<< "$conf"
 }
 
-log "KUDU_HOME: $KUDU_HOME"
+log "YB_HOME: $YB_HOME"
 log "CONF_DIR: $CONF_DIR"
 log "CMD: $CMD"
 
@@ -112,11 +112,11 @@ if [ "$CMD" = "master" ]; then
     MASTER_ADDRESSES="--master_addresses=$MASTER_IPS"
   fi
 
-  exec "$KUDU_HOME/sbin/yb-master" \
+  exec "$YB_HOME/sbin/yb-master" \
     $MASTER_ADDRESSES \
     --flagfile="$GFLAG_FILE"
 elif [ "$CMD" = "tserver" ]; then
-  exec "$KUDU_HOME/sbin/yb-tserver" \
+  exec "$YB_HOME/sbin/yb-tserver" \
     --tserver_master_addrs="$MASTER_IPS" \
     --flagfile="$GFLAG_FILE"
 else

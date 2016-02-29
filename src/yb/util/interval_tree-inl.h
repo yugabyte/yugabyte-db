@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_INTERVAL_TREE_INL_H
-#define KUDU_UTIL_INTERVAL_TREE_INL_H
+#ifndef YB_UTIL_INTERVAL_TREE_INL_H
+#define YB_UTIL_INTERVAL_TREE_INL_H
 
 #include <algorithm>
 #include <vector>

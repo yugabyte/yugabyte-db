@@ -521,7 +521,7 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
   }
 
   committed_index->CopyFrom(last_committed_index_);
-  KLOG_EVERY_N_SECS(WARNING, 1) << LogPrefixUnlocked()
+  YB_LOG_EVERY_N_SECS(WARNING, 1) << LogPrefixUnlocked()
           << "Can't advance the committed index across term boundaries"
           << " until operations from the current term are replicated."
           << " Last committed operation was: " << last_committed_index_.ShortDebugString() << ","

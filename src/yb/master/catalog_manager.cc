@@ -2342,7 +2342,7 @@ bool AsyncAddServerTask::SendRequest(int attempt) {
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   shared_ptr<TSDescriptor> replacement_replica;
   if (PREDICT_FALSE(!SelectRandomTSForReplica(ts_descs, replica_uuids, &replacement_replica))) {
-    KLOG_EVERY_N(WARNING, 100) << LogPrefix() << "No candidate replacement replica found "
+    YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "No candidate replacement replica found "
                                << "for tablet " << tablet_->ToString();
     return false;
   }
@@ -2356,7 +2356,7 @@ bool AsyncAddServerTask::SendRequest(int attempt) {
   TSRegistrationPB peer_reg;
   replacement_replica->GetRegistration(&peer_reg);
   if (peer_reg.rpc_addresses_size() == 0) {
-    KLOG_EVERY_N(WARNING, 100) << LogPrefix() << "Candidate replacement "
+    YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "Candidate replacement "
                                << replacement_replica->permanent_uuid()
                                << " has no registered rpc address: "
                                << peer_reg.ShortDebugString();

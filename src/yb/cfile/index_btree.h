@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_INDEX_BTREE_H
-#define KUDU_CFILE_INDEX_BTREE_H
+#ifndef YB_CFILE_INDEX_BTREE_H
+#define YB_CFILE_INDEX_BTREE_H
 
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <memory>

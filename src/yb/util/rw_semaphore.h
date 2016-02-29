@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_RW_SEMAPHORE_H
-#define KUDU_UTIL_RW_SEMAPHORE_H
+#ifndef YB_UTIL_RW_SEMAPHORE_H
+#define YB_UTIL_RW_SEMAPHORE_H
 
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <glog/logging.h>
@@ -192,4 +192,4 @@ class rw_semaphore {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_RW_SEMAPHORE_H */
+#endif /* YB_UTIL_RW_SEMAPHORE_H */

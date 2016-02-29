@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CFILE_BLOOMFILE_TEST_BASE_H
-#define KUDU_CFILE_BLOOMFILE_TEST_BASE_H
+#ifndef YB_CFILE_BLOOMFILE_TEST_BASE_H
+#define YB_CFILE_BLOOMFILE_TEST_BASE_H
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>

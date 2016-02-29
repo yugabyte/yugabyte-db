@@ -207,7 +207,7 @@ for i in $master_indexes; do
   master_addresses+="$bind_ip:$(( $master_rpc_port_base + $i ))"
 done
 
-export KUDU_HOME="$yugabyte_root"
+export YB_HOME="$yugabyte_root"
 
 if [ "$cmd" == "start" ]; then
 

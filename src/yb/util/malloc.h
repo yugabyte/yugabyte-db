@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_MALLOC_H
-#define KUDU_UTIL_MALLOC_H
+#ifndef YB_UTIL_MALLOC_H
+#define YB_UTIL_MALLOC_H
 
 #include <stdint.h>
 
@@ -25,8 +25,8 @@ namespace yb {
 //
 // Really just centralizes the const_cast, as this function is often called
 // on const pointers (i.e. "this" in a const method).
-int64_t kudu_malloc_usable_size(const void* obj);
+int64_t yb_malloc_usable_size(const void* obj);
 
 } // namespace yb
 
-#endif // KUDU_UTIL_MALLOC_H
+#endif // YB_UTIL_MALLOC_H

@@ -109,7 +109,7 @@ Status TransactionTracker::Add(TransactionDriver* driver) {
         peer ? peer->tablet()->tablet_id() : "(unknown)",
         mem_tracker_->consumption(), mem_tracker_->limit());
 
-    KLOG_EVERY_N_SECS(WARNING, 1) << msg << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << msg << THROTTLE_MSG;
 
     return Status::ServiceUnavailable(msg);
   }

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_INTEGRATION_TESTS_TEST_WORKLOAD_H
-#define KUDU_INTEGRATION_TESTS_TEST_WORKLOAD_H
+#ifndef YB_INTEGRATION_TESTS_TEST_WORKLOAD_H
+#define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H
 
 #include <string>
 #include <vector>
@@ -153,4 +153,4 @@ class TestWorkload {
 };
 
 } // namespace yb
-#endif /* KUDU_INTEGRATION_TESTS_TEST_WORKLOAD_H */
+#endif /* YB_INTEGRATION_TESTS_TEST_WORKLOAD_H */

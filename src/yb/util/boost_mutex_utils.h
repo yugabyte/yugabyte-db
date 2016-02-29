@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_BOOST_MUTEX_UTILS_H
-#define KUDU_BOOST_MUTEX_UTILS_H
+#ifndef YB_BOOST_MUTEX_UTILS_H
+#define YB_BOOST_MUTEX_UTILS_H
 
 
 // Similar to boost::lock_guard except that it takes

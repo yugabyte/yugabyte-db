@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_MASTER_MASTER_SERVICE_H
-#define KUDU_MASTER_MASTER_SERVICE_H
+#ifndef YB_MASTER_MASTER_SERVICE_H
+#define YB_MASTER_MASTER_SERVICE_H
 
 #include "yb/gutil/macros.h"
 #include "yb/master/master.service.h"

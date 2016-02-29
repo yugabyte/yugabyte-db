@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_COMPACTION_SVG_DUMP_H_
-#define KUDU_TABLET_COMPACTION_SVG_DUMP_H_
+#ifndef YB_TABLET_COMPACTION_SVG_DUMP_H_
+#define YB_TABLET_COMPACTION_SVG_DUMP_H_
 
 #include <ostream>
 #include <unordered_set>

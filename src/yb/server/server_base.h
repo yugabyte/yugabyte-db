@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_SERVER_SERVER_BASE_H
-#define KUDU_SERVER_SERVER_BASE_H
+#ifndef YB_SERVER_SERVER_BASE_H
+#define YB_SERVER_SERVER_BASE_H
 
 #include <memory>
 #include <string>
@@ -133,4 +133,4 @@ class ServerBase {
 
 } // namespace server
 } // namespace yb
-#endif /* KUDU_SERVER_SERVER_BASE_H */
+#endif /* YB_SERVER_SERVER_BASE_H */

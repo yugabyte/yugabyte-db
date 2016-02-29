@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_INTEGRATION_TESTS_ITEST_UTIL_H_
-#define KUDU_INTEGRATION_TESTS_ITEST_UTIL_H_
+#ifndef YB_INTEGRATION_TESTS_ITEST_UTIL_H_
+#define YB_INTEGRATION_TESTS_ITEST_UTIL_H_
 
 #include <glog/stl_logging.h>
 #include <string>
@@ -461,4 +461,4 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 }  // namespace tserver
 }  // namespace yb
 
-#endif /* SRC_KUDU_INTEGRATION_TESTS_ITEST_UTIL_H_ */
+#endif /* YB_INTEGRATION_TESTS_ITEST_UTIL_H_ */

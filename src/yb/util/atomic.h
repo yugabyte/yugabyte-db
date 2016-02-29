@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_ATOMIC_H
-#define KUDU_UTIL_ATOMIC_H
+#ifndef YB_UTIL_ATOMIC_H
+#define YB_UTIL_ATOMIC_H
 
 #include <algorithm>
 #include <boost/type_traits/make_signed.hpp>
@@ -27,7 +27,7 @@
 
 namespace yb {
 
-// See top-level comments in kudu/gutil/atomicops.h for further
+// See top-level comments in yb/gutil/atomicops.h for further
 // explanations of these levels.
 enum MemoryOrder {
   // Relaxed memory ordering, doesn't use any barriers.
@@ -56,7 +56,7 @@ enum MemoryOrder {
 // IncrementBy is undefined behavior (it is also undefined for signed types,
 // as always).
 //
-// See also: kudu/gutil/atomicops.h
+// See also: yb/gutil/atomicops.h
 template<typename T>
 class AtomicInt {
  public:
@@ -317,4 +317,4 @@ inline void AtomicInt<T>::StoreMin(T new_value, MemoryOrder mem_order) {
 }
 
 } // namespace yb
-#endif /* KUDU_UTIL_ATOMIC_H */
+#endif /* YB_UTIL_ATOMIC_H */

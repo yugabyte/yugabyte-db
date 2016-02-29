@@ -69,7 +69,7 @@ using strings::SubstituteAndAppend;
 
 const char kTmpSuffix[] = ".tmp";
 
-const char kLogSegmentHeaderMagicString[] = "kudulogf";
+const char kLogSegmentHeaderMagicString[] = "yugalogf";
 
 // A magic that is written as the very last thing when a segment is closed.
 // Segments that were not closed (usually the last one being written) will not

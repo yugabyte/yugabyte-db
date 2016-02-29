@@ -66,7 +66,7 @@ TAG_FLAG(tcmalloc_max_free_bytes_percentage, advanced);
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
-// somewhat from kudu.
+// somewhat from yb.
 
 using std::deque;
 using std::list;

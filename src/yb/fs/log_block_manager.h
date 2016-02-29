@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_FS_LOG_BLOCK_MANAGER_H
-#define KUDU_FS_LOG_BLOCK_MANAGER_H
+#ifndef YB_FS_LOG_BLOCK_MANAGER_H
+#define YB_FS_LOG_BLOCK_MANAGER_H
 
 #include <deque>
 #include <gtest/gtest_prod.h>

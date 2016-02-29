@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TABLET_TABLET_PEER_MM_OPS_H_
-#define KUDU_TABLET_TABLET_PEER_MM_OPS_H_
+#ifndef YB_TABLET_TABLET_PEER_MM_OPS_H_
+#define YB_TABLET_TABLET_PEER_MM_OPS_H_
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_peer.h"
@@ -130,4 +130,4 @@ class LogGCOp : public MaintenanceOp {
 } // namespace tablet
 } // namespace yb
 
-#endif /* KUDU_TABLET_TABLET_PEER_MM_OPS_H_ */
+#endif /* YB_TABLET_TABLET_PEER_MM_OPS_H_ */

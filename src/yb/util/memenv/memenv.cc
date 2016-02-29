@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
-// Modified for kudu:
+// Modified for yb:
 // - use boost mutexes instead of port mutexes
 
 #include <string.h>
@@ -127,12 +127,12 @@ class FileState : public RefCountedThreadSafe<FileState> {
   const string& filename() const { return filename_; }
 
   size_t memory_footprint() const {
-    size_t size = kudu_malloc_usable_size(this);
+    size_t size = yb_malloc_usable_size(this);
     if (blocks_.capacity() > 0) {
-      size += kudu_malloc_usable_size(blocks_.data());
+      size += yb_malloc_usable_size(blocks_.data());
     }
     for (uint8_t* block : blocks_) {
-      size += kudu_malloc_usable_size(block);
+      size += yb_malloc_usable_size(block);
     }
     size += filename_.capacity();
     return size;
@@ -226,7 +226,7 @@ class RandomAccessFileImpl : public RandomAccessFile {
   virtual size_t memory_footprint() const OVERRIDE {
     // The FileState is actually shared between multiple files, but the double
     // counting doesn't matter much since MemEnv is only used in tests.
-    return kudu_malloc_usable_size(this) + file_->memory_footprint();
+    return yb_malloc_usable_size(this) + file_->memory_footprint();
   }
 
  private:

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_SERIALIZATION_H
-#define KUDU_RPC_SERIALIZATION_H
+#ifndef YB_RPC_SERIALIZATION_H
+#define YB_RPC_SERIALIZATION_H
 
 #include <inttypes.h>
 #include <string.h>
@@ -85,4 +85,4 @@ Status ValidateConnHeader(const Slice& slice);
 } // namespace serialization
 } // namespace rpc
 } // namespace yb
-#endif // KUDU_RPC_SERIALIZATION_H
+#endif // YB_RPC_SERIALIZATION_H

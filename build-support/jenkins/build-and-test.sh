@@ -24,11 +24,11 @@
 #   BUILD_TYPE: Default: DEBUG
 #     Maybe be one of ASAN|TSAN|DEBUG|RELEASE|COVERAGE|LINT
 #
-#   KUDU_ALLOW_SLOW_TESTS   Default: 1
+#   YB_ALLOW_SLOW_TESTS   Default: 1
 #     Runs the "slow" version of the unit tests. Set to 0 to
 #     run the tests more quickly.
 #
-#   TEST_TMPDIR   Default: /tmp/kudutest-$UID
+#   TEST_TMPDIR   Default: /tmp/ybtest-$UID
 #     Specifies the temporary directory where tests should write their
 #     data. It is expected that following the completion of all tests, this
 #     directory is empty (i.e. every test cleaned up after itself).
@@ -98,9 +98,9 @@ if [ "$BUILD_TYPE" = "TSAN" ]; then
 fi
 
 export KUDU_FLAKY_TEST_ATTEMPTS=${KUDU_FLAKY_TEST_ATTEMPTS:-1}
-export KUDU_ALLOW_SLOW_TESTS=${KUDU_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
+export YB_ALLOW_SLOW_TESTS=${YB_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
 export KUDU_COMPRESS_TEST_OUTPUT=${KUDU_COMPRESS_TEST_OUTPUT:-1}
-export TEST_TMPDIR=${TEST_TMPDIR:-/tmp/kudutest-$UID}
+export TEST_TMPDIR=${TEST_TMPDIR:-/tmp/ybtest-$UID}
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
@@ -331,7 +331,7 @@ if [ "$BUILD_PYTHON" == "1" ]; then
 
   # Failing to compile the Python client should result in a build failure
   set -e
-  export KUDU_HOME=$SOURCE_ROOT
+  export YB_HOME=$SOURCE_ROOT
   export KUDU_BUILD=$BUILD_ROOT
   pushd $SOURCE_ROOT/python
 

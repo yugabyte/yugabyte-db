@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_TRANSFER_H
-#define KUDU_RPC_TRANSFER_H
+#ifndef YB_RPC_TRANSFER_H
+#define YB_RPC_TRANSFER_H
 
 #include <boost/intrusive/list.hpp>
 #include <boost/function.hpp>

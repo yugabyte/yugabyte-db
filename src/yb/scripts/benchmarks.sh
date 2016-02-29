@@ -137,7 +137,7 @@ write_mttablet_img_plots() {
   xvfb-run Rscript mt-tablet-test-graph.R $INPUT_FILE $TEST_NAME
 }
 
-build_kudu() {
+build_yb() {
   # PATH=<toolchain_stuff>:$PATH
   export TOOLCHAIN=/mnt/toolchain/toolchain.sh
   if [ -f "$TOOLCHAIN" ]; then
@@ -188,12 +188,12 @@ run_benchmarks() {
 
   # run rpc-bench test 5 times. 10 seconds per run
   for i in $(seq 1 $NUM_SAMPLES); do
-    KUDU_ALLOW_SLOW_TESTS=true ./build/latest/bin/rpc-bench &> $LOGDIR/$RPC_BENCH_TEST$i.log
+    YB_ALLOW_SLOW_TESTS=true ./build/latest/bin/rpc-bench &> $LOGDIR/$RPC_BENCH_TEST$i.log
   done
 
   # run cbtree-test 5 times. 20 seconds per run
   for i in $(seq 1 $NUM_SAMPLES); do
-    KUDU_ALLOW_SLOW_TESTS=true ./build/latest/bin/cbtree-test \
+    YB_ALLOW_SLOW_TESTS=true ./build/latest/bin/cbtree-test \
       --gtest_filter=TestCBTree.TestScanPerformance &> $LOGDIR/${CBTREE_TEST}$i.log
   done
 
@@ -212,13 +212,13 @@ run_benchmarks() {
 
   # run wire_protocol-test 5 times. 6 seconds per run
   for i in $(seq 1 $NUM_SAMPLES); do
-    KUDU_ALLOW_SLOW_TESTS=true ./build/latest/bin/wire_protocol-test --gtest_filter=*Benchmark \
+    YB_ALLOW_SLOW_TESTS=true ./build/latest/bin/wire_protocol-test --gtest_filter=*Benchmark \
       &> $LOGDIR/$WIRE_PROTOCOL_TEST$i.log
   done
 
   # run compaction-test 5 times, 6 seconds each
   for i in $(seq 1 $NUM_SAMPLES); do
-    KUDU_ALLOW_SLOW_TESTS=true ./build/latest/bin/compaction-test \
+    YB_ALLOW_SLOW_TESTS=true ./build/latest/bin/compaction-test \
       --gtest_filter=TestCompaction.BenchmarkMerge* &> $LOGDIR/${COMPACT_MERGE_BENCH}$i.log
   done
 
@@ -230,7 +230,7 @@ run_benchmarks() {
 
   # Run single-threaded TS insert latency benchmark, 5-6 seconds per run
   for i in $(seq 1 $NUM_SAMPLES) ; do
-    KUDU_ALLOW_SLOW_TESTS=true ./build/latest/bin/tablet_server-test \
+    YB_ALLOW_SLOW_TESTS=true ./build/latest/bin/tablet_server-test \
       --gtest_filter=*MicroBench* \
       --single_threaded_insert_latency_bench_warmup_rows=1000 \
       --single_threaded_insert_latency_bench_insert_rows=10000 &> $LOGDIR/${TS_INSERT_LATENCY}$i.log
@@ -238,7 +238,7 @@ run_benchmarks() {
 
   # Run multi-threaded TS insert benchmark
   for i in $(seq 1 $NUM_SAMPLES) ; do
-    KUDU_ALLOW_SLOW_TESTS=1 build/latest/bin/tablet_server-stress-test \
+    YB_ALLOW_SLOW_TESTS=1 build/latest/bin/tablet_server-stress-test \
       --num_inserts_per_thread=30000 &> $LOGDIR/${TS_8THREAD_BENCH}$i.log
   done
 
@@ -272,7 +272,7 @@ parse_and_record_all_results() {
   fi
 
   pushd src
-  pushd kudu
+  pushd yb
   pushd scripts
 
   # parse the number of ms out of "[       OK ] MultiThreadedTabletTest/5.DoTestAllAtOnce (14966 ms)"
@@ -444,7 +444,7 @@ load_and_generate_plot() {
 
 load_stats_and_generate_plots() {
   pushd src
-  pushd kudu
+  pushd yb
   pushd scripts
 
   load_and_generate_plot "%MultiThreadedTabletTest%" mt-tablet-test-runtime
@@ -522,7 +522,7 @@ load_stats_and_generate_plots() {
 
 build_run_record() {
   local BUILD_IDENTIFIER=$1
-  build_kudu
+  build_yb
   run_benchmarks
   parse_and_record_all_results "$BUILD_IDENTIFIER"
 }
@@ -582,7 +582,7 @@ BASE_DIR=$(pwd)
 LOGDIR="$BASE_DIR/$LOG_DIR_NAME"
 OUTDIR="$BASE_DIR/$OUT_DIR_NAME"
 
-# Ensure we are in KUDU_HOME
+# Ensure we are in YB_HOME
 if [ ! -f "$BASE_DIR/LICENSE.txt" ]; then
   set +x
   echo "Error: must run from top of Kudu source tree"

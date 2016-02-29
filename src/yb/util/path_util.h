@@ -16,8 +16,8 @@
 // under the License.
 //
 // Utility methods for dealing with file paths.
-#ifndef KUDU_UTIL_PATH_UTIL_H
-#define KUDU_UTIL_PATH_UTIL_H
+#ifndef YB_UTIL_PATH_UTIL_H
+#define YB_UTIL_PATH_UTIL_H
 
 #include <string>
 
@@ -37,4 +37,4 @@ std::string DirName(const std::string& path);
 std::string BaseName(const std::string& path);
 
 } // namespace yb
-#endif /* KUDU_UTIL_PATH_UTIL_H */
+#endif /* YB_UTIL_PATH_UTIL_H */

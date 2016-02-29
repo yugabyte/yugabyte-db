@@ -20,8 +20,8 @@
 // - Fixes for cpplint.
 // - Fixed parsing when thread names have spaces.
 
-#ifndef KUDU_UTIL_OS_UTIL_H
-#define KUDU_UTIL_OS_UTIL_H
+#ifndef YB_UTIL_OS_UTIL_H
+#define YB_UTIL_OS_UTIL_H
 
 #include <string>
 
@@ -62,4 +62,4 @@ bool RunShellProcess(const std::string& cmd, std::string* msg);
 
 } // namespace yb
 
-#endif /* KUDU_UTIL_OS_UTIL_H */
+#endif /* YB_UTIL_OS_UTIL_H */

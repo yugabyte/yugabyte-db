@@ -102,8 +102,8 @@
 //
 // To fetch the list of tags associated with a flag, use 'GetFlagTags'.
 
-#ifndef KUDU_UTIL_FLAG_TAGS_H
-#define KUDU_UTIL_FLAG_TAGS_H
+#ifndef YB_UTIL_FLAG_TAGS_H
+#define YB_UTIL_FLAG_TAGS_H
 
 #include "yb/gutil/macros.h"
 
@@ -163,4 +163,4 @@ class FlagTagger {
 } // namespace flag_tags_internal
 
 } // namespace yb
-#endif /* KUDU_UTIL_FLAG_TAGS_H */
+#endif /* YB_UTIL_FLAG_TAGS_H */

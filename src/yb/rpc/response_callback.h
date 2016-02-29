@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_RESPONSE_CALLBACK_H
-#define KUDU_RPC_RESPONSE_CALLBACK_H
+#ifndef YB_RPC_RESPONSE_CALLBACK_H
+#define YB_RPC_RESPONSE_CALLBACK_H
 
 #include <boost/function.hpp>
 

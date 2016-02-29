@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TABLET_WRITE_TRANSACTION_H_
-#define KUDU_TABLET_WRITE_TRANSACTION_H_
+#ifndef YB_TABLET_WRITE_TRANSACTION_H_
+#define YB_TABLET_WRITE_TRANSACTION_H_
 
 #include <string>
 #include <vector>
@@ -274,4 +274,4 @@ class WriteTransaction : public Transaction {
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* KUDU_TABLET_WRITE_TRANSACTION_H_ */
+#endif /* YB_TABLET_WRITE_TRANSACTION_H_ */

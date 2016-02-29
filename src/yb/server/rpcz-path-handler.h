@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_SERVER_RPCZ_PATH_HANDLER_H
-#define KUDU_SERVER_RPCZ_PATH_HANDLER_H
+#ifndef YB_SERVER_RPCZ_PATH_HANDLER_H
+#define YB_SERVER_RPCZ_PATH_HANDLER_H
 
 #include <memory>
 
@@ -31,4 +31,4 @@ void AddRpczPathHandlers(const std::shared_ptr<rpc::Messenger>& messenger,
                          Webserver* webserver);
 
 } // namespace yb
-#endif /* KUDU_SERVER_RPCZ_PATH_HANDLER_H */
+#endif /* YB_SERVER_RPCZ_PATH_HANDLER_H */

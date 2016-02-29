@@ -1090,10 +1090,10 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
             "Soft memory limit exceeded (at %.2f%% of capacity)",
             capacity_pct);
         if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-          KLOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
+          YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
                                         << THROTTLE_MSG;
         } else {
-          KLOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
+          YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
                                      << THROTTLE_MSG;
         }
         return Status::ServiceUnavailable(msg);

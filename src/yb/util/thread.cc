@@ -330,7 +330,7 @@ void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category,
     ThreadStats stats;
     Status status = GetThreadStats(thread.second.thread_id(), &stats);
     if (!status.ok()) {
-      KLOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
+      YB_LOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
                               << status.ToString();
     }
     (*output) << "<tr><td>" << thread.second.name() << "</td><td>"
@@ -544,7 +544,7 @@ void* Thread::SuperviseThread(void* arg) {
   int64_t system_tid = Thread::CurrentThreadId();
   if (system_tid == -1) {
     string error_msg = ErrnoToString(errno);
-    KLOG_EVERY_N(INFO, 100) << "Could not determine thread ID: " << error_msg;
+    YB_LOG_EVERY_N(INFO, 100) << "Could not determine thread ID: " << error_msg;
   }
   string name = strings::Substitute("$0-$1", t->name(), system_tid);
 

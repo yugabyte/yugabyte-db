@@ -17,8 +17,8 @@
 //
 // Row changelists are simply an encoded form of a list of updates to columns
 // within a row. These are stored within the delta memstore and delta files.
-#ifndef KUDU_COMMON_ROW_CHANGELIST_H
-#define KUDU_COMMON_ROW_CHANGELIST_H
+#ifndef YB_COMMON_ROW_CHANGELIST_H
+#define YB_COMMON_ROW_CHANGELIST_H
 
 #include <gtest/gtest_prod.h>
 #include <string>

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_CFILE_READER_H
-#define KUDU_CFILE_CFILE_READER_H
+#ifndef YB_CFILE_CFILE_READER_H
+#define YB_CFILE_CFILE_READER_H
 
 #include <string>
 #include <vector>

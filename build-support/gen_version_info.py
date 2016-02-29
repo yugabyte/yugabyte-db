@@ -136,13 +136,13 @@ def main():
 #define VERSION_INFO_H_
 
 #define YB_GIT_HASH "%(git_hash)s"
-#define KUDU_BUILD_HOSTNAME "%(hostname)s"
-#define KUDU_BUILD_TIMESTAMP "%(build_time)s"
-#define KUDU_BUILD_USERNAME "%(username)s"
-#define KUDU_BUILD_CLEAN_REPO %(clean_repo)s
-#define KUDU_BUILD_ID "%(build_id)s"
-#define KUDU_BUILD_TYPE "%(build_type)s"
-#define KUDU_VERSION_STRING "%(version_string)s"
+#define YB_BUILD_HOSTNAME "%(hostname)s"
+#define YB_BUILD_TIMESTAMP "%(build_time)s"
+#define YB_BUILD_USERNAME "%(username)s"
+#define YB_BUILD_CLEAN_REPO %(clean_repo)s
+#define YB_BUILD_ID "%(build_id)s"
+#define YB_BUILD_TYPE "%(build_type)s"
+#define YB_VERSION_STRING "%(version_string)s"
 #endif
 """ % locals()
 

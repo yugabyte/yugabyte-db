@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CONSENSUS_CONSENSUS_QUEUE_H_
-#define KUDU_CONSENSUS_CONSENSUS_QUEUE_H_
+#ifndef YB_CONSENSUS_CONSENSUS_QUEUE_H_
+#define YB_CONSENSUS_CONSENSUS_QUEUE_H_
 
 #include <iosfwd>
 #include <map>
@@ -428,4 +428,4 @@ class PeerMessageQueueObserver {
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* KUDU_CONSENSUS_CONSENSUS_QUEUE_H_ */
+#endif /* YB_CONSENSUS_CONSENSUS_QUEUE_H_ */

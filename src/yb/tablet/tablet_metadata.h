@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_TABLET_METADATA_H
-#define KUDU_TABLET_TABLET_METADATA_H
+#ifndef YB_TABLET_TABLET_METADATA_H
+#define YB_TABLET_TABLET_METADATA_H
 
 #include <boost/optional/optional_fwd.hpp>
 #include <memory>
@@ -346,4 +346,4 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 } // namespace tablet
 } // namespace yb
 
-#endif /* KUDU_TABLET_TABLET_METADATA_H */
+#endif /* YB_TABLET_TABLET_METADATA_H */

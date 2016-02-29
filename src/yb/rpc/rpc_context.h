@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_RPC_RPC_CONTEXT_H
-#define KUDU_RPC_RPC_CONTEXT_H
+#ifndef YB_RPC_RPC_CONTEXT_H
+#define YB_RPC_RPC_CONTEXT_H
 
 #include <string>
 

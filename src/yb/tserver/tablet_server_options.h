@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_TABLET_SERVER_OPTIONS_H
-#define KUDU_TSERVER_TABLET_SERVER_OPTIONS_H
+#ifndef YB_TSERVER_TABLET_SERVER_OPTIONS_H
+#define YB_TSERVER_TABLET_SERVER_OPTIONS_H
 
 #include <vector>
 
@@ -39,4 +39,4 @@ struct TabletServerOptions : public yb::server::ServerBaseOptions {
 
 } // namespace tserver
 } // namespace yb
-#endif /* KUDU_TSERVER_TABLET_SERVER_OPTIONS_H */
+#endif /* YB_TSERVER_TABLET_SERVER_OPTIONS_H */

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_TABLET_METRICS_H
-#define KUDU_TABLET_TABLET_METRICS_H
+#ifndef YB_TABLET_TABLET_METRICS_H
+#define YB_TABLET_TABLET_METRICS_H
 
 #include "yb/gutil/macros.h"
 #include "yb/tablet/rowset.h"
@@ -104,4 +104,4 @@ class ProbeStatsSubmitter {
 
 } // namespace tablet
 } // namespace yb
-#endif /* KUDU_TABLET_TABLET_METRICS_H */
+#endif /* YB_TABLET_TABLET_METRICS_H */

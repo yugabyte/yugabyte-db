@@ -25,15 +25,15 @@
 # - BUILD_NUMBER
 # If these are not set, the script will still run but will not record
 # the results in the MySQL database. Instead, it will output results
-# into .tsv files in the kudu source root directory. This is useful for
+# into .tsv files in the yb source root directory. This is useful for
 # running this benchmark locally for testing / dev purposes.
 #
 # Optional environment variables to override (defaults set for Jenkins):
 # - LINEITEM_TBL_PATH: Path to lineitem.tbl from the TPC-H suite.
-# - KUDU_DATA_DIR: Directory to use for data storage.
+# - YB_DATA_DIR: Directory to use for data storage.
 # - TPCH_NUM_QUERY_ITERS: Number of TPC-H query iterations to run.
 #
-# Jenkins job: http://sandbox.jenkins.cloudera.com/job/kudu-tpch1
+# Jenkins job: http://???/job/yb-tpch1
 ########################################################################
 
 ##########################################################
@@ -45,14 +45,14 @@ ROOT=$(readlink -f $(dirname $0)/../../..)
 # Overridable params
 ##########################################################
 LINEITEM_TBL_PATH=${LINEITEM_TBL_PATH:-/home/jdcryans/lineitem.tbl}
-KUDU_DATA_DIR=${KUDU_DATA_DIR:-/data/2/tmp/kudutpch1-jenkins}
+YB_DATA_DIR=${YB_DATA_DIR:-/data/2/tmp/ybtpch1-jenkins}
 TPCH_NUM_QUERY_ITERS=${TPCH_NUM_QUERY_ITERS:-5}
 
 ##########################################################
 # Functions
 ##########################################################
 record_result() {
-  local RECORD_STATS_SCRIPT=$ROOT/src/kudu/scripts/write-jobs-stats-to-mysql.py
+  local RECORD_STATS_SCRIPT=$ROOT/src/yb/scripts/write-jobs-stats-to-mysql.py
   local TEST_NAME=$1
   local ITER=$2
   local VALUE=$3
@@ -107,7 +107,7 @@ export PPROF_PATH=$THIRDPARTY_BIN/pprof
 
 BUILD_TYPE=release
 
-# Build Kudu
+# Build YB
 mkdir -p build/$BUILD_TYPE
 pushd build/$BUILD_TYPE
 rm -rf CMakeCache CMakeFiles/
@@ -123,12 +123,12 @@ cat $LINEITEM_TBL_PATH > /dev/null
 cat $LINEITEM_TBL_PATH > /dev/null
 
 OUTDIR=$ROOT/build/$BUILD_TYPE/tpch
-rm -Rf $KUDU_DATA_DIR   # Clean up data dir.
+rm -Rf $YB_DATA_DIR   # Clean up data dir.
 mkdir -p $OUTDIR        # Create log file output dir.
 
 ./build/$BUILD_TYPE/bin/tpch1 -logtostderr=1 \
                               -tpch_path_to_data=$LINEITEM_TBL_PATH \
-                              -mini_cluster_base_dir=$KUDU_DATA_DIR \
+                              -mini_cluster_base_dir=$YB_DATA_DIR \
                               -tpch_num_query_iterations=$TPCH_NUM_QUERY_ITERS \
                               >$OUTDIR/benchmark.log 2>&1
 

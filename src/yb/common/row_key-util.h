@@ -16,8 +16,8 @@
 // under the License.
 //
 // Utility functions for working with the primary key portion of a row.
-#ifndef KUDU_COMMON_ROW_KEY_UTIL_H
-#define KUDU_COMMON_ROW_KEY_UTIL_H
+#ifndef YB_COMMON_ROW_KEY_UTIL_H
+#define YB_COMMON_ROW_KEY_UTIL_H
 
 #include "yb/gutil/port.h"
 
@@ -70,4 +70,4 @@ bool IncrementKeyPrefix(ContiguousRow* row, int prefix_len,
 
 } // namespace row_key_util
 } // namespace yb
-#endif /* KUDU_COMMON_ROW_KEY_UTIL_H */
+#endif /* YB_COMMON_ROW_KEY_UTIL_H */

@@ -16,8 +16,8 @@
 // under the License.
 //
 // Utility functions for dealing with a byte array as if it were a bitmap.
-#ifndef KUDU_UTIL_BITMAP_H
-#define KUDU_UTIL_BITMAP_H
+#ifndef YB_UTIL_BITMAP_H
+#define YB_UTIL_BITMAP_H
 
 #include <string>
 #include "yb/gutil/bits.h"

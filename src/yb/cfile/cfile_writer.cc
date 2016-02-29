@@ -60,7 +60,7 @@ TAG_FLAG(cfile_do_on_finish, experimental);
 namespace yb {
 namespace cfile {
 
-const char kMagicString[] = "kuducfil";
+const char kMagicString[] = "yugacfil";
 
 static const size_t kBlockSizeLimit = 16 * 1024 * 1024; // 16MB
 static const size_t kMinBlockSize = 512;

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H
-#define KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H
+#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H
+#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H
 
 #include <memory>
 #include <string>
@@ -94,7 +94,7 @@ struct ExternalMiniClusterOptions {
   // Default: true
   bool bind_to_unique_loopback_addresses;
 
-  // The path where the kudu daemons should be run from.
+  // The path where the yb daemons should be run from.
   // Default: "", which uses the same path as the currently running executable.
   // This works for unit tests, since they all end up in build/latest/bin.
   std::string daemon_bin_path;
@@ -425,4 +425,4 @@ class ExternalTabletServer : public ExternalDaemon {
 };
 
 } // namespace yb
-#endif /* KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H */
+#endif /* YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H */

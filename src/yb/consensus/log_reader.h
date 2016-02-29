@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_LOG_LOG_READER_H_
-#define KUDU_LOG_LOG_READER_H_
+#ifndef YB_LOG_LOG_READER_H_
+#define YB_LOG_LOG_READER_H_
 
 #include <gtest/gtest.h>
 #include <map>
@@ -204,4 +204,4 @@ class LogReader {
 }  // namespace log
 }  // namespace yb
 
-#endif /* KUDU_LOG_LOG_READER_H_ */
+#endif /* YB_LOG_LOG_READER_H_ */

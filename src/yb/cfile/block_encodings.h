@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_BLOCK_ENCODINGS_H
-#define KUDU_CFILE_BLOCK_ENCODINGS_H
+#ifndef YB_CFILE_BLOCK_ENCODINGS_H
+#define YB_CFILE_BLOCK_ENCODINGS_H
 
 #include <stdint.h>
 

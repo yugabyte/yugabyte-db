@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_SASL_SERVER_H
-#define KUDU_RPC_SASL_SERVER_H
+#ifndef YB_RPC_SASL_SERVER_H
+#define YB_RPC_SASL_SERVER_H
 
 #include <set>
 #include <string>
@@ -164,4 +164,4 @@ class SaslServer {
 } // namespace rpc
 } // namespace yb
 
-#endif  // KUDU_RPC_SASL_SERVER_H
+#endif // YB_RPC_SASL_SERVER_H

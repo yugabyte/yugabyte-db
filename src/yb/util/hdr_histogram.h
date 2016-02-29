@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_HDRHISTOGRAM_H_
-#define KUDU_UTIL_HDRHISTOGRAM_H_
+#ifndef YB_UTIL_HDRHISTOGRAM_H_
+#define YB_UTIL_HDRHISTOGRAM_H_
 
 // C++ (TR1) port of HdrHistogram.
 // Original java implementation: http://giltene.github.io/HdrHistogram/
@@ -341,4 +341,4 @@ class PercentileIterator : public AbstractHistogramIterator {
 
 } // namespace yb
 
-#endif // KUDU_UTIL_HDRHISTOGRAM_H_
+#endif // YB_UTIL_HDRHISTOGRAM_H_

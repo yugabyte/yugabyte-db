@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_COMPACTION_POLICY_H
-#define KUDU_TABLET_COMPACTION_POLICY_H
+#ifndef YB_TABLET_COMPACTION_POLICY_H
+#define YB_TABLET_COMPACTION_POLICY_H
 
 #include <string>
 #include <unordered_set>
@@ -73,7 +73,7 @@ class CompactionPolicy {
 // tries to pick a set of RowSets which fit into that budget and minimize the
 // future cost of operations on the tablet.
 //
-// See src/kudu/tablet/compaction-policy.txt for details.
+// See src/yb/tablet/compaction-policy.txt for details.
 class BudgetedCompactionPolicy : public CompactionPolicy {
  public:
   explicit BudgetedCompactionPolicy(int size_budget_mb);

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_MASTER_TS_DESCRIPTOR_H
-#define KUDU_MASTER_TS_DESCRIPTOR_H
+#ifndef YB_MASTER_TS_DESCRIPTOR_H
+#define YB_MASTER_TS_DESCRIPTOR_H
 
 #include <memory>
 #include <string>
@@ -152,4 +152,4 @@ class TSDescriptor {
 
 } // namespace master
 } // namespace yb
-#endif /* KUDU_MASTER_TS_DESCRIPTOR_H */
+#endif /* YB_MASTER_TS_DESCRIPTOR_H */

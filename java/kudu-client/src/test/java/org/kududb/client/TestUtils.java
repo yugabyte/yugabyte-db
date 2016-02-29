@@ -132,7 +132,7 @@ public class TestUtils {
   public static String getBaseDir() {
     String s = System.getenv("TEST_TMPDIR");
     if (s == null) {
-      s = String.format("/tmp/kudutest-%d", new UnixSystem().getUid());
+      s = String.format("/tmp/ybtest-%d", new UnixSystem().getUid());
     }
     File f = new File(s);
     f.mkdirs();

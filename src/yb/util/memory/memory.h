@@ -29,8 +29,8 @@
 // single allocator per a single user request, thus setting bounds on memory
 // usage on a per-request basis.
 
-#ifndef KUDU_UTIL_MEMORY_MEMORY_H_
-#define KUDU_UTIL_MEMORY_MEMORY_H_
+#ifndef YB_UTIL_MEMORY_MEMORY_H_
+#define YB_UTIL_MEMORY_MEMORY_H_
 
 #include <algorithm>
 #include <glog/logging.h>
@@ -975,4 +975,4 @@ void StaticQuota<thread_safe>::SetQuota(const size_t quota) {
 
 }  // namespace yb
 
-#endif  // KUDU_UTIL_MEMORY_MEMORY_H_
+#endif // YB_UTIL_MEMORY_MEMORY_H_

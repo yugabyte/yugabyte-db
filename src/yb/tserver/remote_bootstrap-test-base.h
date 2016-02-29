@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
-#define KUDU_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
+#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
+#define YB_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
 
 #include "yb/tserver/tablet_server-test-base.h"
 
@@ -123,4 +123,4 @@ class RemoteBootstrapTest : public TabletServerTestBase {
 } // namespace tserver
 } // namespace yb
 
-#endif // KUDU_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
+#endif // YB_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_

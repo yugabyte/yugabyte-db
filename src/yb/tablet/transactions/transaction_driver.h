@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TABLET_TRANSACTION_DRIVER_H_
-#define KUDU_TABLET_TRANSACTION_DRIVER_H_
+#ifndef YB_TABLET_TRANSACTION_DRIVER_H_
+#define YB_TABLET_TRANSACTION_DRIVER_H_
 
 #include <string>
 
@@ -257,4 +257,4 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* KUDU_TABLET_TRANSACTION_DRIVER_H_ */
+#endif /* YB_TABLET_TRANSACTION_DRIVER_H_ */

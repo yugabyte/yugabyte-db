@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_TSERVER_PATH_HANDLERS_H
-#define KUDU_TSERVER_TSERVER_PATH_HANDLERS_H
+#ifndef YB_TSERVER_TSERVER_PATH_HANDLERS_H
+#define YB_TSERVER_TSERVER_PATH_HANDLERS_H
 
 #include "yb/gutil/macros.h"
 #include "yb/server/webserver.h"
@@ -80,4 +80,4 @@ class TabletServerPathHandlers {
 
 } // namespace tserver
 } // namespace yb
-#endif /* KUDU_TSERVER_TSERVER_PATH_HANDLERS_H */
+#endif /* YB_TSERVER_TSERVER_PATH_HANDLERS_H */

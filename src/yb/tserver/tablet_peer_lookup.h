@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_TABLET_PEER_LOOKUP_H_
-#define KUDU_TSERVER_TABLET_PEER_LOOKUP_H_
+#ifndef YB_TSERVER_TABLET_PEER_LOOKUP_H_
+#define YB_TSERVER_TABLET_PEER_LOOKUP_H_
 
 #include <memory>
 #include <string>
@@ -55,4 +55,4 @@ class TabletPeerLookupIf {
 } // namespace tserver
 } // namespace yb
 
-#endif // KUDU_TSERVER_TABLET_PEER_LOOKUP_H_
+#endif // YB_TSERVER_TABLET_PEER_LOOKUP_H_

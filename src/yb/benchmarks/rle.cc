@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Micro benchmark for writing/reading bit streams and Kudu specific
+// Micro benchmark for writing/reading bit streams and YB specific
 // run-length encoding (RLE) APIs. Currently only covers booleans and
 // the most performance sensitive APIs. NB: Impala contains a RLE
 // micro benchmark (rle-benchmark.cc).

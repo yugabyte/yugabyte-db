@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_NET_DNS_RESOLVER_H
-#define KUDU_UTIL_NET_DNS_RESOLVER_H
+#ifndef YB_UTIL_NET_DNS_RESOLVER_H
+#define YB_UTIL_NET_DNS_RESOLVER_H
 
 #include <vector>
 
@@ -60,4 +60,4 @@ class DnsResolver {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_NET_DNS_RESOLVER_H */
+#endif /* YB_UTIL_NET_DNS_RESOLVER_H */

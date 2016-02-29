@@ -327,9 +327,9 @@ Status Log::Init() {
   }
 
   if (force_sync_all_) {
-    KLOG_FIRST_N(INFO, 1) << "Log is configured to fsync() on all Append() calls";
+    YB_LOG_FIRST_N(INFO, 1) << "Log is configured to fsync() on all Append() calls";
   } else {
-    KLOG_FIRST_N(INFO, 1) << "Log is configured to *not* fsync() on all Append() calls";
+    YB_LOG_FIRST_N(INFO, 1) << "Log is configured to *not* fsync() on all Append() calls";
   }
 
   // We always create a new segment when the log starts.

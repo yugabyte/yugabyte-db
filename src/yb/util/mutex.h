@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_MUTEX_H
-#define KUDU_UTIL_MUTEX_H
+#ifndef YB_UTIL_MUTEX_H
+#define YB_UTIL_MUTEX_H
 
 #include <pthread.h>
 #include <glog/logging.h>
@@ -135,4 +135,4 @@ class MutexLock {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_MUTEX_H */
+#endif /* YB_UTIL_MUTEX_H */

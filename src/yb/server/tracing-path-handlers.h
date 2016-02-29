@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_SERVER_TRACING_PATH_HANDLERS_H
-#define KUDU_SERVER_TRACING_PATH_HANDLERS_H
+#ifndef YB_SERVER_TRACING_PATH_HANDLERS_H
+#define YB_SERVER_TRACING_PATH_HANDLERS_H
 
 #include "yb/gutil/macros.h"
 #include "yb/server/webserver.h"
@@ -38,4 +38,4 @@ class TracingPathHandlers {
 
 } // namespace server
 } // namespace yb
-#endif /* KUDU_SERVER_TRACING_PATH_HANDLERS_H */
+#endif /* YB_SERVER_TRACING_PATH_HANDLERS_H */

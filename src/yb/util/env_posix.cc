@@ -279,7 +279,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
   virtual const string& filename() const OVERRIDE { return filename_; }
 
   virtual size_t memory_footprint() const OVERRIDE {
-    return kudu_malloc_usable_size(this) + filename_.capacity();
+    return yb_malloc_usable_size(this) + filename_.capacity();
   }
 };
 
@@ -330,9 +330,9 @@ class PosixWritableFile : public WritableFile {
     uint64_t offset = std::max(filesize_, pre_allocated_size_);
     if (fallocate(fd_, 0, offset, size) < 0) {
       if (errno == EOPNOTSUPP) {
-        KLOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
+        YB_LOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
       } else if (errno == ENOSYS) {
-        KLOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
+        YB_LOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
       } else {
         return IOError(filename_, errno);
       }
@@ -543,9 +543,9 @@ class PosixRWFile : public RWFile {
     ThreadRestrictions::AssertIOAllowed();
     if (fallocate(fd_, 0, offset, length) < 0) {
       if (errno == EOPNOTSUPP) {
-        KLOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
+        YB_LOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
       } else if (errno == ENOSYS) {
-        KLOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
+        YB_LOG_FIRST_N(WARNING, 1) << "The kernel does not implement fallocate().";
       } else {
         return IOError(filename_, errno);
       }
@@ -911,7 +911,7 @@ class PosixEnv : public Env {
       dir = env;
     } else {
       char buf[100];
-      snprintf(buf, sizeof(buf), "/tmp/kudutest-%d", static_cast<int>(geteuid()));
+      snprintf(buf, sizeof(buf), "/tmp/ybtest-%d", static_cast<int>(geteuid()));
       dir = buf;
     }
     // Directory may already exist

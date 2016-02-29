@@ -260,7 +260,7 @@ def create_archive_input(staging, argv,
                '-e', 'GTEST_SHARD_INDEX=%d' % shard,
                '-e', 'GTEST_TOTAL_SHARDS=%d' % num_shards,
                '-e', 'KUDU_TEST_TIMEOUT=%d' % (TEST_TIMEOUT_SECS - 30),
-               '-e', 'KUDU_ALLOW_SLOW_TESTS=%s' % os.environ.get('KUDU_ALLOW_SLOW_TESTS', 1),
+               '-e', 'YB_ALLOW_SLOW_TESTS=%s' % os.environ.get('YB_ALLOW_SLOW_TESTS', 1),
                '-e', 'KUDU_COMPRESS_TEST_OUTPUT=%s' % \
                       os.environ.get('KUDU_COMPRESS_TEST_OUTPUT', 0)]
     command.append('--')

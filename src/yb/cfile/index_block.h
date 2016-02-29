@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_INDEX_BLOCK_H
-#define KUDU_CFILE_INDEX_BLOCK_H
+#ifndef YB_CFILE_INDEX_BLOCK_H
+#define YB_CFILE_INDEX_BLOCK_H
 
 #include <boost/lexical_cast.hpp>
 #include <boost/utility.hpp>

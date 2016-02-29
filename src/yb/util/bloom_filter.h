@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_BLOOM_FILTER_H
-#define KUDU_UTIL_BLOOM_FILTER_H
+#ifndef YB_UTIL_BLOOM_FILTER_H
+#define YB_UTIL_BLOOM_FILTER_H
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/hash/city.h"

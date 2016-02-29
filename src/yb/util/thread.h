@@ -17,8 +17,8 @@
 //
 // Copied from Impala and adapted to Kudu.
 
-#ifndef KUDU_UTIL_THREAD_H
-#define KUDU_UTIL_THREAD_H
+#ifndef YB_UTIL_THREAD_H
+#define YB_UTIL_THREAD_H
 
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
@@ -340,4 +340,4 @@ Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metr
                                   WebCallbackRegistry* web);
 } // namespace yb
 
-#endif /* KUDU_UTIL_THREAD_H */
+#endif /* YB_UTIL_THREAD_H */

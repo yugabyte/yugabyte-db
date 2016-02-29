@@ -1066,7 +1066,7 @@ Status KuduScanner::Open() {
       (data_->spec_.lower_bound_key() != nullptr ||
        data_->spec_.exclusive_upper_bound_key() != nullptr ||
        !data_->spec_.predicates().empty())) {
-    KLOG_FIRST_N(WARNING, 1) << "Starting full table scan. In the future this scan may be "
+    YB_LOG_FIRST_N(WARNING, 1) << "Starting full table scan. In the future this scan may be "
                                 "automatically optimized with partition pruning.";
   }
 

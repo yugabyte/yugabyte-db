@@ -16,8 +16,8 @@
 // under the License.
 //
 // Utility methods for dealing with string case.
-#ifndef KUDU_UTIL_STRING_CASE_H
-#define KUDU_UTIL_STRING_CASE_H
+#ifndef YB_UTIL_STRING_CASE_H
+#define YB_UTIL_STRING_CASE_H
 
 #include <string>
 

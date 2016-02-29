@@ -16,8 +16,8 @@
 // under the License.
 //
 // Base test class, with various utility functions.
-#ifndef KUDU_UTIL_TEST_UTIL_H
-#define KUDU_UTIL_TEST_UTIL_H
+#ifndef YB_UTIL_TEST_UTIL_H
+#define YB_UTIL_TEST_UTIL_H
 
 #include <gtest/gtest.h>
 #include <string>

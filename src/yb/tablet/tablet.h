@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_TABLET_H
-#define KUDU_TABLET_TABLET_H
+#ifndef YB_TABLET_TABLET_H
+#define YB_TABLET_TABLET_H
 
 #include <iosfwd>
 #include <map>

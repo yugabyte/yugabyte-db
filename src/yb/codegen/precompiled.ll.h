@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CODEGEN_PRECOMPILED_LL_H
-#define KUDU_CODEGEN_PRECOMPILED_LL_H
+#ifndef YB_CODEGEN_PRECOMPILED_LL_H
+#define YB_CODEGEN_PRECOMPILED_LL_H
 
 namespace yb {
 namespace codegen {
@@ -29,4 +29,4 @@ extern const unsigned int precompiled_ll_len;
 } // namespace codegen
 } // namespace yb
 
-#endif // KUDU_CODEGEN_PRECOMPILED_LL_H
+#endif // YB_CODEGEN_PRECOMPILED_LL_H

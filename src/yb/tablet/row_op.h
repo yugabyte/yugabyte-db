@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_ROW_OP_H
-#define KUDU_TABLET_ROW_OP_H
+#ifndef YB_TABLET_ROW_OP_H
+#define YB_TABLET_ROW_OP_H
 
 #include <string>
 
@@ -69,5 +69,5 @@ struct RowOp {
 
 } // namespace tablet
 } // namespace yb
-#endif /* KUDU_TABLET_ROW_OP_H */
+#endif /* YB_TABLET_ROW_OP_H */
 

@@ -67,7 +67,7 @@ static KuduSchema CreateSchema() {
   b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
   b.AddColumn("non_null_with_default")->Type(KuduColumnSchema::INT32)->NotNull()
     ->Default(KuduValue::FromInt(12345));
-  KUDU_CHECK_OK(b.Build(&schema));
+  YB_CHECK_OK(b.Build(&schema));
   return schema;
 }
 
@@ -94,7 +94,7 @@ static Status CreateTable(const shared_ptr<KuduClient>& client,
   int32_t increment = 1000 / num_tablets;
   for (int32_t i = 1; i < num_tablets; i++) {
     KuduPartialRow* row = schema.NewRow();
-    KUDU_CHECK_OK(row->SetInt32(0, i * increment));
+    YB_CHECK_OK(row->SetInt32(0, i * increment));
     splits.push_back(row);
   }
 
@@ -120,22 +120,22 @@ static Status AlterTable(const shared_ptr<KuduClient>& client,
 }
 
 static void StatusCB(void* unused, const Status& status) {
-  KUDU_LOG(INFO) << "Asynchronous flush finished with status: "
+  YB_LOG(INFO) << "Asynchronous flush finished with status: "
                       << status.ToString();
 }
 
 static Status InsertRows(const shared_ptr<KuduTable>& table, int num_rows) {
   shared_ptr<KuduSession> session = table->client()->NewSession();
-  KUDU_RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  YB_RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(5000);
 
   for (int i = 0; i < num_rows; i++) {
     KuduInsert* insert = table->NewInsert();
     KuduPartialRow* row = insert->mutable_row();
-    KUDU_CHECK_OK(row->SetInt32("key", i));
-    KUDU_CHECK_OK(row->SetInt32("integer_val", i * 2));
-    KUDU_CHECK_OK(row->SetInt32("non_null_with_default", i * 5));
-    KUDU_CHECK_OK(session->Apply(insert));
+    YB_CHECK_OK(row->SetInt32("key", i));
+    YB_CHECK_OK(row->SetInt32("integer_val", i * 2));
+    YB_CHECK_OK(row->SetInt32("non_null_with_default", i * 5));
+    YB_CHECK_OK(session->Apply(insert));
   }
   Status s = session->Flush();
   if (s.ok()) {
@@ -156,7 +156,7 @@ static Status InsertRows(const shared_ptr<KuduTable>& table, int num_rows) {
     delete errors.back();
     errors.pop_back();
   }
-  KUDU_RETURN_NOT_OK(s);
+  YB_RETURN_NOT_OK(s);
 
   // Close the session.
   return session->Close();
@@ -171,25 +171,25 @@ static Status ScanRows(const shared_ptr<KuduTable>& table) {
   // Add a predicate: WHERE key >= 5
   KuduPredicate* p = table->NewComparisonPredicate(
       "key", KuduPredicate::GREATER_EQUAL, KuduValue::FromInt(kLowerBound));
-  KUDU_RETURN_NOT_OK(scanner.AddConjunctPredicate(p));
+  YB_RETURN_NOT_OK(scanner.AddConjunctPredicate(p));
 
   // Add a predicate: WHERE key <= 600
   p = table->NewComparisonPredicate(
       "key", KuduPredicate::LESS_EQUAL, KuduValue::FromInt(kUpperBound));
-  KUDU_RETURN_NOT_OK(scanner.AddConjunctPredicate(p));
+  YB_RETURN_NOT_OK(scanner.AddConjunctPredicate(p));
 
-  KUDU_RETURN_NOT_OK(scanner.Open());
+  YB_RETURN_NOT_OK(scanner.Open());
   vector<KuduRowResult> results;
 
   int next_row = kLowerBound;
   while (scanner.HasMoreRows()) {
-    KUDU_RETURN_NOT_OK(scanner.NextBatch(&results));
+    YB_RETURN_NOT_OK(scanner.NextBatch(&results));
     for (vector<KuduRowResult>::iterator iter = results.begin();
         iter != results.end();
         iter++, next_row++) {
       const KuduRowResult& result = *iter;
       int32_t val;
-      KUDU_RETURN_NOT_OK(result.GetInt32("key", &val));
+      YB_RETURN_NOT_OK(result.GetInt32("key", &val));
       if (val != next_row) {
         stringstream out;
         out << "Scan returned the wrong results. Expected key "
@@ -219,15 +219,15 @@ static void LogCb(void* unused,
                   const struct ::tm* time,
                   const char* message,
                   size_t message_len) {
-  KUDU_LOG(INFO) << "Received log message from Kudu client library";
-  KUDU_LOG(INFO) << " Severity: " << severity;
-  KUDU_LOG(INFO) << " Filename: " << filename;
-  KUDU_LOG(INFO) << " Line number: " << line_number;
+  YB_LOG(INFO) << "Received log message from Kudu client library";
+  YB_LOG(INFO) << " Severity: " << severity;
+  YB_LOG(INFO) << " Filename: " << filename;
+  YB_LOG(INFO) << " Line number: " << line_number;
   char time_buf[32];
   // Example: Tue Mar 24 11:46:43 2015.
-  KUDU_CHECK(strftime(time_buf, sizeof(time_buf), "%a %b %d %T %Y", time));
-  KUDU_LOG(INFO) << " Time: " << time_buf;
-  KUDU_LOG(INFO) << " Message: " << string(message, message_len);
+  YB_CHECK(strftime(time_buf, sizeof(time_buf), "%a %b %d %T %Y", time));
+  YB_LOG(INFO) << " Time: " << time_buf;
+  YB_LOG(INFO) << " Message: " << string(message, message_len);
 }
 
 int main(int argc, char* argv[]) {
@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
   yb::client::InstallLoggingCallback(&log_cb);
 
   if (argc != 2) {
-    KUDU_LOG(FATAL) << "usage: " << argv[0] << " <master host>";
+    YB_LOG(FATAL) << "usage: " << argv[0] << " <master host>";
   }
   const string master_host = argv[1];
 
@@ -246,45 +246,45 @@ int main(int argc, char* argv[]) {
 
   // Create and connect a client.
   shared_ptr<KuduClient> client;
-  KUDU_CHECK_OK(CreateClient(master_host, &client));
-  KUDU_LOG(INFO) << "Created a client connection";
+  YB_CHECK_OK(CreateClient(master_host, &client));
+  YB_LOG(INFO) << "Created a client connection";
 
   // Disable the verbose logging.
   yb::client::SetVerboseLogLevel(0);
 
   // Create a schema.
   KuduSchema schema(CreateSchema());
-  KUDU_LOG(INFO) << "Created a schema";
+  YB_LOG(INFO) << "Created a schema";
 
   // Create a table with that schema.
   bool exists;
-  KUDU_CHECK_OK(DoesTableExist(client, kTableName, &exists));
+  YB_CHECK_OK(DoesTableExist(client, kTableName, &exists));
   if (exists) {
     client->DeleteTable(kTableName);
-    KUDU_LOG(INFO) << "Deleting old table before creating new one";
+    YB_LOG(INFO) << "Deleting old table before creating new one";
   }
-  KUDU_CHECK_OK(CreateTable(client, kTableName, schema, 10));
-  KUDU_LOG(INFO) << "Created a table";
+  YB_CHECK_OK(CreateTable(client, kTableName, schema, 10));
+  YB_LOG(INFO) << "Created a table";
 
   // Alter the table.
-  KUDU_CHECK_OK(AlterTable(client, kTableName));
-  KUDU_LOG(INFO) << "Altered a table";
+  YB_CHECK_OK(AlterTable(client, kTableName));
+  YB_LOG(INFO) << "Altered a table";
 
   // Insert some rows into the table.
   shared_ptr<KuduTable> table;
-  KUDU_CHECK_OK(client->OpenTable(kTableName, &table));
-  KUDU_CHECK_OK(InsertRows(table, 1000));
-  KUDU_LOG(INFO) << "Inserted some rows into a table";
+  YB_CHECK_OK(client->OpenTable(kTableName, &table));
+  YB_CHECK_OK(InsertRows(table, 1000));
+  YB_LOG(INFO) << "Inserted some rows into a table";
 
   // Scan some rows.
-  KUDU_CHECK_OK(ScanRows(table));
-  KUDU_LOG(INFO) << "Scanned some rows out of a table";
+  YB_CHECK_OK(ScanRows(table));
+  YB_LOG(INFO) << "Scanned some rows out of a table";
 
   // Delete the table.
-  KUDU_CHECK_OK(client->DeleteTable(kTableName));
-  KUDU_LOG(INFO) << "Deleted a table";
+  YB_CHECK_OK(client->DeleteTable(kTableName));
+  YB_LOG(INFO) << "Deleted a table";
 
   // Done!
-  KUDU_LOG(INFO) << "Done";
+  YB_LOG(INFO) << "Done";
   return 0;
 }

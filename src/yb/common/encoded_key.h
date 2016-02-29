@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_ENCODED_KEY_H
-#define KUDU_COMMON_ENCODED_KEY_H
+#ifndef YB_COMMON_ENCODED_KEY_H
+#define YB_COMMON_ENCODED_KEY_H
 
 #include <string>
 #include <vector>

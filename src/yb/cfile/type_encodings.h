@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CFILE_TYPE_ENCODINGS_H_
-#define KUDU_CFILE_TYPE_ENCODINGS_H_
+#ifndef YB_CFILE_TYPE_ENCODINGS_H_
+#define YB_CFILE_TYPE_ENCODINGS_H_
 
 #include "yb/common/common.pb.h"
 #include "yb/util/status.h"
@@ -72,4 +72,4 @@ class TypeEncodingInfo {
 } // namespace cfile
 } // namespace yb
 
-#endif /* KUDU_CFILE_TYPE_ENCODINGS_H_ */
+#endif /* YB_CFILE_TYPE_ENCODINGS_H_ */

@@ -17,8 +17,8 @@
 //
 // Utility functions for generating data for use by tools and tests.
 
-#ifndef KUDU_TOOLS_DATA_GEN_UTIL_H_
-#define KUDU_TOOLS_DATA_GEN_UTIL_H_
+#ifndef YB_TOOLS_DATA_GEN_UTIL_H_
+#define YB_TOOLS_DATA_GEN_UTIL_H_
 
 #include <stdint.h>
 
@@ -50,4 +50,4 @@ void GenerateDataForRow(const client::KuduSchema& schema, uint64_t record_id,
 } // namespace tools
 } // namespace yb
 
-#endif // KUDU_TOOLS_DATA_GEN_UTIL_H_
+#endif // YB_TOOLS_DATA_GEN_UTIL_H_

@@ -24,8 +24,8 @@
 //
 // See memcmpable_varint.cc for further description.
 
-#ifndef KUDU_UTIL_MEMCMPABLE_VARINT_H
-#define KUDU_UTIL_MEMCMPABLE_VARINT_H
+#ifndef YB_UTIL_MEMCMPABLE_VARINT_H
+#define YB_UTIL_MEMCMPABLE_VARINT_H
 
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"

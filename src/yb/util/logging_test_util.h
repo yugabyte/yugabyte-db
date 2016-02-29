@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_LOGGING_TEST_UTIL_H
-#define KUDU_LOGGING_TEST_UTIL_H
+#ifndef YB_LOGGING_TEST_UTIL_H
+#define YB_LOGGING_TEST_UTIL_H
 
 #include <glog/logging.h>
 #include <string>

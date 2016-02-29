@@ -29,13 +29,13 @@ using std::vector;
 
 namespace yb {
 
-// Test the KLOG_EVERY_N_SECS(...) macro.
+// Test the YB_LOG_EVERY_N_SECS(...) macro.
 TEST(LoggingTest, TestThrottledLogging) {
   StringVectorSink sink;
   ScopedRegisterSink srs(&sink);
 
   for (int i = 0; i < 10000; i++) {
-    KLOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
     SleepFor(MonoDelta::FromMilliseconds(1));
     if (sink.logged_msgs().size() >= 2) break;
   }

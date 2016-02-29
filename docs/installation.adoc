@@ -601,7 +601,7 @@ see `java/README.md`.
 The documentation for the C++ client APIs is included in the header files in
 `/usr/include/kudu/` if you installed Kudu using packages or subdirectories
 of `src/kudu/client/` if you built Kudu from source. If you installed Kudu using parcels,
-no headers are included in your installation. and you will need to <<build_kudu,build
+no headers are included in your installation. and you will need to <<build_yb,build
 Kudu from source>> in order to have access to the headers and shared libraries.
 
 The following command is a naive approach to finding relevant header files. Use

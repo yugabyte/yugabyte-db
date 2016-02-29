@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_PARTIAL_ROW_H
-#define KUDU_COMMON_PARTIAL_ROW_H
+#ifndef YB_COMMON_PARTIAL_ROW_H
+#define YB_COMMON_PARTIAL_ROW_H
 
 #include <stdint.h>
 #include <string>
@@ -247,4 +247,4 @@ class YB_EXPORT KuduPartialRow {
 };
 
 } // namespace yb
-#endif /* KUDU_COMMON_PARTIAL_ROW_H */
+#endif /* YB_COMMON_PARTIAL_ROW_H */

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
-#define KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
+#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
+#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
 
 #include <gtest/gtest.h>
 #include <string>
@@ -90,4 +90,4 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
 
 } // namespace yb
 
-#endif // KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
+#endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_

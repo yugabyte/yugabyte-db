@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_WRITE_OP_INTERNAL_H
-#define KUDU_CLIENT_WRITE_OP_INTERNAL_H
+#ifndef YB_CLIENT_WRITE_OP_INTERNAL_H
+#define YB_CLIENT_WRITE_OP_INTERNAL_H
 
 #include "yb/client/write_op.h"
 #include "yb/common/wire_protocol.pb.h"

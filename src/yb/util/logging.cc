@@ -47,7 +47,7 @@ DEFINE_string(log_filename, "",
     "full path is <log_dir>/<log_filename>.[INFO|WARN|ERROR|FATAL]");
 TAG_FLAG(log_filename, stable);
 
-#define PROJ_NAME "kudu"
+#define PROJ_NAME "yb"
 
 bool logging_initialized = false;
 
@@ -72,24 +72,24 @@ class SimpleSink : public google::LogSink {
                     const char* base_filename, int line,
                     const struct ::tm* tm_time,
                     const char* message, size_t message_len) OVERRIDE {
-    LogSeverity kudu_severity;
+    LogSeverity yb_severity;
     switch (severity) {
       case google::INFO:
-        kudu_severity = SEVERITY_INFO;
+        yb_severity = SEVERITY_INFO;
         break;
       case google::WARNING:
-        kudu_severity = SEVERITY_WARNING;
+        yb_severity = SEVERITY_WARNING;
         break;
       case google::ERROR:
-        kudu_severity = SEVERITY_ERROR;
+        yb_severity = SEVERITY_ERROR;
         break;
       case google::FATAL:
-        kudu_severity = SEVERITY_FATAL;
+        yb_severity = SEVERITY_FATAL;
         break;
       default:
         LOG(FATAL) << "Unknown glog severity: " << severity;
     }
-    cb_.Run(kudu_severity, full_filename, line, tm_time, message, message_len);
+    cb_.Run(yb_severity, full_filename, line, tm_time, message, message_len);
   }
 
  private:

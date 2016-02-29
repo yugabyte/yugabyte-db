@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_ROWID_H
-#define KUDU_COMMON_ROWID_H
+#ifndef YB_COMMON_ROWID_H
+#define YB_COMMON_ROWID_H
 
 #include <inttypes.h>
 

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_DELTATRACKER_H
-#define KUDU_TABLET_DELTATRACKER_H
+#ifndef YB_TABLET_DELTATRACKER_H
+#define YB_TABLET_DELTATRACKER_H
 
 #include <gtest/gtest_prod.h>
 #include <memory>

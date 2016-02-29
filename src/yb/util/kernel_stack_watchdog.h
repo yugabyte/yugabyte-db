@@ -50,8 +50,8 @@
 //
 // Scopes with SCOPED_WATCH_STACK may be nested, but only up to a hard-coded limited depth
 // (currently 8).
-#ifndef KUDU_UTIL_KERNEL_STACK_WATCHDOG_H
-#define KUDU_UTIL_KERNEL_STACK_WATCHDOG_H
+#ifndef YB_UTIL_KERNEL_STACK_WATCHDOG_H
+#define YB_UTIL_KERNEL_STACK_WATCHDOG_H
 
 #include <string>
 #include <unordered_map>
@@ -245,4 +245,4 @@ class ScopedWatchKernelStack {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_KERNEL_STACK_WATCHDOG_H */
+#endif /* YB_UTIL_KERNEL_STACK_WATCHDOG_H */

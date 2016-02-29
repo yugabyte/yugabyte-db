@@ -368,7 +368,7 @@ All bug fixes should have tests.::
 Tests should run quickly (< 1s).::
   If you want to write a time-intensive
   test, make the runtime dependent on `KuduTest#AllowSlowTests`, which is
-  enabled via the `KUDU_ALLOW_SLOW_TESTS` environment variable and is
+  enabled via the `YB_ALLOW_SLOW_TESTS` environment variable and is
   used by Jenkins test execution.
 
 Tests which run a number of iterations of some task should use a `gflags` command-line argument for the number of iterations.::

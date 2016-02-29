@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CONSENSUS_PEER_MANAGER_H
-#define KUDU_CONSENSUS_PEER_MANAGER_H
+#ifndef YB_CONSENSUS_PEER_MANAGER_H
+#define YB_CONSENSUS_PEER_MANAGER_H
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -89,4 +89,4 @@ class PeerManager {
 
 } // namespace consensus
 } // namespace yb
-#endif /* KUDU_CONSENSUS_PEER_MANAGER_H */
+#endif /* YB_CONSENSUS_PEER_MANAGER_H */

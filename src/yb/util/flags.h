@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_FLAGS_H
-#define KUDU_UTIL_FLAGS_H
+#ifndef YB_UTIL_FLAGS_H
+#define YB_UTIL_FLAGS_H
 
 #include "yb/gutil/macros.h"
 
@@ -36,4 +36,4 @@ namespace yb {
 int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 
 } // namespace yb
-#endif /* KUDU_UTIL_FLAGS_H */
+#endif /* YB_UTIL_FLAGS_H */

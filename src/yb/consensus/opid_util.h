@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CONSENSUS_OPID_UTIL_H_
-#define KUDU_CONSENSUS_OPID_UTIL_H_
+#ifndef YB_CONSENSUS_OPID_UTIL_H_
+#define YB_CONSENSUS_OPID_UTIL_H_
 
 #include <stdint.h>
 
@@ -111,4 +111,4 @@ OpId MakeOpId(int term, int index);
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* KUDU_CONSENSUS_OPID_UTIL_H_ */
+#endif /* YB_CONSENSUS_OPID_UTIL_H_ */

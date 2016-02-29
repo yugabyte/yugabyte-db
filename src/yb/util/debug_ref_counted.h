@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_DEBUG_REF_COUNTED_H_
-#define KUDU_UTIL_DEBUG_REF_COUNTED_H_
+#ifndef YB_UTIL_DEBUG_REF_COUNTED_H_
+#define YB_UTIL_DEBUG_REF_COUNTED_H_
 
 #include <glog/logging.h>
 
@@ -53,4 +53,4 @@ class DebugRefCountedThreadSafe : public RefCountedThreadSafe<T, Traits> {
 
 } // namespace yb
 
-#endif // KUDU_UTIL_DEBUG_REF_COUNTED_H_
+#endif // YB_UTIL_DEBUG_REF_COUNTED_H_

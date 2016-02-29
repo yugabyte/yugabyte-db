@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_ROW_OPERATIONS_H
-#define KUDU_COMMON_ROW_OPERATIONS_H
+#ifndef YB_COMMON_ROW_OPERATIONS_H
+#define YB_COMMON_ROW_OPERATIONS_H
 
 #include <memory>
 #include <string>
@@ -110,4 +110,4 @@ class RowOperationsPBDecoder {
   DISALLOW_COPY_AND_ASSIGN(RowOperationsPBDecoder);
 };
 } // namespace yb
-#endif /* KUDU_COMMON_ROW_OPERATIONS_H */
+#endif /* YB_COMMON_ROW_OPERATIONS_H */

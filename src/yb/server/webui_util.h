@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_SERVER_WEBUI_UTIL_H
-#define KUDU_SERVER_WEBUI_UTIL_H
+#ifndef YB_SERVER_WEBUI_UTIL_H
+#define YB_SERVER_WEBUI_UTIL_H
 
 #include <string>
 #include <sstream>
@@ -38,4 +38,4 @@ void HtmlOutputTaskList(const std::vector<scoped_refptr<MonitoredTask> >& tasks,
                         std::stringstream* output);
 } // namespace yb
 
-#endif // KUDU_SERVER_WEBUI_UTIL_H
+#endif // YB_SERVER_WEBUI_UTIL_H

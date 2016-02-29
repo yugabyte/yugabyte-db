@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_STUBS_H
-#define KUDU_CLIENT_STUBS_H
+#ifndef YB_CLIENT_STUBS_H
+#define YB_CLIENT_STUBS_H
 
 #include <stdlib.h> // for exit()
 
@@ -121,37 +121,37 @@ struct StubsCompileAssert {
 //
 // Add more as needed.
 
-#define KUDU_DCHECK(condition) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_EQ(val1, val2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_NE(val1, val2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_LE(val1, val2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_LT(val1, val2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_GE(val1, val2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_GT(val1, val2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_NOTNULL(val) (val)
-#define KUDU_DCHECK_STREQ(str1, str2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_STRCASEEQ(str1, str2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_STRNE(str1, str2) while (false) yb::internal_logging::NullLog()
-#define KUDU_DCHECK_STRCASENE(str1, str2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK(condition) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_EQ(val1, val2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_NE(val1, val2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_LE(val1, val2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_LT(val1, val2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_GE(val1, val2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_GT(val1, val2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_NOTNULL(val) (val)
+#define YB_DCHECK_STREQ(str1, str2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_STRCASEEQ(str1, str2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_STRNE(str1, str2) while (false) yb::internal_logging::NullLog()
+#define YB_DCHECK_STRCASENE(str1, str2) while (false) yb::internal_logging::NullLog()
 
 // Log levels. LOG ignores them, so their values are abitrary.
 
-#define KUDU_INFO 0
-#define KUDU_WARNING 1
-#define KUDU_ERROR 2
-#define KUDU_FATAL 3
+#define YB_INFO 0
+#define YB_WARNING 1
+#define YB_ERROR 2
+#define YB_FATAL 3
 
 #ifdef NDEBUG
-#define KUDU_DFATAL KUDU_WARNING
+#define YB_DFATAL YB_WARNING
 #else
-#define KUDU_DFATAL KUDU_FATAL
+#define YB_DFATAL YB_FATAL
 #endif // NDEBUG
 
-#define KUDU_LOG_INTERNAL(level) yb::internal_logging::CerrLog(level)
-#define KUDU_LOG(level) KUDU_LOG_INTERNAL(KUDU_##level)
+#define YB_LOG_INTERNAL(level) yb::internal_logging::CerrLog(level)
+#define YB_LOG(level) YB_LOG_INTERNAL(YB_##level)
 
-#define KUDU_CHECK(condition) \
-  (condition) ? 0 : KUDU_LOG(FATAL) << "Check failed: " #condition " "
+#define YB_CHECK(condition) \
+  (condition) ? 0 : YB_LOG(FATAL) << "Check failed: " #condition " "
 
 namespace yb {
 
@@ -176,7 +176,7 @@ class CerrLog {
     if (has_logged_) {
       std::cerr << std::endl;
     }
-    if (severity_ == KUDU_FATAL) {
+    if (severity_ == YB_FATAL) {
       exit(1);
     }
   }

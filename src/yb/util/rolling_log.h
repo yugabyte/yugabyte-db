@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_ROLLING_LOG_H
-#define KUDU_UTIL_ROLLING_LOG_H
+#ifndef YB_UTIL_ROLLING_LOG_H
+#define YB_UTIL_ROLLING_LOG_H
 
 #include <string>
 
@@ -104,4 +104,4 @@ class RollingLog {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_ROLLING_LOG_H */
+#endif /* YB_UTIL_ROLLING_LOG_H */

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_INTEGRATION_TESTS_MINI_CLUSTER_H
-#define KUDU_INTEGRATION_TESTS_MINI_CLUSTER_H
+#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_H
+#define YB_INTEGRATION_TESTS_MINI_CLUSTER_H
 
 #include <memory>
 #include <string>
@@ -184,4 +184,4 @@ class MiniCluster {
 
 } // namespace yb
 
-#endif /* KUDU_INTEGRATION_TESTS_MINI_CLUSTER_H */
+#endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H */

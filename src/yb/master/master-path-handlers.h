@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_MASTER_MASTER_PATH_HANDLERS_H
-#define KUDU_MASTER_MASTER_PATH_HANDLERS_H
+#ifndef YB_MASTER_MASTER_PATH_HANDLERS_H
+#define YB_MASTER_MASTER_PATH_HANDLERS_H
 
 #include "yb/gutil/macros.h"
 #include "yb/server/webserver.h"
@@ -85,4 +85,4 @@ void HandleTabletServersPage(const Webserver::WebRequest& req, std::stringstream
 
 } // namespace master
 } // namespace yb
-#endif /* KUDU_MASTER_MASTER_PATH_HANDLERS_H */
+#endif /* YB_MASTER_MASTER_PATH_HANDLERS_H */

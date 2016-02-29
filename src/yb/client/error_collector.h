@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_ERROR_COLLECTOR_H
-#define KUDU_CLIENT_ERROR_COLLECTOR_H
+#ifndef YB_CLIENT_ERROR_COLLECTOR_H
+#define YB_CLIENT_ERROR_COLLECTOR_H
 
 #include <vector>
 
@@ -58,4 +58,4 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
 } // namespace internal
 } // namespace client
 } // namespace yb
-#endif /* KUDU_CLIENT_ERROR_COLLECTOR_H */
+#endif /* YB_CLIENT_ERROR_COLLECTOR_H */
