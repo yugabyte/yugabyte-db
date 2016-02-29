@@ -31,7 +31,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Slice;
 
@@ -162,6 +162,6 @@ class SaslServer {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif  // KUDU_RPC_SASL_SERVER_H

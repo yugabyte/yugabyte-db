@@ -22,7 +22,7 @@
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 // Basic unit test for IdMapping.
 TEST(TestIdMapping, TestSimple) {
   IdMapping m;
@@ -88,4 +88,4 @@ TEST(TestIdMapping, TestReinsert) {
   "Cannot insert duplicate keys");
 }
 
-} // namespace kudu
+} // namespace yb

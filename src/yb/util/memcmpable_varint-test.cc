@@ -34,7 +34,7 @@ ostream &operator <<(ostream &os, const pair<T1, T2> &pair) {
 }
 }
 
-namespace kudu {
+namespace yb {
 
 class TestMemcmpableVarint : public KuduTest {
  protected:
@@ -204,4 +204,4 @@ TEST_F(TestMemcmpableVarint, BenchmarkDecode) {
 
 #endif
 
-} // namespace kudu
+} // namespace yb

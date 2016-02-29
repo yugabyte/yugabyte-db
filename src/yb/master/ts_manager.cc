@@ -36,7 +36,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 TSManager::TSManager() {
@@ -116,5 +116,5 @@ int TSManager::GetCount() const {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 

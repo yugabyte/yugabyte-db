@@ -22,7 +22,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/stopwatch.h"
 
-namespace kudu {
+namespace yb {
 
 class Histogram;
 template<class T>
@@ -128,6 +128,6 @@ class LogGCOp : public MaintenanceOp {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_TABLET_TABLET_PEER_MM_OPS_H_ */

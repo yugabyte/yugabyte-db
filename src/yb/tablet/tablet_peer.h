@@ -33,7 +33,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 
-namespace kudu {
+namespace yb {
 
 namespace log {
 class LogAnchorRegistry;
@@ -348,6 +348,6 @@ class FlushInflightsToLogCallback : public RefCountedThreadSafe<FlushInflightsTo
 
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_TABLET_TABLET_PEER_H_ */

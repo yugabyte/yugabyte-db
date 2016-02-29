@@ -37,7 +37,7 @@ namespace gutil {
 extern void SubmitSpinLockProfileData(const void *, int64);
 } // namespace gutil
 
-namespace kudu {
+namespace yb {
 
 class SpinLockProfilingTest : public KuduTest {};
 
@@ -71,4 +71,4 @@ TEST_F(SpinLockProfilingTest, TestStackCollection) {
   ASSERT_EQ(0, dropped);
 }
 
-} // namespace kudu
+} // namespace yb

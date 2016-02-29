@@ -31,7 +31,7 @@
 using std::vector;
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 void AddHashBucketComponent(PartitionSchemaPB* partition_schema_pb,
@@ -448,4 +448,4 @@ TEST(PartitionTest, TestCreatePartitions) {
             partition_schema.PartitionDebugString(partitions[11], schema));
 }
 
-} // namespace kudu
+} // namespace yb

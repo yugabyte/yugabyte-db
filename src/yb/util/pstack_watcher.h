@@ -26,7 +26,7 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 
 // PstackWatcher is an object which will pstack the current process and print
 // the results to stdout.  It does this after a certain timeout has occured.
@@ -89,5 +89,5 @@ class PstackWatcher {
   mutable ConditionVariable cond_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

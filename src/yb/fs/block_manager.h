@@ -33,7 +33,7 @@
 
 DECLARE_bool(block_coalesce_close);
 
-namespace kudu {
+namespace yb {
 
 class MemTracker;
 class MetricEntity;
@@ -275,6 +275,6 @@ class ScopedWritableBlockCloser {
 };
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb
 
 #endif

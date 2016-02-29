@@ -27,7 +27,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 using strings::Substitute;
 
@@ -206,4 +206,4 @@ TEST_F(TestRowChangeList, TestInvalid_SetWrongSizeForIntColumn) {
             RowChangeList(Slice(buf)).ToString(schema_));
 }
 
-} // namespace kudu
+} // namespace yb

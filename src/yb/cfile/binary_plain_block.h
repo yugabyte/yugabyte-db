@@ -34,7 +34,7 @@
 #include "yb/cfile/block_encodings.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 struct WriterOptions;
@@ -135,6 +135,6 @@ class BinaryPlainBlockDecoder : public BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_CFILE_BINARY_PREFIX_BLOCK_H

@@ -31,7 +31,7 @@ class FieldDescriptor;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class JsonWriterIf;
 
@@ -91,6 +91,6 @@ class JsonWriter {
   DISALLOW_COPY_AND_ASSIGN(JsonWriter);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_JSONWRITER_H

@@ -34,7 +34,7 @@
 #include "yb/util/mutex.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Histogram;
 class ThreadPool;
@@ -220,5 +220,5 @@ class ThreadPool {
   DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

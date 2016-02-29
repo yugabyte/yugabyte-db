@@ -34,11 +34,11 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-using kudu::consensus::RaftPeerPB;
-using kudu::rpc::Messenger;
-using kudu::rpc::Rpc;
+using yb::consensus::RaftPeerPB;
+using yb::rpc::Messenger;
+using yb::rpc::Rpc;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 ////////////////////////////////////////////////////////////
@@ -218,4 +218,4 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Sockaddr& node_
 
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

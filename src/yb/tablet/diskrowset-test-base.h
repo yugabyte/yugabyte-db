@@ -46,7 +46,7 @@ DEFINE_int32(roundtrip_num_rows, 10000,
 DEFINE_int32(n_read_passes, 10,
              "number of times to read data for perf test");
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using std::unordered_set;
@@ -333,6 +333,6 @@ class TestRowSet : public KuduRowSetTest {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

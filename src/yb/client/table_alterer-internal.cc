@@ -26,7 +26,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 using master::AlterTableRequestPB;
@@ -111,4 +111,4 @@ Status KuduTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

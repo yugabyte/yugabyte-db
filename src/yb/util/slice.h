@@ -36,7 +36,7 @@
 #endif
 #include "yb/util/yb_export.h"
 
-namespace kudu {
+namespace yb {
 
 class Status;
 
@@ -209,6 +209,6 @@ struct SliceMap {
   typedef std::map<Slice, T, Slice::Comparator> type;
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_UTIL_SLICE_H_

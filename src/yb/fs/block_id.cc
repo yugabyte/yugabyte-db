@@ -27,7 +27,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 const uint64_t BlockId::kInvalidId = 0;
 
@@ -49,4 +49,4 @@ BlockId BlockId::FromPB(const BlockIdPB& pb) {
   return BlockId(pb.id());
 }
 
-} // namespace kudu
+} // namespace yb

@@ -25,7 +25,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace master {
 class AlterTableRequestPB_AlterColumn;
 } // namespace master
@@ -64,6 +64,6 @@ class KuduTableAlterer::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

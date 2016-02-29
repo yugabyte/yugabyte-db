@@ -21,7 +21,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 TEST(TestTypes, TestTimestampPrinting) {
   const TypeInfo* info = GetTypeInfo(TIMESTAMP);
@@ -61,4 +61,4 @@ TEST(TestTypes, TestTimestampPrinting) {
 }
 
 
-} // namespace kudu
+} // namespace yb

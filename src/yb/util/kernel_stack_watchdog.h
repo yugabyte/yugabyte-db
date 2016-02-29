@@ -70,7 +70,7 @@
 #define SCOPED_WATCH_STACK(threshold_ms) \
   ScopedWatchKernelStack _stack_watcher(__FILE__ ":" AS_STRING(__LINE__), threshold_ms)
 
-namespace kudu {
+namespace yb {
 
 class Thread;
 
@@ -244,5 +244,5 @@ class ScopedWatchKernelStack {
   DISALLOW_COPY_AND_ASSIGN(ScopedWatchKernelStack);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_KERNEL_STACK_WATCHDOG_H */

@@ -37,7 +37,7 @@ DEFINE_double(fp_rate, 0.01f, "False positive rate to aim for");
 DEFINE_int64(benchmark_queries, 1000000, "Number of probes to benchmark");
 DEFINE_bool(benchmark_should_hit, false, "Set to true for the benchmark to query rows which match");
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using fs::ReadableBlock;
@@ -128,6 +128,6 @@ class BloomFileTestBase : public KuduTest {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

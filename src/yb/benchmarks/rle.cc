@@ -33,7 +33,7 @@
 DEFINE_int32(bitstream_num_bytes, 1 * 1024 * 1024,
              "Number of bytes worth of bits to write and read from the bitstream");
 
-namespace kudu {
+namespace yb {
 
 // Measure writing and reading single-bit streams
 void BooleanBitStream() {
@@ -102,19 +102,19 @@ void BooleanRLE() {
   }
 }
 
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char **argv) {
   FLAGS_logtostderr = 1;
   google::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
   LOG_TIMING(INFO, "BooleanBitStream") {
-    kudu::BooleanBitStream();
+    yb::BooleanBitStream();
   }
 
   LOG_TIMING(INFO, "BooleanRLE") {
-    kudu::BooleanRLE();
+    yb::BooleanRLE();
   }
 
   return 0;

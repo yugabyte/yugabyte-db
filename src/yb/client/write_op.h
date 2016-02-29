@@ -23,7 +23,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/util/yb_export.h"
 
-namespace kudu {
+namespace yb {
 
 class EncodedKey;
 
@@ -148,6 +148,6 @@ class YB_EXPORT KuduDelete : public KuduWriteOperation {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

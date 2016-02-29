@@ -42,7 +42,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MemTracker;
 class MetricEntity;
@@ -625,6 +625,6 @@ struct TabletComponents : public RefCountedThreadSafe<TabletComponents> {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

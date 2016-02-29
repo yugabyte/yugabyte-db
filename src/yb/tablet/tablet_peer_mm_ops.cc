@@ -36,14 +36,14 @@ TAG_FLAG(flush_threshold_mb, experimental);
 
 METRIC_DEFINE_gauge_uint32(tablet, log_gc_running,
                            "Log GCs Running",
-                           kudu::MetricUnit::kOperations,
+                           yb::MetricUnit::kOperations,
                            "Number of log GC operations currently running.");
 METRIC_DEFINE_histogram(tablet, log_gc_duration,
                         "Log GC Duration",
-                        kudu::MetricUnit::kMilliseconds,
+                        yb::MetricUnit::kMilliseconds,
                         "Time spent garbage collecting the logs.", 60000LU, 1);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using std::map;
@@ -235,4 +235,4 @@ scoped_refptr<AtomicGauge<uint32_t> > LogGCOp::RunningGauge() const {
 }
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb

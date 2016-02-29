@@ -21,7 +21,7 @@
 #include <inttypes.h>
 #include <string>
 
-namespace kudu {
+namespace yb {
 class faststring;
 class Slice;
 class Status;
@@ -92,6 +92,6 @@ inline int Timestamp::CompareTo(const Timestamp &other) const {
   return 0;
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_COMMON_TIMESTAMP_H_ */

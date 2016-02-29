@@ -28,7 +28,7 @@
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 RpcMethodMetrics::RpcMethodMetrics()
@@ -75,4 +75,4 @@ void ServiceIf::RespondBadMethod(InboundCall *call) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

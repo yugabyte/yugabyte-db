@@ -23,7 +23,7 @@
 
 #include <sstream>
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 // Web handlers for Chromium tracing.
@@ -37,5 +37,5 @@ class TracingPathHandlers {
 };
 
 } // namespace server
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_TRACING_PATH_HANDLERS_H */

@@ -36,7 +36,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 typedef std::list<scoped_refptr<Connection> > conn_list_t;
@@ -227,7 +227,7 @@ class ReactorThread {
   // etc. This is called from within the thread.
   void ShutdownInternal();
 
-  scoped_refptr<kudu::Thread> thread_;
+  scoped_refptr<yb::Thread> thread_;
 
   // our epoll object (or kqueue, etc).
   ev::dynamic_loop loop_;
@@ -348,6 +348,6 @@ class Reactor {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

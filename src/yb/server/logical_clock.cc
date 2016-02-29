@@ -24,12 +24,12 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 METRIC_DEFINE_gauge_uint64(server, logical_clock_timestamp,
                            "Logical Clock Timestamp",
-                           kudu::MetricUnit::kUnits,
+                           yb::MetricUnit::kUnits,
                            "Logical clock timestamp.");
 
 using base::subtle::Atomic64;
@@ -103,5 +103,5 @@ string LogicalClock::Stringify(Timestamp timestamp) {
 }
 
 }  // namespace server
-}  // namespace kudu
+}  // namespace yb
 

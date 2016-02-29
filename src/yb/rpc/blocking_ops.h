@@ -27,7 +27,7 @@ class MessageLite;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class faststring;
 class MonoTime;
@@ -59,6 +59,6 @@ Status ReceiveFramedMessageBlocking(Socket* sock, faststring* recv_buf,
     google::protobuf::MessageLite* header, Slice* param_buf, const MonoTime& deadline);
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif  // KUDU_RPC_BLOCKING_OPS_H

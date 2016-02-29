@@ -39,7 +39,7 @@ DEFINE_int32(num_seconds_per_thread, kDefaultNumSecondsPerThread,
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using base::subtle::Release_Store;
@@ -109,20 +109,20 @@ class TestMultiThreadedRowSetDeltaCompaction : public TestRowSet {
 
   void StartThreads(DiskRowSet *rs) {
     for (int i = 0; i < FLAGS_num_update_threads; i++) {
-      scoped_refptr<kudu::Thread> thread;
-      CHECK_OK(kudu::Thread::Create("test", strings::Substitute("log_writer$0", i),
+      scoped_refptr<yb::Thread> thread;
+      CHECK_OK(yb::Thread::Create("test", strings::Substitute("log_writer$0", i),
           &TestMultiThreadedRowSetDeltaCompaction::RowSetUpdateThread, this, rs, &thread));
       update_threads_.push_back(thread);
     }
     for (int i = 0; i < FLAGS_num_flush_threads; i++) {
-      scoped_refptr<kudu::Thread> thread;
-      CHECK_OK(kudu::Thread::Create("test", strings::Substitute("delta_flush$0", i),
+      scoped_refptr<yb::Thread> thread;
+      CHECK_OK(yb::Thread::Create("test", strings::Substitute("delta_flush$0", i),
           &TestMultiThreadedRowSetDeltaCompaction::RowSetFlushThread, this, rs, &thread));
       flush_threads_.push_back(thread);
     }
     for (int i = 0; i < FLAGS_num_compaction_threads; i++) {
-      scoped_refptr<kudu::Thread> thread;
-      CHECK_OK(kudu::Thread::Create("test", strings::Substitute("delta_compaction$0", i),
+      scoped_refptr<yb::Thread> thread;
+      CHECK_OK(yb::Thread::Create("test", strings::Substitute("delta_compaction$0", i),
           &TestMultiThreadedRowSetDeltaCompaction::RowSetDeltaCompactionThread, this, rs, &thread));
       compaction_threads_.push_back(thread);
     }
@@ -175,10 +175,10 @@ class TestMultiThreadedRowSetDeltaCompaction : public TestRowSet {
 
   Atomic32 update_counter_;
   Atomic32 should_run_;
-  vector<scoped_refptr<kudu::Thread> > update_threads_;
-  vector<scoped_refptr<kudu::Thread> > flush_threads_;
-  vector<scoped_refptr<kudu::Thread> > compaction_threads_;
-  vector<scoped_refptr<kudu::Thread> > alter_schema_threads_;
+  vector<scoped_refptr<yb::Thread> > update_threads_;
+  vector<scoped_refptr<yb::Thread> > flush_threads_;
+  vector<scoped_refptr<yb::Thread> > compaction_threads_;
+  vector<scoped_refptr<yb::Thread> > alter_schema_threads_;
 };
 
 static void SetupFlagsForSlowTests() {
@@ -202,4 +202,4 @@ TEST_F(TestMultiThreadedRowSetDeltaCompaction, TestMTUpdateAndCompact) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

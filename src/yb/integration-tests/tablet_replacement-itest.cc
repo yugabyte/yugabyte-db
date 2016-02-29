@@ -29,18 +29,18 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/test_workload.h"
 
-using kudu::consensus::RaftPeerPB;
-using kudu::itest::TServerDetails;
-using kudu::tablet::TABLET_DATA_READY;
-using kudu::tablet::TABLET_DATA_TOMBSTONED;
-using kudu::tserver::ListTabletsResponsePB;
+using yb::consensus::RaftPeerPB;
+using yb::itest::TServerDetails;
+using yb::tablet::TABLET_DATA_READY;
+using yb::tablet::TABLET_DATA_TOMBSTONED;
+using yb::tserver::ListTabletsResponsePB;
 using std::shared_ptr;
 using std::string;
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 class TabletReplacementITest : public ExternalMiniClusterITestBase {
 };
@@ -306,4 +306,4 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   latch.Wait(); // Avoid use-after-free on the response from the delayed RPC callback.
 }
 
-} // namespace kudu
+} // namespace yb

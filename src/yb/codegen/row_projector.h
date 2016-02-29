@@ -34,7 +34,7 @@ namespace llvm {
 class TargetMachine;
 } // namespace llvm
 
-namespace kudu {
+namespace yb {
 
 class Arena;
 
@@ -84,7 +84,7 @@ class RowProjectorFunctions : public JITWrapper {
 // in this class.
 class RowProjector {
  public:
-  typedef kudu::RowProjector::ProjectionIdxMapping ProjectionIdxMapping;
+  typedef yb::RowProjector::ProjectionIdxMapping ProjectionIdxMapping;
 
   // Requires that both schemas remain valid for the lifetime of this
   // object. Also requires that the schemas are compatible with
@@ -141,7 +141,7 @@ class RowProjector {
   const Schema* base_schema() const { return projector_.base_schema(); }
 
  private:
-  kudu::RowProjector projector_;
+  yb::RowProjector projector_;
   scoped_refptr<RowProjectorFunctions> functions_;
 
   DISALLOW_COPY_AND_ASSIGN(RowProjector);
@@ -150,6 +150,6 @@ class RowProjector {
 extern std::ostream& operator<<(std::ostream& o, const RowProjector& rp);
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif

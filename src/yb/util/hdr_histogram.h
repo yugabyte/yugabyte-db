@@ -46,7 +46,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 
-namespace kudu {
+namespace yb {
 
 class AbstractHistogramIterator;
 class Status;
@@ -339,6 +339,6 @@ class PercentileIterator : public AbstractHistogramIterator {
   DISALLOW_COPY_AND_ASSIGN(PercentileIterator);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_HDRHISTOGRAM_H_

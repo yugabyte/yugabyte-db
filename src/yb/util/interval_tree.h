@@ -29,7 +29,7 @@
 
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 namespace interval_tree_internal {
 template<class Traits>
@@ -109,6 +109,6 @@ class IntervalTree {
 };
 
 
-} // namespace kudu
+} // namespace yb
 
 #endif

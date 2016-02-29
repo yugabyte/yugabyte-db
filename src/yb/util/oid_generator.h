@@ -24,7 +24,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 // Generates a unique 32byte id, based on uuid v4.
 // This class is thread safe
@@ -44,6 +44,6 @@ class ObjectIdGenerator {
   boost::uuids::random_generator oid_generator_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

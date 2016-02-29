@@ -20,7 +20,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/atomic.h"
 
-namespace kudu {
+namespace yb {
 
 // Lock-free integer that keeps track of the highest value seen.
 // Similar to Impala's RuntimeProfile::HighWaterMarkCounter.
@@ -79,7 +79,7 @@ class HighWaterMark {
   AtomicInt<int64_t> max_value_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_HIGH_WATER_MARK_H */
 
 

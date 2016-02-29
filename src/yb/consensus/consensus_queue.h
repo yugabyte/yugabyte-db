@@ -34,7 +34,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 template<class T>
 class AtomicGauge;
 class MemTracker;
@@ -426,6 +426,6 @@ class PeerMessageQueueObserver {
 };
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_CONSENSUS_QUEUE_H_ */

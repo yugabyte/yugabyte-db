@@ -32,7 +32,7 @@ using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_CompareAndSwap;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 HdrHistogram::HdrHistogram(uint64_t highest_trackable_value, int num_significant_digits)
   : highest_trackable_value_(highest_trackable_value),
@@ -487,4 +487,4 @@ bool PercentileIterator::ReachedIterationLevel() const {
   return (current_percentile >= percentile_level_to_iterate_to_);
 }
 
-} // namespace kudu
+} // namespace yb

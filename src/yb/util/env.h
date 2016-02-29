@@ -22,7 +22,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class FileLock;
 class RandomAccessFile;
@@ -597,6 +597,6 @@ class EnvWrapper : public Env {
   Env* target_;
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // STORAGE_LEVELDB_INCLUDE_ENV_H_

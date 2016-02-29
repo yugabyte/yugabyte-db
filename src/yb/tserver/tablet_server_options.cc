@@ -24,7 +24,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flag_tags.h"
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 DEFINE_string(tserver_master_addrs, "127.0.0.1:7051",
@@ -47,4 +47,4 @@ TabletServerOptions::TabletServerOptions() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

@@ -52,7 +52,7 @@ DEFINE_int32(flusher_initial_frequency_ms, 30, "Number of ms to wait between flu
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 template<class SETUP>
@@ -372,20 +372,20 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
   template<typename FunctionType>
   void StartThreads(int n_threads, const FunctionType &function) {
     for (int i = 0; i < n_threads; i++) {
-      scoped_refptr<kudu::Thread> new_thread;
-      CHECK_OK(kudu::Thread::Create("test", strings::Substitute("test$0", i),
+      scoped_refptr<yb::Thread> new_thread;
+      CHECK_OK(yb::Thread::Create("test", strings::Substitute("test$0", i),
           function, this, i, &new_thread));
       threads_.push_back(new_thread);
     }
   }
 
   void JoinThreads() {
-    for (scoped_refptr<kudu::Thread> thr : threads_) {
+    for (scoped_refptr<yb::Thread> thr : threads_) {
      CHECK_OK(ThreadJoiner(thr.get()).Join());
     }
   }
 
-  std::vector<scoped_refptr<kudu::Thread> > threads_;
+  std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch running_insert_count_;
 
   // Projection with only an int column.
@@ -467,4 +467,4 @@ TYPED_TEST(MultiThreadedTabletTest, DeleteAndReinsert) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

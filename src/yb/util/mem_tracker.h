@@ -30,7 +30,7 @@
 #include "yb/util/mutex.h"
 #include "yb/util/random.h"
 
-namespace kudu {
+namespace yb {
 
 class Status;
 class MemTracker;
@@ -415,6 +415,6 @@ class ScopedTrackedConsumption {
   int64_t consumption_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_MEM_TRACKER_H

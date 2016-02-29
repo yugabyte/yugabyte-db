@@ -46,19 +46,19 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
-using kudu::master::GetLeaderMasterRpc;
-using kudu::master::MasterServiceProxy;
-using kudu::server::ServerStatusPB;
-using kudu::tserver::ListTabletsRequestPB;
-using kudu::tserver::ListTabletsResponsePB;
-using kudu::tserver::TabletServerServiceProxy;
+using yb::master::GetLeaderMasterRpc;
+using yb::master::MasterServiceProxy;
+using yb::server::ServerStatusPB;
+using yb::tserver::ListTabletsRequestPB;
+using yb::tserver::ListTabletsResponsePB;
+using yb::tserver::TabletServerServiceProxy;
 using rapidjson::Value;
 using std::string;
 using strings::Substitute;
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
-namespace kudu {
+namespace yb {
 
 static const char* const kMasterBinaryName = "yb-master";
 static const char* const kTabletServerBinaryName = "yb-tserver";
@@ -867,4 +867,4 @@ Status ExternalTabletServer::Restart() {
 }
 
 
-} // namespace kudu
+} // namespace yb

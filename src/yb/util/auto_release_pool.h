@@ -25,7 +25,7 @@
 
 #include "yb/gutil/spinlock.h"
 
-namespace kudu {
+namespace yb {
 
 // Thread-safe.
 class AutoReleasePool {
@@ -95,5 +95,5 @@ class AutoReleasePool {
 };
 
 
-} // namespace kudu
+} // namespace yb
 #endif

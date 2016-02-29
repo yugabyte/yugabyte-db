@@ -28,7 +28,7 @@
 #include "yb/common/predicate_encoder.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -218,6 +218,6 @@ class KuduScanBatch::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

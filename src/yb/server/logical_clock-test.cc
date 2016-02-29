@@ -22,7 +22,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 class LogicalClockTest : public KuduTest {
@@ -83,5 +83,5 @@ TEST_F(LogicalClockTest, TestIsAfter) {
 }
 
 }  // namespace server
-}  // namespace kudu
+}  // namespace yb
 

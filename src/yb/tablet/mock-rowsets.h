@@ -25,7 +25,7 @@
 #include "yb/tablet/rowset.h"
 #include "yb/tablet/rowset_metadata.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Mock implementation of RowSet which just aborts on every call.
@@ -169,5 +169,5 @@ class MockMemRowSet : public MockRowSet {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_MOCK_ROWSETS_H */

@@ -24,7 +24,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 namespace codegen {
 
 namespace {
@@ -85,4 +85,4 @@ scoped_refptr<JITWrapper> CodeCache::Lookup(const Slice& key) {
 }
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb

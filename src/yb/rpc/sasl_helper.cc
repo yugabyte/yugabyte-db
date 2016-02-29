@@ -38,7 +38,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using google::protobuf::MessageLite;
@@ -195,4 +195,4 @@ Status SaslHelper::SendSaslMessage(Socket* sock, const MessageLite& header, cons
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

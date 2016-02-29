@@ -44,21 +44,21 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/threadpool.h"
 
-using kudu::consensus::CONSENSUS_CONFIG_COMMITTED;
-using kudu::consensus::ConsensusMetadata;
-using kudu::consensus::RaftConfigPB;
-using kudu::consensus::RaftPeerPB;
-using kudu::log::Log;
-using kudu::log::LogAnchorRegistry;
-using kudu::tablet::LatchTransactionCompletionCallback;
-using kudu::tablet::Tablet;
-using kudu::tablet::TabletPeer;
-using kudu::tserver::WriteRequestPB;
-using kudu::tserver::WriteResponsePB;
+using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::ConsensusMetadata;
+using yb::consensus::RaftConfigPB;
+using yb::consensus::RaftPeerPB;
+using yb::log::Log;
+using yb::log::LogAnchorRegistry;
+using yb::tablet::LatchTransactionCompletionCallback;
+using yb::tablet::Tablet;
+using yb::tablet::TabletPeer;
+using yb::tserver::WriteRequestPB;
+using yb::tserver::WriteResponsePB;
 using std::shared_ptr;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
@@ -614,4 +614,4 @@ void SysCatalogTable::InitLocalRaftPeerPB() {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

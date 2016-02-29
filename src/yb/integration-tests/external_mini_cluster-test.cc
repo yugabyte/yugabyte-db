@@ -31,7 +31,7 @@
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_gauge_uint64(threads_running);
 
-namespace kudu {
+namespace yb {
 
 class EMCTest : public KuduTest {
  public:
@@ -122,4 +122,4 @@ TEST_F(EMCTest, TestBasicOperation) {
   cluster.Shutdown();
 }
 
-} // namespace kudu
+} // namespace yb

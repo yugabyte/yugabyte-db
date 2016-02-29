@@ -22,7 +22,7 @@
 
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 AuthStore::AuthStore() {
@@ -58,4 +58,4 @@ Status DummyAuthStore::Authenticate(const string& user, const string& password) 
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

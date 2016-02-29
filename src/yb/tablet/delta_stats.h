@@ -30,7 +30,7 @@
 #include "yb/common/row_changelist.h"
 #include "yb/tablet/mvcc.h"
 
-namespace kudu {
+namespace yb {
 
 namespace tablet {
 
@@ -101,6 +101,6 @@ class DeltaStats {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

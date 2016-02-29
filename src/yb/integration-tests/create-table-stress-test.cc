@@ -36,25 +36,25 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-using kudu::client::KuduClient;
-using kudu::client::KuduClientBuilder;
-using kudu::client::KuduColumnSchema;
-using kudu::client::KuduSchema;
-using kudu::client::KuduSchemaBuilder;
-using kudu::client::KuduTableCreator;
-using kudu::itest::CreateTabletServerMap;
-using kudu::itest::TabletServerMap;
-using kudu::master::MasterServiceProxy;
-using kudu::rpc::Messenger;
-using kudu::rpc::MessengerBuilder;
-using kudu::rpc::RpcController;
+using yb::client::KuduClient;
+using yb::client::KuduClientBuilder;
+using yb::client::KuduColumnSchema;
+using yb::client::KuduSchema;
+using yb::client::KuduSchemaBuilder;
+using yb::client::KuduTableCreator;
+using yb::itest::CreateTabletServerMap;
+using yb::itest::TabletServerMap;
+using yb::master::MasterServiceProxy;
+using yb::rpc::Messenger;
+using yb::rpc::MessengerBuilder;
+using yb::rpc::RpcController;
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(log_preallocate_segments);
 DECLARE_bool(enable_remote_bootstrap);
 DEFINE_int32(num_test_tablets, 60, "Number of tablets for stress test");
 
-namespace kudu {
+namespace yb {
 
 const char* kTableName = "test_table";
 
@@ -316,4 +316,4 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

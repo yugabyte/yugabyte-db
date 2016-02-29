@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 // An OpenAuth-authenticated request. See oauth-test.cc for
@@ -64,5 +64,5 @@ class OAuthRequest {
 };
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb
 #endif

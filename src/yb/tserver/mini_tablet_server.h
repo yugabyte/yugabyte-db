@@ -25,7 +25,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 class FsManager;
 
@@ -101,5 +101,5 @@ class MiniTabletServer {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif

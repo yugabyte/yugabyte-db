@@ -37,7 +37,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace pb_util {
 
 using google::protobuf::FileDescriptorSet;
@@ -421,4 +421,4 @@ TEST_F(TestPBUtil, TestOverwriteExistingPB) {
 }
 
 } // namespace pb_util
-} // namespace kudu
+} // namespace yb

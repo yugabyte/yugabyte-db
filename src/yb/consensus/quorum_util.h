@@ -22,7 +22,7 @@
 
 #include "yb/consensus/metadata.pb.h"
 
-namespace kudu {
+namespace yb {
 class Status;
 
 namespace consensus {
@@ -74,6 +74,6 @@ Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type);
 Status VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type);
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_QUORUM_UTIL_H_ */

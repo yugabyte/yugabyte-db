@@ -25,7 +25,7 @@
 #endif
 #include "yb/util/yb_export.h"
 
-namespace kudu {
+namespace yb {
 
 class Status;
 
@@ -180,6 +180,6 @@ class YB_EXPORT KuduStatusFunctionCallback : public KuduStatusCallback {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

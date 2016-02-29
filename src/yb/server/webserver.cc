@@ -71,7 +71,7 @@ DEFINE_int32(webserver_max_post_length_bytes, 1024 * 1024,
 TAG_FLAG(webserver_max_post_length_bytes, advanced);
 TAG_FLAG(webserver_max_post_length_bytes, runtime);
 
-namespace kudu {
+namespace yb {
 
 Webserver::Webserver(const WebserverOptions& opts)
   : opts_(opts),
@@ -451,4 +451,4 @@ void Webserver::BootstrapPageFooter(stringstream* output) {
   *output << "</body></html>";
 }
 
-} // namespace kudu
+} // namespace yb

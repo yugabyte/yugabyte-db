@@ -27,7 +27,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 enum Setup {
@@ -196,4 +196,4 @@ INSTANTIATE_TEST_CASE_P(SplitMemoryDisk, TabletPushdownTest, ::testing::Values(S
 INSTANTIATE_TEST_CASE_P(AllDisk, TabletPushdownTest, ::testing::Values(ALL_ON_DISK));
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

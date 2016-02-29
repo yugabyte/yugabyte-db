@@ -64,7 +64,7 @@ DEFINE_int64(web_log_bytes, 1024 * 1024,
 TAG_FLAG(web_log_bytes, advanced);
 TAG_FLAG(web_log_bytes, runtime);
 
-namespace kudu {
+namespace yb {
 
 using std::shared_ptr;
 
@@ -226,4 +226,4 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
   webserver->RegisterPathHandler("/jsonmetricz", "Metrics", callback, not_styled, not_on_nav_bar);
 }
 
-} // namespace kudu
+} // namespace yb

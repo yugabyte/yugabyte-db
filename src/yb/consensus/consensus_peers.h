@@ -33,7 +33,7 @@
 #include "yb/util/semaphore.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class HostPort;
 class ThreadPool;
 
@@ -319,6 +319,6 @@ Status SetPermanentUuidForRemotePeer(const std::shared_ptr<rpc::Messenger>& mess
                                      RaftPeerPB* remote_peer);
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_CONSENSUS_PEERS_H_ */

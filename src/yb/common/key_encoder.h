@@ -35,7 +35,7 @@
 // The SSE-based encoding is not yet working. Don't define this!
 #undef KEY_ENCODER_USE_SSE
 
-namespace kudu {
+namespace yb {
 
 template<DataType Type, typename Buffer, class Enable = void>
 struct KeyEncoderTraits {
@@ -357,6 +357,6 @@ extern const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo);
 
 extern const bool IsTypeAllowableInKey(const TypeInfo* typeinfo);
 
-} // namespace kudu
+} // namespace yb
 
 #endif

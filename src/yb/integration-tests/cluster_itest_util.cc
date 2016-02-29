@@ -40,7 +40,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/net/net_util.h"
 
-namespace kudu {
+namespace yb {
 namespace itest {
 
 using client::KuduClient;
@@ -800,4 +800,4 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
 }
 
 } // namespace itest
-} // namespace kudu
+} // namespace yb

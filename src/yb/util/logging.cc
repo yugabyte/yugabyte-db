@@ -57,7 +57,7 @@ using namespace boost::uuids; // NOLINT(*)
 using base::SpinLock;
 using base::SpinLockHolder;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -276,4 +276,4 @@ ostream& operator<<(ostream &os, const PRIVATE_ThrottleMsg&) {
   return os;
 }
 
-} // namespace kudu
+} // namespace yb

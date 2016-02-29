@@ -36,15 +36,15 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-using kudu::rpc::Messenger;
-using kudu::rpc::MessengerBuilder;
-using kudu::rpc::RpcController;
+using yb::rpc::Messenger;
+using yb::rpc::MessengerBuilder;
+using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::string;
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 class MasterTest : public KuduTest {
@@ -453,4 +453,4 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

@@ -32,7 +32,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class TestTabletSchema : public KuduTabletTest {
@@ -296,4 +296,4 @@ TEST_F(TestTabletSchema, TestModifyEmptyMemRowSet) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

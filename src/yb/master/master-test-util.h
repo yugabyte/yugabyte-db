@@ -31,7 +31,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 Status WaitForRunningTabletCount(MiniMaster* mini_master,
@@ -119,6 +119,6 @@ void CreateTabletForTesting(MiniMaster* mini_master,
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_MASTER_TEST_UTIL_H_ */

@@ -19,7 +19,7 @@
 
 #include "yb/util/path_util.h"
 
-namespace kudu {
+namespace yb {
 
 TEST(TestPathUtil, BaseNameTest) {
   ASSERT_EQ(".", BaseName(""));
@@ -58,4 +58,4 @@ TEST(TestPathUtil, DirNameTest) {
   ASSERT_EQ("/ab", DirName("/ab/cd"));
 }
 
-} // namespace kudu
+} // namespace yb

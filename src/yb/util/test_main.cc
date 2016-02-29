@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
   // InitGoogleTest() must precede ParseCommandLineFlags(), as the former
   // removes gtest-related flags from argv that would trip up the latter.
   ::testing::InitGoogleTest(&argc, argv);
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
 
   // Create the test-timeout timer.
   CreateAndStartTimer();
@@ -69,7 +69,7 @@ static void CreateAndStartTimer() {
 
 static void KillTestOnTimeout(int signum) {
   // Dump a pstack to stdout.
-  WARN_NOT_OK(kudu::PstackWatcher::DumpStacks(), "Unable to print pstack");
+  WARN_NOT_OK(yb::PstackWatcher::DumpStacks(), "Unable to print pstack");
 
   // ...and abort.
   LOG(FATAL) << "Maximum unit test time exceeded (" << FLAGS_test_timeout_after << " sec)";

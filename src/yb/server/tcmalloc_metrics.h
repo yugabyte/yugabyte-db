@@ -19,7 +19,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-namespace kudu {
+namespace yb {
 class MetricEntity;
 namespace tcmalloc {
 
@@ -29,6 +29,6 @@ namespace tcmalloc {
 void RegisterMetrics(const scoped_refptr<MetricEntity>& entity);
 
 } // namespace tcmalloc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_SERVER_TCMALLOC_METRICS_H_

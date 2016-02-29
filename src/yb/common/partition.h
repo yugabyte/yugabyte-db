@@ -29,7 +29,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class ColumnRangePredicate;
 class ConstContiguousRow;
@@ -268,6 +268,6 @@ class PartitionSchema {
   RangeSchema range_schema_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

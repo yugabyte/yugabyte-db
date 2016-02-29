@@ -38,7 +38,7 @@ DEFINE_int64(arena_warn_threshold_bytes, 256*1024*1024,
              "Number of bytes beyond which to emit a warning for a large arena");
 TAG_FLAG(arena_warn_threshold_bytes, hidden);
 
-namespace kudu {
+namespace yb {
 
 template <bool THREADSAFE>
 ArenaBase<THREADSAFE>::ArenaBase(
@@ -170,4 +170,4 @@ template class ArenaBase<true>;
 template class ArenaBase<false>;
 
 
-}  // namespace kudu
+}  // namespace yb

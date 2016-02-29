@@ -22,7 +22,7 @@
 #include "yb/server/server_base_options.h"
 #include "yb/util/net/net_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 // Options for constructing a tablet server.
@@ -31,12 +31,12 @@ namespace tserver {
 //
 // This allows tests to easily start miniclusters with different
 // tablet servers having different options.
-struct TabletServerOptions : public kudu::server::ServerBaseOptions {
+struct TabletServerOptions : public yb::server::ServerBaseOptions {
   TabletServerOptions();
 
   std::vector<HostPort> master_addresses;
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TSERVER_TABLET_SERVER_OPTIONS_H */

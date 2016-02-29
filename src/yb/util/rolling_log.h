@@ -24,7 +24,7 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Env;
 class WritableFile;
@@ -103,5 +103,5 @@ class RollingLog {
   DISALLOW_COPY_AND_ASSIGN(RollingLog);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_ROLLING_LOG_H */

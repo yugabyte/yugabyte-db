@@ -29,7 +29,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using base::subtle::Barrier_AtomicIncrement;
@@ -189,4 +189,4 @@ std::string LocalConsensus::LogPrefix() const {
 }
 
 } // end namespace consensus
-} // end namespace kudu
+} // end namespace yb

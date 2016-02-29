@@ -30,7 +30,7 @@
 #include "yb/tablet/cfile_set.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MemTracker;
 
@@ -264,6 +264,6 @@ class DeltaTracker {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

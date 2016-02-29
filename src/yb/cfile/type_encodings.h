@@ -20,7 +20,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class TypeInfo;
 
 namespace cfile {
@@ -70,6 +70,6 @@ class TypeEncodingInfo {
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_CFILE_TYPE_ENCODINGS_H_ */

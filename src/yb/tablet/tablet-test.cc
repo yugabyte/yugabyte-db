@@ -33,7 +33,7 @@
 using std::shared_ptr;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using fs::ReadableBlock;
@@ -959,4 +959,4 @@ TEST(TestTablet, TestGetLogRetentionSizeForIndex) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

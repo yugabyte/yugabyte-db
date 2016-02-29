@@ -20,7 +20,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 // Return a NotSupported Status if the current CPU does not support the CPU flags
 // required for Kudu.
@@ -30,5 +30,5 @@ Status CheckCPUFlags();
 // Issues a FATAL log message if we fail to init.
 void InitKuduOrDie();
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_INIT_H */

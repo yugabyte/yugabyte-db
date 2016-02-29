@@ -82,7 +82,7 @@ TAG_FLAG(scanner_inject_latency_on_each_batch_ms, unsafe);
 
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::ChangeConfigRequestPB;
@@ -1286,7 +1286,7 @@ static Status SetupScanSpec(const NewScanRequestPB& scan_pb,
 
   // When doing an ordered scan, we need to include the key columns to be able to encode
   // the last row key for the scan response.
-  if (scan_pb.order_mode() == kudu::ORDERED &&
+  if (scan_pb.order_mode() == yb::ORDERED &&
       projection.num_key_columns() != tablet_schema.num_key_columns()) {
     for (int i = 0; i < tablet_schema.num_key_columns(); i++) {
       const ColumnSchema &col = tablet_schema.column(i);
@@ -1694,4 +1694,4 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 class StackTrace;
 
@@ -134,5 +134,5 @@ class MutexLock {
   DISALLOW_COPY_AND_ASSIGN(MutexLock);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_MUTEX_H */

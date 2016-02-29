@@ -29,7 +29,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class NetUtilTest : public KuduTest {
  protected:
@@ -134,4 +134,4 @@ TEST_F(NetUtilTest, TestGetFQDN) {
   LOG(INFO) << "fqdn is " << fqdn;
 }
 
-} // namespace kudu
+} // namespace yb

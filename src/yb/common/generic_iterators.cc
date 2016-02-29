@@ -35,7 +35,7 @@ DEFINE_bool(materializing_iterator_do_pushdown, true,
             "Should MaterializingIterator do predicate pushdown");
 TAG_FLAG(materializing_iterator_do_pushdown, hidden);
 
-namespace kudu {
+namespace yb {
 
 ////////////////////////////////////////////////////////////
 // Merge iterator
@@ -595,4 +595,4 @@ string PredicateEvaluatingIterator::ToString() const {
 }
 
 
-} // namespace kudu
+} // namespace yb

@@ -25,7 +25,7 @@
 #include "yb/client/value.h"
 #include "yb/util/yb_export.h"
 
-namespace kudu {
+namespace yb {
 
 class ColumnSchema;
 class KuduPartialRow;
@@ -330,7 +330,7 @@ class YB_EXPORT KuduSchema {
   friend class internal::GetTableSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::WriteRpc;
-  friend class kudu::tools::TsAdminClient;
+  friend class yb::tools::TsAdminClient;
 
   friend KuduSchema KuduSchemaFromSchema(const Schema& schema);
 
@@ -347,5 +347,5 @@ class YB_EXPORT KuduSchema {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif // KUDU_CLIENT_SCHEMA_H

@@ -26,7 +26,7 @@ DEFINE_int32(num_threads, 2, "Number of threads to test");
 using std::shared_ptr;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class TestMultiThreadedRowSet : public TestRowSet {
@@ -111,4 +111,4 @@ TEST_F(TestMultiThreadedRowSet, TestMTUpdateAndFlush) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

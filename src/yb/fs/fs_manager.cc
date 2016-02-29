@@ -72,18 +72,18 @@ DEFINE_string(fs_data_dirs, "",
 TAG_FLAG(fs_data_dirs, stable);
 
 using google::protobuf::Message;
-using kudu::env_util::ScopedFileDeleter;
-using kudu::fs::BlockManagerOptions;
-using kudu::fs::CreateBlockOptions;
-using kudu::fs::FileBlockManager;
-using kudu::fs::LogBlockManager;
-using kudu::fs::ReadableBlock;
-using kudu::fs::WritableBlock;
+using yb::env_util::ScopedFileDeleter;
+using yb::fs::BlockManagerOptions;
+using yb::fs::CreateBlockOptions;
+using yb::fs::FileBlockManager;
+using yb::fs::LogBlockManager;
+using yb::fs::ReadableBlock;
+using yb::fs::WritableBlock;
 using std::map;
 using std::unordered_set;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 // ==========================================================================
 //  FS Paths
@@ -508,4 +508,4 @@ std::ostream& operator<<(std::ostream& o, const BlockId& block_id) {
   return o << block_id.ToString();
 }
 
-} // namespace kudu
+} // namespace yb

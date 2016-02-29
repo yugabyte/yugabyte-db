@@ -20,7 +20,7 @@
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/tablet-test-base.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class KuduTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
@@ -113,4 +113,4 @@ TEST_F(KuduTabletMmOpsTest, TestMajorDeltaCompactionOpCacheStats) {
                                        tablet()->metrics()->delta_major_compact_rs_duration }));
 }
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

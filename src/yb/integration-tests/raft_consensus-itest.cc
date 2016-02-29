@@ -55,7 +55,7 @@ METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_memory_pressure_rejections);
 METRIC_DECLARE_gauge_int64(raft_term);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using client::KuduInsert;
@@ -392,7 +392,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                                       string* fell_behind_uuid);
 
   shared_ptr<KuduTable> table_;
-  std::vector<scoped_refptr<kudu::Thread> > threads_;
+  std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
 };
 
@@ -504,8 +504,8 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
 
   int num_threads = FLAGS_num_client_threads;
   for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
                                   &RaftConsensusITest::InsertTestRowsRemoteThread,
                                   this, i * FLAGS_client_inserts_per_thread,
                                   FLAGS_client_inserts_per_thread,
@@ -515,15 +515,15 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
     threads_.push_back(new_thread);
   }
   for (int i = 0; i < FLAGS_num_replicas; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("chaos-test$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("chaos-test$0", i),
                                   &RaftConsensusITest::DelayInjectorThread,
                                   this, cluster_->tablet_server(i),
                                   kConsensusRpcTimeoutForTests,
                                   &new_thread));
     threads_.push_back(new_thread);
   }
-  for (scoped_refptr<kudu::Thread> thr : threads_) {
+  for (scoped_refptr<yb::Thread> thr : threads_) {
    CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
 
@@ -999,8 +999,8 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
   }
 
   for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
                                   &RaftConsensusITest::InsertTestRowsRemoteThread,
                                   this, i * FLAGS_client_inserts_per_thread,
                                   FLAGS_client_inserts_per_thread,
@@ -1015,7 +1015,7 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
     StopOrKillLeaderAndElectNewOne();
   }
 
-  for (scoped_refptr<kudu::Thread> thr : threads_) {
+  for (scoped_refptr<yb::Thread> thr : threads_) {
    CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
 
@@ -1131,8 +1131,8 @@ TEST_F(RaftConsensusITest, TestKUDU_597) {
 
   AtomicBool finish(false);
   for (int i = 0; i < FLAGS_num_tablet_servers; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("ts-test$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("ts-test$0", i),
                                   &RaftConsensusITest::StubbornlyWriteSameRowThread,
                                   this, i, &finish, &new_thread));
     threads_.push_back(new_thread);
@@ -1146,7 +1146,7 @@ TEST_F(RaftConsensusITest, TestKUDU_597) {
   }
 
   finish.Store(true);
-  for (scoped_refptr<kudu::Thread> thr : threads_) {
+  for (scoped_refptr<yb::Thread> thr : threads_) {
     CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
 }
@@ -2463,5 +2463,5 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
 }
 
 }  // namespace tserver
-}  // namespace kudu
+}  // namespace yb
 

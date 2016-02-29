@@ -41,7 +41,7 @@
 #include "yb/util/rle-encoding.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class Arena;
 
 namespace cfile {
@@ -221,6 +221,6 @@ class CFileWriter {
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

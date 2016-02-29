@@ -23,7 +23,7 @@
 
 using jsonwriter_test::TestAllTypes;
 
-namespace kudu {
+namespace yb {
 
 class TestJsonWriter : public KuduTest {};
 
@@ -123,4 +123,4 @@ TEST_F(TestJsonWriter, TestPBNestedMessage) {
             JsonWriter::ToJson(pb, JsonWriter::COMPACT));
 }
 
-} // namespace kudu
+} // namespace yb

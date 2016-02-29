@@ -21,7 +21,7 @@
 
 #include <glog/logging.h>
 
-namespace kudu {
+namespace yb {
 
 template<typename T>
 AtomicInt<T>::AtomicInt(T initial_value) {
@@ -52,4 +52,4 @@ AtomicBool::AtomicBool(bool value)
     : underlying_(value) {
 }
 
-} // namespace kudu
+} // namespace yb

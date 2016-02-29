@@ -26,7 +26,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class HostPort;
 
@@ -89,6 +89,6 @@ class MiniMaster {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_MASTER_MINI_MASTER_H */

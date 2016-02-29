@@ -41,7 +41,7 @@ using strings::Substitute;
 
 static const int kDefaultSizeLimitBytes = 64 * 1024 * 1024; // 64MB
 
-namespace kudu {
+namespace yb {
 
 RollingLog::RollingLog(Env* env, string log_dir, string log_name)
     : env_(env),
@@ -252,4 +252,4 @@ Status RollingLog::CompressFile(const std::string& path) const {
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

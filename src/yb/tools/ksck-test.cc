@@ -25,7 +25,7 @@
 #include "yb/tools/ksck.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using std::shared_ptr;
@@ -255,4 +255,4 @@ TEST_F(KsckTest, TestOneOneTabletBrokenTable) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

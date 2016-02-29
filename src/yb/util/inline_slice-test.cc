@@ -22,7 +22,7 @@
 #include "yb/util/inline_slice.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 
 template<size_t N>
 static void TestRoundTrip(InlineSlice<N> *slice,
@@ -81,4 +81,4 @@ TEST(TestInlineSlice, Test16ByteInline) {
   DoTest<16>();
 }
 
-} // namespace kudu
+} // namespace yb

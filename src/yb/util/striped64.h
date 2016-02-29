@@ -22,7 +22,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/threadlocal.h"
 
-namespace kudu {
+namespace yb {
 
 class Striped64;
 
@@ -173,6 +173,6 @@ class LongAdder : Striped64 {
   DISALLOW_COPY_AND_ASSIGN(LongAdder);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

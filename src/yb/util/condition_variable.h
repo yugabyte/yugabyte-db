@@ -70,7 +70,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 
-namespace kudu {
+namespace yb {
 
 class ConditionVarImpl;
 class TimeDelta;
@@ -108,6 +108,6 @@ class ConditionVariable {
   DISALLOW_COPY_AND_ASSIGN(ConditionVariable);
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // BASE_SYNCHRONIZATION_CONDITION_VARIABLE_H_

@@ -37,7 +37,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/random.h"
 
-namespace kudu {
+namespace yb {
 class Env;
 class MetricEntity;
 class ThreadPool;
@@ -338,6 +338,6 @@ class LogBlockManager : public BlockManager {
 };
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb
 
 #endif

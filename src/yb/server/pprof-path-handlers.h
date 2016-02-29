@@ -30,7 +30,7 @@
 #ifndef KUDU_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
 #define KUDU_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
 
-namespace kudu {
+namespace yb {
 class Webserver;
 
 // Adds set of path handlers to support pprof profiling of a remote server.

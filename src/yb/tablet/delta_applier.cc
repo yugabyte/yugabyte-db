@@ -27,7 +27,7 @@
 using std::shared_ptr;
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
   // Construct. The base_iter and delta_iter should not be Initted.
@@ -104,4 +104,4 @@ Status DeltaApplier::MaterializeColumn(size_t col_idx, ColumnBlock *dst) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

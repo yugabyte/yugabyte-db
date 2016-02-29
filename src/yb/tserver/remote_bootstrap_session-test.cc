@@ -45,7 +45,7 @@ METRIC_DECLARE_entity(tablet);
 using std::shared_ptr;
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::ConsensusMetadata;
@@ -324,4 +324,4 @@ TEST_F(RemoteBootstrapTest, TestBlocksAreFetchableAfterBeingDeleted) {
 }
 
 }  // namespace tserver
-}  // namespace kudu
+}  // namespace yb

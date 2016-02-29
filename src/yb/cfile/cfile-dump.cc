@@ -31,7 +31,7 @@ DEFINE_bool(iterate_rows, true, "iterate each row in the file");
 DEFINE_bool(print_rows, true, "print each row in the file");
 DEFINE_int32(num_iterations, 1, "number of times to iterate the file");
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using std::string;
@@ -75,11 +75,11 @@ Status DumpFile(const string& block_id_str) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char **argv) {
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::InitGoogleLoggingSafe(argv[0]);
   if (argc != 2) {
     std::cerr << "usage: " << argv[0]
               << " -fs_wal_dir <dir> -fs_data_dirs <dirs> <block id>" << std::endl;
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     FLAGS_print_rows = false;
   }
 
-  kudu::Status s = kudu::cfile::DumpFile(argv[1]);
+  yb::Status s = yb::cfile::DumpFile(argv[1]);
   if (!s.ok()) {
     std::cerr << "Error: " << s.ToString() << std::endl;
     return 1;

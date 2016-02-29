@@ -24,7 +24,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/mathlimits.h"
 
-namespace kudu {
+namespace yb {
 
 const Timestamp Timestamp::kMin(MathLimits<Timestamp::val_type>::kMin);
 const Timestamp Timestamp::kMax(MathLimits<Timestamp::val_type>::kMax);
@@ -52,4 +52,4 @@ Status Timestamp::FromUint64(uint64_t value) {
   return Status::OK();
 }
 
-}  // namespace kudu
+}  // namespace yb

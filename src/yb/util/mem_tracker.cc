@@ -63,7 +63,7 @@ DEFINE_int32(tcmalloc_max_free_bytes_percentage, 10,
 TAG_FLAG(tcmalloc_max_free_bytes_percentage, advanced);
 #endif
 
-namespace kudu {
+namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
 // somewhat from kudu.
@@ -576,4 +576,4 @@ shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   return root_tracker;
 }
 
-} // namespace kudu
+} // namespace yb

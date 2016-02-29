@@ -53,17 +53,17 @@ DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 using google::protobuf::RepeatedPtrField;
-using kudu::HostPortPB;
-using kudu::consensus::RaftPeerPB;
-using kudu::master::GetLeaderMasterRpc;
-using kudu::master::ListMastersResponsePB;
-using kudu::master::Master;
-using kudu::master::MasterServiceProxy;
-using kudu::rpc::RpcController;
+using yb::HostPortPB;
+using yb::consensus::RaftPeerPB;
+using yb::master::GetLeaderMasterRpc;
+using yb::master::ListMastersResponsePB;
+using yb::master::Master;
+using yb::master::MasterServiceProxy;
+using yb::rpc::RpcController;
 using std::shared_ptr;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 namespace {
@@ -124,7 +124,7 @@ class Heartbeater::Thread {
   TabletServer* const server_;
 
   // The actual running thread (NULL before it is started)
-  scoped_refptr<kudu::Thread> thread_;
+  scoped_refptr<yb::Thread> thread_;
 
   // Host and port of the most recent leader master.
   HostPort leader_master_hostport_;
@@ -428,14 +428,14 @@ void Heartbeater::Thread::RunThread() {
 }
 
 bool Heartbeater::Thread::IsCurrentThread() const {
-  return thread_.get() == kudu::Thread::current_thread();
+  return thread_.get() == yb::Thread::current_thread();
 }
 
 Status Heartbeater::Thread::Start() {
   CHECK(thread_ == nullptr);
 
   should_run_ = true;
-  return kudu::Thread::Create("heartbeater", "heartbeat",
+  return yb::Thread::Create("heartbeater", "heartbeat",
       &Heartbeater::Thread::RunThread, this, &thread_);
 }
 
@@ -461,4 +461,4 @@ void Heartbeater::Thread::TriggerASAP() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

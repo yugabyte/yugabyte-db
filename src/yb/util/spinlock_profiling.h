@@ -22,7 +22,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 
@@ -68,5 +68,5 @@ void FlushSynchronizationProfile(std::stringstream* out, int64_t* drop_count);
 // Stop collecting contention profiles.
 void StopSynchronizationProfiling();
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_SPINLOCK_PROFILING_H */

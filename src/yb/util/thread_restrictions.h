@@ -25,7 +25,7 @@
 #define ENABLE_THREAD_RESTRICTIONS 1
 #endif
 
-namespace kudu {
+namespace yb {
 
 // Certain behavior is disallowed on certain threads.  ThreadRestrictions helps
 // enforce these rules.  Examples of such rules:
@@ -116,6 +116,6 @@ class ThreadRestrictions {
   DISALLOW_IMPLICIT_CONSTRUCTORS(ThreadRestrictions);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_UTIL_THREAD_RESTRICTIONS_H */

@@ -71,9 +71,9 @@ using google::protobuf::Message;
 using google::protobuf::MessageLite;
 using google::protobuf::Reflection;
 using google::protobuf::SimpleDescriptorDatabase;
-using kudu::crc::Crc;
-using kudu::pb_util::internal::SequentialFileFileInputStream;
-using kudu::pb_util::internal::WritableFileOutputStream;
+using yb::crc::Crc;
+using yb::pb_util::internal::SequentialFileFileInputStream;
+using yb::pb_util::internal::WritableFileOutputStream;
 using std::deque;
 using std::endl;
 using std::shared_ptr;
@@ -97,7 +97,7 @@ static const int kPBContainerChecksumLen = sizeof(uint32_t);
 COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
                kPBContainerMagic_does_not_match_expected_length);
 
-namespace kudu {
+namespace yb {
 namespace pb_util {
 
 namespace {
@@ -661,4 +661,4 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
 }
 
 } // namespace pb_util
-} // namespace kudu
+} // namespace yb

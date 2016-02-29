@@ -46,7 +46,7 @@ DEFINE_string(twitter_token_key, "1653869436-7QncqwFkMaOS6rWNeHpwNQZ8li1CFbJp0QN
 DEFINE_string(twitter_token_secret, "1t3UPOJc6nkThvBPcCPGAj3gHB3mB97F3zraoRkKMA",
               "Twitter API access token secret");
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 ////////////////////////////////////////////////////////////
@@ -199,4 +199,4 @@ size_t TwitterStreamer::DataReceived(const Slice& slice) {
 }
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb

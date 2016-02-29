@@ -25,7 +25,7 @@
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/substitute.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 const int64_t kMinimumTerm = 0;
@@ -160,4 +160,4 @@ OpId MakeOpId(int term, int index) {
 }
 
 } // namespace consensus
-}  // namespace kudu
+}  // namespace yb

@@ -31,7 +31,7 @@
 using std::shared_ptr;
 using strings::Substitute;
 
-namespace kudu { namespace tablet {
+namespace yb { namespace tablet {
 
 DuplicatingRowSet::DuplicatingRowSet(RowSetVector old_rowsets,
                                      RowSetVector new_rowsets)
@@ -232,4 +232,4 @@ Status DuplicatingRowSet::DebugDump(vector<string> *lines) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

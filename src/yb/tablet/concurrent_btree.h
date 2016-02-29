@@ -60,7 +60,7 @@
 // to see how much of the node was actually being used.
 // #define DEBUG_DUMP_SPLIT_STATS
 
-namespace kudu { namespace tablet {
+namespace yb { namespace tablet {
 namespace btree {
 
 // All CBTree implementation classes are templatized on a traits
@@ -1795,6 +1795,6 @@ class CBTreeIterator {
 
 } // namespace btree
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

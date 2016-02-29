@@ -61,7 +61,7 @@ METRIC_DECLARE_gauge_uint64(log_block_manager_blocks_under_management);
 METRIC_DECLARE_counter(log_block_manager_containers);
 METRIC_DECLARE_counter(log_block_manager_full_containers);
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 template <typename T>
@@ -755,4 +755,4 @@ TEST_F(LogBlockManagerTest, TestReuseBlockIds) {
 #endif // defined(__linux__)
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

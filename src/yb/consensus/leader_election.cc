@@ -34,7 +34,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::string;
@@ -370,4 +370,4 @@ std::string LeaderElection::LogPrefix() const {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

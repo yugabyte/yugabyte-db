@@ -29,7 +29,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 // Number of heartbeats we want to observe before allowing the test to end.
 static const int kNumHeartbeats = 2;
@@ -102,4 +102,4 @@ TEST_F(ResettableHeartbeaterTest, TestResetHeartbeats) {
   ASSERT_OK(heartbeater_->Stop());
 }
 
-}  // namespace kudu
+}  // namespace yb

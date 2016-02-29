@@ -21,7 +21,7 @@
 
 #include "yb/client/schema.h"
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 using client::KuduColumnSchema;
@@ -47,7 +47,7 @@ inline KuduSchema CreateTwitterSchema() {
 }
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb
 #endif
 
 /*

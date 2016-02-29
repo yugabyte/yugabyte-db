@@ -31,7 +31,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 Status TSDescriptor::RegisterNew(const NodeInstancePB& instance,
@@ -228,4 +228,4 @@ Status TSDescriptor::GetConsensusProxy(const shared_ptr<rpc::Messenger>& messeng
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

@@ -38,7 +38,7 @@ DEFINE_int32(benchmark_num_passes, 100, "Number of passes to apply deltas in the
 using std::shared_ptr;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using fs::WritableBlock;
@@ -501,4 +501,4 @@ TEST_F(TestDeltaMemStore, TestCollectMutations) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

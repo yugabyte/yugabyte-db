@@ -24,7 +24,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/threadpool.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::Log;
@@ -113,4 +113,4 @@ std::string PeerManager::GetLogPrefix() const {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

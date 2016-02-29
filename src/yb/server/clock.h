@@ -26,7 +26,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class faststring;
 class MetricEntity;
 class MonoDelta;
@@ -97,6 +97,6 @@ class Clock : public RefCountedThreadSafe<Clock> {
 };
 
 } // namespace server
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_SERVER_CLOCK_H_ */

@@ -19,12 +19,12 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 class Cache;
 
 // Create a cache in persistent memory with the given capacity.
 Cache* NewLRUNvmCache(size_t capacity, const std::string& id);
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif

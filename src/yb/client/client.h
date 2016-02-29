@@ -38,7 +38,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class LinkedListTester;
 class PartitionSchema;
@@ -1072,5 +1072,5 @@ class YB_EXPORT KuduTabletServer {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif

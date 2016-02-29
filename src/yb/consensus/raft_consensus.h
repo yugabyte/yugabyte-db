@@ -31,7 +31,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/failure_detector.h"
 
-namespace kudu {
+namespace yb {
 
 typedef boost::lock_guard<simple_spinlock> Lock;
 typedef gscoped_ptr<Lock> ScopedLock;
@@ -462,6 +462,6 @@ class RaftConsensus : public Consensus,
 };
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_RAFT_CONSENSUS_H_ */

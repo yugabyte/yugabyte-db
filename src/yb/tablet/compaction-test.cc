@@ -51,7 +51,7 @@ DECLARE_bool(enable_data_block_fsync);
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using consensus::OpId;
@@ -815,4 +815,4 @@ TEST_F(TestCompaction, TestEmptyFlushDoesntLeakBlocks) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

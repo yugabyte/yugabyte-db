@@ -24,7 +24,7 @@
 
 #include "yb/gutil/mathlimits.h"
 
-namespace kudu {
+namespace yb {
 
 namespace safe_math_internal {
 
@@ -65,5 +65,5 @@ inline Type AddWithOverflowCheck(Type a, Type b, bool *overflowed) {
   return my_struct::Add(a, b, overflowed);
 }
 
-} // namespace kudu
+} // namespace yb
 #endif

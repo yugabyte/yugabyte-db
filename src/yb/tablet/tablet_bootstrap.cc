@@ -68,7 +68,7 @@ TAG_FLAG(fault_crash_during_log_replay, unsafe);
 
 DECLARE_int32(max_clock_sync_error_usec);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using boost::shared_lock;
@@ -1475,4 +1475,4 @@ bool FlushedStoresSnapshot::WasStoreAlreadyFlushed(const MemStoreTargetPB& targe
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -23,7 +23,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::ConsensusServiceProxy;
@@ -43,4 +43,4 @@ void CreateTsClientProxies(const Sockaddr& addr,
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

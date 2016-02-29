@@ -30,7 +30,7 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 class FsManager;
 
 namespace log {
@@ -106,6 +106,6 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TSERVER_REMOTE_BOOTSTRAP_SERVICE_H_

@@ -23,7 +23,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using google::protobuf::RepeatedPtrField;
@@ -220,4 +220,4 @@ Status VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type
 }
 
 } // namespace consensus
-}  // namespace kudu
+}  // namespace yb

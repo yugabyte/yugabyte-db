@@ -31,7 +31,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
 
-namespace kudu {
+namespace yb {
 
 // Macro for logging timing of a block. Usage:
 //   LOG_TIMING_PREFIX_IF(INFO, FLAGS_should_record_time, "Tablet X: ", "doing some task") {
@@ -43,7 +43,7 @@ namespace kudu {
 // The task will always execute regardless of whether the timing information is
 // printed.
 #define LOG_TIMING_PREFIX_IF(severity, condition, prefix, description) \
-  for (kudu::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, prefix, description, \
+  for (yb::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, prefix, description, \
           -1, (condition)); !_l.HasRun(); _l.MarkHasRun())
 
 // Conditionally log, no prefix.
@@ -60,12 +60,12 @@ namespace kudu {
 
 // Macro to log the time spent in the rest of the block.
 #define SCOPED_LOG_TIMING(severity, description) \
-  kudu::sw_internal::LogTiming VARNAME_LINENUM(_log_timing)(__FILE__, __LINE__, \
+  yb::sw_internal::LogTiming VARNAME_LINENUM(_log_timing)(__FILE__, __LINE__, \
       google::severity, "", description, -1, true);
 
 // Scoped version of LOG_SLOW_EXECUTION() but with a prefix.
 #define SCOPED_LOG_SLOW_EXECUTION_PREFIX(severity, max_expected_millis, prefix, description) \
-  kudu::sw_internal::LogTiming VARNAME_LINENUM(_log_timing)(__FILE__, __LINE__, \
+  yb::sw_internal::LogTiming VARNAME_LINENUM(_log_timing)(__FILE__, __LINE__, \
       google::severity, prefix, description, max_expected_millis, true)
 
 // Macro for logging timing of a block. Usage:
@@ -76,7 +76,7 @@ namespace kudu {
 // I1102 14:35:51.726186 23082 file.cc:167] Time spent doing some task:
 //   real 3.729s user 3.570s sys 0.150s
 #define LOG_SLOW_EXECUTION(severity, max_expected_millis, description) \
-  for (kudu::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, "", description, \
+  for (yb::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, "", description, \
           max_expected_millis, true); !_l.HasRun(); _l.MarkHasRun())
 
 // Macro for vlogging timing of a block. The execution happens regardless of the vlog_level,
@@ -87,12 +87,12 @@ namespace kudu {
 //   }
 // Yields a log just like LOG_TIMING's.
 #define VLOG_TIMING(vlog_level, description) \
-  for (kudu::sw_internal::LogTiming _l(__FILE__, __LINE__, google::INFO, "", description, \
+  for (yb::sw_internal::LogTiming _l(__FILE__, __LINE__, google::INFO, "", description, \
           -1, VLOG_IS_ON(vlog_level)); !_l.HasRun(); _l.MarkHasRun())
 
 // Macro to log the time spent in the rest of the block.
 #define SCOPED_VLOG_TIMING(vlog_level, description) \
-  kudu::sw_internal::LogTiming VARNAME_LINENUM(_log_timing)(__FILE__, __LINE__, \
+  yb::sw_internal::LogTiming VARNAME_LINENUM(_log_timing)(__FILE__, __LINE__, \
       google::INFO, "", description, -1, VLOG_IS_ON(vlog_level));
 
 #define NANOS_PER_SECOND 1000000000.0
@@ -322,6 +322,6 @@ class LogTiming {
 };
 
 } // namespace sw_internal
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -35,7 +35,7 @@ using std::shared_ptr;
 DEFINE_int32(num_test_threads, 10, "number of stress test client threads");
 DEFINE_int32(num_iterations, 1000, "number of iterations per client thread");
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 static const TransactionState* kFakeTransaction =
@@ -148,7 +148,7 @@ class LmTestThread {
       : manager_(manager), keys_(std::move(keys)), resources_(resources) {}
 
   void Start() {
-    CHECK_OK(kudu::Thread::Create("test", "test", &LmTestThread::Run, this, &thread_));
+    CHECK_OK(yb::Thread::Create("test", "test", &LmTestThread::Run, this, &thread_));
   }
 
   void Run() {
@@ -188,7 +188,7 @@ class LmTestThread {
   vector<const Slice*> keys_;
   const vector<LmTestResource*> resources_;
   uint64_t tid_;
-  scoped_refptr<kudu::Thread> thread_;
+  scoped_refptr<yb::Thread> thread_;
 };
 
 static void runPerformanceTest(const char *test_type,
@@ -284,4 +284,4 @@ TEST_F(LockManagerTest, TestUncontended) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

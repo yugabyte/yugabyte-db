@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 class Slice;
 
@@ -29,5 +29,5 @@ class Slice;
 // speed.
 std::string HexDump(const Slice &slice);
 
-} // namespace kudu
+} // namespace yb
 #endif

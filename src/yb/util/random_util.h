@@ -21,7 +21,7 @@
 #include <cstdlib>
 #include <stdint.h>
 
-namespace kudu {
+namespace yb {
 
 class Random;
 
@@ -34,6 +34,6 @@ void RandomString(void* dest, size_t n, Random* rng);
 // pid & tid.
 uint32_t GetRandomSeed32();
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_RANDOM_UTIL_H

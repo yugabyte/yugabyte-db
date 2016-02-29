@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu.tablet;
+package yb.tablet;
 
-option java_package = "org.kududb.tablet";
+option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/consensus/opid.proto";

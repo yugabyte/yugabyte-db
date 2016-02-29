@@ -32,7 +32,7 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace flag_tags_internal {
 
 // Singleton registry storing the set of tags for each flag.
@@ -85,4 +85,4 @@ void GetFlagTags(const string& flag_name,
   FlagTagRegistry::GetInstance()->GetTags(flag_name, tags);
 }
 
-} // namespace kudu
+} // namespace yb

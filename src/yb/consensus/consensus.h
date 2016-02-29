@@ -31,7 +31,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
-namespace kudu {
+namespace yb {
 
 namespace log {
 class Log;
@@ -423,6 +423,6 @@ class Consensus::ConsensusFaultHooks {
 };
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 
 #endif /* CONSENSUS_H_ */

@@ -23,7 +23,7 @@
 #include "yb/util/bitmap.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 // Probe calculated from a given key. This caches the calculated
 // hash values which are necessary for probing into a Bloom Filter,
@@ -243,6 +243,6 @@ inline bool BloomFilter::MayContainKey(const BloomKeyProbe &probe) const {
   return true;
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

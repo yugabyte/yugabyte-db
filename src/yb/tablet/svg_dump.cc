@@ -38,7 +38,7 @@ using std::ostream;
 using std::unordered_set;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Flag to dump SVGs of every compaction decision.
@@ -197,4 +197,4 @@ void DumpCompactionSVG(const vector<RowSetInfo>& candidates,
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

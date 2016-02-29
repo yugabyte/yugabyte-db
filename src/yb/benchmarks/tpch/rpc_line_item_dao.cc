@@ -37,7 +37,7 @@
 DEFINE_bool(tpch_cache_blocks_when_scanning, true,
             "Whether the scanners should cache the blocks that are read or not");
 
-namespace kudu {
+namespace yb {
 
 using client::KuduInsert;
 using client::KuduClient;
@@ -233,4 +233,4 @@ RpcLineItemDAO::RpcLineItemDAO(string master_address, string table_name,
       semaphore_(1) {
 }
 
-} // namespace kudu
+} // namespace yb

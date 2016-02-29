@@ -44,7 +44,7 @@ TAG_FLAG(deltafile_default_block_size, experimental);
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 
 using cfile::BlockHandle;
 using cfile::BlockPointer;
@@ -839,4 +839,4 @@ void DeltaFileIterator::FatalUnexpectedDelta(const DeltaKey &key, const Slice &d
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

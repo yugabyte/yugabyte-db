@@ -17,7 +17,7 @@
 
 #include "yb/tablet/transactions/transaction.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using consensus::DriverType;
@@ -85,4 +85,4 @@ void TransactionMetrics::Reset() {
 
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb

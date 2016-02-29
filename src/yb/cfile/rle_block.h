@@ -32,7 +32,7 @@
 #include "yb/util/rle-encoding.h"
 
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 struct WriterOptions;
@@ -418,6 +418,6 @@ class RleIntBlockDecoder : public BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

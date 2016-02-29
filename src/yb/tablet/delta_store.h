@@ -30,7 +30,7 @@
 #include "yb/tablet/delta_stats.h"
 #include "yb/tablet/tablet_metadata.h"
 
-namespace kudu {
+namespace yb {
 
 class ScanSpec;
 class SelectionVector;
@@ -203,6 +203,6 @@ Status WriteDeltaIteratorToFile(DeltaIterator* iter,
                                 DeltaFileWriter* out);
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

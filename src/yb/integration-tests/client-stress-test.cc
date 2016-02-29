@@ -36,7 +36,7 @@ METRIC_DECLARE_counter(follower_memory_pressure_rejections);
 using strings::Substitute;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 using client::KuduClient;
 using client::KuduClientBuilder;
@@ -135,8 +135,8 @@ TEST_F(ClientStressTest, TestStartScans) {
     Random rng(run);
     for (int i = 0; i < kNumThreads; i++) {
       int32_t start_key = rng.Next32();
-      scoped_refptr<kudu::Thread> new_thread;
-      CHECK_OK(kudu::Thread::Create(
+      scoped_refptr<yb::Thread> new_thread;
+      CHECK_OK(yb::Thread::Create(
           "test", strings::Substitute("test-scanner-$0", i),
           &ClientStressTest_TestStartScans_Test::ScannerThread, this,
           client.get(), &go_latch, start_key,
@@ -147,7 +147,7 @@ TEST_F(ClientStressTest, TestStartScans) {
 
     go_latch.CountDown();
 
-    for (const scoped_refptr<kudu::Thread>& thr : threads) {
+    for (const scoped_refptr<yb::Thread>& thr : threads) {
       CHECK_OK(ThreadJoiner(thr.get()).Join());
     }
   }
@@ -279,4 +279,4 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

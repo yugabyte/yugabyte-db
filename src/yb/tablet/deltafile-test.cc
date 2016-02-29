@@ -39,7 +39,7 @@ DEFINE_int32(n_verify, 1, "number of times to verify the updates"
 using std::is_sorted;
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using fs::CountingReadableBlock;
@@ -369,4 +369,4 @@ TEST_F(TestDeltaFile, TestLazyInit) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

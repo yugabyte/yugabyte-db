@@ -21,7 +21,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 template<class T>
@@ -45,6 +45,6 @@ struct BlockManagerMetrics {
 
 } // namespace internal
 } // namespace fs
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_FS_BLOCK_MANAGER_METRICS_H

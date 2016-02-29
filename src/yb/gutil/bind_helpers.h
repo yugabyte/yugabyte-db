@@ -12,8 +12,8 @@
 //
 // ARGUMENT BINDING WRAPPERS
 //
-// The wrapper functions are kudu::Unretained(), kudu::Owned(), kudu::Passed(),
-// kudu::ConstRef(), and kudu::IgnoreResult().
+// The wrapper functions are yb::Unretained(), yb::Owned(), yb::Passed(),
+// yb::ConstRef(), and yb::IgnoreResult().
 //
 // Unretained() allows Bind() to bind a non-refcounted class, and to disable
 // refcounting on arguments that are refcounted objects.
@@ -153,7 +153,7 @@
 #define BASE_EXPORT
 
 
-namespace kudu {
+namespace yb {
 namespace internal {
 
 // Use the Substitution Failure Is Not An Error (SFINAE) trick to inspect T
@@ -546,6 +546,6 @@ void DeletePointer(T* obj) {
   delete obj;
 }
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // BASE_BIND_HELPERS_H_

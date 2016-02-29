@@ -33,7 +33,7 @@ DEFINE_uint64(histogram_test_num_increments_per_thread, 100000LU,
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class MtHdrHistogramTest : public KuduTest {
  public:
@@ -59,9 +59,9 @@ TEST_F(MtHdrHistogramTest, ConcurrentWriteTest) {
 
   HdrHistogram hist(100000LU, 3);
 
-  auto threads = new scoped_refptr<kudu::Thread>[num_threads_];
+  auto threads = new scoped_refptr<yb::Thread>[num_threads_];
   for (int i = 0; i < num_threads_; i++) {
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("thread-$0", i),
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("thread-$0", i),
         IncrementSameHistValue, &hist, kValue, num_times_, &threads[i]));
   }
   for (int i = 0; i < num_threads_; i++) {
@@ -81,9 +81,9 @@ TEST_F(MtHdrHistogramTest, ConcurrentCopyWhileWritingTest) {
 
   HdrHistogram hist(100000LU, 3);
 
-  auto threads = new scoped_refptr<kudu::Thread>[num_threads_];
+  auto threads = new scoped_refptr<yb::Thread>[num_threads_];
   for (int i = 0; i < num_threads_; i++) {
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("thread-$0", i),
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("thread-$0", i),
         IncrementSameHistValue, &hist, kValue, num_times_, &threads[i]));
   }
 
@@ -108,4 +108,4 @@ TEST_F(MtHdrHistogramTest, ConcurrentCopyWhileWritingTest) {
   delete[] threads;
 }
 
-} // namespace kudu
+} // namespace yb

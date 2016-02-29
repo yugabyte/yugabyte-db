@@ -32,7 +32,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 using strings::Substitute;
 using tools::Ksck;
@@ -152,4 +152,4 @@ void ClusterVerifier::CheckRowCountWithRetries(const std::string& table_name,
   ASSERT_OK(s);
 }
 
-} // namespace kudu
+} // namespace yb

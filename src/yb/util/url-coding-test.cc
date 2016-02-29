@@ -35,7 +35,7 @@
 
 using namespace std; // NOLINT(*)
 
-namespace kudu {
+namespace yb {
 
 // Tests encoding/decoding of input.  If expected_encoded is non-empty, the
 // encoded string is validated against it.
@@ -117,4 +117,4 @@ TEST(HtmlEscapingTest, Basic) {
   EXPECT_EQ(after.str(), "&lt;html&gt;&lt;body&gt;&amp;amp");
 }
 
-} // namespace kudu
+} // namespace yb

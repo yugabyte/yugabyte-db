@@ -29,7 +29,7 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
 
-namespace kudu {
+namespace yb {
 
 // Return values for BlockingQueue::Put()
 enum QueueStatus {
@@ -235,6 +235,6 @@ class BlockingQueue {
   std::list<T> list_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

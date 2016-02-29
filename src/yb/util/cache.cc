@@ -40,7 +40,7 @@
 #include "yb/util/nvm_cache.h"
 #endif
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 
@@ -485,4 +485,4 @@ Cache* NewLRUCache(CacheType type, size_t capacity, const string& id) {
   }
 }
 
-}  // namespace kudu
+}  // namespace yb

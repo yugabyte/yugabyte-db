@@ -23,7 +23,7 @@
 #include "yb/common/scan_predicate.h"
 #include "yb/common/encoded_key.h"
 
-namespace kudu {
+namespace yb {
 
 using std::vector;
 
@@ -115,6 +115,6 @@ class ScanSpec {
   bool cache_blocks_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -19,7 +19,7 @@
 
 #include <memory>
 
-namespace kudu {
+namespace yb {
 
 namespace rpc {
 class Messenger;
@@ -30,5 +30,5 @@ class Webserver;
 void AddRpczPathHandlers(const std::shared_ptr<rpc::Messenger>& messenger,
                          Webserver* webserver);
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_RPCZ_PATH_HANDLER_H */

@@ -38,7 +38,7 @@ DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, unsafe);
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, hidden);
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 using consensus::RaftPeerPB;
@@ -380,4 +380,4 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

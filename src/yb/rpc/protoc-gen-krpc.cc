@@ -54,7 +54,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class Substituter {
@@ -331,13 +331,13 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include \"yb/rpc/rpc_header.pb.h\"\n"
       "#include \"yb/rpc/service_if.h\"\n"
       "\n"
-      "namespace kudu {\n"
+      "namespace yb {\n"
       "class MetricEntity;\n"
       "namespace rpc {\n"
       "class Messenger;\n"
       "class RpcContext;\n"
       "} // namespace rpc\n"
-      "} // namespace kudu\n"
+      "} // namespace yb\n"
       "\n"
       "$open_namespace$"
       "\n"
@@ -350,11 +350,11 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
 
       Print(printer, *subs,
         "\n"
-        "class $service_name$If : public ::kudu::rpc::ServiceIf {\n"
+        "class $service_name$If : public ::yb::rpc::ServiceIf {\n"
         " public:\n"
         "  explicit $service_name$If(const scoped_refptr<MetricEntity>& entity);\n"
         "  virtual ~$service_name$If();\n"
-        "  virtual void Handle(::kudu::rpc::InboundCall *call);\n"
+        "  virtual void Handle(::yb::rpc::InboundCall *call);\n"
         "  virtual std::string service_name() const;\n"
         "  static std::string static_service_name();\n"
         "\n"
@@ -367,7 +367,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
 
         Print(printer, *subs,
         "  virtual void $rpc_name$(const $request$ *req,\n"
-        "     $response$ *resp, ::kudu::rpc::RpcContext *context) = 0;\n"
+        "     $response$ *resp, ::yb::rpc::RpcContext *context) = 0;\n"
         );
 
         subs->Pop();
@@ -403,7 +403,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "  // Pre-initialize metrics because calling METRIC_foo.Instantiate() is expensive.\n"
         "  void InitMetrics(const scoped_refptr<MetricEntity>& ent);\n"
         "\n"
-        "  ::kudu::rpc::RpcMethodMetrics metrics_[kMethodCount];\n"
+        "  ::yb::rpc::RpcMethodMetrics metrics_[kMethodCount];\n"
         "\n"
         "};\n"
       );
@@ -448,7 +448,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         Print(printer, *subs,
           "METRIC_DEFINE_histogram(server, handler_latency_$rpc_full_name_plainchars$,\n"
           "  \"$rpc_full_name$ RPC Time\",\n"
-          "  kudu::MetricUnit::kMicroseconds,\n"
+          "  yb::MetricUnit::kMicroseconds,\n"
           "  \"Microseconds spent handling $rpc_full_name$() RPC requests\",\n"
           "  60000000LU, 2);\n"
           "\n");
@@ -475,7 +475,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "$service_name$If::~$service_name$If() {\n"
         "}\n"
         "\n"
-        "void $service_name$If::Handle(::kudu::rpc::InboundCall *call) {\n"
+        "void $service_name$If::Handle(::yb::rpc::InboundCall *call) {\n"
         "  {\n");
 
       for (int method_idx = 0; method_idx < service->method_count();
@@ -492,7 +492,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "      }\n"
         "      $response$ *resp = new $response$;\n"
         "      $rpc_name$(req, resp,\n"
-        "          new ::kudu::rpc::RpcContext(call, req, resp,\n"
+        "          new ::yb::rpc::RpcContext(call, req, resp,\n"
         "                                      metrics_[$metric_enum_key$]));\n"
         "      return;\n"
         "    }\n"
@@ -556,8 +556,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include \"yb/rpc/proxy.h\"\n"
       "#include \"yb/util/status.h\"\n"
       "\n"
-      "namespace kudu { class Sockaddr; }\n"
-      "namespace kudu { namespace rpc { class UserCredentials; } }\n"
+      "namespace yb { class Sockaddr; }\n"
+      "namespace yb { namespace rpc { class UserCredentials; } }\n"
       "$open_namespace$"
       "\n"
       "\n"
@@ -571,15 +571,15 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       Print(printer, *subs,
         "class $service_name$Proxy {\n"
         " public:\n"
-        "  $service_name$Proxy(const std::shared_ptr< ::kudu::rpc::Messenger>\n"
-        "                &messenger, const ::kudu::Sockaddr &sockaddr);\n"
+        "  $service_name$Proxy(const std::shared_ptr< ::yb::rpc::Messenger>\n"
+        "                &messenger, const ::yb::Sockaddr &sockaddr);\n"
         "  ~$service_name$Proxy();\n"
         "\n"
         "  // Set the user information for the connection.\n"
-        "  void set_user_credentials(const ::kudu::rpc::UserCredentials& user_credentials);\n"
+        "  void set_user_credentials(const ::yb::rpc::UserCredentials& user_credentials);\n"
         "\n"
         "  // Get the current user information for the connection.\n"
-        "  const ::kudu::rpc::UserCredentials& user_credentials() const;\n"
+        "  const ::yb::rpc::UserCredentials& user_credentials() const;\n"
         "\n"
         );
 
@@ -590,18 +590,18 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
 
         Print(printer, *subs,
         "\n"
-        "  ::kudu::Status $rpc_name$(const $request$ &req, $response$ *resp,\n"
-        "                          ::kudu::rpc::RpcController *controller);\n"
+        "  ::yb::Status $rpc_name$(const $request$ &req, $response$ *resp,\n"
+        "                          ::yb::rpc::RpcController *controller);\n"
         "  void $rpc_name$Async(const $request$ &req,\n"
         "                       $response$ *response,\n"
-        "                       ::kudu::rpc::RpcController *controller,\n"
-        "                       const ::kudu::rpc::ResponseCallback &callback);\n"
+        "                       ::yb::rpc::RpcController *controller,\n"
+        "                       const ::yb::rpc::ResponseCallback &callback);\n"
         );
         subs->Pop();
       }
       Print(printer, *subs,
       " private:\n"
-      "  ::kudu::rpc::Proxy proxy_;\n"
+      "  ::yb::rpc::Proxy proxy_;\n"
       "};\n");
       subs->Pop();
     }
@@ -634,8 +634,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       subs->PushService(service);
       Print(printer, *subs,
         "$service_name$Proxy::$service_name$Proxy(\n"
-        "   const std::shared_ptr< ::kudu::rpc::Messenger> &messenger,\n"
-        "   const ::kudu::Sockaddr &remote)\n"
+        "   const std::shared_ptr< ::yb::rpc::Messenger> &messenger,\n"
+        "   const ::yb::Sockaddr &remote)\n"
         "  : proxy_(messenger, remote, \"$full_service_name$\") {\n"
         "}\n"
         "\n"
@@ -643,11 +643,11 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "}\n"
         "\n"
         "void $service_name$Proxy::set_user_credentials(\n"
-        "  const ::kudu::rpc::UserCredentials& user_credentials) {\n"
+        "  const ::yb::rpc::UserCredentials& user_credentials) {\n"
         "  proxy_.set_user_credentials(user_credentials);\n"
         "}\n"
         "\n"
-        "const ::kudu::rpc::UserCredentials& $service_name$Proxy::user_credentials() const {\n"
+        "const ::yb::rpc::UserCredentials& $service_name$Proxy::user_credentials() const {\n"
         "  return proxy_.user_credentials();\n"
         "}\n"
         "\n");
@@ -656,14 +656,14 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         const MethodDescriptor *method = service->method(method_idx);
         subs->PushMethod(method);
         Print(printer, *subs,
-        "::kudu::Status $service_name$Proxy::$rpc_name$(const $request$ &req, $response$ *resp,\n"
-        "                                     ::kudu::rpc::RpcController *controller) {\n"
+        "::yb::Status $service_name$Proxy::$rpc_name$(const $request$ &req, $response$ *resp,\n"
+        "                                     ::yb::rpc::RpcController *controller) {\n"
         "  return proxy_.SyncRequest(\"$rpc_name$\", req, resp, controller);\n"
         "}\n"
         "\n"
         "void $service_name$Proxy::$rpc_name$Async(const $request$ &req,\n"
-        "                     $response$ *resp, ::kudu::rpc::RpcController *controller,\n"
-        "                     const ::kudu::rpc::ResponseCallback &callback) {\n"
+        "                     $response$ *resp, ::yb::rpc::RpcController *controller,\n"
+        "                     const ::yb::rpc::ResponseCallback &callback) {\n"
         "  proxy_.AsyncRequest(\"$rpc_name$\", req, resp, controller, callback);\n"
         "}\n"
         "\n");
@@ -677,9 +677,9 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
   }
 };
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char *argv[]) {
-  kudu::rpc::CodeGenerator generator;
+  yb::rpc::CodeGenerator generator;
   return google::protobuf::compiler::PluginMain(argc, argv, &generator);
 }

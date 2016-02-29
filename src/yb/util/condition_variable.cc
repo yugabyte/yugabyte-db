@@ -12,7 +12,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/thread_restrictions.h"
 
-namespace kudu {
+namespace yb {
 
 ConditionVariable::ConditionVariable(Mutex* user_lock)
     : user_mutex_(&user_lock->native_handle_)
@@ -137,4 +137,4 @@ void ConditionVariable::Signal() {
   DCHECK_EQ(0, rv);
 }
 
-}  // namespace kudu
+}  // namespace yb

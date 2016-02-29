@@ -26,26 +26,26 @@
 #include "yb/client/value.h"
 #include "yb/common/partial_row.h"
 
-using kudu::client::KuduClient;
-using kudu::client::KuduClientBuilder;
-using kudu::client::KuduColumnSchema;
-using kudu::client::KuduError;
-using kudu::client::KuduInsert;
-using kudu::client::KuduPredicate;
-using kudu::client::KuduRowResult;
-using kudu::client::KuduScanner;
-using kudu::client::KuduSchema;
-using kudu::client::KuduSchemaBuilder;
-using kudu::client::KuduSession;
-using kudu::client::KuduStatusFunctionCallback;
-using kudu::client::KuduTable;
-using kudu::client::KuduTableAlterer;
-using kudu::client::KuduTableCreator;
-using kudu::client::KuduValue;
-using kudu::client::sp::shared_ptr;
-using kudu::KuduPartialRow;
-using kudu::MonoDelta;
-using kudu::Status;
+using yb::client::KuduClient;
+using yb::client::KuduClientBuilder;
+using yb::client::KuduColumnSchema;
+using yb::client::KuduError;
+using yb::client::KuduInsert;
+using yb::client::KuduPredicate;
+using yb::client::KuduRowResult;
+using yb::client::KuduScanner;
+using yb::client::KuduSchema;
+using yb::client::KuduSchemaBuilder;
+using yb::client::KuduSession;
+using yb::client::KuduStatusFunctionCallback;
+using yb::client::KuduTable;
+using yb::client::KuduTableAlterer;
+using yb::client::KuduTableCreator;
+using yb::client::KuduValue;
+using yb::client::sp::shared_ptr;
+using yb::KuduPartialRow;
+using yb::MonoDelta;
+using yb::Status;
 
 using std::string;
 using std::stringstream;
@@ -213,7 +213,7 @@ static Status ScanRows(const shared_ptr<KuduTable>& table) {
 }
 
 static void LogCb(void* unused,
-                  kudu::client::KuduLogSeverity severity,
+                  yb::client::KuduLogSeverity severity,
                   const char* filename,
                   int line_number,
                   const struct ::tm* time,
@@ -231,8 +231,8 @@ static void LogCb(void* unused,
 }
 
 int main(int argc, char* argv[]) {
-  kudu::client::KuduLoggingFunctionCallback<void*> log_cb(&LogCb, NULL);
-  kudu::client::InstallLoggingCallback(&log_cb);
+  yb::client::KuduLoggingFunctionCallback<void*> log_cb(&LogCb, NULL);
+  yb::client::InstallLoggingCallback(&log_cb);
 
   if (argc != 2) {
     KUDU_LOG(FATAL) << "usage: " << argv[0] << " <master host>";
@@ -242,7 +242,7 @@ int main(int argc, char* argv[]) {
   const string kTableName = "test_table";
 
   // Enable verbose debugging for the client library.
-  kudu::client::SetVerboseLogLevel(2);
+  yb::client::SetVerboseLogLevel(2);
 
   // Create and connect a client.
   shared_ptr<KuduClient> client;
@@ -250,7 +250,7 @@ int main(int argc, char* argv[]) {
   KUDU_LOG(INFO) << "Created a client connection";
 
   // Disable the verbose logging.
-  kudu::client::SetVerboseLogLevel(0);
+  yb::client::SetVerboseLogLevel(0);
 
   // Create a schema.
   KuduSchema schema(CreateSchema());

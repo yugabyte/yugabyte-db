@@ -36,7 +36,7 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
-namespace kudu {
+namespace yb {
 
 class PartitionSchema;
 class FsManager;
@@ -362,5 +362,5 @@ class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProg
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TSERVER_TS_TABLET_MANAGER_H */

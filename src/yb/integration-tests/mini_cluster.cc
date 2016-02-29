@@ -36,7 +36,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 using client::KuduClient;
 using client::KuduClientBuilder;
@@ -315,4 +315,4 @@ Status MiniCluster::CreateClient(KuduClientBuilder* builder,
   return builder->Build(client);
 }
 
-} // namespace kudu
+} // namespace yb

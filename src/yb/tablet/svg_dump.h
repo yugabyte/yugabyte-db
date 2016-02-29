@@ -21,7 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class RowSet;
@@ -41,6 +41,6 @@ void DumpCompactionSVG(const std::vector<RowSetInfo>& candidates,
                        bool print_xml = true);
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -24,7 +24,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/deltafile.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using std::shared_ptr;
@@ -158,4 +158,4 @@ Status DeltaIteratorMerger::Create(
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

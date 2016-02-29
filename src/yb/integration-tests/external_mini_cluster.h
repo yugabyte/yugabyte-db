@@ -30,7 +30,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class ExternalDaemon;
 class ExternalMaster;
@@ -424,5 +424,5 @@ class ExternalTabletServer : public ExternalDaemon {
   virtual ~ExternalTabletServer();
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H */

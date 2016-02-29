@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class RemoteMethodPB;
@@ -46,6 +46,6 @@ class RemoteMethod {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_RPC_REMOTE_METHOD_H_

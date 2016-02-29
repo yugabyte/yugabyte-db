@@ -25,7 +25,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 string VersionInfo::GetGitHash() {
   string ret = YB_GIT_HASH;
@@ -76,4 +76,4 @@ void VersionInfo::GetVersionInfoPB(VersionInfoPB* pb) {
   pb->set_version_string(KUDU_VERSION_STRING);
 }
 
-} // namespace kudu
+} // namespace yb

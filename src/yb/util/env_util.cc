@@ -29,7 +29,7 @@
 using strings::Substitute;
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace env_util {
 
 Status OpenFileForWrite(Env* env, const string& path,
@@ -154,4 +154,4 @@ ScopedFileDeleter::~ScopedFileDeleter() {
 }
 
 } // namespace env_util
-} // namespace kudu
+} // namespace yb

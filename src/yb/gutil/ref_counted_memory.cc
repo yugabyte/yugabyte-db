@@ -8,7 +8,7 @@
 
 #include <glog/logging.h>
 
-namespace kudu {
+namespace yb {
 
 bool RefCountedMemory::Equals(
     const scoped_refptr<RefCountedMemory>& other) const {
@@ -96,4 +96,4 @@ RefCountedMallocedMemory::~RefCountedMallocedMemory() {
   free(data_);
 }
 
-}  //  namespace kudu
+}  //  namespace yb

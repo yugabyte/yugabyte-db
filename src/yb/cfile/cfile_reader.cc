@@ -46,10 +46,10 @@ DEFINE_bool(cfile_lazy_open, true,
             "Allow lazily opening of cfiles");
 TAG_FLAG(cfile_lazy_open, hidden);
 
-using kudu::fs::ReadableBlock;
+using yb::fs::ReadableBlock;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 // Magic+Length: 8-byte magic, followed by 4-byte header size
@@ -933,7 +933,7 @@ Status CFileIterator::Scan(ColumnBlock *dst) {
           pb->needs_rewind_ = true;
         } else {
 #ifndef NDEBUG
-          kudu::OverwriteWithPattern(reinterpret_cast<char *>(remaining_dst.data()),
+          yb::OverwriteWithPattern(reinterpret_cast<char *>(remaining_dst.data()),
                                      remaining_dst.stride() * nblock,
                                      "NULLNULLNULLNULLNULL");
 #endif
@@ -987,4 +987,4 @@ Status CFileIterator::CopyNextValues(size_t *n, ColumnBlock *cb) {
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

@@ -30,7 +30,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 class CFileReader;
@@ -100,6 +100,6 @@ Status DumpIterator(const CFileReader& reader,
                     int indent);
 
 }  // namespace cfile
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* CFILE_UTIL_H_ */

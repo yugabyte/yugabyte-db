@@ -19,7 +19,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 KuduTabletServer::Data::Data(string uuid, string hostname)
@@ -31,4 +31,4 @@ KuduTabletServer::Data::~Data() {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

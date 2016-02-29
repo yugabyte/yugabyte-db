@@ -20,7 +20,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/countdown_latch.h"
 
-namespace kudu {
+namespace yb {
 
 // A promise boxes a value which is to be provided at some time in the future.
 // A single producer calls Set(...), and any number of consumers can call Get()
@@ -75,5 +75,5 @@ class Promise {
   DISALLOW_COPY_AND_ASSIGN(Promise);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_PROMISE_H */

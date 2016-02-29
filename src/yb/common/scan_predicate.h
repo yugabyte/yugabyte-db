@@ -25,7 +25,7 @@
 #include "yb/util/bitmap.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 
@@ -128,5 +128,5 @@ class ColumnRangePredicate {
   ValueRange range_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

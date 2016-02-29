@@ -30,7 +30,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 TEST(JsonReaderTest, Corrupt) {
   JsonReader r("");
@@ -167,4 +167,4 @@ TEST(JsonReaderTest, NestedArray) {
   ASSERT_TRUE(r.ExtractObject(r.root(), "foo", nullptr).IsInvalidArgument());
 }
 
-} // namespace kudu
+} // namespace yb

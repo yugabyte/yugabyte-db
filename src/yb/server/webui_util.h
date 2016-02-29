@@ -23,7 +23,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 class MonitoredTask;
@@ -36,6 +36,6 @@ void HtmlOutputImpalaSchema(const std::string& table_name,
                             std::stringstream* output);
 void HtmlOutputTaskList(const std::vector<scoped_refptr<MonitoredTask> >& tasks,
                         std::stringstream* output);
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_SERVER_WEBUI_UTIL_H

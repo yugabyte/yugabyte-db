@@ -31,7 +31,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 static Status BuildMinMaxTestPool(int min_threads, int max_threads, gscoped_ptr<ThreadPool>* pool) {
@@ -290,4 +290,4 @@ TEST(TestThreadPool, TestMetrics) {
   ASSERT_EQ(kNumItems, run_time->TotalCount());
 }
 
-} // namespace kudu
+} // namespace yb

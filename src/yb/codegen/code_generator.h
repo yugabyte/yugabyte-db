@@ -28,7 +28,7 @@ namespace llvm {
 class LLVMContext;
 } // namespace llvm
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 
@@ -80,6 +80,6 @@ class CodeGenerator {
 };
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif

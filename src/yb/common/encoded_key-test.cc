@@ -27,7 +27,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
 
-namespace kudu {
+namespace yb {
 
 #define EXPECT_ROWKEY_EQ(schema, expected, enc_key)  \
   do { \
@@ -298,4 +298,4 @@ TEST_F(EncodedKeyTest, BenchmarkStringEncoding) {
   }
 }
 #endif
-} // namespace kudu
+} // namespace yb

@@ -32,7 +32,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 Status GetLoggedInUser(string* user_name) {
   DCHECK(user_name != nullptr);
@@ -65,4 +65,4 @@ Status GetLoggedInUser(string* user_name) {
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

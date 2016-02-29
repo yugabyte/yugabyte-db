@@ -37,7 +37,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class RowSetMetadata;
@@ -344,6 +344,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_TABLET_TABLET_METADATA_H */

@@ -54,7 +54,7 @@ DEFINE_int32(default_composite_key_index_block_size_bytes, 4096,
              "Block size used for composite key indexes.");
 TAG_FLAG(default_composite_key_index_block_size_bytes, experimental);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using cfile::BloomFileWriter;
@@ -739,4 +739,4 @@ Status DiskRowSet::DebugDump(vector<string> *lines) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

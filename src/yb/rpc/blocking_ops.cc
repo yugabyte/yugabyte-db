@@ -33,7 +33,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using google::protobuf::MessageLite;
@@ -113,4 +113,4 @@ Status ReceiveFramedMessageBlocking(Socket* sock, faststring* recv_buf,
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

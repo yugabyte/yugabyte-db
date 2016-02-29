@@ -20,7 +20,7 @@
 #include "yb/cfile/index_block.h"
 #include "yb/util/protobuf_util.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 inline void SliceEncode(const Slice &key, faststring *buf) {
@@ -311,4 +311,4 @@ const Slice IndexBlockIterator::GetCurrentKey() const {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

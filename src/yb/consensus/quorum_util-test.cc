@@ -21,7 +21,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::string;
@@ -57,4 +57,4 @@ TEST(QuorumUtilTest, TestMemberExtraction) {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

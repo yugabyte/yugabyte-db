@@ -24,7 +24,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 const char* const kTestHostnames[] = { "foo", "foobar", "baz", nullptr };
@@ -385,4 +385,4 @@ TEST_F(CompositePushdownTest, TestPushdownPrefixInequality) {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

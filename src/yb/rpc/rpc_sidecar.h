@@ -21,7 +21,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 // An RpcSidecar is a mechanism which allows replies to RPCs
@@ -64,7 +64,7 @@ class RpcSidecar {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 
 #endif /* KUDU_RPC_RPC_SIDECAR_H */

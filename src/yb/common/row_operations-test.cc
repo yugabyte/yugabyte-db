@@ -29,7 +29,7 @@ using std::shared_ptr;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
-namespace kudu {
+namespace yb {
 
 class RowOperationsTest : public KuduTest {
  public:
@@ -668,4 +668,4 @@ TEST_F(RowOperationsTest, SplitKeyRoundTrip) {
   CHECK(!row2->IsColumnSet("missing"));
 }
 
-} // namespace kudu
+} // namespace yb

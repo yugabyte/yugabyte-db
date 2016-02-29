@@ -34,9 +34,9 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-using kudu::rpc::AcceptorPool;
-using kudu::rpc::Messenger;
-using kudu::rpc::ServiceIf;
+using yb::rpc::AcceptorPool;
+using yb::rpc::Messenger;
+using yb::rpc::ServiceIf;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -64,7 +64,7 @@ DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
             "only allowed in tests.");
 TAG_FLAG(rpc_server_allow_ephemeral_ports, unsafe);
 
-namespace kudu {
+namespace yb {
 
 RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
@@ -193,4 +193,4 @@ const rpc::ServicePool* RpcServer::service_pool(const string& service_name) cons
   return down_cast<rpc::ServicePool*>(messenger_->rpc_service(service_name).get());
 }
 
-} // namespace kudu
+} // namespace yb

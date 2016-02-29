@@ -77,7 +77,7 @@ using std::string;
 using std::set;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 using base::subtle::Atomic32;
@@ -2663,11 +2663,11 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   }
 
   bool stop = false;
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
   int t = 0;
   while (!stop) {
-    scoped_refptr<kudu::Thread> thread;
-    ASSERT_OK(kudu::Thread::Create("test", strings::Substitute("t$0", t++),
+    scoped_refptr<yb::Thread> thread;
+    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", t++),
                                    &ClientTest::CheckRowCount, this, client_table_.get(),
                                    &thread));
     threads.push_back(thread);
@@ -2679,7 +2679,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
     }
   }
 
-  for (const scoped_refptr<kudu::Thread>& thread : threads) {
+  for (const scoped_refptr<yb::Thread>& thread : threads) {
     thread->Join();
   }
 }
@@ -2715,4 +2715,4 @@ TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

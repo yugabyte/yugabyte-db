@@ -5,13 +5,13 @@
 #ifndef KUDU_GUTIL_CALLBACK_FORWARD_H_
 #define KUDU_GUTIL_CALLBACK_FORWARD_H_
 
-namespace kudu {
+namespace yb {
 
 template <typename Sig>
 class Callback;
 
 typedef Callback<void(void)> Closure;
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_GUTIL_CALLBACK_FORWARD_H

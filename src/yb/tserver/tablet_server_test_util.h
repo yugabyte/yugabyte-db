@@ -21,7 +21,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 
-namespace kudu {
+namespace yb {
 class Sockaddr;
 
 namespace consensus {
@@ -49,6 +49,6 @@ void CreateTsClientProxies(const Sockaddr& addr,
                            gscoped_ptr<server::GenericServiceProxy>* generic_proxy);
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TSERVER_TABLET_SERVER_TEST_UTIL_H_

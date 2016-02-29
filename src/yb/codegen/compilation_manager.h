@@ -26,7 +26,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 class MetricEntity;
@@ -105,6 +105,6 @@ class CompilationManager {
 };
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif

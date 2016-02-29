@@ -37,7 +37,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 
 using cfile::CFileIterator;
 using cfile::CFileReader;
@@ -348,4 +348,4 @@ Status MajorDeltaCompaction::UpdateDeltaTracker(DeltaTracker* tracker) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

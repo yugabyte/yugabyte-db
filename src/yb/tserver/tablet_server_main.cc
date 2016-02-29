@@ -24,13 +24,13 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 
-using kudu::tserver::TabletServer;
+using yb::tserver::TabletServer;
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_int32(rpc_num_service_threads);
 DECLARE_int32(webserver_port);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 static int TabletServerMain(int argc, char** argv) {
@@ -66,8 +66,8 @@ static int TabletServerMain(int argc, char** argv) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::tserver::TabletServerMain(argc, argv);
+  return yb::tserver::TabletServerMain(argc, argv);
 }

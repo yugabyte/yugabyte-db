@@ -22,27 +22,27 @@
 
 // Tablet-specific metrics.
 METRIC_DEFINE_counter(tablet, rows_inserted, "Rows Inserted",
-    kudu::MetricUnit::kRows,
+    yb::MetricUnit::kRows,
     "Number of rows inserted into this tablet since service start");
 METRIC_DEFINE_counter(tablet, rows_updated, "Rows Updated",
-    kudu::MetricUnit::kRows,
+    yb::MetricUnit::kRows,
     "Number of row update operations performed on this tablet since service start");
 METRIC_DEFINE_counter(tablet, rows_deleted, "Rows Deleted",
-    kudu::MetricUnit::kRows,
+    yb::MetricUnit::kRows,
     "Number of row delete operations performed on this tablet since service start");
 
 METRIC_DEFINE_counter(tablet, scanner_rows_returned, "Scanner Rows Returned",
-                      kudu::MetricUnit::kRows,
+                      yb::MetricUnit::kRows,
                       "Number of rows returned by scanners to clients. This count "
                       "is measured after predicates are applied, and thus is not "
                       "a reflection of the amount of work being done by scanners.");
 METRIC_DEFINE_counter(tablet, scanner_cells_returned, "Scanner Cells Returned",
-                      kudu::MetricUnit::kCells,
+                      yb::MetricUnit::kCells,
                       "Number of table cells returned by scanners to clients. This count "
                       "is measured after predicates are applied, and thus is not "
                       "a reflection of the amount of work being done by scanners.");
 METRIC_DEFINE_counter(tablet, scanner_bytes_returned, "Scanner Bytes Returned",
-                      kudu::MetricUnit::kBytes,
+                      yb::MetricUnit::kBytes,
                       "Number of bytes returned by scanners to clients. This count "
                       "is measured after predicates are applied and the data is decoded "
                       "for consumption by clients, and thus is not "
@@ -50,7 +50,7 @@ METRIC_DEFINE_counter(tablet, scanner_bytes_returned, "Scanner Bytes Returned",
 
 
 METRIC_DEFINE_counter(tablet, scanner_rows_scanned, "Scanner Rows Scanned",
-                      kudu::MetricUnit::kRows,
+                      yb::MetricUnit::kRows,
                       "Number of rows processed by scan requests. This is measured "
                       "as a raw count prior to application of predicates, deleted data,"
                       "or MVCC-based filtering. Thus, this is a better measure of actual "
@@ -58,7 +58,7 @@ METRIC_DEFINE_counter(tablet, scanner_rows_scanned, "Scanner Rows Scanned",
                       "to the Scanner Rows Returned metric.");
 
 METRIC_DEFINE_counter(tablet, scanner_cells_scanned_from_disk, "Scanner Cells Scanned From Disk",
-                      kudu::MetricUnit::kCells,
+                      yb::MetricUnit::kCells,
                       "Number of table cells processed by scan requests. This is measured "
                       "as a raw count prior to application of predicates, deleted data,"
                       "or MVCC-based filtering. Thus, this is a better measure of actual "
@@ -69,7 +69,7 @@ METRIC_DEFINE_counter(tablet, scanner_cells_scanned_from_disk, "Scanner Cells Sc
                       "includes both cache misses and cache hits.");
 
 METRIC_DEFINE_counter(tablet, scanner_bytes_scanned_from_disk, "Scanner Bytes Scanned From Disk",
-                      kudu::MetricUnit::kBytes,
+                      yb::MetricUnit::kBytes,
                       "Number of bytes read by scan requests. This is measured "
                       "as a raw count prior to application of predicates, deleted data,"
                       "or MVCC-based filtering. Thus, this is a better measure of actual "
@@ -81,30 +81,30 @@ METRIC_DEFINE_counter(tablet, scanner_bytes_scanned_from_disk, "Scanner Bytes Sc
 
 
 METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts",
-                      kudu::MetricUnit::kRows,
+                      yb::MetricUnit::kRows,
                       "Number of inserts which failed because the key already existed");
 METRIC_DEFINE_counter(tablet, scans_started, "Scans Started",
-                      kudu::MetricUnit::kScanners,
+                      yb::MetricUnit::kScanners,
                       "Number of scanners which have been started on this tablet");
 
 METRIC_DEFINE_counter(tablet, bloom_lookups, "Bloom Filter Lookups",
-                      kudu::MetricUnit::kProbes,
+                      yb::MetricUnit::kProbes,
                       "Number of times a bloom filter was consulted");
 METRIC_DEFINE_counter(tablet, key_file_lookups, "Key File Lookups",
-                      kudu::MetricUnit::kProbes,
+                      yb::MetricUnit::kProbes,
                       "Number of times a key cfile was consulted");
 METRIC_DEFINE_counter(tablet, delta_file_lookups, "Delta File Lookups",
-                      kudu::MetricUnit::kProbes,
+                      yb::MetricUnit::kProbes,
                       "Number of times a delta file was consulted");
 METRIC_DEFINE_counter(tablet, mrs_lookups, "MemRowSet Lookups",
-                      kudu::MetricUnit::kProbes,
+                      yb::MetricUnit::kProbes,
                       "Number of times a MemRowSet was consulted.");
 METRIC_DEFINE_counter(tablet, bytes_flushed, "Bytes Flushed",
-                      kudu::MetricUnit::kBytes,
+                      yb::MetricUnit::kBytes,
                       "Amount of data that has been flushed to disk by this tablet.");
 
 METRIC_DEFINE_histogram(tablet, bloom_lookups_per_op, "Bloom Lookups per Operation",
-                        kudu::MetricUnit::kProbes,
+                        yb::MetricUnit::kProbes,
                         "Tracks the number of bloom filter lookups performed by each "
                         "operation. A single operation may perform several bloom filter "
                         "lookups if the tablet is not fully compacted. High frequency of "
@@ -112,14 +112,14 @@ METRIC_DEFINE_histogram(tablet, bloom_lookups_per_op, "Bloom Lookups per Operati
                         20, 2);
 
 METRIC_DEFINE_histogram(tablet, key_file_lookups_per_op, "Key Lookups per Operation",
-                        kudu::MetricUnit::kProbes,
+                        yb::MetricUnit::kProbes,
                         "Tracks the number of key file lookups performed by each "
                         "operation. A single operation may perform several key file "
                         "lookups if the tablet is not fully compacted and if bloom filters "
                         "are not effectively culling lookups.", 20, 2);
 
 METRIC_DEFINE_histogram(tablet, delta_file_lookups_per_op, "Delta File Lookups per Operation",
-                        kudu::MetricUnit::kProbes,
+                        yb::MetricUnit::kProbes,
                         "Tracks the number of delta file lookups performed by each "
                         "operation. A single operation may perform several delta file "
                         "lookups if the tablet is not fully compacted. High frequency of "
@@ -127,86 +127,86 @@ METRIC_DEFINE_histogram(tablet, delta_file_lookups_per_op, "Delta File Lookups p
 
 METRIC_DEFINE_histogram(tablet, write_op_duration_client_propagated_consistency,
   "Write Op Duration with Propagated Consistency",
-  kudu::MetricUnit::kMicroseconds,
+  yb::MetricUnit::kMicroseconds,
   "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.",
   60000000LU, 2);
 
 METRIC_DEFINE_histogram(tablet, write_op_duration_commit_wait_consistency,
   "Write Op Duration with Commit-Wait Consistency",
-  kudu::MetricUnit::kMicroseconds,
+  yb::MetricUnit::kMicroseconds,
   "Duration of writes to this tablet with external consistency set to COMMIT_WAIT.",
   60000000LU, 2);
 
 METRIC_DEFINE_histogram(tablet, commit_wait_duration,
   "Commit-Wait Duration",
-  kudu::MetricUnit::kMicroseconds,
+  yb::MetricUnit::kMicroseconds,
   "Time spent waiting for COMMIT_WAIT external consistency writes for this tablet.",
   60000000LU, 2);
 
 METRIC_DEFINE_histogram(tablet, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
-  kudu::MetricUnit::kMicroseconds,
+  yb::MetricUnit::kMicroseconds,
   "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.",
   60000000LU, 2);
 
 METRIC_DEFINE_gauge_uint32(tablet, flush_dms_running,
   "DeltaMemStore Flushes Running",
-  kudu::MetricUnit::kMaintenanceOperations,
+  yb::MetricUnit::kMaintenanceOperations,
   "Number of delta memstore flushes currently running.");
 
 METRIC_DEFINE_gauge_uint32(tablet, flush_mrs_running,
   "MemRowSet Flushes Running",
-  kudu::MetricUnit::kMaintenanceOperations,
+  yb::MetricUnit::kMaintenanceOperations,
   "Number of MemRowSet flushes currently running.");
 
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
-  kudu::MetricUnit::kMaintenanceOperations,
+  yb::MetricUnit::kMaintenanceOperations,
   "Number of RowSet compactions currently running.");
 
 METRIC_DEFINE_gauge_uint32(tablet, delta_minor_compact_rs_running,
   "Minor Delta Compactions Running",
-  kudu::MetricUnit::kMaintenanceOperations,
+  yb::MetricUnit::kMaintenanceOperations,
   "Number of delta minor compactions currently running.");
 
 METRIC_DEFINE_gauge_uint32(tablet, delta_major_compact_rs_running,
   "Major Delta Compactions Running",
-  kudu::MetricUnit::kMaintenanceOperations,
+  yb::MetricUnit::kMaintenanceOperations,
   "Number of delta major compactions currently running.");
 
 METRIC_DEFINE_histogram(tablet, flush_dms_duration,
   "DeltaMemStore Flush Duration",
-  kudu::MetricUnit::kMilliseconds,
+  yb::MetricUnit::kMilliseconds,
   "Time spent flushing DeltaMemStores.", 60000LU, 1);
 
 METRIC_DEFINE_histogram(tablet, flush_mrs_duration,
   "MemRowSet Flush Duration",
-  kudu::MetricUnit::kMilliseconds,
+  yb::MetricUnit::kMilliseconds,
   "Time spent flushing MemRowSets.", 60000LU, 1);
 
 METRIC_DEFINE_histogram(tablet, compact_rs_duration,
   "RowSet Compaction Duration",
-  kudu::MetricUnit::kMilliseconds,
+  yb::MetricUnit::kMilliseconds,
   "Time spent compacting RowSets.", 60000LU, 1);
 
 METRIC_DEFINE_histogram(tablet, delta_minor_compact_rs_duration,
   "Minor Delta Compaction Duration",
-  kudu::MetricUnit::kMilliseconds,
+  yb::MetricUnit::kMilliseconds,
   "Time spent minor delta compacting.", 60000LU, 1);
 
 METRIC_DEFINE_histogram(tablet, delta_major_compact_rs_duration,
   "Major Delta Compaction Duration",
-  kudu::MetricUnit::kSeconds,
+  yb::MetricUnit::kSeconds,
   "Seconds spent major delta compacting.", 60000000LU, 2);
 
 METRIC_DEFINE_counter(tablet, leader_memory_pressure_rejections,
   "Leader Memory Pressure Rejections",
-  kudu::MetricUnit::kRequests,
+  yb::MetricUnit::kRequests,
   "Number of RPC requests rejected due to memory pressure while LEADER.");
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 #define MINIT(x) x(METRIC_##x.Instantiate(entity))
@@ -267,4 +267,4 @@ void TabletMetrics::AddProbeStats(const ProbeStats& stats) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

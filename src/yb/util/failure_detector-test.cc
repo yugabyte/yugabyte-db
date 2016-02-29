@@ -28,7 +28,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 // How often we expect a node to heartbeat to assert its "aliveness".
 static const int kExpectedHeartbeatPeriodMillis = 100;
@@ -109,4 +109,4 @@ TEST_F(FailureDetectorTest, TestDetectsFailure) {
   monitor_->Shutdown();
 }
 
-}  // namespace kudu
+}  // namespace yb

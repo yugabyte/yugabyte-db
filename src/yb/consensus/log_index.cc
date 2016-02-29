@@ -49,7 +49,7 @@ using strings::Substitute;
   ret = expr; \
 } while ((ret == -1) && (errno == EINTR));
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 // The actual physical entry in the file.
@@ -272,4 +272,4 @@ string LogIndexEntry::ToString() const {
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb

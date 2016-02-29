@@ -4,7 +4,7 @@
 
 #include "yb/gutil/callback_internal.h"
 
-namespace kudu {
+namespace yb {
 namespace internal {
 
 bool CallbackBase::is_null() const {
@@ -33,4 +33,4 @@ CallbackBase::~CallbackBase() {
 }
 
 }  // namespace internal
-}  // namespace kudu
+}  // namespace yb

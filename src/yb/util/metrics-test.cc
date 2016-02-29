@@ -36,7 +36,7 @@ using std::vector;
 
 DECLARE_int32(metrics_retirement_age_ms);
 
-namespace kudu {
+namespace yb {
 
 METRIC_DEFINE_entity(test_entity);
 
@@ -307,4 +307,4 @@ TEST_F(MetricsTest, TestDumpJsonPrototypes) {
   ASSERT_TRUE(ContainsKey(seen_metrics, "test_hist"));
 }
 
-} // namespace kudu
+} // namespace yb

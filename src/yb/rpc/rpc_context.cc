@@ -33,7 +33,7 @@
 
 using google::protobuf::Message;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 namespace {
@@ -181,4 +181,4 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

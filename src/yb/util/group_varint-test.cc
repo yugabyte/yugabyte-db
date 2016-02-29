@@ -22,7 +22,7 @@
 #include "yb/util/group_varint-inl.h"
 #include "yb/util/stopwatch.h"
 
-namespace kudu {
+namespace yb {
 namespace coding {
 
 extern void DumpSSETable();
@@ -132,4 +132,4 @@ TEST(TestGroupVarInt, EncodingBenchmark) {
 }
 #endif
 } // namespace coding
-} // namespace kudu
+} // namespace yb

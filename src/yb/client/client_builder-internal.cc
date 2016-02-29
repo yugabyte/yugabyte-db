@@ -17,7 +17,7 @@
 
 #include "yb/client/client_builder-internal.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -30,4 +30,4 @@ KuduClientBuilder::Data::~Data() {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

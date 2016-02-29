@@ -32,7 +32,7 @@
 using std::vector;
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 namespace {
@@ -184,4 +184,4 @@ RowSetTree::~RowSetTree() {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

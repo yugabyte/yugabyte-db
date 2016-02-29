@@ -54,47 +54,47 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
 
-using kudu::master::AlterTableRequestPB;
-using kudu::master::AlterTableRequestPB_Step;
-using kudu::master::AlterTableResponsePB;
-using kudu::master::CreateTableRequestPB;
-using kudu::master::CreateTableResponsePB;
-using kudu::master::DeleteTableRequestPB;
-using kudu::master::DeleteTableResponsePB;
-using kudu::master::GetTableSchemaRequestPB;
-using kudu::master::GetTableSchemaResponsePB;
-using kudu::master::ListTablesRequestPB;
-using kudu::master::ListTablesResponsePB;
-using kudu::master::ListTabletServersRequestPB;
-using kudu::master::ListTabletServersResponsePB;
-using kudu::master::ListTabletServersResponsePB_Entry;
-using kudu::master::MasterServiceProxy;
-using kudu::master::TabletLocationsPB;
-using kudu::rpc::Messenger;
-using kudu::rpc::MessengerBuilder;
-using kudu::rpc::RpcController;
-using kudu::tserver::ScanResponsePB;
+using yb::master::AlterTableRequestPB;
+using yb::master::AlterTableRequestPB_Step;
+using yb::master::AlterTableResponsePB;
+using yb::master::CreateTableRequestPB;
+using yb::master::CreateTableResponsePB;
+using yb::master::DeleteTableRequestPB;
+using yb::master::DeleteTableResponsePB;
+using yb::master::GetTableSchemaRequestPB;
+using yb::master::GetTableSchemaResponsePB;
+using yb::master::ListTablesRequestPB;
+using yb::master::ListTablesResponsePB;
+using yb::master::ListTabletServersRequestPB;
+using yb::master::ListTabletServersResponsePB;
+using yb::master::ListTabletServersResponsePB_Entry;
+using yb::master::MasterServiceProxy;
+using yb::master::TabletLocationsPB;
+using yb::rpc::Messenger;
+using yb::rpc::MessengerBuilder;
+using yb::rpc::RpcController;
+using yb::tserver::ScanResponsePB;
 using std::set;
 using std::string;
 using std::vector;
 
-MAKE_ENUM_LIMITS(kudu::client::KuduSession::FlushMode,
-                 kudu::client::KuduSession::AUTO_FLUSH_SYNC,
-                 kudu::client::KuduSession::MANUAL_FLUSH);
+MAKE_ENUM_LIMITS(yb::client::KuduSession::FlushMode,
+                 yb::client::KuduSession::AUTO_FLUSH_SYNC,
+                 yb::client::KuduSession::MANUAL_FLUSH);
 
-MAKE_ENUM_LIMITS(kudu::client::KuduSession::ExternalConsistencyMode,
-                 kudu::client::KuduSession::CLIENT_PROPAGATED,
-                 kudu::client::KuduSession::COMMIT_WAIT);
+MAKE_ENUM_LIMITS(yb::client::KuduSession::ExternalConsistencyMode,
+                 yb::client::KuduSession::CLIENT_PROPAGATED,
+                 yb::client::KuduSession::COMMIT_WAIT);
 
-MAKE_ENUM_LIMITS(kudu::client::KuduScanner::ReadMode,
-                 kudu::client::KuduScanner::READ_LATEST,
-                 kudu::client::KuduScanner::READ_AT_SNAPSHOT);
+MAKE_ENUM_LIMITS(yb::client::KuduScanner::ReadMode,
+                 yb::client::KuduScanner::READ_LATEST,
+                 yb::client::KuduScanner::READ_AT_SNAPSHOT);
 
-MAKE_ENUM_LIMITS(kudu::client::KuduScanner::OrderMode,
-                 kudu::client::KuduScanner::UNORDERED,
-                 kudu::client::KuduScanner::ORDERED);
+MAKE_ENUM_LIMITS(yb::client::KuduScanner::OrderMode,
+                 yb::client::KuduScanner::UNORDERED,
+                 yb::client::KuduScanner::ORDERED);
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 using internal::Batcher;
@@ -128,16 +128,16 @@ static void LoggingAdapterCB(KuduLoggingCallback* user_cb,
                              size_t message_len) {
   KuduLogSeverity client_severity;
   switch (severity) {
-    case kudu::SEVERITY_INFO:
+    case yb::SEVERITY_INFO:
       client_severity = SEVERITY_INFO;
       break;
-    case kudu::SEVERITY_WARNING:
+    case yb::SEVERITY_WARNING:
       client_severity = SEVERITY_WARNING;
       break;
-    case kudu::SEVERITY_ERROR:
+    case yb::SEVERITY_ERROR:
       client_severity = SEVERITY_ERROR;
       break;
-    case kudu::SEVERITY_FATAL:
+    case yb::SEVERITY_FATAL:
       client_severity = SEVERITY_FATAL;
       break;
     default:
@@ -1277,4 +1277,4 @@ const string& KuduTabletServer::hostname() const {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

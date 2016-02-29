@@ -29,7 +29,7 @@
 
 DECLARE_int32(memory_limit_soft_percentage);
 
-namespace kudu {
+namespace yb {
 
 using std::equal_to;
 using std::hash;
@@ -337,4 +337,4 @@ TEST(MemTrackerTest, UnregisterFromParent) {
   c->UnregisterFromParent();
 }
 
-} // namespace kudu
+} // namespace yb

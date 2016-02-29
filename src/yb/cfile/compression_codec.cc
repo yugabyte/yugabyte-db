@@ -27,7 +27,7 @@
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/stringprintf.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using std::vector;
@@ -262,4 +262,4 @@ CompressionType GetCompressionCodecType(const std::string& name) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

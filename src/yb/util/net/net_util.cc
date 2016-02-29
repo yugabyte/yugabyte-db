@@ -50,7 +50,7 @@ using std::unordered_set;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 struct AddrinfoDeleter {
@@ -282,4 +282,4 @@ void TryRunLsof(const Sockaddr& addr, vector<string>* log) {
   LOG_STRING(WARNING, log) << results;
 }
 
-} // namespace kudu
+} // namespace yb

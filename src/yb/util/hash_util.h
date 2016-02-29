@@ -20,7 +20,7 @@
 #ifndef KUDU_UTIL_HASH_UTIL_H
 #define KUDU_UTIL_HASH_UTIL_H
 
-namespace kudu {
+namespace yb {
 
 /// Utility class to compute hash values.
 class HashUtil {
@@ -64,5 +64,5 @@ class HashUtil {
   }
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

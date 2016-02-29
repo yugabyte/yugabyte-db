@@ -25,7 +25,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_callback.h"
 
-namespace kudu {
+namespace yb {
 
 namespace rpc {
 
@@ -144,6 +144,6 @@ class Rpc {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_RPC_RPC_H

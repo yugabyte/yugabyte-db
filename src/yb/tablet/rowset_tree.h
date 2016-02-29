@@ -24,7 +24,7 @@
 #include "yb/util/status.h"
 #include "yb/tablet/rowset.h"
 
-namespace kudu {
+namespace yb {
 
 template<class Traits>
 class IntervalTree;
@@ -111,5 +111,5 @@ class RowSetTree {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif

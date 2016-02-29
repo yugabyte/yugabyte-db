@@ -27,7 +27,7 @@ $range ARITY 0..MAX_ARITY
 
 // During Chromium import, WeakPtr-related code was removed.
 
-namespace kudu {
+namespace yb {
 namespace internal {
 
 // See kudu/gutil/callback.h for user documentation.
@@ -459,6 +459,6 @@ $for ARG [[
 ]] $$ for ARITY
 
 }  // namespace internal
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_GUTIL_BIND_INTERNAL_H_

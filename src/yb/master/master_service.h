@@ -21,7 +21,7 @@
 #include "yb/master/master.service.h"
 #include "yb/util/metrics.h"
 
-namespace kudu {
+namespace yb {
 
 class NodeInstancePB;
 
@@ -91,6 +91,6 @@ class MasterServiceImpl : public MasterServiceIf {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 #endif

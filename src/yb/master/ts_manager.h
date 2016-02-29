@@ -27,7 +27,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class NodeInstancePB;
 
@@ -95,6 +95,6 @@ class TSManager {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 #endif

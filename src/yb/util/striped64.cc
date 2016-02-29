@@ -20,10 +20,10 @@
 #include "yb/util/striped64.h"
 #include "yb/util/threadlocal.h"
 
-using kudu::striped64::internal::HashCode;
-using kudu::striped64::internal::Cell;
+using yb::striped64::internal::HashCode;
+using yb::striped64::internal::Cell;
 
-namespace kudu {
+namespace yb {
 
 namespace striped64 {
 namespace internal {
@@ -172,4 +172,4 @@ int64_t LongAdder::Value() const {
   return sum;
 }
 
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 class MonoDelta;
 class Status;
 class ResettableHeartbeaterThread;
@@ -74,6 +74,6 @@ class ResettableHeartbeater {
   DISALLOW_COPY_AND_ASSIGN(ResettableHeartbeater);
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_UTIL_RESETTABLE_HEARTBEATER_H_ */

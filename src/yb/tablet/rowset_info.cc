@@ -43,7 +43,7 @@ using std::vector;
 // will always pick up small rowsets no matter what.
 static const int kMinSizeMb = 1;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 namespace {
@@ -305,4 +305,4 @@ bool RowSetInfo::Intersects(const RowSetInfo &other) const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

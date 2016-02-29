@@ -21,7 +21,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 TEST(TestStringCase, TestSnakeToCamel) {
   string out;
@@ -60,4 +60,4 @@ TEST(TestStringCase, TestCapitalize) {
   ASSERT_EQ("Hibernate", word);
 }
 
-} // namespace kudu
+} // namespace yb

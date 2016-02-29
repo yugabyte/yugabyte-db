@@ -47,7 +47,7 @@ DEFINE_int32(num_election_test_loops, 3,
              "Number of random EmulateElection() loops to execute in "
              "TestReportNewLeaderOnLeaderChange");
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using client::KuduClient;
@@ -193,4 +193,4 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

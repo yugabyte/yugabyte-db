@@ -30,7 +30,7 @@
 #include "yb/util/logging.h"
 
 #define PUSH_PREPEND_NOT_OK(s, statuses, msg) do { \
-  ::kudu::Status _s = (s); \
+  ::yb::Status _s = (s); \
   if (PREDICT_FALSE(!_s.ok())) { \
     statuses->push_back(string(msg) + ": " + _s.ToString()); \
   } \
@@ -57,7 +57,7 @@ DEFINE_string(tablets, "",
               "Tablets to check (comma-separated list of IDs) "
               "If not specified, checks all tablets.");
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 static string GetKsckUsage(const char* progname) {
@@ -114,20 +114,20 @@ static void RunKsck(vector<string>* error_messages) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  google::SetUsageMessage(kudu::tools::GetKsckUsage(argv[0]));
+  google::SetUsageMessage(yb::tools::GetKsckUsage(argv[0]));
   if (argc < 2) {
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
     exit(1);
   }
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
   FLAGS_logtostderr = true;
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
   vector<string> error_messages;
-  kudu::tools::RunKsck(&error_messages);
+  yb::tools::RunKsck(&error_messages);
 
   // All good.
   if (error_messages.empty()) {

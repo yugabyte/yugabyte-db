@@ -47,7 +47,7 @@
 #define FALLOC_FL_PUNCH_HOLE  0x02 /* de-allocates range */
 #endif
 
-namespace kudu {
+namespace yb {
 
 using std::shared_ptr;
 using std::string;
@@ -702,4 +702,4 @@ TEST_F(TestEnv, TestCopyFile) {
   NO_FATALS(ReadAndVerifyTestData(copy.get(), 0, kFileSize));
 }
 
-}  // namespace kudu
+}  // namespace yb

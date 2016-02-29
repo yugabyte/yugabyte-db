@@ -17,9 +17,9 @@
 
 option optimize_for = SPEED;
 
-package kudu.rpc;
+package yb.rpc;
 
-option java_package = "org.kududb.rpc";
+option java_package = "org.yb.rpc";
 
 
 // The Kudu RPC protocol is similar to the RPC protocol of Hadoop and HBase.
@@ -78,7 +78,7 @@ message SaslMessagePB {
 message RemoteMethodPB {
   // Service name for the RPC layer.
   // The client created a proxy with this service name.
-  // Example: kudu.rpc_test.CalculatorService
+  // Example: yb.rpc_test.CalculatorService
   required string service_name = 1;
 
   // Name of the RPC method.

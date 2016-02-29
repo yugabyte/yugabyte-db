@@ -26,7 +26,7 @@
 
 DECLARE_int32(scanner_ttl_ms);
 
-namespace kudu {
+namespace yb {
 
 using tablet::TabletPeer;
 
@@ -82,4 +82,4 @@ TEST(ScannerTest, TestExpire) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

@@ -49,7 +49,7 @@ METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using consensus::CommitMsg;
@@ -565,4 +565,4 @@ TEST_F(TabletPeerTest, TestFlushOpsPerfImprovements) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

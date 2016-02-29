@@ -33,7 +33,7 @@
 #define TEST_SYNC_POINT(x)
 #else
 
-namespace kudu {
+namespace yb {
 
 // This class provides facility to reproduce race conditions deterministically
 // in unit tests.
@@ -89,12 +89,12 @@ class SyncPoint {
   bool enabled_;
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 // Use TEST_SYNC_POINT to specify sync points inside code base.
 // Sync points can have happens-after depedency on other sync points,
 // configured at runtime via SyncPoint::LoadDependency. This could be
 // utilized to re-produce race conditions between threads.
 // TEST_SYNC_POINT is no op in release build.
-#define TEST_SYNC_POINT(x) kudu::SyncPoint::GetInstance()->Process(x)
+#define TEST_SYNC_POINT(x) yb::SyncPoint::GetInstance()->Process(x)
 #endif  // NDEBUG

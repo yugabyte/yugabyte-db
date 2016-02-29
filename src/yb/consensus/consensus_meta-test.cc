@@ -33,7 +33,7 @@
 #define ASSERT_VALUES_EQUAL(cmeta, opid_index, uuid, term) \
   ASSERT_NO_FATAL_FAILURE(AssertValuesEqual(cmeta, opid_index, uuid, term))
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::string;
@@ -284,4 +284,4 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

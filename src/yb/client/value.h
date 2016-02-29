@@ -26,7 +26,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/yb_export.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 // A constant cell value with a specific type.
@@ -65,5 +65,5 @@ class YB_EXPORT KuduValue {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CLIENT_VALUE_H */

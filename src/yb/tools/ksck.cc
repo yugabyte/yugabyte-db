@@ -29,7 +29,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using std::cerr;
@@ -494,4 +494,4 @@ Status Ksck::CheckAssignments() {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

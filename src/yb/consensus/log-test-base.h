@@ -51,7 +51,7 @@ METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using consensus::OpId;
@@ -373,6 +373,6 @@ Status CorruptLogFile(Env* env, const string& log_path,
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb
 
 #endif

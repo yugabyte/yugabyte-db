@@ -24,7 +24,7 @@
 #include "yb/util/hexdump.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 namespace coding {
 
 bool SSE_TABLE_INITTED = false;
@@ -69,10 +69,10 @@ static void InitializeSSETables() {
 
 void DumpSSETable() {
   LOG(INFO) << "SSE table:\n"
-            << kudu::HexDump(Slice(SSE_TABLE, sizeof(SSE_TABLE)));
+            << yb::HexDump(Slice(SSE_TABLE, sizeof(SSE_TABLE)));
 }
 
 
 
 } // namespace coding
-} // namespace kudu
+} // namespace yb

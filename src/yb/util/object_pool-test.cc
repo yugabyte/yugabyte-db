@@ -18,7 +18,7 @@
 #include <gtest/gtest.h>
 #include "yb/util/object_pool.h"
 
-namespace kudu {
+namespace yb {
 
 // Simple class which maintains a count of how many objects
 // are currently alive.
@@ -81,4 +81,4 @@ TEST(TestObjectPool, TestScopedPtr) {
   ASSERT_EQ(0, MyClass::instance_count());
 }
 
-} // namespace kudu
+} // namespace yb

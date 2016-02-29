@@ -30,7 +30,7 @@
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 
-namespace kudu {
+namespace yb {
 
 using std::shared_ptr;
 using std::string;
@@ -186,4 +186,4 @@ Status PstackWatcher::RunStackDump(const string& prog, const vector<string>& arg
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

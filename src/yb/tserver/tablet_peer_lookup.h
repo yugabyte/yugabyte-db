@@ -23,7 +23,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class HostPort;
 class NodeInstancePB;
@@ -53,6 +53,6 @@ class TabletPeerLookupIf {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TSERVER_TABLET_PEER_LOOKUP_H_

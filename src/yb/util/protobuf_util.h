@@ -19,7 +19,7 @@
 
 #include <google/protobuf/message_lite.h>
 
-namespace kudu {
+namespace yb {
 
 bool AppendPBToString(const google::protobuf::MessageLite &msg, faststring *output) {
   int old_size = output->size();
@@ -34,6 +34,6 @@ bool AppendPBToString(const google::protobuf::MessageLite &msg, faststring *outp
   return true;
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

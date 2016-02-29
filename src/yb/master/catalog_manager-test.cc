@@ -21,7 +21,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 using strings::Substitute;
@@ -107,4 +107,4 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

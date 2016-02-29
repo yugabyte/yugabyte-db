@@ -20,7 +20,7 @@
 #include "yb/util/bloom_filter.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 static double kNaturalLog2 = 0.69314;
 
@@ -83,4 +83,4 @@ BloomFilter::BloomFilter(const Slice &data, size_t n_hashes)
 
 
 
-} // namespace kudu
+} // namespace yb

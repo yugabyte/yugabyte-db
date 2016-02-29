@@ -23,7 +23,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MonoDelta;
 class MonoTime;
@@ -147,6 +147,6 @@ class Socket {
   DISALLOW_COPY_AND_ASSIGN(Socket);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

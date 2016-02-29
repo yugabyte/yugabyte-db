@@ -50,7 +50,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 // This test attempts to simulate how a TS might use the block manager:
@@ -154,7 +154,7 @@ class BlockManagerStressTest : public KuduTest {
   }
 
   void JoinThreads() {
-    for (const scoped_refptr<kudu::Thread>& thr : threads_) {
+    for (const scoped_refptr<yb::Thread>& thr : threads_) {
      CHECK_OK(ThreadJoiner(thr.get()).Join());
     }
   }
@@ -409,4 +409,4 @@ TYPED_TEST(BlockManagerStressTest, StressTest) {
 }
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

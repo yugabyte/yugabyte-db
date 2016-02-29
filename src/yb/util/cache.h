@@ -25,7 +25,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 class Cache;
 struct CacheMetrics;
@@ -153,6 +153,6 @@ class Cache {
   Rep* rep_;
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif

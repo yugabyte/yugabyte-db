@@ -23,7 +23,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 // Type to represent the ordinal ID of a row within a RowSet.
 // This type should be used instead of uint32_t when referring to row indexes
@@ -55,6 +55,6 @@ inline bool DecodeRowId(Slice *s, rowid_t *rowid) {
   return ret;
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

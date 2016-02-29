@@ -26,7 +26,7 @@
 #include "yb/common/row.h"
 #include "yb/common/row_operations.h"
 
-namespace kudu {
+namespace yb {
 
 inline Schema GetSimpleTestSchema() {
   return Schema({ ColumnSchema("key", INT32),
@@ -71,6 +71,6 @@ inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
   enc.Add(op_type, row);
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_ */

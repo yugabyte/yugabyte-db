@@ -33,7 +33,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MaintenanceManager;
 
@@ -121,5 +121,5 @@ class TabletServer : public server::ServerBase {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif

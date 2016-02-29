@@ -28,7 +28,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using log::LogAnchorRegistry;
@@ -368,4 +368,4 @@ string DMSIterator::ToString() const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

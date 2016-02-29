@@ -30,7 +30,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::MinimumOpId;
@@ -368,4 +368,4 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

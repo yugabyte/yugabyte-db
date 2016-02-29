@@ -24,7 +24,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Arena;
 class ColumnBlockCell;
@@ -62,7 +62,7 @@ class ColumnBlock {
 #ifndef NDEBUG
   void OverwriteWithPattern(size_t idx, StringPiece pattern) {
     char *col_data = reinterpret_cast<char *>(mutable_cell_ptr(idx));
-    kudu::OverwriteWithPattern(col_data, type_->size(), pattern);
+    yb::OverwriteWithPattern(col_data, type_->size(), pattern);
   }
 #endif
 
@@ -238,5 +238,5 @@ class ScopedColumnBlock : public ColumnBlock {
 
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

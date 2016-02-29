@@ -24,7 +24,7 @@
 
 typedef void CURL;
 
-namespace kudu {
+namespace yb {
 
 class faststring;
 
@@ -58,6 +58,6 @@ class EasyCurl {
   DISALLOW_COPY_AND_ASSIGN(EasyCurl);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_UTIL_CURL_UTIL_H */

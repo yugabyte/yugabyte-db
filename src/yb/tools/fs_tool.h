@@ -29,7 +29,7 @@
 #include "yb/util/status.h"
 #include "yb/tablet/delta_key.h"
 
-namespace kudu {
+namespace yb {
 
 class FsManager;
 class Schema;
@@ -153,6 +153,6 @@ class FsTool {
 };
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TOOLS_FS_TOOL_H

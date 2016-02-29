@@ -26,7 +26,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/env.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 class KuduClient;
@@ -182,6 +182,6 @@ class MiniCluster {
   std::vector<std::shared_ptr<tserver::MiniTabletServer> > mini_tablet_servers_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_INTEGRATION_TESTS_MINI_CLUSTER_H */

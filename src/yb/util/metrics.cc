@@ -45,7 +45,7 @@ TAG_FLAG(metrics_retirement_age_ms, advanced);
 // More complex applications will define other entities.
 METRIC_DEFINE_entity(server);
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 using std::vector;
@@ -680,4 +680,4 @@ ScopedLatencyMetric::~ScopedLatencyMetric() {
   }
 }
 
-} // namespace kudu
+} // namespace yb

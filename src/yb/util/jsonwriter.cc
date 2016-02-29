@@ -33,7 +33,7 @@ using std::string;
 using std::stringstream;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 // Adapter to allow RapidJSON to write directly to a stringstream.
 // Since Squeasel exposes a stringstream as its interface, this is needed to avoid overcopying.
@@ -316,4 +316,4 @@ void JsonWriterImpl<T>::StartArray() { writer_.StartArray(); }
 template<class T>
 void JsonWriterImpl<T>::EndArray() { writer_.EndArray(); }
 
-} // namespace kudu
+} // namespace yb

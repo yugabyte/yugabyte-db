@@ -39,7 +39,7 @@
 #include "yb/util/bloom_filter.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 class FsManager;
 class MemTracker;
@@ -408,6 +408,6 @@ class DiskRowSet : public RowSet {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TABLET_DISKROWSET_H_

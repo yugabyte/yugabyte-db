@@ -41,7 +41,7 @@ METRIC_DECLARE_counter(transaction_memory_pressure_rejections);
 using std::shared_ptr;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class TransactionTrackerTest : public KuduTest {
@@ -254,4 +254,4 @@ TEST_F(TransactionTrackerTest, TestTooManyTransactions) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

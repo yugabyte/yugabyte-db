@@ -20,7 +20,7 @@
 #include <semaphore.h>
 #include <glog/logging.h>
 #include "yb/gutil/walltime.h"
-namespace kudu {
+namespace yb {
 
 Semaphore::Semaphore(int capacity) {
   DCHECK_GE(capacity, 0);
@@ -92,4 +92,4 @@ void Semaphore::Fatal(const char* action) {
   abort(); // unnecessary, but avoids gcc complaining
 }
 
-} // namespace kudu
+} // namespace yb

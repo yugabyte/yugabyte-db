@@ -31,7 +31,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 std::string JoinPathSegments(const std::string &a,
                              const std::string &b) {
@@ -60,4 +60,4 @@ string BaseName(const string& path) {
   return basename(path_copy.get());
 }
 
-} // namespace kudu
+} // namespace yb

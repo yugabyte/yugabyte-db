@@ -25,7 +25,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 class Env;
 class ExternalMiniCluster;
 class Status;
@@ -113,6 +113,6 @@ class ExternalMiniClusterFsInspector {
 };
 
 } // namespace itest
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_INTEGRATION_TESTS_CLUSTER_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H_

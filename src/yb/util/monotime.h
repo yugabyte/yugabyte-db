@@ -33,7 +33,7 @@
 struct timeval;
 struct timespec;
 
-namespace kudu {
+namespace yb {
 class MonoTime;
 
 // Represent an elapsed duration of time -- i.e the delta between
@@ -136,6 +136,6 @@ class YB_EXPORT MonoTime {
 // MonoDelta duration.
 void YB_EXPORT SleepFor(const MonoDelta& delta);
 
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -29,7 +29,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 
-namespace kudu {
+namespace yb {
 
 class DnsResolver;
 class HostPort;
@@ -236,6 +236,6 @@ Status RetryFunc(const MonoTime& deadline,
                  const boost::function<Status(const MonoTime&, bool*)>& func);
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

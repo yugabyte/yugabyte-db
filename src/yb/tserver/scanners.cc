@@ -41,10 +41,10 @@ TAG_FLAG(scanner_ttl_ms, hidden);
 // server level.
 METRIC_DEFINE_gauge_size(server, active_scanners,
                          "Active Scanners",
-                         kudu::MetricUnit::kScanners,
+                         yb::MetricUnit::kScanners,
                          "Number of scanners that are currently active");
 
-namespace kudu {
+namespace yb {
 
 using tablet::TabletPeer;
 
@@ -220,4 +220,4 @@ void Scanner::GetIteratorStats(vector<IteratorStats>* stats) const {
 
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

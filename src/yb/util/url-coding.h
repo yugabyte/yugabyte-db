@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 // Utility method to URL-encode a string (that is, replace special
 // characters with %<hex value in ascii>).
@@ -77,6 +77,6 @@ void EscapeForHtml(const std::string& in, std::stringstream* out);
 // Same as above, but returns a string.
 std::string EscapeForHtmlToString(const std::string& in);
 
-} // namespace kudu
+} // namespace yb
 
 #endif

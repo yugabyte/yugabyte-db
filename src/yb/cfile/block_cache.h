@@ -28,7 +28,7 @@
 
 DECLARE_string(block_cache_type);
 
-namespace kudu {
+namespace yb {
 
 class MetricRegistry;
 
@@ -36,7 +36,7 @@ namespace cfile {
 
 class BlockCacheHandle;
 
-// Wrapper around kudu::Cache specifically for caching blocks of CFiles.
+// Wrapper around yb::Cache specifically for caching blocks of CFiles.
 // Provides a singleton and LRU cache for CFile blocks.
 class BlockCache {
  public:
@@ -162,6 +162,6 @@ class BlockCacheHandle {
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

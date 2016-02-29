@@ -53,7 +53,7 @@ TAG_FLAG(global_log_cache_size_limit_mb, advanced);
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 METRIC_DEFINE_gauge_int64(tablet, log_cache_num_ops, "Log Cache Operation Count",
@@ -478,4 +478,4 @@ LogCache::Metrics::Metrics(const scoped_refptr<MetricEntity>& metric_entity)
 #undef INSTANTIATE_METRIC
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

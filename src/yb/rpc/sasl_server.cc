@@ -36,7 +36,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 static int SaslServerGetoptCb(void* sasl_server, const char* plugin_name, const char* option,
@@ -444,4 +444,4 @@ int SaslServer::PlainAuthCb(sasl_conn_t *conn, const char *user, const char *pas
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

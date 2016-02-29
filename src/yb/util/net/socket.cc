@@ -55,7 +55,7 @@ DEFINE_bool(socket_inject_short_recvs, false,
 TAG_FLAG(socket_inject_short_recvs, hidden);
 TAG_FLAG(socket_inject_short_recvs, unsafe);
 
-namespace kudu {
+namespace yb {
 
 Socket::Socket()
   : fd_(-1) {
@@ -555,4 +555,4 @@ Status Socket::SetTimeout(int opt, std::string optname, const MonoDelta& timeout
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

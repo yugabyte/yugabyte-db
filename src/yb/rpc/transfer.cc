@@ -38,7 +38,7 @@ DEFINE_int32(rpc_max_message_size, (8 * 1024 * 1024),
 TAG_FLAG(rpc_max_message_size, advanced);
 TAG_FLAG(rpc_max_message_size, runtime);
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using std::ostringstream;
@@ -229,4 +229,4 @@ int32_t OutboundTransfer::TotalLength() const {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

@@ -31,7 +31,7 @@
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using fs::ReadableBlock;
@@ -529,4 +529,4 @@ void DeltaTracker::GetColumnIdsWithUpdates(std::vector<ColumnId>* col_ids) const
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

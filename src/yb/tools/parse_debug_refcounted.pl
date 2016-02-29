@@ -21,7 +21,7 @@
 # Tool to parse the output of "debug" refcounted objects.
 # This is helpful for tracking down ref-counting leaks.
 # Generate compatible logs by making your refcounted object inherit
-# from kudu::DebugRefCountedThreadSafe<T>.
+# from yb::DebugRefCountedThreadSafe<T>.
 ######################################################################
 use strict;
 use warnings;
@@ -74,7 +74,7 @@ foreach my $addr (@bad_addrs) {
   print "Address $addr has bad ref count: " . ($counts{$addr}) . "\n";
   # Parse the stack traces:
   # Find a debug line and grab thru the next two lines that contain "kudu",
-  # which should be kudu::DebugRefCountedThreadSafe frame through the likely
+  # which should be yb::DebugRefCountedThreadSafe frame through the likely
   # "interesting" frame where the scoped_refptr was instantiated or destroyed.
   my @matches = $content =~ /([^\n]*(?:Incremented|Decrementing) ref on $addr:\n.*?[^\n]+kudu[^\n]+\n.*?[^\n]+kudu[^\n]+\n)/smg;
   foreach (@matches) {

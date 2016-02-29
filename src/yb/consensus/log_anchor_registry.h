@@ -27,7 +27,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 struct LogAnchor;
@@ -156,6 +156,6 @@ class MinLogIndexAnchorer {
 };
 
 } // namespace log
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_CONSENSUS_LOG_ANCHOR_REGISTRY_

@@ -37,7 +37,7 @@
 #include "yb/util/test_util.h"
 #include "yb/gutil/strings/escaping.h"
 
-namespace kudu {
+namespace yb {
 namespace itest {
 
 using client::KuduClient;
@@ -568,4 +568,4 @@ TEST_F(FlexPartitioningITest, TestCompositePK_MultipleBucketingsNoRange) {
 }
 
 } // namespace itest
-} // namespace kudu
+} // namespace yb

@@ -39,7 +39,7 @@ extern "C" void __gcov_flush(void);
 #endif
 
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 GenericServiceImpl::GenericServiceImpl(ServerBase* server)
@@ -148,4 +148,4 @@ void GenericServiceImpl::GetStatus(const GetStatusRequestPB* req,
 }
 
 } // namespace server
-} // namespace kudu
+} // namespace yb

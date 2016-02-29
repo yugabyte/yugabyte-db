@@ -35,7 +35,7 @@ using std::unordered_set;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace threadlocal {
 
 class ThreadLocalTest : public KuduTest {};
@@ -174,15 +174,15 @@ static uint64_t Iterate(CounterRegistry* registry, int expected_counters) {
 
 static void TestThreadLocalCounters(CounterRegistry* registry, const int num_threads) {
   LOG(INFO) << "Starting threads...";
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
 
   CountDownLatch counters_ready(num_threads);
   CountDownLatch reader_ready(1);
   CountDownLatch counters_done(num_threads);
   CountDownLatch reader_done(1);
   for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("t$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
         &RegisterCounterAndLoopIncr, registry, &counters_ready, &reader_ready,
         &counters_done, &reader_done, &new_thread));
     threads.push_back(new_thread);
@@ -211,7 +211,7 @@ static void TestThreadLocalCounters(CounterRegistry* registry, const int num_thr
   reader_done.CountDown();
 
   LOG(INFO) << "Joining & deleting threads...";
-  for (scoped_refptr<kudu::Thread> thread : threads) {
+  for (scoped_refptr<yb::Thread> thread : threads) {
     CHECK_OK(ThreadJoiner(thread.get()).Join());
   }
   LOG(INFO) << "Done.";
@@ -274,7 +274,7 @@ TEST_F(ThreadLocalTest, TestTLSMember) {
   vector<CountDownLatch*> writers_ready;
   vector<CountDownLatch*> readers_ready;
   vector<std::string*> out_strings;
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
 
   ElementDeleter writers_deleter(&writers_ready);
   ElementDeleter readers_deleter(&readers_ready);
@@ -288,8 +288,8 @@ TEST_F(ThreadLocalTest, TestTLSMember) {
     writers_ready.push_back(new CountDownLatch(1));
     readers_ready.push_back(new CountDownLatch(1));
     out_strings.push_back(new std::string());
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("t$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
         &RunAndAssign, writers_ready[i], readers_ready[i],
         &all_done, &threads_exiting, Substitute("$0", i), out_strings[i], &new_thread));
     threads.push_back(new_thread);
@@ -313,10 +313,10 @@ TEST_F(ThreadLocalTest, TestTLSMember) {
   }
 
   LOG(INFO) << "Joining & deleting threads...";
-  for (scoped_refptr<kudu::Thread> thread : threads) {
+  for (scoped_refptr<yb::Thread> thread : threads) {
     CHECK_OK(ThreadJoiner(thread.get()).Join());
   }
 }
 
 } // namespace threadlocal
-} // namespace kudu
+} // namespace yb

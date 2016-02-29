@@ -22,7 +22,7 @@
 
 #include "yb/gutil/stl_util.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 namespace internal {
 
@@ -52,4 +52,4 @@ void ErrorCollector::GetErrors(std::vector<KuduError*>* errors, bool* overflowed
 
 } // namespace internal
 } // namespace client
-} // namespace kudu
+} // namespace yb

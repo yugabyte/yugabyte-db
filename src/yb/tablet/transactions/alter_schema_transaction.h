@@ -25,7 +25,7 @@
 #include "yb/tablet/transactions/transaction.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 
@@ -132,6 +132,6 @@ class AlterSchemaTransaction : public Transaction {
 };
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_TABLET_ALTER_SCHEMA_TRANSACTION_H_ */

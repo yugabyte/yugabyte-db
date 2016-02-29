@@ -24,7 +24,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 TEST(OsUtilTest, TestErrnoToString) {
   int err = ENOENT;
@@ -46,4 +46,4 @@ TEST(OsUtilTest, TestErrnoToString) {
   ASSERT_EQ("U", string(buf));
 }
 
-} // namespace kudu
+} // namespace yb

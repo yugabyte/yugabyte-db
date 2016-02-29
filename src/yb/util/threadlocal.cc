@@ -23,7 +23,7 @@
 #include "yb/gutil/once.h"
 #include "yb/util/errno.h"
 
-namespace kudu {
+namespace yb {
 namespace threadlocal {
 namespace internal {
 
@@ -68,4 +68,4 @@ void AddDestructor(PerThreadDestructorList* p) {
 
 } // namespace internal
 } // namespace threadlocal
-} // namespace kudu
+} // namespace yb

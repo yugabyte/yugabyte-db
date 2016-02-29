@@ -107,7 +107,7 @@ static bool dummy = google::RegisterFlagValidator(
 
 static const char kSegmentPlaceholderFileTemplate[] = ".tmp.newsegmentXXXXXX";
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using consensus::CommitMsg;
@@ -150,7 +150,7 @@ Log::AppendThread::AppendThread(Log *log)
 Status Log::AppendThread::Init() {
   DCHECK(!thread_) << "Already initialized";
   VLOG(1) << "Starting log append thread for tablet " << log_->tablet_id();
-  RETURN_NOT_OK(kudu::Thread::Create("log", "appender",
+  RETURN_NOT_OK(yb::Thread::Create("log", "appender",
       &AppendThread::RunThread, this, &thread_));
   return Status::OK();
 }
@@ -1018,4 +1018,4 @@ void LogEntryBatch::WaitForReady() {
 }
 
 }  // namespace log
-}  // namespace kudu
+}  // namespace yb

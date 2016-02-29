@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 // GLog sink that keeps an internal buffer of messages that have been logged.
 class StringVectorSink : public google::LogSink {
@@ -55,6 +55,6 @@ struct ScopedRegisterSink {
   google::LogSink* s_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

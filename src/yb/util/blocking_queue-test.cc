@@ -29,7 +29,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 BlockingQueue<int32_t> test1_queue(5);
 
@@ -211,4 +211,4 @@ TEST(BlockingQueueTest, TestMultipleThreads) {
   test.Run();
 }
 
-}  // namespace kudu
+}  // namespace yb

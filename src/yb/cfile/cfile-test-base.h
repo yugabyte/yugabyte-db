@@ -40,10 +40,10 @@ DEFINE_int32(cfile_test_block_size, 1024,
              "Default is low to stress code, but can be set higher for "
              "performance testing");
 
-using kudu::fs::ReadableBlock;
-using kudu::fs::WritableBlock;
+using yb::fs::ReadableBlock;
+using yb::fs::WritableBlock;
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 // Abstract test data generator.
@@ -495,6 +495,6 @@ static void TimeReadFile(FsManager* fs_manager, const BlockId& block_id, size_t 
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -19,7 +19,7 @@
 
 #include <glog/logging.h>
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 const char* DeltaType_Name(DeltaType t) {
@@ -35,4 +35,4 @@ const char* DeltaType_Name(DeltaType t) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -33,7 +33,7 @@
 
 METRIC_DECLARE_entity(tablet);
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::Log;
@@ -325,5 +325,5 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 

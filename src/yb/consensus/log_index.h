@@ -26,7 +26,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 // An entry in the index.
@@ -106,5 +106,5 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
 };
 
 } // namespace log
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CONSENSUS_LOG_INDEX_H */

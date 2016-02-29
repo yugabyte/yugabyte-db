@@ -31,7 +31,7 @@
 #include <gtest/gtest.h>
 #include "yb/util/bit-util.h"
 
-namespace kudu {
+namespace yb {
 
 TEST(BitUtil, TrailingBits) {
   EXPECT_EQ(BitUtil::TrailingBits(BOOST_BINARY(1 1 1 1 1 1 1 1), 0), 0);
@@ -47,4 +47,4 @@ TEST(BitUtil, TrailingBits) {
   EXPECT_EQ(BitUtil::TrailingBits(1LL << 63, 64), 1LL << 63);
 }
 
-} // namespace kudu
+} // namespace yb

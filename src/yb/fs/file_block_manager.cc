@@ -39,7 +39,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 
-using kudu::env_util::ScopedFileDeleter;
+using yb::env_util::ScopedFileDeleter;
 using std::shared_ptr;
 using std::string;
 using std::unordered_set;
@@ -49,7 +49,7 @@ using strings::Substitute;
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(block_manager_lock_dirs);
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 namespace internal {
@@ -761,4 +761,4 @@ Status FileBlockManager::CloseBlocks(const vector<WritableBlock*>& blocks) {
 }
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

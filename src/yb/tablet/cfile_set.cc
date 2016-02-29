@@ -35,7 +35,7 @@
 DEFINE_bool(consult_bloom_filters, true, "Whether to consult bloom filters on row presence checks");
 TAG_FLAG(consult_bloom_filters, hidden);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using cfile::ReaderOptions;
@@ -483,4 +483,4 @@ void CFileSet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

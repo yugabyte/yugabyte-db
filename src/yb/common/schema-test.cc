@@ -29,7 +29,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using std::unordered_map;
@@ -418,4 +418,4 @@ TEST(TestKeyEncoder, BenchmarkSimpleKey) {
 #endif
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

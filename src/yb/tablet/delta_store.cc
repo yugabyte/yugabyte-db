@@ -23,7 +23,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/deltafile.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using std::shared_ptr;
@@ -133,4 +133,4 @@ Status WriteDeltaIteratorToFile<UNDO>(DeltaIterator* iter,
                                       DeltaFileWriter* out);
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

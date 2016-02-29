@@ -27,7 +27,7 @@
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 
-namespace kudu {
+namespace yb {
 namespace fault_injection {
 
 namespace {
@@ -80,4 +80,4 @@ void DoInjectRandomLatency(double max_ms) {
 }
 
 } // namespace fault_injection
-} // namespace kudu
+} // namespace yb

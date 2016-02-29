@@ -19,7 +19,7 @@
 
 #include "yb/util/hash_util.h"
 
-namespace kudu {
+namespace yb {
 
 // Test Murmur2 Hash64 returns the expected values for inputs. These tests are
 // duplicated on the Java side to ensure that hash computations are stable
@@ -37,4 +37,4 @@ TEST(HashUtilTest, TestMurmur2Hash64) {
   ASSERT_EQ(3575930248840144026, hash);
 }
 
-} // namespace kudu
+} // namespace yb

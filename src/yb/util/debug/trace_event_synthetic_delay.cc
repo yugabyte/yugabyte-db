@@ -9,7 +9,7 @@ namespace {
 const int kMaxSyntheticDelays = 32;
 }  // namespace
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 TraceEventSyntheticDelayClock::TraceEventSyntheticDelayClock() {}
@@ -200,7 +200,7 @@ void ResetTraceEventSyntheticDelays() {
 }
 
 }  // namespace debug
-}  // namespace kudu
+}  // namespace yb
 
 namespace trace_event_internal {
 
@@ -214,14 +214,14 @@ ScopedSyntheticDelay::~ScopedSyntheticDelay() {
   delay_impl_->EndParallel(end_time_);
 }
 
-kudu::debug::TraceEventSyntheticDelay* GetOrCreateDelay(
+yb::debug::TraceEventSyntheticDelay* GetOrCreateDelay(
     const char* name,
     AtomicWord* impl_ptr) {
-  kudu::debug::TraceEventSyntheticDelay* delay_impl =
-      reinterpret_cast<kudu::debug::TraceEventSyntheticDelay*>(
+  yb::debug::TraceEventSyntheticDelay* delay_impl =
+      reinterpret_cast<yb::debug::TraceEventSyntheticDelay*>(
           base::subtle::Acquire_Load(impl_ptr));
   if (!delay_impl) {
-    delay_impl = kudu::debug::TraceEventSyntheticDelayRegistry::GetInstance()
+    delay_impl = yb::debug::TraceEventSyntheticDelayRegistry::GetInstance()
                      ->GetOrCreateDelay(name);
     base::subtle::Release_Store(
         impl_ptr, reinterpret_cast<AtomicWord>(delay_impl));

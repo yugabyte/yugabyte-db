@@ -20,7 +20,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using fs::CountingReadableBlock;
@@ -128,4 +128,4 @@ TEST_F(BloomFileTest, TestLazyInit) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

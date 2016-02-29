@@ -38,23 +38,23 @@ using strings::Substitute;
 
 METRIC_DEFINE_histogram(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
-                        kudu::MetricUnit::kMicroseconds,
+                        yb::MetricUnit::kMicroseconds,
                         "Number of microseconds incoming RPC requests spend in the worker queue",
                         60000000LU, 3);
 
 METRIC_DEFINE_counter(server, rpcs_timed_out_in_queue,
                       "RPC Queue Timeouts",
-                      kudu::MetricUnit::kRequests,
+                      yb::MetricUnit::kRequests,
                       "Number of RPCs whose timeout elapsed while waiting "
                       "in the service queue, and thus were not processed.");
 
 METRIC_DEFINE_counter(server, rpcs_queue_overflow,
                       "RPC Queue Overflows",
-                      kudu::MetricUnit::kRequests,
+                      yb::MetricUnit::kRequests,
                       "Number of RPCs dropped because the service queue "
                       "was full.");
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 ServicePool::ServicePool(gscoped_ptr<ServiceIf> service,
@@ -74,8 +74,8 @@ ServicePool::~ServicePool() {
 
 Status ServicePool::Init(int num_threads) {
   for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("service pool", "rpc worker",
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("service pool", "rpc worker",
         &ServicePool::RunThread, this, &new_thread));
     threads_.push_back(new_thread);
   }
@@ -89,7 +89,7 @@ void ServicePool::Shutdown() {
   if (closing_) return;
   closing_ = true;
   // TODO: Use a proper thread pool implementation.
-  for (scoped_refptr<kudu::Thread>& thread : threads_) {
+  for (scoped_refptr<yb::Thread>& thread : threads_) {
     CHECK_OK(ThreadJoiner(thread.get()).Join());
   }
 
@@ -180,4 +180,4 @@ const string ServicePool::service_name() const {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

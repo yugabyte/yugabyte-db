@@ -31,7 +31,7 @@
 #include "yb/util/env.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 namespace tools {
 class FsTool;
@@ -176,7 +176,7 @@ class RowSetMetadata {
 
  private:
   friend class TabletMetadata;
-  friend class kudu::tools::FsTool;
+  friend class yb::tools::FsTool;
 
   typedef simple_spinlock LockType;
 
@@ -261,5 +261,5 @@ class RowSetMetadataUpdate {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_ROWSET_METADATA_H */

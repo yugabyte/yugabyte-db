@@ -24,7 +24,7 @@
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class RandomUtilTest : public KuduTest {
  protected:
@@ -70,4 +70,4 @@ TEST_F(RandomUtilTest, TestRandomString) {
   CheckEmpty(start, 0, 0, kLenMax);
 }
 
-} // namespace kudu
+} // namespace yb

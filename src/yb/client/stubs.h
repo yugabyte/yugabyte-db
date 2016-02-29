@@ -121,18 +121,18 @@ struct StubsCompileAssert {
 //
 // Add more as needed.
 
-#define KUDU_DCHECK(condition) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_EQ(val1, val2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_NE(val1, val2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_LE(val1, val2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_LT(val1, val2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_GE(val1, val2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_GT(val1, val2) while (false) kudu::internal_logging::NullLog()
+#define KUDU_DCHECK(condition) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_EQ(val1, val2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_NE(val1, val2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_LE(val1, val2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_LT(val1, val2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_GE(val1, val2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_GT(val1, val2) while (false) yb::internal_logging::NullLog()
 #define KUDU_DCHECK_NOTNULL(val) (val)
-#define KUDU_DCHECK_STREQ(str1, str2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_STRCASEEQ(str1, str2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_STRNE(str1, str2) while (false) kudu::internal_logging::NullLog()
-#define KUDU_DCHECK_STRCASENE(str1, str2) while (false) kudu::internal_logging::NullLog()
+#define KUDU_DCHECK_STREQ(str1, str2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_STRCASEEQ(str1, str2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_STRNE(str1, str2) while (false) yb::internal_logging::NullLog()
+#define KUDU_DCHECK_STRCASENE(str1, str2) while (false) yb::internal_logging::NullLog()
 
 // Log levels. LOG ignores them, so their values are abitrary.
 
@@ -147,13 +147,13 @@ struct StubsCompileAssert {
 #define KUDU_DFATAL KUDU_FATAL
 #endif // NDEBUG
 
-#define KUDU_LOG_INTERNAL(level) kudu::internal_logging::CerrLog(level)
+#define KUDU_LOG_INTERNAL(level) yb::internal_logging::CerrLog(level)
 #define KUDU_LOG(level) KUDU_LOG_INTERNAL(KUDU_##level)
 
 #define KUDU_CHECK(condition) \
   (condition) ? 0 : KUDU_LOG(FATAL) << "Check failed: " #condition " "
 
-namespace kudu {
+namespace yb {
 
 namespace internal_logging {
 
@@ -194,6 +194,6 @@ class CerrLog {
 };
 
 } // namespace internal_logging
-} // namespace kudu
+} // namespace yb
 
 #endif

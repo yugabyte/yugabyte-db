@@ -22,7 +22,7 @@
 #include "yb/util/hexdump.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 std::string HexDump(const Slice &slice) {
   std::string output;
@@ -71,4 +71,4 @@ std::string HexDump(const Slice &slice) {
   }
   return output;
 }
-} // namespace kudu
+} // namespace yb

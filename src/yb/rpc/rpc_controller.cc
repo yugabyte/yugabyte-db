@@ -21,7 +21,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/outbound_call.h"
 
-namespace kudu { namespace rpc {
+namespace yb { namespace rpc {
 
 RpcController::RpcController() {
   DVLOG(4) << "RpcController " << this << " constructed";
@@ -93,4 +93,4 @@ MonoDelta RpcController::timeout() const {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

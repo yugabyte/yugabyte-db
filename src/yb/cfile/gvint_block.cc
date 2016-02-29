@@ -24,14 +24,14 @@
 #include "yb/gutil/mathlimits.h"
 #include "yb/util/group_varint-inl.h"
 
-namespace kudu { namespace cfile {
+namespace yb { namespace cfile {
 
-using kudu::coding::AppendGroupVarInt32;
-using kudu::coding::CalcRequiredBytes32;
-using kudu::coding::DecodeGroupVarInt32;
-using kudu::coding::DecodeGroupVarInt32_SlowButSafe;
-using kudu::coding::DecodeGroupVarInt32_SSE_Add;
-using kudu::coding::AppendGroupVarInt32Sequence;
+using yb::coding::AppendGroupVarInt32;
+using yb::coding::CalcRequiredBytes32;
+using yb::coding::DecodeGroupVarInt32;
+using yb::coding::DecodeGroupVarInt32_SlowButSafe;
+using yb::coding::DecodeGroupVarInt32_SSE_Add;
+using yb::coding::AppendGroupVarInt32Sequence;
 
 GVIntBlockBuilder::GVIntBlockBuilder(const WriterOptions *options)
  : estimated_raw_size_(0),
@@ -366,4 +366,4 @@ inline Status GVIntBlockDecoder::DoGetNextValues(size_t *n_param, IntSink *sink)
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

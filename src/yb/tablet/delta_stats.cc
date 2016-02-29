@@ -24,7 +24,7 @@
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 using std::vector;
 
@@ -121,4 +121,4 @@ void DeltaStats::AddColumnIdsWithUpdates(std::set<ColumnId>* col_ids) const {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

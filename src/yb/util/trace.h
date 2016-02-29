@@ -33,7 +33,7 @@
 // scope. The old current Trace is restored when the scope is exited.
 //
 // 't' should be a Trace* pointer.
-#define ADOPT_TRACE(t) kudu::ScopedAdoptTrace _adopt_trace(t);
+#define ADOPT_TRACE(t) yb::ScopedAdoptTrace _adopt_trace(t);
 
 // Issue a trace message, if tracing is enabled in the current thread.
 // See Trace::SubstituteAndTrace for arguments.
@@ -41,7 +41,7 @@
 //  TRACE("Acquired timestamp $0", timestamp);
 #define TRACE(format, substitutions...) \
   do { \
-    kudu::Trace* _trace = Trace::CurrentTrace(); \
+    yb::Trace* _trace = Trace::CurrentTrace(); \
     if (_trace) { \
       _trace->SubstituteAndTrace(__FILE__, __LINE__, (format),  \
         ##substitutions); \
@@ -53,7 +53,7 @@
   (trace)->SubstituteAndTrace(__FILE__, __LINE__, (format), ##substitutions)
 
 
-namespace kudu {
+namespace yb {
 
 class ThreadSafeArena;
 struct TraceEntry;
@@ -118,7 +118,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
 
   // Simple function to dump the current trace to stderr, if one is
   // available. This is meant for usage when debugging in gdb via
-  // 'call kudu::Trace::DumpCurrentTrace();'.
+  // 'call yb::Trace::DumpCurrentTrace();'.
   static void DumpCurrentTrace();
 
  private:
@@ -182,5 +182,5 @@ class ScopedAdoptTrace {
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_TRACE_H */

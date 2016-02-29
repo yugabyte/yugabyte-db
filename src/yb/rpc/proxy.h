@@ -36,7 +36,7 @@ class Message;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class Messenger;
@@ -114,6 +114,6 @@ class Proxy {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

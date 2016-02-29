@@ -35,31 +35,31 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/subprocess.h"
 
-using kudu::client::KuduClient;
-using kudu::client::KuduClientBuilder;
-using kudu::client::KuduSchema;
-using kudu::client::KuduSchemaFromSchema;
-using kudu::client::KuduTableCreator;
-using kudu::consensus::CONSENSUS_CONFIG_COMMITTED;
-using kudu::consensus::ConsensusMetadataPB;
-using kudu::consensus::ConsensusStatePB;
-using kudu::consensus::RaftPeerPB;
-using kudu::itest::TServerDetails;
-using kudu::tablet::TABLET_DATA_COPYING;
-using kudu::tablet::TABLET_DATA_DELETED;
-using kudu::tablet::TABLET_DATA_READY;
-using kudu::tablet::TABLET_DATA_TOMBSTONED;
-using kudu::tablet::TabletDataState;
-using kudu::tablet::TabletSuperBlockPB;
-using kudu::tserver::ListTabletsResponsePB;
-using kudu::tserver::TabletServerErrorPB;
+using yb::client::KuduClient;
+using yb::client::KuduClientBuilder;
+using yb::client::KuduSchema;
+using yb::client::KuduSchemaFromSchema;
+using yb::client::KuduTableCreator;
+using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::ConsensusMetadataPB;
+using yb::consensus::ConsensusStatePB;
+using yb::consensus::RaftPeerPB;
+using yb::itest::TServerDetails;
+using yb::tablet::TABLET_DATA_COPYING;
+using yb::tablet::TABLET_DATA_DELETED;
+using yb::tablet::TABLET_DATA_READY;
+using yb::tablet::TABLET_DATA_TOMBSTONED;
+using yb::tablet::TabletDataState;
+using yb::tablet::TabletSuperBlockPB;
+using yb::tserver::ListTabletsResponsePB;
+using yb::tserver::TabletServerErrorPB;
 using std::numeric_limits;
 using std::string;
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 class DeleteTableTest : public ExternalMiniClusterITestBase {
  protected:
@@ -1073,4 +1073,4 @@ const char* tombstoned_faults[] = {"fault_crash_after_blocks_deleted",
 INSTANTIATE_TEST_CASE_P(FaultFlags, DeleteTableTombstonedParamTest,
                         ::testing::ValuesIn(tombstoned_faults));
 
-} // namespace kudu
+} // namespace yb

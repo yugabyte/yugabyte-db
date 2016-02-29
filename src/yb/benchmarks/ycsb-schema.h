@@ -21,7 +21,7 @@
 
 #include "yb/client/schema.h"
 
-namespace kudu {
+namespace yb {
 
 static const client::KuduColumnSchema::DataType kString =
     client::KuduColumnSchema::STRING;
@@ -45,6 +45,6 @@ inline client::KuduSchema CreateYCSBSchema() {
   return s;
 }
 
-} // namespace kudu
+} // namespace yb
 #endif
 

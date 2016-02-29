@@ -64,7 +64,7 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 METRIC_DEFINE_entity(test);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 class TabletServerTestBase : public KuduTest {
@@ -469,7 +469,7 @@ const char* TabletServerTestBase::kTableId = "TestTable";
 const char* TabletServerTestBase::kTabletId = "TestTablet";
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 
 #endif /* KUDU_TSERVER_TABLET_SERVER_TEST_BASE_H_ */

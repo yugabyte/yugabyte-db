@@ -25,7 +25,7 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 class FsManager;
 
@@ -118,6 +118,6 @@ class LocalConsensus : public Consensus {
 };
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_CONSENSUS_LOCAL_CONSENSUS_H_ */

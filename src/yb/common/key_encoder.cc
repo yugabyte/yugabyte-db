@@ -30,7 +30,7 @@
 using std::shared_ptr;
 using std::unordered_map;
 
-namespace kudu {
+namespace yb {
 
 
 // A resolver for Encoders
@@ -89,4 +89,4 @@ const KeyEncoder<string>& GetKeyEncoder(const TypeInfo* typeinfo);
 template
 const KeyEncoder<faststring>& GetKeyEncoder(const TypeInfo* typeinfo);
 
-}  // namespace kudu
+}  // namespace yb

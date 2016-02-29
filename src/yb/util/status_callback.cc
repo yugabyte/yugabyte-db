@@ -18,10 +18,10 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
-namespace kudu {
+namespace yb {
 
 void DoNothingStatusCB(const Status& status) {}
 
 Status DoNothingStatusClosure() { return Status::OK(); }
 
-} // end namespace kudu
+} // end namespace yb

@@ -31,7 +31,7 @@
 using google::protobuf::io::ZeroCopyOutputStream;
 using google::protobuf::io::Printer;
 
-namespace kudu {
+namespace yb {
 
 static const char* const kIncludeToInsert = "#include \"yb/util/protobuf-annotations.h\"\n";
 static const char* const kProtoExtension = ".proto";
@@ -64,9 +64,9 @@ class InsertAnnotations : public ::google::protobuf::compiler::CodeGenerator {
   }
 };
 
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char *argv[]) {
-  kudu::InsertAnnotations generator;
+  yb::InsertAnnotations generator;
   return google::protobuf::compiler::PluginMain(argc, argv, &generator);
 }

@@ -41,7 +41,7 @@
 #include "yb/util/object_pool.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class DumpRunningRpcsRequestPB;
@@ -283,6 +283,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

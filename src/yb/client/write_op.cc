@@ -22,7 +22,7 @@
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 using sp::shared_ptr;
@@ -105,4 +105,4 @@ KuduDelete::KuduDelete(const shared_ptr<KuduTable>& table)
 KuduDelete::~KuduDelete() {}
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

@@ -53,11 +53,11 @@ using std::shared_ptr;
 using base::subtle::Barrier_AtomicIncrement;
 using strings::Substitute;
 
-using kudu::consensus::MinimumOpId;
-using kudu::consensus::OpId;
-using kudu::consensus::RaftConfigPB;
+using yb::consensus::MinimumOpId;
+using yb::consensus::OpId;
+using yb::consensus::RaftConfigPB;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 const int64 kNoDurableMemStore = -1;
@@ -633,4 +633,4 @@ TabletDataState TabletMetadata::tablet_data_state() const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

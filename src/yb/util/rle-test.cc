@@ -46,7 +46,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 const int MAX_WIDTH = 32;
 
@@ -524,4 +524,4 @@ TEST_F(TestRle, TestSkip) {
 
   encoder.Flush();
 }
-} // namespace kudu
+} // namespace yb

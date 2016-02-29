@@ -23,7 +23,7 @@
 #include <vector>
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 // Solver for the 0-1 knapsack problem. This uses dynamic programming
 // to solve the problem exactly.
@@ -265,5 +265,5 @@ void KnapsackSolver<Traits>::KnapsackBlackboard::Advance(value_type new_val, int
   cur_item_idx_++;
 }
 
-} // namespace kudu
+} // namespace yb
 #endif

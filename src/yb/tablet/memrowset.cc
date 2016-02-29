@@ -41,7 +41,7 @@ TAG_FLAG(mrs_use_codegen, hidden);
 using std::pair;
 using std::shared_ptr;
 
-namespace kudu { namespace tablet {
+namespace yb { namespace tablet {
 
 using consensus::OpId;
 using log::LogAnchorRegistry;
@@ -627,4 +627,4 @@ Status MemRowSet::Iterator::GetCurrentRow(RowBlockRow* dst_row,
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -23,7 +23,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 
 class MonitoredTask : public RefCountedThreadSafe<MonitoredTask> {
  public:
@@ -56,6 +56,6 @@ class MonitoredTask : public RefCountedThreadSafe<MonitoredTask> {
     virtual MonoTime completion_timestamp() const = 0;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

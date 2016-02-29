@@ -20,7 +20,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 Status Slice::check_size(size_t expected_size) const {
   if (PREDICT_FALSE(size() != expected_size)) {
@@ -70,4 +70,4 @@ std::string Slice::ToDebugString(size_t max_len) const {
   return ret;
 }
 
-}  // namespace kudu
+}  // namespace yb

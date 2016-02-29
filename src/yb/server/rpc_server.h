@@ -27,7 +27,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 namespace rpc {
 class AcceptorPool;
@@ -90,6 +90,6 @@ class RpcServer {
   DISALLOW_COPY_AND_ASSIGN(RpcServer);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

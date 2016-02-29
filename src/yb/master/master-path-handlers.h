@@ -24,7 +24,7 @@
 #include <sstream>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 
@@ -84,5 +84,5 @@ class MasterPathHandlers {
 void HandleTabletServersPage(const Webserver::WebRequest& req, std::stringstream* output);
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_MASTER_MASTER_PATH_HANDLERS_H */

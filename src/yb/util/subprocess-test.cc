@@ -25,7 +25,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class SubprocessTest : public KuduTest {};
 
@@ -105,4 +105,4 @@ TEST_F(SubprocessTest, TestKill) {
   ASSERT_EQ(SIGKILL, WTERMSIG(wait_status));
 }
 
-} // namespace kudu
+} // namespace yb

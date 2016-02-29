@@ -30,7 +30,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 class Histogram;
@@ -72,7 +72,7 @@ class ServicePool : public RpcService {
  private:
   void RunThread();
   gscoped_ptr<ServiceIf> service_;
-  std::vector<scoped_refptr<kudu::Thread> > threads_;
+  std::vector<scoped_refptr<yb::Thread> > threads_;
   BlockingQueue<InboundCall*> service_queue_;
   scoped_refptr<Histogram> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
@@ -85,6 +85,6 @@ class ServicePool : public RpcService {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

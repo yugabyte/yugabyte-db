@@ -27,7 +27,7 @@
 #include "yb/gutil/port.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 
 // Wrapper for POSIX semaphores.
 class Semaphore {
@@ -72,5 +72,5 @@ class Semaphore {
   DISALLOW_COPY_AND_ASSIGN(Semaphore);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_SEMAPHORE_H */

@@ -21,7 +21,7 @@
 
 #include <gtest/gtest.h>
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 
@@ -107,4 +107,4 @@ TEST(CallbackBindTest, TestRefCounting) {
   ASSERT_EQ(0, countable.refs);
 }
 
-} // namespace kudu
+} // namespace yb

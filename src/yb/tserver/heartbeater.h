@@ -21,7 +21,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 class TabletServer;
@@ -50,5 +50,5 @@ class Heartbeater {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TSERVER_HEARTBEATER_H */

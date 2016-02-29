@@ -65,7 +65,7 @@ using std::stringstream;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 namespace {
@@ -330,4 +330,4 @@ void ServerBase::Shutdown() {
 }
 
 } // namespace server
-} // namespace kudu
+} // namespace yb

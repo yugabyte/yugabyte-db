@@ -26,7 +26,7 @@
 #include "yb/util/env.h"
 #include "yb/util/test_macros.h"
 
-namespace kudu {
+namespace yb {
 
 class KuduTest : public ::testing::Test {
  public:
@@ -79,5 +79,5 @@ int SeedRandom();
 // May only be called from within a gtest unit test.
 std::string GetTestDataDirectory();
 
-} // namespace kudu
+} // namespace yb
 #endif

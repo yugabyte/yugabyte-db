@@ -54,7 +54,7 @@ struct per_cpu_lock {
   per_cpu_lock() {
     errno = 0;
     n_cpus_ = base::NumCPUs();
-    CHECK_EQ(errno, 0) << kudu::ErrnoToString(errno);
+    CHECK_EQ(errno, 0) << yb::ErrnoToString(errno);
     CHECK_GT(n_cpus_, 0);
     locks_ = new padded_lock[n_cpus_];
   }
@@ -79,10 +79,10 @@ struct shared_data {
     errno = 0;
   }
 
-  kudu::rw_spinlock rw_spinlock;
+  yb::rw_spinlock rw_spinlock;
   boost::shared_mutex rwlock;
   boost::mutex lock;
-  kudu::percpu_rwlock per_cpu;
+  yb::percpu_rwlock per_cpu;
 };
 
 
@@ -157,7 +157,7 @@ void own_mutex_entry() {
 void percpu_rwlock_entry(shared_data *shared) {
   float result = 1;
   for (int i = 0; i < 1000000; i++) {
-    kudu::rw_spinlock &l = shared->per_cpu.get_lock();
+    yb::rw_spinlock &l = shared->per_cpu.get_lock();
     l.lock_shared();
     result += workload(result);
     l.unlock_shared();

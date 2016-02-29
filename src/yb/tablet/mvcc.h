@@ -26,7 +26,7 @@
 #include "yb/server/clock.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 class CountDownLatch;
 namespace tablet {
 class MvccManager;
@@ -461,6 +461,6 @@ class ScopedTransaction {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

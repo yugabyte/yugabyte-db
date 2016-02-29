@@ -29,7 +29,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/rw_semaphore.h"
 
-namespace kudu {
+namespace yb {
 
 using base::subtle::Acquire_CompareAndSwap;
 using base::subtle::NoBarrier_Load;
@@ -326,6 +326,6 @@ class shared_lock {
   DISALLOW_COPY_AND_ASSIGN(shared_lock<Mutex>);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

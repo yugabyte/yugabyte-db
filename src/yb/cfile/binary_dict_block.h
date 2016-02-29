@@ -50,7 +50,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 class Arena;
 namespace cfile {
 
@@ -163,10 +163,10 @@ class BinaryDictBlockDecoder : public BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 // Defined for tight_enum_test_cast<> -- has to be defined outside of any namespace.
-MAKE_ENUM_LIMITS(kudu::cfile::DictEncodingMode, kudu::cfile::DictEncodingMode_min,
-                 kudu::cfile::DictEncodingMode_max);
+MAKE_ENUM_LIMITS(yb::cfile::DictEncodingMode, yb::cfile::DictEncodingMode_min,
+                 yb::cfile::DictEncodingMode_max);
 
 #endif // KUDU_CFILE_BINARY_DICT_BLOCK_H

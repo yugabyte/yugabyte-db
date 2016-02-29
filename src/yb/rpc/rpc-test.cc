@@ -31,14 +31,14 @@
 #include "yb/util/env.h"
 #include "yb/util/test_util.h"
 
-METRIC_DECLARE_histogram(handler_latency_kudu_rpc_test_CalculatorService_Sleep);
+METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
 METRIC_DECLARE_histogram(rpc_incoming_queue_time);
 
 using std::string;
 using std::shared_ptr;
 using std::unordered_map;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class TestRpc : public RpcTestBase {
@@ -443,7 +443,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 
   scoped_refptr<Histogram> latency_histogram = down_cast<Histogram *>(
       FindOrDie(metric_map,
-                &METRIC_handler_latency_kudu_rpc_test_CalculatorService_Sleep).get());
+                &METRIC_handler_latency_yb_rpc_test_CalculatorService_Sleep).get());
 
   LOG(INFO) << "Sleep() min lat: " << latency_histogram->MinValueForTests();
   LOG(INFO) << "Sleep() mean lat: " << latency_histogram->MeanValueForTests();
@@ -512,4 +512,4 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

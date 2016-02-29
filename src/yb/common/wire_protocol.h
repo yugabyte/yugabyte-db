@@ -24,7 +24,7 @@
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class ConstContiguousRow;
 class ColumnSchema;
@@ -146,5 +146,5 @@ Status ExtractRowsFromRowBlockPB(const Schema& schema,
 Status FindLeaderHostPort(const google::protobuf::RepeatedPtrField<ServerEntryPB>& entries,
                           HostPort* leader_hostport);
 
-} // namespace kudu
+} // namespace yb
 #endif

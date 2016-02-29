@@ -21,7 +21,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace crc {
 
 using strings::Substitute;
@@ -88,4 +88,4 @@ TEST_F(CrcTest, BenchmarkCRC32C) {
 }
 
 } // namespace crc
-} // namespace kudu
+} // namespace yb

@@ -43,7 +43,7 @@ TAG_FLAG(rpc_dump_all_traces, advanced);
 TAG_FLAG(rpc_dump_all_traces, runtime);
 
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 InboundCall::InboundCall(Connection* conn)
@@ -275,4 +275,4 @@ MonoTime InboundCall::GetClientDeadline() const {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

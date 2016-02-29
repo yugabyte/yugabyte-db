@@ -36,7 +36,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class FsManager;
 
@@ -185,6 +185,6 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TSERVER_REMOTE_BOOTSTRAP_SESSION_H_

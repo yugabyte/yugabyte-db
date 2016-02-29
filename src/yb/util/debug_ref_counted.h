@@ -23,7 +23,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/debug-util.h"
 
-namespace kudu {
+namespace yb {
 
 // For use in debugging. Change a ref-counted class to inherit from this,
 // instead of RefCountedThreadSafe, and fill your logs with stack traces.
@@ -51,6 +51,6 @@ class DebugRefCountedThreadSafe : public RefCountedThreadSafe<T, Traits> {
   DISALLOW_COPY_AND_ASSIGN(DebugRefCountedThreadSafe);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_DEBUG_REF_COUNTED_H_

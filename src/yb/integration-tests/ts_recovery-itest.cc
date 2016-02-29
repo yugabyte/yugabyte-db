@@ -24,7 +24,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 class TsRecoveryITest : public KuduTest {
  public:
@@ -135,4 +135,4 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
                                        MonoDelta::FromSeconds(30)));
 }
 
-} // namespace kudu
+} // namespace yb

@@ -31,7 +31,7 @@
 #include "yb/util/status.h"
 #include "yb/util/net/socket.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using std::string;
@@ -162,6 +162,6 @@ class SaslClient {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif  // KUDU_RPC_SASL_CLIENT_H

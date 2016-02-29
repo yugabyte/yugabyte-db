@@ -43,24 +43,24 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
-using kudu::client::KuduRowResult;
-using kudu::HostPort;
-using kudu::rpc::Messenger;
-using kudu::rpc::MessengerBuilder;
-using kudu::rpc::RpcController;
-using kudu::server::ServerStatusPB;
-using kudu::Sockaddr;
-using kudu::client::KuduScanBatch;
-using kudu::tablet::TabletStatusPB;
-using kudu::tserver::DeleteTabletRequestPB;
-using kudu::tserver::DeleteTabletResponsePB;
-using kudu::tserver::ListTabletsRequestPB;
-using kudu::tserver::ListTabletsResponsePB;
-using kudu::tserver::NewScanRequestPB;
-using kudu::tserver::ScanRequestPB;
-using kudu::tserver::ScanResponsePB;
-using kudu::tserver::TabletServerAdminServiceProxy;
-using kudu::tserver::TabletServerServiceProxy;
+using yb::client::KuduRowResult;
+using yb::HostPort;
+using yb::rpc::Messenger;
+using yb::rpc::MessengerBuilder;
+using yb::rpc::RpcController;
+using yb::server::ServerStatusPB;
+using yb::Sockaddr;
+using yb::client::KuduScanBatch;
+using yb::tablet::TabletStatusPB;
+using yb::tserver::DeleteTabletRequestPB;
+using yb::tserver::DeleteTabletResponsePB;
+using yb::tserver::ListTabletsRequestPB;
+using yb::tserver::ListTabletsResponsePB;
+using yb::tserver::NewScanRequestPB;
+using yb::tserver::ScanRequestPB;
+using yb::tserver::ScanResponsePB;
+using yb::tserver::TabletServerAdminServiceProxy;
+using yb::tserver::TabletServerServiceProxy;
 using std::ostringstream;
 using std::shared_ptr;
 using std::string;
@@ -101,14 +101,14 @@ DEFINE_bool(force, false, "If true, allows the set_flag command to set a flag "
 // the error to cerr and return a non-zero exit code. Should be used in main().
 #define RETURN_NOT_OK_PREPEND_FROM_MAIN(to_call, to_prepend) \
   do { \
-    ::kudu::Status s = (to_call); \
+    ::yb::Status s = (to_call); \
     if (!s.ok()) { \
       std::cerr << (to_prepend) << ": " << s.ToString() << std::endl; \
       return 1; \
     } \
   } while (0);
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
@@ -248,7 +248,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   RETURN_NOT_OK(GetTabletSchema(tablet_id, &schema_pb));
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(schema_pb, &schema));
-  kudu::client::KuduSchema client_schema(schema);
+  yb::client::KuduSchema client_schema(schema);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -486,8 +486,8 @@ static int TsCliMain(int argc, char** argv) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::tools::TsCliMain(argc, argv);
+  return yb::tools::TsCliMain(argc, argv);
 }

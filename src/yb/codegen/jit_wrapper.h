@@ -29,7 +29,7 @@ namespace llvm {
 class ExecutionEngine;
 } // namespace llvm
 
-namespace kudu {
+namespace yb {
 
 class faststring;
 
@@ -74,6 +74,6 @@ class JITWrapper : public RefCountedThreadSafe<JITWrapper> {
 };
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif

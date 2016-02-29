@@ -27,7 +27,7 @@
 
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 // Utility methods to read interesting values from /proc.
 // TODO: Get stats for parent process.
@@ -60,6 +60,6 @@ Status GetThreadStats(int64_t tid, ThreadStats* stats);
 // first 1k of output otherwise.
 bool RunShellProcess(const std::string& cmd, std::string* msg);
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_UTIL_OS_UTIL_H */

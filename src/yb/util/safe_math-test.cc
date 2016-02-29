@@ -23,7 +23,7 @@
 #include <gtest/gtest.h>
 #include "yb/util/safe_math.h"
 
-namespace kudu {
+namespace yb {
 template<typename T>
 static void DoTest(T a, T b, bool expected) {
   SCOPED_TRACE(a);
@@ -53,4 +53,4 @@ TEST(TestSafeMath, TestUnsignedInts) {
   DoTest<uint32_t>(MathLimits<uint32_t>::kMax - 10, 10, false);
 }
 
-} // namespace kudu
+} // namespace yb

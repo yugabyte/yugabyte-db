@@ -28,7 +28,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class BlockId;
 class BlockIdPB;
@@ -211,5 +211,5 @@ class RemoteBootstrapClient {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H */

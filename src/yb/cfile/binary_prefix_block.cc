@@ -30,10 +30,10 @@
 #include "yb/util/hexdump.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
-using kudu::coding::AppendGroupVarInt32;
+using yb::coding::AppendGroupVarInt32;
 using strings::Substitute;
 
 ////////////////////////////////////////////////////////////
@@ -479,7 +479,7 @@ const uint8_t *BinaryPrefixBlockDecoder::DecodeEntryLengths(
 
   // data ends where the restart info begins
   const uint8_t *limit = reinterpret_cast<const uint8_t *>(restarts_);
-  return kudu::cfile::DecodeEntryLengths(ptr, limit, shared, non_shared);
+  return yb::cfile::DecodeEntryLengths(ptr, limit, shared, non_shared);
 }
 
 Status BinaryPrefixBlockDecoder::SkipForward(int n) {
@@ -566,4 +566,4 @@ inline Status BinaryPrefixBlockDecoder::ParseNextValue() {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

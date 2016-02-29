@@ -21,7 +21,7 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
 
-namespace kudu {
+namespace yb {
 
 // A read-write-commit lock.
 //
@@ -132,5 +132,5 @@ class RWCLock {
   DISALLOW_COPY_AND_ASSIGN(RWCLock);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_RWC_LOCK_H */

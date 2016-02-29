@@ -29,7 +29,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 TEST(StatusTest, TestPosixCode) {
   Status ok = Status::OK();
@@ -112,4 +112,4 @@ TEST(StatusTest, TestMoveAssignment) {
 }
 
 
-}  // namespace kudu
+}  // namespace yb

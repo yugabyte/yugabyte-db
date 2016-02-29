@@ -57,7 +57,7 @@ DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
     } \
   } while (0)
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using std::ostringstream;
@@ -419,8 +419,8 @@ static int ClusterAdminCliMain(int argc, char** argv) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::tools::ClusterAdminCliMain(argc, argv);
+  return yb::tools::ClusterAdminCliMain(argc, argv);
 }

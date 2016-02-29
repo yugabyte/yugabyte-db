@@ -30,7 +30,7 @@
 #include "yb/util/random.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 
 using client::FromInternalCompressionType;
 using client::FromInternalDataType;
@@ -225,8 +225,8 @@ void TestWorkload::Start() {
   should_run_.Store(true);
   start_latch_.Reset(num_write_threads_);
   for (int i = 0; i < num_write_threads_; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("test-writer-$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("test-writer-$0", i),
                                   &TestWorkload::WriteThread, this,
                                   &new_thread));
     threads_.push_back(new_thread);
@@ -236,10 +236,10 @@ void TestWorkload::Start() {
 void TestWorkload::StopAndJoin() {
   should_run_.Store(false);
   start_latch_.Reset(0);
-  for (scoped_refptr<kudu::Thread> thr : threads_) {
+  for (scoped_refptr<yb::Thread> thr : threads_) {
    CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
   threads_.clear();
 }
 
-} // namespace kudu
+} // namespace yb

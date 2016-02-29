@@ -26,7 +26,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 class Socket;
@@ -65,7 +65,7 @@ class AcceptorPool {
   Messenger *messenger_;
   Socket socket_;
   Sockaddr bind_address_;
-  std::vector<scoped_refptr<kudu::Thread> > threads_;
+  std::vector<scoped_refptr<yb::Thread> > threads_;
 
   scoped_refptr<Counter> rpc_connections_accepted_;
 
@@ -75,5 +75,5 @@ class AcceptorPool {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif

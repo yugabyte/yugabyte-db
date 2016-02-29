@@ -27,7 +27,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 // Test the KLOG_EVERY_N_SECS(...) macro.
 TEST(LoggingTest, TestThrottledLogging) {
@@ -48,4 +48,4 @@ TEST(LoggingTest, TestThrottledLogging) {
   EXPECT_THAT(msgs[1], testing::ContainsRegex("\\[suppressed [0-9]{3,} similar messages\\]"));
 }
 
-} // namespace kudu
+} // namespace yb

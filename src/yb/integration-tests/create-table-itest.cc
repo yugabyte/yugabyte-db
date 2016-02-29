@@ -34,10 +34,10 @@ using std::string;
 using std::vector;
 
 METRIC_DECLARE_entity(server);
-METRIC_DECLARE_histogram(handler_latency_kudu_tserver_TabletServerAdminService_CreateTablet);
-METRIC_DECLARE_histogram(handler_latency_kudu_tserver_TabletServerAdminService_DeleteTablet);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_DeleteTablet);
 
-namespace kudu {
+namespace yb {
 
 const char* const kTableName = "test-table";
 
@@ -77,7 +77,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
     ASSERT_OK(cluster_->tablet_server(0)->GetInt64Metric(
         &METRIC_ENTITY_server,
         "kudu.tabletserver",
-        &METRIC_handler_latency_kudu_tserver_TabletServerAdminService_CreateTablet,
+        &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
         "total_count",
         &num_create_attempts));
     LOG(INFO) << "Waiting for the master to retry creating the tablet 3 times... "
@@ -187,4 +187,4 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   ASSERT_GE(avg_num_peers, kNumServers / 2);
 }
 
-} // namespace kudu
+} // namespace yb

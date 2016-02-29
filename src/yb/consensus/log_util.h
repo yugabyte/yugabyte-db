@@ -36,7 +36,7 @@
 // Used by other classes, now part of the API.
 DECLARE_bool(log_force_fsync_all);
 
-namespace kudu {
+namespace yb {
 
 namespace consensus {
 struct OpIdBiggerThanFunctor;
@@ -392,6 +392,6 @@ void CreateBatchFromAllocatedOperations(const std::vector<consensus::ReplicateRe
 bool IsLogFileName(const std::string& fname);
 
 }  // namespace log
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_LOG_UTIL_H_ */

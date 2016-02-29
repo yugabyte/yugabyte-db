@@ -54,7 +54,7 @@ METRIC_DECLARE_entity(tablet);
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 
 namespace rpc {
 class RpcContext;
@@ -1121,4 +1121,4 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

@@ -35,7 +35,7 @@
 #include "yb/util/coding-inl.h"
 #include "yb/util/hexdump.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 
@@ -372,5 +372,5 @@ Status BShufBlockDecoder<UINT32>::CopyNextValuesToArray(size_t* n, uint8_t* arra
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

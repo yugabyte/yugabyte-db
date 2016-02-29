@@ -24,7 +24,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/rwc_lock.h"
 
-namespace kudu {
+namespace yb {
 
 // An object which manages its state via copy-on-write.
 //
@@ -215,5 +215,5 @@ class CowLock {
   DISALLOW_COPY_AND_ASSIGN(CowLock);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_COW_OBJECT_H */

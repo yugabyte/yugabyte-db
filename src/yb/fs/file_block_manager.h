@@ -29,7 +29,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/random.h"
 
-namespace kudu {
+namespace yb {
 
 class Env;
 class MemTracker;
@@ -148,6 +148,6 @@ class FileBlockManager : public BlockManager {
 };
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb
 
 #endif

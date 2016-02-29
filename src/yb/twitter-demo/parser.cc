@@ -26,7 +26,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/jsonreader.h"
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 TwitterEventParser::TwitterEventParser() {
@@ -100,4 +100,4 @@ string TwitterEventParser::ReformatTime(const string& twitter_time) {
 
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb

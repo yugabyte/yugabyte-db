@@ -20,13 +20,13 @@
 #include "yb/client/write_op.h"
 #include "yb/common/wire_protocol.pb.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
 RowOperationsPB_Type ToInternalWriteType(KuduWriteOperation::Type type);
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

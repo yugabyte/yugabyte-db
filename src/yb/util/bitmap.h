@@ -22,7 +22,7 @@
 #include <string>
 #include "yb/gutil/bits.h"
 
-namespace kudu {
+namespace yb {
 
 // Return the number of bytes necessary to store the given number of bits.
 inline size_t BitmapSize(size_t num_bits) {
@@ -207,6 +207,6 @@ class TrueBitIterator {
   size_t bit_idx_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

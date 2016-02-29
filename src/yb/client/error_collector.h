@@ -25,7 +25,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 class KuduError;
@@ -57,5 +57,5 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
 
 } // namespace internal
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CLIENT_ERROR_COLLECTOR_H */

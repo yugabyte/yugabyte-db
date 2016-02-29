@@ -40,7 +40,7 @@ METRIC_DECLARE_entity(tablet);
 using std::shared_ptr;
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::Log;
@@ -749,4 +749,4 @@ TEST_F(RaftConsensusTest, TestResetRcvdFromCurrentLeaderOnNewTerm) {
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

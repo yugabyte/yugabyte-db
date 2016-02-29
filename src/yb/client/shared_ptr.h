@@ -36,7 +36,7 @@
 #if defined(__APPLE__)
 #include <memory>
 
-namespace kudu {
+namespace yb {
 namespace client {
 namespace sp {
   using std::shared_ptr;
@@ -49,7 +49,7 @@ namespace sp {
 #else
 #include <tr1/memory>
 
-namespace kudu {
+namespace yb {
 namespace client {
 namespace sp {
   using std::tr1::shared_ptr;

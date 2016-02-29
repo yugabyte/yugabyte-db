@@ -22,7 +22,7 @@
 // Note namespace scope is just for convenient symbol resolution.
 // To preserve function names, extern "C" linkage is used, so these
 // functions (1) must not be duplicated in any of the above headers
-// and (2) do not belong to namespace kudu.
+// and (2) do not belong to namespace yb.
 //
 // NOTE: This file may rely on external definitions from any part of Kudu
 // because the code generator will resolve external symbols at load time.
@@ -62,7 +62,7 @@ extern "C" void *__dso_handle __attribute__((__visibility__("hidden"))) = NULL;
 #define IR_ALWAYS_INLINE
 #endif
 
-namespace kudu {
+namespace yb {
 
 // Returns whether copy was successful (fails iff slice relocation fails,
 // which can only occur if is_string is true).
@@ -161,4 +161,4 @@ IR_ALWAYS_INLINE void _PrecompiledCopyCellToRowBlockSetNull(
 }
 
 } // extern "C"
-} // namespace kudu
+} // namespace yb

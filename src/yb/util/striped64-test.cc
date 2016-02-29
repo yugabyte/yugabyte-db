@@ -25,7 +25,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 
 // These flags are used by the multi-threaded tests, can be used for microbenchmarking.
 DEFINE_int32(num_operations, 10*1000, "Number of operations to perform");
@@ -149,4 +149,4 @@ TEST(Striped64Test, TestMultiIncrDecr) {
   RunMultiTest(FLAGS_num_operations, FLAGS_num_threads);
 }
 
-}  // namespace kudu
+}  // namespace yb

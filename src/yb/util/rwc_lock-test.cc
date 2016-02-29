@@ -24,7 +24,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 using base::subtle::NoBarrier_Load;
 using base::subtle::Release_Store;
@@ -140,4 +140,4 @@ TEST_F(RWCLockTest, TestCorrectBehavior) {
 
 }
 
-} // namespace kudu
+} // namespace yb

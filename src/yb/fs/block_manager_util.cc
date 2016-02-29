@@ -32,7 +32,7 @@
 
 DECLARE_bool(enable_data_block_fsync);
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 using std::set;
@@ -172,4 +172,4 @@ Status PathInstanceMetadataFile::CheckIntegrity(
 }
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

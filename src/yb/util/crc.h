@@ -22,7 +22,7 @@
 
 #include <crcutil/interface.h>
 
-namespace kudu {
+namespace yb {
 namespace crc {
 
 typedef crcutil_interface::CRC Crc;
@@ -34,6 +34,6 @@ Crc* GetCrc32cInstance();
 uint32_t Crc32c(const void* data, size_t length);
 
 } // namespace crc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_CRC_H_

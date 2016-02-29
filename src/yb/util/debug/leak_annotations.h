@@ -40,7 +40,7 @@ extern "C" {
   void __lsan_do_leak_check();
 }  // extern "C"
 
-namespace kudu {
+namespace yb {
 namespace debug {
 class ScopedLSANDisabler {
  public:
@@ -48,6 +48,6 @@ class ScopedLSANDisabler {
   ~ScopedLSANDisabler() { __lsan_enable(); }
 };
 } // namespace debug
-} // namespace kudu
+} // namespace yb
 
 #endif  // KUDU_UTIL_DEBUG_LEAK_ANNOTATIONS_H_

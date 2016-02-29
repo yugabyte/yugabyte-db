@@ -31,7 +31,7 @@
 #include "yb/util/random.h"
 #include "yb/util/status_callback.h"
 
-namespace kudu {
+namespace yb {
 class MonoDelta;
 class MonoTime;
 class Status;
@@ -174,6 +174,6 @@ class RandomizedFailureMonitor {
   DISALLOW_COPY_AND_ASSIGN(RandomizedFailureMonitor);
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_UTIL_FAILURE_DETECTOR_H_ */

@@ -21,7 +21,7 @@
 
 #include "yb/common/row.h"
 
-namespace kudu {
+namespace yb {
 namespace row_key_util {
 
 namespace {
@@ -115,4 +115,4 @@ bool IncrementKeyPrefix(ContiguousRow* row, int prefix_len, Arena* arena) {
 }
 
 } // namespace row_key_util
-} // namespace kudu
+} // namespace yb

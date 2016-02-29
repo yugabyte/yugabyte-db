@@ -29,7 +29,7 @@
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::string;
@@ -736,5 +736,5 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 

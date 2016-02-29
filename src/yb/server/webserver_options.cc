@@ -27,11 +27,11 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 static std::string GetDefaultDocumentRoot();
 
-} // namespace kudu
+} // namespace yb
 
 // Flags defining web server behavior. The class implementation should
 // not use these directly, but rather access them via WebserverOptions.
@@ -41,7 +41,7 @@ DEFINE_string(webserver_interface, "",
     "Interface to start debug webserver on. If blank, webserver binds to 0.0.0.0");
 TAG_FLAG(webserver_interface, advanced);
 
-DEFINE_string(webserver_doc_root, kudu::GetDefaultDocumentRoot(),
+DEFINE_string(webserver_doc_root, yb::GetDefaultDocumentRoot(),
     "Files under <webserver_doc_root> are accessible via the debug webserver. "
     "Defaults to $KUDU_HOME/www, or if $KUDU_HOME is not set, disables the document "
     "root");
@@ -69,7 +69,7 @@ DEFINE_int32(webserver_port, 0,
              "Port to bind to for the web server");
 TAG_FLAG(webserver_port, stable);
 
-namespace kudu {
+namespace yb {
 
 // Returns KUDU_HOME if set, otherwise we won't serve any static files.
 static string GetDefaultDocumentRoot() {
@@ -89,4 +89,4 @@ WebserverOptions::WebserverOptions()
     num_worker_threads(FLAGS_webserver_num_worker_threads) {
 }
 
-} // namespace kudu
+} // namespace yb

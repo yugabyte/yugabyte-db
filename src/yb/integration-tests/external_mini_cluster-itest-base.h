@@ -31,7 +31,7 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 // Simple base utility class to provide an external mini cluster with common
 // setup routines useful for integration tests.
@@ -88,6 +88,6 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   ASSERT_OK(cluster_->CreateClient(builder, &client_));
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_

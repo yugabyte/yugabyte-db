@@ -33,7 +33,7 @@
 #include "yb/util/hexdump.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 BinaryDictBlockBuilder::BinaryDictBlockBuilder(const WriterOptions* options)
@@ -270,4 +270,4 @@ Status BinaryDictBlockDecoder::CopyNextValues(size_t* n, ColumnDataView* dst) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

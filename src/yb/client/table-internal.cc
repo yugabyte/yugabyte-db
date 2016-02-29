@@ -28,7 +28,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
@@ -149,4 +149,4 @@ Status KuduTable::Data::Open() {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

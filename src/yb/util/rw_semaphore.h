@@ -27,7 +27,7 @@
 
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 
 // Read-Write semaphore. 32bit uint that contains the number of readers.
 // When someone wants to write, tries to set the 32bit, and waits until
@@ -191,5 +191,5 @@ class rw_semaphore {
 #endif // NDEBUG
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_RW_SEMAPHORE_H */

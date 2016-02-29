@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu.tserver;
+package yb.tserver;
 
-option java_package = "org.kududb.tserver";
+option java_package = "org.yb.tserver";
 
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
@@ -45,7 +45,7 @@ service RemoteBootstrapService {
 
 // Remote bootstrap-specific errors use this protobuf.
 message RemoteBootstrapErrorPB {
-  extend kudu.rpc.ErrorStatusPB {
+  extend yb.rpc.ErrorStatusPB {
     optional RemoteBootstrapErrorPB remote_bootstrap_error_ext = 102;
   }
 

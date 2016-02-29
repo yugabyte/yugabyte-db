@@ -26,7 +26,7 @@
 #include "yb/cfile/cfile_writer.h"
 #include "yb/tablet/deltafile.h"
 
-namespace kudu {
+namespace yb {
 
 namespace metadata {
 class RowSetMetadata;
@@ -135,6 +135,6 @@ class MajorDeltaCompaction {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

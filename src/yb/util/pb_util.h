@@ -17,7 +17,7 @@
 //
 // Utilities for dealing with protocol buffers.
 // These are mostly just functions similar to what are found in the protobuf
-// library itself, but using kudu::faststring instances instead of STL strings.
+// library itself, but using yb::faststring instances instead of STL strings.
 #ifndef KUDU_UTIL_PB_UTIL_H
 #define KUDU_UTIL_PB_UTIL_H
 
@@ -37,7 +37,7 @@ class Message;
 }
 }
 
-namespace kudu {
+namespace yb {
 
 class Env;
 class RandomAccessFile;
@@ -305,5 +305,5 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                               SyncMode sync);
 
 } // namespace pb_util
-} // namespace kudu
+} // namespace yb
 #endif

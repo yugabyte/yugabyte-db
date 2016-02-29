@@ -48,7 +48,7 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 ///
@@ -616,4 +616,4 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

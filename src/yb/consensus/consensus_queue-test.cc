@@ -38,7 +38,7 @@ DECLARE_int32(consensus_max_batch_size_bytes);
 
 METRIC_DECLARE_entity(tablet);
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 static const char* kLeaderUuid = "peer-0";
@@ -816,4 +816,4 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

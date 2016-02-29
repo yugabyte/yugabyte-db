@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu.tablet;
+package yb.tablet;
 
-option java_package = "org.kududb.tablet";
+option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
@@ -43,7 +43,7 @@ message OperationResultPB {
   optional bool flushed = 1 [ default = false ];
 
   // set if this particular operation failed
-  optional kudu.AppStatusPB failed_status = 2;
+  optional yb.AppStatusPB failed_status = 2;
 
   // The stores that the operation affected.
   // For INSERTs, this will always be just one store.

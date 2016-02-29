@@ -20,7 +20,7 @@
 
 #include "yb/cfile/block_cache.h"
 
-namespace kudu {
+namespace yb {
 
 namespace cfile {
 
@@ -93,5 +93,5 @@ class BlockHandle {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

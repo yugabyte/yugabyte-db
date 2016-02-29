@@ -34,7 +34,7 @@
 #include <stdint.h>
 #include "yb/gutil/port.h"
 
-namespace kudu {
+namespace yb {
 
 // Utility class to do standard bit tricks
 // TODO: is this in boost or something else like that?
@@ -54,6 +54,6 @@ class BitUtil {
   }
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

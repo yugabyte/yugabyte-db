@@ -28,7 +28,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 
 class FsManagerTestBase : public KuduTest {
  public:
@@ -175,4 +175,4 @@ TEST_F(FsManagerTestBase, TestOnlyWALPath) {
   ASSERT_TRUE(HasPrefixString(data_dirs[0], path));
 }
 
-} // namespace kudu
+} // namespace yb

@@ -44,7 +44,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-namespace kudu {
+namespace yb {
 class HostPort;
 class MonoDelta;
 class Schema;
@@ -298,6 +298,6 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
                             const MonoDelta& timeout);
 
 } // namespace itest
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_

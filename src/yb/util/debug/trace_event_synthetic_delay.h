@@ -60,7 +60,7 @@
     trace_event_internal::GetOrCreateDelay(name, &impl_ptr)->End();   \
   } while (false)
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 // Time source for computing delay durations. Used for testing.
@@ -135,7 +135,7 @@ class TRACE_EVENT_API_CLASS_EXPORT TraceEventSyntheticDelay {
 TRACE_EVENT_API_CLASS_EXPORT void ResetTraceEventSyntheticDelays();
 
 }  // namespace debug
-}  // namespace kudu
+}  // namespace yb
 
 namespace trace_event_internal {
 
@@ -147,14 +147,14 @@ class TRACE_EVENT_API_CLASS_EXPORT ScopedSyntheticDelay {
   ~ScopedSyntheticDelay();
 
  private:
-  kudu::debug::TraceEventSyntheticDelay* delay_impl_;
-  kudu::MonoTime end_time_;
+  yb::debug::TraceEventSyntheticDelay* delay_impl_;
+  yb::MonoTime end_time_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedSyntheticDelay);
 };
 
 // Helper for registering delays. Do not use directly.
-TRACE_EVENT_API_CLASS_EXPORT kudu::debug::TraceEventSyntheticDelay*
+TRACE_EVENT_API_CLASS_EXPORT yb::debug::TraceEventSyntheticDelay*
     GetOrCreateDelay(const char* name, AtomicWord* impl_ptr);
 
 }  // namespace trace_event_internal

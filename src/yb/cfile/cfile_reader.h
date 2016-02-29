@@ -43,7 +43,7 @@
 #include "yb/common/iterator_stats.h"
 #include "yb/common/key_encoder.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 class BlockCache;
@@ -471,6 +471,6 @@ class CFileIterator : public ColumnIterator {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -30,7 +30,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 class KuduClient;
 class KuduTable;
@@ -88,5 +88,5 @@ class InsertConsumer : public TwitterConsumer {
 };
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb
 #endif

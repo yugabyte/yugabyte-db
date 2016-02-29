@@ -21,7 +21,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 class Histogram;
@@ -48,6 +48,6 @@ struct LogMetrics {
   ScopedLatencyMetric _h##_metric(_mtx ? _mtx->_h.get() : NULL)
 
 } // namespace log
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_CONSENSUS_LOG_METRICS_H

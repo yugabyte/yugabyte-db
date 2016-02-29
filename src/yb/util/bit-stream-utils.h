@@ -35,7 +35,7 @@
 #include "yb/util/bit-util.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 
 // Utility class to write bit/byte streams.  This class can write data to either be
 // bit packed or byte aligned (and a single stream that has a mix of both).
@@ -158,6 +158,6 @@ class BitReader {
   int bit_offset_;        // Offset in buffered_values_
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

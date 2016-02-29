@@ -21,7 +21,7 @@
 #include "yb/client/error_collector.h"
 #include "yb/client/shared_ptr.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -78,4 +78,4 @@ Status KuduSession::Data::Close(bool force) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

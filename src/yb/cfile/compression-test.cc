@@ -30,7 +30,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 static void TestCompressionCodec(CompressionType compression) {
@@ -128,4 +128,4 @@ TEST_F(TestCompression, TestCFileZlibReadWrite) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

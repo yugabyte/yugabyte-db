@@ -21,7 +21,7 @@
 #include <limits>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 using std::numeric_limits;
 using std::vector;
@@ -128,4 +128,4 @@ TEST(Atomic, AtomicBool) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

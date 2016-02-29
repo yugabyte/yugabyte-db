@@ -31,12 +31,12 @@
 #include "yb/util/subprocess.h"
 
 using boost::assign::list_of;
-using kudu::itest::TabletServerMap;
-using kudu::itest::TServerDetails;
+using yb::itest::TabletServerMap;
+using yb::itest::TServerDetails;
 using strings::Split;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 static const char* const kTsCliToolName = "yb-ts-cli";
@@ -95,4 +95,4 @@ TEST_F(KuduTsCliTest, TestDeleteTablet) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

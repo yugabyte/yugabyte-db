@@ -29,7 +29,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class DebugUtilTest : public KuduTest {
 };
@@ -38,7 +38,7 @@ TEST_F(DebugUtilTest, TestStackTrace) {
   StackTrace t;
   t.Collect(1);
   string trace = t.Symbolize();
-  ASSERT_STR_CONTAINS(trace, "kudu::DebugUtilTest_TestStackTrace_Test::TestBody");
+  ASSERT_STR_CONTAINS(trace, "yb::DebugUtilTest_TestStackTrace_Test::TestBody");
 }
 
 // DumpThreadStack is only supported on Linux, since the implementation relies
@@ -71,12 +71,12 @@ TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
 
 TEST_F(DebugUtilTest, TestStackTraceSelf) {
   string s = DumpThreadStack(Thread::CurrentThreadId());
-  ASSERT_STR_CONTAINS(s, "kudu::DebugUtilTest_TestStackTraceSelf_Test::TestBody()");
+  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceSelf_Test::TestBody()");
 }
 
 TEST_F(DebugUtilTest, TestStackTraceMainThread) {
   string s = DumpThreadStack(getpid());
-  ASSERT_STR_CONTAINS(s, "kudu::DebugUtilTest_TestStackTraceMainThread_Test::TestBody()");
+  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceMainThread_Test::TestBody()");
 }
 
 TEST_F(DebugUtilTest, TestSignalStackTrace) {
@@ -146,4 +146,4 @@ TEST_F(DebugUtilTest, TestDumpAllThreads) {
 }
 #endif
 
-} // namespace kudu
+} // namespace yb

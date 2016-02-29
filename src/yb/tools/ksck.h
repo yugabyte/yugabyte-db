@@ -31,7 +31,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class MonoDelta;
 namespace tools {
 
@@ -306,6 +306,6 @@ class Ksck {
   DISALLOW_COPY_AND_ASSIGN(Ksck);
 };
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TOOLS_KSCK_H

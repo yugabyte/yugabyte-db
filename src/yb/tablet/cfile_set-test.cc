@@ -29,7 +29,7 @@ DECLARE_int32(cfile_default_block_size);
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class TestCFileSet : public KuduRowSetTest {
@@ -313,4 +313,4 @@ TEST_F(TestCFileSet, TestRangePredicates2) {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -29,7 +29,7 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 class Schema;
 
 namespace tools {
@@ -86,7 +86,7 @@ class YB_EXPORT KuduScanBatch {
  private:
   class YB_NO_EXPORT Data;
   friend class KuduScanner;
-  friend class kudu::tools::TsAdminClient;
+  friend class yb::tools::TsAdminClient;
 
   Data* data_;
   DISALLOW_COPY_AND_ASSIGN(KuduScanBatch);
@@ -218,6 +218,6 @@ inline KuduScanBatch::const_iterator KuduScanBatch::end() const {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

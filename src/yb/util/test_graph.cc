@@ -28,7 +28,7 @@
 using std::shared_ptr;
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 void TimeSeries::AddValue(double val) {
   lock_guard<simple_spinlock> l(&lock_);
@@ -68,7 +68,7 @@ void TimeSeriesCollector::StartDumperThread() {
   CHECK(!started_);
   exit_latch_.Reset(1);
   started_ = true;
-  CHECK_OK(kudu::Thread::Create("time series", "dumper",
+  CHECK_OK(yb::Thread::Create("time series", "dumper",
       &TimeSeriesCollector::DumperThread, this, &dumper_thread_));
 }
 
@@ -112,4 +112,4 @@ void TimeSeriesCollector::BuildMetricsString(
 }
 
 
-} // namespace kudu
+} // namespace yb

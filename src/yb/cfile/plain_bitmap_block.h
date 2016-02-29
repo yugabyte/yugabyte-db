@@ -31,7 +31,7 @@
 #include "yb/util/coding-inl.h"
 #include "yb/util/hexdump.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 struct WriterOptions;
@@ -206,6 +206,6 @@ class PlainBitMapBlockDecoder : public BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

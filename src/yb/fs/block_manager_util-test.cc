@@ -28,7 +28,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 using google::protobuf::RepeatedPtrField;
@@ -177,4 +177,4 @@ TEST_F(KuduTest, CheckIntegrity) {
 }
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

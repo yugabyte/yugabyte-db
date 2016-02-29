@@ -149,7 +149,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 using base::subtle::NoBarrier_Load;
@@ -323,12 +323,12 @@ class CatalogManagerBgTasks {
   bool pending_updates_;
   mutable boost::mutex lock_;
   boost::condition_variable cond_;
-  scoped_refptr<kudu::Thread> thread_;
+  scoped_refptr<yb::Thread> thread_;
   CatalogManager *catalog_manager_;
 };
 
 Status CatalogManagerBgTasks::Init() {
-  RETURN_NOT_OK(kudu::Thread::Create("catalog manager", "bgtasks",
+  RETURN_NOT_OK(yb::Thread::Create("catalog manager", "bgtasks",
       &CatalogManagerBgTasks::Run, this, &thread_));
   return Status::OK();
 }
@@ -3335,4 +3335,4 @@ void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string&
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

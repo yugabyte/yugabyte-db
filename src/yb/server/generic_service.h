@@ -20,7 +20,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/server/server_base.service.h"
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 class ServerBase;
@@ -56,5 +56,5 @@ class GenericServiceImpl : public GenericServiceIf {
 };
 
 } // namespace server
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_GENERIC_SERVICE_H */

@@ -17,7 +17,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 extern void PutFixed32(faststring* dst, uint32_t value);
 extern void PutFixed64(faststring* dst, uint64_t value);
 extern void PutVarint32(faststring* dst, uint32_t value);
@@ -105,6 +105,6 @@ inline const uint8_t *GetVarint32Ptr(const uint8_t *p,
   return GetVarint32PtrFallback(p, limit, value);
 }
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // STORAGE_LEVELDB_UTIL_CODING_H_

@@ -20,7 +20,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 using strings::Substitute;
@@ -61,4 +61,4 @@ void IteratorStats::DCheckNonNegative() const {
 }
 
 
-} // namespace kudu
+} // namespace yb

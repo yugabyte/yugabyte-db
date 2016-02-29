@@ -4,11 +4,11 @@
 
 #include "yb/util/debug/trace_event_impl.h"
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 // Enable everything but debug and test categories by default.
 const char* CategoryFilter::kDefaultCategoryFilterString = "-*Debug,-*Test";
 
 }  // namespace debug
-}  // namespace kudu
+}  // namespace yb

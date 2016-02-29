@@ -38,12 +38,12 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-using kudu::rpc::ServiceIf;
-using kudu::tablet::TabletPeer;
+using yb::rpc::ServiceIf;
+using yb::tablet::TabletPeer;
 using std::shared_ptr;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
@@ -144,4 +144,4 @@ void TabletServer::Shutdown() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

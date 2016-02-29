@@ -20,36 +20,36 @@
 #include "yb/util/metrics.h"
 
 METRIC_DEFINE_counter(server, block_cache_inserts,
-                      "Block Cache Inserts", kudu::MetricUnit::kBlocks,
+                      "Block Cache Inserts", yb::MetricUnit::kBlocks,
                       "Number of blocks inserted in the cache");
 METRIC_DEFINE_counter(server, block_cache_lookups,
-                      "Block Cache Lookups", kudu::MetricUnit::kBlocks,
+                      "Block Cache Lookups", yb::MetricUnit::kBlocks,
                       "Number of blocks looked up from the cache");
 METRIC_DEFINE_counter(server, block_cache_evictions,
-                      "Block Cache Evictions", kudu::MetricUnit::kBlocks,
+                      "Block Cache Evictions", yb::MetricUnit::kBlocks,
                       "Number of blocks evicted from the cache");
 METRIC_DEFINE_counter(server, block_cache_misses,
-                      "Block Cache Misses", kudu::MetricUnit::kBlocks,
+                      "Block Cache Misses", yb::MetricUnit::kBlocks,
                       "Number of lookups that didn't yield a block");
 METRIC_DEFINE_counter(server, block_cache_misses_caching,
-                      "Block Cache Misses (Caching)", kudu::MetricUnit::kBlocks,
+                      "Block Cache Misses (Caching)", yb::MetricUnit::kBlocks,
                       "Number of lookups that were expecting a block that didn't yield one."
                       "Use this number instead of cache_misses when trying to determine how "
                       "efficient the cache is");
 METRIC_DEFINE_counter(server, block_cache_hits,
-                      "Block Cache Hits", kudu::MetricUnit::kBlocks,
+                      "Block Cache Hits", yb::MetricUnit::kBlocks,
                       "Number of lookups that found a block");
 METRIC_DEFINE_counter(server, block_cache_hits_caching,
-                      "Block Cache Hits (Caching)", kudu::MetricUnit::kBlocks,
+                      "Block Cache Hits (Caching)", yb::MetricUnit::kBlocks,
                       "Number of lookups that were expecting a block that found one."
                       "Use this number instead of cache_hits when trying to determine how "
                       "efficient the cache is");
 
 METRIC_DEFINE_gauge_uint64(server, block_cache_usage, "Block Cache Memory Usage",
-                           kudu::MetricUnit::kBytes,
+                           yb::MetricUnit::kBytes,
                            "Memory consumed by the block cache");
 
-namespace kudu {
+namespace yb {
 
 #define MINIT(member, x) member(METRIC_##x.Instantiate(entity))
 #define GINIT(member, x) member(METRIC_##x.Instantiate(entity, 0))
@@ -66,4 +66,4 @@ CacheMetrics::CacheMetrics(const scoped_refptr<MetricEntity>& entity)
 #undef MINIT
 #undef GINIT
 
-} // namespace kudu
+} // namespace yb

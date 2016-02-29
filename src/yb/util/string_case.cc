@@ -20,7 +20,7 @@
 #include <glog/logging.h>
 #include <ctype.h>
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 
@@ -70,4 +70,4 @@ void Capitalize(string *word) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

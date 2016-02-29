@@ -24,7 +24,7 @@
 
 using std::map;
 
-namespace kudu {
+namespace yb {
 
 TEST(FloorTest, TestMapUtil) {
   map<int, int> my_map;
@@ -45,4 +45,4 @@ TEST(FloorTest, TestMapUtil) {
 
 }
 
-} // namespace kudu
+} // namespace yb

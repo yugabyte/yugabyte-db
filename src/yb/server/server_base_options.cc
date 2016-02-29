@@ -20,7 +20,7 @@
 #include <gflags/gflags.h>
 #include "yb/util/flag_tags.h"
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 DEFINE_string(server_dump_info_path, "",
@@ -49,4 +49,4 @@ ServerBaseOptions::ServerBaseOptions()
 }
 
 } // namespace server
-} // namespace kudu
+} // namespace yb

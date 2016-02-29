@@ -23,7 +23,7 @@
 #include "yb/common/schema.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 
 class ConstContiguousRow;
 
@@ -113,5 +113,5 @@ class EncodedKeyBuilder {
   vector<const void *> raw_keys_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

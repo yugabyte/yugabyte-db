@@ -27,7 +27,7 @@
 
 DECLARE_bool(use_mock_wall_clock);
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 class HybridClockTest : public KuduTest {
@@ -213,7 +213,7 @@ void StresserThread(HybridClock* clock, AtomicBool* stop) {
 // Regression test for KUDU-953: if threads are updating and polling the
 // clock concurrently, the clock should still never run backwards.
 TEST_F(HybridClockTest, TestClockDoesntGoBackwardsWithUpdates) {
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
 
   AtomicBool stop(false);
   for (int i = 0; i < 4; i++) {
@@ -232,4 +232,4 @@ TEST_F(HybridClockTest, TestClockDoesntGoBackwardsWithUpdates) {
 }
 
 }  // namespace server
-}  // namespace kudu
+}  // namespace yb

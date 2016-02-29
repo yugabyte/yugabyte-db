@@ -25,7 +25,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-namespace kudu {
+namespace yb {
 
 // See top-level comments in kudu/gutil/atomicops.h for further
 // explanations of these levels.
@@ -316,5 +316,5 @@ inline void AtomicInt<T>::StoreMin(T new_value, MemoryOrder mem_order) {
   }
 }
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_ATOMIC_H */

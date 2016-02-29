@@ -25,7 +25,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 class LogAnchorRegistryTest : public KuduTest {
@@ -115,4 +115,4 @@ TEST_F(LogAnchorRegistryTest, TestOrderedEarliestOpId) {
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb
