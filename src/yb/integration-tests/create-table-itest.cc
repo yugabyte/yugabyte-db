@@ -76,7 +76,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
     SleepFor(MonoDelta::FromMilliseconds(100));
     ASSERT_OK(cluster_->tablet_server(0)->GetInt64Metric(
         &METRIC_ENTITY_server,
-        "kudu.tabletserver",
+        "yb.tabletserver",
         &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
         "total_count",
         &num_create_attempts));

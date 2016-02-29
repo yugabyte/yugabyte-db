@@ -61,7 +61,7 @@ namespace yb {
 namespace master {
 
 Master::Master(const MasterOptions& opts)
-  : ServerBase("Master", opts, "kudu.master"),
+  : ServerBase("Master", opts, "yb.master"),
     state_(kStopped),
     ts_manager_(new TSManager()),
     catalog_manager_(new CatalogManager(this)),

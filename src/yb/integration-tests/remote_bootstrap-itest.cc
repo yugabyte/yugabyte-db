@@ -582,7 +582,7 @@ int64_t CountUpdateConsensusCalls(ExternalTabletServer* ets, const string& table
   int64_t ret;
   CHECK_OK(ets->GetInt64Metric(
                &METRIC_ENTITY_server,
-               "kudu.tabletserver",
+               "yb.tabletserver",
                &METRIC_handler_latency_yb_consensus_ConsensusService_UpdateConsensus,
                "total_count",
                &ret));
@@ -594,7 +594,7 @@ int64_t CountLogMessages(ExternalTabletServer* ets) {
   int64_t count;
   CHECK_OK(ets->GetInt64Metric(
                &METRIC_ENTITY_server,
-               "kudu.tabletserver",
+               "yb.tabletserver",
                &METRIC_glog_info_messages,
                "value",
                &count));
@@ -602,7 +602,7 @@ int64_t CountLogMessages(ExternalTabletServer* ets) {
 
   CHECK_OK(ets->GetInt64Metric(
                &METRIC_ENTITY_server,
-               "kudu.tabletserver",
+               "yb.tabletserver",
                &METRIC_glog_warning_messages,
                "value",
                &count));
@@ -610,7 +610,7 @@ int64_t CountLogMessages(ExternalTabletServer* ets) {
 
   CHECK_OK(ets->GetInt64Metric(
                &METRIC_ENTITY_server,
-               "kudu.tabletserver",
+               "yb.tabletserver",
                &METRIC_glog_error_messages,
                "value",
                &count));
