@@ -25,7 +25,7 @@
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/tools/ksck_remote.h"
+#include "yb/tools/ysck_remote.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
@@ -63,7 +63,7 @@ namespace tools {
 static string GetKsckUsage(const char* progname) {
   string msg = Substitute("Usage: $0 --master_address=<addr> <flags>\n\n", progname);
   msg += "Check the health of a YB cluster.\n\n"
-         "By default, ksck checks that master and tablet server processes are running,\n"
+         "By default, ysck checks that master and tablet server processes are running,\n"
          "and that table metadata is consistent. Use the 'checksum' flag to check that\n"
          "tablet data is consistent (also see the 'tables' and 'tablets' flags below).\n"
          "Use the 'checksum_snapshot' along with 'checksum' if the table or tablets are\n"
@@ -71,9 +71,9 @@ static string GetKsckUsage(const char* progname) {
   return msg;
 }
 
-// Run ksck.
+// Run ysck.
 // Error information is appended to the provided vector.
-// If the vector is empty upon completion, ksck ran successfully.
+// If the vector is empty upon completion, ysck ran successfully.
 static void RunKsck(vector<string>* error_messages) {
   vector<Sockaddr> master_addrs;
   PUSH_PREPEND_NOT_OK(ParseAddressList(FLAGS_master_address,
@@ -86,29 +86,29 @@ static void RunKsck(vector<string>* error_messages) {
                       error_messages, "Unable to build KsckMaster");
   if (!error_messages->empty()) return;
   shared_ptr<KsckCluster> cluster(new KsckCluster(master));
-  shared_ptr<Ksck> ksck(new Ksck(cluster));
+  shared_ptr<Ksck> ysck(new Ksck(cluster));
 
   // This is required for everything below.
-  PUSH_PREPEND_NOT_OK(ksck->CheckMasterRunning(), error_messages,
+  PUSH_PREPEND_NOT_OK(ysck->CheckMasterRunning(), error_messages,
                       "Master aliveness check error");
   if (!error_messages->empty()) return;
 
   // This is also required for everything below.
-  PUSH_PREPEND_NOT_OK(ksck->FetchTableAndTabletInfo(), error_messages,
+  PUSH_PREPEND_NOT_OK(ysck->FetchTableAndTabletInfo(), error_messages,
                       "Error fetching the cluster metadata from the Master server");
   if (!error_messages->empty()) return;
 
-  PUSH_PREPEND_NOT_OK(ksck->CheckTabletServersRunning(), error_messages,
+  PUSH_PREPEND_NOT_OK(ysck->CheckTabletServersRunning(), error_messages,
                       "Tablet server aliveness check error");
 
   // TODO: Add support for tables / tablets filter in the consistency check.
-  PUSH_PREPEND_NOT_OK(ksck->CheckTablesConsistency(), error_messages,
+  PUSH_PREPEND_NOT_OK(ysck->CheckTablesConsistency(), error_messages,
                       "Table consistency check error");
 
   if (FLAGS_checksum_scan) {
     vector<string> tables = strings::Split(FLAGS_tables, ",", strings::SkipEmpty());
     vector<string> tablets = strings::Split(FLAGS_tablets, ",", strings::SkipEmpty());
-    PUSH_PREPEND_NOT_OK(ksck->ChecksumData(tables, tablets, ChecksumOptions()),
+    PUSH_PREPEND_NOT_OK(ysck->ChecksumData(tables, tablets, ChecksumOptions()),
                         error_messages, "Checksum scan error");
   }
 }

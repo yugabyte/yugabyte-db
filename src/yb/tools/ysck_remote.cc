@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tools/ksck_remote.h"
+#include "yb/tools/ysck_remote.h"
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -31,7 +31,7 @@ DEFINE_int64(tablets_batch_size_max, 100, "How many tablets to get from the Mast
 namespace yb {
 namespace tools {
 
-static const std::string kMessengerName = "ksck";
+static const std::string kMessengerName = "ysck";
 
 using rpc::Messenger;
 using rpc::MessengerBuilder;

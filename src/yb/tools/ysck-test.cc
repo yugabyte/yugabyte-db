@@ -22,7 +22,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/tools/ksck.h"
+#include "yb/tools/ysck.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -105,7 +105,7 @@ class KsckTest : public YBTest {
   KsckTest()
       : master_(new MockKsckMaster()),
         cluster_(new KsckCluster(static_pointer_cast<KsckMaster>(master_))),
-        ksck_(new Ksck(cluster_)) {
+        ysck_(new Ksck(cluster_)) {
     unordered_map<string, shared_ptr<KsckTabletServer>> tablet_servers;
     for (int i = 0; i < 3; i++) {
       string name = strings::Substitute("$0", i);
@@ -188,7 +188,7 @@ class KsckTest : public YBTest {
 
   shared_ptr<MockKsckMaster> master_;
   shared_ptr<KsckCluster> cluster_;
-  shared_ptr<Ksck> ksck_;
+  shared_ptr<Ksck> ysck_;
   // This is used as a stack. First the unit test is responsible to create a plan to follow, that
   // is the order in which each replica of each tablet will be assigned, starting from the end.
   // So if you have 2 tablets with num_replicas=3 and 3 tablet servers, then to distribute evenly
@@ -198,60 +198,60 @@ class KsckTest : public YBTest {
 };
 
 TEST_F(KsckTest, TestMasterOk) {
-  ASSERT_OK(ksck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->CheckMasterRunning());
 }
 
 TEST_F(KsckTest, TestMasterUnavailable) {
   Status error = Status::NetworkError("Network failure");
   master_->connect_status_ = error;
-  ASSERT_TRUE(ksck_->CheckMasterRunning().IsNetworkError());
+  ASSERT_TRUE(ysck_->CheckMasterRunning().IsNetworkError());
 }
 
 TEST_F(KsckTest, TestTabletServersOk) {
-  ASSERT_OK(ksck_->CheckMasterRunning());
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  ASSERT_OK(ksck_->CheckTabletServersRunning());
+  ASSERT_OK(ysck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->CheckTabletServersRunning());
 }
 
 TEST_F(KsckTest, TestBadTabletServer) {
-  ASSERT_OK(ksck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->CheckMasterRunning());
   Status error = Status::NetworkError("Network failure");
   static_pointer_cast<MockKsckTabletServer>(master_->tablet_servers_.begin()->second)
       ->connect_status_ = error;
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  Status s = ksck_->CheckTabletServersRunning();
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  Status s = ysck_->CheckTabletServersRunning();
   ASSERT_TRUE(s.IsNetworkError()) << "Status returned: " << s.ToString();
 }
 
 TEST_F(KsckTest, TestZeroTableCheck) {
-  ASSERT_OK(ksck_->CheckMasterRunning());
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  ASSERT_OK(ksck_->CheckTabletServersRunning());
-  ASSERT_OK(ksck_->CheckTablesConsistency());
+  ASSERT_OK(ysck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->CheckTabletServersRunning());
+  ASSERT_OK(ysck_->CheckTablesConsistency());
 }
 
 TEST_F(KsckTest, TestOneTableCheck) {
   CreateOneTableOneTablet();
-  ASSERT_OK(ksck_->CheckMasterRunning());
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  ASSERT_OK(ksck_->CheckTabletServersRunning());
-  ASSERT_OK(ksck_->CheckTablesConsistency());
+  ASSERT_OK(ysck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->CheckTabletServersRunning());
+  ASSERT_OK(ysck_->CheckTablesConsistency());
 }
 
 TEST_F(KsckTest, TestOneSmallReplicatedTable) {
   CreateOneSmallReplicatedTable();
-  ASSERT_OK(ksck_->CheckMasterRunning());
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  ASSERT_OK(ksck_->CheckTabletServersRunning());
-  ASSERT_OK(ksck_->CheckTablesConsistency());
+  ASSERT_OK(ysck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->CheckTabletServersRunning());
+  ASSERT_OK(ysck_->CheckTablesConsistency());
 }
 
 TEST_F(KsckTest, TestOneOneTabletBrokenTable) {
   CreateOneOneTabletReplicatedBrokenTable();
-  ASSERT_OK(ksck_->CheckMasterRunning());
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  ASSERT_OK(ksck_->CheckTabletServersRunning());
-  ASSERT_TRUE(ksck_->CheckTablesConsistency().IsCorruption());
+  ASSERT_OK(ysck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->CheckTabletServersRunning());
+  ASSERT_TRUE(ysck_->CheckTablesConsistency().IsCorruption());
 }
 
 } // namespace tools

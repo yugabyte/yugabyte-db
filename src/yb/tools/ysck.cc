@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tools/ksck.h"
+#include "yb/tools/ysck.h"
 
 #include <glog/logging.h>
 #include <iostream>

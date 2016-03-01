@@ -69,11 +69,11 @@ target_link_libraries(yb-fs_dump
   ${LINK_LIBS}
   fs_tool)
 
-add_library(ksck
-    ksck.cc
-    ksck_remote.cc
+add_library(ysck
+    ysck.cc
+    ysck_remote.cc
 )
-target_link_libraries(ksck
+target_link_libraries(ysck
   master_proto
   server_base_proto
   tserver_proto
@@ -81,9 +81,9 @@ target_link_libraries(ksck
   ${YB_BASE_LIBS}
 )
 
-add_executable(yb-ksck yb-ksck.cc)
-target_link_libraries(yb-ksck
-  ksck
+add_executable(yb-ysck yb-ysck.cc)
+target_link_libraries(yb-ysck
+  ysck
 )
 
 add_executable(yb-pbc-dump pbc-dump.cc)
@@ -92,12 +92,12 @@ target_link_libraries(yb-pbc-dump
 )
 
 set(YB_TEST_LINK_LIBS
-  ksck
+  ysck
   yb_tools_util
   integration-tests
   ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(ksck-test)
-ADD_YB_TEST(ksck_remote-test)
+ADD_YB_TEST(ysck-test)
+ADD_YB_TEST(ysck_remote-test)
 ADD_YB_TEST(yb-admin-test)
 ADD_YB_TEST_DEPENDENCIES(yb-admin-test
   yb-admin)

@@ -22,7 +22,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"
 #include "yb/tools/data_gen_util.h"
-#include "yb/tools/ksck_remote.h"
+#include "yb/tools/ysck_remote.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
@@ -44,7 +44,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-static const char *kTableName = "ksck-test-table";
+static const char *kTableName = "ysck-test-table";
 
 class RemoteKsckTest : public YBTest {
  public:
@@ -86,7 +86,7 @@ class RemoteKsckTest : public YBTest {
 
     ASSERT_OK(RemoteKsckMaster::Build(master_rpc_addr_, &master_));
     cluster_.reset(new KsckCluster(master_));
-    ksck_.reset(new Ksck(cluster_));
+    ysck_.reset(new Ksck(cluster_));
   }
 
   virtual void TearDown() OVERRIDE {
@@ -165,7 +165,7 @@ class RemoteKsckTest : public YBTest {
     return Status::OK();
   }
 
-  std::shared_ptr<Ksck> ksck_;
+  std::shared_ptr<Ksck> ysck_;
   shared_ptr<client::YBClient> client_;
 
  private:
@@ -179,14 +179,14 @@ class RemoteKsckTest : public YBTest {
 };
 
 TEST_F(RemoteKsckTest, TestMasterOk) {
-  ASSERT_OK(ksck_->CheckMasterRunning());
+  ASSERT_OK(ysck_->CheckMasterRunning());
 }
 
 TEST_F(RemoteKsckTest, TestTabletServersOk) {
   LOG(INFO) << "Fetching table and tablet info...";
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   LOG(INFO) << "Checking tablet servers are running...";
-  ASSERT_OK(ksck_->CheckTabletServersRunning());
+  ASSERT_OK(ysck_->CheckTabletServersRunning());
 }
 
 TEST_F(RemoteKsckTest, TestTableConsistency) {
@@ -194,8 +194,8 @@ TEST_F(RemoteKsckTest, TestTableConsistency) {
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   Status s;
   while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
-    ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-    s = ksck_->CheckTablesConsistency();
+    ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+    s = ysck_->CheckTablesConsistency();
     if (s.ok()) {
       break;
     }
@@ -213,8 +213,8 @@ TEST_F(RemoteKsckTest, TestChecksum) {
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   Status s;
   while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
-    ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-    s = ksck_->ChecksumData(vector<string>(),
+    ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+    s = ysck_->ChecksumData(vector<string>(),
                             vector<string>(),
                             ChecksumOptions(MonoDelta::FromSeconds(1), 16, false, 0));
     if (s.ok()) {
@@ -229,9 +229,9 @@ TEST_F(RemoteKsckTest, TestChecksumTimeout) {
   uint64_t num_writes = 10000;
   LOG(INFO) << "Generating row writes...";
   ASSERT_OK(GenerateRowWrites(num_writes));
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   // Use an impossibly low timeout value of zero!
-  Status s = ksck_->ChecksumData(vector<string>(),
+  Status s = ysck_->ChecksumData(vector<string>(),
                                  vector<string>(),
                                  ChecksumOptions(MonoDelta::FromNanoseconds(0), 16, false, 0));
   ASSERT_TRUE(s.IsTimedOut()) << "Expected TimedOut Status, got: " << s.ToString();
@@ -257,15 +257,15 @@ TEST_F(RemoteKsckTest, TestChecksumSnapshot) {
   // TODO: We need to loop here because safe time is not yet implemented.
   // Remove this loop when that is done. See KUDU-1056.
   while (true) {
-    ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-    Status s = ksck_->ChecksumData(vector<string>(), vector<string>(),
+    ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+    Status s = ysck_->ChecksumData(vector<string>(), vector<string>(),
                                    ChecksumOptions(MonoDelta::FromSeconds(10), 16, true, ts));
     if (s.ok()) break;
     if (deadline.ComesBefore(MonoTime::Now(MonoTime::FINE))) break;
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   if (!s.ok()) {
-    LOG(WARNING) << Substitute("Timed out after $0 waiting for ksck to become consistent on TS $1. "
+    LOG(WARNING) << Substitute("Timed out after $0 waiting for ysck to become consistent on TS $1. "
                                "Status: $2",
                                MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToString(),
                                ts, s.ToString());
@@ -290,8 +290,8 @@ TEST_F(RemoteKsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
                  &writer_thread);
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 
-  ASSERT_OK(ksck_->FetchTableAndTabletInfo());
-  ASSERT_OK(ksck_->ChecksumData(vector<string>(), vector<string>(),
+  ASSERT_OK(ysck_->FetchTableAndTabletInfo());
+  ASSERT_OK(ysck_->ChecksumData(vector<string>(), vector<string>(),
                                 ChecksumOptions(MonoDelta::FromSeconds(10), 16, true,
                                                 ChecksumOptions::kCurrentTimestamp)));
   continue_writing.Store(false);
