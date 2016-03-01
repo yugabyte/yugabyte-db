@@ -46,7 +46,7 @@ This command will report any tests that failed, and the test logs will be
 written to _build/debug/test-logs_.
 
 Individual tests can be run by directly invoking the test binaries in
-_build/debug/bin_. Since Kudu uses the Google C++ Test Framework (gtest),
+_build/debug/bin_. Since YB uses the Google C++ Test Framework (gtest),
 specific test cases can be run with gtest flags:
 
 [source,bash]
@@ -63,7 +63,7 @@ documentation for more details.
 === Running tests with the clang AddressSanitizer enabled
 
 AddressSanitizer is a nice clang feature which can detect many types of memory
-errors. The Jenkins setup for kudu runs these tests automatically on a regular
+errors. The Jenkins setup for yb runs these tests automatically on a regular
 basis, but if you make large changes it can be a good idea to run it locally
 before pushing. To do so, you'll need to build using `clang`:
 
@@ -233,39 +233,18 @@ emitted to _build/docs_. This script requires `ruby` and `gem` to be installed
 on the system path, and will attempt to install `asciidoctor` and other related
 dependencies into `$HOME/.gems` using http://bundler.io/[bundler].
 
-=== Updating the documentation on the Kudu web site
-
-To update the documentation that is integrated into the Kudu web site,
-including Javadoc documentation, you may run the following command:
-
-[source,bash]
-----
-$ ./docs/support/script/make_site.sh
-----
-
-This script will use your local Git repository to check out a shallow clone of
-the 'gh-pages' branch and use `make_docs.sh` to generate the HTML documentation
-for the web site. It will also build the Javadoc documentation. These will be
-placed inside the checked-out web site, along with a tarball containing only
-the generated documentation (the _docs/_ and _apidocs/_ paths on the web site).
-Everything can be found in the _build/site_ subdirectory.
-
-You can proceed to commit the changes in the pages repository and send a code
-review for your changes. In the future, this step may be automated whenever
-changes are checked into the main Kudu repository.
-
 == Improving build times
 
 === Caching build output
 
-The kudu build is compatible with ccache. Simply install your distro's _ccache_ package,
+The yb build is compatible with ccache. Simply install your distro's _ccache_ package,
 prepend _/usr/lib/ccache_ to your `PATH`, and watch your object files get cached. Link
 times won't be affected, but you will see a noticeable improvement in compilation
 times. You may also want to increase the size of your cache using "ccache -M new_size".
 
 === Improving linker speed
 
-One of the major time sinks in the Kudu build is linking. GNU ld is historically
+One of the major time sinks in the YB build is linking. GNU ld is historically
 quite slow at linking large C++ applications. The alternative linker `gold` is much
 better at it. It's part of the `binutils` package in modern distros (try `binutils-gold`
 in older ones). To enable it, simply repoint the _/usr/bin/ld_ symlink from `ld.bfd` to
@@ -276,9 +255,9 @@ https://sourceware.org/bugzilla/show_bug.cgi?id=16979[this bug report] for detai
 As such, it cannot be used with shared objects (see below) because it'll cause
 tcmalloc's alternative malloc implementation to be ignored.
 
-=== Building Kudu with dynamic linking
+=== Building YB with dynamic linking
 
-Kudu can be built into shared objects, which, when used with ccache, can result in a
+YB can be built into shared objects, which, when used with ccache, can result in a
 dramatic build time improvement in the steady state. Even after a `make clean` in the build
 tree, all object files can be served from ccache. By default, `debug` and `fastdebug` will
 use dynamic linking, while other build types will use static linking. To enable
@@ -290,7 +269,7 @@ $ cmake -DYB_LINK=dynamic ../..
 ----
 
 Subsequent builds will create shared objects instead of archives and use them when
-linking the kudu binaries and unit tests. The full range of options for `YB_LINK` are
+linking the yb binaries and unit tests. The full range of options for `YB_LINK` are
 `static`, `dynamic`, and `auto`. The default is `auto` and only the first letter
 matters for the purpose of matching.
 
@@ -298,9 +277,9 @@ NOTE: Dynamic linking is incompatible with ASAN and static linking is incompatib
 with TSAN.
 
 
-== Developing Kudu in Eclipse
+== Developing YB in Eclipse
 
-Eclipse can be used as an IDE for Kudu. To generate Eclipse project files, run:
+Eclipse can be used as an IDE for YB. To generate Eclipse project files, run:
 
 [source,bash]
 ----
@@ -321,7 +300,7 @@ won't run and standard system includes will be missing from the generated projec
 Thanks to [2], the Eclipse generator ignores the `-std=c++11` definition and we must
 add it manually on the command line via `CMAKE_CXX_COMPILER_ARG1`.
 
-By default, the Eclipse CDT indexer will index everything under the _kudu/_
+By default, the Eclipse CDT indexer will index everything under the _yb/_
 source tree. It tends to choke on certain complicated source files within
 _thirdparty_. In CDT 8.7.0, the indexer will generate so many errors that it'll
 exit early, causing many spurious syntax errors to be highlighted. In older
