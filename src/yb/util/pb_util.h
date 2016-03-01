@@ -152,8 +152,8 @@ void TruncateFields(google::protobuf::Message* message, int max_len);
 // of the data size, data, and checksum (subject to CRC32 limitations).
 //
 // These tradeoffs in error detection are reasonable given the failure
-// environment that Kudu operates within. We tolerate failures such as
-// "kill -9" of the Kudu process, machine power loss, or fsync/fdatasync
+// environment that YB operates within. We tolerate failures such as
+// "kill -9" of the YB process, machine power loss, or fsync/fdatasync
 // failure, but not failures like runaway processes mangling data files
 // in arbitrary ways or attackers crafting malicious data files.
 //

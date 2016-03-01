@@ -23,12 +23,12 @@
 namespace yb {
 
 // Return a NotSupported Status if the current CPU does not support the CPU flags
-// required for Kudu.
+// required for YB.
 Status CheckCPUFlags();
 
-// Initialize Kudu, checking that the platform we are running on is supported, etc.
+// Initialize YB, checking that the platform we are running on is supported, etc.
 // Issues a FATAL log message if we fail to init.
-void InitKuduOrDie();
+void InitYBOrDie();
 
 } // namespace yb
 #endif /* YB_UTIL_INIT_H */

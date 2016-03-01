@@ -22,7 +22,7 @@
 namespace yb {
 namespace client {
 
-// DEPRECATED: Kudu 0.7.0 renamed YBRowResult to YBScanBatch::RowPtr.
+// DEPRECATED: YB 0.7.0 renamed YBRowResult to YBScanBatch::RowPtr.
 // The newer name is clearer that the row result's lifetime is tied to the
 // lifetime of a batch.
 typedef YBScanBatch::RowPtr YBRowResult;

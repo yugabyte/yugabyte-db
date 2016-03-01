@@ -24,7 +24,7 @@
 // This implementation is only the B-tree component, and not the "trie of trees"
 // which make up their full data structure. In addition to this, there are
 // some other key differences:
-// - We do not support removal of elements from the tree -- in the Kudu memrowset
+// - We do not support removal of elements from the tree -- in the YB memrowset
 //   use case, we use a deletion bit to indicate a removed record, and end up
 //   actually removing the storage at compaction time.
 // - We do not support updating elements in the tree. Because we use MVCC, we

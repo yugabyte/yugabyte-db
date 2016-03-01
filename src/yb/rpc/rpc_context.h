@@ -109,7 +109,7 @@ class RpcContext {
   // example:
   //
   //   message MyServiceError {
-  //     extend kudu.rpc.ErrorStatusPB {
+  //     extend yb.rpc.ErrorStatusPB {
   //       optional MyServiceError my_service_error_ext = 101;
   //     }
   //     // Add any extra fields or status codes you want to pass back to

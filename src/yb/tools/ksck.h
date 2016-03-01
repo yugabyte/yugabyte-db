@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Ksck, a tool to run a Kudu System Check.
+// Ksck, a tool to run a YB System Check.
 
 #ifndef YB_TOOLS_KSCK_H
 #define YB_TOOLS_KSCK_H
@@ -152,7 +152,7 @@ typedef Callback<void(const Status& status, uint64_t checksum)> ReportResultCall
 // The following two classes must be extended in order to communicate with their respective
 // components. The two main use cases envisioned for this are:
 // - To be able to mock a cluster to more easily test the Ksck checks.
-// - To be able to communicate with a real Kudu cluster.
+// - To be able to communicate with a real YB cluster.
 
 // Class that must be extended to represent a tablet server.
 class KsckTabletServer {

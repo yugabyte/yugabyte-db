@@ -28,7 +28,7 @@ namespace yb {
 // of the first non-flag argument.
 //
 // This is a wrapper around google::ParseCommandLineFlags, but integrates
-// with Kudu flag tags. For example, --helpxml will include the list of
+// with YB flag tags. For example, --helpxml will include the list of
 // tags for each flag. This should be be used instead of
 // google::ParseCommandLineFlags in any user-facing binary.
 //

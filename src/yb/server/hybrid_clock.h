@@ -67,7 +67,7 @@ class HybridClock : public Clock {
   // The incoming time 'then' is assumed to be the latest time possible
   // at the time the read was performed, i.e. 'then' = now + max_error.
   //
-  // This method can be used to make Kudu behave like Spanner/TrueTime.
+  // This method can be used to make YB behave like Spanner/TrueTime.
   // This is implemented by possibly making the caller thread wait for a
   // a certain period of time.
   //

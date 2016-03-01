@@ -91,7 +91,7 @@ find_daemon_pid() {
 
   set +e
   local daemon_pid=$(
-    pgrep -f "kudu-$daemon_type .* --rpc_bind_addresses 0.0.0.0:$(( $rpc_port_base + $i ))"
+    pgrep -f "yb-$daemon_type .* --rpc_bind_addresses 0.0.0.0:$(( $rpc_port_base + $i ))"
   )
   set -e
   echo "$daemon_pid"
@@ -190,7 +190,7 @@ if [ -f "$build_root" ]; then
   exit 1
 fi
 
-# TODO: use separate bind ips of the form 127.x.y.z for different daemons similarly to Kudu's mini
+# TODO: use separate bind ips of the form 127.x.y.z for different daemons similarly to YB's mini
 # test cluster to allow simulating network partitions.
 bind_ip=127.0.0.1
 

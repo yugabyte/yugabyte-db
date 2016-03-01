@@ -43,9 +43,9 @@ namespace fs {
 
 class BlockManager;
 
-// The smallest unit of Kudu data that is backed by the local filesystem.
+// The smallest unit of YB data that is backed by the local filesystem.
 //
-// The block interface reflects Kudu on-disk storage design principles:
+// The block interface reflects YB on-disk storage design principles:
 // - Blocks are append only.
 // - Blocks are immutable once written.
 // - Blocks opened for reading are thread-safe and may be used by multiple
@@ -182,7 +182,7 @@ struct BlockManagerOptions {
   bool read_only;
 };
 
-// Utilities for Kudu block lifecycle management. All methods are
+// Utilities for YB block lifecycle management. All methods are
 // thread-safe.
 class BlockManager {
  public:

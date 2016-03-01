@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Copied from Impala and adapted to Kudu.
 
 #include "yb/util/thread.h"
 

@@ -73,7 +73,7 @@ class MemTracker;
 //
 // NOTE: this class has been partially ported over from Impala with
 // several changes, and as a result the style differs somewhat from
-// the Kudu style.
+// the YB style.
 //
 // Changes from Impala:
 // 1) Id a string vs. a TUniqueId
@@ -83,10 +83,10 @@ class MemTracker;
 //    which in turn will have memtrackers for their caches, logs, and so forth.
 //
 // TODO: this classes uses a lot of statics fields and methods, which
-// isn't common in Kudu. It is probably wise to later move the
+// isn't common in YB. It is probably wise to later move the
 // 'registry' of trackers to a separate class, but it's better to
 // start using the 'class' *first* and then change this functionality,
-// depending on how MemTracker ends up being used in Kudu.
+// depending on how MemTracker ends up being used in YB.
 class MemTracker : public std::enable_shared_from_this<MemTracker> {
  public:
 
@@ -365,7 +365,7 @@ class MemTrackerAllocator : public Alloc {
   pointer allocate(size_type n, const_pointer hint = 0) {
     // Ideally we'd use TryConsume() here to enforce the tracker's limit.
     // However, that means throwing bad_alloc if the limit is exceeded, and
-    // it's not clear that the rest of Kudu can handle that.
+    // it's not clear that the rest of YB can handle that.
     mem_tracker_->Consume(n * sizeof(T));
     return Alloc::allocate(n, hint);
   }

@@ -34,7 +34,7 @@ namespace yb {
 namespace tserver {
 
 static int TabletServerMain(int argc, char** argv) {
-  InitKuduOrDie();
+  InitYBOrDie();
 
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",

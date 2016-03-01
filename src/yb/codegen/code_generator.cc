@@ -178,7 +178,7 @@ int DumpAsm(FuncPtr fptr, const TargetMachine& tm, std::ostream* out, int max_in
       // which tracks the exact sizes of the desired emitted functions.
       // In order to make a custom memory manager, we require enabling
       // LLVM RTTI, since subclassing an LLVM interface would require
-      // identical RTTI settings between LLVM and Kudu (see:
+      // identical RTTI settings between LLVM and YB (see:
       // http://llvm.org/docs/Packaging.html#c-features).
       string opname = printer->getOpcodeName(inst.getOpcode());
       std::transform(opname.begin(), opname.end(), opname.begin(), ::toupper);

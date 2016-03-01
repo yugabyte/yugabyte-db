@@ -24,13 +24,13 @@
 // functions (1) must not be duplicated in any of the above headers
 // and (2) do not belong to namespace yb.
 //
-// NOTE: This file may rely on external definitions from any part of Kudu
+// NOTE: This file may rely on external definitions from any part of YB
 // because the code generator will resolve external symbols at load time.
-// However, the code generator relies on the fact that our Kudu binaries
+// However, the code generator relies on the fact that our YB binaries
 // are built with unstripped visible symbols, so this style of code generation
 // cannot be used in builds with settings that conflict with the required
 // visibility (e.g., the client library).
-// NOTE: This file is NOT compiled with ASAN annotations, even if Kudu
+// NOTE: This file is NOT compiled with ASAN annotations, even if YB
 // is being built with ASAN.
 
 #include <cstdlib>

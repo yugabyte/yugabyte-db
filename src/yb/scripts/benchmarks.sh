@@ -153,7 +153,7 @@ build_yb() {
 
   BUILD_TYPE=release
 
-  # Build Kudu
+  # Build YB
   mkdir -p build/$BUILD_TYPE
   pushd build/$BUILD_TYPE
   rm -rf CMakeCache.txt CMakeFiles/
@@ -161,8 +161,8 @@ build_yb() {
   $BASE_DIR/build-support/enable_devtoolset.sh $THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ../..
 
   # clean up before we run
-  rm -Rf /tmp/kudutpch1-$UID
-  mkdir -p /tmp/kudutpch1-$UID
+  rm -Rf /tmp/ybtpch1-$UID
+  mkdir -p /tmp/ybtpch1-$UID
 
   NUM_PROCS=$(cat /proc/cpuinfo | grep processor | wc -l)
   make -j${NUM_PROCS} 2>&1 | tee build.log
@@ -508,8 +508,8 @@ load_stats_and_generate_plots() {
   pushd $OUTDIR/
   PNGS=$(ls *.png)
   echo -n > "$OUTDIR/$HTML_FILE"
-  echo "<title>Kudu Benchmarks</title>" >> "$OUTDIR/$HTML_FILE"
-  echo "<h1 align=center>Kudu Benchmarks</h1>" >> "$OUTDIR/$HTML_FILE"
+  echo "<title>YB Benchmarks</title>" >> "$OUTDIR/$HTML_FILE"
+  echo "<h1 align=center>YB Benchmarks</h1>" >> "$OUTDIR/$HTML_FILE"
   for png in $PNGS; do
     echo "<img src=$png><br>" >> "$OUTDIR/$HTML_FILE"
   done
@@ -585,7 +585,7 @@ OUTDIR="$BASE_DIR/$OUT_DIR_NAME"
 # Ensure we are in YB_HOME
 if [ ! -f "$BASE_DIR/LICENSE.txt" ]; then
   set +x
-  echo "Error: must run from top of Kudu source tree"
+  echo "Error: must run from top of YB source tree"
   usage_and_die
 fi
 

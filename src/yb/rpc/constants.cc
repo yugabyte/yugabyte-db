@@ -21,8 +21,8 @@ namespace yb {
 namespace rpc {
 
 const char* const kMagicNumber = "hrpc";
-const char* const kSaslAppName = "Kudu";
-const char* const kSaslProtoName = "kudu";
+const char* const kSaslAppName = "YugaByte";
+const char* const kSaslProtoName = "yb";
 
 } // namespace rpc
 } // namespace yb

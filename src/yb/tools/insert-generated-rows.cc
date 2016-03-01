@@ -73,7 +73,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   CHECK(!addrs.empty()) << "At least one master address must be specified!";
 
   // Set up client.
-  LOG(INFO) << "Connecting to Kudu Master...";
+  LOG(INFO) << "Connecting to YB Master...";
   shared_ptr<YBClient> client;
   CHECK_OK(YBClientBuilder()
            .master_server_addrs(addrs)

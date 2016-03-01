@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Copied from Impala and adapted to Kudu.
 
 #ifndef YB_UTIL_THREAD_H
 #define YB_UTIL_THREAD_H

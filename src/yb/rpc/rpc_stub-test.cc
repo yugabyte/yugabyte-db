@@ -191,7 +191,7 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(),
                       "Invalid argument: Invalid parameter for call "
-                      "kudu.rpc_test.CalculatorService.Add: y");
+                      "yb.rpc_test.CalculatorService.Add: y");
 }
 
 // Wrapper around AtomicIncrement, since AtomicIncrement returns the 'old'
@@ -243,7 +243,7 @@ TEST_F(RpcStubTest, TestApplicationError) {
   ASSERT_TRUE(s.IsRemoteError());
   EXPECT_EQ("Remote error: Got some error", s.ToString());
   EXPECT_EQ("message: \"Got some error\"\n"
-            "[kudu.rpc_test.CalculatorError.app_error_ext] {\n"
+            "[yb.rpc_test.CalculatorError.app_error_ext] {\n"
             "  extra_error_data: \"some application-specific error data\"\n"
             "}\n", controller.error_response()->DebugString());
 }
