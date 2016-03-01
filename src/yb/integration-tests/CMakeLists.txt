@@ -29,7 +29,7 @@ target_link_libraries(integration-tests
   tserver
   tserver_test_util
   master
-  ksck
+  ysck
   yb_client
   yb_client_test_util
   yb_fs

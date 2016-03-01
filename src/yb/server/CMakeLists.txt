@@ -45,7 +45,7 @@ ADD_YB_TEST(logical_clock-test)
 # server_base_proto
 #########################################
 
-KRPC_GENERATE(
+YRPC_GENERATE(
   SERVER_BASE_PROTO_SRCS SERVER_BASE_PROTO_HDRS SERVER_BASE_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
@@ -53,7 +53,7 @@ KRPC_GENERATE(
 
 add_library(server_base_proto ${SERVER_BASE_PROTO_SRCS} ${SERVER_BASE_PROTO_HDRS})
 target_link_libraries(server_base_proto
-  krpc
+  yrpc
   yb_common_proto
   protobuf
   rpc_header_proto
@@ -87,7 +87,7 @@ target_link_libraries(server_process
   yb_common
   yb_fs
   gutil
-  krpc
+  yrpc
   yb_util
   squeasel)
 

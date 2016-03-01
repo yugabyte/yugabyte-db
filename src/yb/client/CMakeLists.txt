@@ -44,7 +44,7 @@ set(CLIENT_LIBS
   tserver_service_proto
   yb_util
   gutil
-  krpc)
+  yrpc)
 
 # Make sure we exclude tcmalloc from the exported library; we want the library
 # code to use the linking application's malloc implementation.

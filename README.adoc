@@ -14,74 +14,26 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-= Kudu Developer Documentation
+= YugaByte Developer Documentation
 
-== Building and installing Kudu
+== Building and installing YugaByte
 
-Follow the steps in the http://getkudu.io/docs/installation.html#_build_from_source[documentation]
-to build and install Kudu from source
-
-=== Building Kudu out of tree
-
-A single Kudu source tree may be used for multiple builds, each with its
-own build directory. Build directories may be placed anywhere in the
-filesystem with the exception of the root directory of the source tree. The
-Kudu build is invoked with a working directory of the build directory
-itself, so you must ensure it exists (i.e. create it with _mkdir -p_). It's
-recommended to place all build directories within the _build_ subdirectory;
-_build/latest_ will be symlinked to most recently created one.
-
-The rest of this document assumes the build directory
-_<root directory of kudu source tree>/build/debug_.
-
-=== Automatic rebuilding of dependencies
-
-The script `thirdparty/build-if-necessary.sh` is invoked by cmake, so
-new thirdparty dependencies added by other developers will be downloaded
-and built automatically in subsequent builds if necessary.
-
-To disable the automatic invocation of `build-if-necessary.sh`, set the
-`NO_REBUILD_THIRDPARTY` environment variable:
-
+All you need to build the code is:
 [source,bash]
 ----
-$ cd build/debug
-$ NO_REBUILD_THIRDPARTY=1 cmake ../..
+$ ./yb_build.sh
 ----
 
-This can be particularly useful when trying to run tools like `git bisect`
-between two commits which may have different dependencies.
-
-
-=== Building Kudu itself
-
+To see where the executables are built:
 [source,bash]
 ----
-# Add <root of kudu tree>/thirdparty/installed/bin to your $PATH
-# before other parts of $PATH that may contain cmake, such as /usr/bin
-# For example: "export PATH=$HOME/git/kudu/thirdparty/installed/bin:$PATH"
-# if using bash.
-$ mkdir -p build/debug
-$ cd build/debug
-$ cmake ../..
-$ make -j8  # or whatever level of parallelism your machine can handle
+$ ls build/debug/bin
 ----
 
-The build artifacts, including the test binaries, will be stored in
-_build/debug/bin/_.
 
-To omit the Kudu unit tests during the build, add -DNO_TESTS=1 to the
-invocation of cmake. For example:
+== Running unit tests
 
-[source,bash]
-----
-$ cd build/debug
-$ cmake -DNO_TESTS=1 ../..
-----
-
-== Running unit/functional tests
-
-To run the Kudu unit tests, you can use the `ctest` command from within the
+To run the YB unit tests, you can use the `ctest` command from within the
 _build/debug_ directory:
 
 [source,bash]
@@ -107,8 +59,8 @@ $ build/debug/bin/tablet-test --gtest_filter=TestTablet/9.TestFlush
 gtest also allows more complex filtering patterns. See the upstream
 documentation for more details.
 
-=== Running tests with the clang AddressSanitizer enabled
 
+=== Running tests with the clang AddressSanitizer enabled
 
 AddressSanitizer is a nice clang feature which can detect many types of memory
 errors. The Jenkins setup for kudu runs these tests automatically on a regular
@@ -142,8 +94,8 @@ to run just the failed test.
 NOTE: For more information on AddressSanitizer, please see the
 http://clang.llvm.org/docs/AddressSanitizer.html[ASAN web page].
 
-=== Running tests with the clang Undefined Behavior Sanitizer (UBSAN) enabled
 
+=== Running tests with the clang Undefined Behavior Sanitizer (UBSAN) enabled
 
 Similar to the above, you can use a special set of clang flags to enable the Undefined
 Behavior Sanitizer. This will generate errors on certain pieces of code which may
@@ -159,6 +111,7 @@ set a breakpoint as follows:
 ----
 
 Then, when the breakpoint fires, gather a backtrace as usual using the `bt` command.
+
 
 === Running tests with ThreadSanitizer enabled
 
@@ -247,10 +200,10 @@ $ lcov  --capture --directory src --output-file coverage.info
 $ genhtml coverage.info --output-directory out
 ----
 
+
 === Running lint checks
 
-
-Kudu uses cpplint.py from Google to enforce coding style guidelines. You can run the
+YB uses cpplint.py from Google to enforce coding style guidelines. You can run the
 lint checks via cmake using the `ilint` target:
 
 [source,bash]
@@ -262,9 +215,9 @@ This will scan any file which is dirty in your working tree, or changed since th
 gerrit-integrated upstream change in your git log. If you really want to do a full
 scan of the source tree, you may use the `lint` target instead.
 
-=== Building Kudu documentation
+=== Building YB documentation
 
-Kudu's documentation is written in asciidoc and lives in the _docs_ subdirectory.
+YB's documentation is written in asciidoc and lives in the _docs_ subdirectory.
 
 To build the documentation (this is primarily useful if you would like to
 inspect your changes before submitting them to Gerrit), use the `docs` target:

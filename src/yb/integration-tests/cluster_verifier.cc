@@ -25,7 +25,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/tools/ksck_remote.h"
+#include "yb/tools/ysck_remote.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
 
@@ -83,17 +83,17 @@ Status ClusterVerifier::DoKsck() {
   std::shared_ptr<KsckMaster> master;
   RETURN_NOT_OK(RemoteKsckMaster::Build(addr, &master));
   std::shared_ptr<KsckCluster> cluster(new KsckCluster(master));
-  std::shared_ptr<Ksck> ksck(new Ksck(cluster));
+  std::shared_ptr<Ksck> ysck(new Ksck(cluster));
 
   // This is required for everything below.
-  RETURN_NOT_OK(ksck->CheckMasterRunning());
-  RETURN_NOT_OK(ksck->FetchTableAndTabletInfo());
-  RETURN_NOT_OK(ksck->CheckTabletServersRunning());
-  RETURN_NOT_OK(ksck->CheckTablesConsistency());
+  RETURN_NOT_OK(ysck->CheckMasterRunning());
+  RETURN_NOT_OK(ysck->FetchTableAndTabletInfo());
+  RETURN_NOT_OK(ysck->CheckTabletServersRunning());
+  RETURN_NOT_OK(ysck->CheckTablesConsistency());
 
   vector<string> tables;
   vector<string> tablets;
-  RETURN_NOT_OK(ksck->ChecksumData(tables, tablets, checksum_options_));
+  RETURN_NOT_OK(ysck->ChecksumData(tables, tablets, checksum_options_));
   return Status::OK();
 }
 

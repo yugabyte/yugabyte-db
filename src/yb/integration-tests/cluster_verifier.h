@@ -20,7 +20,7 @@
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/tools/ksck.h"
+#include "yb/tools/ysck.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
@@ -48,7 +48,7 @@ class ClusterVerifier {
   // Verify that the cluster is in good state. Triggers a gtest assertion failure
   // on failure.
   //
-  // Currently, this just uses ksck to verify that the different replicas of each tablet
+  // Currently, this just uses ysck to verify that the different replicas of each tablet
   // eventually agree.
   void CheckCluster();
 

@@ -39,16 +39,16 @@ ADD_EXPORTABLE_LIBRARY(consensus_metadata_proto
 # consensus_proto
 #########################################
 
-KRPC_GENERATE(
-  CONSENSUS_KRPC_SRCS CONSENSUS_KRPC_HDRS CONSENSUS_KRPC_TGTS
+YRPC_GENERATE(
+  CONSENSUS_YRPC_SRCS CONSENSUS_YRPC_HDRS CONSENSUS_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES consensus.proto)
-list(APPEND CONSENSUS_KRPC_SRCS opid_util.cc)
-set(CONSENSUS_KRPC_LIBS
+list(APPEND CONSENSUS_YRPC_SRCS opid_util.cc)
+set(CONSENSUS_YRPC_LIBS
   cfile_proto
   consensus_metadata_proto
-  krpc
+  yrpc
   yb_common_proto
   rpc_header_proto
   protobuf
@@ -57,9 +57,9 @@ set(CONSENSUS_KRPC_LIBS
   wire_protocol_proto)
 
 ADD_EXPORTABLE_LIBRARY(consensus_proto
-  SRCS ${CONSENSUS_KRPC_SRCS}
-  DEPS ${CONSENSUS_KRPC_LIBS}
-  NONLINK_DEPS ${CONSENSUS_KRPC_TGTS})
+  SRCS ${CONSENSUS_YRPC_SRCS}
+  DEPS ${CONSENSUS_YRPC_LIBS}
+  NONLINK_DEPS ${CONSENSUS_YRPC_TGTS})
 
 #########################################
 # log_proto

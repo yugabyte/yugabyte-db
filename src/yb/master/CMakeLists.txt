@@ -15,22 +15,22 @@
 # specific language governing permissions and limitations
 # under the License.
 
-KRPC_GENERATE(
-  MASTER_KRPC_SRCS MASTER_KRPC_HDRS MASTER_KRPC_TGTS
+YRPC_GENERATE(
+  MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES master.proto)
-set(MASTER_KRPC_LIBS
+set(MASTER_YRPC_LIBS
   consensus_metadata_proto
-  krpc
+  yrpc
   protobuf
   rpc_header_proto
   tablet_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(master_proto
-  SRCS ${MASTER_KRPC_SRCS}
-  DEPS ${MASTER_KRPC_LIBS}
-  NONLINK_DEPS ${MASTER_KRPC_TGTS})
+  SRCS ${MASTER_YRPC_SRCS}
+  DEPS ${MASTER_YRPC_LIBS}
+  NONLINK_DEPS ${MASTER_YRPC_TGTS})
 
 set(MASTER_SRCS
   catalog_manager.cc
@@ -50,7 +50,7 @@ target_link_libraries(master
   tablet
   server_common
   server_process
-  krpc
+  yrpc
   gutil
   yb_util
   tserver
@@ -62,7 +62,7 @@ set(MASTER_RPC_SRCS
   master_rpc.cc)
 set(MASTER_RPC_LIBS
   yb_common
-  krpc
+  yrpc
   gutil
   yb_util
   master_proto

@@ -746,7 +746,7 @@ ADD_THIRDPARTY_LIB(protoc
   STATIC_LIB "${PROTOBUF_PROTOC_STATIC_LIBRARY}"
   SHARED_LIB "${PROTOBUF_PROTOC_LIBRARY}"
   DEPS protobuf)
-find_package(KRPC REQUIRED)
+find_package(YRPC REQUIRED)
 
 ## Snappy
 find_package(Snappy REQUIRED)
