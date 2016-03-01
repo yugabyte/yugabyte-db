@@ -40,7 +40,7 @@ ADD_EXPORTABLE_LIBRARY(rpc_introspection_proto
   NONLINK_DEPS ${RPC_INTROSPECTION_PROTO_TGTS})
 
 ### RPC library
-set(KRPC_SRCS
+set(YRPC_SRCS
     acceptor_pool.cc
     auth_store.cc
     blocking_ops.cc
@@ -66,7 +66,7 @@ set(KRPC_SRCS
     transfer.cc
 )
 
-set(KRPC_LIBS
+set(YRPC_LIBS
   rpc_header_proto
   rpc_introspection_proto
   yb_util
@@ -74,13 +74,13 @@ set(KRPC_LIBS
   libev
   cyrus_sasl)
 
-ADD_EXPORTABLE_LIBRARY(krpc
-  SRCS ${KRPC_SRCS}
-  DEPS ${KRPC_LIBS})
+ADD_EXPORTABLE_LIBRARY(yrpc
+  SRCS ${YRPC_SRCS}
+  DEPS ${YRPC_LIBS})
 
 ### RPC generator tool
-add_executable(protoc-gen-krpc protoc-gen-krpc.cc)
-target_link_libraries(protoc-gen-krpc
+add_executable(protoc-gen-yrpc protoc-gen-yrpc.cc)
+target_link_libraries(protoc-gen-yrpc
     ${YB_BASE_LIBS}
     protoc
     protobuf
@@ -96,19 +96,19 @@ PROTOBUF_GENERATE_CPP(
 add_library(rtest_diff_package_proto ${RPC_TEST_DIFF_PACKAGE_SRCS} ${RPC_TEST_DIFF_PACKAGE_HDRS})
 target_link_libraries(rtest_diff_package_proto rpc_header_proto)
 
-KRPC_GENERATE(
-  RTEST_KRPC_SRCS RTEST_KRPC_HDRS RTEST_KRPC_TGTS
+YRPC_GENERATE(
+  RTEST_YRPC_SRCS RTEST_YRPC_HDRS RTEST_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rtest.proto)
-add_library(rtest_krpc ${RTEST_KRPC_SRCS} ${RTEST_KRPC_HDRS})
-target_link_libraries(rtest_krpc
-  krpc
+add_library(rtest_yrpc ${RTEST_YRPC_SRCS} ${RTEST_YRPC_HDRS})
+target_link_libraries(rtest_yrpc
+  yrpc
   rpc_header_proto
   rtest_diff_package_proto)
 
 # Tests
-set(YB_TEST_LINK_LIBS rtest_krpc krpc ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS rtest_yrpc yrpc ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(mt-rpc-test RUN_SERIAL true)
 ADD_YB_TEST(reactor-test)
 ADD_YB_TEST(rpc-bench RUN_SERIAL true)

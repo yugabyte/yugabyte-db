@@ -44,7 +44,7 @@ if $ONLY_CHANGED; then
     exit 0
   fi
 else
-  FILES=$(find $ROOT/src -name '*.cc' -or -name '*.h' | grep -v "\.pb\.\|\.service\.\|\.proxy\.\|\.krpc\.\|gutil\|trace_event\|yb_export\.h")
+  FILES=$(find $ROOT/src -name '*.cc' -or -name '*.h' | grep -v "\.pb\.\|\.service\.\|\.proxy\.\|\.yrpc\.\|gutil\|trace_event\|yb_export\.h")
 fi
 
 cd $ROOT

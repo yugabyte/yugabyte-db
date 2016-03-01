@@ -19,22 +19,22 @@
 # remote_bootstrap_proto
 #########################################
 
-KRPC_GENERATE(
-  REMOTE_BOOTSTRAP_KRPC_SRCS REMOTE_BOOTSTRAP_KRPC_HDRS REMOTE_BOOTSTRAP_KRPC_TGTS
+YRPC_GENERATE(
+  REMOTE_BOOTSTRAP_YRPC_SRCS REMOTE_BOOTSTRAP_YRPC_HDRS REMOTE_BOOTSTRAP_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES remote_bootstrap.proto)
-set(REMOTE_BOOTSTRAP_KRPC_LIBS
+set(REMOTE_BOOTSTRAP_YRPC_LIBS
   consensus_proto
-  krpc
+  yrpc
   protobuf
   rpc_header_proto
   tablet_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(remote_bootstrap_proto
-  SRCS ${REMOTE_BOOTSTRAP_KRPC_SRCS}
-  DEPS ${REMOTE_BOOTSTRAP_KRPC_LIBS}
-  NONLINK_DEPS ${REMOTE_BOOTSTRAP_KRPC_TGTS})
+  SRCS ${REMOTE_BOOTSTRAP_YRPC_SRCS}
+  DEPS ${REMOTE_BOOTSTRAP_YRPC_LIBS}
+  NONLINK_DEPS ${REMOTE_BOOTSTRAP_YRPC_TGTS})
 
 #########################################
 # tserver_proto
@@ -59,33 +59,33 @@ ADD_EXPORTABLE_LIBRARY(tserver_proto
 # tserver_admin_proto
 #########################################
 
-KRPC_GENERATE(
-  TSERVER_ADMIN_KRPC_SRCS TSERVER_ADMIN_KRPC_HDRS TSERVER_ADMIN_KRPC_TGTS
+YRPC_GENERATE(
+  TSERVER_ADMIN_YRPC_SRCS TSERVER_ADMIN_YRPC_HDRS TSERVER_ADMIN_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES tserver_admin.proto)
-set(TSERVER_ADMIN_KRPC_LIBS
-  krpc
+set(TSERVER_ADMIN_YRPC_LIBS
+  yrpc
   protobuf
   rpc_header_proto
   tserver_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(tserver_admin_proto
-  SRCS ${TSERVER_ADMIN_KRPC_SRCS}
-  DEPS ${TSERVER_ADMIN_KRPC_LIBS}
-  NONLINK_DEPS ${TSERVER_ADMIN_KRPC_TGTS})
+  SRCS ${TSERVER_ADMIN_YRPC_SRCS}
+  DEPS ${TSERVER_ADMIN_YRPC_LIBS}
+  NONLINK_DEPS ${TSERVER_ADMIN_YRPC_TGTS})
 
 #########################################
 # tserver_service_proto
 #########################################
 
-KRPC_GENERATE(
-  TSERVER_KRPC_SRCS TSERVER_KRPC_HDRS TSERVER_KRPC_TGTS
+YRPC_GENERATE(
+  TSERVER_YRPC_SRCS TSERVER_YRPC_HDRS TSERVER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES tserver_service.proto)
-set(TSERVER_KRPC_LIBS
-  krpc
+set(TSERVER_YRPC_LIBS
+  yrpc
   yb_common_proto
   protobuf
   remote_bootstrap_proto
@@ -93,9 +93,9 @@ set(TSERVER_KRPC_LIBS
   tserver_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(tserver_service_proto
-  SRCS ${TSERVER_KRPC_SRCS}
-  DEPS ${TSERVER_KRPC_LIBS}
-  NONLINK_DEPS ${TSERVER_KRPC_TGTS})
+  SRCS ${TSERVER_YRPC_SRCS}
+  DEPS ${TSERVER_YRPC_LIBS}
+  NONLINK_DEPS ${TSERVER_YRPC_TGTS})
 
 #########################################
 # tserver
@@ -129,7 +129,7 @@ target_link_libraries(tserver
   log_proto
   log
   consensus
-  krpc
+  yrpc
   server_common
   server_process
   tablet)
