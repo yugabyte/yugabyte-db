@@ -56,7 +56,7 @@ class TabletVisitor {
                              const SysTabletsEntryPB& metadata) = 0;
 };
 
-// SysCatalogTable is a Kudu table that keeps track of table and
+// SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
 // - SysCatalogTable has only one tablet.
 // - SysCatalogTable is managed by the master and not exposed to the user

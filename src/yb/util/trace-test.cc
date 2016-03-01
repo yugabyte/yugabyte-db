@@ -170,7 +170,7 @@ TEST_F(TraceTest, TestChromeTracing) {
 
 // Test that, if a thread exits before filling a full trace buffer, we still
 // see its results. This is a regression test for a bug in the earlier integration
-// of Chromium tracing into Kudu.
+// of Chromium tracing into YB.
 TEST_F(TraceTest, TestTraceFromExitedThread) {
   TraceLog* tl = TraceLog::GetInstance();
   tl->SetEnabled(CategoryFilter(CategoryFilter::kDefaultCategoryFilterString),

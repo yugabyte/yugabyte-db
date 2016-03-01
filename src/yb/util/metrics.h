@@ -18,7 +18,7 @@
 #define YB_UTIL_METRICS_H
 
 /////////////////////////////////////////////////////
-// Kudu Metrics
+// YB Metrics
 /////////////////////////////////////////////////////
 //
 // Summary
@@ -52,7 +52,7 @@
 // -----------------------
 // Each defined Metric Entity Type serves as a prototype allowing instantiation of a
 // MetricEntity object. Each instance then has its own unique set of metrics. For
-// example, in the case of Kudu, we define a Metric Entity Type called 'tablet', and the
+// example, in the case of YB, we define a Metric Entity Type called 'tablet', and the
 // Tablet Server instantiates one MetricEntity instance per tablet that it hosts.
 //
 // MetricEntity instances are instantiated within a MetricRegistry, and each instance is
@@ -68,7 +68,7 @@
 // Metric instances
 // ----------------
 // Given a MetricEntity instance and a Metric Prototype, one can instantiate a Metric
-// instance. For example, the Kudu Tablet Server instantiates one MetricEntity instance
+// instance. For example, the YB Tablet Server instantiates one MetricEntity instance
 // for each tablet, and then instantiates the 'tablet_rows_inserted' prototype within that
 // entity. Thus, each tablet then has a separate instance of the metric, allowing the end
 // operator to track the metric on a per-tablet basis.

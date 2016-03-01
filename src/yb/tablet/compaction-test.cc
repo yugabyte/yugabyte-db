@@ -38,7 +38,7 @@
 DEFINE_string(merge_benchmark_input_dir, "",
               "Directory to benchmark merge. The benchmark will merge "
               "all rowsets from this directory, pointed by the super-block "
-              "with id 00000 or 1111 and tablet id 'KuduCompactionBenchTablet', "
+              "with id 00000 or 1111 and tablet id 'YBCompactionBenchTablet', "
               "if this is specified. Otherwise, inputs will "
               "be generated as part of the test itself.");
 DEFINE_int32(merge_benchmark_num_rowsets, 3,
@@ -354,7 +354,7 @@ class TestCompaction : public YBRowSetTest {
         rowsets.push_back(rs);
       }
     } else {
-      string tablet_id = "KuduCompactionBenchTablet";
+      string tablet_id = "YBCompactionBenchTablet";
       FsManager fs_manager(env_.get(), FLAGS_merge_benchmark_input_dir);
       scoped_refptr<TabletMetadata> input_meta;
       ASSERT_OK(TabletMetadata::Load(&fs_manager, tablet_id, &input_meta));

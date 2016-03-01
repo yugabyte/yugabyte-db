@@ -562,7 +562,7 @@ void LogBlockContainer::UpdateBytesWritten(int64_t more_bytes) {
   DCHECK_GE(more_bytes, 0);
 
   // The number of bytes is rounded up to the nearest filesystem block so
-  // that each Kudu block is guaranteed to be on a filesystem block
+  // that each YB block is guaranteed to be on a filesystem block
   // boundary. This guarantees that the disk space can be reclaimed when
   // the block is deleted.
   total_bytes_written_ += YB_ALIGN_UP(more_bytes,
@@ -1053,7 +1053,7 @@ static const char kHolePunchErrorMsg[] =
     "filesystem with hole punching support such as ext4 or xfs. On el6, "
     "kernel version 2.6.32-358 or newer is required. To run without hole "
     "punching (at the cost of some efficiency and scalability), reconfigure "
-    "Kudu with --block_manager=file. Refer to the Kudu documentation for more "
+    "YB with --block_manager=file. Refer to the YB documentation for more "
     "details. Raw error message follows";
 
 Status LogBlockManager::Create() {

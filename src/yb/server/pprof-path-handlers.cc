@@ -125,7 +125,7 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req, stringstrea
     seconds = atoi(it->second.c_str());
   }
   // Build a temporary file name that is hopefully unique.
-  string tmp_prof_file_name = strings::Substitute("/tmp/kudu_cpu_profile/$0.$1", getpid(), rand());
+  string tmp_prof_file_name = strings::Substitute("/tmp/yb_cpu_profile/$0.$1", getpid(), rand());
   ProfilerStart(tmp_prof_file_name.c_str());
   SleepFor(MonoDelta::FromSeconds(seconds));
   ProfilerStop();

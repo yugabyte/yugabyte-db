@@ -124,9 +124,9 @@ void HtmlOutputImpalaSchema(const std::string& table_name,
 
   *output << "TBLPROPERTIES(\n";
   *output << "  'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',\n";
-  *output << "  'kudu.table_name' = '" << table_name << "',\n";
-  *output << "  'kudu.master_addresses' = '" << master_addresses << "',\n";
-  *output << "  'kudu.key_columns' = '" << JoinElements(key_columns, ", ") << "'\n";
+  *output << "  'yb.table_name' = '" << table_name << "',\n";
+  *output << "  'yb.master_addresses' = '" << master_addresses << "',\n";
+  *output << "  'yb.key_columns' = '" << JoinElements(key_columns, ", ") << "'\n";
   *output << ");\n";
   *output << "</pre></code>\n";
 }

@@ -649,7 +649,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
     const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
 
     // Segments here will always have a footer, since we don't return the in-progress segment
-    // up above. However, segments written by older Kudu builds may not have the timestamp
+    // up above. However, segments written by older YB builds may not have the timestamp
     // info. In that case, we're allowed to GC them.
     if (!segment->footer().has_close_timestamp_micros()) continue;
 

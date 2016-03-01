@@ -16,7 +16,7 @@
 // under the License.
 //
 // Flag Tags provide a way to attach arbitrary textual tags to gflags in
-// a global registry. Kudu uses the following flag tags:
+// a global registry. YB uses the following flag tags:
 //
 // - "stable":
 //         These flags are considered user-facing APIs. Therefore, the
@@ -96,7 +96,7 @@
 //
 // To add a tag to a flag, use the TAG_FLAG macro. For example:
 //
-//  DEFINE_bool(sometimes_crash, false, "This flag makes Kudu crash a lot");
+//  DEFINE_bool(sometimes_crash, false, "This flag makes YB crash a lot");
 //  TAG_FLAG(sometimes_crash, unsafe);
 //  TAG_FLAG(sometimes_crash, runtime);
 //

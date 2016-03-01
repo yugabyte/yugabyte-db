@@ -44,7 +44,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 DEFINE_string(master_addresses, "localhost",
-              "Comma-separated list of Kudu Master server addresses");
+              "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 #define EXIT_NOT_OK_PREPEND(status, msg) \

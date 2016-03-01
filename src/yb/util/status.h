@@ -73,13 +73,13 @@
 // logged message.
 #define YB_CHECK_OK(s) YB_CHECK_OK_PREPEND(s, "Bad status")
 
-// This header is used in both the Kudu build as well as in builds of
-// applications that use the Kudu C++ client. In the latter we need to be
+// This header is used in both the YB build as well as in builds of
+// applications that use the YB C++ client. In the latter we need to be
 // careful to "namespace" our macros, to avoid colliding or overriding with
 // similarly named macros belonging to the application.
 //
 // YB_HEADERS_USE_SHORT_STATUS_MACROS handles this behavioral change. When
-// defined, we're building Kudu and:
+// defined, we're building YB and:
 // 1. Non-namespaced macros are allowed and mapped to the namespaced versions
 //    defined above.
 // 2. Namespaced versions of glog macros are mapped to the real glog macros

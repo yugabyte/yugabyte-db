@@ -62,7 +62,7 @@ namespace tools {
 
 static string GetKsckUsage(const char* progname) {
   string msg = Substitute("Usage: $0 --master_address=<addr> <flags>\n\n", progname);
-  msg += "Check the health of a Kudu cluster.\n\n"
+  msg += "Check the health of a YB cluster.\n\n"
          "By default, ksck checks that master and tablet server processes are running,\n"
          "and that table metadata is consistent. Use the 'checksum' flag to check that\n"
          "tablet data is consistent (also see the 'tables' and 'tablets' flags below).\n"

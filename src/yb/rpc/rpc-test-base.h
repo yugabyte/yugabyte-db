@@ -247,7 +247,7 @@ class CalculatorService : public CalculatorServiceIf {
 
 };
 
-const char *GenericCalculatorService::kFullServiceName = "kudu.rpc.GenericCalculatorService";
+const char *GenericCalculatorService::kFullServiceName = "yb.rpc.GenericCalculatorService";
 const char *GenericCalculatorService::kAddMethodName = "Add";
 const char *GenericCalculatorService::kSleepMethodName = "Sleep";
 const char *GenericCalculatorService::kSendTwoStringsMethodName = "SendTwoStrings";

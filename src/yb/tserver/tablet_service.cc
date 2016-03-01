@@ -1422,7 +1422,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
   if (PREDICT_FALSE(s.IsInvalidArgument())) {
     // An invalid projection returns InvalidArgument above.
     // TODO: would be nice if we threaded these more specific
-    // error codes throughout Kudu.
+    // error codes throughout YB.
     *error_code = tmp_error_code;
     return s;
   } else if (PREDICT_FALSE(!s.ok())) {

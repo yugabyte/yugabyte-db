@@ -162,7 +162,7 @@ bool InitSignalHandlerUnlocked(int signum) {
       LOG(WARNING) << "signal handler for stack trace signal "
                    << g_stack_trace_signum
                    << " is already in use: "
-                   << "Kudu will not produce thread stack traces.";
+                   << "YB will not produce thread stack traces.";
     } else {
       // No one appears to be using the signal. This is racy, but there is no
       // atomic swap capability.

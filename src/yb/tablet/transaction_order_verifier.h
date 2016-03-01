@@ -70,7 +70,7 @@ class TransactionOrderVerifier {
   // one by one (with no gaps) and that the prepare timestamps are also increasing.
   //
   // NOTE: the 'timestamp' here is a local system monotonic timestamp, not
-  // a Kudu Timestamp. We are enforcing/verifying a local ordering property,
+  // a YB Timestamp. We are enforcing/verifying a local ordering property,
   // so local real time is what matters.
   //
   // If the checks fail, the server is FATALed.

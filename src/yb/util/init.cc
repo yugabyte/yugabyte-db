@@ -30,7 +30,7 @@ namespace yb {
 Status BadCPUStatus(const base::CPU& cpu, const char* instruction_set) {
   return Status::NotSupported(strings::Substitute(
       "The CPU on this system ($0) does not support the $1 instruction "
-      "set which is required for running Kudu.",
+      "set which is required for running YB.",
       cpu.cpu_brand(), instruction_set));
 }
 
@@ -47,7 +47,7 @@ Status CheckCPUFlags() {
   return Status::OK();
 }
 
-void InitKuduOrDie() {
+void InitYBOrDie() {
   CHECK_OK(CheckCPUFlags());
 }
 
