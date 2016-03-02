@@ -39,12 +39,8 @@ DEFINE_string(
   "Table name to use for YugaByte load testing");
 
 DEFINE_int64(
-  load_test_num_rows, 1000000,
+  load_test_num_rows, 50000,
   "Number of rows to insert");
-
-DEFINE_int64(
-  load_test_progress_report_frequency, 10000,
-  "Report progress once per this number of rows");
 
 DEFINE_int64(
   load_test_num_writer_threads, 4,
@@ -65,6 +61,10 @@ DEFINE_bool(
 DEFINE_int32(
   load_test_table_num_replicas, 3,
   "Replication factor for the load test table");
+
+DEFINE_int32(
+  insertion_tracker_delay_ms, 50,
+  "The internval at which the \"insertion tracker thread\" wakes up in milliseconds");
 
 
 using strings::Substitute;
@@ -342,7 +342,7 @@ void MultiThreadedWriter::RunStatsThread() {
     LOG(INFO) << "Wrote " << current_key << " rows ("
       << current_key * 1000000.0 / (current_time - start_time) << " writes/sec)"
       << ", contiguous insertion point: " << inserted_up_to_inclusive_.load()
-      << ", insertion failures: " << failed_keys_.NumElements();
+      << ", write errors: " << failed_keys_.NumElements();
   }
 }
 
@@ -357,7 +357,7 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
       inserted_up_to_inclusive_.store(current_key);
       current_key++;
     }
-    SleepFor(MonoDelta::FromMilliseconds(10));
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_insertion_tracker_delay_ms));
   }
   LOG(INFO) << "Insertion tracker thread stopped";
 }
@@ -388,6 +388,7 @@ class MultiThreadedReader : public MultiThreadedAction {
   const KeyIndexSet* inserted_keys_;
   const KeyIndexSet* failed_keys_;
   atomic_long num_read_errors_;
+  atomic_long num_reads_;
 };
 
 MultiThreadedReader::MultiThreadedReader(
@@ -403,7 +404,8 @@ MultiThreadedReader::MultiThreadedReader(
     insertion_point_(insertion_point),
     inserted_keys_(inserted_keys),
     failed_keys_(failed_keys),
-    num_read_errors_(0) {
+    num_read_errors_(0),
+    num_reads_(0) {
 }
 
 void MultiThreadedReader::RunActionThread(int readerIndex) {
@@ -441,7 +443,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
           break;
       }
       // Ensure we don't try to read a key for which a write failed.
-    } while (failed_keys_->Contains(key_index));
+    } while (failed_keys_->Contains(key_index) && !IsStopped());
     if (FLAGS_load_test_verbose) {
       LOG(INFO) << "Reader thread " << readerIndex << " saw written_up_to="
         << written_up_to << " and picked key #" << key_index;
@@ -458,6 +460,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
           "k", YBPredicate::EQUAL,
           YBValue::CopyString(key_str))));
     CHECK_OK(scanner.Open());
+    num_reads_++;
     if (!scanner.HasMoreRows()) {
       LOG(ERROR) << "No rows found for key #" << key_index << " (read timestamp: "
         << read_ts << ")";
@@ -500,7 +503,15 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
 }
 
 void MultiThreadedReader::RunStatsThread() {
-
+  MicrosecondsInt64 start_time = GetMonoTimeMicros();
+  while (!IsStopped() && running_threads_latch_.count() > 0) {
+    running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
+    MicrosecondsInt64 current_time = GetMonoTimeMicros();
+    long num_rows_read = num_reads_.load();
+    LOG(INFO) << "Read " << num_rows_read << " rows ("
+      << num_rows_read * 1000000.0 / (current_time - start_time) << " reads/sec)"
+      << ", read errors: " << num_read_errors_.load();
+  }
 }
 
 void MultiThreadedReader::IncrementReadErrorCount() {
