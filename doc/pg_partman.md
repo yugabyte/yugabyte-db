@@ -374,7 +374,7 @@ The rest are managed by the extension itself and should not be changed unless ab
     - If `run_maintenance()` is given a table parameter, this option is ignored and maintenace will always run.
     - Defaults to TRUE for time-based partitioning.
     - Defaults to FALSE for single-level serial-based partitioning and can be changed to TRUE if desired. 
-    - If changing an existing serial partitioned set from FALSE to TRUE, you must run create_id_function('parent_schema.parent_table') to change the trigger function so it no longer creates new partitions.
+    - If changing an existing serial partitioned set from FALSE to TRUE, you must run create_function_id('parent_schema.parent_table') to change the trigger function so it no longer creates new partitions.
     - Defaults to TRUE for all sub-partition tables
  - `jobmon`
     - Boolean value to determine whether the `pg_jobmon` extension is used to log/monitor partition maintenance. Defaults to true.
