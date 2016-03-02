@@ -171,7 +171,7 @@ public:
   virtual void Start();
   virtual void WaitForCompletion();
 
-  void Stop() { stop_flag_->store(true) }
+  void Stop() { stop_flag_->store(true); }
   bool IsStopped() { return stop_flag_->load(); }
 
 protected:
