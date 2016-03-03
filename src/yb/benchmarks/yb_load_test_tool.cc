@@ -71,8 +71,6 @@ DEFINE_int32(
   load_test_num_tablets, 16,
   "Number of tables to create in the table");
 
-
-
 using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
@@ -161,6 +159,12 @@ ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
   return out;
 }
 
+string FormatHex(uint64_t x) {
+  char buf[64];
+  snprintf(buf, sizeof(buf) - 1, "%016zx", x);
+  return buf;
+}
+
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedAction
 // ------------------------------------------------------------------------------------------------
@@ -186,9 +190,7 @@ protected:
 
   inline static string GetKeyByIndex(int64 key_index) {
     string key_index_str(Substitute("key$0", key_index));
-    char buf[64];
-    snprintf(buf, sizeof(buf) - 1, "%016zx", std::hash<string>()(key_index_str));
-    return Substitute("$0_$1", buf, key_index_str);
+    return Substitute("$0_$1", FormatHex(std::hash<string>()(key_index_str)), key_index_str);
   }
 
   inline static string GetValueByIndex(int64 key_index) {
@@ -571,19 +573,21 @@ int main(int argc, char* argv[]) {
     CHECK_OK(schemaBuilder.Build(&schema));
 
     // Create the number of partitions based on the split keys.
-//    vector<const YBPartialRow*> splits;
-//    int32_t increment = 0xffffffff / FLAGS_load_test_num_tablets;
-//    for (uint64_t i = 0; i < num_tablets; i++) {
-//      YBPartialRow* row = schema.NewRow();
-//
-//      CHECK_OK(row->SetString(0, increment * i));
-//      splits.push_back(row);
-//    }
-//
+    vector<const YBPartialRow*> splits;
+    for (uint64_t i = 1; i < FLAGS_load_test_num_tablets; i++) {
+      YBPartialRow* row = schema.NewRow();
+      // We divide the interval between 0 and 2**64 into the requested number of intervals.
+      string split_key = FormatHex(
+        ((uint64_t) 1 << 62) * 4.0 * i / (FLAGS_load_test_num_tablets + 1));
+      LOG(INFO) << "split_key #" << i << "=" << split_key;
+      CHECK_OK(row->SetString(0, split_key));
+      splits.push_back(row);
+    }
 
     LOG(INFO) << "Creating table";
     gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
+      .split_rows(splits)
       .num_replicas(FLAGS_load_test_table_num_replicas).Create();
     if (!table_creation_status.ok()) {
       LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
