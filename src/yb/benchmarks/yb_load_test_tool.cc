@@ -14,6 +14,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/common/partial_row.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -66,6 +67,11 @@ DEFINE_int32(
   insertion_tracker_delay_ms, 50,
   "The internval at which the \"insertion tracker thread\" wakes up in milliseconds");
 
+DEFINE_int32(
+  load_test_num_tablets, 16,
+  "Number of tables to create in the table");
+
+
 
 using strings::Substitute;
 using std::atomic_long;
@@ -83,6 +89,8 @@ using yb::Mutex;
 using yb::MutexLock;
 using yb::CountDownLatch;
 using yb::Slice;
+using yb::YBPartialRow;
+using strings::Substitute;
 
 void ConfigureSession(YBSession* session) {
   session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH);
@@ -177,7 +185,10 @@ public:
 protected:
 
   inline static string GetKeyByIndex(int64 key_index) {
-    return strings::Substitute("key$0", key_index);
+    string key_index_str(Substitute("key$0", key_index));
+    char buf[64];
+    snprintf(buf, sizeof(buf) - 1, "%016zx", std::hash<string>()(key_index_str));
+    return Substitute("$0_$1", buf, key_index_str);
   }
 
   inline static string GetValueByIndex(int64 key_index) {
@@ -219,8 +230,7 @@ MultiThreadedAction::MultiThreadedAction(
 }
 
 void MultiThreadedAction::Start() {
-  LOG(INFO) << "Starting " << num_action_threads_ << " " << description_ << " threads, num_keys = "
-  << num_keys_;
+  LOG(INFO) << "Starting " << num_action_threads_ << " " << description_ << " threads";
   thread_pool_->SubmitFunc(boost::bind(&MultiThreadedAction::RunStatsThread, this));
   for (int i = 0; i < num_action_threads_; i++) {
     thread_pool_->SubmitFunc(boost::bind(&MultiThreadedAction::RunActionThread, this, i));
@@ -300,7 +310,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
 
     gscoped_ptr<YBInsert> insert(table_->NewInsert());
     string key_str(GetKeyByIndex(key_index));
-    string value_str(strings::Substitute("value$0", key_index));
+    string value_str(Substitute("value$0", key_index));
     insert->mutable_row()->SetString("k", key_str.c_str());
     insert->mutable_row()->SetString("v", value_str.c_str());
     Status apply_status = session->Apply(insert.release());
@@ -530,6 +540,8 @@ int main(int argc, char* argv[]) {
   yb::ParseCommandLineFlags(&argc, &argv, true);
   yb::InitGoogleLoggingSafe(argv[0]);
 
+  LOG(INFO) << "num_keys = " << FLAGS_load_test_num_rows;
+
   for (int i = 0; i < FLAGS_load_test_num_iter; ++i) {
     shared_ptr<YBClient> client;
     CHECK_OK(YBClientBuilder()
@@ -557,6 +569,17 @@ int main(int argc, char* argv[]) {
     schemaBuilder.AddColumn("v")->Type(YBColumnSchema::STRING)->NotNull();
     YBSchema schema;
     CHECK_OK(schemaBuilder.Build(&schema));
+
+    // Create the number of partitions based on the split keys.
+//    vector<const YBPartialRow*> splits;
+//    int32_t increment = 0xffffffff / FLAGS_load_test_num_tablets;
+//    for (uint64_t i = 0; i < num_tablets; i++) {
+//      YBPartialRow* row = schema.NewRow();
+//
+//      CHECK_OK(row->SetString(0, increment * i));
+//      splits.push_back(row);
+//    }
+//
 
     LOG(INFO) << "Creating table";
     gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());

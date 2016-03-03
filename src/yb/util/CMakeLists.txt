@@ -360,5 +360,3 @@ if(NOT "${NO_TESTS}")
   target_link_libraries(pb_util-test
     proto_container_test_proto)
 endif()
-
-add_library(md5)
