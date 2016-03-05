@@ -65,7 +65,6 @@
 #include "yb/benchmarks/tpch/tpch-schemas.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
-#include "yb/codegen/compilation_manager.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/numbers.h"
@@ -147,7 +146,6 @@ void WarmupScanCache(RpcLineItemDAO* dao) {
   // Warms up cache for the tpch1 query.
   gscoped_ptr<RpcLineItemDAO::Scanner> scanner;
   dao->OpenTpch1Scanner(&scanner);
-  codegen::CompilationManager::GetSingleton()->Wait();
 }
 
 void Tpch1(RpcLineItemDAO *dao) {

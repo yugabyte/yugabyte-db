@@ -27,7 +27,6 @@ set(SERVER_COMMON_SRCS
 add_library(server_common ${SERVER_COMMON_SRCS})
 target_link_libraries(server_common
   yb_common
-  codegen
   gutil
   yb_fs
   yb_util

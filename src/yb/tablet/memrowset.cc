@@ -22,8 +22,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/codegen/compilation_manager.h"
-#include "yb/codegen/row_projector.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/generic_iterators.h"
 #include "yb/common/row.h"
@@ -33,10 +31,6 @@
 #include "yb/tablet/compaction.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/mem_tracker.h"
-
-DEFINE_bool(mrs_use_codegen, true, "whether the memrowset should use code "
-            "generation for iteration");
-TAG_FLAG(mrs_use_codegen, hidden);
 
 using std::pair;
 using std::shared_ptr;
@@ -351,19 +345,8 @@ class MRSRowProjectorImpl : public MRSRowProjector {
   gscoped_ptr<ActualProjector> actual_;
 };
 
-// If codegen is enabled, then generates a codegen::RowProjector;
-// otherwise makes a regular one.
 gscoped_ptr<MRSRowProjector> GenerateAppropriateProjector(
   const Schema* base, const Schema* projection) {
-  // Attempt code-generated implementation
-  if (FLAGS_mrs_use_codegen) {
-    gscoped_ptr<codegen::RowProjector> actual;
-    if (codegen::CompilationManager::GetSingleton()->RequestRowProjector(
-          base, projection, &actual)) {
-      return gscoped_ptr<MRSRowProjector>(
-        new MRSRowProjectorImpl<codegen::RowProjector>(actual.Pass()));
-    }
-  }
 
   // Proceed with default implementation
   gscoped_ptr<RowProjector> actual(new RowProjector(base, projection));
