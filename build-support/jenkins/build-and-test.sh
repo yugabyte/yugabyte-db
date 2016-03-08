@@ -103,8 +103,11 @@ export YB_ALLOW_SLOW_TESTS=${YB_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
 export YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-1}
 
 if [ -z "${TEST_TMPDIR:-}" ]; then
+  JOB_NAME_CLEAN=${JOB_NAME:-unknown}
+  # Make sure the job name does not have spaces.
+  JOB_NAME_CLEAN=${JOB_NAME_CLEAN// /_}
   TEST_TMPDIR=\
-"/tmp/ybtest.user_${USER:-unknown}.job_${JOB_NAME:-unknown}.executor_${EXECUTOR_NUMBER:-unknown}"
+"/tmp/ybtest.user_${USER:-unknown}.job_$JOB_NAME_CLEAN.executor_${EXECUTOR_NUMBER:-unknown}"
 fi
 export TEST_TMPDIR
 
