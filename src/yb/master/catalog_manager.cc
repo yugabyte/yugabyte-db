@@ -2472,11 +2472,13 @@ void CatalogManager::SendAddServerRequest(const scoped_refptr<TabletInfo>& table
                                           const ConsensusStatePB& cstate) {
   auto task = new AsyncAddServerTask(master_, worker_pool_.get(), tablet, cstate);
   tablet->table()->AddTask(task);
-  WARN_NOT_OK(task->Run(), "Failed to send new AddServer request");
+  Status status = task->Run();
+  WARN_NOT_OK(status, "Failed to send new AddServer request");
 
   // Need to print this after Run() because that's where it picks the TS which description()
   // needs.
-  LOG(INFO) << "Started AddServer task: " << task->description();
+  if (status.ok())
+    LOG(INFO) << "Started AddServer task: " << task->description();
 }
 
 void CatalogManager::ExtractTabletsToProcess(

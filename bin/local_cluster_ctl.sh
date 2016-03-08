@@ -5,7 +5,7 @@ set -euo pipefail
 print_help() {
   cat <<-EOT
 Usage: ${0##*/} [<options>] <command>
-Options:
+Options (do not apply to status/add/remove commands):
   --num-masters <num_masters>
     Number of master processes. 3 by deafult.
   --num-tservers <num_tables>
@@ -17,6 +17,8 @@ Commands:
   start
   stop
   status
+  add
+  remove <server_index>
 EOT
 }
 
@@ -35,6 +37,8 @@ validate_daemon_type() {
     exit 1
   fi
 }
+
+master_rpc_port_base=7100
 
 validate_daemon_index() {
   local daemon_index=$1
@@ -88,10 +92,9 @@ find_daemon_pid() {
       echo "Internal error: cannot determine base RPC port for daemon type '$daemon_type'" >&2
       exit 1
   esac
-
   set +e
   local daemon_pid=$(
-    pgrep -f "yb-$daemon_type .* --rpc_bind_addresses 0.0.0.0:$(( $rpc_port_base + $i ))"
+    pgrep -f "yb-$daemon_type .* --rpc_bind_addresses 0.0.0.0:$(( $rpc_port_base + $daemon_index ))"
   )
   set -e
   echo "$daemon_pid"
@@ -104,7 +107,7 @@ stop_daemon() {
   validate_daemon_index "$daemon_index"
   local daemon_pid=$( find_daemon_pid "$daemon_type" "$daemon_index" )
   if [ -n "$daemon_pid" ]; then
-    echo "Killing $daemon_type $i (pid $daemon_pid)"
+    echo "Killing $daemon_type $daemon_index (pid $daemon_pid)"
     ( set -x; kill $daemon_pid )
   else
     echo "$daemon_type $i already stopped"
@@ -124,9 +127,102 @@ show_daemon_status() {
   fi
 }
 
+num_cur=0
+# Count number of current masters. $1 is 1 implies we are going to add one master.
+get_num_masters() {
+  for i in `seq 1 9`; do
+    local daemon_pid=$( find_daemon_pid "master" $i )
+    if [ -n "$daemon_pid" ]; then
+      let num_cur=num_cur+1
+    fi
+  done
+  local inp=$1
+  if [ $inp -eq 1 ]; then
+   let num_cur=num_cur+1
+  fi
+  master_indexes=$( seq 1 $num_cur )
+}
+
+num_cur_tservers=0
+# Count number of current tablet servers. $1 is 1 implies we are going to add one more tserver.
+get_num_tservers() {
+  for i in `seq 1 9`; do
+    local daemon_pid=$( find_daemon_pid "tserver" $i )
+    if [ -n "$daemon_pid" ]; then
+      let num_cur_tservers=num_cur_tservers+1
+    fi
+  done
+  local inp=$1
+  if [ $inp -eq 1 ]; then
+   let num_cur_tservers=num_cur_tservers+1
+  fi
+  tserver_indexes=$( seq 1 $num_cur_tservers )
+}
+
+remove_daemon() {
+  local daemon_type=$1
+  validate_daemon_type "$daemon_type"
+  local id=$2
+  validate_daemon_index "$id"
+  local daemon_pid=$( find_daemon_pid "$daemon_type" "$id" )
+  if [ -n "$daemon_pid" ]; then
+    echo "Killing $daemon_type $id (pid $daemon_pid)"
+    ( set -x; kill $daemon_pid )
+  else
+    echo "$daemon_type $id already stopped"
+  fi
+}
+
+add_daemon() {
+  local daemon_type=$1
+  validate_daemon_type "$daemon_type"
+  local id=$2
+  validate_daemon_index "$id"
+  master_base_dir="$cluster_base_dir/master-$id"
+  master_binary="$build_root/bin/yb-master"
+  tserver_binary="$build_root/bin/yb-tserver"
+  tserver_base_dir="$cluster_base_dir/tserver-$id"
+
+  for subdir in logs wal data; do
+    mkdir -p "$cluster_base_dir/$daemon_type-$id/$subdir"
+  done
+
+  case "$daemon_type" in
+    master)
+      echo "Starting master $id"
+      set -x
+      (
+        "$master_binary" \
+          --fs_data_dirs "$master_base_dir/data" \
+          --fs_wal_dir "$master_base_dir/wal" \
+          --log_dir "$master_base_dir/logs" \
+          --master_addresses "$master_addresses" \
+          --webserver_port $(( $master_http_port_base + $id )) \
+          --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $id )) &
+      )
+      ;;
+    tserver)
+      echo "Starting tablet server $id"
+      set -x
+      (
+        "$tserver_binary" \
+           --fs_data_dirs "$tserver_base_dir/data" \
+           --fs_wal_dir "$tserver_base_dir/wal" \
+           --log_dir "$tserver_base_dir/logs" \
+           --tserver_master_addrs "$master_addresses" \
+           --block_cache_capacity_mb 128 \
+           --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
+           --webserver_port $(( $tserver_http_port_base + $id )) \
+           --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $id )) &
+      )
+      ;;
+  esac
+}
+
 cmd=""
 num_masters=3
 num_tservers=3
+remId=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -142,7 +238,12 @@ while [ $# -gt 0 ]; do
       print_help
       exit
     ;;
-    start|stop|status)
+    remove)
+      cmd="$1"
+      remId="$2"
+      shift
+    ;;
+    start|stop|status|add)
       if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
         echo "More than one command specified: $cmd, $1" >&2
         exit 1
@@ -196,7 +297,6 @@ bind_ip=127.0.0.1
 
 master_addresses=""
 master_http_port_base=7000
-master_rpc_port_base=7100
 tserver_http_port_base=9000
 tserver_rpc_port_base=8100
 
@@ -268,6 +368,9 @@ if [ "$cmd" == "start" ]; then
     fi
   done
 elif [ "$cmd" == "stop" ]; then
+  get_num_masters 0
+  get_num_tservers 0
+
   for i in $master_indexes; do
     stop_daemon "master" $i
   done
@@ -276,6 +379,9 @@ elif [ "$cmd" == "stop" ]; then
     stop_daemon "tserver" $i
   done
 elif [ "$cmd" == "status" ]; then
+  get_num_masters 0
+  get_num_tservers 0
+
   for i in $master_indexes; do
     show_daemon_status "master" $i
   done
@@ -283,6 +389,18 @@ elif [ "$cmd" == "status" ]; then
   for i in $tserver_indexes; do
     show_daemon_status "tserver" $i
   done
+elif [ "$cmd" == "add" ]; then
+  get_num_masters 1
+  get_num_tservers 1
+
+  # TODO: add multiple, and separate out master and tserver additions
+  master_addresses+=",$bind_ip:$(( $master_rpc_port_base + $num_cur ))"
+  add_daemon "master" $num_cur
+  add_daemon "tserver" $num_cur_tservers
+elif [ "$cmd" == "remove" ]; then
+  # TODO: remove multiple
+  remove_daemon "master" $remId
+  remove_daemon "tserver" $remId
 else
   echo "Command $cmd has not been implemented yet" >&2
   exit 1
