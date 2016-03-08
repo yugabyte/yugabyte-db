@@ -117,15 +117,17 @@ def main():
 
   if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:
     logging.info(
-      'Removing git hash, host name, build timestamp, user name, and clean repo flag ' +
-      '(defaulting to false) from "version_defines.h" as requested by ' +
+      'Removing git hash, host name, build timestamp, user name, clean repo flag ' +
+      '(defaulting to false) and build id from "version_defines.h" as requested by ' +
       'YB_MINIMIZE_VERSION_DEFINES_CHANGES to reduce unnecessary rebuilds.')
+
     identifying_hash = '0' * 40
     git_hash = '0' * 40
     hostname = 'localhost'
     build_time = 'N/A'
     username = 'N/A'
     clean_repo = 'false'
+    build_id = '0'
 
   new_contents = \
 """
