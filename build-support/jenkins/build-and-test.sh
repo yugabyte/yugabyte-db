@@ -28,10 +28,11 @@
 #     Runs the "slow" version of the unit tests. Set to 0 to
 #     run the tests more quickly.
 #
-#   TEST_TMPDIR   Default: /tmp/ybtest-$UID
+#   TEST_TMPDIR
 #     Specifies the temporary directory where tests should write their
 #     data. It is expected that following the completion of all tests, this
 #     directory is empty (i.e. every test cleaned up after itself).
+#     The default location of this directory depends on the current user, Jenkins job name and id.
 #
 #   RUN_FLAKY_ONLY    Default: 0
 #     Only runs tests which have failed recently, if this is 1.
@@ -100,7 +101,13 @@ fi
 export YB_FLAKY_TEST_ATTEMPTS=${YB_FLAKY_TEST_ATTEMPTS:-1}
 export YB_ALLOW_SLOW_TESTS=${YB_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
 export YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-1}
-export TEST_TMPDIR=${TEST_TMPDIR:-/tmp/ybtest-$UID}
+
+if [ -z "${TEST_TMPDIR:-}" ]; then
+  TEST_TMPDIR=\
+"/tmp/ybtest.user_${USER:-unknown}.job_${JOB_NAME:-unknown}.executor_${EXECUTOR_NUMBER:-unknown}"
+fi
+export TEST_TMPDIR
+
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
