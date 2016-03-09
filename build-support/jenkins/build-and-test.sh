@@ -54,6 +54,9 @@
 #     $DIST_TEST_HOME be set to a working dist_test checkout (and that
 #     dist_test itself be appropriately configured to point to a cluster)
 #
+#   BUILD_CPP         Default: 1
+#     Build and test C++ code if this is set to 1.
+#
 #   BUILD_JAVA        Default: 1
 #     Build and test java code if this is set to 1.
 #
@@ -72,9 +75,16 @@
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
 DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
-if [ "x$DONT_BUILD" != "x" ]; then
+if [ -n "$DONT_BUILD" ]; then
     echo "*** Build not requested. Exiting."
     exit 1
+fi
+
+SKIP_CPP_BUILD=$(git show|egrep '^\s{4}SKIP_CPP_BUILD$')
+if [ -n "$SKIP_CPP_BUILD" ]; then
+  BUILD_CPP="0"
+else
+  BUILD_CPP="1"
 fi
 
 set -e
@@ -240,70 +250,74 @@ if [ -d "$TEST_TMPDIR" ]; then
   rm -Rf $TEST_TMPDIR/*
 fi
 
-# actually do the build
-echo
-echo Building C++ code.
-echo ------------------------------------------------------------
-NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
-make -j$NUM_PROCS 2>&1 | tee build.log
+if [ "$BUILD_CPP" == "1" ]; then
+  echo
+  echo Building C++ code.
+  echo ------------------------------------------------------------
+  NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
+  make -j$NUM_PROCS 2>&1 | tee build.log
 
-# If compilation succeeds, try to run all remaining steps despite any failures.
-set +e
+  # If compilation succeeds, try to run all remaining steps despite any failures.
+  set +e
 
-# Run tests
-export GTEST_OUTPUT="xml:$TEST_LOGDIR/" # Enable JUnit-compatible XML output.
-if [ "$RUN_FLAKY_ONLY" == "1" ] ; then
-  if [ -z "$TEST_RESULT_SERVER" ]; then
-    echo Must set TEST_RESULT_SERVER to use RUN_FLAKY_ONLY
-    exit 1
+  # Run tests
+  export GTEST_OUTPUT="xml:$TEST_LOGDIR/" # Enable JUnit-compatible XML output.
+  if [ "$RUN_FLAKY_ONLY" == "1" ] ; then
+    if [ -z "$TEST_RESULT_SERVER" ]; then
+      echo Must set TEST_RESULT_SERVER to use RUN_FLAKY_ONLY
+      exit 1
+    fi
+    echo
+    echo Running flaky tests only:
+    echo ------------------------------------------------------------
+    list_flaky_tests | tee build/flaky-tests.txt
+    test_regex=$(perl -e '
+      chomp(my @lines = <>);
+      print join("|", map { "^" . quotemeta($_) . "\$" } @lines);
+     ' build/flaky-tests.txt)
+    EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -R $test_regex"
+
+    # We don't support detecting java flaky tests at the moment.
+    echo Disabling Java build since RUN_FLAKY_ONLY=1
+    BUILD_JAVA=0
   fi
-  echo
-  echo Running flaky tests only:
-  echo ------------------------------------------------------------
-  list_flaky_tests | tee build/flaky-tests.txt
-  test_regex=$(perl -e '
-    chomp(my @lines = <>);
-    print join("|", map { "^" . quotemeta($_) . "\$" } @lines);
-   ' build/flaky-tests.txt)
-  EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -R $test_regex"
 
-  # We don't support detecting java flaky tests at the moment.
-  echo Disabling Java build since RUN_FLAKY_ONLY=1
-  BUILD_JAVA=0
-fi
+  EXIT_STATUS=0
+  FAILURES=""
 
-EXIT_STATUS=0
-FAILURES=""
-
-# If we're running distributed tests, submit them asynchronously while
-# we run the Java and Python tests.
-if [ "$ENABLE_DIST_TEST" == "1" ]; then
-  echo
-  echo Submitting distributed-test job.
-  echo ------------------------------------------------------------
-  export DIST_TEST_JOB_PATH=$BUILD_ROOT/dist-test-job-id
-  rm -f $DIST_TEST_JOB_PATH
-  if ! $SOURCE_ROOT/build-support/dist_test.py --no-wait run-all ; then
-    EXIT_STATUS=1
-    FAILURES="$FAILURES"$'Could not submit distributed test job\n'
+  # If we're running distributed tests, submit them asynchronously while
+  # we run the Java and Python tests.
+  if [ "$ENABLE_DIST_TEST" == "1" ]; then
+    echo
+    echo Submitting distributed-test job.
+    echo ------------------------------------------------------------
+    export DIST_TEST_JOB_PATH=$BUILD_ROOT/dist-test-job-id
+    rm -f $DIST_TEST_JOB_PATH
+    if ! $SOURCE_ROOT/build-support/dist_test.py --no-wait run-all ; then
+      EXIT_STATUS=1
+      FAILURES="$FAILURES"$'Could not submit distributed test job\n'
+    fi
+    # Still need to run a few non-dist-test-capable tests locally.
+    EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
   fi
-  # Still need to run a few non-dist-test-capable tests locally.
-  EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
-fi
 
-if ! $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS ; then
-  EXIT_STATUS=1
-  FAILURES="$FAILURES"$'C++ tests failed\n'
-fi
-
-if [ "$DO_COVERAGE" == "1" ]; then
-  echo
-  echo Generating coverage report...
-  echo ------------------------------------------------------------
-  if ! $SOURCE_ROOT/thirdparty/gcovr-3.0/scripts/gcovr -r $SOURCE_ROOT --xml \
-      > $BUILD_ROOT/coverage.xml ; then
+  set +e
+  ( set -x; $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS )
+  if [ $? -ne 0 ]; then
     EXIT_STATUS=1
-    FAILURES="$FAILURES"$'Coverage report failed\n'
+    FAILURES="$FAILURES"$'C++ tests failed\n'
+  fi
+  set -e
+
+  if [ "$DO_COVERAGE" == "1" ]; then
+    echo
+    echo Generating coverage report...
+    echo ------------------------------------------------------------
+    if ! $SOURCE_ROOT/thirdparty/gcovr-3.0/scripts/gcovr -r $SOURCE_ROOT --xml \
+        > $BUILD_ROOT/coverage.xml ; then
+      EXIT_STATUS=1
+      FAILURES="$FAILURES"$'Coverage report failed\n'
+    fi
   fi
 fi
 
