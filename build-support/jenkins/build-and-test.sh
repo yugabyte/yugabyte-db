@@ -301,10 +301,13 @@ if [ "$BUILD_CPP" == "1" ]; then
     EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
   fi
 
-  if ! $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS ; then
+  set +e
+  ( set -x; $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS )
+  if [ $? -ne 0 ]; then
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'C++ tests failed\n'
   fi
+  set -e
 
   if [ "$DO_COVERAGE" == "1" ]; then
     echo
