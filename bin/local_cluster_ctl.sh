@@ -22,12 +22,12 @@ Commands:
 EOT
 }
 
-declare -i -r max_servers=9
+declare -i -r MAX_SERVERS=9
 
 validate_num_servers() {
   local n="$1"
-  if [[ ! "$n" =~ ^[1-9]$ ]]; then
-    echo "Expected a number between 1 and 9, got: '$n'" >&2
+  if [[ ! "$n" =~ ^[1-$MAX_SERVERS]$ ]]; then
+    echo "Expected a number between 1 and $MAX_SERVERS, got: '$n'" >&2
     exit 1
   fi
 }
@@ -42,7 +42,7 @@ validate_daemon_type() {
 
 validate_daemon_index() {
   local daemon_index=$1
-  if [[ ! "$daemon_index" =~ ^[0-9]+ ]]; then
+  if [[ ! "$daemon_index" =~ ^[0-$MAX_SERVERS]+ ]]; then
     echo "Internal error: invalid daemon index '$daemon_index'" >&2
     exit 1
   fi
@@ -132,35 +132,43 @@ set_servers() {
   set_num_tservers
 }
 
-cur_num_masters=0
+count_running_masters=0
 # Count number of current masters.
 set_num_masters() {
-  for i in `seq 1 9`; do # TODO: Make 9 use max_servers
+  if [ "$count_running_masters" -ne 0 ]; then
+   echo "set_num_masters() cannot be called more than once."
+   exit 1
+  fi
+  for i in `seq 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "master" $i )
     if [ -n "$daemon_pid" ]; then
-      let cur_num_masters=cur_num_masters+1
+      let count_running_masters=count_running_masters+1
     fi
   done
-  master_indexes=$( seq 1 $cur_num_masters )
+  master_indexes=$( seq 1 $count_running_masters )
 }
 
-cur_num_tservers=0
+count_running_tservers=0
 # Count number of current tablet servers.
 set_num_tservers() {
-  for i in `seq 1 9`; do
+  if [ "$count_running_tservers" -ne 0 ]; then
+   echo "set_num_tservers() cannot be called more than once."
+   exit 1
+  fi
+  for i in `seq 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "tserver" $i )
     if [ -n "$daemon_pid" ]; then
-      let cur_num_tservers=cur_num_tservers+1
+      let count_running_tservers=count_running_tservers+1
     fi
   done
-  tserver_indexes=$( seq 1 $cur_num_tservers )
+  tserver_indexes=$( seq 1 $count_running_tservers )
 }
 
 increment_servers() {
-  let cur_num_masters=cur_num_masters+1
-  let cur_num_tservers=cur_num_tservers+1
-  master_indexes=$( seq 1 $cur_num_masters )
-  tserver_indexes=$( seq 1 $cur_num_tservers )
+  let count_running_masters=count_running_masters+1
+  let count_running_tservers=count_running_tservers+1
+  master_indexes=$( seq 1 $count_running_masters )
+  tserver_indexes=$( seq 1 $count_running_tservers )
 }
 
 remove_daemon() {
@@ -386,7 +394,7 @@ elif [ "$cmd" == "add" ]; then
   set_servers
   increment_servers
   # TODO: add multiple
-  add_daemon "tserver" $cur_num_tservers
+  add_daemon "tserver" $count_running_tservers
 elif [ "$cmd" == "remove" ]; then
   # TODO: remove multiple
   remove_daemon "tserver" $rem_id
