@@ -42,7 +42,8 @@ validate_daemon_type() {
 
 validate_daemon_index() {
   local daemon_index="$1"
-  if [[ ! "$daemon_index" =~ ^[0-9]+$ ]] || [ "$daemon_index" -lt 1 ] || [ "$daemon_index" -gt "$MAX_SERVERS" ]; then
+  if [[ ! "$daemon_index" =~ ^[0-9]+$ ]] || [ "$daemon_index" -lt 1 ] || \
+      [ "$daemon_index" -gt "$MAX_SERVERS" ]; then
     echo "Internal error: invalid daemon index '$daemon_index'" >&2
     exit 1
   fi
@@ -136,8 +137,8 @@ count_running_masters=0
 # Count number of current masters.
 set_num_masters() {
   if [ "$count_running_masters" -ne 0 ]; then
-   echo "set_num_masters() cannot be called more than once." >& 2
-   exit 1
+    echo "set_num_masters() cannot be called more than once." >&2
+    exit 1
   fi
   for i in `seq 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "master" $i )
@@ -152,8 +153,8 @@ max_running_tserver_index=0
 # Count number of current tablet servers.
 set_num_tservers() {
   if [ "$max_running_tserver_index" -ne 0 ]; then
-   echo "set_num_tservers() cannot be called more than once." >& 2
-   exit 1
+    echo "set_num_tservers() cannot be called more than once." >&2
+    exit 1
   fi
   for i in `seq 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "tserver" $i )
@@ -181,6 +182,7 @@ remove_daemon() {
     echo "Killing $daemon_type $id (pid $daemon_pid)"
     ( set -x; kill $daemon_pid )
   else
+    echo "$daemon_type $id already stopped"
     echo "$daemon_type $id already stopped"
   fi
 }
@@ -240,10 +242,6 @@ add_daemon() {
   validate_daemon_type "$daemon_type"
   local id=$2
   validate_daemon_index "$id"
-  master_base_dir="$cluster_base_dir/master-$id"
-  master_binary="$build_root/bin/yb-master"
-  tserver_binary="$build_root/bin/yb-tserver"
-  tserver_base_dir="$cluster_base_dir/tserver-$id"
 
   for subdir in logs wal data; do
     mkdir -p "$cluster_base_dir/$daemon_type-$id/$subdir"
@@ -340,6 +338,11 @@ tserver_http_port_base=9000
 master_rpc_port_base=7100
 tserver_rpc_port_base=8100
 
+master_binary="$build_root/bin/yb-master"
+ensure_binary_exists "$master_binary"
+tserver_binary="$build_root/bin/yb-tserver"
+ensure_binary_exists "$tserver_binary"
+
 export YB_HOME="$yugabyte_root"
 
 if [ "$cmd" == "start" ]; then
@@ -353,12 +356,6 @@ if [ "$cmd" == "start" ]; then
   tserver_indexes=$( seq 1 $num_tservers )
 
   set_master_addresses
-
-  master_binary="$build_root/bin/yb-master"
-  ensure_binary_exists "$master_binary"
-
-  tserver_binary="$build_root/bin/yb-tserver"
-  ensure_binary_exists "$tserver_binary"
 
   for i in $master_indexes; do
     existing_master_pid=$( find_daemon_pid master $i )
@@ -374,7 +371,7 @@ if [ "$cmd" == "start" ]; then
     if [ -n "$existing_tserver_pid" ]; then
       echo "Tabled server $i is already running as PID $existing_tserver_pid"
     else
-     start_tserver $i
+      start_tserver $i
     fi
   done
 elif [ "$cmd" == "stop" ]; then
