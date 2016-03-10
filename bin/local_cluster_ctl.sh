@@ -23,7 +23,6 @@ EOT
 }
 
 declare -i -r MAX_SERVERS=20
-declare -i -r MAX_INDEX_CHARS=2 # 00 to 20 in decimal for server/daemon index
 
 validate_num_servers() {
   local n="$1"
@@ -78,12 +77,6 @@ ensure_binary_exists() {
     echo "File '$binary_path' is not executable" >&2
     exit 1
   fi
-}
-
-find_process_server_index() {
-  str=$(ps -ef | grep $1 | grep -v grep)
-  i=$((${#str}-MAX_INDEX_CHARS))
-  echo "${str:$i:MAX_INDEX_CHARS}"
 }
 
 find_daemon_pid() {
@@ -165,9 +158,8 @@ set_num_tservers() {
   for i in `seq 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "tserver" $i )
     if [ -n "$daemon_pid" ]; then
-      local cur_index=$(find_process_server_index $daemon_pid)
-      if [ $cur_index -gt $max_running_tserver_index ]; then
-        let max_running_tserver_index=${cur_index#0}
+      if [ $i -gt $max_running_tserver_index ]; then
+        let max_running_tserver_index=$i
       fi
     fi
   done
@@ -193,7 +185,8 @@ remove_daemon() {
   fi
 }
 
-set_master_indexes() {
+set_master_addresses() {
+  master_addresses=""
   for i in $master_indexes; do
     if [ -n "$master_addresses" ]; then
       master_addresses+=","
@@ -359,7 +352,7 @@ if [ "$cmd" == "start" ]; then
   master_indexes=$( seq 1 $num_masters )
   tserver_indexes=$( seq 1 $num_tservers )
 
-  set_master_indexes
+  set_master_addresses
 
   master_binary="$build_root/bin/yb-master"
   ensure_binary_exists "$master_binary"
@@ -386,7 +379,7 @@ if [ "$cmd" == "start" ]; then
   done
 elif [ "$cmd" == "stop" ]; then
   set_num_servers
-  set_master_indexes
+  set_master_addresses
 
   for i in $master_indexes; do
     stop_daemon "master" $i
@@ -397,7 +390,7 @@ elif [ "$cmd" == "stop" ]; then
   done
 elif [ "$cmd" == "status" ]; then
   set_num_servers
-  set_master_indexes
+  set_master_addresses
   for i in $master_indexes; do
     show_daemon_status "master" $i
   done
@@ -409,12 +402,12 @@ elif [ "$cmd" == "add" ]; then
   set_num_servers
   increment_tservers
   validate_num_servers "$max_running_tserver_index"
-  set_master_indexes
+  set_master_addresses
   # TODO: add multiple
   add_daemon "tserver" $max_running_tserver_index
 elif [ "$cmd" == "remove" ]; then
   set_num_tservers
-  set_master_indexes
+  set_master_addresses
   if [ "$rem_id" -gt "$max_running_tserver_index" ]; then
     echo "Internal error: invalid daemon index '$rem_id'" >&2
     exit 1
