@@ -5,7 +5,7 @@ set -euo pipefail
 print_help() {
   cat <<-EOT
 Usage: ${0##*/} [<options>] <command>
-Options (do not apply to status/add/remove commands):
+Options (do not apply to status/stop/add/remove commands):
   --num-masters <num_masters>
     Number of master processes. 3 by default.
   --num-tservers <num_tablet_servers>
@@ -22,11 +22,12 @@ Commands:
 EOT
 }
 
-declare -i -r MAX_SERVERS=9
+declare -i -r MAX_SERVERS=20
+declare -i -r MAX_INDEX_CHARS=2 # 00 to 20 in decimal for server/daemon index
 
 validate_num_servers() {
   local n="$1"
-  if [[ ! "$n" =~ ^[1-$MAX_SERVERS]$ ]]; then
+  if [[ ! "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_SERVERS" ]; then
     echo "Expected a number between 1 and $MAX_SERVERS, got: '$n'" >&2
     exit 1
   fi
@@ -41,8 +42,8 @@ validate_daemon_type() {
 }
 
 validate_daemon_index() {
-  local daemon_index=$1
-  if [[ ! "$daemon_index" =~ ^[0-$MAX_SERVERS]+ ]]; then
+  local daemon_index="$1"
+  if [[ ! "$daemon_index" =~ ^[0-9]+$ ]] || [ "$daemon_index" -lt 1 ] || [ "$daemon_index" -gt "$MAX_SERVERS" ]; then
     echo "Internal error: invalid daemon index '$daemon_index'" >&2
     exit 1
   fi
@@ -77,6 +78,12 @@ ensure_binary_exists() {
     echo "File '$binary_path' is not executable" >&2
     exit 1
   fi
+}
+
+find_process_server_index() {
+  str=$(ps -ef | grep $1 | grep -v grep)
+  i=$((${#str}-MAX_INDEX_CHARS))
+  echo "${str:$i:MAX_INDEX_CHARS}"
 }
 
 find_daemon_pid() {
@@ -127,7 +134,7 @@ show_daemon_status() {
   fi
 }
 
-set_servers() {
+set_num_servers() {
   set_num_masters
   set_num_tservers
 }
@@ -136,7 +143,7 @@ count_running_masters=0
 # Count number of current masters.
 set_num_masters() {
   if [ "$count_running_masters" -ne 0 ]; then
-   echo "set_num_masters() cannot be called more than once."
+   echo "set_num_masters() cannot be called more than once." >& 2
    exit 1
   fi
   for i in `seq 1 $MAX_SERVERS`; do
@@ -148,27 +155,28 @@ set_num_masters() {
   master_indexes=$( seq 1 $count_running_masters )
 }
 
-count_running_tservers=0
+max_running_tserver_index=0
 # Count number of current tablet servers.
 set_num_tservers() {
-  if [ "$count_running_tservers" -ne 0 ]; then
-   echo "set_num_tservers() cannot be called more than once."
+  if [ "$max_running_tserver_index" -ne 0 ]; then
+   echo "set_num_tservers() cannot be called more than once." >& 2
    exit 1
   fi
   for i in `seq 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "tserver" $i )
     if [ -n "$daemon_pid" ]; then
-      let count_running_tservers=count_running_tservers+1
+      local cur_index=$(find_process_server_index $daemon_pid)
+      if [ $cur_index -gt $max_running_tserver_index ]; then
+        let max_running_tserver_index=${cur_index#0}
+      fi
     fi
   done
-  tserver_indexes=$( seq 1 $count_running_tservers )
+  tserver_indexes=$( seq 1 $max_running_tserver_index )
 }
 
-increment_servers() {
-  let count_running_masters=count_running_masters+1
-  let count_running_tservers=count_running_tservers+1
-  master_indexes=$( seq 1 $count_running_masters )
-  tserver_indexes=$( seq 1 $count_running_tservers )
+increment_tservers() {
+  let max_running_tserver_index=max_running_tserver_index+1
+  tserver_indexes=$( seq 1 $max_running_tserver_index )
 }
 
 remove_daemon() {
@@ -183,6 +191,15 @@ remove_daemon() {
   else
     echo "$daemon_type $id already stopped"
   fi
+}
+
+set_master_indexes() {
+  for i in $master_indexes; do
+    if [ -n "$master_addresses" ]; then
+      master_addresses+=","
+    fi
+    master_addresses+="$bind_ip:$(( $master_rpc_port_base + $i ))"
+  done
 }
 
 start_master() {
@@ -253,6 +270,8 @@ cmd=""
 num_masters=3
 num_tservers=3
 rem_id=""
+master_indexes=""
+tserver_indexes=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -299,15 +318,7 @@ if [ -z "$cmd" ]; then
   exit 1
 fi
 
-validate_num_servers "$num_masters"
-validate_num_servers "$num_tservers"
-master_indexes=$( seq 1 $num_masters )
-tserver_indexes=$( seq 1 $num_tservers )
-
 cluster_base_dir=/tmp/yugabyte-local-cluster
-
-create_directories master $num_masters
-create_directories tserver $num_tservers
 
 yugabyte_root=$( cd `dirname $0`/.. && pwd )
 
@@ -336,16 +347,19 @@ tserver_http_port_base=9000
 master_rpc_port_base=7100
 tserver_rpc_port_base=8100
 
-for i in $master_indexes; do
-  if [ -n "$master_addresses" ]; then
-    master_addresses+=","
-  fi
-  master_addresses+="$bind_ip:$(( $master_rpc_port_base + $i ))"
-done
-
 export YB_HOME="$yugabyte_root"
 
 if [ "$cmd" == "start" ]; then
+  validate_num_servers "$num_masters"
+  validate_num_servers "$num_tservers"
+
+  create_directories master $num_masters
+  create_directories tserver $num_tservers
+
+  master_indexes=$( seq 1 $num_masters )
+  tserver_indexes=$( seq 1 $num_tservers )
+
+  set_master_indexes
 
   master_binary="$build_root/bin/yb-master"
   ensure_binary_exists "$master_binary"
@@ -371,7 +385,8 @@ if [ "$cmd" == "start" ]; then
     fi
   done
 elif [ "$cmd" == "stop" ]; then
-  set_servers
+  set_num_servers
+  set_master_indexes
 
   for i in $master_indexes; do
     stop_daemon "master" $i
@@ -381,8 +396,8 @@ elif [ "$cmd" == "stop" ]; then
     stop_daemon "tserver" $i
   done
 elif [ "$cmd" == "status" ]; then
-  set_servers
-
+  set_num_servers
+  set_master_indexes
   for i in $master_indexes; do
     show_daemon_status "master" $i
   done
@@ -391,11 +406,19 @@ elif [ "$cmd" == "status" ]; then
     show_daemon_status "tserver" $i
   done
 elif [ "$cmd" == "add" ]; then
-  set_servers
-  increment_servers
+  set_num_servers
+  increment_tservers
+  validate_num_servers "$max_running_tserver_index"
+  set_master_indexes
   # TODO: add multiple
-  add_daemon "tserver" $count_running_tservers
+  add_daemon "tserver" $max_running_tserver_index
 elif [ "$cmd" == "remove" ]; then
+  set_num_tservers
+  set_master_indexes
+  if [ "$rem_id" -gt "$max_running_tserver_index" ]; then
+    echo "Internal error: invalid daemon index '$rem_id'" >&2
+    exit 1
+  fi
   # TODO: remove multiple
   remove_daemon "tserver" $rem_id
 else
