@@ -29,7 +29,6 @@
 #include "yb/client/client-test-util.h"
 #include "yb/client/row_result.h"
 #include "yb/client/write_op.h"
-#include "yb/codegen/compilation_manager.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
@@ -391,13 +390,6 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
 void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
                                              const string& msg) {
-  {
-    // Warmup codegen cache
-    YBScanner scanner(reader_table_.get());
-    ASSERT_OK(scanner.SetProjectedColumns(cols));
-    ASSERT_OK(scanner.Open());
-    codegen::CompilationManager::GetSingleton()->Wait();
-  }
   YBScanner scanner(reader_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns(cols));
   uint64_t nrows = 0;

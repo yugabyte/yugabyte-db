@@ -21,7 +21,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/codegen/compilation_manager.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/strcat.h"
@@ -110,8 +109,6 @@ ServerBase::ServerBase(string name, const ServerBaseOptions& options,
   }
 
   CHECK_OK(StartThreadInstrumentation(metric_entity_, web_server_.get()));
-  CHECK_OK(codegen::CompilationManager::GetSingleton()->StartInstrumentation(
-               metric_entity_));
 }
 
 ServerBase::~ServerBase() {

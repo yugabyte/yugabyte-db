@@ -20,7 +20,6 @@
 #include <gtest/gtest.h>
 #include <memory>
 
-#include "yb/codegen/compilation_manager.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/local_tablet_writer.h"
@@ -77,7 +76,6 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
     CHECK_OK(tablet()->NewRowIterator(valcol_projection_, &iter));
-    codegen::CompilationManager::GetSingleton()->Wait();
 
     ts_collector_.StartDumperThread();
   }

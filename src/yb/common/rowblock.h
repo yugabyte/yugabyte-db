@@ -167,16 +167,6 @@ class RowBlock {
     return ColumnBlock(col_schema.type_info(), nulls_bitmap, col_data, nrows, arena_);
   }
 
-  // Return the base pointer for the given column's data.
-  //
-  // This is used by the codegen code in preference to the "nicer" column_block APIs,
-  // because the codegenned code knows the column's type sizes statically, and thus
-  // computing the pointers by itself ends up avoiding a multiply instruction.
-  uint8_t* column_data_base_ptr(size_t col_idx) const {
-    DCHECK_LT(col_idx, columns_data_.size());
-    return columns_data_[col_idx];
-  }
-
   // Return the number of rows in the row block. Note that this includes
   // rows which were filtered out by the selection vector.
   size_t nrows() const { return nrows_; }

@@ -75,7 +75,6 @@ ADD_EXPORTABLE_LIBRARY(tablet_proto
 add_library(tablet ${TABLET_SRCS})
 target_link_libraries(tablet
   tablet_proto
-  codegen
   yb_common
   cfile
   gutil
