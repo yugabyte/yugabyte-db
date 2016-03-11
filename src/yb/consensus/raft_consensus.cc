@@ -952,11 +952,10 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
   //
   // The steps are:
   //
-  // 0 - Split/Dedup
+  // 0 - Dedup
   //
-  // We split the operations into replicates and commits and make sure that we don't
-  // don't do anything on operations we've already received in a previous call.
-  // This essentially makes this method idempotent.
+  // We make sure that we don't do anything on Replicate operations we've already received in a
+  // previous call. This essentially makes this method idempotent.
   //
   // 1 - We mark as many pending transactions as committed as we can.
   //
@@ -1022,7 +1021,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
   //
   // TODO - These failure scenarios need to be exercised in an unit
   //        test. Moreover we need to add more fault injection spots (well that
-  //        and actually use the) for each of these steps.
+  //        and actually use them) for each of these steps.
   //        This will be done in a follow up patch.
   TRACE("Updating replica for $0 ops", request->ops_size());
 
@@ -1057,7 +1056,8 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
 
     // What should we commit?
     // 1. As many pending transactions as we can, except...
-    // 2. ...if we commit beyond the preceding index, we'd regress KUDU-639, and...
+    // 2. ...if we commit beyond the preceding index, we'd regress KUDU-639
+    //    ("Leader doesn't overwrite demoted follower's log properly"), and...
     // 3. ...the leader's committed index is always our upper bound.
     OpId early_apply_up_to = state_->GetLastPendingTransactionOpIdUnlocked();
     CopyIfOpIdLessThan(*deduped_req.preceding_opid, &early_apply_up_to);
@@ -1218,7 +1218,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     Status s;
     do {
       s = log_synchronizer.WaitFor(
-      MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
+        MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms));
       // If just waiting for our log append to finish lets snooze the timer.
       // We don't want to fire leader election because we're waiting on our own log.
       if (s.IsTimedOut()) {

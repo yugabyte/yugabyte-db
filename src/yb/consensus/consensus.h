@@ -310,6 +310,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
 // - When the CommitMsg for a replicate is first received from the leader
 //   the replica waits for the corresponding Prepare() to finish (if it has
 //   not completed yet) and then proceeds to trigger the Apply().
+//   TODO (mbautin, 03/11/2016): Outdated? (Does the leader still ever send CommitMsg to followers?)
 //
 // - Once Apply() completes the ReplicaTransactionFactory is responsible for logging
 //   a CommitMsg to the log to ensure that the operation can be properly restored
