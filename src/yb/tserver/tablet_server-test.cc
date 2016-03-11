@@ -198,7 +198,6 @@ TEST_F(TabletServerTest, TestWebPages) {
     ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_timestamp");
     ASSERT_STR_CONTAINS(buf.ToString(), "active_scanners");
     ASSERT_STR_CONTAINS(buf.ToString(), "threads_started");
-    ASSERT_STR_CONTAINS(buf.ToString(), "code_cache_queries");
 #ifdef TCMALLOC_ENABLED
     ASSERT_STR_CONTAINS(buf.ToString(), "tcmalloc_max_total_thread_cache_bytes");
 #endif
