@@ -14,12 +14,12 @@ Options (do not apply to status/stop/add/remove commands):
     use a stop/start combination instead.
 
 Commands:
-  start  - start master & tablet server processes
-  stop   - stop all master & tablet server processes
-  status - display running status and process id of master & tablet server processes
-  add    - add one tablet server process
+  start   - start master & tablet server processes
+  stop    - stop all master & tablet server processes
+  status  - display running status and process id of master & tablet server processes
+  add     - add one tablet server process
   remove <daemon_index> - remove one tablet server process with given index (gotten from status)
-  destroy
+  destroy - stop all master & tablet server processes as well as remove any assosciated data
 EOT
 }
 
@@ -388,7 +388,7 @@ elif [ "$cmd" == "stop" ] || [ "$cmd" == "destroy" ] ; then
 
   # If this is a destroy command, also purge the data directory.
   if [ "$cmd" == "destroy" ]; then
-    rm -rf $cluster_base_dir
+    rm -rf "$cluster_base_dir"
   fi
 elif [ "$cmd" == "status" ]; then
   set_num_servers
