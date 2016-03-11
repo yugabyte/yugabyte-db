@@ -578,7 +578,7 @@ int main(int argc, char* argv[]) {
       YBPartialRow* row = schema.NewRow();
       // We divide the interval between 0 and 2**64 into the requested number of intervals.
       string split_key = FormatHex(
-        ((uint64_t) 1 << 62) * 4.0 * i / (FLAGS_load_test_num_tablets + 1));
+        ((uint64_t) 1 << 62) * 4.0 * i / FLAGS_load_test_num_tablets);
       LOG(INFO) << "split_key #" << i << "=" << split_key;
       CHECK_OK(row->SetString(0, split_key));
       splits.push_back(row);

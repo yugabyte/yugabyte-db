@@ -234,8 +234,10 @@ fi
 
 if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
   save_env
-  EXTRA_CFLAGS+=" -mcrc32"
-  EXTRA_CXXFLAGS+=" -mcrc32"
+  if [ "`uname`" == "Linux" ]; then
+    EXTRA_CFLAGS+=" -mcrc32"
+    EXTRA_CXXFLAGS+=" -mcrc32"
+  fi
   build_crcutil
   restore_env
 fi

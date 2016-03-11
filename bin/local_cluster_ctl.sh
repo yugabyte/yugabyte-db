@@ -19,7 +19,7 @@ Commands:
   status - display running status and process id of master & tablet server processes
   add    - add one tablet server process
   remove <daemon_index> - remove one tablet server process with given index (gotten from status)
-EOT
+  destroy
 }
 
 declare -i -r MAX_SERVERS=20
@@ -287,7 +287,7 @@ while [ $# -gt 0 ]; do
       rem_id="$2"
       shift
     ;;
-    start|stop|status|add)
+    start|stop|status|add|destroy)
       if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
         echo "More than one command specified: $cmd, $1" >&2
         exit 1
@@ -373,7 +373,7 @@ if [ "$cmd" == "start" ]; then
       start_tserver $i
     fi
   done
-elif [ "$cmd" == "stop" ]; then
+elif [ "$cmd" == "stop" ] || [ "$cmd" == "destroy" ] ; then
   set_num_servers
   set_master_addresses
 
@@ -384,6 +384,11 @@ elif [ "$cmd" == "stop" ]; then
   for i in $tserver_indexes; do
     stop_daemon "tserver" $i
   done
+
+  # If this is a destroy command, also purge the data directory.
+  if [ "$cmd" == "destroy" ]; then
+    rm -rf $cluster_base_dir
+  fi
 elif [ "$cmd" == "status" ]; then
   set_num_servers
   set_master_addresses
