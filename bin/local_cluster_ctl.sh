@@ -20,6 +20,7 @@ Commands:
   add    - add one tablet server process
   remove <daemon_index> - remove one tablet server process with given index (gotten from status)
   destroy
+EOT
 }
 
 declare -i -r MAX_SERVERS=20
