@@ -183,7 +183,6 @@ remove_daemon() {
     ( set -x; kill $daemon_pid )
   else
     echo "$daemon_type $id already stopped"
-    echo "$daemon_type $id already stopped"
   fi
 }
 
