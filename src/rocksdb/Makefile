@@ -189,7 +189,7 @@ PLATFORM_CXXFLAGS += -isystem $(GTEST_DIR)
 default: all
 
 WARNING_FLAGS = -W -Wextra -Wall -Wsign-compare -Wshadow \
-  -Wno-unused-parameter
+  -Wno-unused-parameter -Wno-unused-variable
 
 ifndef DISABLE_WARNING_AS_ERROR
 	WARNING_FLAGS += -Werror
