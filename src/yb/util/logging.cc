@@ -131,6 +131,9 @@ void InitGoogleLoggingSafe(const char* arg) {
 
   google::InstallFailureSignalHandler();
 
+  // Set the logbuflevel to -1 so that all logs are printed out in unbuffered.
+  FLAGS_logbuflevel = -1;
+
   if (!FLAGS_log_filename.empty()) {
     for (int severity = google::INFO; severity <= google::FATAL; ++severity) {
       google::SetLogSymlink(severity, FLAGS_log_filename.c_str());
