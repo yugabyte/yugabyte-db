@@ -14,7 +14,6 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/common/partial_row.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -22,10 +21,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadpool.h"
-
-#define LOG_EXPR(expr) do { \
-  LOG(INFO) << #expr << " = " << (expr); \
-} while (0)
 
 DEFINE_int32(
   load_test_num_iter, 1,
@@ -81,7 +76,8 @@ DEFINE_bool(
 
 DEFINE_bool(
     create_table, true,
-    "Should the table be created, its made false when either reads_only/writes_only is true.");
+    "Whether the table should be created. Its made false when either reads_only/writes_only is "
+    "true. If value is true, existing table will be deleted and recreated.");
 
 using strings::Substitute;
 using std::atomic_long;
@@ -215,7 +211,7 @@ protected:
 
   string description_;
   const int64 num_keys_; // Total number of keys in the table after successful end of this action
-  const int64 start_key_; // Applies to write action for first insertion key index
+  const int64 start_key_; // First insertion key index of the write action
   const int num_action_threads_;
   YBClient* client_;
   YBTable* table_;
@@ -236,7 +232,8 @@ MultiThreadedAction::MultiThreadedAction(
     YBTable* table,
     atomic_bool* stop_flag)
   : description_(description),
-    num_keys_(num_keys), start_key_(start_key),
+    num_keys_(num_keys),
+    start_key_(start_key),
     num_action_threads_(num_action_threads),
     client_(client),
     table_(table),
@@ -295,13 +292,14 @@ class MultiThreadedWriter : public MultiThreadedAction {
 };
 
 MultiThreadedWriter::MultiThreadedWriter(
-    int64 num_keys, int64 start_key,
+    int64 num_keys,
+    int64 start_key,
     int num_writer_threads,
     YBClient* client,
     YBTable* table,
     atomic_bool* stop_flag)
   : MultiThreadedAction("writers", num_keys, start_key, num_writer_threads, 2, client, table,
-                          stop_flag),
+                        stop_flag),
     next_key_(start_key),
     inserted_up_to_inclusive_(-1) {
 }
@@ -395,20 +393,20 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
 // ------------------------------------------------------------------------------------------------
 // TODO: Make MultiThreaded.
 class SingleThreadedScanner {
-public:
+ public:
   SingleThreadedScanner(YBTable* table) {
     table_ = table;
     num_rows_ = 0;
   }
 
-  uint64 countRows();
+  int64 CountRows();
 
-private:
-  uint64   num_rows_;
+ private:
+  int64   num_rows_;
   YBTable* table_;
 };
 
-uint64 SingleThreadedScanner::countRows() {
+int64 SingleThreadedScanner::CountRows() {
   YBScanner scanner(table_);
   CHECK_OK(scanner.Open());
   vector<YBRowResult> results;
@@ -605,6 +603,11 @@ int main(int argc, char* argv[]) {
       FLAGS_create_table = false;
     }
 
+    if (FLAGS_load_test_reads_only && FLAGS_load_test_writes_only) {
+      LOG(ERROR) << "Reads only and Writes only options cannot be set together.";
+      return 0;
+    }
+
     LOG(INFO) << "Checking if table '" << table_name << "' already exists";
     {
       YBSchema existing_schema;
@@ -634,12 +637,12 @@ int main(int argc, char* argv[]) {
 
       // Create the number of partitions based on the split keys.
       vector<const YBPartialRow *> splits;
-      for (uint64_t i = 1; i < FLAGS_load_test_num_tablets; i++) {
+      for (uint64_t j = 1; j < FLAGS_load_test_num_tablets; j++) {
         YBPartialRow *row = schema.NewRow();
         // We divide the interval between 0 and 2**64 into the requested number of intervals.
         string split_key = FormatHex(
-            ((uint64_t) 1 << 62) * 4.0 * i / (FLAGS_load_test_num_tablets));
-        LOG(INFO) << "split_key #" << i << "=" << split_key;
+          ((uint64_t) 1 << 62) * 4.0 * j / (FLAGS_load_test_num_tablets));
+        LOG(INFO) << "split_key #" << j << "=" << split_key;
         CHECK_OK(row->SetStringCopy(0, split_key));
         splits.push_back(row);
       }
@@ -647,13 +650,12 @@ int main(int argc, char* argv[]) {
       LOG(INFO) << "Creating table";
       gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
       Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
-          .split_rows(splits)
-          .num_replicas(FLAGS_load_test_table_num_replicas).Create();
+        .split_rows(splits)
+        .num_replicas(FLAGS_load_test_table_num_replicas).Create();
       if (!table_creation_status.ok()) {
         LOG(INFO) << "Table creation status message: " <<
         table_creation_status.message().ToString();
       }
-
       if (table_creation_status.message().ToString().find("Table already exists") ==
           std::string::npos) {
         CHECK_OK(table_creation_status);
@@ -668,18 +670,18 @@ int main(int argc, char* argv[]) {
     if (FLAGS_load_test_reads_only) {
       SingleThreadedScanner scanner(table.get());
 
-      scanner.countRows();
+      scanner.CountRows();
     } else if (FLAGS_load_test_writes_only) {
       SingleThreadedScanner scanner(table.get());
-      uint64 num = scanner.countRows();
+      int64 num = scanner.CountRows();
 
       // Adds more keys starting from next index after scanned index
       MultiThreadedWriter writer(
-          FLAGS_load_test_num_rows + num + 1, num + 1,
-          FLAGS_load_test_num_writer_threads,
-          client.get(),
-          table.get(),
-          &stop_flag);
+        FLAGS_load_test_num_rows + num + 1, num + 1,
+        FLAGS_load_test_num_writer_threads,
+        client.get(),
+        table.get(),
+        &stop_flag);
 
       writer.Start();
       writer.WaitForCompletion();
