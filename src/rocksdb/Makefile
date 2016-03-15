@@ -215,7 +215,7 @@ endif
 CLEAN_FILES += util/build_version.cc:
 FORCE:
 util/build_version.cc: FORCE
-	./gen_build_version.py --git-sha $(git_sha) --output-path "$@"
+	./gen_rocksdb_build_version.py --git-sha $(git_sha) --output-path "$@"
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)
@@ -420,6 +420,10 @@ shared_lib: $(SHARED)
 tools: $(TOOLS)
 
 dbg: $(LIBRARY) $(BENCHMARKS) tools $(TESTS)
+
+tests: $(TESTS)
+
+benchmarks: $(BENCHMARKS)
 
 # creates static library and programs
 release:

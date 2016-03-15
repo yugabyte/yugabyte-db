@@ -36,9 +36,9 @@ def main():
 
   args = parser.parse_args()
 
-  minimize_version_changes = 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ
+  minimize_recompilation = 'YB_MINIMIZE_RECOMPILATION' in os.environ
 
-  if minimize_version_changes:
+  if minimize_recompilation:
     git_sha = '0' * 40
   else:
     git_sha = args.git_sha
@@ -62,7 +62,7 @@ def main():
   logging.getLogger('').addHandler(file_log_handler)
 
   compile_date_str = '__DATE__'
-  if 'YB_MINIMIZE_RECOMPILATION' in os.environ:
+  if minimize_recompilation:
     logging.info(
       ('Removing git_sha and date from the new contents of "%s" as required by ' +
        'YB_MINIMIZE_RECOMPILATION to reduce unnecessary rebuilds.') % output_path)
