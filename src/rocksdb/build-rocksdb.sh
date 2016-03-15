@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Copyright (c) YugaByte, Inc.
+
 set -euo pipefail
 
 print_help() {

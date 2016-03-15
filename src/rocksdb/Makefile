@@ -206,14 +206,6 @@ ifdef FORCE_GIT_SHA
 else
 	git_sha := $(shell git rev-parse HEAD 2>/dev/null)
 endif
-gen_build_version =							\
-  printf '%s\n'								\
-    '\#include "build_version.h"'					\
-    'const char* rocksdb_build_git_sha =				\
-      "rocksdb_build_git_sha:$(git_sha)";'			\
-    'const char* rocksdb_build_git_date =				\
-      "rocksdb_build_git_date:$(date)";'				\
-    'const char* rocksdb_build_compile_date = __DATE__;'
 
 # Record the version of the source that we are compiling.
 # We keep a record of the git revision in this file.  It is then built
@@ -223,11 +215,7 @@ gen_build_version =							\
 CLEAN_FILES += util/build_version.cc:
 FORCE:
 util/build_version.cc: FORCE
-	$(AM_V_GEN)rm -f $@-t
-	$(AM_V_at)$(gen_build_version) > $@-t
-	$(AM_V_at)if test -f $@; then					\
-	  cmp -s $@-t $@ && rm -f $@-t || mv -f $@-t $@;		\
-	else mv -f $@-t $@; fi
+	./gen_build_version.py --git-sha $(git_sha) --output-path "$@"
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)
