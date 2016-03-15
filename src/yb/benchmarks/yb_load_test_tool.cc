@@ -266,7 +266,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
 // client and table are managed by the caller and their lifetime should be a superset of this
   // object's lifetime.
   MultiThreadedWriter(
-    int64 num_keys, int64 start_key,
+    int64 num_keys,
+    int64 start_key,
     int num_writer_threads,
     YBClient* client,
     YBTable* table,
@@ -604,7 +605,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (FLAGS_load_test_reads_only && FLAGS_load_test_writes_only) {
-      LOG(ERROR) << "Reads only and Writes only options cannot be set together.";
+      LOG(FATAL) << "Reads only and Writes only options cannot be set together.";
+      return 0;
+    }
+
+    if (!FLAGS_load_test_reads_only && !FLAGS_load_test_writes_only && !FLAGS_create_table) {
+      LOG(FATAL) << "If reads only or writes only option is not set, then table create should be "
+        "allowed.";
       return 0;
     }
 
@@ -621,7 +628,7 @@ int main(int argc, char* argv[]) {
         LOG(INFO) << "Table '" << table_name << "' does not exist yet";
 
         if (!FLAGS_create_table) {
-          LOG(ERROR) << "Exiting as the table was not asked to be created.";
+          LOG(FATAL) << "Exiting as the table was not asked to be created.";
           return 0;
         }
       }
