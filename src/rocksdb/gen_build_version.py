@@ -62,10 +62,10 @@ def main():
   logging.getLogger('').addHandler(file_log_handler)
 
   compile_date_str = '__DATE__'
-  if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:
+  if 'YB_MINIMIZE_RECOMPILATION' in os.environ:
     logging.info(
       ('Removing git_sha and date from the new contents of "%s" as required by ' +
-       'YB_MINIMIZE_VERSION_DEFINES_CHANGES to reduce unnecessary rebuilds.') % output_path)
+       'YB_MINIMIZE_RECOMPILATION to reduce unnecessary rebuilds.') % output_path)
     date_str = '0000-00-00'
     compile_date_str = date_str
 

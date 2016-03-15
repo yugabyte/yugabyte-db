@@ -18,7 +18,7 @@
 # under the License.
 #
 # This script generates a header file which contains definitions
-# for the current Kudu build (eg timestamp, git hash, etc)
+# for the current YugaByte build (e.g. timestamp, git hash, etc)
 
 import logging
 import optparse
@@ -115,11 +115,11 @@ def main():
   file_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
   logging.getLogger('').addHandler(file_log_handler)
 
-  if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:
+  if 'YB_MINIMIZE_RECOMPILATION' in os.environ:
     logging.info(
       'Removing git hash, host name, build timestamp, user name, clean repo flag ' +
       '(defaulting to false) and build id from "version_defines.h" as requested by ' +
-      'YB_MINIMIZE_VERSION_DEFINES_CHANGES to reduce unnecessary rebuilds.')
+      'YB_MINIMIZE_RECOMPILATION to reduce unnecessary rebuilds.')
 
     identifying_hash = '0' * 40
     git_hash = '0' * 40
