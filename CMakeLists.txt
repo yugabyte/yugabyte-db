@@ -22,6 +22,37 @@
 # 1. https://cmake.org/Bug/view.php?id=14963
 cmake_minimum_required(VERSION 3.2.0)
 
+# Determine the number of CPUs to be used so we can call make on existing Makefiles (e.g. RocksDB)
+# with the right level of parallelism.
+# Snippet taken from https://blog.kitware.com/how-many-ya-got/
+
+if(NOT DEFINED PROCESSOR_COUNT)
+  # Unknown:
+  set(PROCESSOR_COUNT 0)
+
+  # Linux:
+  set(cpuinfo_file "/proc/cpuinfo")
+  if(EXISTS "${cpuinfo_file}")
+    file(STRINGS "${cpuinfo_file}" procs REGEX "^processor.: [0-9]+$")
+    list(LENGTH procs PROCESSOR_COUNT)
+  endif()
+
+  # Mac:
+  if(APPLE)
+    find_program(cmd_sys_pro "system_profiler")
+    if(cmd_sys_pro)
+      execute_process(COMMAND ${cmd_sys_pro} OUTPUT_VARIABLE info)
+      string(REGEX REPLACE "^.*Total Number Of Cores: ([0-9]+).*$" "\\1"
+        PROCESSOR_COUNT "${info}")
+    endif()
+  endif()
+
+  # Windows:
+  if(WIN32)
+    set(PROCESSOR_COUNT "$ENV{NUMBER_OF_PROCESSORS}")
+  endif()
+endif()
+
 # Prevent builds from the top-level source directory. This ensures that build
 # output is well isolated from the source tree.
 #
@@ -186,14 +217,21 @@ endif ()
 message("Configured for ${CMAKE_BUILD_TYPE} build (set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
+  set(ROCKSDB_DEBUG_LEVEL 2)
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_FASTDEBUG})
+  set(ROCKSDB_DEBUG_LEVEL 1)
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
+  set(ROCKSDB_DEBUG_LEVEL 0)
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_GEN})
+  # TODO: using RocksDB's default build type here -- may need revision.
+  set(ROCKSDB_DEBUG_LEVEL 1)
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_BUILD})
+  # TODO: using RocksDB's default build type here -- may need revision.
+  set(ROCKSDB_DEBUG_LEVEL 1)
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -967,6 +1005,8 @@ endif (UNIX)
 ############################################################
 # Subdirectories
 ############################################################
+
+add_subdirectory(src/rocksdb)
 
 # Google util libraries borrowed from supersonic, tcmalloc, Chromium, etc.
 add_subdirectory(src/yb/gutil)
