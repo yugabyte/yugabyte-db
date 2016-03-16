@@ -36,49 +36,60 @@ quoted_perl_command = $(subst ','\'',$(perl_command))
 
 # Set the default DEBUG_LEVEL to 1
 DEBUG_LEVEL?=1
+AUTO_DEBUG_LEVEL=
 
 ifeq ($(MAKECMDGOALS),dbg)
-	DEBUG_LEVEL=2
+AUTO_DEBUG_LEVEL=2
 endif
 
 ifeq ($(MAKECMDGOALS),clean)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),release)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),shared_lib)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),install-shared)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),static_lib)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),install-static)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),install)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastatic)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastaticrelease)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastaticpublish)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
+endif
+
+ifeq ($(AUTO_DEBUG_LEVEL),)
+# Log the fact that we are not overriding the default value of DEBUG_LEVEL.
+# We expect this to be the case when make is being called from build-rocksdb.sh, because it will
+# usually specify multiple targets to build.
+$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the target)")
+else
+$(warning "Setting DEBUG_LEVEL to $(AUTO_DEBUG_LEVEL) because MAKECMDGOALS is $(MAKECMDGOALS)")
+DEBUG_LEVEL=$(AUTO_DEBUG_LEVEL)
 endif
 
 # compile with -O2 if debug level is not 2
@@ -206,14 +217,6 @@ ifdef FORCE_GIT_SHA
 else
 	git_sha := $(shell git rev-parse HEAD 2>/dev/null)
 endif
-gen_build_version =							\
-  printf '%s\n'								\
-    '\#include "build_version.h"'					\
-    'const char* rocksdb_build_git_sha =				\
-      "rocksdb_build_git_sha:$(git_sha)";'			\
-    'const char* rocksdb_build_git_date =				\
-      "rocksdb_build_git_date:$(date)";'				\
-    'const char* rocksdb_build_compile_date = __DATE__;'
 
 # Record the version of the source that we are compiling.
 # We keep a record of the git revision in this file.  It is then built
@@ -223,11 +226,7 @@ gen_build_version =							\
 CLEAN_FILES += util/build_version.cc:
 FORCE:
 util/build_version.cc: FORCE
-	$(AM_V_GEN)rm -f $@-t
-	$(AM_V_at)$(gen_build_version) > $@-t
-	$(AM_V_at)if test -f $@; then					\
-	  cmp -s $@-t $@ && rm -f $@-t || mv -f $@-t $@;		\
-	else mv -f $@-t $@; fi
+	./gen_rocksdb_build_version.py --git-sha $(git_sha) --output-path "$@"
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)
@@ -432,6 +431,10 @@ shared_lib: $(SHARED)
 tools: $(TOOLS)
 
 dbg: $(LIBRARY) $(BENCHMARKS) tools $(TESTS)
+
+tests: $(TESTS)
+
+benchmarks: $(BENCHMARKS)
 
 # creates static library and programs
 release:

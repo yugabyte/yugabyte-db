@@ -2,8 +2,40 @@
 
 set -euo pipefail
 
+show_help() {
+  cat >&2 <<-EOT
+Usage: ${0##*/} [<options>] [<build_type>]
+Options:
+  -h, --help
+    Show help
+Build types:
+  debug (default), fastdebug, release, profile_gen, profile_build
+EOT
+}
+
+cmake_opts=""
+cmake_build_type="debug"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      show_help >&2
+      exit 1
+    ;;
+    debug|fastdebug|release|profile_gen|profile_build)
+      cmake_build_type="$1"
+    ;;
+    *)
+      echo "Invalid option: '$1'" >&2
+      exit 1
+  esac
+  shift
+done
+
+cmake_opts+=" -DCMAKE_BUILD_TYPE=$cmake_build_type"
+
 project_dir=$( cd `dirname $0` && pwd )
-build_dir="$project_dir/build/debug"
+build_dir="$project_dir/build/$cmake_build_type"
 
 mkdir -p "$build_dir"
 cd "$build_dir"
@@ -15,7 +47,12 @@ cd "$build_dir"
 thirdparty_built_flag_file="$PWD/built_thirdparty"
 makefile_builds_third_party_flag_file="$PWD/makefile_builds_third_party"
 
-export YB_MINIMIZE_VERSION_DEFINES_CHANGES=1
+export YB_MINIMIZE_RECOMPILATION=1
+if which ld.gold >/dev/null; then
+  export LD=ld.gold
+else
+  echo "ld.gold not found, not setting the LD environment variable to point to it" >&2
+fi
 
 if [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
@@ -24,7 +61,7 @@ if [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
     export NO_REBUILD_THIRDPARTY=1
   fi
   echo "Running cmake in $PWD"
-  ( set -x; cmake -DYB_LINK=dynamic "$project_dir" )
+  ( set -x; cmake -DYB_LINK=dynamic $cmake_opts "$project_dir" )
 fi
 
 echo Running make in $PWD

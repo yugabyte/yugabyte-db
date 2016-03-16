@@ -211,7 +211,6 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
   // Sets the timestamp on the response PB, if there is one.
   void SetResponseTimestamp(TransactionState* transaction_state,
                             const Timestamp& timestamp);
-
   TransactionTracker* const txn_tracker_;
   consensus::Consensus* const consensus_;
   log::Log* const log_;
