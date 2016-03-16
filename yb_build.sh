@@ -48,6 +48,11 @@ thirdparty_built_flag_file="$PWD/built_thirdparty"
 makefile_builds_third_party_flag_file="$PWD/makefile_builds_third_party"
 
 export YB_MINIMIZE_RECOMPILATION=1
+if which ld.gold >/dev/null; then
+  export LD=ld.gold
+else
+  echo "ld.gold not found, not setting the LD environment variable to point to it" >&2
+fi
 
 if [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
