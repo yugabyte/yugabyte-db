@@ -5,22 +5,26 @@
 set -euo pipefail
 
 print_help() {
-  echo >&2 <<-EOT
+  echo <<-EOT
 Usage: ${0##*/} <options>
 
 Links RocksDB sources into the build directory and builds it.
 
 Options:
-  --build-dir <build_dir>
-    The base build directory, e.g. yugabyte/build/debug or yugabyte/build/release.
-    This is required.
+  -h, --help
+    Show help.
   --build-type <build_type>
     The build type (e.g. "debug" or "release"). This must match the build directory.
     This is optional. If specified, this is expected to match the final component of the build
     directory.
+  --build-dir <build_dir>
+    The base build directory, e.g. yugabyte/build/debug or yugabyte/build/release.
+    This is required.
   --make-parallelism <parallelism>
     Specify the parallelism of the make command. This is frequently the number of CPUs
     or hyper-threads supported by the host.
+  --debug-level <debug_level>
+    The debug level to build RocksDB with (0, 1, or 2). See src/rocksdb/Makefile for details.
   --link-mode <link_mode>
     This is "s" for static linking or "d" for dynamic linking (default).
 EOT
@@ -34,6 +38,10 @@ link_mode="d"
 
 while [ $# -ne 0 ]; do
   case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
     --build-type)
       build_type=$2
       shift
@@ -55,6 +63,8 @@ while [ $# -ne 0 ]; do
       shift
     ;;
     *)
+      print_help >&2
+      echo >&2
       echo "Invalid option: $1" >&2
       exit 1
   esac

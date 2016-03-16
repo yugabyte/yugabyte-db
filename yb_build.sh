@@ -9,7 +9,7 @@ Options:
   -h, --help
     Show help
 Build types:
-  debug, fastdebug, release, profile_gen, profile_build
+  debug (default), fastdebug, release, profile_gen, profile_build
 EOT
 }
 
