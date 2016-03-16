@@ -387,10 +387,17 @@ void MaintenanceManager::GetMaintenanceManagerStatusDump(MaintenanceManagerStatu
     MaintenanceOpStats& stat(val.second);
     op_pb->set_name(op->name());
     op_pb->set_running(op->running());
-    op_pb->set_runnable(stat.runnable());
-    op_pb->set_ram_anchored_bytes(stat.ram_anchored());
-    op_pb->set_logs_retained_bytes(stat.logs_retained_bytes());
-    op_pb->set_perf_improvement(stat.perf_improvement());
+    if (stat.valid()) {
+      op_pb->set_runnable(stat.runnable());
+      op_pb->set_ram_anchored_bytes(stat.ram_anchored());
+      op_pb->set_logs_retained_bytes(stat.logs_retained_bytes());
+      op_pb->set_perf_improvement(stat.perf_improvement());
+    } else {
+      op_pb->set_runnable(false);
+      op_pb->set_ram_anchored_bytes(0);
+      op_pb->set_logs_retained_bytes(0);
+      op_pb->set_perf_improvement(0);
+    }
 
     if (best_op == op) {
       out_pb->mutable_best_op()->CopyFrom(*op_pb);
