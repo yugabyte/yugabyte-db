@@ -73,9 +73,10 @@ TAG_FLAG(webserver_max_post_length_bytes, runtime);
 
 namespace yb {
 
-Webserver::Webserver(const WebserverOptions& opts)
+Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)
   : opts_(opts),
-    context_(nullptr) {
+    context_(nullptr),
+    server_name_(server_name) {
   string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
   http_address_ = host + ":" + boost::lexical_cast<string>(opts.port);
 }
@@ -86,7 +87,7 @@ Webserver::~Webserver() {
 }
 
 void Webserver::RootHandler(const Webserver::WebRequest& args, stringstream* output) {
-  (*output) << "<h2>Status Pages</h2>";
+  (*output) << "<h2>" << server_name_ << " Status Page</h2>";
   for (const PathHandlerMap::value_type& handler : path_handlers_) {
     if (handler.second->is_on_nav_bar()) {
       (*output) << "<a href=\"" << handler.first << "\">" << handler.second->alias() << "</a><br/>";

@@ -43,7 +43,7 @@ class WebserverTest : public YBTest {
     WebserverOptions opts;
     opts.port = 0;
     opts.doc_root = static_dir_;
-    server_.reset(new Webserver(opts));
+    server_.reset(new Webserver(opts, "WebserverTest"));
   }
 
   virtual void SetUp() OVERRIDE {

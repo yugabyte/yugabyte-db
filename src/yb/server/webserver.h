@@ -51,8 +51,8 @@ namespace yb {
 class Webserver : public WebCallbackRegistry {
  public:
   // Using this constructor, the webserver will bind to all available
-  // interfaces.
-  explicit Webserver(const WebserverOptions& opts);
+  // interfaces. The server_name is used for display purposes.
+  explicit Webserver(const WebserverOptions& opts, const std::string& server_name);
 
   ~Webserver();
 
@@ -162,6 +162,9 @@ class Webserver : public WebCallbackRegistry {
 
   // Handle to Mongoose context; owned and freed by Mongoose internally
   struct sq_context* context_;
+
+  // Server name for display purposes
+  std::string server_name_;
 };
 
 } // namespace yb

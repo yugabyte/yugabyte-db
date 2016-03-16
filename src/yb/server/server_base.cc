@@ -91,7 +91,7 @@ ServerBase::ServerBase(string name, const ServerBaseOptions& options,
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
       rpc_server_(new RpcServer(options.rpc_opts)),
-      web_server_(new Webserver(options.webserver_opts)),
+      web_server_(new Webserver(options.webserver_opts, name_)),
       is_first_run_(false),
       options_(options),
       stop_metrics_logging_latch_(1) {
