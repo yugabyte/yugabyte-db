@@ -36,49 +36,57 @@ quoted_perl_command = $(subst ','\'',$(perl_command))
 
 # Set the default DEBUG_LEVEL to 1
 DEBUG_LEVEL?=1
+AUTO_DEBUG_LEVEL=
 
 ifeq ($(MAKECMDGOALS),dbg)
-	DEBUG_LEVEL=2
+AUTO_DEBUG_LEVEL=2
 endif
 
 ifeq ($(MAKECMDGOALS),clean)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),release)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),shared_lib)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),install-shared)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),static_lib)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),install-static)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),install)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastatic)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastaticrelease)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
 endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastaticpublish)
-	DEBUG_LEVEL=0
+AUTO_DEBUG_LEVEL=0
+endif
+
+ifeq ($(AUTO_DEBUG_LEVEL),)
+$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the target)")
+else
+$(warning "Setting DEBUG_LEVEL to $(AUTO_DEBUG_LEVEL) because MAKECMDGOALS is $(MAKECMDGOALS)")
+DEBUG_LEVEL=$(AUTO_DEBUG_LEVEL)
 endif
 
 # compile with -O2 if debug level is not 2
