@@ -27,3 +27,7 @@ add_custom_target(
   SOURCES ${ROCKSDB_SOURCES}
   VERBATIM
 )
+
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
