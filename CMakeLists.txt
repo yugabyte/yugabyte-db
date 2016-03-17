@@ -1008,7 +1008,17 @@ endif (UNIX)
 
 add_subdirectory(src/rocksdb)
 
-# Google util libraries borrowed from supersonic, tcmalloc, Chromium, etc.
+ADD_THIRDPARTY_LIB(
+  rocksdb
+  SHARED_LIB
+  "${ROCKSDB_BUILD_DIR}/librocksdb_debug.so.${ROCKSDB_VERSION}"
+  STATIC_LIB
+  "${ROCKSDB_BUILD_DIR}/librocksdb_debug.a.${ROCKSDB_VERSION}")
+
+include_directories(
+  src/rocksdb src/rocksdb/include
+)
+
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
 add_subdirectory(src/yb/common)

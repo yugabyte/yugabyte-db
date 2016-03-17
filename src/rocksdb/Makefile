@@ -86,7 +86,7 @@ ifeq ($(AUTO_DEBUG_LEVEL),)
 # Log the fact that we are not overriding the default value of DEBUG_LEVEL.
 # We expect this to be the case when make is being called from build-rocksdb.sh, because it will
 # usually specify multiple targets to build.
-$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the target)")
+$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the make target)")
 else
 $(warning "Setting DEBUG_LEVEL to $(AUTO_DEBUG_LEVEL) because MAKECMDGOALS is $(MAKECMDGOALS)")
 DEBUG_LEVEL=$(AUTO_DEBUG_LEVEL)
