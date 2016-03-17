@@ -1014,6 +1014,7 @@ ADD_THIRDPARTY_LIB(
   "${ROCKSDB_BUILD_DIR}/librocksdb_debug.so.${ROCKSDB_VERSION}"
   STATIC_LIB
   "${ROCKSDB_BUILD_DIR}/librocksdb_debug.a.${ROCKSDB_VERSION}")
+add_dependencies(rocksdb invoke_rocksdb_makefile)
 
 include_directories(
   src/rocksdb src/rocksdb/include
