@@ -130,9 +130,9 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
                                RespClass* resp,
                                rpc::RpcContext* context,
                                scoped_refptr<TabletPeer>* peer) {
-  if (PREDICT_FALSE(!tablet_manager->GetTabletPeer(tablet_id, peer).ok())) {
-    SetupErrorAndRespond(resp->mutable_error(),
-                         Status::NotFound("Tablet not found"),
+  Status status = tablet_manager->GetTabletPeer(tablet_id, peer);
+  if (PREDICT_FALSE(!status.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), status,
                          TabletServerErrorPB::TABLET_NOT_FOUND, context);
     return false;
   }
