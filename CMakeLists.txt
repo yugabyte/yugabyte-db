@@ -39,7 +39,7 @@ if(NOT DEFINED PROCESSOR_COUNT)
 
   # Mac:
   if(APPLE)
-    execute_process(COMMAND "sysctl -n hw.ncpu" OUTPUT_VARIABLE PROCESSOR_COUNT)
+    execute_process(COMMAND /usr/sbin/sysctl -n hw.ncpu OUTPUT_VARIABLE PROCESSOR_COUNT)
   endif()
 
   # Windows:
@@ -47,6 +47,11 @@ if(NOT DEFINED PROCESSOR_COUNT)
     set(PROCESSOR_COUNT "$ENV{NUMBER_OF_PROCESSORS}")
   endif()
 endif()
+
+if (NOT DEFINED PROCESSOR_COUNT OR "${PROCESSOR_COUNT}" STREQUAL "")
+  message(FATAL_ERROR "Could not determine the number of logical CPUs")
+endif()
+message("Detected the number of logical CPUs: ${PROCESSOR_COUNT}")
 
 # Prevent builds from the top-level source directory. This ensures that build
 # output is well isolated from the source tree.
