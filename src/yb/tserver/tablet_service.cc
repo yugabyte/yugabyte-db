@@ -132,8 +132,10 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
                                scoped_refptr<TabletPeer>* peer) {
   Status status = tablet_manager->GetTabletPeer(tablet_id, peer);
   if (PREDICT_FALSE(!status.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), status,
-                         TabletServerErrorPB::TABLET_NOT_FOUND, context);
+    TabletServerErrorPB::Code code = status.IsServiceUnavailable() ?
+                                     TabletServerErrorPB::UNKNOWN_ERROR :
+                                     TabletServerErrorPB::TABLET_NOT_FOUND;
+    SetupErrorAndRespond(resp->mutable_error(), status, code, context);
     return false;
   }
 
