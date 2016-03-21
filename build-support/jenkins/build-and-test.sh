@@ -74,6 +74,9 @@
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
+
+echo "YB_KEEP_BUILD_ARTIFACTS=${YB_KEEP_BUILD_ARTIFACTS:-}"
+
 DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
 if [ -n "$DONT_BUILD" ]; then
     echo "*** Build not requested. Exiting."
@@ -154,7 +157,7 @@ cleanup() {
   if [ "${YB_KEEP_BUILD_ARTIFACTS:-}" == "true" ]; then
     echo "Not removing build artifacts: YB_KEEP_BUILD_ARTIFACTS is set"
   else
-    echo Cleaning up all build artifacts...
+    echo "Cleaning up all build artifacts... (YB_KEEP_BUILD_ARTIFACTS=$YB_KEEP_BUILD_ARTIFACTS)"
     $SOURCE_ROOT/build-support/jenkins/post-build-clean.sh
   fi
 }
