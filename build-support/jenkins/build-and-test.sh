@@ -151,7 +151,7 @@ TEST_LOGDIR="$BUILD_ROOT/test-logs"
 TEST_DEBUGDIR="$BUILD_ROOT/test-debug"
 
 cleanup() {
-  if [ "$YB_KEEP_BUILD_ARTIFACTS" == "true" ]; then
+  if [ "${YB_KEEP_BUILD_ARTIFACTS:-}" == "true" ]; then
     echo "Not removing build artifacts: YB_KEEP_BUILD_ARTIFACTS is set"
   else
     echo Cleaning up all build artifacts...
