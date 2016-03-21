@@ -220,20 +220,25 @@ message("Configured for ${CMAKE_BUILD_TYPE} build (set with cmake -DCMAKE_BUILD_
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
   set(ROCKSDB_DEBUG_LEVEL 2)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_FASTDEBUG})
   set(ROCKSDB_DEBUG_LEVEL 1)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
   set(ROCKSDB_DEBUG_LEVEL 0)
+  set(ROCKSDB_LIB_SUFFIX "")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_GEN})
   # TODO: using RocksDB's default build type here -- may need revision.
   set(ROCKSDB_DEBUG_LEVEL 1)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_BUILD})
   # TODO: using RocksDB's default build type here -- may need revision.
   set(ROCKSDB_DEBUG_LEVEL 1)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -1013,9 +1018,9 @@ add_subdirectory(src/rocksdb)
 ADD_THIRDPARTY_LIB(
   rocksdb
   SHARED_LIB
-  "${ROCKSDB_BUILD_DIR}/librocksdb_debug.so.${ROCKSDB_VERSION}"
+  "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}${CMAKE_SHARED_LIBRARY_SUFFIX}.${ROCKSDB_VERSION}"
   STATIC_LIB
-  "${ROCKSDB_BUILD_DIR}/librocksdb_debug.a.${ROCKSDB_VERSION}")
+  "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}.a.${ROCKSDB_VERSION}")
 add_dependencies(rocksdb invoke_rocksdb_makefile)
 
 include_directories(
