@@ -140,12 +140,6 @@ fi
 link_dir="$build_dir/rocksdb-symlinks-only"
 build_dir="$build_dir/rocksdb-build"
 
-set -x
-
-rm -rf "$link_dir"
-
-cd "$rocksdb_dir"
-make clean  # ensure there are no build artifacts in the RocksDB source directory itself
 
 CP=cp
 if [ "`uname`" == "Darwin" ]; then
@@ -154,6 +148,16 @@ if [ "`uname`" == "Darwin" ]; then
   # "brew install coreutils".
   CP=gcp
 fi
+
+# -------------------------------------------------------------------------------------------------
+# Every command will be logged from this point on. All variables should have been set up above.
+
+set -x
+
+rm -rf "$link_dir"
+
+cd "$rocksdb_dir"
+make clean  # ensure there are no build artifacts in the RocksDB source directory itself
 
 # Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
 $CP -Rs "$rocksdb_dir" "$link_dir"
@@ -164,5 +168,4 @@ rsync -al "$link_dir/" "$build_dir"
 
 cd "$build_dir"
 
-set -x
 make $make_opts ${make_targets[@]}

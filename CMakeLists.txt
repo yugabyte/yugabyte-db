@@ -55,6 +55,13 @@ if (NOT DEFINED PROCESSOR_COUNT OR "${PROCESSOR_COUNT}" STREQUAL "")
 endif()
 message("Detected the number of logical CPUs: ${PROCESSOR_COUNT}")
 
+if(APPLE)
+  set(YB_SHARED_LIBRARY_SUFFIX ".dylib")
+else()
+  set(YB_SHARED_LIBRARY_SUFFIX ".so")
+endif()
+message("Using shared library suffix '${YB_SHARED_LIBRARY_SUFFIX}'.")
+
 # Prevent builds from the top-level source directory. This ensures that build
 # output is well isolated from the source tree.
 #
@@ -1018,7 +1025,7 @@ add_subdirectory(src/rocksdb)
 ADD_THIRDPARTY_LIB(
   rocksdb
   SHARED_LIB
-  "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}${CMAKE_SHARED_LIBRARY_SUFFIX}.${ROCKSDB_VERSION}"
+  "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}${YB_SHARED_LIBRARY_SUFFIX}.${ROCKSDB_VERSION}"
   STATIC_LIB
   "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}.a.${ROCKSDB_VERSION}")
 add_dependencies(rocksdb invoke_rocksdb_makefile)
