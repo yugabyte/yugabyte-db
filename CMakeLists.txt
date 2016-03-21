@@ -1043,6 +1043,17 @@ endif()
 
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
 
+if("${BUILD_SHARED_LIBS}" STREQUAL "ON")
+  message(
+    "RocksDB library '${ROCKSDB_SHARED_LIB}' will be symlinked into '${CMAKE_CURRENT_BINARY_DIR}/lib'")
+  add_custom_target(
+    symlink_rocksdb_dynamic_lib_into_lib_dir
+    COMMAND ln -sf "${ROCKSDB_SHARED_LIB}" "${CMAKE_CURRENT_BINARY_DIR}/lib"
+    DEPENDS invoke_rocksdb_makefile
+  )
+  add_dependencies(rocksdb symlink_rocksdb_dynamic_lib_into_lib_dir)
+endif()
+
 add_dependencies(rocksdb invoke_rocksdb_makefile)
 
 include_directories(
