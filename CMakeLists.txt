@@ -40,6 +40,8 @@ if(NOT DEFINED PROCESSOR_COUNT)
   # Mac:
   if(APPLE)
     execute_process(COMMAND /usr/sbin/sysctl -n hw.ncpu OUTPUT_VARIABLE PROCESSOR_COUNT)
+    # Strip trailing newline (otherwise it may get into the generated Makefile).
+    string(STRIP "${PROCESSOR_COUNT}" PROCESSOR_COUNT)
   endif()
 
   # Windows:

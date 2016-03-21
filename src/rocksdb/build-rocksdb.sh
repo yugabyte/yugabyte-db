@@ -147,8 +147,16 @@ rm -rf "$link_dir"
 cd "$rocksdb_dir"
 make clean  # ensure there are no build artifacts in the RocksDB source directory itself
 
+CP=cp
+if [ "`uname`" == "Darwin" ]; then
+  # The default cp command on Mac OS X does not support the "-s" argument (mirroring a directory
+  # using a tree of symlinks). We install the "gcp" ("g" for GNU) from using
+  # "brew install coreutils".
+  CP=gcp
+fi
+
 # Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
-cp -Rs "$rocksdb_dir" "$link_dir"
+$CP -Rs "$rocksdb_dir" "$link_dir"
 
 # Sync any new links that may have been created into our RocksDB build directory that may already
 # contain build artifacts from an earlier build.
