@@ -55,6 +55,7 @@ if (NOT DEFINED PROCESSOR_COUNT OR "${PROCESSOR_COUNT}" STREQUAL "")
 endif()
 message("Detected the number of logical CPUs: ${PROCESSOR_COUNT}")
 
+set(YB_STATIC_LIBRARY_SUFFIX ".a")
 if(APPLE)
   set(YB_SHARED_LIBRARY_SUFFIX ".dylib")
 else()
@@ -1022,12 +1023,26 @@ endif (UNIX)
 
 add_subdirectory(src/rocksdb)
 
-ADD_THIRDPARTY_LIB(
-  rocksdb
-  SHARED_LIB
-  "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}${YB_SHARED_LIBRARY_SUFFIX}.${ROCKSDB_VERSION}"
-  STATIC_LIB
-  "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}.a.${ROCKSDB_VERSION}")
+set(ROCKSDB_LIB_PATH_PREFIX "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}")
+set(ROCKSDB_VERSION_SUFFIX ".${ROCKSDB_VERSION}")
+
+if(APPLE)
+  # On Mac OS X the dynamic library extension (".dylib") in the resulting RocksDB library is the
+  # last component of the file name, following the version.
+  set(ROCKSDB_SHARED_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_SHARED_LIBRARY_SUFFIX}")
+  set(ROCKSDB_STATIC_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_STATIC_LIBRARY_SUFFIX}")
+else()
+  # On Linux, the version is the last component of the library path.
+  set(ROCKSDB_SHARED_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${YB_SHARED_LIBRARY_SUFFIX}${ROCKSDB_VERSION_SUFFIX}")
+  set(ROCKSDB_STATIC_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${YB_STATIC_LIBRARY_SUFFIX}${ROCKSDB_VERSION_SUFFIX}")
+endif()
+
+ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
+
 add_dependencies(rocksdb invoke_rocksdb_makefile)
 
 include_directories(
