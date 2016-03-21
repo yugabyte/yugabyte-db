@@ -1687,6 +1687,16 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
   boost::shared_lock<LockType> l(lock_);
+
+  if (PREDICT_FALSE(!IsInitialized())) {
+    // Master puts up the consensus service first and then initiates catalog manager's creation
+    // asynchronously. So this case is possible, but harmless. The RPC will simply be retried.
+    // Previously, because we weren't checking for this condition, we would fatal down stream.
+    const string& reason = "CatalogManager is not yet initialized";
+    YB_LOG_EVERY_N(WARNING, 1000) << reason;
+    return Status::ServiceUnavailable(reason);
+  }
+
   CHECK(sys_catalog_.get() != nullptr) << "sys_catalog_ must be initialized!";
   if (sys_catalog_->tablet_id() == tablet_id) {
     *tablet_peer = sys_catalog_->tablet_peer();
