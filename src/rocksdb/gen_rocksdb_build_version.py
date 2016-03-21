@@ -74,7 +74,7 @@ def main():
 #include "build_version.h"
 const char* rocksdb_build_git_sha = "rocksdb_build_git_sha:%s";
 const char* rocksdb_build_git_date = "rocksdb_build_git_date:%s";
-const char* rocksdb_build_compile_date = %s;
+const char* rocksdb_build_compile_date = "%s";
 """ % (git_sha, date_str, compile_date_str)).strip() + "\n"
 
   # Do not overwrite the file if it already contains the same code we are going to write.
