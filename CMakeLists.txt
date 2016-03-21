@@ -1043,6 +1043,7 @@ endif()
 
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
 
+message("BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}")
 if("${BUILD_SHARED_LIBS}" STREQUAL "ON")
   message(
     "RocksDB library '${ROCKSDB_SHARED_LIB}' will be symlinked into '${CMAKE_CURRENT_BINARY_DIR}/lib'")
