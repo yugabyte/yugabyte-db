@@ -71,6 +71,9 @@
 #     Extra flags which are passed to 'mvn' when building and running Java
 #     tests. This can be useful, for example, to choose a different maven
 #     repository location.
+#
+#   EXTRA_MAKE_ARGS
+#     Extra arguments to pass to Make
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
@@ -277,7 +280,7 @@ if [ "$BUILD_CPP" == "1" ]; then
   echo Building C++ code.
   echo ------------------------------------------------------------
   NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
-  make -j$NUM_PROCS 2>&1 | tee build.log
+  make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | tee build.log
 
   # If compilation succeeds, try to run all remaining steps despite any failures.
   set +e
