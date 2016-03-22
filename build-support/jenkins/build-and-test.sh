@@ -457,9 +457,9 @@ if [ $EXIT_STATUS != 0 ]; then
            "generating fake JUnit report file from $GTEST_OUTFILE and saving it to $GTEST_XMLFILE"
       $ZCAT $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
       if [ "$IS_MAC" == "1" ] && \
-         $ZCAT "$GTEST_OUTPUT_FILE" | grep "Referenced from: " >/dev/null; then
+         $ZCAT "$GTEST_OUTFILE" | grep "Referenced from: " >/dev/null; then
         MISSING_LIBRARY_REFERENCED_FROM=$(
-          $ZCAT "$GTEST_OUTPUT_FILE" | grep "Referenced from: " | head -1 | awk '{print $NF}' )
+          $ZCAT "$GTEST_OUTFILE" | grep "Referenced from: " | head -1 | awk '{print $NF}' )
         echo
         echo "$GTEST_OUTFILE says there is a missing library" \
              "referenced from $MISSING_LIBRARY_REFERENCED_FROM"
