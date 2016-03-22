@@ -147,7 +147,9 @@ SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
 BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
 
 if [ "$IS_MAC" == "1" ]; then
-  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  export DYLD_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  export DYLD_FALLBACK_LIBRARY_PATH="$DYLD_LIBRARY_PATH"
+  echo "Set DYLD_LIBRARY_PATH and DYLD_FALLBACK_LIBRARY_PATH to $DYLD_LIBRARY_PATH"
 fi
 
 # Remove testing artifacts from the previous run before we do anything
