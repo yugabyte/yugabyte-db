@@ -75,6 +75,14 @@
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
 
+if [ "`uname`" == "Darwin" ]; then
+  ZCAT=gzcat
+  # We need this to be able to find the rocksdb-build directory.
+  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+else
+  ZCAT=zcat
+fi
+
 echo "YB_KEEP_BUILD_ARTIFACTS=${YB_KEEP_BUILD_ARTIFACTS:-}"
 
 DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
@@ -309,10 +317,6 @@ if [ "$BUILD_CPP" == "1" ]; then
     EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
   fi
 
-  if [ "`uname`" == "Darwin" ]; then
-    # We need this for tests to find the RocksDB dynamic library.
-    export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
-  fi
   set +e
   ( set -x; $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS )
   if [ $? -ne 0 ]; then
@@ -439,7 +443,7 @@ if [ $EXIT_STATUS != 0 ]; then
     if [ ! -f "$GTEST_XMLFILE" ]; then
       echo "JUnit report missing:" \
            "generating fake JUnit report file from $GTEST_OUTFILE and saving it to $GTEST_XMLFILE"
-      zcat $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x > $GTEST_XMLFILE
+      $ZCAT $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
     fi
   done
 fi
