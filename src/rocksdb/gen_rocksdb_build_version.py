@@ -40,7 +40,7 @@ def main():
 
   git_sha = args.git_sha
   if git_sha == '' and '/.CLion' in os.path.abspath(__file__) and not minimize_recompilation:
-    logging.warn("This appears to be a CLion-initiaed build and --git-sha argument is empty. " +
+    logging.warn("This appears to be a CLion-initiated build and --git-sha argument is empty. " +
                  "Acting as if YB_MINIMIZE_RECOMPILATION is set.")
     minimize_recompilation = True
 
