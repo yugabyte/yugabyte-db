@@ -441,6 +441,12 @@ if [ $EXIT_STATUS != 0 ]; then
   echo Tests failed, making sure we have XML files for all tests.
   echo ------------------------------------------------------------
 
+  if [ "$IS_MAC" == "1" ]; then
+    echo "Listing RocksDB dynamic library files in DYLD_LIBRARY_PATH ($DYLD_LIBRARY_PATH):"
+    ( set -x; ls -l "$DYLD_LIBRARY_PATH"/librocksdb* )
+    echo
+  fi
+
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
   for GTEST_OUTFILE in $TEST_LOGDIR/*.txt.gz; do
@@ -450,6 +456,18 @@ if [ $EXIT_STATUS != 0 ]; then
       echo "JUnit report missing:" \
            "generating fake JUnit report file from $GTEST_OUTFILE and saving it to $GTEST_XMLFILE"
       $ZCAT $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
+      if [ "$IS_MAC" == "1" ] && \
+         $ZCAT "$GTEST_OUTPUT_FILE" | grep "Referenced from: " >/dev/null; then
+        MISSING_LIBRARY_REFERENCED_FROM=$(
+          $ZCAT "$GTEST_OUTPUT_FILE" | grep "Referenced from: " | head -1 | awk '{print $NF}' )
+        echo
+        echo "$GTEST_OUTFILE says there is a missing library" \
+             "referenced from $MISSING_LIBRARY_REFERENCED_FROM"
+        echo "Output from otool -L '$MISSING_LIBRARY_REFERENCED_FROM':"
+        otool -L "$MISSING_LIBRARY_REFERENCED_FROM"
+        echo
+      fi
+
     fi
   done
 fi
