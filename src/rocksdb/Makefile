@@ -228,7 +228,7 @@ endif
 CLEAN_FILES += util/build_version.cc:
 FORCE:
 util/build_version.cc: FORCE
-	./gen_rocksdb_build_version.py --git-sha $(git_sha) --output-path "$@"
+	./gen_rocksdb_build_version.py --git-sha "$(git_sha)" --output-path "$@"
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)

@@ -124,9 +124,15 @@ if [ -n "$debug_level" ]; then
 fi
 
 build_type_lowercase=$( echo "$build_type" | tr '[:upper:]' '[:lower:]' )
-if [ "${build_dir##*/}" != "$build_type_lowercase" ]; then
-  echo "Build directory '$build_dir' does not end with build type ('$build_type') as its last" \
-    "path component: '$build_dir'" >&2
+build_dir_basename=$( echo "${build_dir##*/}" | tr '[:upper:]' '[:lower:]' )
+
+# If the build type is "debug", we check that the directory ends with "debug" or "debug0"
+# (case-insensitive). We need the "debug0" case because we sometimes get paths such as
+# /home/mbautin/.CLion12/system/cmake/generated/411cc071/411cc071/Debug0 in CLion builds.
+if [ "$build_dir_basename" != "$build_type_lowercase" ] && \
+   [ "$build_dir_basename" != "${build_type_lowercase}0" ]; then
+  echo "Build directory '$build_dir' does not end with build type ('$build_type') optionally " \
+       "followed by 0 as its final path component" >&2
   exit 1
 fi
 
