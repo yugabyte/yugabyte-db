@@ -309,6 +309,10 @@ if [ "$BUILD_CPP" == "1" ]; then
     EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
   fi
 
+  if [ "`uname`" == "Darwin" ]; then
+    # We need this for tests to find the RocksDB dynamic library.
+    export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  fi
   set +e
   ( set -x; $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS )
   if [ $? -ne 0 ]; then
