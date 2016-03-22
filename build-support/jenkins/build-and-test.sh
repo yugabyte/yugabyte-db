@@ -76,10 +76,10 @@
 # immediately.
 
 if [ "`uname`" == "Darwin" ]; then
+  IS_MAC=1
   ZCAT=gzcat
-  # We need this to be able to find the rocksdb-build directory.
-  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
 else
+  IS_MAC=0
   ZCAT=zcat
 fi
 
@@ -144,7 +144,11 @@ if [ ! -w "$TEST_TMPDIR" ]; then
 fi
 
 SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
-BUILD_ROOT=$SOURCE_ROOT/build/$BUILD_TYPE_LOWER
+BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
+
+if [ "$IS_MAC" == "1" ]; then
+  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+fi
 
 # Remove testing artifacts from the previous run before we do anything
 # else. Otherwise, if we fail during the "build" step, Jenkins will
