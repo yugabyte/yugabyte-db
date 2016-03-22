@@ -328,6 +328,10 @@ if [ -f "$build_root" ]; then
   exit 1
 fi
 
+if [ "`uname`" == "Darwin" ]; then
+  export DYLD_FALLBACK_LIBRARY_PATH="$build_root/rocksdb-build"
+fi
+
 # TODO: use separate bind ips of the form 127.x.y.z for different daemons similarly to YB's mini
 # test cluster to allow simulating network partitions.
 bind_ip=127.0.0.1
