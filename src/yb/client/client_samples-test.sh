@@ -100,7 +100,7 @@ fi
 export TMPDIR=${TMPDIR:-/tmp}
 export TEST_TMPDIR=${TEST_TMPDIR:-$TMPDIR/ybtest-$UID}
 if [ "`uname`" == "Darwin" ]; then
-  export DYLD_FALLBACK_LIBRARY_PATH="$OUTPUT_DIR/rocksdb-build"
+  export DYLD_FALLBACK_LIBRARY_PATH="$OUTPUT_DIR/../rocksdb-build"
 fi
 
 mkdir -p "$TEST_TMPDIR"
