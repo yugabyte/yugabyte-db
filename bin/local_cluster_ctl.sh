@@ -25,6 +25,15 @@ EOT
 
 declare -i -r MAX_SERVERS=20
 
+SEQ=seq
+if [ "`uname`" == "Darwin" ]; then
+  # The default seq command on Mac OS X has a different behavior if first > last.
+  # On, Linux for example, seq 1 0 prints nothing, whereas on Mac OS X, seq prints
+  # 1 and 0. We don't want the reverse behavior. So resort to using the GNU version
+  # of seq.
+  SEQ=gseq
+fi
+
 validate_num_servers() {
   local n="$1"
   if [[ ! "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_SERVERS" ]; then
@@ -62,7 +71,7 @@ create_directories() {
   local num_servers="$2"
   validate_num_servers "$num_servers"
   local i
-  for i in $( seq 1 $num_servers ); do
+  for i in $( $SEQ 1 $num_servers ); do
     for subdir in logs wal data; do
       mkdir -p "$cluster_base_dir/$daemon_type-$i/$subdir"
     done
@@ -141,13 +150,13 @@ set_num_masters() {
     echo "set_num_masters() cannot be called more than once." >&2
     exit 1
   fi
-  for i in `seq 1 $MAX_SERVERS`; do
+  for i in `$SEQ 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "master" $i )
     if [ -n "$daemon_pid" ]; then
       let count_running_masters=count_running_masters+1
     fi
   done
-  master_indexes=$( seq 1 $count_running_masters )
+  master_indexes=$( $SEQ 1 $count_running_masters )
 }
 
 max_running_tserver_index=0
@@ -157,7 +166,7 @@ set_num_tservers() {
     echo "set_num_tservers() cannot be called more than once." >&2
     exit 1
   fi
-  for i in `seq 1 $MAX_SERVERS`; do
+  for i in `$SEQ 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "tserver" $i )
     if [ -n "$daemon_pid" ]; then
       if [ $i -gt $max_running_tserver_index ]; then
@@ -165,12 +174,12 @@ set_num_tservers() {
       fi
     fi
   done
-  tserver_indexes=$( seq 1 $max_running_tserver_index )
+  tserver_indexes=$( $SEQ 1 $max_running_tserver_index )
 }
 
 increment_tservers() {
   let max_running_tserver_index=max_running_tserver_index+1
-  tserver_indexes=$( seq 1 $max_running_tserver_index )
+  tserver_indexes=$( $SEQ 1 $max_running_tserver_index )
 }
 
 remove_daemon() {
@@ -352,8 +361,8 @@ if [ "$cmd" == "start" ]; then
   create_directories master $num_masters
   create_directories tserver $num_tservers
 
-  master_indexes=$( seq 1 $num_masters )
-  tserver_indexes=$( seq 1 $num_tservers )
+  master_indexes=$( $SEQ 1 $num_masters )
+  tserver_indexes=$( $SEQ 1 $num_tservers )
 
   set_master_addresses
 
