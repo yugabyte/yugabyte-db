@@ -37,7 +37,6 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-#include "yb/server/server_base.h"
 
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;

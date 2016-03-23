@@ -99,21 +99,25 @@ fi
 # Start master+ts
 export TMPDIR=${TMPDIR:-/tmp}
 export TEST_TMPDIR=${TEST_TMPDIR:-$TMPDIR/ybtest-$UID}
-mkdir -p $TEST_TMPDIR
+if [ "`uname`" == "Darwin" ]; then
+  export DYLD_FALLBACK_LIBRARY_PATH="$OUTPUT_DIR/rocksdb-build"
+fi
+
+mkdir -p "$TEST_TMPDIR"
 BASE_DIR=$(mktemp -d $TEST_TMPDIR/client_samples-test.XXXXXXXX)
 $OUTPUT_DIR/yb-master \
   --default_num_replicas=1 \
-  --log_dir=$BASE_DIR \
-  --fs_wal_dir=$BASE_DIR/master \
-  --fs_data_dirs=$BASE_DIR/master \
+  "--log_dir=$BASE_DIR" \
+  "--fs_wal_dir=$BASE_DIR/master" \
+  "--fs_data_dirs=$BASE_DIR/master" \
   --webserver_interface=localhost \
   --webserver_port=0 \
   --rpc_bind_addresses=$LOCALHOST_IP &
 MASTER_PID=$!
 $OUTPUT_DIR/yb-tserver \
-  --log_dir=$BASE_DIR \
-  --fs_wal_dir=$BASE_DIR/ts \
-  --fs_data_dirs=$BASE_DIR/ts \
+  "--log_dir=$BASE_DIR" \
+  "--fs_wal_dir=$BASE_DIR/ts" \
+  "--fs_data_dirs=$BASE_DIR/ts" \
   --rpc_bind_addresses=$LOCALHOST_IP \
   --local_ip_for_outbound_sockets=$LOCALHOST_IP \
   --webserver_interface=localhost \
