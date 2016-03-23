@@ -39,12 +39,9 @@ if(NOT DEFINED PROCESSOR_COUNT)
 
   # Mac:
   if(APPLE)
-    find_program(cmd_sys_pro "system_profiler")
-    if(cmd_sys_pro)
-      execute_process(COMMAND ${cmd_sys_pro} OUTPUT_VARIABLE info)
-      string(REGEX REPLACE "^.*Total Number Of Cores: ([0-9]+).*$" "\\1"
-        PROCESSOR_COUNT "${info}")
-    endif()
+    execute_process(COMMAND /usr/sbin/sysctl -n hw.ncpu OUTPUT_VARIABLE PROCESSOR_COUNT)
+    # Strip trailing newline (otherwise it may get into the generated Makefile).
+    string(STRIP "${PROCESSOR_COUNT}" PROCESSOR_COUNT)
   endif()
 
   # Windows:
@@ -52,6 +49,19 @@ if(NOT DEFINED PROCESSOR_COUNT)
     set(PROCESSOR_COUNT "$ENV{NUMBER_OF_PROCESSORS}")
   endif()
 endif()
+
+if (NOT DEFINED PROCESSOR_COUNT OR "${PROCESSOR_COUNT}" STREQUAL "")
+  message(FATAL_ERROR "Could not determine the number of logical CPUs")
+endif()
+message("Detected the number of logical CPUs: ${PROCESSOR_COUNT}")
+
+set(YB_STATIC_LIBRARY_SUFFIX ".a")
+if(APPLE)
+  set(YB_SHARED_LIBRARY_SUFFIX ".dylib")
+else()
+  set(YB_SHARED_LIBRARY_SUFFIX ".so")
+endif()
+message("Using shared library suffix '${YB_SHARED_LIBRARY_SUFFIX}'.")
 
 # Prevent builds from the top-level source directory. This ensures that build
 # output is well isolated from the source tree.
@@ -218,20 +228,25 @@ message("Configured for ${CMAKE_BUILD_TYPE} build (set with cmake -DCMAKE_BUILD_
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
   set(ROCKSDB_DEBUG_LEVEL 2)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_FASTDEBUG})
   set(ROCKSDB_DEBUG_LEVEL 1)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
   set(ROCKSDB_DEBUG_LEVEL 0)
+  set(ROCKSDB_LIB_SUFFIX "")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_GEN})
   # TODO: using RocksDB's default build type here -- may need revision.
   set(ROCKSDB_DEBUG_LEVEL 1)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_BUILD})
   # TODO: using RocksDB's default build type here -- may need revision.
   set(ROCKSDB_DEBUG_LEVEL 1)
+  set(ROCKSDB_LIB_SUFFIX "_debug")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -1008,7 +1023,44 @@ endif (UNIX)
 
 add_subdirectory(src/rocksdb)
 
-# Google util libraries borrowed from supersonic, tcmalloc, Chromium, etc.
+set(ROCKSDB_LIB_PATH_PREFIX "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}")
+set(ROCKSDB_VERSION_SUFFIX ".${ROCKSDB_VERSION}")
+
+if(APPLE)
+  # On Mac OS X the dynamic library extension (".dylib") in the resulting RocksDB library is the
+  # last component of the file name, following the version.
+  set(ROCKSDB_SHARED_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_SHARED_LIBRARY_SUFFIX}")
+  set(ROCKSDB_STATIC_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_STATIC_LIBRARY_SUFFIX}")
+else()
+  # On Linux, the version is the last component of the library path.
+  set(ROCKSDB_SHARED_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${YB_SHARED_LIBRARY_SUFFIX}${ROCKSDB_VERSION_SUFFIX}")
+  set(ROCKSDB_STATIC_LIB
+      "${ROCKSDB_LIB_PATH_PREFIX}${YB_STATIC_LIBRARY_SUFFIX}${ROCKSDB_VERSION_SUFFIX}")
+endif()
+
+ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
+
+message("BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}")
+if("${BUILD_SHARED_LIBS}" STREQUAL "ON")
+  message(
+    "RocksDB library '${ROCKSDB_SHARED_LIB}' will be symlinked into '${CMAKE_CURRENT_BINARY_DIR}/lib'")
+  add_custom_target(
+    symlink_rocksdb_dynamic_lib_into_lib_dir
+    COMMAND ln -sf "${ROCKSDB_SHARED_LIB}" "${CMAKE_CURRENT_BINARY_DIR}/lib"
+    DEPENDS invoke_rocksdb_makefile
+  )
+  add_dependencies(rocksdb symlink_rocksdb_dynamic_lib_into_lib_dir)
+endif()
+
+add_dependencies(rocksdb invoke_rocksdb_makefile)
+
+include_directories(
+  src/rocksdb src/rocksdb/include
+)
+
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
 add_subdirectory(src/yb/common)

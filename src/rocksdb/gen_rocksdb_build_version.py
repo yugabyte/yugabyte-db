@@ -38,14 +38,18 @@ def main():
 
   minimize_recompilation = 'YB_MINIMIZE_RECOMPILATION' in os.environ
 
+  git_sha = args.git_sha
+  if git_sha == '' and '/.CLion' in os.path.abspath(__file__) and not minimize_recompilation:
+    logging.warn("This appears to be a CLion-initiated build and --git-sha argument is empty. " +
+                 "Acting as if YB_MINIMIZE_RECOMPILATION is set.")
+    minimize_recompilation = True
+
   if minimize_recompilation:
     git_sha = '0' * 40
-  else:
-    git_sha = args.git_sha
-    if len(git_sha) != 40:
-      logging.error('Git SHA is expected to be 40 characters, found %d: %s' %
-        (len(git_sha), git_sha))
-      return 1
+  elif len(git_sha) != 40:
+    logging.error('Git SHA is expected to be 40 characters, found %d: %s' %
+      (len(git_sha), git_sha))
+    return 1
 
   output_path = args.output_path
   date_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -74,7 +78,7 @@ def main():
 #include "build_version.h"
 const char* rocksdb_build_git_sha = "rocksdb_build_git_sha:%s";
 const char* rocksdb_build_git_date = "rocksdb_build_git_date:%s";
-const char* rocksdb_build_compile_date = %s;
+const char* rocksdb_build_compile_date = "%s";
 """ % (git_sha, date_str, compile_date_str)).strip() + "\n"
 
   # Do not overwrite the file if it already contains the same code we are going to write.

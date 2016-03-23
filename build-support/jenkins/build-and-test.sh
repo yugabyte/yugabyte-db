@@ -71,9 +71,23 @@
 #     Extra flags which are passed to 'mvn' when building and running Java
 #     tests. This can be useful, for example, to choose a different maven
 #     repository location.
+#
+#   EXTRA_MAKE_ARGS
+#     Extra arguments to pass to Make
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
+
+if [ "`uname`" == "Darwin" ]; then
+  IS_MAC=1
+  ZCAT=gzcat
+else
+  IS_MAC=0
+  ZCAT=zcat
+fi
+
+echo "YB_KEEP_BUILD_ARTIFACTS=${YB_KEEP_BUILD_ARTIFACTS:-}"
+
 DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
 if [ -n "$DONT_BUILD" ]; then
     echo "*** Build not requested. Exiting."
@@ -133,14 +147,20 @@ if [ ! -w "$TEST_TMPDIR" ]; then
 fi
 
 SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
-BUILD_ROOT=$SOURCE_ROOT/build/$BUILD_TYPE_LOWER
+BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
+
+if [ "$IS_MAC" == "1" ]; then
+  export DYLD_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  export DYLD_FALLBACK_LIBRARY_PATH="$DYLD_LIBRARY_PATH"
+  echo "Set DYLD_LIBRARY_PATH and DYLD_FALLBACK_LIBRARY_PATH to $DYLD_LIBRARY_PATH"
+fi
 
 # Remove testing artifacts from the previous run before we do anything
 # else. Otherwise, if we fail during the "build" step, Jenkins will
 # archive the test logs from the previous run, thinking they came from
 # this run, and confuse us when we look at the failed build.
-rm -rf $BUILD_ROOT
-mkdir -p $BUILD_ROOT
+rm -rf "$BUILD_ROOT"
+mkdir -p "$BUILD_ROOT"
 
 list_flaky_tests() {
   curl -s "http://$TEST_RESULT_SERVER/list_failed_tests?num_days=3&build_pattern=%25kudu-test%25"
@@ -151,9 +171,14 @@ TEST_LOGDIR="$BUILD_ROOT/test-logs"
 TEST_DEBUGDIR="$BUILD_ROOT/test-debug"
 
 cleanup() {
-  echo Cleaning up all build artifacts...
-  $SOURCE_ROOT/build-support/jenkins/post-build-clean.sh
+  if [ "${YB_KEEP_BUILD_ARTIFACTS:-}" == "true" ]; then
+    echo "Not removing build artifacts: YB_KEEP_BUILD_ARTIFACTS is set"
+  else
+    echo "Cleaning up all build artifacts... (YB_KEEP_BUILD_ARTIFACTS=$YB_KEEP_BUILD_ARTIFACTS)"
+    $SOURCE_ROOT/build-support/jenkins/post-build-clean.sh
+  fi
 }
+
 # If we're running inside Jenkins (the BUILD_ID is set), then install
 # an exit handler which will clean up all of our build results.
 if [ -n "$BUILD_ID" ]; then
@@ -179,7 +204,7 @@ fi
 # Before running cmake below, clean out any errant cmake state from the source
 # tree. We need this to help transition into a world where out-of-tree builds
 # are required. Once that's done, the cleanup can be removed.
-rm -rf $SOURCE_ROOT/CMakeCache.txt $SOURCE_ROOT/CMakeFiles
+rm -rf "$SOURCE_ROOT/CMakeCache.txt" "$SOURCE_ROOT/CMakeFiles"
 
 # Configure the build
 #
@@ -247,7 +272,7 @@ $SOURCE_ROOT/build-support/enable_devtoolset.sh "$THIRDPARTY_BIN/cmake -DCMAKE_B
 
 # our tests leave lots of data lying around, clean up before we run
 if [ -d "$TEST_TMPDIR" ]; then
-  rm -Rf $TEST_TMPDIR/*
+  rm -Rf "$TEST_TMPDIR"/*
 fi
 
 if [ "$BUILD_CPP" == "1" ]; then
@@ -255,7 +280,7 @@ if [ "$BUILD_CPP" == "1" ]; then
   echo Building C++ code.
   echo ------------------------------------------------------------
   NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
-  make -j$NUM_PROCS 2>&1 | tee build.log
+  make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | tee build.log
 
   # If compilation succeeds, try to run all remaining steps despite any failures.
   set +e
@@ -360,7 +385,7 @@ if [ "$BUILD_PYTHON" == "1" ]; then
   pushd $SOURCE_ROOT/python
 
   # Create a sane test environment
-  rm -Rf $YB_BUILD/py_env
+  rm -Rf "$YB_BUILD/py_env"
   virtualenv $YB_BUILD/py_env
   source $YB_BUILD/py_env/bin/activate
   pip install --upgrade pip
@@ -391,7 +416,7 @@ if [ "$ENABLE_DIST_TEST" == "1" ]; then
     FAILURES="$FAILURES"$'Distributed tests failed\n'
   fi
   DT_DIR=$TEST_LOGDIR/dist-test-out
-  rm -Rf $DT_DIR
+  rm -Rf "$DT_DIR"
   $DIST_TEST_HOME/client.py fetch --artifacts -d $DT_DIR
   # Fetching the artifacts expands each log into its own directory.
   # Move them back into the main log directory
@@ -408,9 +433,9 @@ if [ "$ENABLE_DIST_TEST" == "1" ]; then
         print "unknown_shard";
       }')
     for log_file in $arch_dir/build/$BUILD_TYPE_LOWER/test-logs/* ; do
-      mv $log_file $TEST_LOGDIR/${shard_idx}_$(basename $log_file)
+      mv "$log_file" "$TEST_LOGDIR/${shard_idx}_$(basename $log_file)"
     done
-    rm -Rf $arch_dir
+    rm -Rf "$arch_dir"
   done
 fi
 
@@ -418,6 +443,12 @@ if [ $EXIT_STATUS != 0 ]; then
   echo
   echo Tests failed, making sure we have XML files for all tests.
   echo ------------------------------------------------------------
+
+  if [ "$IS_MAC" == "1" ]; then
+    echo "Listing RocksDB dynamic library files in DYLD_LIBRARY_PATH ($DYLD_LIBRARY_PATH):"
+    ( set -x; ls -l "$DYLD_LIBRARY_PATH"/librocksdb* )
+    echo
+  fi
 
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
@@ -427,7 +458,19 @@ if [ $EXIT_STATUS != 0 ]; then
     if [ ! -f "$GTEST_XMLFILE" ]; then
       echo "JUnit report missing:" \
            "generating fake JUnit report file from $GTEST_OUTFILE and saving it to $GTEST_XMLFILE"
-      zcat $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x > $GTEST_XMLFILE
+      $ZCAT $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
+      if [ "$IS_MAC" == "1" ] && \
+         $ZCAT "$GTEST_OUTFILE" | grep "Referenced from: " >/dev/null; then
+        MISSING_LIBRARY_REFERENCED_FROM=$(
+          $ZCAT "$GTEST_OUTFILE" | grep "Referenced from: " | head -1 | awk '{print $NF}' )
+        echo
+        echo "$GTEST_OUTFILE says there is a missing library" \
+             "referenced from $MISSING_LIBRARY_REFERENCED_FROM"
+        echo "Output from otool -L '$MISSING_LIBRARY_REFERENCED_FROM':"
+        otool -L "$MISSING_LIBRARY_REFERENCED_FROM"
+        echo
+      fi
+
     fi
   done
 fi

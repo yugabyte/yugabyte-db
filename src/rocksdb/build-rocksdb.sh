@@ -124,9 +124,15 @@ if [ -n "$debug_level" ]; then
 fi
 
 build_type_lowercase=$( echo "$build_type" | tr '[:upper:]' '[:lower:]' )
-if [ "${build_dir##*/}" != "$build_type_lowercase" ]; then
-  echo "Build directory '$build_dir' does not end with build type ('$build_type') as its last" \
-    "path component: '$build_dir'" >&2
+build_dir_basename=$( echo "${build_dir##*/}" | tr '[:upper:]' '[:lower:]' )
+
+# If the build type is "debug", we check that the directory ends with "debug" or "debug0"
+# (case-insensitive). We need the "debug0" case because we sometimes get paths such as
+# /home/mbautin/.CLion12/system/cmake/generated/411cc071/411cc071/Debug0 in CLion builds.
+if [ "$build_dir_basename" != "$build_type_lowercase" ] && \
+   [ "$build_dir_basename" != "${build_type_lowercase}0" ]; then
+  echo "Build directory '$build_dir' does not end with build type ('$build_type') optionally " \
+       "followed by 0 as its final path component" >&2
   exit 1
 fi
 
@@ -140,6 +146,18 @@ fi
 link_dir="$build_dir/rocksdb-symlinks-only"
 build_dir="$build_dir/rocksdb-build"
 
+
+CP=cp
+if [ "`uname`" == "Darwin" ]; then
+  # The default cp command on Mac OS X does not support the "-s" argument (mirroring a directory
+  # using a tree of symlinks). We install the "gcp" ("g" for GNU) from using
+  # "brew install coreutils".
+  CP=gcp
+fi
+
+# -------------------------------------------------------------------------------------------------
+# Every command will be logged from this point on. All variables should have been set up above.
+
 set -x
 
 rm -rf "$link_dir"
@@ -148,7 +166,7 @@ cd "$rocksdb_dir"
 make clean  # ensure there are no build artifacts in the RocksDB source directory itself
 
 # Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
-cp -Rs "$rocksdb_dir" "$link_dir"
+$CP -Rs "$rocksdb_dir" "$link_dir"
 
 # Sync any new links that may have been created into our RocksDB build directory that may already
 # contain build artifacts from an earlier build.
@@ -156,5 +174,4 @@ rsync -al "$link_dir/" "$build_dir"
 
 cd "$build_dir"
 
-set -x
 make $make_opts ${make_targets[@]}

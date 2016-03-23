@@ -8,7 +8,9 @@
 
 CLEAN_FILES = # deliberately empty, so we can append below.
 CFLAGS += ${EXTRA_CFLAGS}
-CXXFLAGS += ${EXTRA_CXXFLAGS}
+# See the following link for old vs. new C++ ABI differences:
+# https://gcc.gnu.org/onlinedocs/gcc-5.2.0/libstdc++/manual/manual/using_dual_abi.html
+CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 ${EXTRA_CXXFLAGS}
 LDFLAGS += $(EXTRA_LDFLAGS)
 MACHINE ?= $(shell uname -m)
 ARFLAGS = rs
@@ -86,7 +88,7 @@ ifeq ($(AUTO_DEBUG_LEVEL),)
 # Log the fact that we are not overriding the default value of DEBUG_LEVEL.
 # We expect this to be the case when make is being called from build-rocksdb.sh, because it will
 # usually specify multiple targets to build.
-$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the target)")
+$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the make target)")
 else
 $(warning "Setting DEBUG_LEVEL to $(AUTO_DEBUG_LEVEL) because MAKECMDGOALS is $(MAKECMDGOALS)")
 DEBUG_LEVEL=$(AUTO_DEBUG_LEVEL)
@@ -226,7 +228,7 @@ endif
 CLEAN_FILES += util/build_version.cc:
 FORCE:
 util/build_version.cc: FORCE
-	./gen_rocksdb_build_version.py --git-sha $(git_sha) --output-path "$@"
+	./gen_rocksdb_build_version.py --git-sha "$(git_sha)" --output-path "$@"
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 LIBOBJECTS += $(TOOL_SOURCES:.cc=.o)

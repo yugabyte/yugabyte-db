@@ -66,6 +66,8 @@
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
 
+#include "rocksdb/db.h"
+
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
             "Use at your own risk!");
@@ -1771,6 +1773,16 @@ string Tablet::Iterator::ToString() const {
 
 void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
   iter_->GetIteratorStats(stats);
+}
+
+// TODO: remove this. This is just here to test if we can link against RocksDB.
+static void RocksDBIntegrationSanityCheck() {
+  rocksdb::DB* db;
+  rocksdb::Options options;
+  options.create_if_missing = true;
+  rocksdb::Status status =
+    rocksdb::DB::Open(options, "/tmp/rocksdb-sanity-check", &db);
+  assert(status.ok());  
 }
 
 } // namespace tablet

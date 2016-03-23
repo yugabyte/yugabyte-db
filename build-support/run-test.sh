@@ -42,6 +42,10 @@ SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/.. ; pwd)
 # Absolute path to the root build directory. The test path is expected to be within it.
 BUILD_ROOT=$(cd $(dirname "$TEST_PATH")/.. ; pwd)
 
+if [ "`uname`" == "Darwin" ]; then
+  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+fi
+
 TEST_LOGDIR=$BUILD_ROOT/test-logs
 mkdir -p $TEST_LOGDIR
 
