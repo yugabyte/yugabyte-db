@@ -193,29 +193,29 @@ string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
   string default_path = JoinPathSegments(daemon_bin_path_, binary);
   if (Env::Default()->FileExists(default_path)) {
     return default_path;
-  } else {
-    // In CLion-based builds we sometimes have to look for the binary in other directories.
-    string alternative_dir;
-    if (binary == "yb-master") {
-      alternative_dir = "master";
-    } else if (binary == "yb-tserver") {
-      alternative_dir = "tserver";
-    } else {
-      LOG(WARNING) << "Binary " << default_path << " does not exist, and no alternative " <<
-        "directory is available for this binary type";
-      return default_path;
-    }
+  }
 
-    string alternative_path = JoinPathSegments(daemon_bin_path_,
-      "../" + alternative_dir + "/" + binary);
-    if (Env::Default()->FileExists(alternative_path)) {
-      LOG(INFO) << "Binary " << default_path << " not found, using alternative location: "
-        << alternative_path;
-      return alternative_path;
-    } else {
-      LOG(WARNING) << "Neither " << default_path << " nor " << alternative_path << " exist";
-      return default_path;
-    }
+  // In CLion-based builds we sometimes have to look for the binary in other directories.
+  string alternative_dir;
+  if (binary == "yb-master") {
+    alternative_dir = "master";
+  } else if (binary == "yb-tserver") {
+    alternative_dir = "tserver";
+  } else {
+    LOG(WARNING) << "Binary " << default_path << " does not exist, and no alternative " <<
+      "directory is available for this binary type";
+    return default_path;
+  }
+
+  string alternative_path = JoinPathSegments(daemon_bin_path_,
+    "../" + alternative_dir + "/" + binary);
+  if (Env::Default()->FileExists(alternative_path)) {
+    LOG(INFO) << "Binary " << default_path << " not found, using alternative location: "
+      << alternative_path;
+    return alternative_path;
+  } else {
+    LOG(WARNING) << "Neither " << default_path << " nor " << alternative_path << " exist";
+    return default_path;
   }
 }
 
