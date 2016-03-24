@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-cmake_opts="-DCMAKE_BUILD_TYPE=$cmake_build_type"
+cmake_opts=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
 make_opts=""
 
 project_dir=$( cd `dirname $0` && pwd )
@@ -71,9 +71,16 @@ export YB_MINIMIZE_RECOMPILATION=1
 
 # TODO: this might not be working. Investigate why.
 if which ld.gold >/dev/null; then
-  export LD=ld.gold
+  echo "Using ld.gold linker"
+  cmake_opts+=( -DCMAKE_LINKER=ld.gold )
 else
-  echo "ld.gold not found, not setting the LD environment variable to point to it" >&2
+  echo "ld.gold not found"
+fi
+
+ccache_cxx_compiler=/usr/lib/ccache/g++
+if [ -f "$ccache_cxx_compiler" ]; then
+  echo "Using CCache C++ compiler: $ccache_cxx_compiler"
+  cmake_opts+=( -DCMAKE_CXX_COMPILER="$ccache_cxx_compiler" )
 fi
 
 if $force_run_cmake || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
@@ -83,7 +90,7 @@ if $force_run_cmake || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file"
     export NO_REBUILD_THIRDPARTY=1
   fi
   echo "Running cmake in $PWD"
-  ( set -x; cmake -DYB_LINK=dynamic $cmake_opts "$project_dir" )
+  ( set -x; cmake -DYB_LINK=dynamic "${cmake_opts[@]}" "$project_dir" )
 fi
 
 echo Running make in $PWD
