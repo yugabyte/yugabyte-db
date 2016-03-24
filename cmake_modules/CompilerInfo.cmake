@@ -37,6 +37,12 @@ elseif("${COMPILER_VERSION_FULL}" MATCHES ".*clang-700\\..*")
   set(COMPILER_FAMILY "clang")
   set(COMPILER_VERSION "3.7.0svn")
 
+# a different version of clang
+elseif("${COMPILER_VERSION_FULL}" MATCHES ".*[(]clang-[0-9.]+[)].*")
+  set(COMPILER_FAMILY "clang")
+  string(REGEX REPLACE ".*[(]clang-([0-9.]+)[)].*" "\\1"
+    COMPILER_VERSION "${COMPILER_VERSION_FULL}")
+
 # gcc
 elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc version.*")
   set(COMPILER_FAMILY "gcc")
@@ -45,5 +51,5 @@ elseif("${COMPILER_VERSION_FULL}" MATCHES ".*gcc version.*")
 else()
   message(FATAL_ERROR "Unknown compiler. Version info:\n${COMPILER_VERSION_FULL}")
 endif()
-message("Selected compiler ${COMPILER_FAMILY} ${COMPILER_VERSION}")
+message("Selected compiler family '${COMPILER_FAMILY}', version '${COMPILER_VERSION}'")
 
