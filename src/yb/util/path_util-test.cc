@@ -58,4 +58,9 @@ TEST(TestPathUtil, DirNameTest) {
   ASSERT_EQ("/ab", DirName("/ab/cd"));
 }
 
+TEST(TestPathUtil, JoinPathSegments) {
+  ASSERT_EQ(JoinPathSegments("/usr/bin", "vim"), "/usr/bin/vim");
+  ASSERT_EQ(JoinPathSegments("/usr/bin/", "vim"), "/usr/bin/vim");
+}
+
 } // namespace yb

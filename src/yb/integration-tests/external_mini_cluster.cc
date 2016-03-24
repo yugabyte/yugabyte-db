@@ -130,12 +130,16 @@ Status ExternalMiniCluster::Start() {
   }
 
   if (opts_.num_masters != 1) {
+    LOG(INFO) << "Starting " << opts_.num_masters << " masters";
     RETURN_NOT_OK_PREPEND(StartDistributedMasters(),
                           "Failed to add distributed masters");
   } else {
+    LOG(INFO) << "Starting a single master";
     RETURN_NOT_OK_PREPEND(StartSingleMaster(),
                           Substitute("Failed to start a single Master"));
   }
+
+  LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
 
   for (int i = 1; i <= opts_.num_tablet_servers; i++) {
     RETURN_NOT_OK_PREPEND(AddTabletServer(),
@@ -186,7 +190,33 @@ Status ExternalMiniCluster::Restart() {
 
 string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
   CHECK(!daemon_bin_path_.empty());
-  return JoinPathSegments(daemon_bin_path_, binary);
+  string default_path = JoinPathSegments(daemon_bin_path_, binary);
+  if (Env::Default()->FileExists(default_path)) {
+    return default_path;
+  } else {
+    // In CLion-based builds we sometimes have to look for the binary in other directories.
+    string alternative_dir;
+    if (binary == "yb-master") {
+      alternative_dir = "master";
+    } else if (binary == "yb-tserver") {
+      alternative_dir = "tserver";
+    } else {
+      LOG(WARNING) << "Binary " << default_path << " does not exist, and no alternative " <<
+        "directory is available for this binary type";
+      return default_path;
+    }
+
+    string alternative_path = JoinPathSegments(daemon_bin_path_,
+      "../" + alternative_dir + "/" + binary);
+    if (Env::Default()->FileExists(alternative_path)) {
+      LOG(INFO) << "Binary " << default_path << " not found, using alternative location: "
+        << alternative_path;
+      return alternative_path;
+    } else {
+      LOG(WARNING) << "Neither " << default_path << " nor " << alternative_path << " exist";
+      return default_path;
+    }
+  }
 }
 
 string ExternalMiniCluster::GetDataPath(const string& daemon_id) const {
