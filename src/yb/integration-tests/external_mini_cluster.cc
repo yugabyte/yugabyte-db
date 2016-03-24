@@ -202,8 +202,8 @@ string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
   } else if (binary == "yb-tserver") {
     alternative_dir = "tserver";
   } else {
-    LOG(WARNING) << "Binary " << default_path << " does not exist, and no alternative " <<
-      "directory is available for this binary type";
+    LOG(WARNING) << "Default path " << default_path << " for binary " << binary <<
+      " does not exist, and no alternative directory is available for this binary";
     return default_path;
   }
 
