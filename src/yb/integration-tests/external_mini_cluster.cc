@@ -210,8 +210,8 @@ string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
   string alternative_path = JoinPathSegments(daemon_bin_path_,
     "../" + alternative_dir + "/" + binary);
   if (Env::Default()->FileExists(alternative_path)) {
-    LOG(INFO) << "Binary " << default_path << " not found, using alternative location: "
-      << alternative_path;
+    LOG(INFO) << "Default path " << default_path << " for binary " << binary <<
+      " does not exist, using alternative location: " << alternative_path;
     return alternative_path;
   } else {
     LOG(WARNING) << "Neither " << default_path << " nor " << alternative_path << " exist";
