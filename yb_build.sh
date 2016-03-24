@@ -77,10 +77,10 @@ else
   echo "ld.gold not found"
 fi
 
-ccache_cxx_compiler=/usr/lib/ccache/bin/g++
+ccache_cxx_compiler=/usr/lib/ccache/g++
 if [ -f "$ccache_cxx_compiler" ]; then
   echo "Using CCache C++ compiler: $ccache_cxx_compiler"
-  cmake_opts=$( -DCMAKE_CXX_COMPILER=/usr/lib/ccache/bin/g++ )
+  cmake_opts+=( -DCMAKE_CXX_COMPILER="$ccache_cxx_compiler" )
 fi
 
 if $force_run_cmake || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
