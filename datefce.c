@@ -655,10 +655,20 @@ get_session_timezone(FunctionCallInfo fcinfo)
 		result = *((pg_tz **) extra);
 		fcinfo->flinfo->fn_extra = result;
 
-		free(extra);
+		/*
+		 * check_timezone allocates small block of pg_tz * size. This block
+		 * should be released by free(extra), but I cannot release memory
+		 * allocated by application in library on MS platform. So I have to
+		 * accept small memory leak - elsewhere exception - broken heap :(
+		 *
+		 *
+		 * cannot be called
+		free( extra );
+		 */
 	}
 
 	return result;
+
 #else
 
 	return session_timezone;
