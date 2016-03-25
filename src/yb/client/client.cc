@@ -319,14 +319,14 @@ Status YBClient::ListTablets(const std::string& table_name,
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   Status s =
-      data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
-          deadline,
-          this,
-          req,
-          &resp,
-          nullptr,
-          "GetTableLocations",
-          &MasterServiceProxy::GetTableLocations);
+    data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
+      deadline,
+      this,
+      req,
+      &resp,
+      nullptr,
+      "GetTableLocations",
+      &MasterServiceProxy::GetTableLocations);
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -343,6 +343,10 @@ Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
   HostPort leader_hostport = data_->leader_master_hostport();
   vector<Sockaddr> leader_addrs;
   RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
+  if (leader_addrs.empty() || leader_addrs.size() > 1) {
+    return Status::IllegalState(
+      strings::Substitute("Unexpected master leader address size $0", leader_addrs.size()));
+  }
   *leader_socket = leader_addrs[0];
   return Status::OK();
 }

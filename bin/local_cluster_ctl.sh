@@ -43,11 +43,11 @@ validate_num_servers() {
 }
 
 validate_num_masters() {
-  validate_num_servers $1
+  validate_num_servers "$1"
 }
 
 validate_daemon_type() {
-  local daemon_type=$1
+  local daemon_type="$1"
   if [[ ! "$daemon_type" =~ ^(master|tserver)$ ]]; then
     echo "Internal error: expected daemon type to be 'master' or 'tserver', got '$daemon_type'" >&2
     exit 1
@@ -440,41 +440,41 @@ elif [ "$cmd" == "add" ]; then
   increment_tservers
   validate_num_servers "$max_running_tserver_index"
   set_master_addresses
-  add_daemon "tserver" $max_running_tserver_index
+  add_daemon "tserver" "$max_running_tserver_index"
 elif [ "$cmd" == "remove" ]; then
   set_num_tservers
   set_master_addresses
   if [ "$rem_id" -gt "$max_running_tserver_index" ]; then
-    echo "Internal error: invalid daemon index '$rem_id'" >&2
+    echo "User input error: invalid daemon index '$rem_id'" >&2
     exit 1
   fi
-  remove_daemon "tserver" $rem_id
+  remove_daemon "tserver" "$rem_id"
 elif [ "$cmd" == "restart" ]; then
-  validate_daemon_index $restart_id
+  validate_daemon_index "$restart_id"
   set_num_servers
   validate_num_servers "$max_running_tserver_index"
   set_master_addresses
-  start_tserver $restart_id
+  start_tserver "$restart_id"
 elif [ "$cmd" == "add_master" ]; then
   set_num_masters
   increment_masters
   validate_num_masters "$max_running_master_index"
   set_master_addresses
-  add_daemon "master" $max_running_master_index
+  add_daemon "master" "$max_running_master_index"
 elif [ "$cmd" == "remove_master" ]; then
   set_num_masters
   set_master_addresses
   if [ "$rem_id" -gt "$max_running_master_index" ]; then
-    echo "Internal error: invalid master index '$rem_id'" >&2
+    echo "User input error: invalid master index '$rem_id'" >&2
     exit 1
   fi
-  remove_daemon "master" $rem_id
+  remove_daemon "master" "$rem_id"
 elif [ "$cmd" == "restart_master" ]; then
-  validate_daemon_index $restart_id
+  validate_daemon_index "$restart_id"
   set_num_masters
   validate_num_masters "$max_running_master_index"
   set_master_addresses
-  start_master $restart_id
+  start_master "$restart_id"
 else
   echo "Command $cmd has not been implemented yet" >&2
   exit 1

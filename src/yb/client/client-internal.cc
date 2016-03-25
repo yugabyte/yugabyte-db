@@ -235,16 +235,16 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                                  RpcController*)>& func);
 template
 Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline,
-    YBClient* client,
-    const GetTableLocationsRequestPB& req,
-    GetTableLocationsResponsePB* resp,
-    int* num_attempts,
-    const char* func_name,
-    const boost::function<Status(MasterServiceProxy*,
-                                 const GetTableLocationsRequestPB&,
-                                 GetTableLocationsResponsePB*,
-                                 RpcController*)>& func);
+  const MonoTime& deadline,
+  YBClient* client,
+  const GetTableLocationsRequestPB& req,
+  GetTableLocationsResponsePB* resp,
+  int* num_attempts,
+  const char* func_name,
+  const boost::function<Status(MasterServiceProxy*,
+                               const GetTableLocationsRequestPB&,
+                               GetTableLocationsResponsePB*,
+                               RpcController*)>& func);
 
 YBClient::Data::Data()
     : latest_observed_timestamp_(YBClient::kNoTimestamp) {

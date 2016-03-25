@@ -43,7 +43,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
-DEFINE_string(master_addresses, "localhost",
+DEFINE_string(master_addresses, "localhost:7051",
               "Comma-separated list of YB Master server addresses");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
@@ -59,8 +59,6 @@ DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 namespace yb {
 namespace tools {
-// TODO: get from sys catalog
-static const char* const ybkSysCatalogTabletId = "00000000000000000000000000000000";
 
 using std::ostringstream;
 using std::string;
@@ -92,7 +90,6 @@ const char* const kListTabletsOp = "list_tablets";
 const char* const kListTabletServersOp = "list_tablet_servers";
 const char* const kDeleteTableOp = "delete_table";
 const char* const kListAllTabletServersOp = "list_all_tablet_servers";
-const char* const kChangeMasterConfigOp = "change_master_config";
 static const char* g_progname = nullptr;
 
 class ClusterAdminClient {
@@ -110,12 +107,6 @@ class ClusterAdminClient {
                       const string& change_type,
                       const string& peer_uuid,
                       const boost::optional<string>& member_type);
-
-  // Change the configuration of the master tablet.
-  Status ChangeMasterConfig(const string& tablet_id,
-                            const string& change_type,
-                            const string& peer_uuid,
-                            const boost::optional<string>& member_type);
 
   // List all the tables.
   Status ListTables();
@@ -166,7 +157,6 @@ Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
   // Build master proxy.
-  vector<string> master_addr_strings = Split(master_addr_list_, ",");
   CHECK_OK(YBClientBuilder()
     .add_master_server_addr(master_addr_list_)
     .default_admin_operation_timeout(timeout_)
@@ -175,100 +165,13 @@ Status ClusterAdminClient::Init() {
   MessengerBuilder builder("yb-admin");
   RETURN_NOT_OK(builder.Build(&messenger_));
 
-  if (master_addr_strings.size() == 1) {
-    HostPort master_hostport;
-    RETURN_NOT_OK(master_hostport.ParseString(master_addr_strings[0],
-      master::Master::kDefaultPort));
-    vector<Sockaddr> master_addrs;
-    RETURN_NOT_OK(master_hostport.ResolveAddresses(&master_addrs));
-    CHECK(!master_addrs.empty()) << "Unable to resolve IP address for master host: "
-      << master_hostport.ToString();
-    master_proxy_.reset(new MasterServiceProxy(messenger_, master_addrs[0]));
-  } else {
-    Sockaddr leader_sock;
-    // Find the leader master's socket info to set up the proxy
-    RETURN_NOT_OK(yb_client_->SetMasterLeaderSocket(&leader_sock));
-    master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock));
-  }
+  Sockaddr leader_sock;
+  // Find the leader master's socket info to set up the proxy
+  RETURN_NOT_OK(yb_client_->SetMasterLeaderSocket(&leader_sock));
+  master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock));
 
   initted_ = true;
   return Status::OK();
-}
-
-Status ClusterAdminClient::ChangeMasterConfig(const string& tablet_id,
-                                              const string& change_type,
-                                              const string& peer_uuid,
-                                              const boost::optional<string>& member_type) {
-  CHECK(initted_);
-
-  // Parse the change type.
-  consensus::ChangeConfigType cc_type = consensus::UNKNOWN_CHANGE;
-  string uppercase_change_type;
-  ToUpperCase(change_type, &uppercase_change_type);
-  if (!consensus::ChangeConfigType_Parse(uppercase_change_type, &cc_type) ||
-      cc_type == consensus::UNKNOWN_CHANGE) {
-    return Status::InvalidArgument("Unsupported change_type", change_type);
-  }
-
-  RaftPeerPB peer_pb;
-  peer_pb.set_permanent_uuid(peer_uuid);
-
-  // Parse the optional fields.
-  if (member_type) {
-    RaftPeerPB::MemberType member_type_val;
-    string uppercase_member_type;
-    ToUpperCase(*member_type, &uppercase_member_type);
-    if (!RaftPeerPB::MemberType_Parse(uppercase_member_type, &member_type_val)) {
-      return Status::InvalidArgument("Unrecognized member_type", *member_type);
-    }
-    peer_pb.set_member_type(member_type_val);
-  }
-
-  // Validate the existence of the optional fields.
-  if (!member_type && (cc_type == consensus::ADD_SERVER)) {
-    return Status::InvalidArgument("Must specify member_type when adding "
-      "a server");
-  }
-
-  master::ListMastersRequestPB lreq;
-  master::ListMastersResponsePB lresp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  master_proxy_->ListMasters(lreq, &lresp, &rpc);
-  if (lresp.has_error()) {
-    return StatusFromPB(lresp.error());
-  }
-
-  string leader_uuid = "";
-  for (int i = 0; i < lresp.masters_size(); i++) {
-    // std::cout << lresp.masters(i).instance_id().permanent_uuid() <<
-    // " " << lresp.masters(i).role() << std::endl;
-    if (lresp.masters(i).role() == RaftPeerPB::LEADER) {
-      CHECK(leader_uuid.compare("") == 0);
-      leader_uuid = lresp.masters(i).instance_id().permanent_uuid();
-    }
-  }
-
-  if (leader_uuid.compare("") == 0) {
-    return Status::ConfigurationError("Could not locate master leader!");
-  }
-
-  consensus::ChangeConfigRequestPB req;
-  consensus::ChangeConfigResponsePB resp;
-
-  req.set_dest_uuid(leader_uuid);
-  req.set_tablet_id(tablet_id);
-  req.set_type(cc_type);
-  *req.mutable_server() = peer_pb;
-
-  // TODO - make it work fully
-  //RETURN_NOT_OK(master_proxy_->ChangeConfig(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::NotSupported("Change Master Config is not enabled currently.");
-
-  // return Status::OK();
 }
 
 Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
@@ -486,19 +389,17 @@ Status ClusterAdminClient::DeleteTable(const string& table_name) {
 static void SetUsage(const char* argv0) {
   ostringstream str;
 
-  str << argv0 << " [-master_addresses server1,server2,server3] <operation> <operation-arguments>\n"
+  str << argv0 << " [-master_addresses server1,server2,server3] "
+      << " [-timeout_ms <millisec>] <operation>\n"
       << "<operation> must be one of:\n"
       << " 1. " << kChangeConfigOp << " <tablet_id> "
-              << "<ADD_SERVER|REMOVE_SERVER> <peer_uuid> "
-              << "[VOTER|NON_VOTER]" << std::endl
+                << "<ADD_SERVER|REMOVE_SERVER> <peer_uuid> "
+                << "[VOTER|NON_VOTER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
       << " 4. " << kListTabletsOp << " <table_name>" << std::endl
       << " 5. " << kDeleteTableOp << " <table_name>" << std::endl
-      << " 6. " << kListAllTabletServersOp << std::endl
-      << " 7. " << kChangeMasterConfigOp << " "
-              << "<ADD_SERVER|REMOVE_SERVER> <peer_uuid> "
-              << "[VOTER|NON_VOTER]";
+      << " 6. " << kListAllTabletServersOp;
   google::SetUsageMessage(str.str());
 }
 
@@ -509,10 +410,6 @@ static string GetOp(int argc, char** argv) {
   }
 
   return argv[1];
-}
-
-string GetMasterTabletId() {
-  return ybkSysCatalogTabletId;
 }
 
 static int ClusterAdminCliMain(int argc, char** argv) {
@@ -593,25 +490,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       std::cerr << "Unable to delete table " << table_name << ": " << s.ToString() << std::endl;
       return 1;
     }
-  } else if (op == kChangeMasterConfigOp) {
-    if (argc < 4) {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
-    }
-
-    string tablet_id = GetMasterTabletId();
-    string change_type = argv[2];
-    string peer_uuid = argv[3];
-    boost::optional<string> member_type;
-    if (argc > 4) {
-      member_type = argv[4];
-    }
-    Status s = client.ChangeMasterConfig(tablet_id, change_type, peer_uuid, member_type);
-    if (!s.ok()) {
-      std::cerr << "Unable to change config: " << s.ToString() << std::endl;
-      return 1;
-    }
-  }else {
+  } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
     exit(1);
