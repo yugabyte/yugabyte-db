@@ -92,6 +92,9 @@ const char* const kDeleteTableOp = "delete_table";
 const char* const kListAllTabletServersOp = "list_all_tablet_servers";
 static const char* g_progname = nullptr;
 
+// Maximum number of elements to dump on unexpected errors.
+#define MAX_INFO_DUMP_ON_ERROR 10
+
 class ClusterAdminClient {
  public:
   // Creates an admin client for host/port combination e.g.,
@@ -367,6 +370,17 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
   }
 
   if (resp.tablet_locations_size() != 1) {
+    if (resp.tablet_locations_size() > 0) {
+      std::cerr << "List of all incorrect locations - " << resp.tablet_locations_size()
+        << " : " << std::endl;
+      for (int i = 0; i < resp.tablet_locations_size(); i++) {
+        std::cerr << i << " : " << resp.tablet_locations(i).DebugString();
+        if (i >= MAX_INFO_DUMP_ON_ERROR) {
+          break;
+        }
+      }
+      std::cerr << std::endl;
+    }
     return Status::IllegalState(Substitute("Incorrect number of locations $0 for one tablet ",
       resp.tablet_locations_size()));
   }
