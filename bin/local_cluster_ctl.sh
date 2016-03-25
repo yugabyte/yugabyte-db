@@ -42,6 +42,10 @@ validate_num_servers() {
   fi
 }
 
+validate_num_masters() {
+  validate_num_servers $1
+}
+
 validate_daemon_type() {
   local daemon_type=$1
   if [[ ! "$daemon_type" =~ ^(master|tserver)$ ]]; then
@@ -143,20 +147,22 @@ set_num_servers() {
   set_num_tservers
 }
 
-count_running_masters=0
+max_running_master_index=0
 # Count number of current masters.
 set_num_masters() {
-  if [ "$count_running_masters" -ne 0 ]; then
+  if [ "$max_running_master_index" -ne 0 ]; then
     echo "set_num_masters() cannot be called more than once." >&2
     exit 1
   fi
   for i in `$SEQ 1 $MAX_SERVERS`; do
     local daemon_pid=$( find_daemon_pid "master" $i )
     if [ -n "$daemon_pid" ]; then
-      let count_running_masters=count_running_masters+1
+      if [ $i -gt $max_running_master_index ]; then
+        let max_running_master_index=$i
+      fi
     fi
   done
-  master_indexes=$( $SEQ 1 $count_running_masters )
+  master_indexes=$( $SEQ 1 $max_running_master_index )
 }
 
 max_running_tserver_index=0
@@ -180,6 +186,11 @@ set_num_tservers() {
 increment_tservers() {
   let max_running_tserver_index=max_running_tserver_index+1
   tserver_indexes=$( $SEQ 1 $max_running_tserver_index )
+}
+
+increment_masters() {
+  let max_running_master_index=max_running_master_index+1
+  master_indexes=$( $SEQ 1 $max_running_master_index )
 }
 
 remove_daemon() {
@@ -270,6 +281,7 @@ cmd=""
 num_masters=3
 num_tservers=3
 rem_id=""
+restart_id=""
 master_indexes=""
 tserver_indexes=""
 
@@ -287,7 +299,7 @@ while [ $# -gt 0 ]; do
       print_help
       exit
     ;;
-    remove)
+    remove|remove_master)
       if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
         echo "More than one command specified: $cmd, $1" >&2
         exit 1
@@ -297,7 +309,17 @@ while [ $# -gt 0 ]; do
       rem_id="$2"
       shift
     ;;
-    start|stop|status|add|destroy)
+    restart|restart_master)
+      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
+        echo "More than one command specified: $cmd, $1" >&2
+        exit 1
+      fi
+
+      cmd="$1"
+      restart_id="$2"
+      shift
+    ;;
+    start|stop|status|add|destroy|add_master)
       if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
         echo "More than one command specified: $cmd, $1" >&2
         exit 1
@@ -418,7 +440,6 @@ elif [ "$cmd" == "add" ]; then
   increment_tservers
   validate_num_servers "$max_running_tserver_index"
   set_master_addresses
-  # TODO: add multiple
   add_daemon "tserver" $max_running_tserver_index
 elif [ "$cmd" == "remove" ]; then
   set_num_tservers
@@ -427,8 +448,33 @@ elif [ "$cmd" == "remove" ]; then
     echo "Internal error: invalid daemon index '$rem_id'" >&2
     exit 1
   fi
-  # TODO: remove multiple
   remove_daemon "tserver" $rem_id
+elif [ "$cmd" == "restart" ]; then
+  validate_daemon_index $restart_id
+  set_num_servers
+  validate_num_servers "$max_running_tserver_index"
+  set_master_addresses
+  start_tserver $restart_id
+elif [ "$cmd" == "add_master" ]; then
+  set_num_masters
+  increment_masters
+  validate_num_masters "$max_running_master_index"
+  set_master_addresses
+  add_daemon "master" $max_running_master_index
+elif [ "$cmd" == "remove_master" ]; then
+  set_num_masters
+  set_master_addresses
+  if [ "$rem_id" -gt "$max_running_master_index" ]; then
+    echo "Internal error: invalid master index '$rem_id'" >&2
+    exit 1
+  fi
+  remove_daemon "master" $rem_id
+elif [ "$cmd" == "restart_master" ]; then
+  validate_daemon_index $restart_id
+  set_num_masters
+  validate_num_masters "$max_running_master_index"
+  set_master_addresses
+  start_master $restart_id
 else
   echo "Command $cmd has not been implemented yet" >&2
   exit 1

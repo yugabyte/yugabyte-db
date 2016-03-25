@@ -36,6 +36,7 @@
 #include "yb/client/write_op.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -198,6 +199,11 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   Status ListTables(std::vector<std::string>* tables,
                     const std::string& filter = "");
 
+  // List all running tablets' uuid's for this table.
+  // 'tablets' is appended to only on success.
+  Status ListTablets(const std::string& table_name,
+                     std::vector<std::string>* tablets);
+
   // Check if the table given by 'table_name' exists.
   //
   // 'exists' is set only on success.
@@ -216,6 +222,9 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
   sp::shared_ptr<YBSession> NewSession();
+
+  // Return the socket address of the master leader for this client
+  Status SetMasterLeaderSocket(Sockaddr* leader_socket);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

@@ -63,6 +63,8 @@ using yb::master::DeleteTableRequestPB;
 using yb::master::DeleteTableResponsePB;
 using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
+using yb::master::GetTableLocationsRequestPB;
+using yb::master::GetTableLocationsResponsePB;
 using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;
 using yb::master::ListTabletServersRequestPB;
@@ -305,6 +307,43 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
                                            e.registration().rpc_addresses(0).host());
     tablet_servers->push_back(ts);
   }
+  return Status::OK();
+}
+
+Status YBClient::ListTablets(const std::string& table_name,
+                             std::vector<std::string>* tablets) {
+  GetTableLocationsRequestPB req;
+  GetTableLocationsResponsePB resp;
+  req.mutable_table()->set_table_name(table_name);
+
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status s =
+      data_->SyncLeaderMasterRpc<GetTableLocationsRequestPB, GetTableLocationsResponsePB>(
+          deadline,
+          this,
+          req,
+          &resp,
+          nullptr,
+          "GetTableLocations",
+          &MasterServiceProxy::GetTableLocations);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  for (int i = 0; i < resp.tablet_locations_size(); i++) {
+    tablets->push_back(resp.tablet_locations(i).tablet_id());
+  }
+
+  return Status::OK();
+}
+
+Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
+  HostPort leader_hostport = data_->leader_master_hostport();
+  vector<Sockaddr> leader_addrs;
+  RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
+  *leader_socket = leader_addrs[0];
   return Status::OK();
 }
 

@@ -17,6 +17,7 @@ oprofile_data
 # VIM/emacs stuff
 *.swp
 *~
+core*
 
 # IDE cruft
 .settings/
