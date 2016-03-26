@@ -70,6 +70,8 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTabletServer;
 using consensus::ConsensusServiceProxy;
+using consensus::LeaderStepDownRequestPB;
+using consensus::LeaderStepDownResponsePB;
 using consensus::RaftPeerPB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
@@ -134,11 +136,20 @@ private:
   // Fetch information about the location of the tablet leader from the Master.
   Status GetTabletLeader(const std::string& tablet_id, TSInfoPB* ts_info);
 
+  // Set the uuid and the socket information from the leader of this tablet.
+  Status SetTabletLeaderInfo(const string& tablet_id,
+                             string& leader_uuid,
+                             Sockaddr* leader_socket);
+
   // Fetch the latest list of tablet servers from the Master.
   Status ListTabletServers(RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers);
 
   // Look up the RPC address of the server with the specified UUID from the Master.
   Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
+
+  Status LeaderStepDown(const string& leader_uuid,
+                        const string& tablet_id,
+                        gscoped_ptr<ConsensusServiceProxy>* leader_proxy);
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;
@@ -174,6 +185,40 @@ Status ClusterAdminClient::Init() {
   master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock));
 
   initted_ = true;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::LeaderStepDown(const string& leader_uuid,
+                                          const string& tablet_id,
+                                          gscoped_ptr<ConsensusServiceProxy> *leader_proxy) {
+  LeaderStepDownRequestPB req;
+  req.set_dest_uuid(leader_uuid);
+  req.set_tablet_id(tablet_id);
+  LeaderStepDownResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK((*leader_proxy)->LeaderStepDown(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetTabletLeaderInfo(const string& tablet_id,
+                                               string& leader_uuid,
+                                               Sockaddr* leader_socket) {
+  TSInfoPB leader_ts_info;
+  RETURN_NOT_OK(GetTabletLeader(tablet_id, &leader_ts_info));
+  CHECK_GT(leader_ts_info.rpc_addresses_size(), 0) << leader_ts_info.ShortDebugString();
+
+  HostPort leader_hostport;
+  RETURN_NOT_OK(HostPortFromPB(leader_ts_info.rpc_addresses(0), &leader_hostport));
+  vector<Sockaddr> leader_addrs;
+  RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
+  CHECK(!leader_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
+                               << leader_hostport.ToString();
+  *leader_socket = leader_addrs[0];
+  leader_uuid = leader_ts_info.permanent_uuid();
   return Status::OK();
 }
 
@@ -220,25 +265,29 @@ Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
   }
 
   // Look up the location of the tablet leader from the Master.
-  TSInfoPB leader_ts_info;
-  RETURN_NOT_OK(GetTabletLeader(tablet_id, &leader_ts_info));
-  CHECK_GT(leader_ts_info.rpc_addresses_size(), 0) << leader_ts_info.ShortDebugString();
+  Sockaddr leader_addr;
+  string leader_uuid;
+  RETURN_NOT_OK(SetTabletLeaderInfo(tablet_id, leader_uuid, &leader_addr));
 
-  HostPort leader_hostport;
-  RETURN_NOT_OK(HostPortFromPB(leader_ts_info.rpc_addresses(0), &leader_hostport));
-  vector<Sockaddr> leader_addrs;
-  RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
-  CHECK(!leader_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
-    << leader_hostport.ToString();
-  gscoped_ptr<ConsensusServiceProxy> consensus_proxy(
-      new ConsensusServiceProxy(messenger_, leader_addrs[0]));
+  gscoped_ptr<ConsensusServiceProxy> consensus_proxy(new ConsensusServiceProxy(messenger_,
+                                                                               leader_addr));
+
+  // If removing the leader ts, then first make it step down and that
+  // starts an election and gets a new leader ts.
+  if (cc_type == consensus::REMOVE_SERVER &&
+      leader_uuid.compare(peer_uuid) == 0) {
+    RETURN_NOT_OK(LeaderStepDown(leader_uuid, tablet_id, &consensus_proxy));
+    sleep(5); // TODO - wait for new leader to get elected.
+    RETURN_NOT_OK(SetTabletLeaderInfo(tablet_id, leader_uuid, &leader_addr));
+    consensus_proxy.reset(new ConsensusServiceProxy(messenger_, leader_addr));
+  }
 
   consensus::ChangeConfigRequestPB req;
   consensus::ChangeConfigResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout_);
 
-  req.set_dest_uuid(leader_ts_info.permanent_uuid());
+  req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
   req.set_type(cc_type);
   *req.mutable_server() = peer_pb;
