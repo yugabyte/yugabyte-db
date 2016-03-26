@@ -351,8 +351,6 @@ if [ "$BUILD_CPP" == "1" ]; then
     echo
   fi
 
-
-
   if [ "$DO_COVERAGE" == "1" ]; then
     echo
     echo Generating coverage report...
