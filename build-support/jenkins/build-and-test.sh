@@ -148,11 +148,11 @@ fi
 
 SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
 BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
+CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 
 if [ "$IS_MAC" == "1" ]; then
-  export DYLD_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
-  export DYLD_FALLBACK_LIBRARY_PATH="$DYLD_LIBRARY_PATH"
-  echo "Set DYLD_LIBRARY_PATH and DYLD_FALLBACK_LIBRARY_PATH to $DYLD_LIBRARY_PATH"
+  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  echo "Set DYLD_FALLBACK_LIBRARY_PATH to $DYLD_FALLBACK_LIBRARY_PATH"
 fi
 
 # Remove testing artifacts from the previous run before we do anything
@@ -268,7 +268,8 @@ if [ "$ENABLE_DIST_TEST" == "1" ]; then
   LINK_FLAGS="-DYB_LINK=dynamic"
 fi
 
-$SOURCE_ROOT/build-support/enable_devtoolset.sh "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $LINK_FLAGS $SOURCE_ROOT"
+$SOURCE_ROOT/build-support/enable_devtoolset.sh \
+  "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $LINK_FLAGS $SOURCE_ROOT"
 
 # our tests leave lots of data lying around, clean up before we run
 if [ -d "$TEST_TMPDIR" ]; then
@@ -327,12 +328,30 @@ if [ "$BUILD_CPP" == "1" ]; then
   fi
 
   set +e
-  ( set -x; $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS )
+  (
+    set -x
+    $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
+      tee "$CTEST_OUTPUT_PATH"
+  )
   if [ $? -ne 0 ]; then
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'C++ tests failed\n'
   fi
-  set -e
+
+  if [ -n "${BUILD_URL:-}" ]; then
+    echo
+    echo "Links for failed tests:"
+    for failed_test_name in $(
+      egrep "[0-9]+/[0-9]+ +Test +#[0-9]+: +[A-Za-z0-9_-]+ .*Failed" "$CTEST_OUTPUT_PATH"
+    ); do
+      # E.g.
+      # https://jenkins.dev.yugabyte.com/job/yugabyte-ubuntu/116/artifact/build/debug/test-logs/block_manager_util-test.txt
+      echo "  - $BUILD_URL/artifact/build/$BUILD_TYPE_LOWER/test-logs/$failed_test_name.txt"
+    done
+    echo
+  fi
+
+
 
   if [ "$DO_COVERAGE" == "1" ]; then
     echo
@@ -443,12 +462,6 @@ if [ $EXIT_STATUS != 0 ]; then
   echo
   echo Tests failed, making sure we have XML files for all tests.
   echo ------------------------------------------------------------
-
-  if [ "$IS_MAC" == "1" ]; then
-    echo "Listing RocksDB dynamic library files in DYLD_LIBRARY_PATH ($DYLD_LIBRARY_PATH):"
-    ( set -x; ls -l "$DYLD_LIBRARY_PATH"/librocksdb* )
-    echo
-  fi
 
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
