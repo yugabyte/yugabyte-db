@@ -65,8 +65,8 @@ fi
 TEST_LOG_DIR=$BUILD_ROOT/test-logs
 mkdir -p "$TEST_LOG_DIR"
 
-TEST_DEBUGDIR="$BUILD_ROOT/test-debug"
-mkdir -p "$TEST_DEBUGDIR"
+TEST_DEBUG_DIR="$BUILD_ROOT/test-debug"
+mkdir -p "$TEST_DEBUG_DIR"
 
 TEST_DIR_NAME=$(cd "$(dirname "$TEST_PATH")" && pwd)
 TEST_NAME_WITH_EXT=$(basename "$TEST_PATH")
@@ -174,7 +174,7 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
 
   echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH" \
     "(attempt ${ATTEMPT_NUMBER}/$TEST_EXECUTION_ATTEMPTS)"
-  RAW_LOG_PATH=$LOG_PATH.raw
+  RAW_LOG_PATH=${LOG_PATH}__raw.txt
   $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
   STATUS=$?
 
@@ -183,6 +183,11 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
     # Stack trace filtering or compression failed, create an uncompressed output file with the
     # error message.
     echo "Failed to run command '$STACK_TRACE_FILTER' piped to '$pipe_cmd'" | tee "$LOG_PATH_TXT"
+
+    echo >>"$LOG_PATH_TXT"
+    echo "Raw output:" >>"$LOG_PATH_TXT"
+    echo >>"$LOG_PATH_TXT"
+    cat "$RAW_LOG_PATH" >>"$LOG_PATH_TXT"
   fi
   rm -f "$RAW_LOG_PATH"
 
@@ -262,14 +267,14 @@ fi
 COREFILES=$(ls | grep ^core)
 if [ -n "$COREFILES" ]; then
   echo Found core dump. Saving executable and core files.
-  gzip < "$ABS_TEST_PATH" > "$TEST_DEBUGDIR/$TEST_NAME.gz" || exit $?
+  gzip < "$ABS_TEST_PATH" > "$TEST_DEBUG_DIR/$TEST_NAME.gz" || exit $?
   for COREFILE in $COREFILES; do
-    gzip < "$COREFILE" > "$TEST_DEBUGDIR/$TEST_NAME.$COREFILE.gz" || exit $?
+    gzip < "$COREFILE" > "$TEST_DEBUG_DIR/$TEST_NAME.$COREFILE.gz" || exit $?
   done
   # Pull in any .so files as well.
   for LIB in $(ldd $ABS_TEST_PATH | grep $BUILD_ROOT | awk '{print $3}'); do
     LIB_NAME=$(basename $LIB)
-    gzip < "$LIB" > "$TEST_DEBUGDIR/$LIB_NAME.gz" || exit $?
+    gzip < "$LIB" > "$TEST_DEBUG_DIR/$LIB_NAME.gz" || exit $?
   done
 fi
 

@@ -142,7 +142,8 @@ BUILD_PYTHON=${BUILD_PYTHON:-1}
 # Ensure that the test data directory is usable.
 mkdir -p "$TEST_TMPDIR"
 if [ ! -w "$TEST_TMPDIR" ]; then
-  echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname) by user $(whoami)"
+  echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname)" \
+    "by user $(whoami)" >&2
   exit 1
 fi
 
@@ -167,8 +168,13 @@ list_flaky_tests() {
   return $?
 }
 
-TEST_LOGDIR="$BUILD_ROOT/test-logs"
-TEST_DEBUGDIR="$BUILD_ROOT/test-debug"
+TEST_LOG_DIR="$BUILD_ROOT/test-logs"
+
+TEST_LOG_URL_PREFIX=""
+if [ -n "${BUILD_URL:-}" ]; then
+  BUILD_URL_NO_TRAILING_SLASH=${BUILD_URL%/}
+  TEST_LOG_URL_PREFIX="${BUILD_URL_NO_TRAILING_SLASH}/artifact/build/$BUILD_TYPE_LOWER/test-logs"
+fi
 
 cleanup() {
   if [ "${YB_KEEP_BUILD_ARTIFACTS:-}" == "true" ]; then
@@ -230,10 +236,10 @@ elif [ "$BUILD_TYPE" = "LINT" ]; then
   # Create empty test logs or else Jenkins fails to archive artifacts, which
   # results in the build failing.
   mkdir -p Testing/Temporary
-  mkdir -p $TEST_LOGDIR
+  mkdir -p "$TEST_LOG_DIR"
 
   $SOURCE_ROOT/build-support/enable_devtoolset.sh "$THIRDPARTY_BIN/cmake $SOURCE_ROOT"
-  make lint | tee $TEST_LOGDIR/lint.log
+  make lint | tee "$TEST_LOG_DIR"/lint.log
   exit $?
 fi
 
@@ -287,7 +293,7 @@ if [ "$BUILD_CPP" == "1" ]; then
   set +e
 
   # Run tests
-  export GTEST_OUTPUT="xml:$TEST_LOGDIR/" # Enable JUnit-compatible XML output.
+  export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
   if [ "$RUN_FLAKY_ONLY" == "1" ] ; then
     if [ -z "$TEST_RESULT_SERVER" ]; then
       echo Must set TEST_RESULT_SERVER to use RUN_FLAKY_ONLY
@@ -340,13 +346,14 @@ if [ "$BUILD_CPP" == "1" ]; then
 
   if [ -n "${BUILD_URL:-}" ]; then
     echo
-    echo "Links for failed tests:"
+    echo "Failed test logs:"
     for failed_test_name in $(
-      egrep "[0-9]+/[0-9]+ +Test +#[0-9]+: +[A-Za-z0-9_-]+ .*Failed" "$CTEST_OUTPUT_PATH"
+      egrep "[0-9]+/[0-9]+ +Test +#[0-9]+: +[A-Za-z0-9_-]+ .*Failed" "$CTEST_OUTPUT_PATH" | \
+        awk '{print $4}'
     ); do
       # E.g.
       # https://jenkins.dev.yugabyte.com/job/yugabyte-ubuntu/116/artifact/build/debug/test-logs/block_manager_util-test.txt
-      echo "  - $BUILD_URL/artifact/build/$BUILD_TYPE_LOWER/test-logs/$failed_test_name.txt"
+      echo "  - $TEST_LOG_URL_PREFIX/$failed_test_name.txt"
     done
     echo
   fi
@@ -432,7 +439,7 @@ if [ "$ENABLE_DIST_TEST" == "1" ]; then
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'Distributed tests failed\n'
   fi
-  DT_DIR=$TEST_LOGDIR/dist-test-out
+  DT_DIR=$TEST_LOG_DIR/dist-test-out
   rm -Rf "$DT_DIR"
   $DIST_TEST_HOME/client.py fetch --artifacts -d $DT_DIR
   # Fetching the artifacts expands each log into its own directory.
@@ -449,8 +456,8 @@ if [ "$ENABLE_DIST_TEST" == "1" ]; then
       } else {
         print "unknown_shard";
       }')
-    for log_file in $arch_dir/build/$BUILD_TYPE_LOWER/test-logs/* ; do
-      mv "$log_file" "$TEST_LOGDIR/${shard_idx}_$(basename $log_file)"
+    for log_file in "$arch_dir/build/$BUILD_TYPE_LOWER/test-logs/"* ; do
+      mv "$log_file" "$TEST_LOG_DIR/${shard_idx}_$(basename $log_file)"
     done
     rm -Rf "$arch_dir"
   done
@@ -463,9 +470,9 @@ if [ $EXIT_STATUS != 0 ]; then
 
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
-  for GTEST_OUTFILE in $TEST_LOGDIR/*.txt.gz; do
+  for GTEST_OUTFILE in $TEST_LOG_DIR/*.txt.gz; do
     TEST_EXE=$(basename $GTEST_OUTFILE .txt.gz)
-    GTEST_XMLFILE="$TEST_LOGDIR/$TEST_EXE.xml"
+    GTEST_XMLFILE="$TEST_LOG_DIR/$TEST_EXE.xml"
     if [ ! -f "$GTEST_XMLFILE" ]; then
       echo "JUnit report missing:" \
            "generating fake JUnit report file from $GTEST_OUTFILE and saving it to $GTEST_XMLFILE"
