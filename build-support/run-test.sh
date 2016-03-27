@@ -178,13 +178,20 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
   $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
   STATUS=$?
 
-  "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" | $pipe_cmd >"$LOG_PATH"
+  STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH}__stack_trace_filter_err.txt"
+
+  "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
+    $pipe_cmd >"$LOG_PATH"
+
   if [ $? -ne 0 ]; then
     # Stack trace filtering or compression failed, create an uncompressed output file with the
     # error message.
     echo "Failed to run command '$STACK_TRACE_FILTER' piped to '$pipe_cmd'" | tee "$LOG_PATH_TXT"
-
     echo >>"$LOG_PATH_TXT"
+    echo "Standard error from '$STACK_TRACE_FILTER'": >>"$LOG_PATH_TXT"
+    cat "$STACK_TRACE_FILTER_ERR_PATH" >>"$LOG_PATH_TXT"
+    echo >>"$LOG_PATH_TXT"
+
     echo "Raw output:" >>"$LOG_PATH_TXT"
     echo >>"$LOG_PATH_TXT"
     cat "$RAW_LOG_PATH" >>"$LOG_PATH_TXT"
