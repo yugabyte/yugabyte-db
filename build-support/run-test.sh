@@ -178,7 +178,7 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
   $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
   STATUS=$?
 
-  STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH}__stack_trace_filter_err.txt"
+  STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
 
   "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
     $pipe_cmd >"$LOG_PATH"
@@ -196,7 +196,7 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
     echo >>"$LOG_PATH_TXT"
     cat "$RAW_LOG_PATH" >>"$LOG_PATH_TXT"
   fi
-  rm -f "$RAW_LOG_PATH"
+  rm -f "$RAW_LOG_PATH" "$STACK_TRACE_FILTER_ERR_PATH"
 
   # TSAN doesn't always exit with a non-zero exit code due to a bug:
   # mutex errors don't get reported through the normal error reporting infrastructure.
