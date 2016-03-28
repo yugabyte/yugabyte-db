@@ -22,6 +22,22 @@
 # 1. https://cmake.org/Bug/view.php?id=14963
 cmake_minimum_required(VERSION 3.2.0)
 
+# Prevent builds from the top-level source directory. This ensures that build
+# output is well isolated from the source tree.
+#
+# May be overridden by setting YB_ALLOW_IN_SOURCE_BUILDS; this is only
+# recommended for experts!
+if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}" AND
+  NOT "${YB_ALLOW_IN_SOURCE_BUILD}")
+  message(FATAL_ERROR
+    "YugaByte may not be built from the top-level source directory. Create a new "
+    "directory and run cmake from there, passing the path to the top-level "
+    "source directory as the last argument. "
+    "To override this, rerun CMake with -DYB_ALLOW_IN_SOURCE_BUILD=1. "
+    "Also, delete 'CMakeCache.txt' and 'CMakeFiles' from the top-level source "
+    "directory, otherwise future builds will not work.")
+endif()
+
 # Determine the number of CPUs to be used so we can call make on existing Makefiles (e.g. RocksDB)
 # with the right level of parallelism.
 # Snippet taken from https://blog.kitware.com/how-many-ya-got/
@@ -55,6 +71,7 @@ if (NOT DEFINED PROCESSOR_COUNT OR "${PROCESSOR_COUNT}" STREQUAL "")
 endif()
 message("Detected the number of logical CPUs: ${PROCESSOR_COUNT}")
 
+# Detect the shared library suffix on this platform
 set(YB_STATIC_LIBRARY_SUFFIX ".a")
 if(APPLE)
   set(YB_SHARED_LIBRARY_SUFFIX ".dylib")
@@ -63,20 +80,31 @@ else()
 endif()
 message("Using shared library suffix '${YB_SHARED_LIBRARY_SUFFIX}'.")
 
-# Prevent builds from the top-level source directory. This ensures that build
-# output is well isolated from the source tree.
-#
-# May be overridden by setting YB_ALLOW_IN_SOURCE_BUILDS; this is only
-# recommended for experts!
-if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}" AND
-    NOT "${YB_ALLOW_IN_SOURCE_BUILD}")
-  message(FATAL_ERROR
-    "YugaByte may not be built from the top-level source directory. Create a new "
-    "directory and run cmake from there, passing the path to the top-level "
-    "source directory as the last argument. "
-    "To override this, rerun CMake with -DYB_ALLOW_IN_SOURCE_BUILD=1. "
-    "Also, delete 'CMakeCache.txt' and 'CMakeFiles' from the top-level source "
-    "directory, otherwise future builds will not work.")
+# Use CCache if it is available
+if(APPLE)
+  set(CCACHE_WRAPPER_DIR "/usr/local/opt/ccache/libexec")
+else()
+  set(CCACHE_WRAPPER_DIR "/usr/lib/ccache")
+endif()
+
+if(IS_DIRECTORY "${CCACHE_WRAPPER_DIR}")
+  set(DEFAULT_CMAKE_C_COMPILER "${CMAKE_C_COMPILER}")
+  get_filename_component(C_COMPILER_BASENAME "${CMAKE_C_COMPILER}" NAME)
+  set(CMAKE_C_COMPILER "${CCACHE_WRAPPER_DIR}/${C_COMPILER_BASENAME}")
+  message("Using CCache as C compiler: ${CMAKE_C_COMPILER} \
+(was ${DEFAULT_CMAKE_C_COMPILER} by default)")
+
+  set(DEFAULT_CMAKE_CXX_COMPILER "${CMAKE_CXX_COMPILER}")
+  get_filename_component(CXX_COMPILER_BASENAME "${CMAKE_CXX_COMPILER}" NAME)
+  set(CMAKE_CXX_COMPILER "${CCACHE_WRAPPER_DIR}/${CXX_COMPILER_BASENAME}")
+  message("Using CCache as C++ compiler: ${CMAKE_CXX_COMPILER} \
+(was ${DEFAULT_CMAKE_CXX_COMPILER} by default)")
+
+else()
+  message(
+    WARNING "CCache's directory of compiler wrappers not found at '${CCACHE_WRAPPER_DIR}'. \
+CCache is disabled"
+   )
 endif()
 
 # Provide a 'latest' symlink to this build directory if the "blessed"
