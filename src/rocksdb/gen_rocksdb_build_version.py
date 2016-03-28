@@ -5,9 +5,6 @@
 import logging
 import argparse
 import os
-import re
-import sha
-import subprocess
 import sys
 import datetime
 
@@ -36,20 +33,22 @@ def main():
 
   args = parser.parse_args()
 
-  minimize_recompilation = 'YB_MINIMIZE_RECOMPILATION' in os.environ
+  compile_with_version_info = os.environ.get('YB_COMPILE_WITH_VERSION_INFO') in ['1', 'true', 'yes']
 
   git_sha = args.git_sha
-  if git_sha == '' and '/.CLion' in os.path.abspath(__file__) and not minimize_recompilation:
+  if git_sha == '' and '/.CLion' in os.path.abspath(__file__) and compile_with_version_info:
     logging.warn("This appears to be a CLion-initiated build and --git-sha argument is empty. " +
-                 "Acting as if YB_MINIMIZE_RECOMPILATION is set.")
-    minimize_recompilation = True
+                 "Acting as if YB_COMPILE_WITH_VERSION_INFO is turned off.")
+    compile_with_version_info = False
 
-  if minimize_recompilation:
+  if compile_with_version_info:
+    # We want a valid Git SHA1 in this case.
+    if len(git_sha) != 40:
+      logging.error('Git SHA is expected to be 40 characters, found %d: %s' %
+                    (len(git_sha), git_sha))
+      return 1
+  else:
     git_sha = '0' * 40
-  elif len(git_sha) != 40:
-    logging.error('Git SHA is expected to be 40 characters, found %d: %s' %
-      (len(git_sha), git_sha))
-    return 1
 
   output_path = args.output_path
   date_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -66,10 +65,11 @@ def main():
   logging.getLogger('').addHandler(file_log_handler)
 
   compile_date_str = '__DATE__'
-  if minimize_recompilation:
-    logging.info(
-      ('Removing git_sha and date from the new contents of "%s" as required by ' +
-       'YB_MINIMIZE_RECOMPILATION to reduce unnecessary rebuilds.') % output_path)
+  if not compile_with_version_info:
+    logging.info((
+     'Removing git_sha and date from the new contents of "%s" to reduce unnecessary rebuilds. ' +
+     'Turn on YB_COMPILE_WITH_VERSION_INFO to avoid this behavior.'
+    ) % output_path)
     date_str = '0000-00-00'
     compile_date_str = date_str
 
