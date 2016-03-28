@@ -7,9 +7,7 @@ set -euo pipefail
 print_help() {
   echo <<-EOT
 Usage: ${0##*/} <options>
-
 Links RocksDB sources into the build directory and builds it.
-
 Options:
   -h, --help
     Show help.
@@ -136,6 +134,9 @@ if [ "$build_dir_basename" != "$build_type_lowercase" ] && \
   exit 1
 fi
 
+echo "RocksDB build type: $build_type_lowercase"
+echo "Base build directory for RocksDB: $build_dir"
+
 rocksdb_dir=$( cd "`dirname $0`" && pwd )
 
 if [ ! -f "$rocksdb_dir/Makefile" ]; then
@@ -144,7 +145,7 @@ if [ ! -f "$rocksdb_dir/Makefile" ]; then
 fi
 
 link_dir="$build_dir/rocksdb-symlinks-only"
-build_dir="$build_dir/rocksdb-build"
+rocksdb_build_dir="$build_dir/rocksdb-build"
 
 
 CP=cp
@@ -170,8 +171,29 @@ $CP -Rs "$rocksdb_dir" "$link_dir"
 
 # Sync any new links that may have been created into our RocksDB build directory that may already
 # contain build artifacts from an earlier build.
-rsync -al "$link_dir/" "$build_dir"
+rsync -al "$link_dir/" "$rocksdb_build_dir"
 
-cd "$build_dir"
+cd "$rocksdb_build_dir"
 
 make $make_opts ${make_targets[@]}
+
+set +x
+
+# Now we're handling a weird issue that only happens during CLion-triggered builds.
+# The RocksDB library is somehow expected to exist in __default__/rocksdb-build instead of
+# e.g. Debug/rocksdb-build, so we just symlink it there.
+
+if [[ "$build_dir" =~ /[.]CLion.*/ ]]; then
+  if [ -d "$build_dir/../__default__" ]; then
+    mkdir -p "$build_dir/../__default__/rocksdb-build"
+    for rocksdb_lib_path in "$rocksdb_build_dir"/librocksdb*; do
+      if [ -f "$rocksdb_lib_path" ]; then
+        dest_path="$build_dir/../__default__/rocksdb-build/${rocksdb_lib_path##*/}"
+        if [ ! -f "$dest_path" ]; then
+          echo "Creating a symlink '$dest_path' to '${rocksdb_lib_path}' for CLion"
+          ln -s "$rocksdb_lib_path" "$dest_path"
+        fi
+      fi
+    done
+  fi
+fi
