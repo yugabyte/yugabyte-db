@@ -115,11 +115,12 @@ def main():
   file_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
   logging.getLogger('').addHandler(file_log_handler)
 
-  if 'YB_MINIMIZE_RECOMPILATION' in os.environ:
+  compile_with_version_info = os.environ.get('YB_COMPILE_WITH_VERSION_INFO') in ['1', 'true', 'yes']
+  if not compile_with_version_info:
     logging.info(
-      'Removing git hash, host name, build timestamp, user name, clean repo flag ' +
-      '(defaulting to false) and build id from "version_defines.h" as requested by ' +
-      'YB_MINIMIZE_RECOMPILATION to reduce unnecessary rebuilds.')
+      'Removing git hash, host name, build timestamp, user name, clean repo flag (defaulting to ' +
+      'false) and build id from "version_defines.h" to avoid unnecessary rebuilds. Turn on ' +
+      'YB_COMPILE_WITH_VERSION_INFO to avoid this behaviour.')
 
     identifying_hash = '0' * 40
     git_hash = '0' * 40
