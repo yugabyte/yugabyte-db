@@ -88,6 +88,8 @@ extern PGDLLEXPORT Datum ora_date_trunc(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_date_round(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_timestamptz_trunc(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_timestamptz_round(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_timestamp_trunc(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_timestamp_round(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_sysdate(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_sessiontimezone(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_dbtimezone(PG_FUNCTION_ARGS);
