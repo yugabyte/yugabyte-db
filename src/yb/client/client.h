@@ -199,7 +199,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   Status ListTables(std::vector<std::string>* tables,
                     const std::string& filter = "");
 
-  // List all running tablets' uuid's for this table.
+  // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
   Status ListTablets(const std::string& table_name,
                      std::vector<std::string>* tablets);

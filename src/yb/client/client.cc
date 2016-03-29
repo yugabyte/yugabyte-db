@@ -331,7 +331,7 @@ Status YBClient::ListTablets(const std::string& table_name,
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-
+  tablets->clear();
   for (int i = 0; i < resp.tablet_locations_size(); i++) {
     tablets->push_back(resp.tablet_locations(i).tablet_id());
   }
@@ -345,7 +345,8 @@ Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
   RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
   if (leader_addrs.empty() || leader_addrs.size() > 1) {
     return Status::IllegalState(
-      strings::Substitute("Unexpected master leader address size $0", leader_addrs.size()));
+      strings::Substitute("Unexpected master leader address size $0, expected only 1 leader "
+        "address.", leader_addrs.size()));
   }
   *leader_socket = leader_addrs[0];
   return Status::OK();

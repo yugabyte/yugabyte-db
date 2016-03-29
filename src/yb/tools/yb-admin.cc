@@ -95,7 +95,7 @@ const char* const kListAllTabletServersOp = "list_all_tablet_servers";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
-#define MAX_INFO_DUMP_ON_ERROR 10
+#define MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR 10
 
 class ClusterAdminClient {
  public:
@@ -188,9 +188,10 @@ Status ClusterAdminClient::Init() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::LeaderStepDown(const string& leader_uuid,
-                                          const string& tablet_id,
-                                          gscoped_ptr<ConsensusServiceProxy> *leader_proxy) {
+Status ClusterAdminClient::LeaderStepDown(
+  const string& leader_uuid,
+  const string& tablet_id,
+  gscoped_ptr<ConsensusServiceProxy> *leader_proxy) {
   LeaderStepDownRequestPB req;
   req.set_dest_uuid(leader_uuid);
   req.set_tablet_id(tablet_id);
@@ -204,9 +205,10 @@ Status ClusterAdminClient::LeaderStepDown(const string& leader_uuid,
   return Status::OK();
 }
 
-Status ClusterAdminClient::SetTabletLeaderInfo(const string& tablet_id,
-                                               string& leader_uuid,
-                                               Sockaddr* leader_socket) {
+Status ClusterAdminClient::SetTabletLeaderInfo(
+  const string& tablet_id,
+  string& leader_uuid,
+  Sockaddr* leader_socket) {
   TSInfoPB leader_ts_info;
   RETURN_NOT_OK(GetTabletLeader(tablet_id, &leader_ts_info));
   CHECK_GT(leader_ts_info.rpc_addresses_size(), 0) << leader_ts_info.ShortDebugString();
@@ -216,7 +218,9 @@ Status ClusterAdminClient::SetTabletLeaderInfo(const string& tablet_id,
   vector<Sockaddr> leader_addrs;
   RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
   CHECK(!leader_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
-                               << leader_hostport.ToString();
+    << leader_hostport.ToString();
+  CHECK(leader_addrs.size() == 1) << "Expected only one tablet leader, but got : "
+    << leader_hostport.ToString();
   *leader_socket = leader_addrs[0];
   leader_uuid = leader_ts_info.permanent_uuid();
   return Status::OK();
@@ -424,7 +428,7 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
         << " : " << std::endl;
       for (int i = 0; i < resp.tablet_locations_size(); i++) {
         std::cerr << i << " : " << resp.tablet_locations(i).DebugString();
-        if (i >= MAX_INFO_DUMP_ON_ERROR) {
+        if (i >= MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR) {
           break;
         }
       }
