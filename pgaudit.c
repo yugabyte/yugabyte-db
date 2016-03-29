@@ -923,7 +923,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
          * from being logged and supresses foreign key queries unless the
          * session user is the owner of the referenced table.
          */
-        if (!is_member_of_role_nosuper(GetSessionUserId(), GetUserId()))
+        if (!is_member_of_role(GetSessionUserId(), GetUserId()))
             return;
 
         /*
