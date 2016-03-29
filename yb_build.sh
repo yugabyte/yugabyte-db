@@ -67,22 +67,6 @@ cd "$build_dir"
 thirdparty_built_flag_file="$PWD/built_thirdparty"
 makefile_builds_third_party_flag_file="$PWD/makefile_builds_third_party"
 
-export YB_MINIMIZE_RECOMPILATION=1
-
-# TODO: this might not be working. Investigate why.
-if which ld.gold >/dev/null; then
-  echo "Using ld.gold linker"
-  cmake_opts+=( -DCMAKE_LINKER=ld.gold )
-else
-  echo "ld.gold not found"
-fi
-
-ccache_cxx_compiler=/usr/lib/ccache/g++
-if [ -f "$ccache_cxx_compiler" ]; then
-  echo "Using CCache C++ compiler: $ccache_cxx_compiler"
-  cmake_opts+=( -DCMAKE_CXX_COMPILER="$ccache_cxx_compiler" )
-fi
-
 if $force_run_cmake || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
     echo "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
