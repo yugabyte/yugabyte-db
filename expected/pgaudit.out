@@ -1,6 +1,19 @@
 \set VERBOSITY terse
 -- Create pgaudit extension
 CREATE EXTENSION IF NOT EXISTS pgaudit;
+-- Make sure events don't get logged twice when session logging
+SET pgaudit.log = 'all';
+SET pgaudit.log_level = 'notice';
+NOTICE:  AUDIT: SESSION,2,1,MISC,SET,,,SET pgaudit.log_level = 'notice';,<not logged>
+CREATE TABLE tmp (id int, data text);
+NOTICE:  AUDIT: SESSION,3,1,DDL,CREATE TABLE,TABLE,public.tmp,"CREATE TABLE tmp (id int, data text);",<not logged>
+CREATE TABLE tmp2 AS (SELECT * FROM tmp);
+NOTICE:  AUDIT: SESSION,4,1,READ,SELECT,,,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<not logged>
+NOTICE:  AUDIT: SESSION,4,2,DDL,CREATE TABLE AS,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<not logged>
+RESET pgaudit.log;
+RESET pgaudit.log_level;
+DROP TABLE tmp;
+DROP TABLE tmp2;
 --
 -- Audit log fields are:
 --     AUDIT_TYPE - SESSION or OBJECT
@@ -1083,6 +1096,14 @@ NOTICE:  AUDIT: OBJECT,66,4,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""
 NOTICE:  AUDIT: SESSION,66,4,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",2
 DROP TABLE bbb;
 DROP TABLE aaa;
+-- Test create table as after extension as been dropped
+DROP EXTENSION pgaudit;
+CREATE TABLE tmp (id int, data text);
+CREATE TABLE tmp2 AS (SELECT * FROM tmp);
+NOTICE:  AUDIT: SESSION,67,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
+NOTICE:  AUDIT: SESSION,67,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
+DROP TABLE tmp;
+DROP TABLE tmp2;
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';

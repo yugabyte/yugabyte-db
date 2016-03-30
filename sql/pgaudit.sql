@@ -3,6 +3,19 @@
 -- Create pgaudit extension
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 
+-- Make sure events don't get logged twice when session logging
+SET pgaudit.log = 'all';
+SET pgaudit.log_level = 'notice';
+
+CREATE TABLE tmp (id int, data text);
+CREATE TABLE tmp2 AS (SELECT * FROM tmp);
+
+RESET pgaudit.log;
+RESET pgaudit.log_level;
+
+DROP TABLE tmp;
+DROP TABLE tmp2;
+
 --
 -- Audit log fields are:
 --     AUDIT_TYPE - SESSION or OBJECT
@@ -738,6 +751,15 @@ INSERT INTO bbb VALUES (1);
 
 DROP TABLE bbb;
 DROP TABLE aaa;
+
+-- Test create table as after extension as been dropped
+DROP EXTENSION pgaudit;
+
+CREATE TABLE tmp (id int, data text);
+CREATE TABLE tmp2 AS (SELECT * FROM tmp);
+
+DROP TABLE tmp;
+DROP TABLE tmp2;
 
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise

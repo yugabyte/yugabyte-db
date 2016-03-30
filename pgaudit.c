@@ -467,6 +467,9 @@ log_audit_event(AuditEventStackItem *stackItem)
     MemoryContext contextOld;
     StringInfoData auditStr;
 
+    /* If this event has already been logged don't log it again */
+    if (stackItem->auditEvent.logged)
+        return;
 
     /* Classify the statement using log stmt level and the command tag */
     switch (stackItem->auditEvent.logStmtLevel)
@@ -1463,6 +1466,8 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
         auditEventStack->auditEvent.command =
             SPI_getvalue(spiTuple, spiTupDesc, 3);
 
+        auditEventStack->auditEvent.logged = false;
+
         /*
          * Identify grant/revoke commands - these are the only non-DDL class
          * commands that should be coming through the event triggers.
@@ -1562,6 +1567,7 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
         auditEventStack->auditEvent.objectName =
             SPI_getvalue(spiTuple, spiTupDesc, 2);
 
+        auditEventStack->auditEvent.logged = false;
         log_audit_event(auditEventStack);
     }
 
