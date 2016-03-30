@@ -105,8 +105,9 @@ FOR i IN 1..p_batch_count LOOP
                 v_min_partition_timestamp := date_trunc('year', v_start_control);
         END CASE;
     ELSIF v_type = 'time-custom' THEN
-        v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
-        v_min_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_datetime_string);
+        SELECT child_start_time INTO v_min_partition_timestamp FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition
+            , v_partition_interval
+            , p_parent_table);
         v_max_partition_timestamp := v_min_partition_timestamp + v_partition_interval;
         LOOP
             IF v_start_control >= v_min_partition_timestamp AND v_start_control < v_max_partition_timestamp THEN
@@ -233,4 +234,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

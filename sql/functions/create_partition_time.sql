@@ -1,7 +1,7 @@
 /*
  * Function to create a child table in a time-based partition set
  */
-CREATE FUNCTION create_partition_time(p_parent_table text, p_partition_times timestamp[], p_analyze boolean DEFAULT true) 
+CREATE FUNCTION create_partition_time(p_parent_table text, p_partition_times timestamp[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
 RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -261,6 +261,9 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
     END LOOP; -- end sub partitioning LOOP
+
+    -- Manage additonal constraints if set
+    PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id, p_debug := p_debug);
 
     v_partition_created := true;
 

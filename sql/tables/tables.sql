@@ -46,6 +46,7 @@ CREATE TABLE part_config_sub (
     , sub_use_run_maintenance BOOLEAN NOT NULL DEFAULT true
     , sub_jobmon boolean NOT NULL DEFAULT true
 );
+SELECT pg_catalog.pg_extension_config_dump('part_config_sub', '');
 
 CREATE TABLE custom_time_partitions (
     parent_table text NOT NULL
@@ -53,6 +54,7 @@ CREATE TABLE custom_time_partitions (
     , partition_range tstzrange NOT NULL
     , PRIMARY KEY (parent_table, child_table));
 CREATE INDEX custom_time_partitions_partition_range_idx ON custom_time_partitions USING gist (partition_range);
+SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
 
 -- Put constraint functions & definitions here because having them separate makes the ordering of their creation harder to control. Some require the above tables to exist first.
 /*

@@ -23,7 +23,6 @@ v_current_partition_id          bigint;
 v_current_partition_timestamp   timestamp;
 v_datetime_string               text;
 v_drop_count                    int := 0;
-v_id_position                   int;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
@@ -42,7 +41,6 @@ v_premake_id_max                bigint;
 v_premake_id_min                bigint;
 v_premake_timestamp_min         timestamp;
 v_premake_timestamp_max         timestamp;
-v_quarter                       text;
 v_row                           record;
 v_row_max_id                    record;
 v_row_max_time                  record;
@@ -60,8 +58,6 @@ v_sub_timestamp_max_suffix      timestamp;
 v_sub_timestamp_min             timestamp;
 v_tablename                     text;
 v_tables_list_sql               text;
-v_time_position                 int;
-v_year                          text;
 
 BEGIN
 
@@ -135,24 +131,8 @@ LOOP
 
     IF v_row.partition_type = 'time' OR v_row.partition_type = 'time-custom' THEN
 
-        v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
-        IF v_row.partition_interval::interval <> '3 months' OR (v_row.partition_interval::interval = '3 months' AND v_row.partition_type = 'time-custom') THEN
-           v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_row.datetime_string);
-        ELSE
-            -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
-            v_year := split_part(substring(v_last_partition FROM v_time_position), 'q', 1);
-            v_quarter := split_part(substring(v_last_partition FROM v_time_position), 'q', 2);
-            CASE
-                WHEN v_quarter = '1' THEN
-                    v_last_partition_timestamp := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
-                WHEN v_quarter = '2' THEN
-                    v_last_partition_timestamp := to_timestamp(v_year || '-04-01', 'YYYY-MM-DD');
-                WHEN v_quarter = '3' THEN
-                    v_last_partition_timestamp := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
-                WHEN v_quarter = '4' THEN
-                    v_last_partition_timestamp := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
-            END CASE;
-        END IF;
+        SELECT child_start_time INTO v_last_partition_timestamp 
+            FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition, v_row.partition_interval, v_row.parent_table);
 
         -- Loop through child tables starting from highest to get current max value in partition set
         -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
@@ -275,8 +255,8 @@ LOOP
             CONTINUE;
         END IF;
 
-        v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
-        v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
+        SELECT child_start_id INTO v_last_partition_id
+            FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition, v_row.partition_interval, v_row.parent_table);
         -- Determine if this table is a child of a subpartition parent. If so, get limits to see if run_maintenance even needs to run for it.
         SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(v_row.parent_table, 'id');
         IF v_sub_id_max IS NOT NULL THEN
@@ -309,9 +289,6 @@ LOOP
         END LOOP;
 
     END IF; -- end main IF check for time or id
-
-    -- Manage additonal constraints if set
-    PERFORM @extschema@.apply_constraints(p_parent_table := v_row.parent_table, p_job_id := v_job_id, p_debug := p_debug);
 
 END LOOP; -- end of creation loop
 

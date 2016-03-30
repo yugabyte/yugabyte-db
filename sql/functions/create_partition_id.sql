@@ -1,7 +1,7 @@
 /*
  * Function to create id partitions
  */
-CREATE FUNCTION create_partition_id(p_parent_table text, p_partition_ids bigint[], p_analyze boolean DEFAULT true) RETURNS boolean
+CREATE FUNCTION create_partition_id(p_parent_table text, p_partition_ids bigint[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -210,6 +210,9 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         END IF;
 
     END LOOP; -- end sub partitioning LOOP
+    
+    -- Manage additonal constraints if set
+    PERFORM @extschema@.apply_constraints(p_parent_table, p_job_id := v_job_id, p_debug := p_debug);
 
     v_partition_created := true;
 
@@ -266,4 +269,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

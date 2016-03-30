@@ -15,7 +15,6 @@ v_min_range             timestamptz;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_partition_interval    text;
-v_time_position         int;
 v_type                  text;
 
 BEGIN

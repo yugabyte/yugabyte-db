@@ -29,7 +29,6 @@ v_datetime_string               text;
 v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
 v_higher_parent_table           text := split_part(p_parent_table, '.', 2);
 v_id_interval                   bigint;
-v_id_position                   int;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_last_partition_created        boolean;
@@ -53,7 +52,6 @@ v_step_overflow_id              bigint;
 v_sub_parent                    text;
 v_success                       boolean := false;
 v_time_interval                 interval;
-v_time_position                 int;
 v_top_datetime_string           text;
 v_top_parent_schema             text := split_part(p_parent_table, '.', 1);
 v_top_parent_table              text := split_part(p_parent_table, '.', 2);
@@ -91,8 +89,6 @@ IF NOT @extschema@.check_partition_type(p_type) THEN
     RAISE EXCEPTION '% is not a valid partitioning type', p_type;
 END IF;
 
-EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', v_parent_schema, v_parent_tablename);
-
 IF p_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
@@ -113,6 +109,8 @@ ELSIF p_type = 'id' THEN
 ELSE
     RAISE EXCEPTION 'use_run_maintenance value cannot be set NULL';
 END IF;
+
+EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', v_parent_schema, v_parent_tablename);
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN SETUP PARENT: %s', p_parent_table));
@@ -320,16 +318,15 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = v_parent_tablename
             AND n.nspname = v_parent_schema
-        ) SELECT n.nspname, c.relname, p.datetime_string
-        INTO v_top_parent_schema, v_top_parent_table, v_top_datetime_string
+        ) SELECT n.nspname, c.relname 
+        INTO v_top_parent_schema, v_top_parent_table 
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
         JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname;
         IF v_top_parent_table IS NOT NULL THEN
             -- If so create the lowest possible partition that is within the boundary of the parent
-            v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-            v_parent_partition_timestamp := to_timestamp(substring(p_parent_table from v_time_position), v_top_datetime_string);
+            SELECT child_start_time INTO v_parent_partition_timestamp FROM @extschema@.show_partition_info(p_parent_table, p_parent_table := v_top_parent_schema||'.'||v_top_parent_table);
             IF v_base_timestamp >= v_parent_partition_timestamp THEN
                 WHILE v_base_timestamp >= v_parent_partition_timestamp LOOP
                     v_base_timestamp := v_base_timestamp - v_time_interval;
@@ -387,12 +384,15 @@ IF p_type = 'id' THEN
 
     -- If custom start partition is set, use that.
     -- If custom start is not set and there is already data, start partitioning with the highest current value and ensure it's grabbed from highest top parent table
-    v_sql := format('SELECT COALESCE(%L, max(%I)::bigint, 0) FROM %I.%I LIMIT 1'
-                , p_start_partition::bigint
-                , p_control
-                , v_top_parent_schema
-                , v_top_parent_table);
-    EXECUTE v_sql INTO v_max;
+    IF p_start_partition IS NOT NULL THEN
+        v_max := p_start_partition::bigint;
+    ELSE
+        v_sql := format('SELECT COALESCE(max(%I)::bigint, 0) FROM %I.%I LIMIT 1'
+                    , p_control
+                    , v_top_parent_schema
+                    , v_top_parent_table);
+        EXECUTE v_sql INTO v_max;
+    END IF;
     v_starting_partition_id := v_max - (v_max % v_id_interval);
     FOR i IN 0..p_premake LOOP
         -- Only make previous partitions if ID value is less than the starting value and positive (and custom start partition wasn't set)
@@ -436,7 +436,7 @@ IF p_type = 'id' THEN
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = v_parent_tablename
             AND n.nspname = v_parent_schema
-        ) SELECT c.relname
+        ) SELECT n.nspname||'.'||c.relname
         INTO v_top_parent_table
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -445,8 +445,7 @@ IF p_type = 'id' THEN
         WHERE p.partition_type = 'id';
         IF v_top_parent_table IS NOT NULL THEN
             -- Create the lowest possible partition that is within the boundary of the parent
-            v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-            v_parent_partition_id = substring(p_parent_table from v_id_position)::bigint;
+             SELECT child_start_id INTO v_parent_partition_id FROM @extschema@.show_partition_info(p_parent_table, p_parent_table := v_top_parent_table);
             IF v_starting_partition_id >= v_parent_partition_id THEN
                 WHILE v_starting_partition_id >= v_parent_partition_id LOOP
                     v_starting_partition_id := v_starting_partition_id - v_id_interval;
@@ -524,5 +523,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

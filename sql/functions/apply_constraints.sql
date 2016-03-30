@@ -103,13 +103,11 @@ IF p_child_table IS NULL THEN
 
     SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(v_parent_table, 'DESC') LIMIT 1;
 
-    v_suffix_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
-
     IF v_type IN ('time', 'time-custom') THEN
-        v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_suffix_position), v_datetime_string);
+        SELECT child_start_time INTO v_last_partition_timestamp FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition, v_partition_interval, v_parent_table);
         v_partition_suffix := to_char(v_last_partition_timestamp - (v_partition_interval::interval * (v_optimize_constraint + v_premake + 1) ), v_datetime_string);
     ELSIF v_type = 'id' THEN
-        v_last_partition_id := substring(v_last_partition from v_suffix_position)::int;
+        SELECT child_start_id INTO v_last_partition_id FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition, v_partition_interval, v_parent_table);
         v_partition_suffix := (v_last_partition_id - (v_partition_interval::int * (v_optimize_constraint + v_premake + 1) ))::text; 
     END IF;
 

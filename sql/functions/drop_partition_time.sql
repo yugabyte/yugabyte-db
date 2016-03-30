@@ -23,16 +23,13 @@ v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        interval;
 v_partition_timestamp       timestamp;
-v_quarter                   text;
 v_retention                 interval;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
 v_retention_schema          text;
 v_row                       record;
 v_step_id                   bigint;
-v_time_position             int;
 v_type                      text;
-v_year                      text;
 
 BEGIN
 
@@ -125,24 +122,9 @@ FOR v_row IN
     SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'DESC')
 LOOP
     -- pull out datetime portion of partition's tablename to make the next one
-    v_time_position := (length(v_row.partition_tablename) - position('p_' in reverse(v_row.partition_tablename))) + 2;
-    IF v_partition_interval <> '3 months' OR (v_partition_interval = '3 months' AND v_type = 'time-custom') THEN
-        v_partition_timestamp := to_timestamp(substring(v_row.partition_tablename from v_time_position), v_datetime_string);
-    ELSE
-        -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
-        v_year := split_part(substring(v_row.partition_tablename from v_time_position), 'q', 1);
-        v_quarter := split_part(substring(v_row.partition_tablename from v_time_position), 'q', 2);
-        CASE
-            WHEN v_quarter = '1' THEN
-                v_partition_timestamp := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
-            WHEN v_quarter = '2' THEN
-                v_partition_timestamp := to_timestamp(v_year || '-04-01', 'YYYY-MM-DD');
-            WHEN v_quarter = '3' THEN
-                v_partition_timestamp := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
-            WHEN v_quarter = '4' THEN
-                v_partition_timestamp := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
-        END CASE;
-    END IF;
+     SELECT child_start_time INTO v_partition_timestamp FROM @extschema@.show_partition_info(v_row.partition_schemaname||'.'||v_row.partition_tablename
+        , v_partition_interval::text
+        , p_parent_table);
 
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention < (CURRENT_TIMESTAMP - (v_partition_timestamp + v_partition_interval)) THEN
@@ -269,5 +251,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

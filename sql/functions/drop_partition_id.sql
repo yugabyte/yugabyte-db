@@ -14,7 +14,6 @@ ex_message                  text;
 v_adv_lock                  boolean;
 v_control                   text;
 v_drop_count                int := 0;
-v_id_position               int;
 v_index                     record;
 v_job_id                    bigint;
 v_jobmon                    boolean;
@@ -130,8 +129,9 @@ END LOOP;
 FOR v_row IN 
     SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC')
 LOOP
-    v_id_position := (length(v_row.partition_tablename) - position('p_' in reverse(v_row.partition_tablename))) + 2;
-    v_partition_id := substring(v_row.partition_tablename from v_id_position)::bigint;
+     SELECT child_start_id INTO v_partition_id FROM @extschema@.show_partition_info(v_row.partition_schemaname||'.'||v_row.partition_tablename
+        , v_partition_interval::text
+        , p_parent_table);
 
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention <= (v_max - (v_partition_id + v_partition_interval)) THEN
@@ -251,4 +251,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

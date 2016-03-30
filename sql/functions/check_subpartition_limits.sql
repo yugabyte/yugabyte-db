@@ -52,11 +52,9 @@ IF p_type = 'id' THEN
       AND p.partition_type = 'id';
 
     IF v_top_parent IS NOT NULL THEN 
-        v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-        v_sub_id_min := substring(p_parent_table from v_id_position)::bigint;
-        v_sub_id_max := (v_sub_id_min + v_top_interval::bigint) - 1;
-        sub_min := v_sub_id_min::text;
-        sub_max := v_sub_id_max::text;
+        SELECT child_start_id::text, child_end_id::text 
+        INTO sub_min, sub_max
+        FROM @extschema@.show_partition_info(p_parent_table, v_top_interval, v_top_parent);
     END IF;
 
 ELSIF p_type = 'time' THEN
@@ -78,28 +76,9 @@ ELSIF p_type = 'time' THEN
       AND p.partition_type = 'time' OR p.partition_type = 'time-custom';
 
     IF v_top_parent IS NOT NULL THEN 
-        v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-        IF v_top_interval::interval <> '3 months' OR (v_top_interval::interval = '3 months' AND v_top_type = 'time-custom') THEN
-           v_sub_timestamp_min := to_timestamp(substring(p_parent_table from v_time_position), v_top_datetime_string);
-        ELSE
-            -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
-            v_year := split_part(substring(p_parent_table from v_time_position), 'q', 1);
-            v_quarter := split_part(substring(p_parent_table from v_time_position), 'q', 2);
-            CASE
-                WHEN v_quarter = '1' THEN
-                    v_sub_timestamp_min := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
-                WHEN v_quarter = '2' THEN
-                    v_sub_timestamp_min := to_timestamp(v_year || '-04-01', 'YYYY-MM-DD');
-                WHEN v_quarter = '3' THEN
-                    v_sub_timestamp_min := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
-                WHEN v_quarter = '4' THEN
-                    v_sub_timestamp_min := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
-            END CASE;
-        END IF;
-        v_sub_timestamp_max = (v_sub_timestamp_min + v_top_interval::interval) - '1 sec'::interval;
-
-        sub_min := v_sub_timestamp_min::text;
-        sub_max := v_sub_timestamp_max::text;
+        SELECT child_start_time::text, child_end_time::text 
+        INTO sub_min, sub_max
+        FROM @extschema@.show_partition_info(p_parent_table, v_top_interval, v_top_parent);
     END IF;
 
 ELSE
@@ -110,4 +89,5 @@ RETURN;
 
 END
 $$;
+
 

@@ -73,7 +73,7 @@ Step 3a
 -------
 For converting either time or serial based partition sets, if you have the lower boundary value as part of the partition name already, then it's simply a matter of doing a rename with some substring formatting since that's the pattern that pg_partman itself uses. Say your table was partitioned weekly and your original format just had the first day of the week (sunday) for the partition name (as in the example above). You can see below that we had 3 partitions with the old naming pattern of "YYYYMMDD". Looking at the list above, you can see the new weekly pattern that pg_partman uses. 
 
-A note about quarterly partitioning, the to_timestamp() function does not recognize the "Q" format string like to_char() does. Why? You can look in the postgres source and see the reasoning, but it makes no sense to me. I handle this inside the run_maintenance() function if you need a way to do this.
+A note about quarterly partitioning... the to_timestamp() function does not recognize the "Q" format string like to_char() does. Why? You can look in the postgres source and see the reasoning, but it makes no sense to me. I handle this inside the show_partition_info() function if you need a way to do this.
 
 So a query like the following which first extracts the original name then reformats the suffix would work. It doesn't actually do the renaming, it just generates all the ALTER TABLE statements for you for all the child tables in the set. If all of them don't quite have the same pattern for some reason, you can easily just re-run this, editing things as needed, and filter the resulting list of ALTER TABLE statements accordingly.
 

@@ -1,3 +1,23 @@
+2.3.2
+-- Fixed issue where additional constraints would not get applied on all older partitions if more than one new partition was made for a single partition set in a single maintenance run. You can fix this by using the reapply_constraints.py script to remove then reapply all additional constraints on older tables. Or if you know the specific children that are missing a constraint, you can run apply_constraints() and pass it the child table argument. 
+
+-- Improved performance of create_parent() when p_start_partition is set. Was previously doing a full seq scan of the parent table which could keep it locked longer than intended (Github Pull Reqest #99).
+
+-- New function that returns partition data about a given child name: show_partition_info(). 
+    -- Returns start/end values that are contained in a given child table.
+    -- Can pass an optional interval value to see start/end values that are different than the currently configured interval.
+
+-- Added new options to vacuum_maintenance.py script
+    -- New --all option tells it to run against all tables managed by pg_partman.
+    -- New --type option sets whether to run against time or id based partition sets managed by pg_partman.
+    -- New --interval option tells the script to only run against child tables older than the given interval. See the script's --help for more info on how this works.
+    -- All these options only work on partition sets managed by pg_partman. If none of these options are set, script still works on non-pg_partman inheritance sets. 
+
+-- Disallow weekly partitioning to be a subpartition of anything else. Alignment of ISO weeks does not always match up with larger intervals and can cause constraint conflicts.
+-- Also disallow subpartition interval to be equal to or greater than parent.
+-- Set part_config_sub & custom_time_partition config tables to dump their contents with pg_dump to ensure all config data is saved.
+
+
 2.3.1
 -- Fixed typo in standalone create_parent.sql file that caused a brand new installation of v2.3.0 to fail (Github Issue #94).
 -- Added --noparent option to new vacuum_maintenance.py script to allow parent table to be excluded from the maintenance run.
