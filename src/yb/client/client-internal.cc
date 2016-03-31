@@ -61,6 +61,8 @@ using master::IsAlterTableDoneRequestPB;
 using master::IsAlterTableDoneResponsePB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
+using master::GetTableLocationsRequestPB;
+using master::GetTableLocationsResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
 using master::ListTabletServersRequestPB;
@@ -231,6 +233,18 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                                  const ListTabletServersRequestPB&,
                                  ListTabletServersResponsePB*,
                                  RpcController*)>& func);
+template
+Status YBClient::Data::SyncLeaderMasterRpc(
+  const MonoTime& deadline,
+  YBClient* client,
+  const GetTableLocationsRequestPB& req,
+  GetTableLocationsResponsePB* resp,
+  int* num_attempts,
+  const char* func_name,
+  const boost::function<Status(MasterServiceProxy*,
+                               const GetTableLocationsRequestPB&,
+                               GetTableLocationsResponsePB*,
+                               RpcController*)>& func);
 
 YBClient::Data::Data()
     : latest_observed_timestamp_(YBClient::kNoTimestamp) {
