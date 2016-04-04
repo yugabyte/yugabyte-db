@@ -14,12 +14,15 @@ Options (do not apply to status/stop/add/remove commands):
     use a stop/start combination instead.
 
 Commands:
-  start   - start master & tablet server processes
-  stop    - stop all master & tablet server processes
-  status  - display running status and process id of master & tablet server processes
-  add     - add one tablet server process
+  start      - start master & tablet server processes
+  stop       - stop all master & tablet server processes
+  status     - display running status and process id of master & tablet server processes
+  add        - add one tablet server process
+  add-master - add one master process
   remove <daemon_index> - remove one tablet server process with given index (gotten from status)
-  destroy - stop all master & tablet server processes as well as remove any assosciated data
+  destroy    - stop all master & tablet server processes as well as remove any assosciated data
+  restart    - stop the cluster and start it again (keep the data)
+  restart-empty - stop the cluster, wipe all the data files, and start the cluster
 EOT
 }
 
@@ -277,6 +280,68 @@ add_daemon() {
   esac
 }
 
+start_cluster() {
+  validate_num_servers "$num_masters"
+  validate_num_servers "$num_tservers"
+
+  create_directories master $num_masters
+  create_directories tserver $num_tservers
+
+  master_indexes=$( $SEQ 1 $num_masters )
+  tserver_indexes=$( $SEQ 1 $num_tservers )
+
+  set_master_addresses
+
+  local i
+  for i in $master_indexes; do
+    existing_master_pid=$( find_daemon_pid master $i )
+    if [ -n "$existing_master_pid" ]; then
+      echo "Master $i is already running as PID $existing_master_pid"
+    else
+      start_master $i
+    fi
+  done
+
+  for i in $tserver_indexes; do
+    existing_tserver_pid=$( find_daemon_pid tserver $i )
+    if [ -n "$existing_tserver_pid" ]; then
+      echo "Tabled server $i is already running as PID $existing_tserver_pid"
+    else
+      start_tserver $i
+    fi
+  done
+}
+
+stop_cluster() {
+  set_num_servers
+  set_master_addresses
+
+  local i
+  for i in $master_indexes; do
+    stop_daemon "master" $i
+  done
+
+  for i in $tserver_indexes; do
+    stop_daemon "tserver" $i
+  done
+}
+
+destroy_cluster() {
+  stop_cluster
+  echo
+  echo "Removing directory '$cluster_base_dir'"
+  ( set -x; rm -rf "$cluster_base_dir" )
+  echo
+}
+
+set_cmd() {
+  if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
+    echo "More than one command specified: $cmd, $1" >&2
+    exit 1
+  fi
+  cmd="$1"
+}
+
 cmd=""
 num_masters=3
 num_tservers=3
@@ -300,31 +365,17 @@ while [ $# -gt 0 ]; do
       exit
     ;;
     remove|remove_master)
-      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
-        echo "More than one command specified: $cmd, $1" >&2
-        exit 1
-      fi
-
-      cmd="$1"
+      set_cmd "$1"
       rem_id="$2"
       shift
     ;;
     restart|restart_master)
-      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
-        echo "More than one command specified: $cmd, $1" >&2
-        exit 1
-      fi
-
-      cmd="$1"
+      set_cmd "$1"
       restart_id="$2"
       shift
     ;;
-    start|stop|status|add|destroy|add_master)
-      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
-        echo "More than one command specified: $cmd, $1" >&2
-        exit 1
-      fi
-      cmd="$1"
+    start|stop|status|add|add-master|destroy|restart|restart_empty)
+      set_cmd "$1"
     ;;
     *)
       echo "Invalid command line argument: $1"
@@ -381,50 +432,18 @@ ensure_binary_exists "$tserver_binary"
 export YB_HOME="$yugabyte_root"
 
 if [ "$cmd" == "start" ]; then
-  validate_num_servers "$num_masters"
-  validate_num_servers "$num_tservers"
-
-  create_directories master $num_masters
-  create_directories tserver $num_tservers
-
-  master_indexes=$( $SEQ 1 $num_masters )
-  tserver_indexes=$( $SEQ 1 $num_tservers )
-
-  set_master_addresses
-
-  for i in $master_indexes; do
-    existing_master_pid=$( find_daemon_pid master $i )
-    if [ -n "$existing_master_pid" ]; then
-      echo "Master $i is already running as PID $existing_master_pid"
-    else
-      start_master $i
-    fi
-  done
-
-  for i in $tserver_indexes; do
-    existing_tserver_pid=$( find_daemon_pid tserver $i )
-    if [ -n "$existing_tserver_pid" ]; then
-      echo "Tabled server $i is already running as PID $existing_tserver_pid"
-    else
-      start_tserver $i
-    fi
-  done
-elif [ "$cmd" == "stop" ] || [ "$cmd" == "destroy" ] ; then
-  set_num_servers
-  set_master_addresses
-
-  for i in $master_indexes; do
-    stop_daemon "master" $i
-  done
-
-  for i in $tserver_indexes; do
-    stop_daemon "tserver" $i
-  done
-
-  # If this is a destroy command, also purge the data directory.
-  if [ "$cmd" == "destroy" ]; then
-    rm -rf "$cluster_base_dir"
-  fi
+  start_cluster
+elif [ "$cmd" == "stop" ]; then
+  stop_cluster
+elif [ "$cmd" == "destroy" ]; then
+  destroy_cluster
+elif [ "$cmd" == "restart" ]; then
+  stop_cluster
+  start_cluster
+elif [ "$cmd" == "restart-empty" ]; then
+  destroy_cluster
+  sleep 2
+  start_cluster
 elif [ "$cmd" == "status" ]; then
   set_num_servers
   set_master_addresses
@@ -455,7 +474,7 @@ elif [ "$cmd" == "restart" ]; then
   validate_num_servers "$max_running_tserver_index"
   set_master_addresses
   start_tserver "$restart_id"
-elif [ "$cmd" == "add_master" ]; then
+elif [ "$cmd" == "add-master" ]; then
   set_num_masters
   increment_masters
   validate_num_masters "$max_running_master_index"
