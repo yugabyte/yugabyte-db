@@ -61,6 +61,11 @@ BUILD_ROOT=$(cd $(dirname "$TEST_PATH")/.. ; pwd)
 
 if [ "`uname`" == "Darwin" ]; then
   export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  # Stack trace address to line number conversion is disabled on Mac OS X as of 04/04/2016/
+  # See https://yugabyte.atlassian.net/browse/ENG-37
+  STACK_TRACE_FILTER=cat
+else
+  STACK_TRACE_FILTER="$SOURCE_ROOT"/build-support/stacktrace_addr2line.pl
 fi
 
 TEST_LOG_DIR=$BUILD_ROOT/test-logs
@@ -154,8 +159,6 @@ YB_TEST_TIMEOUT=${YB_TEST_TIMEOUT:-900}
 # Allow for collecting core dumps.
 YB_TEST_ULIMIT_CORE=${YB_TEST_ULIMIT_CORE:-0}
 ulimit -c "$YB_TEST_ULIMIT_CORE"
-
-STACK_TRACE_FILTER="$SOURCE_ROOT"/build-support/stacktrace_addr2line.pl
 
 # Run the actual test.
 for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
