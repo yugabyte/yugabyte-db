@@ -38,6 +38,9 @@ if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}" AND
     "directory, otherwise future builds will not work.")
 endif()
 
+set(YB_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+message("YB_BUILD_DIR: ${YB_BUILD_DIR}")
+
 # Determine the number of CPUs to be used so we can call make on existing Makefiles (e.g. RocksDB)
 # with the right level of parallelism.
 # Snippet taken from https://blog.kitware.com/how-many-ya-got/
@@ -91,14 +94,15 @@ if(IS_DIRECTORY "${CCACHE_WRAPPER_DIR}")
   set(DEFAULT_CMAKE_C_COMPILER "${CMAKE_C_COMPILER}")
   get_filename_component(C_COMPILER_BASENAME "${CMAKE_C_COMPILER}" NAME)
   set(CMAKE_C_COMPILER "${CCACHE_WRAPPER_DIR}/${C_COMPILER_BASENAME}")
-  message("Using CCache as C compiler: ${CMAKE_C_COMPILER} \
-(was ${DEFAULT_CMAKE_C_COMPILER} by default)")
+  # This is a warning to make sure it shows up even if regular messages are somehow disabled.
+  message(WARNING "Using CCache as C compiler: ${CMAKE_C_COMPILER} \
+(was ${DEFAULT_CMAKE_C_COMPILER} by default) -- not really a warning, just FYI")
 
   set(DEFAULT_CMAKE_CXX_COMPILER "${CMAKE_CXX_COMPILER}")
   get_filename_component(CXX_COMPILER_BASENAME "${CMAKE_CXX_COMPILER}" NAME)
   set(CMAKE_CXX_COMPILER "${CCACHE_WRAPPER_DIR}/${CXX_COMPILER_BASENAME}")
-  message("Using CCache as C++ compiler: ${CMAKE_CXX_COMPILER} \
-(was ${DEFAULT_CMAKE_CXX_COMPILER} by default)")
+  message(WARNING "Using CCache as C++ compiler: ${CMAKE_CXX_COMPILER} \
+(was ${DEFAULT_CMAKE_CXX_COMPILER} by default) -- not really a warning, just FYI")
 
 else()
   message(
@@ -255,6 +259,11 @@ endif ()
 message("Configured for ${CMAKE_BUILD_TYPE} build (set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
+  if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
+    set(LD_GOLD_FLAGS "-fuse-ld=gold")
+    message("Adding flags in front of CMAKE_EXE_LINKER_FLAGS: ${LD_GOLD_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${LD_GOLD_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
+  endif()
   set(ROCKSDB_DEBUG_LEVEL 2)
   set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
@@ -481,7 +490,20 @@ endif()
 # The gold linker is only for ELF binaries, which OSX doesn't use. We can
 # just skip.
 if (NOT APPLE)
-  execute_process(COMMAND ${CMAKE_CXX_COMPILER} -Wl,--version OUTPUT_VARIABLE LINKER_OUTPUT)
+  set(LINKER_DETECTION_COMMAND "${CMAKE_CXX_COMPILER} ${CMAKE_EXE_LINKER_FLAGS} -Wl,--version")
+  # TODO: how do we execute a command line stored in a variable without interpreting the entire
+  # string (including spaces) as the command name? Currently, just using "bash -c".
+  execute_process(COMMAND bash -c "${LINKER_DETECTION_COMMAND}"
+    OUTPUT_VARIABLE LINKER_OUTPUT
+    ERROR_VARIABLE LINKER_DETECTION_ERROR_OUTPUT
+    RESULT_VARIABLE LINKER_DETECTION_EXIT_CODE)
+  if(NOT ${LINKER_DETECTION_EXIT_CODE} EQUAL 0)
+    message(FATAL_ERROR
+      "Linker detection command '${LINKER_DETECTION_COMMAND}' failed with exit code\
+ '${LINKER_DETECTION_EXIT_CODE}'. Error output: ${LINKER_DETECTION_ERROR_OUTPUT}")
+  endif()
+  message("LINKER_DETECTION_COMMAND=${LINKER_DETECTION_COMMAND}")
+  message("LINKER_OUTPUT=${LINKER_OUTPUT}")
 endif ()
 if (LINKER_OUTPUT MATCHES "gold")
   if ("${YB_LINK}" STREQUAL "d" AND
@@ -518,7 +540,7 @@ set(EXECUTABLE_OUTPUT_PATH "${CMAKE_CURRENT_BINARY_DIR}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-include_directories(src)
+include_directories(src src/rocksdb/include)
 
 ############################################################
 # Visibility
@@ -1070,24 +1092,8 @@ else()
 endif()
 
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
-
-message("BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}")
-if("${BUILD_SHARED_LIBS}" STREQUAL "ON")
-  message(
-    "RocksDB library '${ROCKSDB_SHARED_LIB}' will be symlinked into '${CMAKE_CURRENT_BINARY_DIR}/lib'")
-  add_custom_target(
-    symlink_rocksdb_dynamic_lib_into_lib_dir
-    COMMAND ln -sf "${ROCKSDB_SHARED_LIB}" "${CMAKE_CURRENT_BINARY_DIR}/lib"
-    DEPENDS invoke_rocksdb_makefile
-  )
-  add_dependencies(rocksdb symlink_rocksdb_dynamic_lib_into_lib_dir)
-endif()
-
-add_dependencies(rocksdb invoke_rocksdb_makefile)
-
-include_directories(
-  src/rocksdb src/rocksdb/include
-)
+add_dependencies(
+  rocksdb invoke_rocksdb_makefile)
 
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)

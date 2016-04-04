@@ -25,6 +25,11 @@ Options:
     The debug level to build RocksDB with (0, 1, or 2). See src/rocksdb/Makefile for details.
   --link-mode <link_mode>
     This is "s" for static linking or "d" for dynamic linking (default).
+  --cxx-compiler <c++_compiler_path>
+  --c-compiler <c_compiler_path>
+    These options specify C++ and C compilers to use.
+  --use-gold-linker
+    Specify to use the ld.gold linker.
 EOT
 }
 
@@ -33,6 +38,11 @@ build_type=""
 make_parallelism=""
 debug_level=""
 link_mode="d"
+cxx_compiler=""
+c_compiler=""
+use_gold_linker=false
+
+make_opts=()
 
 while [ $# -ne 0 ]; do
   case "$1" in
@@ -60,6 +70,17 @@ while [ $# -ne 0 ]; do
       link_mode=$2
       shift
     ;;
+    --cxx-compiler)
+      cxx_compiler=$2
+      shift
+    ;;
+    --c-compiler)
+      c_compiler=$2
+      shift
+    ;;
+    --use-gold-linker)
+      use_gold_linker=true
+    ;;
     *)
       print_help >&2
       echo >&2
@@ -77,6 +98,25 @@ if [ ! -d "$build_dir" ]; then
   echo "Directory specified by --build-dir ('$build_dir') does not exist or is not a directory" >&2
   exit 1
 fi
+
+if [ -n "$cxx_compiler" ]; then
+  if [ ! -f "$cxx_compiler" ]; then
+    echo "C++ compiler does not exist at the location specified with --cxx-compiler:" \
+         "'$cxx_compiler'" >&2
+    exit 1
+  fi
+  make_opts+=( CXX="$cxx_compiler" )
+fi
+
+if [ -n "$c_compiler" ]; then
+  if [ ! -f "$c_compiler" ]; then
+    echo "C compiler does not exist at the location specified with --c-compiler:" \
+         "'$c_compiler'" >&2
+    exit 1
+  fi
+  make_opts+=( CC="$c_compiler" )
+fi
+
 
 make_targets=( tools benchmarks )
 case "$link_mode" in
@@ -104,13 +144,12 @@ if [ -z "$build_type" ]; then
   build_type=${build_dir##*/}
 fi
 
-make_opts=""
 if [ -n "$make_parallelism" ]; then
   if [[ ! "$make_parallelism" =~ ^[0-9]+$ ]]; then
     echo "Invalid value for --make-parallelism: '$make_parallelism'" >&2
     exit 1
   fi
-  make_opts="-j$make_parallelism"
+  make_opts+=( "-j$make_parallelism" )
 fi
 
 if [ -n "$debug_level" ]; then
@@ -118,7 +157,7 @@ if [ -n "$debug_level" ]; then
     echo "Invalid value for --debug-level: must be 0, 1, or 2" >&2
     exit 1
   fi
-  make_opts+=" DEBUG_LEVEL=$debug_level"
+  make_opts+=( "DEBUG_LEVEL=$debug_level" )
 fi
 
 build_type_lowercase=$( echo "$build_type" | tr '[:upper:]' '[:lower:]' )
@@ -175,9 +214,10 @@ rsync -al "$link_dir/" "$rocksdb_build_dir"
 
 cd "$rocksdb_build_dir"
 
-make $make_opts ${make_targets[@]}
+set +u  # make_opts may be empty and that we don't want that to be treated as an undefined variable
+make "${make_opts[@]}" "${make_targets[@]}"
 
-set +x
+set +x -u
 
 # Now we're handling a weird issue that only happens during CLion-triggered builds.
 # The RocksDB library is somehow expected to exist in __default__/rocksdb-build instead of

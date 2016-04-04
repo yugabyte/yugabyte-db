@@ -26,6 +26,7 @@ set(LINK_LIBS
   gutil
   cfile
   tablet
+  dl
   ${YB_BASE_LIBS}
 )
 

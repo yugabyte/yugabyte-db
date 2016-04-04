@@ -6,6 +6,8 @@
 
 #-----------------------------------------------
 
+$(warning "RocksDB build is using CC=$(CC), CXX=$(CXX)")
+
 CLEAN_FILES = # deliberately empty, so we can append below.
 CFLAGS += ${EXTRA_CFLAGS}
 # See the following link for old vs. new C++ ABI differences:
@@ -201,8 +203,15 @@ PLATFORM_CXXFLAGS += -isystem $(GTEST_DIR)
 # This (the first rule) must depend on "all".
 default: all
 
+# -Wno-parentheses-equality is there because otherwise there is this error on Mac OS X:
+# util/instrumented_mutex.cc:19:114: error: equality comparison with extraneous parentheses [-Werror,-Wparentheses-equality]
+#   PerfStepTimer perf_step_timer_db_mutex_lock_nanos(&(perf_context.db_mutex_lock_nanos), true); if ((stats_code_ == DB_MUTEX_WAIT_MICROS)) { perf_step_timer_db_mutex_lock_nanos.Start(); };
+#                                                                                                    ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~
+# -Wunevaluated-expression is there to prevent the following error on Mac OS X:
+# util/autovector_test.cc:55:120: error: expression with side effects has no effect in an unevaluated context [-Werror,-Wunevaluated-expression]
+#     switch (0) case 0: default: if (const ::testing::AssertionResult gtest_ar = (::testing::internal:: EqHelper<(sizeof(::testing::internal::IsNullLiteralHelper(--size)) == 1)>::Compare("--size", "vec.size()", --size, vec.size()))) ; else return ::testing::internal::AssertHelper(::testing::TestPartResult::kFatalFailure, "util/autovector_test.cc", 55, gtest_ar.failure_message()) = ::testing::Message();
 WARNING_FLAGS = -W -Wextra -Wall -Wsign-compare -Wshadow \
-  -Wno-unused-parameter -Wno-unused-variable
+  -Wno-unused-parameter -Wno-unused-variable -Wno-parentheses-equality -Wno-unevaluated-expression
 
 ifndef DISABLE_WARNING_AS_ERROR
 	WARNING_FLAGS += -Werror

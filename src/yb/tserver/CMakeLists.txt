@@ -141,6 +141,7 @@ target_link_libraries(tserver
 add_executable(yb-tserver tablet_server_main.cc)
 target_link_libraries(yb-tserver
   tserver
+  dl
   ${YB_BASE_LIBS})
 
 #########################################
@@ -162,6 +163,7 @@ target_link_libraries(tserver_test_util
 set(YB_TEST_LINK_LIBS
   tserver
   tserver_test_util
+  dl
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(remote_bootstrap_client-test)
 ADD_YB_TEST(remote_bootstrap_session-test)
