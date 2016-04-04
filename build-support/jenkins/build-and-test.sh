@@ -24,7 +24,8 @@
 #   BUILD_TYPE: Default: DEBUG
 #     Maybe be one of ASAN|TSAN|DEBUG|RELEASE|COVERAGE|LINT
 #
-#   YB_ALLOW_SLOW_TESTS   Default: 1
+#   YB_ALLOW_SLOW_TESTS
+#   Default: 1
 #     Runs the "slow" version of the unit tests. Set to 0 to
 #     run the tests more quickly.
 #
@@ -34,65 +35,92 @@
 #     directory is empty (i.e. every test cleaned up after itself).
 #     The default location of this directory depends on the current user, Jenkins job name and id.
 #
-#   RUN_FLAKY_ONLY    Default: 0
+#   RUN_FLAKY_ONLY
+#   Default: 0
 #     Only runs tests which have failed recently, if this is 1.
 #     Used by the kudu-flaky-tests jenkins build.
 #
-#   YB_FLAKY_TEST_ATTEMPTS  Default: 1
+#   YB_FLAKY_TEST_ATTEMPTS
+#   Default: 1
 #     If more than 1, will fetch the list of known flaky tests
 #     from the yb-test jenkins job, and allow those tests to
 #     be flaky in this build.
 #
-#   TEST_RESULT_SERVER  Default: none
+#   TEST_RESULT_SERVER
+#   Default: none
 #     The host:port pair of a server running test_result_server.py.
 #     This must be configured for flaky test resistance or test result
 #     reporting to work.
 #
-#   ENABLE_DIST_TEST  Default: 0
+#   ENABLE_DIST_TEST
+#   Default: 0
 #     If set to 1, will submit C++ tests to be run by the distributed
 #     test runner instead of running them locally. This requires that
 #     $DIST_TEST_HOME be set to a working dist_test checkout (and that
 #     dist_test itself be appropriately configured to point to a cluster)
 #
-#   BUILD_CPP         Default: 1
+#   BUILD_CPP
+#   Default: 1
 #     Build and test C++ code if this is set to 1.
 #
-#   BUILD_JAVA        Default: 1
+#   BUILD_JAVA
+#   Default: 1
 #     Build and test java code if this is set to 1.
 #
-#   VALIDATE_CSD      Default: 0
+#   VALIDATE_CSD
+#   Default: 0
 #     If 1, runs the CM CSD validator against the YB CSD.
 #     This requires access to an internal Cloudera maven repository.
 #
-#   BUILD_PYTHON       Default: 1
+#   BUILD_PYTHON
+#   Default: 1
 #     Build and test the Python wrapper of the client API.
 #
-#   MVN_FLAGS          Default: ""
+#   MVN_FLAGS
+#   Default: ""
 #     Extra flags which are passed to 'mvn' when building and running Java
 #     tests. This can be useful, for example, to choose a different maven
 #     repository location.
 #
 #   EXTRA_MAKE_ARGS
 #     Extra arguments to pass to Make
+#
+#   YB_COMPRESS_TEST_OUTPUT
+#   Default: 0
+#     Controls whether test output needs to be compressed (gzipped).
+
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
+DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
+if [ -n "$DONT_BUILD" ]; then
+  echo "*** Build not requested. Exiting."
+  exit 1
+fi
 
-if [ "`uname`" == "Darwin" ]; then
-  IS_MAC=1
-  ZCAT=gzcat
+if [[ ! "${YB_COMPRESS_TEST_OUTPUT:-}" =~ ^[01]?$ ]]; then
+  echo "YB_COMPRESS_TEST_OUTPUT is expected to be 0, 1, or undefined," \
+       "found: '$YB_COMPRESS_TEST_OUTPUT'" >&2
+  exit 1
+fi
+
+YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-0}
+
+if [ "$YB_COMPRESS_TEST_OUTPUT" == "1" ]; then
+  if [ "`uname`" == "Darwin" ]; then
+    IS_MAC=1
+    CAT_TEST_OUTPUT=gzcat
+  else
+    IS_MAC=0
+    CAT_TEST_OUTPUT=zcat
+  fi
+  TEST_OUTPUT_EXTENSION=txt.gz
 else
-  IS_MAC=0
-  ZCAT=zcat
+  CAT_TEST_OUTPUT=cat
+  TEST_OUTPUT_EXTENSION=txt
 fi
 
 echo "YB_KEEP_BUILD_ARTIFACTS=${YB_KEEP_BUILD_ARTIFACTS:-}"
-
-DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
-if [ -n "$DONT_BUILD" ]; then
-    echo "*** Build not requested. Exiting."
-    exit 1
-fi
 
 SKIP_CPP_BUILD=$(git show|egrep '^\s{4}SKIP_CPP_BUILD$')
 if [ -n "$SKIP_CPP_BUILD" ]; then
@@ -470,17 +498,20 @@ if [ $EXIT_STATUS != 0 ]; then
 
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
-  for GTEST_OUTFILE in $TEST_LOG_DIR/*.txt.gz; do
-    TEST_EXE=$(basename $GTEST_OUTFILE .txt.gz)
+  for GTEST_OUTFILE in $TEST_LOG_DIR/*.${TEST_OUTPUT_EXTENSION}; do
+    TEST_EXE=$(basename $GTEST_OUTFILE .${TEST_OUTPUT_EXTENSION} )
     GTEST_XMLFILE="$TEST_LOG_DIR/$TEST_EXE.xml"
     if [ ! -f "$GTEST_XMLFILE" ]; then
       echo "JUnit report missing:" \
            "generating fake JUnit report file from $GTEST_OUTFILE and saving it to $GTEST_XMLFILE"
-      $ZCAT $GTEST_OUTFILE | $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
+      $CAT_TEST_OUTPUT "$GTEST_OUTFILE" | \
+        $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
       if [ "$IS_MAC" == "1" ] && \
-         $ZCAT "$GTEST_OUTFILE" | grep "Referenced from: " >/dev/null; then
+         $CAT_TEST_OUTPUT "$GTEST_OUTFILE" | grep "Referenced from: " >/dev/null; then
         MISSING_LIBRARY_REFERENCED_FROM=$(
-          $ZCAT "$GTEST_OUTFILE" | grep "Referenced from: " | head -1 | awk '{print $NF}' )
+          $CAT_TEST_OUTPUT "$GTEST_OUTFILE" | grep "Referenced from: " | \
+            head -1 | awk '{print $NF}'
+        )
         echo
         echo "$GTEST_OUTFILE says there is a missing library" \
              "referenced from $MISSING_LIBRARY_REFERENCED_FROM"

@@ -21,7 +21,7 @@
 # Script which wraps running a test and redirects its output to a
 # test log directory.
 #
-# If YB_COMPRESS_TEST_OUTPUT is set to 1, then the logs will be
+# If YB_COMPRESS_TEST_OUTPUT is set to 1 (0 by default), then the logs will be
 # gzip-compressed while they are written.
 #
 # If YB_FLAKY_TEST_ATTEMPTS is non-zero, and the test being run matches
@@ -46,6 +46,7 @@ if [ -z "$TEST_PATH" ]; then
   exit 1
 fi
 
+YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-0}
 if [[ ! "${YB_COMPRESS_TEST_OUTPUT:-}" =~ ^[01]?$ ]]; then
   echo "YB_COMPRESS_TEST_OUTPUT is expected to be 0, 1, or undefined," \
        "found: '$YB_COMPRESS_TEST_OUTPUT'" >&2
@@ -109,7 +110,7 @@ XML_FILE_PATH=$LOG_PATH_PREFIX.xml
 # run.
 rm -f "$LOG_PATH_TXT" "$LOG_PATH_TXT.gz"
 
-if [ -n "${YB_COMPRESS_TEST_OUTPUT:-}" ] && [ "$YB_COMPRESS_TEST_OUTPUT" -ne 0 ] ; then
+if [ "$YB_COMPRESS_TEST_OUTPUT" == "1" ]; then
   pipe_cmd=gzip
   LOG_PATH=$LOG_PATH_TXT.gz
 else
