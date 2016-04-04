@@ -36,13 +36,13 @@
 #include "yb/client/write_op.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
 namespace yb {
 
 class LinkedListTester;
 class PartitionSchema;
+class Sockaddr;
 
 namespace client {
 
