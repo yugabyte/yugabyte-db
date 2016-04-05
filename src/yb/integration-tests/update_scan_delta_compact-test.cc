@@ -123,7 +123,8 @@ class UpdateScanDeltaCompactionTest : public YBTest {
 
   shared_ptr<YBSession> CreateSession() {
     shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeoutMillis(5000);
+    // Bumped this up from 5 sec to 30 sec in hope to fix the flakiness in this test.
+    session->SetTimeoutMillis(30000);
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     return session;
   }
