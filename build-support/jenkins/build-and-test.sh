@@ -106,12 +106,16 @@ fi
 
 YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-0}
 
+if [ "`uname`" == "Darwin" ]; then
+  IS_MAC=1
+else
+  IS_MAC=0
+fi
+
 if [ "$YB_COMPRESS_TEST_OUTPUT" == "1" ]; then
-  if [ "`uname`" == "Darwin" ]; then
-    IS_MAC=1
+  if [ "$IS_MAC" == "1" ]; then
     CAT_TEST_OUTPUT=gzcat
   else
-    IS_MAC=0
     CAT_TEST_OUTPUT=zcat
   fi
   TEST_OUTPUT_EXTENSION=txt.gz
