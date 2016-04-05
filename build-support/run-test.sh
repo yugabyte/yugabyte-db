@@ -184,8 +184,14 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
 
   STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
 
-  "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
-    $pipe_cmd >"$LOG_PATH"
+  if [ "$STACK_TRACE_FILTER" == "cat" ]; then
+    # Don't pass the binary name as an argument to the cat command.
+    "$STACK_TRACE_FILTER" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
+      $pipe_cmd >"$LOG_PATH"
+  else
+    "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
+      $pipe_cmd >"$LOG_PATH"
+  fi
 
   if [ $? -ne 0 ]; then
     # Stack trace filtering or compression failed, create an uncompressed output file with the
