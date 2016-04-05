@@ -35,7 +35,7 @@ Commands:
     command.
   stop-tserver <tserver_index>
     Stop the tablet server process with the given index.
-  restart-master <tserver_index>
+  restart-master <master_index>
     Restart the master server with the given index.
   restart-tserver <tserver_index>
     Restart the tablet server with the given index.
@@ -56,7 +56,7 @@ fi
 validate_num_servers() {
   local n="$1"
   if [[ ! "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_SERVERS" ]; then
-    echo "Expected a number of servers between 1 and $MAX_SERVERS, got: '$n'" >&2
+    echo "Expected number of servers between 1 and $MAX_SERVERS, got: '$n'" >&2
     exit 1
   fi
 }
