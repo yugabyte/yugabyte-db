@@ -14,12 +14,31 @@ Options (do not apply to status/stop/add/remove commands):
     use a stop/start combination instead.
 
 Commands:
-  start   - start master & tablet server processes
-  stop    - stop all master & tablet server processes
-  status  - display running status and process id of master & tablet server processes
-  add     - add one tablet server process
-  remove <daemon_index> - remove one tablet server process with given index (gotten from status)
-  destroy - stop all master & tablet server processes as well as remove any assosciated data
+  start
+    Start master & tablet server processes.
+  stop
+    Stop all master & tablet server processes.
+  restart
+    Stop the cluster and start it again (keep the data).
+  status
+    Display running status and process id of master & tablet server processes.
+  destroy
+    Stop all master & tablet server processes as well as remove any assosciated data.
+  wipe-restart
+    Stop the cluster, wipe all the data files, and start the cluster.
+  add-master
+    Add one master process
+  add-tserver
+    Add one tablet server process
+  stop-master <master_index>
+    Stop the master process with the given index. The index can be obtained from the "status"
+    command.
+  stop-tserver <tserver_index>
+    Stop the tablet server process with the given index.
+  restart-master <master_index>
+    Restart the master server with the given index.
+  restart-tserver <tserver_index>
+    Restart the tablet server with the given index.
 EOT
 }
 
@@ -37,13 +56,9 @@ fi
 validate_num_servers() {
   local n="$1"
   if [[ ! "$n" =~ ^[0-9]+$ ]] || [ "$n" -lt 1 ] || [ "$n" -gt "$MAX_SERVERS" ]; then
-    echo "Expected a number between 1 and $MAX_SERVERS, got: '$n'" >&2
+    echo "Expected number of servers between 1 and $MAX_SERVERS, got: '$n'" >&2
     exit 1
   fi
-}
-
-validate_num_masters() {
-  validate_num_servers "$1"
 }
 
 validate_daemon_type() {
@@ -56,11 +71,35 @@ validate_daemon_type() {
 
 validate_daemon_index() {
   local daemon_index="$1"
-  if [[ ! "$daemon_index" =~ ^[0-9]+$ ]] || [ "$daemon_index" -lt 1 ] || \
-      [ "$daemon_index" -gt "$MAX_SERVERS" ]; then
+  if [[ ! "$daemon_index" =~ ^[0-9]+$ ]] || \
+     [ "$daemon_index" -lt 1 ] || \
+     [ "$daemon_index" -gt "$MAX_SERVERS" ]; then
     echo "Internal error: invalid daemon index '$daemon_index'" >&2
     exit 1
   fi
+}
+
+validate_running_daemon_index() {
+  local daemon_type="$1"
+  validate_daemon_type "$daemon_type"
+  local daemon_index="$2"
+  validate_daemon_index "$daemon_index"
+  case "$daemon_type" in
+    master)
+      if [ "$daemon_index" -gt "$max_running_master_index" ]; then
+        echo "Invalid master index: $daemon_index, max running master index is" \
+             "$max_running_master_index" >&2
+        exit 1
+      fi
+    ;;
+    tserver)
+      if [ "$daemon_index" -gt "$max_running_tserver_index" ]; then
+        echo "Invalid tablet server index: $daemon_index, max running tablet server index is" \
+             "$max_running_tserver_index" >&2
+        exit 1
+      fi
+    ;;
+  esac
 }
 
 create_directories() {
@@ -142,58 +181,46 @@ show_daemon_status() {
   fi
 }
 
-set_num_servers() {
-  set_num_masters
-  set_num_tservers
-}
-
-max_running_master_index=0
-# Count number of current masters.
-set_num_masters() {
-  if [ "$max_running_master_index" -ne 0 ]; then
-    echo "set_num_masters() cannot be called more than once." >&2
-    exit 1
-  fi
-  for i in `$SEQ 1 $MAX_SERVERS`; do
-    local daemon_pid=$( find_daemon_pid "master" $i )
-    if [ -n "$daemon_pid" ]; then
-      if [ $i -gt $max_running_master_index ]; then
-        let max_running_master_index=$i
+count_running_daemons() {
+  local daemon_type
+  for daemon_type in master tserver; do
+    local max_running_daemon_index=0
+    for i in $( $SEQ 1 $MAX_SERVERS ); do
+      local daemon_pid=$( find_daemon_pid "$daemon_type" $i )
+      if [ -n "$daemon_pid" ]; then
+        if [ $i -gt $max_running_daemon_index ]; then
+          let max_running_daemon_index=$i
+        fi
       fi
-    fi
-  done
-  master_indexes=$( $SEQ 1 $max_running_master_index )
-}
+    done
 
-max_running_tserver_index=0
-# Count number of current tablet servers.
-set_num_tservers() {
-  if [ "$max_running_tserver_index" -ne 0 ]; then
-    echo "set_num_tservers() cannot be called more than once." >&2
-    exit 1
-  fi
-  for i in `$SEQ 1 $MAX_SERVERS`; do
-    local daemon_pid=$( find_daemon_pid "tserver" $i )
-    if [ -n "$daemon_pid" ]; then
-      if [ $i -gt $max_running_tserver_index ]; then
-        let max_running_tserver_index=$i
-      fi
-    fi
+    local daemon_indexes=$( $SEQ 1 $max_running_daemon_index )
+    case "$daemon_type" in
+      master)
+        max_running_master_index=$max_running_daemon_index
+        master_indexes=$daemon_indexes
+      ;;
+      tserver)
+        max_running_tserver_index=$max_running_daemon_index
+        tserver_indexes=$daemon_indexes
+      ;;
+    esac
   done
-  tserver_indexes=$( $SEQ 1 $max_running_tserver_index )
 }
 
 increment_tservers() {
   let max_running_tserver_index=max_running_tserver_index+1
+  new_daemon_index=$max_running_tserver_index
   tserver_indexes=$( $SEQ 1 $max_running_tserver_index )
 }
 
 increment_masters() {
   let max_running_master_index=max_running_master_index+1
+  new_daemon_index=$max_running_master_index
   master_indexes=$( $SEQ 1 $max_running_master_index )
 }
 
-remove_daemon() {
+stop_daemon() {
   local daemon_type=$1
   validate_daemon_type "$daemon_type"
   local id=$2
@@ -218,32 +245,36 @@ set_master_addresses() {
 }
 
 start_master() {
-  master_base_dir="$cluster_base_dir/master-$1"
+  local  master_index=$1
+  validate_daemon_index "$master_index"
+  master_base_dir="$cluster_base_dir/master-$master_index"
   if [ ! -d "$master_base_dir" ]; then
     echo "Internal error: directory '$master_base_dir' does not exist" >&2
     exit 1
   fi
   (
-    echo "Starting master $1"
+    echo "Starting master $master_index"
     set -x
     "$master_binary" \
       --fs_data_dirs "$master_base_dir/data" \
       --fs_wal_dir "$master_base_dir/wal" \
       --log_dir "$master_base_dir/logs" \
       --master_addresses "$master_addresses" \
-      --webserver_port $(( $master_http_port_base + $1 )) \
-      --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $1 )) &
+      --webserver_port $(( $master_http_port_base + $master_index )) \
+      --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) &
   )
 }
 
 start_tserver() {
-  tserver_base_dir="$cluster_base_dir/tserver-$1"
+  local tserver_index=$1
+  validate_daemon_index "$tserver_index"
+  tserver_base_dir="$cluster_base_dir/tserver-$tserver_index"
   if [ ! -d "$tserver_base_dir" ]; then
     echo "Internal error: directory '$tserver_base_dir' does not exist" >&2
     exit 1
   fi
   (
-    echo "Starting tablet server $1"
+    echo "Starting tablet server $tserver_index"
     set -x
     "$tserver_binary" \
        --fs_data_dirs "$tserver_base_dir/data" \
@@ -252,12 +283,12 @@ start_tserver() {
        --tserver_master_addrs "$master_addresses" \
        --block_cache_capacity_mb 128 \
        --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
-       --webserver_port $(( $tserver_http_port_base + $1 )) \
-       --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $1 )) &
+       --webserver_port $(( $tserver_http_port_base + $tserver_index )) \
+       --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $tserver_index )) &
   )
 }
 
-add_daemon() {
+start_daemon() {
   local daemon_type=$1
   validate_daemon_type "$daemon_type"
   local id=$2
@@ -277,11 +308,98 @@ add_daemon() {
   esac
 }
 
+start_cluster() {
+  validate_num_servers "$num_masters"
+  validate_num_servers "$num_tservers"
+
+  create_directories master $num_masters
+  create_directories tserver $num_tservers
+
+  master_indexes=$( $SEQ 1 $num_masters )
+  tserver_indexes=$( $SEQ 1 $num_tservers )
+
+  set_master_addresses
+
+  local i
+  for i in $master_indexes; do
+    existing_master_pid=$( find_daemon_pid master $i )
+    if [ -n "$existing_master_pid" ]; then
+      echo "Master $i is already running as PID $existing_master_pid"
+    else
+      start_master $i
+    fi
+  done
+
+  for i in $tserver_indexes; do
+    existing_tserver_pid=$( find_daemon_pid tserver $i )
+    if [ -n "$existing_tserver_pid" ]; then
+      echo "Tabled server $i is already running as PID $existing_tserver_pid"
+    else
+      start_tserver $i
+    fi
+  done
+}
+
+start_cluster_as_before() {
+  num_masters=$max_running_master_index
+  num_tservers=$max_running_tserver_index
+  start_cluster
+}
+
+stop_cluster() {
+  set_master_addresses
+
+  local i
+  for i in $master_indexes; do
+    stop_daemon "master" $i
+  done
+
+  for i in $tserver_indexes; do
+    stop_daemon "tserver" $i
+  done
+}
+
+destroy_cluster() {
+  stop_cluster
+  echo
+  echo "Removing directory '$cluster_base_dir'"
+  ( set -x; rm -rf "$cluster_base_dir" )
+  echo
+}
+
+show_cluster_status() {
+  set_master_addresses
+  local i
+  for i in $master_indexes; do
+    show_daemon_status "master" $i
+  done
+
+  for i in $tserver_indexes; do
+    show_daemon_status "tserver" $i
+  done
+}
+
+set_cmd() {
+  if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
+    echo "More than one command specified: $cmd, $1" >&2
+    exit 1
+  fi
+  cmd="$1"
+}
+
+output_separator() {
+  echo
+  echo "------------------------------------------------------------------------------------------"
+  echo
+}
+
+
+
 cmd=""
 num_masters=3
 num_tservers=3
-rem_id=""
-restart_id=""
+daemon_index_to_stop=""
+daemon_index_to_restart=""
 master_indexes=""
 tserver_indexes=""
 
@@ -299,32 +417,18 @@ while [ $# -gt 0 ]; do
       print_help
       exit
     ;;
-    remove|remove_master)
-      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
-        echo "More than one command specified: $cmd, $1" >&2
-        exit 1
-      fi
-
-      cmd="$1"
-      rem_id="$2"
+    stop-master|stop-tserver)
+      set_cmd "$1"
+      daemon_index_to_stop="$2"
       shift
     ;;
-    restart|restart_master)
-      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
-        echo "More than one command specified: $cmd, $1" >&2
-        exit 1
-      fi
-
-      cmd="$1"
-      restart_id="$2"
+    restart-master|restart-tserver)
+      set_cmd "$1"
+      daemon_index_to_restart="$2"
       shift
     ;;
-    start|stop|status|add|destroy|add_master)
-      if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
-        echo "More than one command specified: $cmd, $1" >&2
-        exit 1
-      fi
-      cmd="$1"
+    start|stop|status|add|add-master|add-tserver|destroy|restart|wipe-restart)
+      set_cmd "$1"
     ;;
     *)
       echo "Invalid command line argument: $1"
@@ -380,102 +484,48 @@ ensure_binary_exists "$tserver_binary"
 
 export YB_HOME="$yugabyte_root"
 
-if [ "$cmd" == "start" ]; then
-  validate_num_servers "$num_masters"
-  validate_num_servers "$num_tservers"
-
-  create_directories master $num_masters
-  create_directories tserver $num_tservers
-
-  master_indexes=$( $SEQ 1 $num_masters )
-  tserver_indexes=$( $SEQ 1 $num_tservers )
-
-  set_master_addresses
-
-  for i in $master_indexes; do
-    existing_master_pid=$( find_daemon_pid master $i )
-    if [ -n "$existing_master_pid" ]; then
-      echo "Master $i is already running as PID $existing_master_pid"
-    else
-      start_master $i
-    fi
-  done
-
-  for i in $tserver_indexes; do
-    existing_tserver_pid=$( find_daemon_pid tserver $i )
-    if [ -n "$existing_tserver_pid" ]; then
-      echo "Tabled server $i is already running as PID $existing_tserver_pid"
-    else
-      start_tserver $i
-    fi
-  done
-elif [ "$cmd" == "stop" ] || [ "$cmd" == "destroy" ] ; then
-  set_num_servers
-  set_master_addresses
-
-  for i in $master_indexes; do
-    stop_daemon "master" $i
-  done
-
-  for i in $tserver_indexes; do
-    stop_daemon "tserver" $i
-  done
-
-  # If this is a destroy command, also purge the data directory.
-  if [ "$cmd" == "destroy" ]; then
-    rm -rf "$cluster_base_dir"
-  fi
-elif [ "$cmd" == "status" ]; then
-  set_num_servers
-  set_master_addresses
-  for i in $master_indexes; do
-    show_daemon_status "master" $i
-  done
-
-  for i in $tserver_indexes; do
-    show_daemon_status "tserver" $i
-  done
-elif [ "$cmd" == "add" ]; then
-  set_num_servers
-  increment_tservers
-  validate_num_servers "$max_running_tserver_index"
-  set_master_addresses
-  add_daemon "tserver" "$max_running_tserver_index"
-elif [ "$cmd" == "remove" ]; then
-  set_num_tservers
-  set_master_addresses
-  if [ "$rem_id" -gt "$max_running_tserver_index" ]; then
-    echo "User input error: invalid daemon index '$rem_id'" >&2
-    exit 1
-  fi
-  remove_daemon "tserver" "$rem_id"
-elif [ "$cmd" == "restart" ]; then
-  validate_daemon_index "$restart_id"
-  set_num_servers
-  validate_num_servers "$max_running_tserver_index"
-  set_master_addresses
-  start_tserver "$restart_id"
-elif [ "$cmd" == "add_master" ]; then
-  set_num_masters
-  increment_masters
-  validate_num_masters "$max_running_master_index"
-  set_master_addresses
-  add_daemon "master" "$max_running_master_index"
-elif [ "$cmd" == "remove_master" ]; then
-  set_num_masters
-  set_master_addresses
-  if [ "$rem_id" -gt "$max_running_master_index" ]; then
-    echo "User input error: invalid master index '$rem_id'" >&2
-    exit 1
-  fi
-  remove_daemon "master" "$rem_id"
-elif [ "$cmd" == "restart_master" ]; then
-  validate_daemon_index "$restart_id"
-  set_num_masters
-  validate_num_masters "$max_running_master_index"
-  set_master_addresses
-  start_master "$restart_id"
-else
-  echo "Command $cmd has not been implemented yet" >&2
-  exit 1
+count_running_daemons
+if [[ "$cmd" =~ ^[a-z]+-(master|tserver)$ ]]; then
+  daemon_type=${cmd#*-}
 fi
+
+case "$cmd" in
+  start) start_cluster ;;
+  stop) stop_cluster ;;
+  restart)
+    stop_cluster
+    output_separator
+    start_cluster_as_before
+  ;;
+  status) show_cluster_status ;;
+  destroy) destroy_cluster ;;
+  wipe-restart)
+    stop_cluster
+    output_separator
+    destroy_cluster
+    output_separator
+    start_cluster_as_before
+  ;;
+  add-master|add-tserver)
+    increment_${daemon_type}s
+    validate_num_servers "$max_running_master_index"
+    validate_num_servers "$max_running_tserver_index"
+    set_master_addresses
+    start_daemon "${daemon_type}" "$new_daemon_index"
+  ;;
+  stop-master|stop_tserver)
+    set_master_addresses
+    validate_running_daemon_index "$daemon_type" "$daemon_index_to_stop"
+    stop_daemon "$daemon_type" "$daemon_index_to_stop"
+  ;;
+  restart-master|restart-tserver)
+    validate_daemon_index "$daemon_index_to_restart"
+    set_master_addresses
+    stop_daemon "$daemon_type" "$daemon_index_to_restart"
+    output_separator
+    start_daemon "$daemon_type" "$daemon_index_to_restart"
+  ;;
+  *)
+    echo "Command $cmd has not been implemented yet" >&2
+    exit 1
+esac
