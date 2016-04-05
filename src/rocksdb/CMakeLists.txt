@@ -48,6 +48,7 @@ add_custom_target(
     --link-mode "${YB_LINK}"
     --cxx-compiler "${CMAKE_CXX_COMPILER}"
     --c-compiler "${CMAKE_C_COMPILER}"
+    ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
   COMMENT "Building RocksDB"
   VERBATIM
 )
