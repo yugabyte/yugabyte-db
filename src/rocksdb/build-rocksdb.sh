@@ -28,7 +28,7 @@ Options:
   --cxx-compiler <c++_compiler_path>
   --c-compiler <c_compiler_path>
     These options specify C++ and C compilers to use.
-  --use-gold-linker
+  --use-ld-gold
     Specify to use the ld.gold linker.
 EOT
 }
@@ -40,7 +40,8 @@ debug_level=""
 link_mode="d"
 cxx_compiler=""
 c_compiler=""
-use_gold_linker=false
+use_ld_gold=false
+extra_ldflags=""
 
 make_opts=()
 
@@ -78,8 +79,8 @@ while [ $# -ne 0 ]; do
       c_compiler=$2
       shift
     ;;
-    --use-gold-linker)
-      use_gold_linker=true
+    --use-ld-gold)
+      use_ld_gold=true
     ;;
     *)
       print_help >&2
@@ -117,6 +118,10 @@ if [ -n "$c_compiler" ]; then
   make_opts+=( CC="$c_compiler" )
 fi
 
+if $use_ld_gold; then
+  # TODO: replace this with an append if we're accumulating linker flags in multiple places.
+  extra_ldflags="-fuse-ld=gold"
+fi
 
 make_targets=( tools benchmarks )
 case "$link_mode" in
@@ -186,13 +191,16 @@ fi
 link_dir="$build_dir/rocksdb-symlinks-only"
 rocksdb_build_dir="$build_dir/rocksdb-build"
 
-
 CP=cp
 if [ "`uname`" == "Darwin" ]; then
   # The default cp command on Mac OS X does not support the "-s" argument (mirroring a directory
   # using a tree of symlinks). We install the "gcp" ("g" for GNU) from using
   # "brew install coreutils".
   CP=gcp
+fi
+
+if [ -n "$extra_ldflags" ]; then
+  make_opts+=( EXTRA_LDFLAGS="$extra_ldflags" )
 fi
 
 # -------------------------------------------------------------------------------------------------
