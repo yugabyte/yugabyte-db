@@ -257,7 +257,7 @@ endif ()
 
 # Set compile flags based on the build type.
 message("Configured for ${CMAKE_BUILD_TYPE} build (set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
-set(ROCKSDB_USE_GOLD_LINKER_ARG "")
+set(ROCKSDB_BUILD_USE_LD_GOLD_ARG "")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
   if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
