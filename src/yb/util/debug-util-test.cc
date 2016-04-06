@@ -32,6 +32,16 @@ using std::vector;
 namespace yb {
 
 class DebugUtilTest : public YBTest {
+ protected:
+  void WaitForSleeperThreadNameInStackTrace(int64_t thread_id) {
+    string stack;
+    for (int i = 0; i < 10000; i++) {
+      stack = DumpThreadStack(thread_id);
+      if (stack.find("SleeperThread") != string::npos) break;
+      SleepFor(MonoDelta::FromMicroseconds(100));
+    }
+    ASSERT_STR_CONTAINS(stack, "SleeperThread");
+  }
 };
 
 TEST_F(DebugUtilTest, TestStackTrace) {
@@ -86,13 +96,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // We have to loop a little bit because it takes a little while for the thread
   // to start up and actually call our function.
-  string stack;
-  for (int i = 0; i < 10000; i++) {
-    stack = DumpThreadStack(t->tid());
-    if (stack.find("SleeperThread") != string::npos) break;
-    SleepFor(MonoDelta::FromMicroseconds(100));
-  }
-  ASSERT_STR_CONTAINS(stack, "SleeperThread");
+  WaitForSleeperThreadNameInStackTrace(t->tid());
 
   // Test that we can change the signal and that the stack traces still work,
   // on the new signal.
@@ -105,8 +109,9 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   // SIGUSR2 should be relinquished.
   ASSERT_FALSE(IsSignalHandlerRegistered(SIGUSR2));
 
-  // Stack traces should work using the new handler.
-  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "SleeperThread");
+  // Stack traces should work using the new handler. We've had a test failure here when we just had
+  // a one-time check, so we do the same waiting loop as in the beginning of the test.
+  WaitForSleeperThreadNameInStackTrace(t->tid());
 
   // Switch back to SIGUSR2 and ensure it changes back.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));
