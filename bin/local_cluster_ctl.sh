@@ -261,7 +261,9 @@ start_master() {
       --log_dir "$master_base_dir/logs" \
       --master_addresses "$master_addresses" \
       --webserver_port $(( $master_http_port_base + $master_index )) \
-      --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) &
+      --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) \
+      >"$master_base_dir/master.out" \
+      2>"$master_base_dir/master.err" &
   )
 }
 
@@ -284,7 +286,9 @@ start_tserver() {
        --block_cache_capacity_mb 128 \
        --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
        --webserver_port $(( $tserver_http_port_base + $tserver_index )) \
-       --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $tserver_index )) &
+       --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $tserver_index )) \
+       >"$tserver_base_dir/tserver.out" \
+       2>"$tserver_base_dir/tserver.err" &
   )
 }
 
@@ -341,8 +345,12 @@ start_cluster() {
 }
 
 start_cluster_as_before() {
-  num_masters=$max_running_master_index
-  num_tservers=$max_running_tserver_index
+  if [ "$max_running_master_index" -gt 0 ]; then
+    num_masters=$max_running_master_index
+  fi
+  if [ "$max_running_tserver_index" -gt 0 ]; then
+    num_tservers=$max_running_tserver_index
+  fi
   start_cluster
 }
 

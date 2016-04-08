@@ -36,7 +36,7 @@ message("Detected RocksDB version: ${ROCKSDB_VERSION}")
 
 # Find all RocksDB sources to make CLion recognize them as such. This is not being passed to a
 # compiler.
-file(GLOB_RECURSE ROCKSDB_SOURCES "*.cc")
+file(GLOB_RECURSE ROCKSDB_SOURCES "*.h" "*.cc")
 
 add_custom_target(
   invoke_rocksdb_makefile ALL

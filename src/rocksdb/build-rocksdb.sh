@@ -30,6 +30,8 @@ Options:
     These options specify C++ and C compilers to use.
   --use-ld-gold
     Specify to use the ld.gold linker.
+  --build-all-targets
+    Specify to build tests, tools, and benchmarks
 EOT
 }
 
@@ -42,6 +44,8 @@ cxx_compiler=""
 c_compiler=""
 use_ld_gold=false
 extra_ldflags=""
+verbose=false
+build_all_targets=false
 
 make_opts=()
 
@@ -82,6 +86,12 @@ while [ $# -ne 0 ]; do
     --use-ld-gold)
       use_ld_gold=true
     ;;
+    --verbose)
+      verbose=true
+    ;;
+    --build-tests)
+      build_tests=true
+    ;;
     *)
       print_help >&2
       echo >&2
@@ -118,12 +128,16 @@ if [ -n "$c_compiler" ]; then
   make_opts+=( CC="$c_compiler" )
 fi
 
+if $verbose; then
+  make_opts+=( SH="bash -x" )
+fi
+
 if $use_ld_gold; then
   # TODO: replace this with an append if we're accumulating linker flags in multiple places.
   extra_ldflags="-fuse-ld=gold"
 fi
 
-make_targets=( tools benchmarks )
+make_targets=()
 case "$link_mode" in
   d)
     make_targets+=( shared_lib )
@@ -137,9 +151,13 @@ case "$link_mode" in
     exit 1
 esac
 
-if [ "$debug_level" -gt 0 ]; then
+if [ "$debug_level" -gt 0 ] && $build_all_targets; then
   # We can only build tests if NDEBUG is not defined (otherwise e.g. db_test.cc fails to build).
   make_targets+=( tests )
+fi
+
+if $build_all_targets; then
+  make_targets+=( tools benchmarks )
 fi
 
 # Normalize the directory in case it contains relative components ("..").
