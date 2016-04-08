@@ -149,6 +149,17 @@ static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                message, message_len);
 }
 
+static TableType ClientToPBTableType(YBTableType table_type) {
+  switch (table_type) {
+    case YBTableType::KUDU_COLUMNAR_TABLE_TYPE:
+      return TableType::KUDU_COLUMNAR_TABLE_TYPE;
+    case YBTableType::KEY_VALUE_TABLE_TYPE:
+      return TableType::KEY_VALUE_TABLE_TYPE;
+    default:
+      LOG(FATAL) << "Unknown value for YBTableType: " << table_type;
+  }
+}
+
 void InstallLoggingCallback(YBLoggingCallback* cb) {
   RegisterLoggingCallback(Bind(&LoggingAdapterCB, Unretained(cb)));
 }
@@ -394,8 +405,7 @@ Status YBClient::TableExists(const string& table_name, bool* exists) {
   return Status::OK();
 }
 
-Status YBClient::OpenTable(const string& table_name,
-                             shared_ptr<YBTable>* table) {
+Status YBClient::OpenTable(const string& table_name, shared_ptr<YBTable>* table) {
   YBSchema schema;
   string table_id;
   PartitionSchema partition_schema;
@@ -410,8 +420,8 @@ Status YBClient::OpenTable(const string& table_name,
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  shared_ptr<YBTable> ret(new YBTable(shared_from_this(), table_name, table_id,
-                                          schema, partition_schema));
+  shared_ptr<YBTable> ret(new YBTable(shared_from_this(), table_name, table_id, schema,
+    partition_schema));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
 
@@ -460,6 +470,11 @@ YBTableCreator::~YBTableCreator() {
 
 YBTableCreator& YBTableCreator::table_name(const string& name) {
   data_->table_name_ = name;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
+  data_->table_type_ = ClientToPBTableType(table_type);
   return *this;
 }
 
@@ -528,6 +543,7 @@ Status YBTableCreator::Create() {
   // Build request.
   CreateTableRequestPB req;
   req.set_name(data_->table_name_);
+  req.set_table_type(data_->table_type_);
   if (data_->num_replicas_ >= 1) {
     req.set_num_replicas(data_->num_replicas_);
   }
@@ -569,11 +585,12 @@ Status YBTableCreator::Create() {
 // YBTable
 ////////////////////////////////////////////////////////////
 
-YBTable::YBTable(const shared_ptr<YBClient>& client,
-                     const string& name,
-                     const string& table_id,
-                     const YBSchema& schema,
-                     const PartitionSchema& partition_schema)
+YBTable::YBTable(
+    const shared_ptr<YBClient>& client,
+    const string& name,
+    const string& table_id,
+    const YBSchema& schema,
+    const PartitionSchema& partition_schema)
   : data_(new YBTable::Data(client, name, table_id, schema, partition_schema)) {
 }
 
@@ -583,6 +600,10 @@ YBTable::~YBTable() {
 
 const string& YBTable::name() const {
   return data_->name_;
+}
+
+YBTableType YBTable::table_type() const {
+  return data_->table_type_;
 }
 
 const string& YBTable::id() const {

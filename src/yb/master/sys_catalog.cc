@@ -136,13 +136,15 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
-  RETURN_NOT_OK(tablet::TabletMetadata::CreateNew(fs_manager,
-                                                  kSysCatalogTabletId,
-                                                  table_name(),
-                                                  schema, partition_schema,
-                                                  partitions[0],
-                                                  tablet::TABLET_DATA_READY,
-                                                  &metadata));
+  RETURN_NOT_OK(tablet::TabletMetadata::CreateNew(
+    fs_manager,
+    kSysCatalogTabletId,
+    table_name(),
+    TableType::DEFAULT_TABLE_TYPE,
+    schema, partition_schema,
+    partitions[0],
+    tablet::TABLET_DATA_READY,
+    &metadata));
 
   RaftConfigPB config;
   if (master_->opts().IsDistributed()) {

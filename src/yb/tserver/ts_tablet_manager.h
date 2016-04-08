@@ -26,6 +26,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tablet_peer_lookup.h"
@@ -104,14 +105,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   //
   // If another tablet already exists with this ID, logs a DFATAL
   // and returns a bad Status.
-  Status CreateNewTablet(const std::string& table_id,
-                         const std::string& tablet_id,
-                         const Partition& partition,
-                         const std::string& table_name,
-                         const Schema& schema,
-                         const PartitionSchema& partition_schema,
-                         consensus::RaftConfigPB config,
-                         scoped_refptr<tablet::TabletPeer>* tablet_peer);
+  Status CreateNewTablet(
+    const string &table_id,
+    const string &tablet_id,
+    const Partition &partition,
+    const string &table_name,
+    TableType table_type,
+    const Schema &schema,
+    const PartitionSchema &partition_schema,
+    consensus::RaftConfigPB config,
+    scoped_refptr<tablet::TabletPeer> *tablet_peer);
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED

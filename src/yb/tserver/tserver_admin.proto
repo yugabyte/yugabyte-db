@@ -60,6 +60,7 @@ message CreateTabletRequestPB {
   optional PartitionPB partition = 9;
 
   required string table_name = 5;
+  optional TableType table_type = 11;
   required SchemaPB schema = 6;
   // The partition schema of the table which the tablet belongs to.
   optional PartitionSchemaPB partition_schema = 10;

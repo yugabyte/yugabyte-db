@@ -68,6 +68,16 @@ enum CompressionType {
   ZLIB = 4;
 }
 
+enum TableType {
+  option allow_alias = true;
+
+  KUDU_COLUMNAR_TABLE_TYPE = 1;
+  KEY_VALUE_TABLE_TYPE = 2;
+
+  // This is KUDU_COLUMNAR for now but we'll change this as we deprecate Kudu's columnar format.
+  DEFAULT_TABLE_TYPE = 1;
+}
+
 // TODO: Differentiate between the schema attributes
 // that are only relevant to the server (e.g.,
 // encoding and compression) and those that also

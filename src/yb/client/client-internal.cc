@@ -346,10 +346,11 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::CreateTable(YBClient* client,
-                                     const CreateTableRequestPB& req,
-                                     const YBSchema& schema,
-                                     const MonoTime& deadline) {
+Status YBClient::Data::CreateTable(
+    YBClient* client,
+    const CreateTableRequestPB& req,
+    const YBSchema& schema,
+    const MonoTime& deadline) {
   CreateTableResponsePB resp;
 
   int attempts = 0;

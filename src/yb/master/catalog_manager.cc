@@ -689,17 +689,33 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (PREDICT_FALSE(client_schema.num_key_columns() <= 0)) {
     s = Status::InvalidArgument("Must specify at least one key column");
     SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-        return s;
+    return s;
   }
   for (int i = 0; i < client_schema.num_key_columns(); i++) {
     if (!IsTypeAllowableInKey(client_schema.column(i).type_info())) {
-        Status s = Status::InvalidArgument(
-            "Key column may not have type of BOOL, FLOAT, or DOUBLE");
-        SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-        return s;
+      Status s = Status::InvalidArgument(
+        "Key column may not have type of BOOL, FLOAT, or DOUBLE");
+      SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      return s;
     }
   }
   Schema schema = client_schema.CopyWithColumnIds();
+
+  // RocksDB-backed key-value tables are limited to a particular schema.
+  if (req.table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+    if (client_schema.num_columns() != 2 ||
+        client_schema.num_key_columns() != 1 ||
+        client_schema.column(0).type_info()->type() != DataType::BINARY ||
+        client_schema.column(0).is_nullable() ||
+        client_schema.column(1).type_info()->type() != DataType::BINARY ||
+        client_schema.column(1).is_nullable()) {
+      Status s = Status::InvalidArgument(
+        "A key-value table should have exactly one key and one value column, both of BINARY type"
+        "and non-nullable");
+      SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      return s;
+    }
+  }
 
   // If the client did not set a partition schema in the create table request,
   // the default partition schema (no hash bucket components and a range
@@ -882,6 +898,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTablesEntryPB::PREPARING);
   metadata->set_name(req.name());
+  metadata->set_table_type(req.table_type());
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   metadata->set_num_replicas(req.num_replicas());
@@ -2041,6 +2058,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
     req_.set_dest_uuid(permanent_uuid);
     req_.set_table_id(tablet->table()->id());
     req_.set_tablet_id(tablet->tablet_id());
+    req_.set_table_type(tablet->table()->metadata().state().pb.table_type());
     req_.mutable_partition()->CopyFrom(tablet_pb.partition());
     req_.set_table_name(table_lock.data().pb.name());
     req_.mutable_schema()->CopyFrom(table_lock.data().pb.schema());
@@ -3064,6 +3082,9 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
       resp->mutable_tablet_locations()->RemoveLast();
     }
   }
+
+  resp->set_table_type(table->metadata().state().pb.table_type());
+
   return Status::OK();
 }
 

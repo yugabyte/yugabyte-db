@@ -244,7 +244,6 @@ void MaintenanceManager::RunSchedulerThread() {
 // and 128MB of RAM? Maybe a more holistic approach would be better.
 MaintenanceOp* MaintenanceManager::FindBestOp() {
   TRACE_EVENT0("maintenance", "MaintenanceManager::FindBestOp");
-
   if (!FLAGS_enable_maintenance_manager) {
     VLOG_AND_TRACE("maintenance", 1) << "Maintenance manager is disabled. Doing nothing";
     return nullptr;

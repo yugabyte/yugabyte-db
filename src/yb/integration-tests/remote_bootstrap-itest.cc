@@ -47,6 +47,8 @@ DEFINE_int32(test_delete_leader_payload_bytes, 16 * 1024,
              "Payload byte size in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 DEFINE_int32(test_delete_leader_num_writer_threads, 1,
              "Number of writer threads in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
+DEFINE_int32(remote_bootstrap_itest_timeout_sec, 180,
+             "Timeout in seconds to use in remote bootstrap integration test.");
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
@@ -406,7 +408,7 @@ TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstraps) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags));
 
-  const MonoDelta timeout = MonoDelta::FromSeconds(60);
+  const MonoDelta timeout = MonoDelta::FromSeconds(FLAGS_remote_bootstrap_itest_timeout_sec);
 
   // Create a table with several tablets. These will all be simultaneously
   // remotely bootstrapped to a single target node from the same leader host.
@@ -500,7 +502,7 @@ TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTest) {
     return;
   }
 
-  const MonoDelta timeout = MonoDelta::FromSeconds(60);
+  const MonoDelta timeout = MonoDelta::FromSeconds(FLAGS_remote_bootstrap_itest_timeout_sec);
   NO_FATALS(StartCluster(vector<string>(), vector<string>(), 5));
 
   TestWorkload workload(cluster_.get());

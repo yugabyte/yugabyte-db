@@ -36,6 +36,8 @@ class YBTableCreator::Data {
 
   std::string table_name_;
 
+  TableType table_type_;
+
   const YBSchema* schema_;
 
   std::vector<const YBPartialRow*> split_rows_;

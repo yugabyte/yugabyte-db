@@ -21,6 +21,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadpool.h"
+#include "yb/common/common.pb.h"
 
 DEFINE_int32(
   load_test_num_iter, 1,
@@ -79,6 +80,10 @@ DEFINE_bool(
     "Whether the table should be created. Its made false when either reads_only/writes_only is "
     "true. If value is true, existing table will be deleted and recreated.");
 
+DEFINE_bool(
+    use_kv_table, false,
+    "Use key-value table type backed by RocksDB");
+
 using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
@@ -96,6 +101,7 @@ using yb::MutexLock;
 using yb::CountDownLatch;
 using yb::Slice;
 using yb::YBPartialRow;
+using yb::TableType;
 using strings::Substitute;
 
 void ConfigureSession(YBSession* session) {
@@ -328,8 +334,8 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
     gscoped_ptr<YBInsert> insert(table_->NewInsert());
     string key_str(GetKeyByIndex(key_index));
     string value_str(Substitute("value$0", key_index));
-    insert->mutable_row()->SetString("k", key_str.c_str());
-    insert->mutable_row()->SetString("v", value_str.c_str());
+    insert->mutable_row()->SetBinary("k", key_str.c_str());
+    insert->mutable_row()->SetBinary("v", value_str.c_str());
     Status apply_status = session->Apply(insert.release());
     if (apply_status.ok()) {
       Status flush_status = session->Flush();
@@ -536,7 +542,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
     }
 
     Slice returned_key, returned_value;
-    CHECK_OK(rows.front().GetString("k", &returned_key));
+    CHECK_OK(rows.front().GetBinary("k", &returned_key));
     if (returned_key != key_str) {
       LOG(ERROR) << "Invalid key returned by the read operation: '" << returned_key << "', "
         << "expected: '" << key_str << "', read timestamp: " << read_ts;
@@ -544,7 +550,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
       continue;
     }
 
-    CHECK_OK(rows.front().GetString("v", &returned_value));
+    CHECK_OK(rows.front().GetBinary("v", &returned_value));
     string expected_value(GetValueByIndex(key_index));
     if (returned_value != expected_value) {
       LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str << "': "
@@ -637,8 +643,8 @@ int main(int argc, char* argv[]) {
     if (FLAGS_create_table) {
       LOG(INFO) << "Building schema";
       YBSchemaBuilder schemaBuilder;
-      schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::STRING)->NotNull();
-      schemaBuilder.AddColumn("v")->Type(YBColumnSchema::STRING)->NotNull();
+      schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
+      schemaBuilder.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
       YBSchema schema;
       CHECK_OK(schemaBuilder.Build(&schema));
 
@@ -650,7 +656,7 @@ int main(int argc, char* argv[]) {
         string split_key = FormatHex(
           ((uint64_t) 1 << 62) * 4.0 * j / (FLAGS_load_test_num_tablets));
         LOG(INFO) << "split_key #" << j << "=" << split_key;
-        CHECK_OK(row->SetStringCopy(0, split_key));
+        CHECK_OK(row->SetBinaryCopy(0, split_key));
         splits.push_back(row);
       }
 
@@ -658,7 +664,12 @@ int main(int argc, char* argv[]) {
       gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
       Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
         .split_rows(splits)
-        .num_replicas(FLAGS_load_test_table_num_replicas).Create();
+        .num_replicas(FLAGS_load_test_table_num_replicas)
+        .table_type(
+          FLAGS_use_kv_table ?
+            YBTableType::KEY_VALUE_TABLE_TYPE :
+            YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
+        .Create();
       if (!table_creation_status.ok()) {
         LOG(INFO) << "Table creation status message: " <<
         table_creation_status.message().ToString();

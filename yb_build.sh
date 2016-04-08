@@ -53,7 +53,7 @@ build_dir="$project_dir/build/$cmake_build_type"
 
 if $verbose; then 
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
-  cmake_opts+=" -Wdev --debug-output --trace"
+  cmake_opts+=( -Wdev --debug-output --trace )
   make_opts+=" VERBOSE=1"
 fi
 

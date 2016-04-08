@@ -67,6 +67,7 @@
 #include "yb/util/url-coding.h"
 
 #include "rocksdb/db.h"
+#include "key_value_iterator.h"
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
@@ -136,6 +137,7 @@ Tablet::Tablet(const scoped_refptr<TabletMetadata>& metadata,
                const scoped_refptr<LogAnchorRegistry>& log_anchor_registry)
   : key_schema_(metadata->schema().CreateKeyProjection()),
     metadata_(metadata),
+    table_type_(metadata->table_type()),
     log_anchor_registry_(log_anchor_registry),
     mem_tracker_(MemTracker::CreateTracker(
         -1, Substitute("tablet-$0", tablet_id()),
@@ -180,6 +182,53 @@ Status Tablet::Open() {
   CHECK_EQ(state_, kInitialized) << "already open";
   CHECK(schema()->has_column_ids());
 
+  switch (table_type_) {
+    case TableType::KEY_VALUE_TABLE_TYPE:
+      RETURN_NOT_OK(OpenKeyValueTablet());
+      break;
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      RETURN_NOT_OK(OpenKuduColumnarTablet());
+      break;
+    default:
+      LOG(FATAL) << "Cannot open tablet " << tablet_id() << " with unknown table type "
+        << table_type_;
+  }
+
+  state_ = kBootstrapping;
+  return Status::OK();
+}
+
+Status Tablet::OpenKeyValueTablet() {
+  auto data_root_dirs = metadata()->fs_manager()->GetDataRootDirs();
+  CHECK(!data_root_dirs.empty()) << "No data root directories found";
+  // Use the first data root directory for now, and create per-tablet directories there.
+  auto data_root_dir = data_root_dirs.front();
+
+  rocksdb::DB* db;
+  rocksdb::Options rocksdb_options;
+  rocksdb_options.create_if_missing = true;
+  rocksdb_options.disableDataSync = true;
+
+  // TODO: move RocksDB directory management to FsManager.
+  auto rocksdb_top_dir = JoinPathSegments(data_root_dir, "rocksdb");
+  auto db_dir = JoinPathSegments(rocksdb_top_dir, tablet_id());
+  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(rocksdb_top_dir),
+    "Failed to create top-level directory for all RocksDB databases");
+  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(db_dir),
+    "Failed to create RocksDB database directory for the tablet");
+
+  rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options, db_dir, &db);
+  if (!rocksdb_open_status.ok()) {
+    LOG(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
+    << rocksdb_open_status.ToString();
+    return Status::IllegalState(rocksdb_open_status.ToString());
+  }
+  rocksdb_.reset(db);
+  LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
+  return Status::OK();
+}
+
+Status Tablet::OpenKuduColumnarTablet() {
   next_mrs_id_ = metadata_->last_durable_mrs_id() + 1;
 
   RowSetVector rowsets_opened;
@@ -204,8 +253,6 @@ Status Tablet::Open() {
                                               log_anchor_registry_.get(),
                                               mem_tracker_));
   components_ = new TabletComponents(new_mrs, new_rowset_tree);
-
-  state_ = kBootstrapping;
   return Status::OK();
 }
 
@@ -325,6 +372,12 @@ Status Tablet::CheckRowInTablet(const ConstContiguousRow& row) const {
 }
 
 Status Tablet::AcquireLockForOp(WriteTransactionState* tx_state, RowOp* op) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // TODO: clarify whether RocksDB already has some notion of row locks and whether it needs them,
+    // or we need them for RocksDB to have consistent state on all peers.
+    return Status::OK();
+  }
+
   ConstContiguousRow row_key(&key_schema_, op->decoded_op.row_data);
   op->key_probe.reset(new tablet::RowSetKeyProbe(row_key));
   RETURN_NOT_OK(CheckRowInTablet(row_key));
@@ -358,12 +411,19 @@ void Tablet::StartTransaction(WriteTransactionState* tx_state) {
 
 Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
                               RowOp* insert) {
-  const TabletComponents* comps = DCHECK_NOTNULL(tx_state->tablet_components());
+  // A check only needed for Kudu's columnar format that has to happen before the row lock.
+  const TabletComponents* comps =
+    table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ?
+      DCHECK_NOTNULL(tx_state->tablet_components()) : nullptr;
 
   CHECK(state_ == kOpen || state_ == kBootstrapping);
   // make sure that the WriteTransactionState has the component lock and that
   // there the RowOp has the row lock.
-  DCHECK(insert->has_row_lock()) << "RowOp must hold the row lock.";
+
+  if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    DCHECK(insert->has_row_lock()) << "RowOp must hold the row lock.";
+  }
+
   DCHECK_EQ(tx_state->schema_at_decode_time(), schema()) << "Raced against schema change";
   DCHECK(tx_state->op_id().IsInitialized()) << "TransactionState OpId needed for anchoring";
 
@@ -371,6 +431,53 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
 
   // Submit the stats before returning from this function
   ProbeStatsSubmitter submitter(stats, metrics_.get());
+
+  switch (table_type_) {
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      return KuduColumnarInsertUnlocked(tx_state, insert, comps, &stats);
+    case TableType::KEY_VALUE_TABLE_TYPE:
+      return KeyValuePutUnlocked(tx_state, insert);
+    default:
+      LOG(FATAL) << "Cannot perform an insert for table type " << table_type_;
+  }
+  return Status::IllegalState("This cannot happen");
+}
+
+Status Tablet::KeyValuePutUnlocked(
+    WriteTransactionState *tx_state,
+    RowOp *insert) {
+
+  CHECK_EQ(insert->decoded_op.type, RowOperationsPB_Type_INSERT);
+  ConstContiguousRow r(schema(), insert->decoded_op.row_data);
+
+  rocksdb::WriteOptions write_options;
+  write_options.sync = false;
+  // We disable the WAL in RocksDB because we already have the Raft log and we should replay it
+  // during recovery.
+  write_options.disableWAL = true;
+
+  const Slice* key_slice = reinterpret_cast<const Slice*>(r.cell(0).ptr());
+  const Slice* value_slice = reinterpret_cast<const Slice*>(r.cell(1).ptr());
+
+  rocksdb::Status put_status = rocksdb_->Put(
+    write_options,
+    rocksdb::Slice(reinterpret_cast<const char*>(key_slice->data()), key_slice->size()),
+    rocksdb::Slice(reinterpret_cast<const char*>(value_slice->data()), value_slice->size()));
+
+  if (put_status.ok()) {
+    insert->SetInsertSucceeded(0);
+    return Status::OK();
+  }
+  auto error_status = Status::IOError(put_status.ToString());
+  insert->SetFailed(error_status);
+  return error_status;
+}
+
+Status Tablet::KuduColumnarInsertUnlocked(
+    WriteTransactionState *tx_state,
+    RowOp* insert,
+    const TabletComponents* comps,
+    ProbeStats* stats) {
 
   // First, ensure that it is a unique key by checking all the open RowSets.
   if (FLAGS_tablet_do_dup_key_checks) {
@@ -380,7 +487,7 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
 
     for (const RowSet *rowset : to_check) {
       bool present = false;
-      RETURN_NOT_OK(rowset->CheckRowPresent(*insert->key_probe, &present, &stats));
+      RETURN_NOT_OK(rowset->CheckRowPresent(*insert->key_probe, &present, stats));
       if (PREDICT_FALSE(present)) {
         Status s = Status::AlreadyPresent("key already present");
         if (metrics_) {
@@ -490,7 +597,9 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
 void Tablet::StartApplying(WriteTransactionState* tx_state) {
   boost::shared_lock<rw_spinlock> lock(component_lock_);
   tx_state->StartApplying();
-  tx_state->set_tablet_components(components_);
+  if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    tx_state->set_tablet_components(components_);
+  }
 }
 
 void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
@@ -1084,6 +1193,10 @@ void Tablet::GetRowSetsForTests(RowSetVector* out) {
 }
 
 void Tablet::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return;
+  }
+
   CHECK_EQ(state_, kOpen);
   DCHECK(maintenance_ops_.empty());
 
@@ -1345,6 +1458,9 @@ Status Tablet::Compact(CompactFlags flags) {
 }
 
 void Tablet::UpdateCompactionStats(MaintenanceOpStats* stats) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return;
+  }
 
   // TODO: use workload statistics here to find out how "hot" the tablet has
   // been in the last 5 minutes, and somehow scale the compaction quality
@@ -1389,12 +1505,37 @@ Status Tablet::DebugDump(vector<string> *lines) {
 }
 
 Status Tablet::CaptureConsistentIterators(
-  const Schema *projection,
-  const MvccSnapshot &snap,
-  const ScanSpec *spec,
-  vector<shared_ptr<RowwiseIterator> > *iters) const {
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+    const Schema *projection,
+    const MvccSnapshot &snap,
+    const ScanSpec *spec,
+    vector<shared_ptr<RowwiseIterator> > *iters) const {
+  switch (table_type_) {
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);
+    case TableType::KEY_VALUE_TABLE_TYPE:
+      return KeyValueCaptureConsistentIterators(projection, snap, spec, iters);
+    default:
+      LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
+  }
+  return Status::IllegalState("This should never happen");
+}
 
+Status Tablet::KeyValueCaptureConsistentIterators(
+    const Schema *projection,
+    const MvccSnapshot &snap,
+    const ScanSpec *spec,
+    vector<shared_ptr<RowwiseIterator> > *iters) const {
+  iters->clear();
+  iters->push_back(std::make_shared<KeyValueIterator>(projection, snap, rocksdb_.get()));
+  return Status::OK();
+}
+
+Status Tablet::KuduColumnarCaptureConsistentIterators(
+    const Schema *projection,
+    const MvccSnapshot &snap,
+    const ScanSpec *spec,
+    vector<shared_ptr<RowwiseIterator> > *iters) const {
+  boost::shared_lock<rw_spinlock> lock(component_lock_);
   // Construct all the iterators locally first, so that if we fail
   // in the middle, we don't modify the output arguments.
   vector<shared_ptr<RowwiseIterator> > ret;
@@ -1458,6 +1599,9 @@ Status Tablet::CountRows(uint64_t *count) const {
 }
 
 size_t Tablet::MemRowSetSize() const {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return 0;
+  }
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);
 
@@ -1468,6 +1612,10 @@ size_t Tablet::MemRowSetSize() const {
 }
 
 bool Tablet::MemRowSetEmpty() const {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return true;
+  }
+
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);
 
@@ -1475,6 +1623,10 @@ bool Tablet::MemRowSetEmpty() const {
 }
 
 size_t Tablet::MemRowSetLogRetentionSize(const MaxIdxToSegmentMap& max_idx_to_segment_size) const {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return 0;
+  }
+
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);
 
@@ -1509,6 +1661,10 @@ size_t Tablet::DeltaMemStoresSize() const {
 }
 
 bool Tablet::DeltaMemRowSetEmpty() const {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return false;
+  }
+
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);
 
@@ -1664,6 +1820,9 @@ double Tablet::GetPerfImprovementForBestDeltaCompactUnlocked(RowSet::DeltaCompac
 }
 
 size_t Tablet::num_rowsets() const {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return 0;
+  }
   boost::shared_lock<rw_spinlock> lock(component_lock_);
   return components_->rowsets->all_rowsets().size();
 }
@@ -1775,15 +1934,6 @@ void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
   iter_->GetIteratorStats(stats);
 }
 
-// TODO: remove this. This is just here to test if we can link against RocksDB.
-static void RocksDBIntegrationSanityCheck() {
-  rocksdb::DB* db;
-  rocksdb::Options options;
-  options.create_if_missing = true;
-  rocksdb::Status status =
-    rocksdb::DB::Open(options, "/tmp/rocksdb-sanity-check", &db);
-  assert(status.ok());  
-}
 
 } // namespace tablet
 } // namespace yb

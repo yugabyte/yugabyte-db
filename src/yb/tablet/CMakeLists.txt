@@ -53,6 +53,7 @@ set(TABLET_SRCS
   delta_stats.cc
   delta_store.cc
   delta_tracker.cc
+  key_value_iterator.cc
 )
 
 PROTOBUF_GENERATE_CPP(
@@ -83,6 +84,7 @@ target_link_libraries(tablet
   yb_util
   consensus
   rocksdb)
+add_dependencies(tablet rocksdb)
 
 set(YB_TEST_LINK_LIBS tablet ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)

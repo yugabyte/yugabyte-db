@@ -66,7 +66,13 @@ class RemoteTabletServer;
 class WriteRpc;
 } // namespace internal
 
-// Installs a callback for internal client logging. It is invoked for a
+enum YBTableType {
+  KUDU_COLUMNAR_TABLE_TYPE = 1,
+  KEY_VALUE_TABLE_TYPE = 2,
+  UNKNOWN_TABLE_TYPE = -1
+};
+
+  // Installs a callback for internal client logging. It is invoked for a
 // log event of any severity, across any YBClient instance.
 //
 // Only the first invocation has any effect; subsequent invocations are
@@ -304,6 +310,9 @@ class YB_EXPORT YBTableCreator {
   // Sets the name to give the table. It is copied. Required.
   YBTableCreator& table_name(const std::string& name);
 
+  // Sets the type of the table.
+  YBTableCreator& table_type(YBTableType table_type);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -400,6 +409,8 @@ class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
 
   const std::string& name() const;
 
+  YBTableType table_type() const;
+
   // Return the table's ID. This is an internal identifier which uniquely
   // identifies a table. If the table is deleted and recreated with the same
   // name, the ID will distinguish the old table from the new.
@@ -442,10 +453,10 @@ class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
   friend class YBClient;
 
   YBTable(const sp::shared_ptr<YBClient>& client,
-            const std::string& name,
-            const std::string& table_id,
-            const YBSchema& schema,
-            const PartitionSchema& partition_schema);
+          const std::string& name,
+          const std::string& table_id,
+          const YBSchema& schema,
+          const PartitionSchema& partition_schema);
 
   // Owned.
   Data* data_;

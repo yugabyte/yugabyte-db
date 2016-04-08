@@ -89,6 +89,7 @@ class TabletHarness {
     RETURN_NOT_OK(TabletMetadata::LoadOrCreate(fs_manager_.get(),
                                                options_.tablet_id,
                                                "YBTableTest",
+                                               TableType::DEFAULT_TABLE_TYPE,
                                                schema_,
                                                partition.first,
                                                partition.second,

@@ -73,14 +73,16 @@ class BootstrapTest : public LogTestBase {
     Schema schema = SchemaBuilder(schema_).Build();
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
-    RETURN_NOT_OK(TabletMetadata::LoadOrCreate(fs_manager_.get(),
-                                               log::kTestTablet,
-                                               log::kTestTable,
-                                               schema,
-                                               partition.first,
-                                               partition.second,
-                                               TABLET_DATA_READY,
-                                               meta));
+    RETURN_NOT_OK(TabletMetadata::LoadOrCreate(
+      fs_manager_.get(),
+      log::kTestTablet,
+      log::kTestTable,
+      TableType::DEFAULT_TABLE_TYPE,
+      schema,
+      partition.first,
+      partition.second,
+      TABLET_DATA_READY,
+      meta));
     (*meta)->SetLastDurableMrsIdForTests(mrs_id);
     if ((*meta)->GetRowSetForTests(0) != nullptr) {
       (*meta)->GetRowSetForTests(0)->SetLastDurableRedoDmsIdForTests(delta_id);

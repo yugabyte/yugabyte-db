@@ -40,6 +40,7 @@ class YBTable::Data {
   sp::shared_ptr<YBClient> client_;
 
   std::string name_;
+  YBTableType table_type_;
   const std::string id_;
 
   // TODO: figure out how we deal with a schema change from the client perspective.

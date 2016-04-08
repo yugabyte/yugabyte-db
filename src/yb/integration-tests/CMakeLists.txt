@@ -60,6 +60,7 @@ ADD_YB_TEST(all_types-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(remote_bootstrap-itest)
 ADD_YB_TEST(tablet_replacement-itest)
 ADD_YB_TEST(create-table-itest)
+ADD_YB_TEST(kv_table-test)
 
 # Some tests have additional dependencies
 set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})

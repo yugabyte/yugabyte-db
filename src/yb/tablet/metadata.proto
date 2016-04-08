@@ -102,6 +102,7 @@ message TabletSuperBlockPB {
   // TODO: maybe this should be TableSchemaPB? Need to actually put those attributes
   // into use throughout the code. Using the simpler one for now.
   required string table_name = 7;
+  optional TableType table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
   required SchemaPB schema = 8;
   required uint32 schema_version = 9;
 

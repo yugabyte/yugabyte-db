@@ -42,6 +42,10 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
+namespace rocksdb {
+  class DB;
+}
+
 namespace yb {
 
 class MemTracker;
@@ -371,6 +375,9 @@ class Tablet {
   const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
 
   static const char* kDMSMemTrackerId;
+
+  TableType table_type() const { return table_type_; }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -381,8 +388,19 @@ class Tablet {
   // A version of Insert that does not acquire locks and instead assumes that
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
-  Status InsertUnlocked(WriteTransactionState *tx_state,
-                        RowOp* insert);
+  Status InsertUnlocked(
+    WriteTransactionState *tx_state,
+    RowOp* insert);
+
+  Status KeyValuePutUnlocked(
+    WriteTransactionState *tx_state,
+    RowOp *insert);
+
+  Status KuduColumnarInsertUnlocked(
+    WriteTransactionState *tx_state,
+    RowOp* insert,
+    const TabletComponents* comps,
+    ProbeStats* stats);
 
   // A version of MutateRow that does not acquire locks and instead assumes
   // they were already acquired. Requires that handles for the relevant locks
@@ -402,6 +420,19 @@ class Tablet {
                                     const MvccSnapshot &snap,
                                     const ScanSpec *spec,
                                     vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+
+  Status KuduColumnarCaptureConsistentIterators(
+    const Schema *projection,
+    const MvccSnapshot &snap,
+    const ScanSpec *spec,
+    vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+
+  Status KeyValueCaptureConsistentIterators(
+    const Schema *projection,
+    const MvccSnapshot &snap,
+    const ScanSpec *spec,
+    vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+
 
   Status PickRowSetsToCompact(RowSetsInCompaction *picked,
                               CompactFlags flags) const;
@@ -454,6 +485,9 @@ class Tablet {
 
   Status CheckRowInTablet(const ConstContiguousRow& probe) const;
 
+  Status OpenKeyValueTablet();
+  Status OpenKuduColumnarTablet();
+
   // Helper method to find the rowset that has the DMS with the highest retention.
   std::shared_ptr<RowSet> FindBestDMSToFlush(
       const MaxIdxToSegmentMap& max_idx_to_segment_size) const;
@@ -478,6 +512,7 @@ class Tablet {
   const Schema key_schema_;
 
   scoped_refptr<TabletMetadata> metadata_;
+  TableType table_type_;
 
   // Lock protecting access to the 'components_' member (i.e the rowsets in the tablet)
   //
@@ -545,6 +580,9 @@ class Tablet {
   std::shared_ptr<FlushCompactCommonHooks> common_hooks_;
 
   std::vector<MaintenanceOp*> maintenance_ops_;
+
+  // RocksDB database for key-value tables.
+  gscoped_ptr<rocksdb::DB> rocksdb_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

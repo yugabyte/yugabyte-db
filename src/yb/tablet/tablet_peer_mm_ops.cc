@@ -146,6 +146,10 @@ scoped_refptr<AtomicGauge<uint32_t> > FlushMRSOp::RunningGauge() const {
 //
 
 void FlushDeltaMemStoresOp::UpdateStats(MaintenanceOpStats* stats) {
+  if (tablet_peer_->tablet()->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return;
+  }
+
   boost::lock_guard<simple_spinlock> l(lock_);
   int64_t dms_size;
   int64_t retention_size;

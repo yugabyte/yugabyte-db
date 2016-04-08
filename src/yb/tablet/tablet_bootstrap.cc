@@ -420,6 +420,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
                                   ConsensusBootstrapInfo* consensus_info) {
   string tablet_id = meta_->tablet_id();
+  TableType table_type = meta_->table_type();
 
   // Replay requires a valid Consensus metadata file to exist in order to
   // compare the committed consensus configuration seqno with the log entries and also to persist
@@ -448,7 +449,9 @@ Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
     VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
   }
 
-  RETURN_NOT_OK(flushed_stores_.InitFrom(*meta_.get()));
+  if (table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    RETURN_NOT_OK(flushed_stores_.InitFrom(*meta_.get()));
+  }
 
   bool has_blocks;
   RETURN_NOT_OK(OpenTablet(&has_blocks));

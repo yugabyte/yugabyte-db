@@ -2042,10 +2042,9 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
 
   ASSERT_EQ(3, partitions.size());
 
-  ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
-      "TestWriteOutOfBoundsTable", tabletId,
-      partitions[1],
-      tabletId, schema, partition_schema,
+  ASSERT_OK(
+    mini_server_->server()->tablet_manager()->CreateNewTablet("TestWriteOutOfBoundsTable", tabletId,
+      partitions[1], tabletId, DEFAULT_TABLE_TYPE, schema, partition_schema,
       mini_server_->CreateLocalConfig(), nullptr));
 
   ASSERT_OK(WaitForTabletRunning(tabletId));

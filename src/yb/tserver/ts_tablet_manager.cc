@@ -241,14 +241,16 @@ Status TSTabletManager::WaitForAllBootstrapsToFinish() {
   return s;
 }
 
-Status TSTabletManager::CreateNewTablet(const string& table_id,
-                                        const string& tablet_id,
-                                        const Partition& partition,
-                                        const string& table_name,
-                                        const Schema& schema,
-                                        const PartitionSchema& partition_schema,
-                                        RaftConfigPB config,
-                                        scoped_refptr<TabletPeer>* tablet_peer) {
+Status TSTabletManager::CreateNewTablet(
+    const string &table_id,
+    const string &tablet_id,
+    const Partition &partition,
+    const string &table_name,
+    TableType table_type,
+    const Schema &schema,
+    const PartitionSchema &partition_schema,
+    RaftConfigPB config,
+    scoped_refptr<TabletPeer> *tablet_peer) {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
   // If the consensus configuration is specified to use local consensus, verify that the peer
@@ -285,6 +287,7 @@ Status TSTabletManager::CreateNewTablet(const string& table_id,
     TabletMetadata::CreateNew(fs_manager_,
                               tablet_id,
                               table_name,
+                              table_type,
                               schema,
                               partition_schema,
                               partition,

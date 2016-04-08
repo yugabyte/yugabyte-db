@@ -39,16 +39,36 @@ namespace client {
 
 using sp::shared_ptr;
 
-YBTable::Data::Data(shared_ptr<YBClient> client,
-                      string name,
-                      string id,
-                      const YBSchema& schema,
-                      PartitionSchema partition_schema)
-    : client_(std::move(client)),
-      name_(std::move(name)),
-      id_(std::move(id)),
-      schema_(schema),
-      partition_schema_(std::move(partition_schema)) {
+static Status PBToClientTableType(
+    TableType table_type_from_pb,
+    YBTableType* client_table_type) {
+  switch (table_type_from_pb) {
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      *client_table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE;
+      return Status::OK();
+    case TableType::KEY_VALUE_TABLE_TYPE:
+      *client_table_type = YBTableType::KEY_VALUE_TABLE_TYPE;
+      return Status::OK();
+    default:
+      *client_table_type = YBTableType::UNKNOWN_TABLE_TYPE;
+      return Status::InvalidArgument(strings::Substitute(
+        "Invalid table type from master response: $0", table_type_from_pb));
+  }
+}
+
+YBTable::Data::Data(
+    shared_ptr<YBClient> client,
+    string name,
+    string id,
+    const YBSchema& schema,
+    PartitionSchema partition_schema)
+  : client_(std::move(client)),
+    name_(std::move(name)),
+    // The table type is set after the table is opened.
+    table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
+    id_(std::move(id)),
+    schema_(schema),
+    partition_schema_(std::move(partition_schema)) {
 }
 
 YBTable::Data::~Data() {
@@ -143,6 +163,10 @@ Status YBTable::Data::Open() {
     /* TODO: Use exponential backoff instead */
     base::SleepForMilliseconds(100);
   }
+
+
+  RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
+    strings::Substitute("Invalid table type for table '$0'", name_));
 
   VLOG(1) << "Open Table " << name_ << ", found " << resp.tablet_locations_size() << " tablets";
   return Status::OK();

@@ -415,7 +415,9 @@ void UnionIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const {
   for (size_t idx = 0; idx < schema_->num_columns(); ++idx) {
     IteratorStats stats_for_col;
     for (const vector<IteratorStats>& stats_for_iter : stats_by_iter) {
-      stats_for_col.AddStats(stats_for_iter[idx]);
+      if (idx < stats_for_iter.size()) {
+        stats_for_col.AddStats(stats_for_iter[idx]);
+      }
     }
     stats->push_back(stats_for_col);
   }

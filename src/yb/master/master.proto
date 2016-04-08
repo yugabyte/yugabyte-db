@@ -134,6 +134,9 @@ message SysTablesEntryPB {
   // Table name
   required bytes name = 1;
 
+  // Table type
+  optional TableType table_type = 10 [ default = DEFAULT_TABLE_TYPE ];
+
   // sequence-id for the table metadata.
   // Used on tablet-report to avoid sending "alter-table" notifications.
   required uint32 version = 2;
@@ -342,6 +345,7 @@ message CreateTableRequestPB {
   optional RowOperationsPB split_rows = 6;
   optional PartitionSchemaPB partition_schema = 7;
   optional int32 num_replicas = 4;
+  optional TableType table_type = 8 [ default = DEFAULT_TABLE_TYPE ];
 }
 
 message CreateTableResponsePB {
@@ -384,6 +388,7 @@ message ListTablesResponsePB {
   message TableInfo {
     required bytes id = 1;
     required string name = 2;
+    optional TableType table_type = 3;
   }
 
   repeated TableInfo tables = 2;
@@ -404,6 +409,7 @@ message GetTableLocationsResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated TabletLocationsPB tablet_locations = 2;
+  optional TableType table_type = 3;
 }
 
 message AlterTableRequestPB {

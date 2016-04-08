@@ -76,11 +76,9 @@ class TsTabletManagerTest : public YBTest {
     std::pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(full_schema);
 
     scoped_refptr<tablet::TabletPeer> tablet_peer;
-    RETURN_NOT_OK(tablet_manager_->CreateNewTablet(tablet_id, tablet_id, partition.second,
-                                                   tablet_id,
-                                                   full_schema, partition.first,
-                                                   config_,
-                                                   &tablet_peer));
+    RETURN_NOT_OK(
+      tablet_manager_->CreateNewTablet(tablet_id, tablet_id, partition.second, tablet_id,
+        TableType::DEFAULT_TABLE_TYPE, full_schema, partition.first, config_, &tablet_peer));
     if (out_tablet_peer) {
       (*out_tablet_peer) = tablet_peer;
     }
