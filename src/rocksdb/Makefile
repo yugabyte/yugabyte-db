@@ -12,7 +12,7 @@ CLEAN_FILES = # deliberately empty, so we can append below.
 CFLAGS += ${EXTRA_CFLAGS}
 # See the following link for old vs. new C++ ABI differences:
 # https://gcc.gnu.org/onlinedocs/gcc-5.2.0/libstdc++/manual/manual/using_dual_abi.html
-CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 ${EXTRA_CXXFLAGS}
+CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 -fPIC ${EXTRA_CXXFLAGS}
 LDFLAGS += $(EXTRA_LDFLAGS)
 MACHINE ?= $(shell uname -m)
 ARFLAGS = rs
@@ -421,8 +421,16 @@ $(SHARED3): $(SHARED4)
 	ln -fs $(SHARED4) $(SHARED3)
 endif
 
-$(SHARED4):
-	$(CXX) $(PLATFORM_SHARED_LDFLAGS)$(SHARED3) $(CXXFLAGS) $(PLATFORM_SHARED_CFLAGS) $(LIB_SOURCES) $(TOOL_SOURCES) \
+# YugaByte changes to how the dynamic library is built compared to upstream RocksDB:
+# - Added $(LIBOBJECTS) as dependencies
+# - Replaced $(LIB_SOURCES) with $(LIBOBJECTS) on the linker's command line
+#   (this used to always compile all C++ code with any change!)
+# - Removed $(TOOL_SOURCES) from the linker command line. We may need to add the corresponding
+#   object files (but not sources) back if it turns out to be necessary.
+#
+$(SHARED4): $(LIBOBJECTS)
+	set -x
+	$(CXX) $(PLATFORM_SHARED_LDFLAGS)$(SHARED3) $(CXXFLAGS) $(PLATFORM_SHARED_CFLAGS) $(LIBOBJECTS) \
 		$(LDFLAGS) -o $@
 
 endif  # PLATFORM_SHARED_EXT
