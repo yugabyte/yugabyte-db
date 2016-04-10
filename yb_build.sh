@@ -48,7 +48,7 @@ while [ $# -gt 0 ]; do
       clean_thirdparty=true
     ;;
     debug|fastdebug|release|profile_gen|profile_build)
-      clean_before_build="$1"
+      cmake_build_type="$1"
     ;;
     *)
       echo "Invalid option: '$1'" >&2
