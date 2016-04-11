@@ -138,11 +138,14 @@ for test_binary in "${test_binaries[@]}"; do
   fi
 done
 
-echo "Found ${#tests[@]} GTest tests in $num_test_cases test cases"
+num_tests=${#tests[@]}
+echo "Found $num_tests GTest tests in $num_test_cases test cases"
 
 test_log_dir="$build_dir/yb-test-logs"
 rm -rf "$test_log_dir"
 mkdir -p "$test_log_dir"
+test_index=1
+
 for t in "${tests[@]}"; do
   test_binary=${t%:::*}
   test_filter=${t#*:::}
@@ -153,7 +156,8 @@ for t in "${tests[@]}"; do
   test_log_path_prefix="$test_log_dir_for_binary/$test_filter_sanitized"
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
   mkdir -p "$TEST_TMPDIR"
-  echo "Running $test_binary, test $test_filter, logging to $test_log_path_prefix.log"
+  echo "[$test_index/$num_tests] $test_binary, test $test_filter," \
+       "logging to $test_log_path_prefix.log"
 
   set +e
   "$build_dir/$test_binary" \
@@ -166,4 +170,6 @@ for t in "${tests[@]}"; do
     # TODO: make sure the xml file gets created.
   fi
   set -e
+
+  let test_index+=1
 done
