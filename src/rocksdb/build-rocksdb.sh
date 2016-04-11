@@ -92,6 +92,9 @@ while [ $# -ne 0 ]; do
     --build-tests)
       build_tests=true
     ;;
+    --build-all-targets)
+      build_all_targets=true
+    ;;
     *)
       print_help >&2
       echo >&2
