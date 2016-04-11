@@ -148,7 +148,6 @@ for t in "${tests[@]}"; do
   test_filter=${t#*:::}
   test_binary_sanitized=$( echo "$test_binary" | sed 's/\//__/g; s/[:.]/_/g;' )
   test_filter_sanitized=$( echo "$test_filter" | sed 's/\//__/g; s/[:.]/_/g;' )
-  set +e
   test_log_dir_for_binary="$test_log_dir/$test_binary_sanitized"
   mkdir -p "$test_log_dir_for_binary"
   test_log_path_prefix="$test_log_dir_for_binary/$test_filter_sanitized"
@@ -156,9 +155,15 @@ for t in "${tests[@]}"; do
   mkdir -p "$TEST_TMPDIR"
   echo "Running $test_binary, test $test_filter, logging to $test_log_path_prefix.log"
 
+  set +e
   "$build_dir/$test_binary" \
     "--gtest_filter=$test_filter" \
     "--gtest_output=xml:$test_log_path_prefix.xml" \
     >"$test_log_path_prefix.log" 2>&1
   echo
+  if [ $? -ne 0 ]; then
+    echo "Test failed"
+    # TODO: make sure the xml file gets created.
+  fi
+  set -e
 done
