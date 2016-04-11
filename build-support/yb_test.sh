@@ -141,6 +141,7 @@ done
 echo "Found ${#tests[@]} GTest tests in $num_test_cases test cases"
 
 test_log_dir="$build_dir/yb-test-logs"
+rm -rf "$test_log_dir"
 mkdir -p "$test_log_dir"
 for t in "${tests[@]}"; do
   test_binary=${t%:::*}
