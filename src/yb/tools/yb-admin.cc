@@ -98,6 +98,7 @@ const char* const kListAllTabletServersOp = "list_all_tablet_servers";
 const char* const kListAllMastersOp ="list_all_masters";
 const char* const kChangeMasterConfigOp = "change_master_config";
 const char* const kDumpMastersState = "dump_masters_state";
+const char* const kListLogLocations = "list_log_locations";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -157,6 +158,9 @@ class ClusterAdminClient {
 
   // List all masters
   Status ListAllMasters();
+
+  // List the log locations of all tablet servers, by uuid
+  Status ListLogLocations();
 
 private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -634,6 +638,39 @@ Status ClusterAdminClient::ListAllMasters() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::ListLogLocations() {
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+    auto ts_uuid = server.instance_id().permanent_uuid();
+
+    HostPort hp;
+    GetFirstRpcAddressForTS(ts_uuid, &hp);
+
+    vector<Sockaddr> ts_addrs;
+    RETURN_NOT_OK(hp.ResolveAddresses(&ts_addrs));
+    CHECK(!ts_addrs.empty()) << "Unable to resolve IP address for ts host: "
+      << hp.ToString();
+    CHECK(ts_addrs.size() == 1) << "Expected only one IP for ts host, but got : "
+      << hp.ToString();
+
+    gscoped_ptr<TabletServerServiceProxy>
+      ts_proxy(new TabletServerServiceProxy(messenger_, ts_addrs[0]));
+
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    tserver::GetLogLocationRequestPB req;
+    tserver::GetLogLocationResponsePB resp;
+    ts_proxy->GetLogLocation(req, &resp, &rpc);
+
+    std::cout << ts_uuid << " : " << resp.log_location() << std::endl;
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListTables() {
   vector<string> tables;
   RETURN_NOT_OK(yb_client_->ListTables(&tables));
@@ -716,8 +753,8 @@ static void SetUsage(const char* argv0) {
       << " 7. " << kListAllMastersOp << std::endl
       << " 8. " << kChangeMasterConfigOp << " "
                 << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <uuid>" << std::endl
-      << " 9. " << kDumpMastersState;
-
+      << " 9. " << kDumpMastersState << std::endl
+      << " 10. " << kListLogLocations;
   google::SetUsageMessage(str.str());
 }
 
@@ -843,6 +880,12 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.DumpMasterState();
     if (!s.ok()) {
       std::cerr << "Unable to dump master state: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kListLogLocations) {
+    Status s = client.ListLogLocations();
+    if (!s.ok()) {
+      std::cerr << "Unable to list tablet server log locations: " << s.ToString() << std::endl;
       return 1;
     }
   } else {
