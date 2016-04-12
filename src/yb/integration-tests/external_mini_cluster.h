@@ -251,6 +251,10 @@ class ExternalMiniCluster {
                  const std::string& flag,
                  const std::string& value);
 
+  // If the given port is set to 0, finds a free RPC port on the local host and returns it.
+  // Otherwise, returns the given port.
+  uint16_t ResolveRpcPort(uint16_t rpc_port);
+
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
