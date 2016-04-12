@@ -146,6 +146,8 @@ rm -rf "$test_log_dir"
 mkdir -p "$test_log_dir"
 test_index=1
 
+echo "Starting tests at $(date)"
+
 for t in "${tests[@]}"; do
   test_binary=${t%:::*}
   test_filter=${t#*:::}
@@ -173,3 +175,5 @@ for t in "${tests[@]}"; do
 
   let test_index+=1
 done
+
+echo "Finished running tests at $(date)"
