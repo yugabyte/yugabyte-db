@@ -1720,7 +1720,7 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
 
   CHECK(sys_catalog_.get() != nullptr) << "sys_catalog_ must be initialized!";
   // Empty tablet id also implies system tablet
-  if (tablet_id.compare("") == 0 || sys_catalog_->tablet_id() == tablet_id) {
+  if (tablet_id.empty() || sys_catalog_->tablet_id() == tablet_id) {
     *tablet_peer = sys_catalog_->tablet_peer();
   } else {
     return Status::NotFound(Substitute("no SysTable exists with tablet_id $0 in CatalogManager",
@@ -1794,10 +1794,10 @@ Status CatalogManager::ChangeMasterConfig(
   }
 
   if (req->type() == REMOVE_MASTER) {
-    RETURN_NOT_OK(master_->RemoveMaster(&req->change_host()));
-    RETURN_NOT_OK(master_->SetNonParticipant(&req->change_host()));
+    RETURN_NOT_OK(master_->RemoveMaster(req->change_host()));
+    RETURN_NOT_OK(master_->SetNonParticipant(req->change_host()));
   } else if (req->type() == ADD_MASTER) {
-    RETURN_NOT_OK(master_->AddMaster(&req->change_host()));
+    RETURN_NOT_OK(master_->AddMaster(req->change_host()));
   } else {
     return Status::InvalidArgument(Substitute("Request type $0 is incorrect.", req->type()));
   }
@@ -3275,26 +3275,28 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 
 Status CatalogManager::PeerStateDump(vector<RaftPeerPB>& peers, bool on_disk) {
   gscoped_ptr<MasterServiceProxy> peer_proxy;
-  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
-  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
-  rpc::RpcController rpc;
   Sockaddr sockaddr;
+  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  DumpMasterStateRequestPB req;
+  rpc::RpcController rpc;
+
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+  rpc.set_deadline(timeout);
+  req.set_on_disk(on_disk);
 
   for (RaftPeerPB peer : peers) {
     HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
     RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
     peer_proxy.reset(new MasterServiceProxy(master_->messenger(), sockaddr));
 
-    DumpMasterStateRequestPB req;
-    req.set_on_disk(on_disk);
     DumpMasterStateResponsePB resp;
     rpc.Reset();
-    rpc.set_deadline(timeout);
 
     peer_proxy->DumpState(req, &resp, &rpc);
 
     if (resp.has_error()) {
-      LOG(WARNING) << "Hit err during  peer " << peer.ShortDebugString() << " state dump.";
+      LOG(WARNING) << "Hit err " << resp.ShortDebugString() << " during peer "
+        << peer.ShortDebugString() << " state dump.";
       return StatusFromPB(resp.error().status());
     }
   }

@@ -66,7 +66,13 @@ class HostPort {
   static std::string ToCommaSeparatedString(const std::vector<HostPort>& host_ports);
 
   // Checks if the host/port are same as the protobuf
-  bool equals(HostPortPB& hostPortPB);
+  bool equals(const HostPortPB& hostPortPB);
+
+  static Status RemoveAndGetHostPortList(
+    const HostPortPB& remove,
+    const std::vector<std::string>& server_addresses,
+    uint16_t default_port,
+    std::vector<HostPort> *res);
 
  private:
   std::string host_;

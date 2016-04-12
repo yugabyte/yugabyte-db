@@ -242,8 +242,8 @@ Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
 
 } // anonymous namespace
 
-Status Master::SetNonParticipant(const HostPortPB *new_master) {
-  HostPort h(new_master->host(), new_master->port());
+Status Master::SetNonParticipant(const HostPortPB& new_master) {
+  HostPort h(new_master.host(), new_master.port());
   non_participants_.push_back(h);
   ServerEntryPB peer_entry;
   Status s = GetMasterEntryForHost(messenger_, h, &peer_entry);
@@ -251,15 +251,12 @@ Status Master::SetNonParticipant(const HostPortPB *new_master) {
   return Status::OK();
 }
 
-Status Master::AddMaster(const HostPortPB *add) {
+Status Master::AddMaster(const HostPortPB& add) {
   bool found = false;
   std::vector<HostPort>::iterator it;
   for (it = opts_.master_addresses.begin(); it != opts_.master_addresses.end(); it++) {
     HostPort hp = *it;
-    VLOG(2) << hp.port() << "  " << add->port() <<
-      " " << hp.host() << " " << add->host() << std::endl;
-    if (hp.port() == add->port() &&
-        hp.host() == add->host()) {
+    if (hp.equals(add)) {
       found = true;
       break;
     }
@@ -270,8 +267,8 @@ Status Master::AddMaster(const HostPortPB *add) {
   }
 
   HostPort to_add;
-  to_add.set_port(add->port());
-  to_add.set_host(add->host());
+  to_add.set_port(add.port());
+  to_add.set_host(add.host());
   opts_.master_addresses.push_back(to_add);
 
   LOG(INFO) << "New master opts size " << opts_.master_addresses.size() << std::endl;
@@ -279,13 +276,12 @@ Status Master::AddMaster(const HostPortPB *add) {
   return Status::OK();
 }
 
-Status Master::RemoveMaster(const HostPortPB *remove) {
+Status Master::RemoveMaster(const HostPortPB& remove) {
   bool found = false;
   std::vector<HostPort>::iterator it;
   for (it = opts_.master_addresses.begin(); it != opts_.master_addresses.end(); it++) {
     HostPort hp = *it;
-    if (hp.port() == remove->port() &&
-        hp.host() == remove->host()) {
+    if (hp.equals(remove)) {
       found = true;
       break;
     }

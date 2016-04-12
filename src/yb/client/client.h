@@ -239,7 +239,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   Status SetMasterLeaderSocket(Sockaddr* leader_socket);
   Status RegetAndSetMasterLeaderSocket(
     Sockaddr* leader_socket,
-    HostPortPB& ignore_host);
+    const HostPortPB& ignore_host);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

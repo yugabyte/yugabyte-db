@@ -877,33 +877,15 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 }
 
 // Remove a given master from the list of master_server_addrs_
-Status YBClient::Data::RemoveMasterAddress(HostPortPB& hostPortPB) {
+Status YBClient::Data::RemoveMasterAddress(const HostPortPB& hostPortPB) {
   bool found = false;
   vector<HostPort> newList;
 
-  // Note that this outer loop is over a vector of comma-separated strings.
-  // The newList will actually merge them into one, so one push back is fine outside the loop.
-  for (const string& master_server_addr : master_server_addrs_) {
-    vector<string> addr_strings = strings::Split(master_server_addr, ",", strings::SkipEmpty());
-    for (const string& single_addr : addr_strings) {
-      HostPort host_port;
-      RETURN_NOT_OK(host_port.ParseString(single_addr, 0/*defaultPort*/));
-      if (host_port.equals(hostPortPB)) {
-        if (found) {
-          return Status::IllegalState(
-            Substitute("Duplicate master server's found for $0.", hostPortPB.ShortDebugString()));
-        }
-        found = true;
-      } else {
-        newList.push_back(host_port);
-      }
-    }
-  }
-
-  if (!found) {
-    return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
-      hostPortPB.ShortDebugString()));
-  }
+  RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
+    hostPortPB,
+    master_server_addrs_,
+    0 /*defaultPort*/,
+    &newList));
 
   RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(newList)));
 

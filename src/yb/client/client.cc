@@ -398,7 +398,7 @@ Status YBClient::ListMasters(MonoTime deadline,
 // to reset the client state to point to new master leader.
 Status YBClient::RegetAndSetMasterLeaderSocket(
   Sockaddr* leader_socket,
-  HostPortPB& ignore_host) {
+  const HostPortPB& ignore_host) {
 
   RETURN_NOT_OK(data_->RemoveMasterAddress(ignore_host));
 

@@ -107,9 +107,9 @@ class Master : public server::ServerBase {
     return maintenance_manager_.get();
   }
 
-  Status SetNonParticipant(const HostPortPB *new_master);
-  Status AddMaster(const HostPortPB *add);
-  Status RemoveMaster(const HostPortPB *remove);
+  Status SetNonParticipant(const HostPortPB& new_master);
+  Status AddMaster(const HostPortPB& add);
+  Status RemoveMaster(const HostPortPB& remove);
   Status ClearMasters();
   void DumpMasterOptionsInfo(std::ostream* out);
 

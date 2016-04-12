@@ -161,7 +161,7 @@ class YBClient::Data {
   void UpdateLatestObservedTimestamp(uint64_t timestamp);
 
   Status SetMasterAddresses(const std::string& addresses);
-  Status RemoveMasterAddress(HostPortPB& hostPortPB);
+  Status RemoveMasterAddress(const HostPortPB& hostPortPB);
 
   // Retry 'func' until either:
   //

@@ -74,6 +74,39 @@ HostPort::HostPort(const Sockaddr& addr)
     port_(addr.port()) {
 }
 
+Status HostPort::RemoveAndGetHostPortList(
+  const HostPortPB& remove,
+  const std::vector<string>& server_addresses,
+  uint16_t default_port,
+  std::vector<HostPort> *res) {
+  bool found = false;
+  // Note that this outer loop is over a vector of comma-separated strings.
+  // The newList will actually merge them into one, so one push back is fine outside the loop.
+  for (const string& master_server_addr : server_addresses) {
+    vector<string> addr_strings = strings::Split(master_server_addr, ",", strings::SkipEmpty());
+    for (const string& single_addr : addr_strings) {
+      HostPort host_port;
+      RETURN_NOT_OK(host_port.ParseString(single_addr, default_port));
+      if (host_port.equals(remove)) {
+        if (found) {
+          return Status::IllegalState(
+            Substitute("Duplicate master server's found for $0.", remove.ShortDebugString()));
+        }
+        found = true;
+      } else {
+        res->push_back(host_port);
+      }
+    }
+  }
+
+  if (!found) {
+    return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
+      remove.ShortDebugString()));
+  }
+
+  return Status::OK();
+}
+
 Status HostPort::ParseString(const string& str, uint16_t default_port) {
   std::pair<string, string> p = strings::Split(str, strings::delimiter::Limit(":", 1));
 
@@ -300,7 +333,7 @@ uint16_t GetFreePort() {
   return 0;  // never reached
 }
 
-bool HostPort::equals(HostPortPB& hostPortPB) {
+bool HostPort::equals(const HostPortPB& hostPortPB) {
   if (hostPortPB.host() == host() &&
     hostPortPB.port() == port()) {
     return true;

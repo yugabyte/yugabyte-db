@@ -569,9 +569,6 @@ message ListMasterRaftPeersResponsePB {
   // Set only if there's an error in retrieving the list of servers or
   // in getting this server's own local registration information.
   optional AppStatusPB error = 2;
-
-  // An entry for each individual master server that is not yet part of the quorum
-  repeated consensus.RaftPeerPB non_participants = 3;
 }
 
 // Type of master config change
