@@ -26,6 +26,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/server/server_base.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
@@ -84,13 +85,19 @@ class Master : public server::ServerBase {
   Status GetMasterRegistration(ServerRegistrationPB* registration) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
-  // masters.
-  //
+  // masters from the in-memory options used at master startup.
+  // 'non_participants' are not part of the current quorum of masters - they might
+  // be past participants or waiting for addition during master tablet migration.
   // TODO move this to a separate class to be re-used in TS and
   // client; cache this information with a TTL (possibly in another
   // SysTable), so that we don't have to perform an RPC call on every
   // request.
-  Status ListMasters(std::vector<ServerEntryPB>* masters) const;
+  Status ListMasters(std::vector<ServerEntryPB>* masters,
+    std::vector<ServerEntryPB>* non_participants = nullptr) const;
+
+  // Get node instance, Raft role, RPC and HTTP addresses for all
+  // masters from the raft config
+  Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
   bool IsShutdown() const {
     return state_ == kStopped;
@@ -99,6 +106,12 @@ class Master : public server::ServerBase {
   MaintenanceManager* maintenance_manager() {
     return maintenance_manager_.get();
   }
+
+  Status SetNonParticipant(const HostPortPB *new_master);
+  Status AddMaster(const HostPortPB *add);
+  Status RemoveMaster(const HostPortPB *remove);
+  Status ClearMasters();
+  void DumpMasterOptionsInfo(std::ostream* out);
 
  private:
   friend class MasterTest;
@@ -130,6 +143,10 @@ class Master : public server::ServerBase {
   Promise<Status> init_status_;
 
   MasterOptions opts_;
+
+  // List of nodes we heard from, and are not part of current config or
+  // were deleted from an earlier config. Maintained by the master leader.
+  std::vector<HostPort> non_participants_;
 
   ServerRegistrationPB registration_;
   // True once registration_ has been initialized.

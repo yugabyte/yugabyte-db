@@ -5,17 +5,16 @@ set -euo pipefail
 print_help() {
   cat <<-EOT
 Usage: ${0##*/} [<options>] <command>
-Options (do not apply to status/stop/add/remove commands):
-  --num-masters <num_masters>
-    Number of master processes. 3 by default.
-  --num-tservers <num_tablet_servers>
-    Number of tablet server processes. 3 by default.
-    We currently do not stop unneeded servers when the number of servers of any type is reduced,
-    use a stop/start combination instead.
-
+Options:
+  --verbose_level <level>
+    Dictates amount logging on servers trace files. Default is 0, maximum is 4.
 Commands:
   start
     Start master & tablet server processes.
+     --num-masters <num_masters>
+       Number of master processes to start. 3 by default.
+     --num-tservers <num_tablet_servers>
+       Number of tablet server processes to start. 3 by default.
   stop
     Stop all master & tablet server processes.
   restart
@@ -23,7 +22,7 @@ Commands:
   status
     Display running status and process id of master & tablet server processes.
   destroy
-    Stop all master & tablet server processes as well as remove any assosciated data.
+    Stop all master & tablet server processes as well as remove any associated data.
   wipe-restart
     Stop the cluster, wipe all the data files, and start the cluster.
   add-master
@@ -259,6 +258,7 @@ start_master() {
       --fs_data_dirs "$master_base_dir/data" \
       --fs_wal_dir "$master_base_dir/wal" \
       --log_dir "$master_base_dir/logs" \
+      --v "$verbose_level" \
       --master_addresses "$master_addresses" \
       --webserver_port $(( $master_http_port_base + $master_index )) \
       --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) \
@@ -282,6 +282,7 @@ start_tserver() {
        --fs_data_dirs "$tserver_base_dir/data" \
        --fs_wal_dir "$tserver_base_dir/wal" \
        --log_dir "$tserver_base_dir/logs" \
+       --v "$verbose_level" \
        --tserver_master_addrs "$master_addresses" \
        --block_cache_capacity_mb 128 \
        --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
@@ -410,9 +411,14 @@ daemon_index_to_stop=""
 daemon_index_to_restart=""
 master_indexes=""
 tserver_indexes=""
+verbose_level=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --verbose_level)
+      verbose_level="$2"
+      shift
+    ;;
     --num-masters)
       num_masters="$2"
       shift

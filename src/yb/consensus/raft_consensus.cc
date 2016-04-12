@@ -224,6 +224,7 @@ RaftConsensus::RaftConsensus(
           FLAGS_raft_heartbeat_interval_ms *
           FLAGS_leader_failure_max_missed_heartbeat_periods))),
       withhold_votes_until_(MonoTime::Min()),
+      dont_start_election_until_(MonoTime::Min()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
       follower_memory_pressure_rejections_(metric_entity->FindOrCreateCounter(
@@ -354,6 +355,12 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
                                   state_->GetActiveConfigUnlocked().ShortDebugString());
     }
 
+    MonoTime now = MonoTime::Now(MonoTime::COARSE);
+    if (now.ComesBefore(dont_start_election_until_)) {
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- we just stepped down as leader";
+      return Status::OK();
+    }
+
     if (state_->HasLeaderUnlocked()) {
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "Failure of leader " << state_->GetLeaderUuidUnlocked()
@@ -423,6 +430,13 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
     return Status::OK();
   }
   RETURN_NOT_OK(BecomeReplicaUnlocked());
+
+  // Reduce our timeout to start election by 2 election intervals.
+  // Cannot do arithmetic like 2* on MonoDelta, so adding delta twice.
+  dont_start_election_until_ = MonoTime::Now(MonoTime::FINE);
+  dont_start_election_until_.AddDelta(MinimumElectionTimeout());
+  dont_start_election_until_.AddDelta(MinimumElectionTimeout());
+
   return Status::OK();
 }
 

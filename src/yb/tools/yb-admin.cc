@@ -73,6 +73,11 @@ using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
 using consensus::RaftPeerPB;
+using consensus::RunLeaderElectionRequestPB;
+using consensus::RunLeaderElectionResponsePB;
+using master::ChangeMasterConfigType;
+using master::ChangeMasterConfigRequestPB;
+using master::ChangeMasterConfigResponsePB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
 using master::ListTabletServersRequestPB;
@@ -92,10 +97,19 @@ const char* const kListTabletsOp = "list_tablets";
 const char* const kListTabletServersOp = "list_tablet_servers";
 const char* const kDeleteTableOp = "delete_table";
 const char* const kListAllTabletServersOp = "list_all_tablet_servers";
+const char* const kListAllMastersOp ="list_all_masters";
+const char* const kChangeMasterConfigOp = "change_master_config";
+const char* const kDumpMastersState = "dump_masters_state";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
 #define MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR 10
+
+
+enum PeerMode {
+  LEADER = 1,
+  FOLLOWER
+};
 
 class ClusterAdminClient {
  public:
@@ -108,10 +122,20 @@ class ClusterAdminClient {
   Status Init();
 
   // Change the configuration of the specified tablet.
-  Status ChangeConfig(const string& tablet_id,
-                      const string& change_type,
-                      const string& peer_uuid,
-                      const boost::optional<string>& member_type);
+  Status ChangeConfig(
+    const string& tablet_id,
+    const string& change_type,
+    const string& peer_uuid,
+    const boost::optional<string>& member_type);
+
+  // Change the configuration of the master tablet.
+  Status ChangeMasterConfig(
+    const string& change_type,
+    const string& peer_host,
+    int16 peer_port,
+    const string& uuid);
+
+  Status DumpMasterState();
 
   // List all the tables.
   Status ListTables();
@@ -128,18 +152,26 @@ class ClusterAdminClient {
   // List all tablet servers known to master
   Status ListAllTabletServers();
 
+  // List all masters
+  Status ListAllMasters();
+
 private:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const std::string& tablet_id,
                             TabletLocationsPB* locations);
 
   // Fetch information about the location of the tablet leader from the Master.
-  Status GetTabletLeader(const std::string& tablet_id, TSInfoPB* ts_info);
+  Status GetTabletPeer(
+    const std::string& tablet_id,
+    PeerMode mode,
+    TSInfoPB* ts_info);
 
   // Set the uuid and the socket information from the leader of this tablet.
-  Status SetTabletLeaderInfo(const string& tablet_id,
-                             string& leader_uuid,
-                             Sockaddr* leader_socket);
+  Status SetTabletPeerInfo(
+    const string& tablet_id,
+    PeerMode mode,
+    string& leader_uuid,
+    Sockaddr* leader_socket);
 
   // Fetch the latest list of tablet servers from the Master.
   Status ListTabletServers(RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers);
@@ -147,13 +179,19 @@ private:
   // Look up the RPC address of the server with the specified UUID from the Master.
   Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
 
-  Status LeaderStepDown(const string& leader_uuid,
-                        const string& tablet_id,
-                        gscoped_ptr<ConsensusServiceProxy>* leader_proxy);
+  Status LeaderStepDown(
+    const string& leader_uuid,
+    const string& tablet_id,
+    gscoped_ptr<ConsensusServiceProxy>* leader_proxy);
+
+  Status StartElection(const string& tablet_id);
+
+  Status MasterLeaderStepDown(const string& leader_uuid);
+  Status GetMasterLeaderInfo(string& leader_uuid, HostPortPB& hostPortPB);
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;
-
+  Sockaddr leader_sock_;
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
@@ -179,12 +217,28 @@ Status ClusterAdminClient::Init() {
   MessengerBuilder builder("yb-admin");
   RETURN_NOT_OK(builder.Build(&messenger_));
 
-  Sockaddr leader_sock;
   // Find the leader master's socket info to set up the proxy
-  RETURN_NOT_OK(yb_client_->SetMasterLeaderSocket(&leader_sock));
-  master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock));
+  RETURN_NOT_OK(yb_client_->SetMasterLeaderSocket(&leader_sock_));
+  master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
 
   initted_ = true;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::MasterLeaderStepDown(
+  const string& leader_uuid) {
+  LeaderStepDownRequestPB req;
+  req.set_dest_uuid(leader_uuid);
+  req.set_tablet_id(""); // empty is treated as sys catalog tablet by catalog manager
+  LeaderStepDownResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  consensus::ConsensusServiceProxy *master_proxy =
+    new consensus::ConsensusServiceProxy(messenger_, leader_sock_);
+  RETURN_NOT_OK(master_proxy->LeaderStepDown(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
   return Status::OK();
 }
 
@@ -205,12 +259,37 @@ Status ClusterAdminClient::LeaderStepDown(
   return Status::OK();
 }
 
-Status ClusterAdminClient::SetTabletLeaderInfo(
+// Force start an election on a randomly chosen non-leader peer of this tablet's raft quorum.
+Status ClusterAdminClient::StartElection(
+  const string& tablet_id) {
+  Sockaddr non_leader_addr;
+  string non_leader_uuid;
+  RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, FOLLOWER, non_leader_uuid, &non_leader_addr));
+  gscoped_ptr<ConsensusServiceProxy>
+    non_leader_proxy(new ConsensusServiceProxy(messenger_, non_leader_addr));
+  RunLeaderElectionRequestPB req;
+  req.set_dest_uuid(non_leader_uuid);
+  req.set_tablet_id(tablet_id);
+  RunLeaderElectionResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  RETURN_NOT_OK(non_leader_proxy->RunLeaderElection(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+// Look up the location of the tablet server leader or non-leader peer from the
+// leader for this tablet.
+Status ClusterAdminClient::SetTabletPeerInfo(
   const string& tablet_id,
+  PeerMode mode,
   string& leader_uuid,
   Sockaddr* leader_socket) {
   TSInfoPB leader_ts_info;
-  RETURN_NOT_OK(GetTabletLeader(tablet_id, &leader_ts_info));
+  RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &leader_ts_info));
   CHECK_GT(leader_ts_info.rpc_addresses_size(), 0) << leader_ts_info.ShortDebugString();
 
   HostPort leader_hostport;
@@ -261,7 +340,6 @@ Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
                                    "a server or changing a role");
   }
 
-  // Look up RPC address of peer if adding as a new server.
   if (cc_type == consensus::ADD_SERVER) {
     HostPort host_port;
     RETURN_NOT_OK(GetFirstRpcAddressForTS(peer_uuid, &host_port));
@@ -271,18 +349,22 @@ Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
   // Look up the location of the tablet leader from the Master.
   Sockaddr leader_addr;
   string leader_uuid;
-  RETURN_NOT_OK(SetTabletLeaderInfo(tablet_id, leader_uuid, &leader_addr));
+  RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, leader_uuid, &leader_addr));
 
-  gscoped_ptr<ConsensusServiceProxy> consensus_proxy(new ConsensusServiceProxy(messenger_,
-                                                                               leader_addr));
-
+  gscoped_ptr<ConsensusServiceProxy>
+    consensus_proxy(new ConsensusServiceProxy(messenger_, leader_addr));
   // If removing the leader ts, then first make it step down and that
   // starts an election and gets a new leader ts.
   if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid.compare(peer_uuid) == 0) {
+    string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(LeaderStepDown(leader_uuid, tablet_id, &consensus_proxy));
-    sleep(5); // TODO - wait for new leader to get elected.
-    RETURN_NOT_OK(SetTabletLeaderInfo(tablet_id, leader_uuid, &leader_addr));
+    sleep(5); // TODO, election completion timing is not known accurately
+    // RETURN_NOT_OK(StartElection(tablet_id));
+    RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, leader_uuid, &leader_addr));
+    if (leader_uuid.compare(old_leader_uuid) == 0) {
+      return Status::ConfigurationError("Old tablet server leader same as new even after re-election!");
+    }
     consensus_proxy.reset(new ConsensusServiceProxy(messenger_, leader_addr));
   }
 
@@ -300,6 +382,110 @@ Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetMasterLeaderInfo(string& leader_uuid, HostPortPB& hostPortPB) {
+  master::ListMastersRequestPB list_req;
+  master::ListMastersResponsePB list_resp;
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->ListMasters(list_req, &list_resp, &rpc);
+  if (list_resp.has_error()) {
+    return StatusFromPB(list_resp.error());
+  }
+  leader_uuid = "";
+  for (int i = 0; i < list_resp.masters_size(); i++) {
+    if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
+      CHECK(leader_uuid.compare("") == 0);
+      leader_uuid = list_resp.masters(i).instance_id().permanent_uuid();
+      hostPortPB = list_resp.masters(i).registration().rpc_addresses(0);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DumpMasterState() {
+  CHECK(initted_);
+  master::DumpMasterStateRequestPB req;
+  master::DumpMasterStateResponsePB resp;
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_peers_also(true);
+  req.set_on_disk(true);
+  master_proxy_->DumpState(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ChangeMasterConfig(
+  const string& change_type,
+  const string &peer_host,
+  int16 peer_port,
+  const string &peer_uuid) {
+  CHECK(initted_);
+
+  // Parse the change type.
+  master::ChangeMasterConfigType cc_type = master::UNKNOWN_CHANGE;
+  string uppercase_change_type;
+  ToUpperCase(change_type, &uppercase_change_type);
+  if (!master::ChangeMasterConfigType_Parse(uppercase_change_type, &cc_type) ||
+    cc_type == master::UNKNOWN_CHANGE) {
+    return Status::InvalidArgument("Unsupported master change type", change_type);
+  }
+
+  string leader_uuid = "";
+  HostPortPB hostPortPB;
+  GetMasterLeaderInfo(leader_uuid, hostPortPB);
+  if (leader_uuid.compare("") == 0) {
+    return Status::ConfigurationError("Could not locate master leader!");
+  }
+
+  // If removing the leader master, then first make it step down and that
+  // starts an election and gets a new leader master.
+  if (cc_type == master::REMOVE_MASTER &&
+      leader_uuid.compare(peer_uuid) == 0) {
+    string old_leader_uuid = leader_uuid;
+    RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
+    sleep(5); // TODO - wait for exactly the time needed for new leader to get elected.
+    // Reget the leader master's socket info to set up the proxy
+    RETURN_NOT_OK(yb_client_->RegetAndSetMasterLeaderSocket(&leader_sock_, hostPortPB));
+    master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
+    GetMasterLeaderInfo(leader_uuid, hostPortPB);
+    if (leader_uuid.compare("") == 0) {
+      return Status::ConfigurationError("Could not locate new master leader!");
+    }
+    if (leader_uuid.compare(old_leader_uuid) == 0) {
+      return Status::ConfigurationError("Old master leader same as new even after stepdown!");
+    }
+  }
+
+  // Note that we could have called ChangeConfig in the consensus layer, but that does
+  // not update the in-mem master_options on leader and also would need system tablet uuid
+  // to be special cased and made externally visible.
+  master::ChangeMasterConfigRequestPB req;
+  master::ChangeMasterConfigResponsePB resp;
+  req.set_leader_master_uuid(leader_uuid);
+  req.set_type(cc_type);
+  HostPortPB peer_pb;
+  peer_pb.set_host(peer_host);
+  peer_pb.set_port(peer_port);
+  req.set_change_host_uuid(peer_uuid);
+  *req.mutable_change_host() = peer_pb;
+  RpcController mrpc;
+  mrpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_proxy_->ChangeMasterConfig(req, &resp, &mrpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 
@@ -329,22 +515,32 @@ Status ClusterAdminClient::GetTabletLocations(const string& tablet_id,
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTabletLeader(const string& tablet_id,
-                                           TSInfoPB* ts_info) {
+Status ClusterAdminClient::GetTabletPeer(
+  const string& tablet_id,
+  PeerMode mode,
+  TSInfoPB* ts_info) {
+
   TabletLocationsPB locations;
   RETURN_NOT_OK(GetTabletLocations(tablet_id, &locations));
   CHECK_EQ(tablet_id, locations.tablet_id()) << locations.ShortDebugString();
   bool found = false;
   for (const TabletLocationsPB::ReplicaPB& replica : locations.replicas()) {
-    if (replica.role() == RaftPeerPB::LEADER) {
+    if (mode == LEADER && replica.role() == RaftPeerPB::LEADER) {
+      *ts_info = replica.ts_info();
+      found = true;
+      break;
+    }
+    if (mode == FOLLOWER && replica.role() != RaftPeerPB::LEADER) {
       *ts_info = replica.ts_info();
       found = true;
       break;
     }
   }
+
   if (!found) {
-    return Status::NotFound("No leader replica found for tablet", tablet_id);
+    return Status::NotFound("No peer replica found for tablet", tablet_id);
   }
+
   return Status::OK();
 }
 
@@ -386,10 +582,46 @@ Status ClusterAdminClient::ListAllTabletServers() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
 
+  if (!servers.empty()) {
+    std::cout << "\tAll Server UUIDs\t  RPC Host/Port" << std::endl;
+  }
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    std::cout << server.instance_id().permanent_uuid() << std::endl;
+    std::cout << server.instance_id().permanent_uuid() << "  "
+      << server.registration().rpc_addresses(0).host() << "/"
+      << server.registration().rpc_addresses(0).port() << std::endl;
   }
 
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListAllMasters() {
+  master::ListMastersRequestPB lreq;
+  master::ListMastersResponsePB lresp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->ListMasters(lreq, &lresp, &rpc);
+  if (lresp.has_error()) {
+    return StatusFromPB(lresp.error());
+  }
+  if (!lresp.masters().empty()) {
+    std::cout << "\tMaster UUID\t\t  RPC Host/Port\tRole" << std::endl;
+  }
+  for (int i = 0; i < lresp.masters_size(); i++) {
+    if (lresp.masters(i).role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
+      std::cout << lresp.masters(i).instance_id().permanent_uuid() << "  "
+        << lresp.masters(i).registration().rpc_addresses(0).host() << "/"
+        << lresp.masters(i).registration().rpc_addresses(0).port() << "    "
+        << lresp.masters(i).role() << std::endl;
+    } else {
+      std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
+    }
+  }
+  if (!lresp.non_participants().empty()) {
+    std::cout << "\tNon-Participant Master UUID" << std::endl;
+  }
+  for (int i = 0; i < lresp.non_participants_size(); i++) {
+    std::cout << lresp.non_participants(i).instance_id().permanent_uuid() << std::endl;
+  }
   return Status::OK();
 }
 
@@ -405,6 +637,9 @@ Status ClusterAdminClient::ListTables() {
 Status ClusterAdminClient::ListTablets(const string& table_name) {
   vector<string> tablets;
   RETURN_NOT_OK(yb_client_->ListTablets(table_name, &tablets));
+  if (tablets.size() > 1) {
+    std::cout << "List of tablet uuid's for table " << table_name << ":" << std::endl;
+  }
   for (const string& tablet : tablets) {
     std::cout << tablet << std::endl;
   }
@@ -434,13 +669,18 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
       }
       std::cerr << std::endl;
     }
-    return Status::IllegalState(Substitute("Incorrect number of locations $0 for one tablet ",
-      resp.tablet_locations_size()));
+    return Status::IllegalState(Substitute("Incorrect number of locations $0 for tablet $1.",
+      resp.tablet_locations_size(), tablet_id));
   }
 
   TabletLocationsPB locs = resp.tablet_locations(0);
+  if (!locs.replicas().empty()) {
+    std::cout << "\tServer UUID\t\t  RPC Host/Port\tRole" << std::endl;
+  }
   for (int i = 0; i < locs.replicas_size(); i++) {
-    std::cout << locs.replicas(i).ts_info().permanent_uuid() << " "
+    std::cout << locs.replicas(i).ts_info().permanent_uuid() << "  "
+      << locs.replicas(i).ts_info().rpc_addresses(0).host() << "/"
+      << locs.replicas(i).ts_info().rpc_addresses(0).port() << "   "
       << locs.replicas(i).role() << std::endl;
   }
 
@@ -466,7 +706,12 @@ static void SetUsage(const char* argv0) {
       << " 3. " << kListTablesOp << std::endl
       << " 4. " << kListTabletsOp << " <table_name>" << std::endl
       << " 5. " << kDeleteTableOp << " <table_name>" << std::endl
-      << " 6. " << kListAllTabletServersOp;
+      << " 6. " << kListAllTabletServersOp << std::endl
+      << " 7. " << kListAllMastersOp << std::endl
+      << " 8. " << kChangeMasterConfigOp << " "
+                << "<ADD_MASTER|REMOVE_MASTER> <ip_addr> <port> <uuid>" << std::endl
+      << " 9. " << kDumpMastersState;
+
   google::SetUsageMessage(str.str());
 }
 
@@ -503,7 +748,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     string peer_uuid = argv[4];
     boost::optional<string> member_type;
     if (argc > 5) {
-      member_type = argv[5];
+      member_type = std::string(argv[5]);
     }
     Status s = client.ChangeConfig(tablet_id, change_type, peer_uuid, member_type);
     if (!s.ok()) {
@@ -520,6 +765,12 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.ListAllTabletServers();
     if (!s.ok()) {
       std::cerr << "Unable to list tablet servers: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kListAllMastersOp) {
+    Status s = client.ListAllMasters();
+    if (!s.ok()) {
+      std::cerr << "Unable to list masters: " << s.ToString() << std::endl;
       return 1;
     }
   } else if (op == kListTabletsOp) {
@@ -555,6 +806,37 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.DeleteTable(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to delete table " << table_name << ": " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kChangeMasterConfigOp) {
+    int16 new_port = 0;
+    string new_host = "";
+    string new_uuid = "";
+
+    if (argc != 6) {
+      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
+      exit(1);
+    }
+
+    string change_type = argv[2];
+    if ((change_type.compare("ADD_MASTER") != 0) && (change_type.compare("REMOVE_MASTER") != 0)) {
+      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
+      exit(1);
+    }
+
+    new_host = argv[3];
+    new_port = atoi(argv[4]);
+    new_uuid = argv[5];
+
+    Status s = client.ChangeMasterConfig(change_type, new_host, new_port, new_uuid);
+    if (!s.ok()) {
+      std::cerr << "Unable to change master config: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kDumpMastersState) {
+    Status s = client.DumpMasterState();
+    if (!s.ok()) {
+      std::cerr << "Unable to dump master config: " << s.ToString() << std::endl;
       return 1;
     }
   } else {

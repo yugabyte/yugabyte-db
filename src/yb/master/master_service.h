@@ -80,9 +80,24 @@ class MasterServiceImpl : public MasterServiceIf {
                            ListMastersResponsePB* resp,
                            rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void ListMasterRaftPeers(
+    const ListMasterRaftPeersRequestPB* req,
+    ListMasterRaftPeersResponsePB* resp,
+    rpc::RpcContext* rpc) OVERRIDE;
+
   virtual void GetMasterRegistration(const GetMasterRegistrationRequestPB* req,
                                      GetMasterRegistrationResponsePB* resp,
                                      rpc::RpcContext* rpc) OVERRIDE;
+
+  virtual void ChangeMasterConfig(
+    const ChangeMasterConfigRequestPB* req,
+    ChangeMasterConfigResponsePB* resp,
+    rpc::RpcContext* rpc) OVERRIDE;
+
+  virtual void DumpState(
+    const DumpMasterStateRequestPB* req,
+    DumpMasterStateResponsePB* resp,
+    rpc::RpcContext* rpc) OVERRIDE;
 
  private:
   Master* server_;

@@ -552,6 +552,69 @@ message ListMastersResponsePB {
   // Set only if there's an error in retrieving the list of servers or
   // in getting this server's own local registration information.
   optional AppStatusPB error = 2;
+
+  // An entry for each individual master server that is not yet part of the quorum
+  repeated ServerEntryPB non_participants = 3;
+}
+
+// ListMasterRaftPeersRequest/Response: get information about all of the known
+// master servers which are part of this masters version of the currently active raft quorum.
+message ListMasterRaftPeersRequestPB {
+}
+
+message ListMasterRaftPeersResponsePB {
+  // An entry for each individual master server.
+  repeated consensus.RaftPeerPB masters = 1;
+
+  // Set only if there's an error in retrieving the list of servers or
+  // in getting this server's own local registration information.
+  optional AppStatusPB error = 2;
+
+  // An entry for each individual master server that is not yet part of the quorum
+  repeated consensus.RaftPeerPB non_participants = 3;
+}
+
+// Type of master config change
+enum ChangeMasterConfigType {
+  UNKNOWN_CHANGE = 0;
+  ADD_MASTER = 1;
+  REMOVE_MASTER = 2;
+}
+
+// A configuration change request for the master tablet.
+// These requests are restricted to one-by-one operations, as specified in
+// Diego Ongaro's Raft PhD thesis.
+message ChangeMasterConfigRequestPB {
+  // UUID of leader master this request is addressed to.
+  optional bytes leader_master_uuid = 1;
+
+  // The type of config change requested.
+  // This field must be specified, but is left as optional due to being an enum.
+  optional ChangeMasterConfigType type = 2;
+
+  // The host/port of the peer to add or remove.
+  optional HostPortPB change_host = 3;
+  optional bytes change_host_uuid = 4;
+
+  // Used by leader to broadcast the change to in-mem structures of peers
+  // TODO - Ensure that the client or non-leader does not set this.
+  optional bool in_memory_only = 5 [ default = false ];
+}
+
+// The configuration change response. If any immediate error occurred
+// the 'error' field is set with it, otherwise 'new_configuration' is set.
+message ChangeMasterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// Make the masters dump all their in-memory state to
+message DumpMasterStateRequestPB {
+  optional bool on_disk = 1 [default = true];
+  optional bool peers_also = 2 [default = false];
+}
+
+message DumpMasterStateResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 service MasterService {
@@ -578,6 +641,14 @@ service MasterService {
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);
   rpc ListMasters(ListMastersRequestPB) returns (ListMastersResponsePB);
+  rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
     (GetMasterRegistrationResponsePB);
+
+  // Implements all of the one-by-one config change operations, including
+  // AddServer() and RemoveServer() from the Raft specification.
+  rpc ChangeMasterConfig(ChangeMasterConfigRequestPB) returns (ChangeMasterConfigResponsePB);
+
+  // Dump master state from all the peers in the current master's quorum
+  rpc DumpState(DumpMasterStateRequestPB) returns (DumpMasterStateResponsePB);
 }

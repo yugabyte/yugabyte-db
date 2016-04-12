@@ -300,4 +300,13 @@ uint16_t GetFreePort() {
   return 0;  // never reached
 }
 
+bool HostPort::equals(HostPortPB& hostPortPB) {
+  if (hostPortPB.host() == host() &&
+    hostPortPB.port() == port()) {
+    return true;
+  }
+
+  return false;
+}
+
 } // namespace yb

@@ -26,6 +26,7 @@
 #include "yb/client/scan_predicate.h"
 #include "yb/client/schema.h"
 #include "yb/client/shared_ptr.h"
+#include "yb/common/common.pb.h"
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/gutil/macros.h"
@@ -36,6 +37,7 @@
 #include "yb/client/write_op.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -43,7 +45,6 @@ namespace yb {
 class LinkedListTester;
 class PartitionSchema;
 class Sockaddr;
-
 namespace client {
 
 class YBLoggingCallback;
@@ -210,6 +211,11 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   Status ListTablets(const std::string& table_name,
                      std::vector<std::string>* tablets);
 
+  // Get the list of master uuids. Can be enhanced later to also return port/host info.
+  Status ListMasters(
+    MonoTime deadline,
+    std::vector<std::string>* master_uuids);
+
   // Check if the table given by 'table_name' exists.
   //
   // 'exists' is set only on success.
@@ -231,6 +237,9 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   // Return the socket address of the master leader for this client
   Status SetMasterLeaderSocket(Sockaddr* leader_socket);
+  Status RegetAndSetMasterLeaderSocket(
+    Sockaddr* leader_socket,
+    HostPortPB& ignore_host);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

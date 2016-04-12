@@ -52,6 +52,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/atomicops.h"
@@ -67,6 +68,7 @@
 #include "yb/gutil/walltime.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -157,6 +159,7 @@ using base::subtle::NoBarrier_CompareAndSwap;
 using cfile::TypeEncodingInfo;
 using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
+using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::Consensus;
 using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
@@ -172,6 +175,7 @@ using tablet::TabletDataState;
 using tablet::TabletPeer;
 using tablet::TabletStatePB;
 using tserver::TabletServerErrorPB;
+using master::MasterServiceProxy;
 
 ////////////////////////////////////////////////////////////
 // Table Loader
@@ -1715,7 +1719,8 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
   }
 
   CHECK(sys_catalog_.get() != nullptr) << "sys_catalog_ must be initialized!";
-  if (sys_catalog_->tablet_id() == tablet_id) {
+  // Empty tablet id also implies system tablet
+  if (tablet_id.compare("") == 0 || sys_catalog_->tablet_id() == tablet_id) {
     *tablet_peer = sys_catalog_->tablet_peer();
   } else {
     return Status::NotFound(Substitute("no SysTable exists with tablet_id $0 in CatalogManager",
@@ -1728,7 +1733,111 @@ const NodeInstancePB& CatalogManager::NodeInstance() const {
   return master_->instance_pb();
 }
 
-Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+Status CatalogManager::ChangePeerOptions(
+  const ChangeMasterConfigRequestPB* req,
+  ChangeMasterConfigResponsePB* resp,
+  std::string& leader_uuid) {
+  consensus::ConsensusStatePB cpb;
+  RETURN_NOT_OK(GetCurrentConfig(&cpb));
+  ChangeMasterConfigRequestPB inmem_req = *req;
+  inmem_req.set_in_memory_only(true);
+
+  gscoped_ptr<MasterServiceProxy> peer_proxy;
+  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+  rpc::RpcController rpc;
+  Sockaddr sockaddr;
+
+  for (RaftPeerPB peer : cpb.config().peers()) {
+    if (peer.permanent_uuid().compare(leader_uuid) == 0) {
+      continue;
+    }
+    HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
+    RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
+    peer_proxy.reset(new MasterServiceProxy(master_->messenger(), sockaddr));
+    rpc.Reset();
+    rpc.set_deadline(timeout);
+
+    peer_proxy->ChangeMasterConfig(inmem_req, resp, &rpc);
+
+    if (resp->has_error()) {
+      LOG(WARNING) << "Hit err during  peer " << peer.ShortDebugString() << " state dump.";
+      return StatusFromPB(resp->error().status());
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::ChangeMasterConfig(
+  const ChangeMasterConfigRequestPB* req,
+  ChangeMasterConfigResponsePB* resp) {
+  string leader_uuid = sys_catalog()->tablet_peer()->permanent_uuid();
+  string new_master_uuid = req->change_host_uuid();
+  bool in_mem_only = req->in_memory_only();
+
+  LOG(INFO) << "Change Master " << req->ShortDebugString() << " " << in_mem_only <<
+    " @ " << leader_uuid << " " << req->type() << std::endl;
+
+  // If we are the master being removed, clear our in-mem state
+  if (in_mem_only && new_master_uuid.compare(leader_uuid) == 0) {
+    if (req->type() == REMOVE_MASTER) {
+      master_->ClearMasters();
+    }
+    return Status::OK();
+  }
+
+  if (leader_uuid.compare(new_master_uuid) == 0) {
+    return Status::InvalidArgument(
+      Substitute("Leader uuid $0 cannot be the same as the peer being added/removed $1. Perform "
+        "leader step down first.", leader_uuid, new_master_uuid));
+  }
+
+  if (req->type() == REMOVE_MASTER) {
+    RETURN_NOT_OK(master_->RemoveMaster(&req->change_host()));
+    RETURN_NOT_OK(master_->SetNonParticipant(&req->change_host()));
+  } else if (req->type() == ADD_MASTER) {
+    RETURN_NOT_OK(master_->AddMaster(&req->change_host()));
+  } else {
+    return Status::InvalidArgument(Substitute("Request type $0 is incorrect.", req->type()));
+  }
+
+  if (in_mem_only) {
+    return Status::OK();
+  }
+
+  Sockaddr leader_sockaddr = master_->first_rpc_address();
+  consensus::ConsensusServiceProxy *peer_proxy =
+    new consensus::ConsensusServiceProxy(master_->messenger(), leader_sockaddr);
+  consensus::ChangeConfigRequestPB ccreq;
+  RaftPeerPB peer_pb;
+  peer_pb.set_permanent_uuid(new_master_uuid);
+  peer_pb.set_member_type(RaftPeerPB::VOTER);
+  *peer_pb.mutable_last_known_addr() = req->change_host();
+  ccreq.set_dest_uuid(leader_uuid);
+  ccreq.set_tablet_id(sys_catalog()->SysTabletId());
+  ccreq.set_type((req->type() == REMOVE_MASTER) ? consensus::REMOVE_SERVER : consensus::ADD_SERVER);
+  *ccreq.mutable_server() = peer_pb;
+  consensus::ChangeConfigResponsePB ccresp;
+  rpc::RpcController rpc;
+  // Calculate and set the timeout deadline.
+  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+  rpc.set_deadline(timeout);
+  peer_proxy->ChangeConfig(ccreq, &ccresp, &rpc);
+  if (ccresp.has_error()) {
+    return StatusFromPB(ccresp.error().status());
+  }
+
+  RETURN_NOT_OK(ChangePeerOptions(req, resp, leader_uuid));
+
+  resp->clear_error();
+
+  return Status::OK();
+}
+
+Status CatalogManager::StartRemoteBootstrap(const yb::consensus::StartRemoteBootstrapRequestPB& req) {
+  LOG(INFO) << "Start RBS leader master " << req.ShortDebugString() << std::endl;
   return Status::NotSupported("Remote bootstrap not yet implemented for the master tablet");
 }
 
@@ -3088,7 +3197,12 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::DumpState(std::ostream* out) const {
+Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB *cpb) const {
+  *cpb = sys_catalog_->tablet_peer()->consensus()->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
+  return Status::OK();
+}
+
+void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   TableInfoMap ids_copy, names_copy;
   TabletInfoMap tablets_copy;
 
@@ -3101,7 +3215,7 @@ void CatalogManager::DumpState(std::ostream* out) const {
     tablets_copy = tablet_map_;
   }
 
-  *out << "Tables:\n";
+  *out << "Dumping Current state of master.\nTables:\n";
   for (const TableInfoMap::value_type& e : ids_copy) {
     TableInfo* t = e.second.get();
     TableMetadataLock l(t, TableMetadataLock::READ);
@@ -3149,6 +3263,43 @@ void CatalogManager::DumpState(std::ostream* out) const {
       *out << "  name: \"" << CHexEscape(e.first) << "\"\n";
     }
   }
+
+  master_->DumpMasterOptionsInfo(out);
+
+  if (on_disk_dump) {
+    consensus::ConsensusStatePB cur_consensus_state;
+    GetCurrentConfig(&cur_consensus_state);
+    *out << "Current raft config: " << cur_consensus_state.ShortDebugString() << "\n";
+  }
+}
+
+Status CatalogManager::PeerStateDump(vector<RaftPeerPB>& peers, bool on_disk) {
+  gscoped_ptr<MasterServiceProxy> peer_proxy;
+  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+  rpc::RpcController rpc;
+  Sockaddr sockaddr;
+
+  for (RaftPeerPB peer : peers) {
+    HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
+    RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
+    peer_proxy.reset(new MasterServiceProxy(master_->messenger(), sockaddr));
+
+    DumpMasterStateRequestPB req;
+    req.set_on_disk(on_disk);
+    DumpMasterStateResponsePB resp;
+    rpc.Reset();
+    rpc.set_deadline(timeout);
+
+    peer_proxy->DumpState(req, &resp, &rpc);
+
+    if (resp.has_error()) {
+      LOG(WARNING) << "Hit err during  peer " << peer.ShortDebugString() << " state dump.";
+      return StatusFromPB(resp.error().status());
+    }
+  }
+
+  return Status::OK();
 }
 
 std::string CatalogManager::LogPrefix() const {

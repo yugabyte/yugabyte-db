@@ -21,6 +21,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include "yb/client/meta_cache.h"
 #include "yb/common/schema.h"
@@ -29,6 +30,8 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/master/master.h"
 #include "yb/master/master_rpc.h"
@@ -63,6 +66,8 @@ using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
+using master::ListMastersRequestPB;
+using master::ListMastersResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
 using master::ListTabletServersRequestPB;
@@ -244,6 +249,18 @@ Status YBClient::Data::SyncLeaderMasterRpc(
   const boost::function<Status(MasterServiceProxy*,
                                const GetTableLocationsRequestPB&,
                                GetTableLocationsResponsePB*,
+                               RpcController*)>& func);
+template
+Status YBClient::Data::SyncLeaderMasterRpc(
+  const MonoTime& deadline,
+  YBClient* client,
+  const ListMastersRequestPB& req,
+  ListMastersResponsePB* resp,
+  int* num_attempts,
+  const char* func_name,
+  const boost::function<Status(MasterServiceProxy*,
+                               const ListMastersRequestPB&,
+                               ListMastersResponsePB*,
                                RpcController*)>& func);
 
 YBClient::Data::Data()
@@ -845,8 +862,52 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
     l.unlock();
     leader_master_rpc_->SendRpc();
   }
+}
 
+// API to clear and reset master addresses, used during master config change
+Status YBClient::Data::SetMasterAddresses(const string& addrs) {
+  if (addrs.empty()) {
+    return Status::InvalidArgument("master addresses cannot be empty");
+  }
 
+  master_server_addrs_.clear();
+  master_server_addrs_.push_back(std::move(addrs));
+
+  return Status::OK();
+}
+
+// Remove a given master from the list of master_server_addrs_
+Status YBClient::Data::RemoveMasterAddress(HostPortPB& hostPortPB) {
+  bool found = false;
+  vector<HostPort> newList;
+
+  // Note that this outer loop is over a vector of comma-separated strings.
+  // The newList will actually merge them into one, so one push back is fine outside the loop.
+  for (const string& master_server_addr : master_server_addrs_) {
+    vector<string> addr_strings = strings::Split(master_server_addr, ",", strings::SkipEmpty());
+    for (const string& single_addr : addr_strings) {
+      HostPort host_port;
+      RETURN_NOT_OK(host_port.ParseString(single_addr, 0/*defaultPort*/));
+      if (host_port.equals(hostPortPB)) {
+        if (found) {
+          return Status::IllegalState(
+            Substitute("Duplicate master server's found for $0.", hostPortPB.ShortDebugString()));
+        }
+        found = true;
+      } else {
+        newList.push_back(host_port);
+      }
+    }
+  }
+
+  if (!found) {
+    return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
+      hostPortPB.ShortDebugString()));
+  }
+
+  RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(newList)));
+
+  return Status::OK();
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {

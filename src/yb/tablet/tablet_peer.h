@@ -251,6 +251,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return meta_;
   }
 
+  const consensus::RaftPeerPB* local_peer_pb() const {
+    return &local_peer_pb_;
+  }
+
  private:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;

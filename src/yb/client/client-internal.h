@@ -160,6 +160,9 @@ class YBClient::Data {
 
   void UpdateLatestObservedTimestamp(uint64_t timestamp);
 
+  Status SetMasterAddresses(const std::string& addresses);
+  Status RemoveMasterAddress(HostPortPB& hostPortPB);
+
   // Retry 'func' until either:
   //
   // 1) Methods succeeds on a leader master.

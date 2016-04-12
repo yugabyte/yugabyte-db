@@ -115,6 +115,12 @@ class SysCatalogTable {
   // Scan of the tablet-related entries.
   Status VisitTablets(TabletVisitor* visitor);
 
+  std::string SysTabletId() const { return tablet_id(); }
+
+  const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
+    return tablet_peer_;
+  }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 
@@ -144,10 +150,6 @@ class SysCatalogTable {
   // TODO: Revisit this whole thing when integrating leader election.
   Status SetupDistributedConfig(const MasterOptions& options,
                                 consensus::RaftConfigPB* committed_config);
-
-  const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
-    return tablet_peer_;
-  }
 
   std::string tablet_id() const {
     return tablet_peer_->tablet_id();

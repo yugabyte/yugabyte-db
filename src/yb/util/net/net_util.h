@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "yb/util/status.h"
+#include "yb/common/common.pb.h"
 
 namespace yb {
 
@@ -63,6 +64,9 @@ class HostPort {
   // string containing of "host:port" pairs. This method is the
   // "inverse" of ParseStrings().
   static std::string ToCommaSeparatedString(const std::vector<HostPort>& host_ports);
+
+  // Checks if the host/port are same as the protobuf
+  bool equals(HostPortPB& hostPortPB);
 
  private:
   std::string host_;
