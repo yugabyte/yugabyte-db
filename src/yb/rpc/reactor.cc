@@ -281,13 +281,16 @@ void ReactorThread::ScanIdleConnections() {
       continue;
     }
 
-    MonoDelta connection_delta(cur_time_.GetDeltaSince(conn->last_activity_time()));
+    MonoTime last_activity_time = conn->last_activity_time();
+    MonoDelta connection_delta(cur_time_.GetDeltaSince(last_activity_time));
     if (connection_delta.MoreThan(connection_keepalive_time_)) {
       conn->Shutdown(Status::NetworkError(
                        StringPrintf("connection timed out after %s seconds",
                                     connection_keepalive_time_.ToString().c_str())));
       VLOG(1) << "Timing out connection " << conn->ToString() << " - it has been idle for "
-              << connection_delta.ToSeconds() << "s";
+              << connection_delta.ToSeconds() << "s (delta: " << connection_delta.ToString()
+              << ", current time: " << cur_time_.ToString()
+              << ", last activity time: " << last_activity_time.ToString() << ")";
       server_conns_.erase(c++);
       ++timed_out;
     } else {
