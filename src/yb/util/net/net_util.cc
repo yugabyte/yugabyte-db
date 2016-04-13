@@ -38,6 +38,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 
