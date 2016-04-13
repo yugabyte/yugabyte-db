@@ -244,7 +244,7 @@ class ReactorThread {
   // Abort members, provided it was allocated on the heap.
   std::set<DelayedTask*> scheduled_tasks_;
 
-  // The current monotonic time.  Updated every coarse_timer_granularity_secs_.
+  // The current monotonic time.  Updated every coarse_timer_granularity_.
   MonoTime cur_time_;
 
   // last time we did TCP timeouts.
