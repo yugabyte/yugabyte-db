@@ -82,6 +82,13 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
       COMMENT "RocksDB test ${ROCKSDB_TEST_NAME}"
       VERBATIM)
     add_test(NAME "${ROCKSDB_TEST_TARGET_NAME}" COMMAND "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_NAME}")
+
+    # The "imported executable" below is an attempt to make it possible to run RocksDB tests from
+    # CLion without extra configuration.
+    # TODO: make this work or remove it.
+    add_executable("rocksdb_${ROCKSDB_TEST_NAME}" IMPORTED GLOBAL)
+    set_property(TARGET "rocksdb_${ROCKSDB_TEST_NAME}_executable" PROPERTY IMPORTED_LOCATION
+      "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_NAME}")
   endif()
 endforeach(ROCKSDB_TEST_SRC)
 
