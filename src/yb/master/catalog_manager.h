@@ -612,6 +612,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   void AbortTableCreation(TableInfo* table, const std::vector<TabletInfo*>& tablets);
 
+  // Broadcast from master leader, info about in-memory change for master options to all the peers
   Status ChangePeerOptions(
     const ChangeMasterConfigRequestPB* req,
     ChangeMasterConfigResponsePB* resp,

@@ -871,23 +871,22 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
   }
 
   master_server_addrs_.clear();
-  master_server_addrs_.push_back(std::move(addrs));
+  master_server_addrs_.push_back(addrs);
 
   return Status::OK();
 }
 
 // Remove a given master from the list of master_server_addrs_
 Status YBClient::Data::RemoveMasterAddress(const HostPortPB& hostPortPB) {
-  bool found = false;
-  vector<HostPort> newList;
+  vector<HostPort> new_list;
 
   RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
     hostPortPB,
     master_server_addrs_,
-    0 /*defaultPort*/,
-    &newList));
+    0, // defaultPort
+    &new_list));
 
-  RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(newList)));
+  RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));
 
   return Status::OK();
 }

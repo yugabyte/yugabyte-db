@@ -68,9 +68,11 @@ class HostPort {
   // Checks if the host/port are same as the protobuf
   bool equals(const HostPortPB& hostPortPB);
 
+  // Remove a given host/port from a vector of comma separated server mulitple addresses, each in
+  // [host:port,]+ format and returns a final list as a remaining vector of hostports.
   static Status RemoveAndGetHostPortList(
     const HostPortPB& remove,
-    const std::vector<std::string>& server_addresses,
+    const std::vector<std::string>& multiple_server_addresses,
     uint16_t default_port,
     std::vector<HostPort> *res);
 

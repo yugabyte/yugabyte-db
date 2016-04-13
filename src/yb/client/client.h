@@ -37,7 +37,6 @@
 #include "yb/client/write_op.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -237,6 +236,9 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   // Return the socket address of the master leader for this client
   Status SetMasterLeaderSocket(Sockaddr* leader_socket);
+
+  // Caller knows that the existing leader might have died or stepped down, so it can use this API
+  // to reset the client state to point to new master leader.
   Status RegetAndSetMasterLeaderSocket(
     Sockaddr* leader_socket,
     const HostPortPB& ignore_host);

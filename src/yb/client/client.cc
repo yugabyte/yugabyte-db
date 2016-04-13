@@ -366,8 +366,9 @@ Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
   return Status::OK();
 }
 
-Status YBClient::ListMasters(MonoTime deadline,
-  std::vector<std::string>* master_uuids) {
+Status YBClient::ListMasters(
+    MonoTime deadline,
+    std::vector<std::string>* master_uuids) {
   ListMastersRequestPB list_req;
   ListMastersResponsePB list_resp;
   Status s =
@@ -394,11 +395,9 @@ Status YBClient::ListMasters(MonoTime deadline,
   return Status::OK();
 }
 
-// Caller knows that the existing leader might have died/stepped down, so it can use this API
-// to reset the client state to point to new master leader.
 Status YBClient::RegetAndSetMasterLeaderSocket(
-  Sockaddr* leader_socket,
-  const HostPortPB& ignore_host) {
+    Sockaddr* leader_socket,
+    const HostPortPB& ignore_host) {
 
   RETURN_NOT_OK(data_->RemoveMasterAddress(ignore_host));
 

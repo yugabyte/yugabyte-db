@@ -586,10 +586,9 @@ message ChangeMasterConfigRequestPB {
   optional bytes leader_master_uuid = 1;
 
   // The type of config change requested.
-  // This field must be specified, but is left as optional due to being an enum.
   optional ChangeMasterConfigType type = 2;
 
-  // The host/port of the peer to add or remove.
+  // The host/port and uuid of the peer to add or remove.
   optional HostPortPB change_host = 3;
   optional bytes change_host_uuid = 4;
 
@@ -598,15 +597,19 @@ message ChangeMasterConfigRequestPB {
   optional bool in_memory_only = 5 [ default = false ];
 }
 
-// The configuration change response. If any immediate error occurred
-// the 'error' field is set with it, otherwise 'new_configuration' is set.
+// The configuration change response. If any error occurred the 'error' field is set.
 message ChangeMasterConfigResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-// Make the masters dump all their in-memory state to
+// Make the masters dump all their in-memory and on-disk state to their respective log files.
+// Sent to the master leader first, and then propogated to its peers if peers_also is set to true.
 message DumpMasterStateRequestPB {
+  // Dump on-disk state known to this master - including sys.catalog and raft config related info
   optional bool on_disk = 1 [default = true];
+
+  // If set to true, the leader sends request to all current peers to dump their state too.
+  // The on_disk is sent along to peers too.
   optional bool peers_also = 2 [default = false];
 }
 

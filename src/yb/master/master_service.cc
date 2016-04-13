@@ -350,39 +350,39 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
 }
 
 void MasterServiceImpl::ListMasters(
-  const ListMastersRequestPB* req,
-  ListMastersResponsePB* resp,
-  rpc::RpcContext* rpc) {
+    const ListMastersRequestPB* req,
+    ListMastersResponsePB* resp,
+    rpc::RpcContext* rpc) {
   vector<ServerEntryPB> masters;
   vector<ServerEntryPB> non_participants;
   Status s = server_->ListMasters(&masters, &non_participants);
-  if (!s.ok()) {
-    StatusToPB(s, resp->mutable_error());
-    resp->mutable_error()->set_code(AppStatusPB::UNKNOWN_ERROR);
-  } else {
+  if (s.ok()) {
     for (const ServerEntryPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
     }
     for (const ServerEntryPB& non_part : non_participants) {
       resp->add_non_participants()->CopyFrom(non_part);
     }
+  } else {
+    StatusToPB(s, resp->mutable_error());
+    resp->mutable_error()->set_code(AppStatusPB::UNKNOWN_ERROR);
   }
   rpc->RespondSuccess();
 }
 
 void MasterServiceImpl::ListMasterRaftPeers(
-  const ListMasterRaftPeersRequestPB* req,
-  ListMasterRaftPeersResponsePB* resp,
-  rpc::RpcContext* rpc) {
+    const ListMasterRaftPeersRequestPB* req,
+    ListMasterRaftPeersResponsePB* resp,
+    rpc::RpcContext* rpc) {
   vector<RaftPeerPB> masters;
   Status s = server_->ListRaftConfigMasters(&masters);
-  if (!s.ok()) {
-    StatusToPB(s, resp->mutable_error());
-    resp->mutable_error()->set_code(AppStatusPB::UNKNOWN_ERROR);
-  } else {
+  if (s.ok()) {
     for (const RaftPeerPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
     }
+  } else {
+    StatusToPB(s, resp->mutable_error());
+    resp->mutable_error()->set_code(AppStatusPB::UNKNOWN_ERROR);
   }
   rpc->RespondSuccess();
 }
@@ -402,9 +402,9 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
 }
 
 void MasterServiceImpl::ChangeMasterConfig(
-  const ChangeMasterConfigRequestPB* req,
-  ChangeMasterConfigResponsePB* resp,
-  rpc::RpcContext* rpc) {
+    const ChangeMasterConfigRequestPB* req,
+    ChangeMasterConfigResponsePB* resp,
+    rpc::RpcContext* rpc) {
   if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
     return;
   }
@@ -414,9 +414,9 @@ void MasterServiceImpl::ChangeMasterConfig(
 }
 
 void MasterServiceImpl::DumpState(
-  const DumpMasterStateRequestPB* req,
-  DumpMasterStateResponsePB* resp,
-  rpc::RpcContext* rpc) {
+    const DumpMasterStateRequestPB* req,
+    DumpMasterStateResponsePB* resp,
+    rpc::RpcContext* rpc) {
   if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
     return;
   }
@@ -427,6 +427,10 @@ void MasterServiceImpl::DumpState(
     vector<RaftPeerPB> masters_raft;
     Status s = server_->ListRaftConfigMasters(&masters_raft);
     CheckRespErrorOrSetUnknown(s, resp);
+
+    if (!s.ok())
+      return;
+
     LOG(INFO) << "Sending dump command to " << masters_raft.size()-1 << " peers." << std::endl;
 
     // Remove our entry before broadcasting to all peers
@@ -434,14 +438,14 @@ void MasterServiceImpl::DumpState(
     bool found = false;
     for (it = masters_raft.begin(); it != masters_raft.end(); it++) {
       RaftPeerPB peerPB = *it;
-      if (server_->instance_pb().permanent_uuid().compare(peerPB.permanent_uuid()) == 0) {
+      if (server_->instance_pb().permanent_uuid() == peerPB.permanent_uuid()) {
         found = true;
         break;
       }
     }
 
     if (!found) {
-      CHECK(false); // Ideally only in debug mode, but keeping it for now
+      CHECK(found) << "Did not find leader in raft config";
     }
 
     masters_raft.erase(it);

@@ -1734,9 +1734,9 @@ const NodeInstancePB& CatalogManager::NodeInstance() const {
 }
 
 Status CatalogManager::ChangePeerOptions(
-  const ChangeMasterConfigRequestPB* req,
-  ChangeMasterConfigResponsePB* resp,
-  std::string& leader_uuid) {
+    const ChangeMasterConfigRequestPB* req,
+    ChangeMasterConfigResponsePB* resp,
+    string& leader_uuid) {
   consensus::ConsensusStatePB cpb;
   RETURN_NOT_OK(GetCurrentConfig(&cpb));
   ChangeMasterConfigRequestPB inmem_req = *req;
@@ -1761,8 +1761,8 @@ Status CatalogManager::ChangePeerOptions(
     peer_proxy->ChangeMasterConfig(inmem_req, resp, &rpc);
 
     if (resp->has_error()) {
-      LOG(WARNING) << "Hit err during  peer " << peer.ShortDebugString() << " state dump.";
-      return StatusFromPB(resp->error().status());
+      LOG(WARNING) << "Hit error " << resp->error().ShortDebugString() <<
+        " during state dump of peer " << peer.ShortDebugString() << ".";
     }
   }
 
@@ -1770,8 +1770,8 @@ Status CatalogManager::ChangePeerOptions(
 }
 
 Status CatalogManager::ChangeMasterConfig(
-  const ChangeMasterConfigRequestPB* req,
-  ChangeMasterConfigResponsePB* resp) {
+    const ChangeMasterConfigRequestPB* req,
+    ChangeMasterConfigResponsePB* resp) {
   string leader_uuid = sys_catalog()->tablet_peer()->permanent_uuid();
   string new_master_uuid = req->change_host_uuid();
   bool in_mem_only = req->in_memory_only();
@@ -3274,7 +3274,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 }
 
 Status CatalogManager::PeerStateDump(vector<RaftPeerPB>& peers, bool on_disk) {
-  gscoped_ptr<MasterServiceProxy> peer_proxy;
+  std::unique_ptr<MasterServiceProxy> peer_proxy;
   Sockaddr sockaddr;
   MonoTime timeout = MonoTime::Now(MonoTime::FINE);
   DumpMasterStateRequestPB req;
