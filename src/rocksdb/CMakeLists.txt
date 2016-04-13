@@ -72,8 +72,9 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
   get_filename_component(ROCKSDB_TEST_SRC_DIR "${ROCKSDB_TEST_SRC}" DIRECTORY)
   get_filename_component(ROCKSDB_TEST_SRC_DIR_BASENAME "${ROCKSDB_TEST_SRC_DIR}" NAME)
   # The rocksjni directory has some tests with the same name as other tests (write_batch_test.cc),
-  # so we skip that directory.
-  if(NOT "${ROCKSDB_TEST_SRC_DIR_BASENAME}" STREQUAL "rocksjni")
+  # so we skip that directory. We also skip db_sanity_test, which is a command-line tool.
+  if(NOT "${ROCKSDB_TEST_SRC_DIR_BASENAME}" STREQUAL "rocksjni" AND
+     NOT "${ROCKSDB_TEST_NAME}" STREQUAL "db_sanity_test")
     set(ROCKSDB_TEST_TARGET_NAME "rocksdb_${ROCKSDB_TEST_NAME}")
     add_custom_target("${ROCKSDB_TEST_TARGET_NAME}"
       COMMAND ${BUILD_ROCKSDB_ARGS} --target "${ROCKSDB_TEST_NAME}" --skip-link-dir-creation
