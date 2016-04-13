@@ -282,4 +282,21 @@ void TryRunLsof(const Sockaddr& addr, vector<string>* log) {
   LOG_STRING(WARNING, log) << results;
 }
 
+uint16_t GetFreePort() {
+  for (int i = 0; i < 1000; ++i) {
+    uint16_t random_port = 61000 + rand() % (65535 - 61000 + 1);
+
+    Sockaddr sock_addr;
+    CHECK_OK(sock_addr.ParseString("127.0.0.1", random_port));
+    Socket sock;
+    sock.Init(0);
+    if (sock.Bind(sock_addr, /* explain_addr_in_use */ false).ok()) {
+      LOG(INFO) << "Selected random free RPC port " << random_port;
+      return random_port;
+    }
+  }
+  LOG(FATAL) << "Could not find a free random port between 61000 and 65535 inclusively";
+  return 0;  // never reached
+}
+
 } // namespace yb

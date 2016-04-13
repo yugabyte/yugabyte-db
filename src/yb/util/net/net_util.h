@@ -108,5 +108,9 @@ Status HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPort* hp);
 // is non-NULL (mostly useful for testing).
 void TryRunLsof(const Sockaddr& addr, std::vector<std::string>* log = NULL);
 
+// Get a free port that a local server could listen to. For use in tests. Tries up to a 1000 times
+// and fatals after that.
+uint16_t GetFreePort();
+
 } // namespace yb
 #endif

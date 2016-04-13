@@ -36,10 +36,7 @@ namespace yb {
 class EMCTest : public YBTest {
  public:
   EMCTest() {
-    // Hard-coded RPC ports for the masters. This is safe, as this unit test
-    // runs under a resource lock (see CMakeLists.txt in this directory).
-    // TODO we should have a generic method to obtain n free ports.
-    master_peer_ports_ = { 11010, 11011, 11012 };
+    master_peer_ports_ = { 0, 0, 0 };
   }
 
  protected:

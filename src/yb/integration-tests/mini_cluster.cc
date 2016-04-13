@@ -104,6 +104,14 @@ Status MiniCluster::StartDistributedMasters() {
   CHECK_GE(master_rpc_ports_.size(), num_masters_initial_);
   CHECK_GT(master_rpc_ports_.size(), 1);
 
+  for (int i = 0; i < master_rpc_ports_.size(); ++i) {
+    if (master_rpc_ports_[i] == 0) {
+      master_rpc_ports_[i] = GetFreePort();
+      LOG(INFO) << "Using auto-assigned port " << master_rpc_ports_[i]
+        << " to start a mini-cluster master";
+    }
+  }
+
   LOG(INFO) << "Creating distributed mini masters. Ports: "
             << JoinInts(master_rpc_ports_, ", ");
 

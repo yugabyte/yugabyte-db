@@ -257,9 +257,17 @@ Status ExternalMiniCluster::StartDistributedMasters() {
         opts_.master_rpc_ports.size() << " ports specified in 'master_rpc_ports'";
   }
 
+  for (int i = 0; i < opts_.master_rpc_ports.size(); ++i) {
+    if (opts_.master_rpc_ports[i] == 0) {
+      opts_.master_rpc_ports[i] = GetFreePort();
+      LOG(INFO) << "Using an auto-assigned port " << opts_.master_rpc_ports[i]
+        << " to start an external mini-cluster master";
+    }
+  }
+
   vector<string> peer_addrs;
   for (int i = 0; i < num_masters; i++) {
-    string addr = Substitute("127.0.0.1:$0", ResolveRpcPort(opts_.master_rpc_ports[i]));
+    string addr = Substitute("127.0.0.1:$0", opts_.master_rpc_ports[i]);
     peer_addrs.push_back(addr);
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
@@ -517,26 +525,6 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
                                resp.ShortDebugString());
   }
   return Status::OK();
-}
-
-uint16_t ExternalMiniCluster::ResolveRpcPort(uint16_t rpc_port) {
-  if (rpc_port != 0) {
-    return rpc_port;
-  }
-  for (int i = 0; i < 1000; ++i) {
-    uint16_t random_port = 61000 + rand() % (65535 - 61000 + 1);
-
-    Sockaddr sock_addr;
-    CHECK_OK(sock_addr.ParseString("127.0.0.1", random_port));
-    Socket sock;
-    sock.Init(0);
-    if (sock.Bind(sock_addr, /* explain_addr_in_use */ false).ok()) {
-      LOG(INFO) << "Selected random free RPC port " << random_port;
-      return random_port;
-    }
-  }
-  LOG(FATAL) << "Could not find a free random port between 61000 and 65535 inclusively";
-  return 0;  // never reached
 }
 
 //------------------------------------------------------------

@@ -52,12 +52,8 @@ const int kNumTabletServerReplicas = 3;
 class MasterReplicationTest : public YBTest {
  public:
   MasterReplicationTest() {
-    // Hard-coded ports for the masters. This is safe, as this unit test
-    // runs under a resource lock (see CMakeLists.txt in this directory).
-    // TODO we should have a generic method to obtain n free ports.
-    opts_.master_rpc_ports = { 11010, 11011, 11012 };
-
-    opts_.num_masters = num_masters_ = opts_.master_rpc_ports.size();
+    opts_.master_rpc_ports = { 0, 0, 0 };
+opts_.num_masters = num_masters_ = opts_.master_rpc_ports.size();
     opts_.num_tablet_servers = kNumTabletServerReplicas;
   }
 
