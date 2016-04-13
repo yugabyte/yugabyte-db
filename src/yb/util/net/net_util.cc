@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <iostream>
 
 #include <algorithm>
 #include <unordered_set>
@@ -75,7 +76,7 @@ HostPort::HostPort(const Sockaddr& addr)
 }
 
 Status HostPort::RemoveAndGetHostPortList(
-    const HostPort& remove,
+    const Sockaddr& remove,
     const std::vector<string>& multiple_server_addresses,
     uint16_t default_port,
     std::vector<HostPort> *res) {
@@ -86,7 +87,7 @@ Status HostPort::RemoveAndGetHostPortList(
     for (const string& single_addr : addr_strings) {
       HostPort host_port;
       RETURN_NOT_OK(host_port.ParseString(single_addr, default_port));
-      if (host_port == remove) {
+      if (host_port.equals(remove)) {
         found = true;
         continue;
       } else {
@@ -331,6 +332,10 @@ uint16_t GetFreePort() {
 
 bool HostPort::equals(const HostPortPB& hostPortPB) const {
   return hostPortPB.host() == host() && hostPortPB.port() == port();
+}
+
+bool HostPort::equals(const Sockaddr& sockaddr) const {
+  return sockaddr.host() == host() && sockaddr.port() == port();
 }
 
 } // namespace yb

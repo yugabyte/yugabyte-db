@@ -39,7 +39,6 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
-#include "yb/util/net/net_util.h"
 // --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
 
 namespace yb {
@@ -47,7 +46,6 @@ namespace yb {
 class LinkedListTester;
 class PartitionSchema;
 class Sockaddr;
-class HostPort;
 namespace client {
 
 class YBLoggingCallback;
@@ -245,7 +243,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // to reset the client state to point to new master leader.
   Status RegetAndSetMasterLeaderSocket(
     Sockaddr* leader_socket,
-    const HostPort& ignore_host);
+    const Sockaddr& ignore_host);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

@@ -187,7 +187,7 @@ private:
   Status StartElection(const string& tablet_id);
 
   Status MasterLeaderStepDown(const string& leader_uuid);
-  Status GetMasterLeaderInfo(string* leader_uuid, HostPortPB* hostPortPB);
+  Status GetMasterLeaderInfo(string* leader_uuid);
 
   const std::string master_addr_list_;
   const MonoDelta timeout_;
@@ -382,7 +382,7 @@ Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetMasterLeaderInfo(string* leader_uuid, HostPortPB* hostPortPB) {
+Status ClusterAdminClient::GetMasterLeaderInfo(string* leader_uuid) {
   master::ListMastersRequestPB list_req;
   master::ListMastersResponsePB list_resp;
 
@@ -396,7 +396,6 @@ Status ClusterAdminClient::GetMasterLeaderInfo(string* leader_uuid, HostPortPB* 
     if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
       CHECK(leader_uuid->empty()) << "Found two LEADER's in the same raft config.";
       *leader_uuid = list_resp.masters(i).instance_id().permanent_uuid();
-      *hostPortPB = list_resp.masters(i).registration().rpc_addresses(0);
     }
   }
 
@@ -438,8 +437,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   }
 
   string leader_uuid;
-  HostPortPB host_port;
-  GetMasterLeaderInfo(&leader_uuid, &host_port);
+  GetMasterLeaderInfo(&leader_uuid);
   if (leader_uuid.empty()) {
     return Status::ConfigurationError("Could not locate master leader!");
   }
@@ -452,10 +450,11 @@ Status ClusterAdminClient::ChangeMasterConfig(
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5); // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
-    HostPort hp(host_port.host(), host_port.port());
-    RETURN_NOT_OK(yb_client_->RegetAndSetMasterLeaderSocket(&leader_sock_, hp));
+    Sockaddr old_leader_sock = leader_sock_;
+    RETURN_NOT_OK(yb_client_->RegetAndSetMasterLeaderSocket(&leader_sock_, old_leader_sock));
     master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
-    GetMasterLeaderInfo(&leader_uuid, &host_port);
+    leader_uuid = ""; // reset case, so it can be set to new leader in the call below
+    GetMasterLeaderInfo(&leader_uuid);
     if (leader_uuid.empty()) {
       return Status::ConfigurationError("Could not locate new master leader!");
     }
