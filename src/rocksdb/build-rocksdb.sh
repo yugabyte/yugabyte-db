@@ -32,6 +32,13 @@ Options:
     Specify to use the ld.gold linker.
   --build-all-targets
     Specify to build tests, tools, and benchmarks
+  --target <target>
+    Explicitly specify an additional Makefile target to build. This option can be repeated and all
+    targets specified this way will be built.
+  --skip-link-dir-creation
+    Skip creation of a symlink directory tree for an out-of-source RocksDB build. This can be used
+    if we know this has already been done (e.g. when building a test right after building the
+    RocksDB library).
 EOT
 }
 
@@ -46,8 +53,10 @@ use_ld_gold=false
 extra_ldflags=""
 verbose=false
 build_all_targets=false
+skip_link_dir_creation=false
 
 make_opts=()
+make_targets=()
 
 while [ $# -ne 0 ]; do
   case "$1" in
@@ -95,6 +104,13 @@ while [ $# -ne 0 ]; do
     --build-all-targets)
       build_all_targets=true
     ;;
+    --target)
+      make_targets+=( "$2" )
+      shift
+    ;;
+    --skip-link-dir-creation)
+      skip_link_dir_creation=true
+    ;;
     *)
       print_help >&2
       echo >&2
@@ -140,7 +156,6 @@ if $use_ld_gold; then
   extra_ldflags="-fuse-ld=gold"
 fi
 
-make_targets=()
 case "$link_mode" in
   d)
     make_targets+=( shared_lib )
@@ -229,18 +244,21 @@ fi
 
 set -x
 
-rm -rf "$link_dir"
+if ! $skip_link_dir_creation; then
+  rm -rf "$link_dir"
 
-cd "$rocksdb_dir"
-make clean  # ensure there are no build artifacts in the RocksDB source directory itself
+  cd "$rocksdb_dir"
+  make clean  # ensure there are no build artifacts in the RocksDB source directory itself
 
-# Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
-$CP -Rs "$rocksdb_dir" "$link_dir"
+  # Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
+  $CP -Rs "$rocksdb_dir" "$link_dir"
 
-# Sync any new links that may have been created into our RocksDB build directory that may already
-# contain build artifacts from an earlier build.
-rsync -al "$link_dir/" "$rocksdb_build_dir"
+  # Sync any new links that may have been created into our RocksDB build directory that may already
+  # contain build artifacts from an earlier build.
+  rsync -al "$link_dir/" "$rocksdb_build_dir"
+fi
 
+mkdir -p "$rocksdb_build_dir"
 cd "$rocksdb_build_dir"
 
 set +u  # make_opts may be empty and that we don't want that to be treated as an undefined variable
