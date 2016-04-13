@@ -397,7 +397,7 @@ Status YBClient::ListMasters(
 
 Status YBClient::RegetAndSetMasterLeaderSocket(
     Sockaddr* leader_socket,
-    const HostPortPB& ignore_host) {
+    const HostPort& ignore_host) {
 
   RETURN_NOT_OK(data_->RemoveMasterAddress(ignore_host));
 

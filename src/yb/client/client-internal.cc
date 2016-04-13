@@ -877,11 +877,11 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 }
 
 // Remove a given master from the list of master_server_addrs_
-Status YBClient::Data::RemoveMasterAddress(const HostPortPB& hostPortPB) {
+Status YBClient::Data::RemoveMasterAddress(const HostPort& host_port) {
   vector<HostPort> new_list;
 
   RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
-    hostPortPB,
+    host_port,
     master_server_addrs_,
     0, // defaultPort
     &new_list));

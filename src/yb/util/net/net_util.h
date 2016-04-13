@@ -66,15 +66,19 @@ class HostPort {
   static std::string ToCommaSeparatedString(const std::vector<HostPort>& host_ports);
 
   // Checks if the host/port are same as the protobuf
-  bool equals(const HostPortPB& hostPortPB);
+  bool equals(const HostPortPB& hostPortPB) const;
 
   // Remove a given host/port from a vector of comma separated server mulitple addresses, each in
   // [host:port,]+ format and returns a final list as a remaining vector of hostports.
   static Status RemoveAndGetHostPortList(
-    const HostPortPB& remove,
+    const HostPort& remove,
     const std::vector<std::string>& multiple_server_addresses,
     uint16_t default_port,
     std::vector<HostPort> *res);
+
+  bool operator==(const HostPort other) const {
+    return host() == other.host() && port() == other.port();
+  }
 
  private:
   std::string host_;

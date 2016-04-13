@@ -75,7 +75,7 @@ HostPort::HostPort(const Sockaddr& addr)
 }
 
 Status HostPort::RemoveAndGetHostPortList(
-    const HostPortPB& remove,
+    const HostPort& remove,
     const std::vector<string>& multiple_server_addresses,
     uint16_t default_port,
     std::vector<HostPort> *res) {
@@ -86,7 +86,7 @@ Status HostPort::RemoveAndGetHostPortList(
     for (const string& single_addr : addr_strings) {
       HostPort host_port;
       RETURN_NOT_OK(host_port.ParseString(single_addr, default_port));
-      if (host_port.equals(remove)) {
+      if (host_port == remove) {
         found = true;
         continue;
       } else {
@@ -97,7 +97,7 @@ Status HostPort::RemoveAndGetHostPortList(
 
   if (!found) {
     return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
-      remove.ShortDebugString()));
+      remove.ToString()));
   }
 
   return Status::OK();
@@ -329,7 +329,7 @@ uint16_t GetFreePort() {
   return 0;  // never reached
 }
 
-bool HostPort::equals(const HostPortPB& hostPortPB) {
+bool HostPort::equals(const HostPortPB& hostPortPB) const {
   return hostPortPB.host() == host() && hostPortPB.port() == port();
 }
 

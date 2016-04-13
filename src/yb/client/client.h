@@ -21,12 +21,13 @@
 #include <string>
 #include <vector>
 
+// --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
+// --- client_samples-test.sh depends on this --- //
 #include "yb/client/row_result.h"
 #include "yb/client/scan_batch.h"
 #include "yb/client/scan_predicate.h"
 #include "yb/client/schema.h"
 #include "yb/client/shared_ptr.h"
-#include "yb/common/common.pb.h"
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/gutil/macros.h"
@@ -38,12 +39,15 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/net/net_util.h"
+// --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
 
 namespace yb {
 
 class LinkedListTester;
 class PartitionSchema;
 class Sockaddr;
+class HostPort;
 namespace client {
 
 class YBLoggingCallback;
@@ -241,7 +245,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // to reset the client state to point to new master leader.
   Status RegetAndSetMasterLeaderSocket(
     Sockaddr* leader_socket,
-    const HostPortPB& ignore_host);
+    const HostPort& ignore_host);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

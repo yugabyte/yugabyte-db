@@ -452,7 +452,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5); // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
-    RETURN_NOT_OK(yb_client_->RegetAndSetMasterLeaderSocket(&leader_sock_, host_port));
+    HostPort hp(host_port.host(), host_port.port());
+    RETURN_NOT_OK(yb_client_->RegetAndSetMasterLeaderSocket(&leader_sock_, hp));
     master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
     GetMasterLeaderInfo(&leader_uuid, &host_port);
     if (leader_uuid.empty()) {
