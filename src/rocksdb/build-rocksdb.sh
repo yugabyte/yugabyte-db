@@ -239,46 +239,47 @@ if [ -n "$extra_ldflags" ]; then
   make_opts+=( EXTRA_LDFLAGS="$extra_ldflags" )
 fi
 
-# -------------------------------------------------------------------------------------------------
-# Every command will be logged from this point on. All variables should have been set up above.
-
-set -x
-
 if ! $skip_link_dir_creation; then
-  rm -rf "$link_dir"
+  (
+    set -x
+    rm -rf "$link_dir"
 
-  cd "$rocksdb_dir"
-  make clean  # ensure there are no build artifacts in the RocksDB source directory itself
+    cd "$rocksdb_dir"
 
-  # Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
-  $CP -Rs "$rocksdb_dir" "$link_dir"
+    make clean  # ensure there are no build artifacts in the RocksDB source directory itself
 
-  # Sync any new links that may have been created into our RocksDB build directory that may already
-  # contain build artifacts from an earlier build.
-  rsync -al "$link_dir/" "$rocksdb_build_dir"
+    # Create a "link-only" directory inside of our build directory that mirrors the RocksDB source tree.
+    $CP -Rs "$rocksdb_dir" "$link_dir"
+
+    # Sync any new links that may have been created into our RocksDB build directory that may already
+    # contain build artifacts from an earlier build.
+    rsync -al "$link_dir/" "$rocksdb_build_dir"
+
+  )
 fi
 
-mkdir -p "$rocksdb_build_dir"
+( set -x; mkdir -p "$rocksdb_build_dir" )
 cd "$rocksdb_build_dir"
 
 set +u  # make_opts may be empty and that we don't want that to be treated as an undefined variable
-make "${make_opts[@]}" "${make_targets[@]}"
 
-set +x -u
+( set -x; make "${make_opts[@]}" "${make_targets[@]}" )
+
+set -u
 
 # Now we're handling a weird issue that only happens during CLion-triggered builds.
-# The RocksDB library is somehow expected to exist in __default__/rocksdb-build instead of
-# e.g. Debug/rocksdb-build, so we just symlink it there.
+# The RocksDB library and test binaries are expected to exist in __default__/rocksdb-build instead
+# of e.g. Debug/rocksdb-build, so we just symlink them there.
 
 if [[ "$build_dir" =~ /[.]CLion.*/ ]]; then
   if [ -d "$build_dir/../__default__" ]; then
-    mkdir -p "$build_dir/../__default__/rocksdb-build"
-    for rocksdb_lib_path in "$rocksdb_build_dir"/librocksdb*; do
-      if [ -f "$rocksdb_lib_path" ]; then
-        dest_path="$build_dir/../__default__/rocksdb-build/${rocksdb_lib_path##*/}"
+    ( set -x; mkdir -p "$build_dir/../__default__/rocksdb-build" )
+    for symlink_target in "$rocksdb_build_dir"/librocksdb* "$rocksdb_build_dir"/*_test; do
+      if [ -f "$symlink_target" ]; then
+        dest_path="$build_dir/../__default__/rocksdb-build/${symlink_target##*/}"
         if [ ! -f "$dest_path" ]; then
-          echo "Creating a symlink '$dest_path' to '${rocksdb_lib_path}' for CLion"
-          ln -s "$rocksdb_lib_path" "$dest_path"
+          echo "Creating a symlink '$dest_path' to '${symlink_target}' for CLion"
+          ( set -x; ln -s "$symlink_target" "$dest_path" )
         fi
       fi
     done
