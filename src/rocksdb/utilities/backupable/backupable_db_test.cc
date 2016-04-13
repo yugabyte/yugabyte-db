@@ -1341,6 +1341,7 @@ TEST_F(BackupableDBTest, ChangeManifestDuringBackupCreation) {
 TEST_F(BackupableDBTest, Issue921Test) {
   BackupEngine* backup_engine;
   backupable_options_->share_table_files = false;
+  env_->CreateDirIfMissing(backupdir_);  // necessary if running this test on its own
   backupable_options_->backup_dir += "/new_dir";
 
   ASSERT_OK(BackupEngine::Open(env_, *backupable_options_, &backup_engine));
