@@ -304,18 +304,22 @@ if zgrep --silent "ERROR: LeakSanitizer: detected memory leaks" $LOG_PATH ; then
 fi
 
 # Capture and compress core file and binary.
+set +e
 COREFILES=$(ls | grep ^core)
+set -e
 if [ -n "$COREFILES" ]; then
   echo Found core dump. Saving executable and core files.
-  gzip < "$ABS_TEST_PATH" > "$TEST_DEBUG_DIR/$TEST_NAME.gz" || exit $?
+  gzip < "$ABS_TEST_PATH" > "$TEST_DEBUG_DIR/$TEST_NAME.gz"
   for COREFILE in $COREFILES; do
-    gzip < "$COREFILE" > "$TEST_DEBUG_DIR/$TEST_NAME.$COREFILE.gz" || exit $?
+    gzip < "$COREFILE" > "$TEST_DEBUG_DIR/$TEST_NAME.$COREFILE.gz"
   done
+  set +e
   # Pull in any .so files as well.
   for LIB in $(ldd $ABS_TEST_PATH | grep $BUILD_ROOT | awk '{print $3}'); do
     LIB_NAME=$(basename $LIB)
     gzip < "$LIB" > "$TEST_DEBUG_DIR/$LIB_NAME.gz" || exit $?
   done
+  set -e
 fi
 
 popd
