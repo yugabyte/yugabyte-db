@@ -86,7 +86,7 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
     # The "imported executable" below is an attempt to make it possible to run RocksDB tests from
     # CLion without extra configuration.
     # TODO: make this work or remove it.
-    add_executable("rocksdb_${ROCKSDB_TEST_NAME}" IMPORTED GLOBAL)
+    add_executable("rocksdb_${ROCKSDB_TEST_NAME}_executable" IMPORTED GLOBAL)
     set_property(TARGET "rocksdb_${ROCKSDB_TEST_NAME}_executable" PROPERTY IMPORTED_LOCATION
       "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_NAME}")
   endif()
@@ -98,6 +98,7 @@ add_library(
   rocksdb_dummy_library_for_clion
   EXCLUDE_FROM_ALL
   ${ROCKSDB_SOURCES}
+
 )
 # Allow navigating to RocksDB's internal include files in CLion.
 target_include_directories(rocksdb_dummy_library_for_clion PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
