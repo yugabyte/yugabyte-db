@@ -92,7 +92,9 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
     }
   }
   writable->Flush();
-  writable->Fsync();
+  if (!db_opt.disableDataSync) {
+    writable->Fsync();
+  }
   writable->Close();
 
   return RocksDBOptionsParser::VerifyRocksDBOptionsFromFile(
