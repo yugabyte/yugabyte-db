@@ -94,20 +94,6 @@ typedef enum
 	LAST
 }  position_mode;
 
-
-#if PG_VERSION_NUM < 80400
-text *
-cstring_to_text_with_len(const char *c, int n)
-{
-	text *result;
-	result = palloc(n + VARHDRSZ);
-	SET_VARSIZE(result, n + VARHDRSZ);
-	memcpy(VARDATA(result), c, n);
-
-	return result;
-}
-#endif
-
 /*
  * Make substring, can handle negative start
  *
