@@ -2,7 +2,21 @@
 
 set -euo pipefail
 
-NON_GTEST_TESTS=(
+make_regex() {
+  local regex=""
+  for item in "$@"; do
+    if [ -z "$item" ]; then
+      continue
+    fi
+    if [ -n "$regex" ]; then
+      regex+="|"
+    fi
+    regex+="$item"
+  done
+  echo "^($regex)$"
+}
+
+NON_GTEST_TEST_BINARIES=(
   bin/merge-test
   rocksdb-build/bloom_test
   rocksdb-build/compact_on_deletion_collector_test
@@ -14,6 +28,13 @@ NON_GTEST_TESTS=(
   rocksdb-build/prefix_test
   rocksdb-build/stringappend_test
 )
+NON_GTEST_TEST_BINARIES_RE=$( make_regex "${NON_GTEST_TEST_BINARIES[@]}" )
+
+# Test binaries that we can't run one-by-one because of dependencies between test cases.
+TEST_BINARIES_TO_RUN_AT_ONCE=(
+  rocksdb-build/thread_local_test
+)
+TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( make_regex "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}" )
 
 show_help() {
   cat <<-EOT
@@ -25,15 +46,23 @@ Options:
   -h, --help
   --build-type
     one of debug (default), fastdebug, release, profile_gen, profile_build
+  --test-binary-re <test_binary_regex>
+    A regular expression for filtering test binary (executable) names.
+
 Commands:
   run   Runs the tests one at a time
   list  List individual tests. This is suitable for producing input for a Hadoop Streaming job.
 EOT
 }
 
+sanitize_for_path() {
+  echo "$1" | sed 's/\//__/g; s/[:.]/_/g;'
+}
+
 project_dir=$( cd "$( dirname $0 )"/.. && pwd )
 
 build_type="debug"
+test_binary_re=""
 cmd=""
 while [ $# -ne 0 ]; do
   case "$1" in
@@ -43,6 +72,10 @@ while [ $# -ne 0 ]; do
     ;;
     --build_type)
       build_type="$2"
+      shift
+    ;;
+    --test-binary-re)
+      test_binary_re="$2"
       shift
     ;;
     run|list)
@@ -96,32 +129,31 @@ if [ "$num_tests" -eq 0 ]; then
   exit 1
 fi
 
-non_gtest_tests_re=""
-for non_gtest_test in "${NON_GTEST_TESTS[@]}"; do
-  if [ -n "$non_gtest_tests_re" ]; then
-    non_gtest_tests_re+="|"
-  fi
-  non_gtest_tests_re+="$non_gtest_test"
-done
-
 tests=()
 num_test_cases=0
 
 echo "Collecting test cases and tests from gtest binaries"
 for test_binary in "${test_binaries[@]}"; do
-  if [[ "$test_binary" =~ $non_gtest_tests_re ]]; then
+  rel_test_binary="${test_binary#$build_dir/}"
+  if [ -n "$test_binary_re" ] && [[ ! "$rel_test_binary" =~ $test_binary_re ]]; then
+    continue
+  fi
+  if [[ "$rel_test_binary" =~ $NON_GTEST_TEST_BINARIES_RE ]]; then
     echo "Known non-gtest test: $test_binary, skipping"
     continue
   fi
-  rel_test_binary="${test_binary#$build_dir/}"
+
+  if [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
+    tests+=( "$rel_test_binary" )
+    continue
+  fi
 
   set +e
   gtest_list_tests_result=$( "$test_binary" --gtest_list_tests )
   exit_code=$?
   set -e
   if [ "$exit_code" -ne 0 ]; then
-    echo "'$test_binary' does not seem to be a gtest test (--gtest_list_tests failed)" >&2
-    # TODO: handle these tests.
+    echo "'$test_binary' does not seem to be a gtest test (--gtest_list_tests failed), skipping" >&2
   else
     for test_list_item in $gtest_list_tests_result; do
       if [[ "$test_list_item" =~ ^\ \  ]]; then
@@ -149,23 +181,41 @@ test_index=1
 echo "Starting tests at $(date)"
 
 for t in "${tests[@]}"; do
-  test_binary=${t%:::*}
-  test_filter=${t#*:::}
-  test_binary_sanitized=$( echo "$test_binary" | sed 's/\//__/g; s/[:.]/_/g;' )
-  test_filter_sanitized=$( echo "$test_filter" | sed 's/\//__/g; s/[:.]/_/g;' )
+  if [[ "$t" =~ ::: ]]; then
+    test_binary=${t%:::*}
+    test_name=${t#*:::}
+    run_at_once=false
+    what_test_str="test $test_name"
+  else
+    # Run all test cases in the given test binary
+    test_binary=$t
+    test_name=""
+    run_at_once=true
+    what_test_str="all tests"
+  fi
+  test_binary_sanitized=$( sanitize_for_path "$test_binary" )
+  test_name_sanitized=$( sanitize_for_path "$test_name" )
   test_log_dir_for_binary="$test_log_dir/$test_binary_sanitized"
   mkdir -p "$test_log_dir_for_binary"
-  test_log_path_prefix="$test_log_dir_for_binary/$test_filter_sanitized"
+  if $run_at_once; then
+    # Make this similar to the case when we run tests separately. Pretend that the test binary name
+    # is the test name.
+    test_log_path_prefix="$test_log_dir_for_binary/${test_binary##*/}"
+  else
+    test_log_path_prefix="$test_log_dir_for_binary/$test_name_sanitized"
+  fi
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
   mkdir -p "$TEST_TMPDIR"
-  echo "[$test_index/$num_tests] $test_binary, test $test_filter," \
+  echo "[$test_index/$num_tests] $test_binary ($what_test_str)," \
        "logging to $test_log_path_prefix.log"
 
+  test_cmd_line=( "$build_dir/$test_binary" "--gtest_output=xml:$test_log_path_prefix.xml" )
+  if ! $run_at_once; then
+    test_cmd_line+=( "--gtest_filter=$test_name" )
+  fi
+
   set +e
-  "$build_dir/$test_binary" \
-    "--gtest_filter=$test_filter" \
-    "--gtest_output=xml:$test_log_path_prefix.xml" \
-    >"$test_log_path_prefix.log" 2>&1
+  "${test_cmd_line[@]}" >"$test_log_path_prefix.log" 2>&1
   echo
   if [ $? -ne 0 ]; then
     echo "Test failed"
