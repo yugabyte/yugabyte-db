@@ -32,6 +32,7 @@ NON_GTEST_TEST_BINARIES_RE=$( make_regex "${NON_GTEST_TEST_BINARIES[@]}" )
 
 # Test binaries that we can't run one-by-one because of dependencies between test cases.
 TEST_BINARIES_TO_RUN_AT_ONCE=(
+  bin/tablet_server-test
   rocksdb-build/thread_local_test
 )
 TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( make_regex "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}" )
@@ -130,7 +131,9 @@ if [ "$num_tests" -eq 0 ]; then
 fi
 
 tests=()
+num_tests=0
 num_test_cases=0
+num_binaries_to_run_at_once=0
 
 echo "Collecting test cases and tests from gtest binaries"
 for test_binary in "${test_binaries[@]}"; do
@@ -145,6 +148,7 @@ for test_binary in "${test_binaries[@]}"; do
 
   if [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
     tests+=( "$rel_test_binary" )
+    let num_binaries_to_run_at_once+=1
     continue
   fi
 
@@ -161,6 +165,7 @@ for test_binary in "${test_binaries[@]}"; do
         test=${test%%#*}  # Remove everything after a "#" comment
         test=${test%  }  # Remove two trailing spaces
         tests+=( "${rel_test_binary}:::$test_case$test" )
+        let num_tests+=1
       else
         test_case=${test_list_item%%#*}  # Remove everything after a "#" comment
         test_case=${test_case%  }  # Remove two trailing spaces
@@ -170,8 +175,8 @@ for test_binary in "${test_binaries[@]}"; do
   fi
 done
 
-num_tests=${#tests[@]}
-echo "Found $num_tests GTest tests in $num_test_cases test cases"
+echo "Found $num_tests GTest tests in $num_test_cases test cases, and" \
+  "$num_binaries_to_run_at_once test executables to be run at once"
 
 test_log_dir="$build_dir/yb-test-logs"
 rm -rf "$test_log_dir"
@@ -206,7 +211,7 @@ for t in "${tests[@]}"; do
   fi
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
   mkdir -p "$TEST_TMPDIR"
-  echo "[$test_index/$num_tests] $test_binary ($what_test_str)," \
+  echo "[$test_index/${#tests[@]}] $test_binary ($what_test_str)," \
        "logging to $test_log_path_prefix.log"
 
   test_cmd_line=( "$build_dir/$test_binary" "--gtest_output=xml:$test_log_path_prefix.xml" )
