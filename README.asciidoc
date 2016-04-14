@@ -409,6 +409,10 @@ year. For example, Christmas day in Western countries.
 * plvdate.unuse_easter();
 * plvdate.use_easter(useit boolean);
 * plvdate.using_easter() bool - If we use easter then returns true
+* plvdate.use_great_friday() - Easter Great Friday will be holiday
+* plvdate.unuse_easter();
+* plvdate.use_easter(useit boolean);
+* plvdate.using_easter() bool - If we use easter Great Friday as holiday then returns true
 * plvdate.include_start() - Include starting date in bizdays_between calculation
 * plvdate.noinclude_start();
 * plvdate.include_start(include boolean);

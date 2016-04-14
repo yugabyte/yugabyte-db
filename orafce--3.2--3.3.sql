@@ -25,3 +25,27 @@ RETURNS timestamp without time zone
 AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION plvdate.use_great_friday(bool)
+RETURNS void
+AS 'MODULE_PATHNAME','plvdate_use_great_friday'
+LANGUAGE C VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.use_great_friday(bool) IS 'Great Friday will be holiday';
+
+CREATE FUNCTION plvdate.use_great_friday()
+RETURNS bool
+AS $$SELECT plvdate.use_great_friday(true); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.use_great_friday() IS 'Great Friday will be holiday';
+
+CREATE FUNCTION plvdate.unuse_great_friday()
+RETURNS bool
+AS $$SELECT plvdate.use_great_friday(false); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.unuse_great_friday() IS 'Great Friday will not be holiday';
+
+CREATE FUNCTION plvdate.using_great_friday()
+RETURNS bool
+AS 'MODULE_PATHNAME','plvdate_using_great_friday'
+LANGUAGE C VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.using_great_friday() IS 'Use Great Friday?';

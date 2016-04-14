@@ -182,6 +182,8 @@ extern PGDLLEXPORT Datum plvdate_set_nonbizday_day(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvdate_unset_nonbizday_day(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvdate_use_easter(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvdate_using_easter(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plvdate_use_great_friday(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum plvdate_using_great_friday(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvdate_include_start(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvdate_including_start(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum plvdate_default_holidays(PG_FUNCTION_ARGS);

@@ -14,7 +14,7 @@
     1.0. first public version 13. March 2006
 */
 
-#define PLVDATE_VERSION  "PostgreSQL PLVdate, version 1.0, March 2006"
+#define PLVDATE_VERSION  "PostgreSQL PLVdate, version 1.1, April 2016"
 
 #include "postgres.h"
 #include "utils/date.h"
@@ -39,6 +39,8 @@ PG_FUNCTION_INFO_V1(plvdate_unset_nonbizday_day);
 
 PG_FUNCTION_INFO_V1(plvdate_use_easter);
 PG_FUNCTION_INFO_V1(plvdate_using_easter);
+PG_FUNCTION_INFO_V1(plvdate_use_great_friday);
+PG_FUNCTION_INFO_V1(plvdate_using_great_friday);
 PG_FUNCTION_INFO_V1(plvdate_include_start);
 PG_FUNCTION_INFO_V1(plvdate_including_start);
 
@@ -65,7 +67,9 @@ do { \
 
 static unsigned char nonbizdays = SUNDAY | SATURDAY;
 static bool use_easter = true;
+static bool use_great_friday = true;
 static bool include_start = true;
+static int country_id = -1;			/* unknown */
 
 #define MAX_holidays   30
 #define MAX_EXCEPTIONS 50
@@ -78,6 +82,7 @@ typedef struct {
 typedef struct {
 	unsigned char nonbizdays;
 	bool use_easter;
+	bool use_great_friday;
 	holiday_desc *holidays;
 	int holidays_c;
 } cultural_info;
@@ -142,14 +147,14 @@ static holiday_desc usa_holidays[] = {
 };
 
 cultural_info defaults_ci[] = {
-	{SUNDAY | SATURDAY, true, czech_holidays, 11},
-	{SUNDAY | SATURDAY, true, germany_holidays, 9},
-	{SUNDAY | SATURDAY, true, poland_holidays, 9},
-	{SUNDAY | SATURDAY, true, austria_holidays, 13},
-	{SUNDAY | SATURDAY, true, slovakia_holidays, 13},
-	{SUNDAY | SATURDAY, false, russian_holidays, 12},
-	{SUNDAY | SATURDAY, true, england_holidays, 7},
-	{SUNDAY | SATURDAY, false, usa_holidays, 10}
+	{SUNDAY | SATURDAY, true, true, czech_holidays, 11},
+	{SUNDAY | SATURDAY, true, true, germany_holidays, 9},
+	{SUNDAY | SATURDAY, true, false, poland_holidays, 9},
+	{SUNDAY | SATURDAY, true, false, austria_holidays, 13},
+	{SUNDAY | SATURDAY, true, true, slovakia_holidays, 13},
+	{SUNDAY | SATURDAY, false, false, russian_holidays, 12},
+	{SUNDAY | SATURDAY, true, true, england_holidays, 7},
+	{SUNDAY | SATURDAY, false, false, usa_holidays, 10}
 };
 
 STRING_PTR_FIELD_TYPE states[] = {
@@ -180,7 +185,7 @@ holiday_desc_comp(const void* a, const void* b)
 
 
 static void
-easter_sunday(int year, int* dd, int* mm)
+calc_easter_sunday(int year, int* dd, int* mm)
 {
 	int b, d, e, q;
 
@@ -203,6 +208,44 @@ easter_sunday(int year, int* dd, int* mm)
 	{
 		*dd = q - 31; *mm = 4;
 	}
+}
+
+/*
+ * returns true, when day d is any easter holiday.
+ *
+ */
+static bool
+easter_holidays(DateADT day, int y, int m)
+{
+	if (use_great_friday || use_easter)
+	{
+		if (m == 3 || m == 4)
+		{
+			int easter_sunday_day;
+			int easter_sunday_month;
+			int easter_sunday;
+
+			calc_easter_sunday(y, &easter_sunday_day, &easter_sunday_month);
+			easter_sunday = date2j(y, easter_sunday_month, easter_sunday_day) - POSTGRES_EPOCH_JDATE;
+
+			if (use_easter && (day == easter_sunday || day == easter_sunday + 1))
+				return true;
+
+			if (use_great_friday && day == easter_sunday - 2)
+			{
+				/* Great Friday is introduced in Czech Republic in 2016 */
+				if (country_id == 0)
+				{
+					if (y >= 2016)
+						return true;
+				}
+				else
+					return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 static DateADT
@@ -231,12 +274,9 @@ ora_add_bizdays(DateADT day, int days)
 		hd.day = (char) auxd;
 		hd.month = (char) m;
 
-		if (use_easter && (m == 3 || m == 4))
-		{
-			easter_sunday(y, &auxd, &m);
-			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
-				continue;
-		}
+		if (easter_holidays(day, y, m))
+			continue;
+
 		if (NULL != bsearch(&hd, holidays, holidays_c,
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
@@ -265,7 +305,6 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 		day1 = day2; day2 = aux_day;
 	}
 
-
 	/* d is incremented on start of cycle, so now I have to decrease one */
 	d = j2day(day1+POSTGRES_EPOCH_JDATE-1);
 	days = 0;
@@ -287,12 +326,9 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 		hd.day = (char) auxd;
 		hd.month = (char) m;
 
-		if (use_easter && (m == 3 || m == 4))
-		{
-			easter_sunday(y, &auxd, &m);
-			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
-				continue;
-		}
+		if (easter_holidays(day1, y, m))
+			continue;
+
 		if (NULL != bsearch(&hd, holidays, holidays_c,
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
@@ -457,12 +493,8 @@ plvdate_isbizday (PG_FUNCTION_ARGS)
 	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 	hd.month = m; hd.day = d;
 
-	if (use_easter && (m == 3 || m == 4))
-	{
-		easter_sunday(y, &d, &m);
-		if (m == hd.month && (d == hd.day || d+1 == hd.day))
-			return false;
-	}
+	if (easter_holidays(day, y, m))
+		return false;
 
 	PG_RETURN_BOOL (NULL == bsearch(&hd, holidays, holidays_c,
 									sizeof(holiday_desc), holiday_desc_comp));
@@ -693,6 +725,46 @@ plvdate_using_easter (PG_FUNCTION_ARGS)
 
 
 /****************************************************************
+ * PLVdate.use_great_friday
+ *
+ * Syntax:
+ *   FUNCTION unuse_great_friday() RETURNS void;
+ *   FUNCTION use_great_friday() RETURNS void;
+ *   FUNCTION use_great_friday(IN bool) RETURNS void
+ *
+ * Purpouse:
+ *   Have to use great_friday as nonbizday?
+ *
+ ****************************************************************/
+
+Datum
+plvdate_use_great_friday (PG_FUNCTION_ARGS)
+{
+	use_great_friday = PG_GETARG_BOOL(0);
+
+	PG_RETURN_VOID();
+}
+
+
+/****************************************************************
+ * PLVdate.using_great_friday
+ *
+ * Syntax:
+ *   FUNCTION using_great_friday() RETURNS bool
+ *
+ * Purpouse:
+ *   Use it great friday as nonbizday?
+ *
+ ****************************************************************/
+
+Datum
+plvdate_using_great_friday (PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(use_great_friday);
+}
+
+
+/****************************************************************
  * PLVdate.include_start
  *
  * Syntax:
@@ -742,15 +814,16 @@ plvdate_default_holidays (PG_FUNCTION_ARGS)
 {
 	text *country = PG_GETARG_TEXT_PP(0);
 
-	int c = ora_seq_search(VARDATA_ANY(country), states, VARSIZE_ANY_EXHDR(country));
-	CHECK_SEQ_SEARCH(c, "STATE/State/state");
+	country_id = ora_seq_search(VARDATA_ANY(country), states, VARSIZE_ANY_EXHDR(country));
+	CHECK_SEQ_SEARCH(country_id, "STATE/State/state");
 
-	nonbizdays = defaults_ci[c].nonbizdays;
-	use_easter = defaults_ci[c].use_easter;
+	nonbizdays = defaults_ci[country_id].nonbizdays;
+	use_easter = defaults_ci[country_id].use_easter;
+	use_great_friday = defaults_ci[country_id].use_great_friday;
 	exceptions_c = 0;
 
-	holidays_c = defaults_ci[c].holidays_c;
-	memcpy(holidays, defaults_ci[c].holidays, holidays_c*sizeof(holiday_desc));
+	holidays_c = defaults_ci[country_id].holidays_c;
+	memcpy(holidays, defaults_ci[country_id].holidays, holidays_c*sizeof(holiday_desc));
 
 	PG_RETURN_VOID();
 }

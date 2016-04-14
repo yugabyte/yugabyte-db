@@ -1094,6 +1094,30 @@ AS 'MODULE_PATHNAME','plvdate_using_easter'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.using_easter() IS 'Use easter?';
 
+CREATE FUNCTION plvdate.use_great_friday(bool)
+RETURNS void
+AS 'MODULE_PATHNAME','plvdate_use_great_friday'
+LANGUAGE C VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.use_great_friday(bool) IS 'Great Friday will be holiday';
+
+CREATE FUNCTION plvdate.use_great_friday()
+RETURNS bool
+AS $$SELECT plvdate.use_great_friday(true); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.use_great_friday() IS 'Great Friday will be holiday';
+
+CREATE FUNCTION plvdate.unuse_great_friday()
+RETURNS bool
+AS $$SELECT plvdate.use_great_friday(false); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.unuse_great_friday() IS 'Great Friday will not be holiday';
+
+CREATE FUNCTION plvdate.using_great_friday()
+RETURNS bool
+AS 'MODULE_PATHNAME','plvdate_using_great_friday'
+LANGUAGE C VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.using_great_friday() IS 'Use Great Friday?';
+
 CREATE FUNCTION plvdate.include_start(bool)
 RETURNS void
 AS 'MODULE_PATHNAME','plvdate_include_start'
