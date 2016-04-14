@@ -36,13 +36,23 @@
 # Path to the test executable or script to be run.
 # May be relative or absolute.
 
-set -uo pipefail
-# TODO: enable "set -e" here as well.
+set -euo pipefail
 
 TEST_PATH=${1:-}
+shift
 
 if [ -z "$TEST_PATH" ]; then
   echo "Test path must be specified as the first argument" >&2
+  exit 1
+fi
+
+if [ ! -f "$TEST_PATH" ]; then
+  echo "Test binary '$TEST_PATH' does not exist" >&2
+  exit 1
+fi
+
+if [ ! -x "$TEST_PATH" ]; then
+  echo "Test binary '$TEST_PATH' is not executable" >&2
   exit 1
 fi
 
@@ -51,6 +61,11 @@ if [[ ! "${YB_COMPRESS_TEST_OUTPUT:-}" =~ ^[01]?$ ]]; then
   echo "YB_COMPRESS_TEST_OUTPUT is expected to be 0, 1, or undefined," \
        "found: '$YB_COMPRESS_TEST_OUTPUT'" >&2
   exit 1
+fi
+
+if [ ! -d "$PWD" ]; then
+  echo "Current directory $PWD does not exist, using /tmp as working directory" >&2
+  cd /tmp
 fi
 
 # Absolute path to the root source directory. This script is expected to live within it.
@@ -74,10 +89,13 @@ mkdir -p "$TEST_LOG_DIR"
 TEST_DEBUG_DIR="$BUILD_ROOT/test-debug"
 mkdir -p "$TEST_DEBUG_DIR"
 
-TEST_DIR_NAME=$(cd "$(dirname "$TEST_PATH")" && pwd)
+TEST_DIR=$(cd "$(dirname "$TEST_PATH")" && pwd)
+if [ ! -d "$TEST_DIR" ]; then
+  echo "Test directory '$TEST_DIR' does not exist"
+  exit 1
+fi
 TEST_NAME_WITH_EXT=$(basename "$TEST_PATH")
-ABS_TEST_PATH=$TEST_DIR_NAME/$TEST_NAME_WITH_EXT
-shift
+ABS_TEST_PATH=$TEST_DIR/$TEST_NAME_WITH_EXT
 
 # Remove path and extension, if any.
 TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
@@ -106,7 +124,12 @@ mkdir -p "$TEST_WORKDIR"
 pushd "$TEST_WORKDIR" >/dev/null || exit 1
 rm -f *
 
-LOG_PATH_PREFIX=$TEST_LOG_DIR/$TEST_NAME
+if [ "$( basename "$TEST_DIR" )" == "rocksdb-build" ]; then
+  LOG_PATH_PREFIX="$TEST_LOG_DIR/rocskdb_$TEST_NAME"
+else
+  LOG_PATH_PREFIX="$TEST_LOG_DIR/$TEST_NAME"
+fi
+
 LOG_PATH_TXT=$LOG_PATH_PREFIX.txt
 XML_FILE_PATH=$LOG_PATH_PREFIX.xml
 
@@ -178,7 +201,7 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
 
   echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH" \
     "(attempt ${ATTEMPT_NUMBER}/$TEST_EXECUTION_ATTEMPTS)"
-  RAW_LOG_PATH=${LOG_PATH}__raw.txt
+  RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
   $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
   STATUS=$?
 
