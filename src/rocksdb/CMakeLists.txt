@@ -81,8 +81,13 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
       DEPENDS build_rocksdb_library ${ROCKSDB_TEST_SRC}
       COMMENT "RocksDB test ${ROCKSDB_TEST_NAME}"
       VERBATIM)
+    if ("${ROCKSDB_TEST_NAME}" STREQUAL "redis_lists_test")
+      set(ROCKSDB_TEST_BINARY_NAME "redis_test")
+    else()
+      set(ROCKSDB_TEST_BINARY_NAME "${ROCKSDB_TEST_BINARY_NAME}")
+    endif()
     add_test(NAME "${ROCKSDB_TEST_TARGET_NAME}"
-      COMMAND "${BUILD_SUPPORT_DIR}/run-test.sh" "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_NAME}")
+      COMMAND "${BUILD_SUPPORT_DIR}/run-test.sh" "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_BINARY_NAME}")
 
     # The "imported executable" below is an attempt to make it possible to run RocksDB tests from
     # CLion without extra configuration.

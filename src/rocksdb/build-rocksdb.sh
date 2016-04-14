@@ -171,7 +171,9 @@ esac
 
 if [ "$debug_level" -gt 0 ] && $build_all_targets; then
   # We can only build tests if NDEBUG is not defined (otherwise e.g. db_test.cc fails to build).
-  make_targets+=( tests )
+  # TODO: try to build as many tests as possible in release mode.
+  # env_mirror_test does not seem to be built as part of the tests target, so we add it explicitly.
+  make_targets+=( tests env_mirror_test )
 fi
 
 if $build_all_targets; then
