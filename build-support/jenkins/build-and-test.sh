@@ -29,12 +29,6 @@
 #     Runs the "slow" version of the unit tests. Set to 0 to
 #     run the tests more quickly.
 #
-#   TEST_TMPDIR
-#     Specifies the temporary directory where tests should write their
-#     data. It is expected that following the completion of all tests, this
-#     directory is empty (i.e. every test cleaned up after itself).
-#     The default location of this directory depends on the current user, Jenkins job name and id.
-#
 #   RUN_FLAKY_ONLY
 #   Default: 0
 #     Only runs tests which have failed recently, if this is 1.
@@ -158,26 +152,9 @@ export YB_FLAKY_TEST_ATTEMPTS=${YB_FLAKY_TEST_ATTEMPTS:-1}
 export YB_ALLOW_SLOW_TESTS=${YB_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
 export YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-1}
 
-if [ -z "${TEST_TMPDIR:-}" ]; then
-  JOB_NAME_CLEAN=${JOB_NAME:-unknown}
-  # Make sure the job name does not have spaces.
-  JOB_NAME_CLEAN=${JOB_NAME_CLEAN// /_}
-  TEST_TMPDIR=\
-"/tmp/ybtest.user_${USER:-unknown}.job_$JOB_NAME_CLEAN.executor_${EXECUTOR_NUMBER:-unknown}"
-fi
-export TEST_TMPDIR
-
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
-
-# Ensure that the test data directory is usable.
-mkdir -p "$TEST_TMPDIR"
-if [ ! -w "$TEST_TMPDIR" ]; then
-  echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname)" \
-    "by user $(whoami)" >&2
-  exit 1
-fi
 
 SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
 BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
@@ -201,6 +178,7 @@ list_flaky_tests() {
 }
 
 TEST_LOG_DIR="$BUILD_ROOT/test-logs"
+TEST_TMP_ROOT_DIR="$BUILD_ROOT/test-tmp"
 
 TEST_LOG_URL_PREFIX=""
 if [ -n "${BUILD_URL:-}" ]; then
@@ -308,11 +286,6 @@ fi
 
 $SOURCE_ROOT/build-support/enable_devtoolset.sh \
   "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $LINK_FLAGS $SOURCE_ROOT"
-
-# our tests leave lots of data lying around, clean up before we run
-if [ -d "$TEST_TMPDIR" ]; then
-  rm -Rf "$TEST_TMPDIR"/*
-fi
 
 if [ "$BUILD_CPP" == "1" ]; then
   echo

@@ -83,6 +83,7 @@ else
   STACK_TRACE_FILTER="$SOURCE_ROOT"/build-support/stacktrace_addr2line.pl
 fi
 
+TEST_TMP_DIR_ROOT=$BUILD_ROOT/test-tmp
 TEST_LOG_DIR=$BUILD_ROOT/test-logs
 mkdir -p "$TEST_LOG_DIR"
 
@@ -95,6 +96,7 @@ if [ ! -d "$TEST_DIR" ]; then
   exit 1
 fi
 TEST_NAME_WITH_EXT=$(basename "$TEST_PATH")
+TEST_NAME_WITH_EXT_SANITIZED=$( echo "$TEST_NAME_WITH_EXT" | tr '.' '_' )
 ABS_TEST_PATH=$TEST_DIR/$TEST_NAME_WITH_EXT
 
 # Remove path and extension, if any.
@@ -185,14 +187,13 @@ ulimit -c "$YB_TEST_ULIMIT_CORE"
 
 # Run the actual test.
 for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
-  if [ $ATTEMPT_NUMBER -lt $TEST_EXECUTION_ATTEMPTS ]; then
-    # If the test fails, the test output may or may not be left behind,
-    # depending on whether the test cleaned up or exited immediately. Either
-    # way we need to clean it up. We do this by comparing the data directory
-    # contents before and after the test runs, and deleting anything new.
-    #
-    # The comm program requires that its two inputs be sorted.
-    TEST_TMPDIR_BEFORE=$(find $TEST_TMPDIR -maxdepth 1 -type d | sort)
+  export TEST_TMPDIR="$TEST_TMP_DIR_ROOT/${TEST_NAME_WITH_EXT_SANITIZED}__attempt_${ATTEMPT_NUMBER}"
+  # Ensure that the test data directory is usable.
+  mkdir -p "$TEST_TMPDIR"
+  if [ ! -w "$TEST_TMPDIR" ]; then
+    echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname)" \
+      "by user $(whoami)" >&2
+    exit 1
   fi
 
   # gtest won't overwrite old junit test files, resulting in a build failure
@@ -244,25 +245,6 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
     echo "ThreadSanitizer or leak check failures in $LOG_PATH"
     STATUS=1
     rm -f "$XML_FILE_PATH"
-  fi
-
-  if [ "$ATTEMPT_NUMBER" -lt "$TEST_EXECUTION_ATTEMPTS" ]; then
-    # Now delete any new test output.
-    TEST_TMPDIR_AFTER=$(find $TEST_TMPDIR -maxdepth 1 -type d | sort)
-    DIFF=$(comm -13 <(echo "$TEST_TMPDIR_BEFORE") \
-                    <(echo "$TEST_TMPDIR_AFTER"))
-    for DIR in $DIFF; do
-      # Multiple tests may be running concurrently. To avoid deleting the
-      # wrong directories, constrain to only directories beginning with the
-      # test name.
-      #
-      # This may delete old test directories belonging to this test, but
-      # that's not typically a concern when rerunning flaky tests.
-      if [[ $DIR =~ ^$TEST_TMPDIR/$TEST_NAME ]]; then
-        echo "Deleting leftover flaky test directory '$DIR'"
-        rm -Rf "$DIR"
-      fi
-    done
   fi
 
   if [ -n "${YB_REPORT_TEST_RESULTS:-}" ]; then
