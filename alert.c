@@ -29,7 +29,7 @@ PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 
 extern unsigned int sid;
 float8 sensitivity = 250.0;
-extern LWLockId shmem_lock;
+extern LWLockId shmem_lockid;
 
 #ifndef _GetCurrentTimestamp
 #define _GetCurrentTimestamp()		GetCurrentTimestamp()
@@ -537,7 +537,7 @@ dbms_alert_register(PG_FUNCTION_ARGS)
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 	{
 		register_event(name);
-		LWLockRelease(shmem_lock);
+		LWLockRelease(shmem_lockid);
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
@@ -576,7 +576,7 @@ dbms_alert_remove(PG_FUNCTION_ARGS)
 							 false, true, true, NULL, NULL);
 			unregister_event(ev_id, sid);
 		}
-		LWLockRelease(shmem_lock);
+		LWLockRelease(shmem_lockid);
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
@@ -612,7 +612,7 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 				unregister_event(i, sid);
 
 			}
-		LWLockRelease(shmem_lock);
+		LWLockRelease(shmem_lockid);
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
@@ -661,10 +661,10 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 		if (str[0])
 		{
 			str[2] = "0";
-			LWLockRelease(shmem_lock);
+			LWLockRelease(shmem_lockid);
 			break;
 		}
-		LWLockRelease(shmem_lock);
+		LWLockRelease(shmem_lockid);
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
@@ -736,11 +736,11 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 			{
 				str[1] = "0";
 				pfree(event_name);
-				LWLockRelease(shmem_lock);
+				LWLockRelease(shmem_lockid);
 				break;
 			}
 		}
-		LWLockRelease(shmem_lock);
+		LWLockRelease(shmem_lockid);
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
@@ -875,7 +875,7 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 		void *plan;
 
 		create_message(name, message);
-		LWLockRelease(shmem_lock);
+		LWLockRelease(shmem_lockid);
 
 		tid = &rettuple->t_data->t_ctid;
 

@@ -17,11 +17,7 @@ _PG_init(void)
 {
 	EmitWarningsOnPlaceholders("orafce");
 
-#if PG_VERSION_NUM >= 90600
-
-	RequestNamedLWLockTranche("orafce", 1);
-
-#else
+#if PG_VERSION_NUM < 90600
 
 	RequestAddinLWLocks(1);
 
