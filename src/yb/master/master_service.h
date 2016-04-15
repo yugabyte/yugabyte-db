@@ -89,11 +89,6 @@ class MasterServiceImpl : public MasterServiceIf {
                                      GetMasterRegistrationResponsePB* resp,
                                      rpc::RpcContext* rpc) OVERRIDE;
 
-  virtual void ChangeMasterConfig(
-    const ChangeMasterConfigRequestPB* req,
-    ChangeMasterConfigResponsePB* resp,
-    rpc::RpcContext* rpc) OVERRIDE;
-
   virtual void DumpState(
     const DumpMasterStateRequestPB* req,
     DumpMasterStateResponsePB* resp,

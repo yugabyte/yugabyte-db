@@ -404,10 +404,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
 
-  Status ChangeMasterConfig(
-    const ChangeMasterConfigRequestPB* req,
-    ChangeMasterConfigResponsePB* resp);
-
   Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
 
   // Return OK if this CatalogManager is a leader in a consensus configuration and if
@@ -420,7 +416,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // must be initialized before calling this method.
   consensus::RaftPeerPB::Role Role() const;
 
-  Status PeerStateDump(vector<consensus::RaftPeerPB>& masters_raft, bool on_disk=false);
+  Status PeerStateDump(vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
 
  private:
   friend class TableLoader;
@@ -611,12 +607,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   void AbortTableCreation(TableInfo* table, const std::vector<TabletInfo*>& tablets);
-
-  // Broadcast from master leader, info about in-memory change for master options to all the peers
-  Status ChangePeerOptions(
-    const ChangeMasterConfigRequestPB* req,
-    ChangeMasterConfigResponsePB* resp,
-    std::string& leader_uuid);
 
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;

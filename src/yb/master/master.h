@@ -93,7 +93,7 @@ class Master : public server::ServerBase {
   Status ListMasters(std::vector<ServerEntryPB>* masters) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
-  // masters from the raft config
+  // masters from the Raft config
   Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
   bool IsShutdown() const {
@@ -104,9 +104,6 @@ class Master : public server::ServerBase {
     return maintenance_manager_.get();
   }
 
-  Status AddMaster(const HostPortPB& add);
-  Status RemoveMaster(const HostPortPB& remove);
-  Status ClearMasters();
   void DumpMasterOptionsInfo(std::ostream* out);
 
  private:

@@ -397,18 +397,6 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
   rpc->RespondSuccess();
 }
 
-void MasterServiceImpl::ChangeMasterConfig(
-    const ChangeMasterConfigRequestPB* req,
-    ChangeMasterConfigResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
-    return;
-  }
-  Status s = server_->catalog_manager()->ChangeMasterConfig(req, resp);
-  CheckRespErrorOrSetUnknown(s, resp);
-  rpc->RespondSuccess();
-}
-
 void MasterServiceImpl::DumpState(
     const DumpMasterStateRequestPB* req,
     DumpMasterStateResponsePB* resp,

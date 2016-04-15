@@ -117,12 +117,9 @@ Status Master::StartAsync() {
   gscoped_ptr<ServiceIf> impl(new MasterServiceImpl(this));
   gscoped_ptr<ServiceIf> consensus_service(
     new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
-  gscoped_ptr<ServiceIf> remote_bootstrap_service(
-    new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
 
   RETURN_NOT_OK(ServerBase::RegisterService(impl.Pass()));
   RETURN_NOT_OK(ServerBase::RegisterService(consensus_service.Pass()));
-  RETURN_NOT_OK(ServerBase::RegisterService(remote_bootstrap_service.Pass()));
   RETURN_NOT_OK(ServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
@@ -241,58 +238,6 @@ Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
 }
 
 } // anonymous namespace
-
-Status Master::AddMaster(const HostPortPB& add) {
-  bool found = false;
-  std::vector<HostPort>::iterator it;
-  for (it = opts_.master_addresses.begin(); it != opts_.master_addresses.end(); it++) {
-    HostPort hp = *it;
-    if (hp.equals(add)) {
-      found = true;
-      break;
-    }
-  }
-
-  if (found) {
-    return Status::InvalidArgument("Master already found, cannot be added.");
-  }
-
-  HostPort to_add;
-  to_add.set_port(add.port());
-  to_add.set_host(add.host());
-  opts_.master_addresses.push_back(to_add);
-
-  LOG(INFO) << "New master opts size " << opts_.master_addresses.size() << std::endl;
-
-  return Status::OK();
-}
-
-Status Master::RemoveMaster(const HostPortPB& remove) {
-  bool found = false;
-  std::vector<HostPort>::iterator it;
-  for (it = opts_.master_addresses.begin(); it != opts_.master_addresses.end(); it++) {
-    HostPort hp = *it;
-    if (hp.equals(remove)) {
-      found = true;
-      break;
-    }
-  }
-
-  if (!found) {
-    return Status::InvalidArgument("Master not found");
-  }
-
-  opts_.master_addresses.erase(it);
-
-  LOG(INFO) << "New master opts size " << opts_.master_addresses.size() << std::endl;
-
-  return Status::OK();
-}
-
-Status Master::ClearMasters() {
-  opts_.master_addresses.clear();
-  return Status::OK();
-}
 
 void Master::DumpMasterOptionsInfo(std::ostream* out) {
   std::vector<HostPort>::iterator it;

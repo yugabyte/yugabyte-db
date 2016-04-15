@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <sstream>
 
 #include "yb/client/meta_cache.h"
 #include "yb/common/schema.h"
@@ -867,11 +868,13 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
 // API to clear and reset master addresses, used during master config change
 Status YBClient::Data::SetMasterAddresses(const string& addrs) {
   if (addrs.empty()) {
-    LOG(ERROR) << "Invalid empty master address cannot be set. Current list is ";
+    std::ostringstream out;
+    out.str("Invalid empty master address cannot be set. Current list is: ");
     for (const string& master_server_addr : master_server_addrs_) {
-      LOG(ERROR) << master_server_addr << " ";
+      out.str(master_server_addr);
+      out.str(" ");
     }
-    LOG(ERROR) << "\n";
+    LOG(ERROR) << out.str();
     return Status::InvalidArgument("master addresses cannot be empty");
   }
 

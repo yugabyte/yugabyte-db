@@ -41,6 +41,8 @@ struct MasterOptions;
 class TableInfo;
 class TabletInfo;
 
+static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
+
 // The SysCatalogTable has two separate visitors because the tables
 // data must be loaded into memory before the tablets data.
 class TableVisitor {

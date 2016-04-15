@@ -31,6 +31,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/tserver/tablet_server.h"
@@ -75,9 +76,6 @@ using consensus::LeaderStepDownResponsePB;
 using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
-using master::ChangeMasterConfigType;
-using master::ChangeMasterConfigRequestPB;
-using master::ChangeMasterConfigResponsePB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
 using master::ListTabletServersRequestPB;
@@ -121,7 +119,12 @@ class ClusterAdminClient {
   // server.
   Status Init();
 
-  // Change the configuration of the specified tablet.
+  // Parse the user-specified change type to consensus change type
+  Status ParseChangeType(
+    const string& change_type,
+    consensus::ChangeConfigType* cc_type);
+
+    // Change the configuration of the specified tablet.
   Status ChangeConfig(
     const string& tablet_id,
     const string& change_type,
@@ -229,8 +232,7 @@ Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
   std::unique_ptr<ConsensusServiceProxy>
     master_proxy(new ConsensusServiceProxy(messenger_, leader_sock_));
 
-  // empty tablet id is treated as the sys catalog tablet by catalog manager
-  return LeaderStepDown(leader_uuid, "", &master_proxy);
+  return LeaderStepDown(leader_uuid, yb::master::kSysCatalogTabletId, &master_proxy);
 }
 
 Status ClusterAdminClient::LeaderStepDown(
@@ -296,20 +298,32 @@ Status ClusterAdminClient::SetTabletPeerInfo(
   return Status::OK();
 }
 
-Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
-                                        const string& change_type,
-                                        const string& peer_uuid,
-                                        const boost::optional<string>& member_type) {
-  CHECK(initted_);
-
-  // Parse the change type.
-  consensus::ChangeConfigType cc_type = consensus::UNKNOWN_CHANGE;
+Status ClusterAdminClient::ParseChangeType(
+    const string& change_type,
+    consensus::ChangeConfigType* cc_type) {
+  consensus::ChangeConfigType cctype = consensus::UNKNOWN_CHANGE;
+  *cc_type = cctype;
   string uppercase_change_type;
   ToUpperCase(change_type, &uppercase_change_type);
-  if (!consensus::ChangeConfigType_Parse(uppercase_change_type, &cc_type) ||
-      cc_type == consensus::UNKNOWN_CHANGE) {
+  if (!consensus::ChangeConfigType_Parse(uppercase_change_type, &cctype) ||
+    cctype == consensus::UNKNOWN_CHANGE) {
     return Status::InvalidArgument("Unsupported change_type", change_type);
   }
+
+  *cc_type = cctype;
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ChangeConfig(
+    const string& tablet_id,
+    const string& change_type,
+    const string& peer_uuid,
+    const boost::optional<string>& member_type) {
+  CHECK(initted_);
+
+  consensus::ChangeConfigType cc_type;
+  RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(peer_uuid);
@@ -421,14 +435,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
     const string& peer_uuid) {
   CHECK(initted_);
 
-  // Parse the change type.
-  master::ChangeMasterConfigType cc_type = master::UNKNOWN_CHANGE;
-  string uppercase_change_type;
-  ToUpperCase(change_type, &uppercase_change_type);
-  if (!master::ChangeMasterConfigType_Parse(uppercase_change_type, &cc_type) ||
-      cc_type == master::UNKNOWN_CHANGE) {
-    return Status::InvalidArgument("Unsupported master change type", change_type);
-  }
+  consensus::ChangeConfigType cc_type;
+  RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
 
   string leader_uuid;
   GetMasterLeaderInfo(&leader_uuid);
@@ -439,7 +447,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
   Sockaddr changed_leader_sock = leader_sock_;
-  if (cc_type == master::REMOVE_MASTER &&
+  if (cc_type == consensus::REMOVE_SERVER &&
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
@@ -453,28 +461,36 @@ Status ClusterAdminClient::ChangeMasterConfig(
       return Status::ConfigurationError("Could not locate new master leader!");
     }
     if (leader_uuid == old_leader_uuid) {
-      return Status::ConfigurationError("Old master leader same as new even after stepdown!");
+      return Status::ConfigurationError(
+        Substitute("Old master leader uuid $0 same as new one even after stepdown!", leader_uuid));
     }
     // Go ahead below and send the actual config change message to the new master
   }
 
-  // Note that we could have called ChangeConfig in the consensus layer, but that does
-  // not update the in-mem master_options on leader and also would need system tablet uuid
-  // to be special-cased and made externally visible.
-  master::ChangeMasterConfigRequestPB req;
-  master::ChangeMasterConfigResponsePB resp;
-  req.set_leader_master_uuid(leader_uuid);
-  req.set_type(cc_type);
-  HostPortPB peer_pb;
-  peer_pb.set_host(peer_host);
-  peer_pb.set_port(peer_port);
-  req.set_change_host_uuid(peer_uuid);
-  *req.mutable_change_host() = peer_pb;
-  RpcController mrpc;
-  mrpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->ChangeMasterConfig(req, &resp, &mrpc));
+  consensus::ConsensusServiceProxy *leader_proxy =
+    new consensus::ConsensusServiceProxy(messenger_, leader_sock_);
+  consensus::ChangeConfigRequestPB req;
+  consensus::ChangeConfigResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
 
-  if (cc_type == master::ADD_MASTER) {
+  RaftPeerPB peer_pb;
+  peer_pb.set_permanent_uuid(peer_uuid);
+  peer_pb.set_member_type(RaftPeerPB::VOTER);
+  HostPortPB *peer_host_port = peer_pb.mutable_last_known_addr();
+  peer_host_port->set_port(peer_port);
+  peer_host_port->set_host(peer_host);
+  req.set_dest_uuid(leader_uuid);
+  req.set_tablet_id(yb::master::kSysCatalogTabletId);
+  req.set_type(cc_type);
+  *req.mutable_server() = peer_pb;
+
+  RETURN_NOT_OK(leader_proxy->ChangeConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (cc_type == consensus::ADD_SERVER) {
     RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_sock));
   } else {
     RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_sock));
@@ -699,7 +715,7 @@ static void SetUsage(const char* argv0) {
       << " 6. " << kListAllTabletServersOp << std::endl
       << " 7. " << kListAllMastersOp << std::endl
       << " 8. " << kChangeMasterConfigOp << " "
-                << "<ADD_MASTER|REMOVE_MASTER> <ip_addr> <port> <uuid>" << std::endl
+                << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <uuid>" << std::endl
       << " 9. " << kDumpMastersState;
 
   google::SetUsageMessage(str.str());
@@ -809,7 +825,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     }
 
     string change_type = argv[2];
-    if (change_type != "ADD_MASTER" && change_type != "REMOVE_MASTER") {
+    if (change_type != "ADD_SERVER" && change_type != "REMOVE_SERVER") {
       google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
       exit(1);
     }
