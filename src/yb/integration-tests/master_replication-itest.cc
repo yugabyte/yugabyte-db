@@ -53,7 +53,7 @@ class MasterReplicationTest : public YBTest {
  public:
   MasterReplicationTest() {
     opts_.master_rpc_ports = { 0, 0, 0 };
-opts_.num_masters = num_masters_ = opts_.master_rpc_ports.size();
+    opts_.num_masters = num_masters_ = opts_.master_rpc_ports.size();
     opts_.num_tablet_servers = kNumTabletServerReplicas;
   }
 
