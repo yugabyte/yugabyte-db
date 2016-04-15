@@ -442,9 +442,6 @@ class RaftConsensus : public Consensus,
   // nodes from disturbing the healthy leader.
   MonoTime withhold_votes_until_;
 
-  // After this peer has been stepped down, dont try starting election till this time
-  MonoTime dont_start_election_until_;
-
   const Callback<void(const std::string& reason)> mark_dirty_clbk_;
 
   // TODO hack to serialize updates due to repeated/out-of-order messages

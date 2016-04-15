@@ -242,15 +242,6 @@ Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
 
 } // anonymous namespace
 
-Status Master::SetNonParticipant(const HostPortPB& new_master) {
-  HostPort h(new_master.host(), new_master.port());
-  non_participants_.push_back(h);
-  ServerEntryPB peer_entry;
-  Status s = GetMasterEntryForHost(messenger_, h, &peer_entry);
-  LOG(INFO) << s.ToString() << " " << peer_entry.DebugString() << std::endl;
-  return Status::OK();
-}
-
 Status Master::AddMaster(const HostPortPB& add) {
   bool found = false;
   std::vector<HostPort>::iterator it;
@@ -326,9 +317,7 @@ Status Master::ListRaftConfigMasters(std::vector<RaftPeerPB>* masters) const {
   }
 }
 
-Status Master::ListMasters(
-  std::vector<ServerEntryPB>* masters,
-  std::vector<ServerEntryPB>* non_participants) const {
+Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
   if (!opts_.IsDistributed()) {
     ServerEntryPB local_entry;
     local_entry.mutable_instance_id()->CopyFrom(catalog_manager_->NodeInstance());
@@ -337,6 +326,7 @@ Status Master::ListMasters(
     masters->push_back(local_entry);
     return Status::OK();
   }
+
   for (const HostPort& peer_addr : opts_.master_addresses) {
     ServerEntryPB peer_entry;
     Status s = GetMasterEntryForHost(messenger_, peer_addr, &peer_entry);
@@ -348,21 +338,6 @@ Status Master::ListMasters(
       StatusToPB(s, peer_entry.mutable_error());
     }
     masters->push_back(peer_entry);
-  }
-
-  if (non_participants) {
-    for (const HostPort &peer_addr : non_participants_) {
-      ServerEntryPB peer_entry;
-      Status s = GetMasterEntryForHost(messenger_, peer_addr, &peer_entry);
-      if (!s.ok()) {
-        s = s.CloneAndPrepend(
-          Substitute("Unable to get registration information for non-participant ($0)",
-            peer_addr.ToString()));
-        LOG(WARNING) << s.ToString();
-        StatusToPB(s, peer_entry.mutable_error());
-      }
-      non_participants->push_back(peer_entry);
-    }
   }
 
   return Status::OK();

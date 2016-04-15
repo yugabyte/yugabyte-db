@@ -867,12 +867,24 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
 // API to clear and reset master addresses, used during master config change
 Status YBClient::Data::SetMasterAddresses(const string& addrs) {
   if (addrs.empty()) {
+    LOG(ERROR) << "Invalid empty master address cannot be set. Current list is ";
+    for (const string& master_server_addr : master_server_addrs_) {
+      LOG(ERROR) << master_server_addr << " ";
+    }
+    LOG(ERROR) << "\n";
     return Status::InvalidArgument("master addresses cannot be empty");
   }
 
   master_server_addrs_.clear();
   master_server_addrs_.push_back(addrs);
 
+  return Status::OK();
+}
+
+// Add a given master to the master address list
+Status YBClient::Data::AddMasterAddress(const Sockaddr& sockaddr) {
+  HostPort host_port(sockaddr.host(), sockaddr.port());
+  master_server_addrs_.push_back(host_port.ToString());
   return Status::OK();
 }
 

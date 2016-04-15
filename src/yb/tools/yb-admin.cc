@@ -160,18 +160,18 @@ private:
   Status GetTabletLocations(const std::string& tablet_id,
                             TabletLocationsPB* locations);
 
-  // Fetch information about the location of the tablet leader from the Master.
+  // Fetch information about the location of a tablet peer from the leader master.
   Status GetTabletPeer(
     const std::string& tablet_id,
     PeerMode mode,
     TSInfoPB* ts_info);
 
-  // Set the uuid and the socket information from the leader of this tablet.
+  // Set the uuid and the socket information for a peer of this tablet.
   Status SetTabletPeerInfo(
     const string& tablet_id,
     PeerMode mode,
-    string* leader_uuid,
-    Sockaddr* leader_socket);
+    string* peer_uuid,
+    Sockaddr* peer_socket);
 
   // Fetch the latest list of tablet servers from the Master.
   Status ListTabletServers(RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers);
@@ -226,19 +226,11 @@ Status ClusterAdminClient::Init() {
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(const string& leader_uuid) {
-  LeaderStepDownRequestPB req;
-  req.set_dest_uuid(leader_uuid);
-  req.set_tablet_id(""); // empty is treated as sys catalog tablet by catalog manager
-  LeaderStepDownResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
   std::unique_ptr<ConsensusServiceProxy>
     master_proxy(new ConsensusServiceProxy(messenger_, leader_sock_));
-  RETURN_NOT_OK(master_proxy->LeaderStepDown(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  return Status::OK();
+
+  // empty tablet id is treated as the sys catalog tablet by catalog manager
+  return LeaderStepDown(leader_uuid, "", &master_proxy);
 }
 
 Status ClusterAdminClient::LeaderStepDown(
@@ -253,6 +245,8 @@ Status ClusterAdminClient::LeaderStepDown(
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK((*leader_proxy)->LeaderStepDown(req, &resp, &rpc));
   if (resp.has_error()) {
+    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
+      << resp.error().ShortDebugString();
     return StatusFromPB(resp.error().status());
   }
   return Status::OK();
@@ -279,27 +273,26 @@ Status ClusterAdminClient::StartElection(const string& tablet_id) {
   return Status::OK();
 }
 
-// Look up the location of the tablet server leader or non-leader peer from the
-// leader for this tablet.
+// Look up the location of the tablet server leader or non-leader peer from the leader master
 Status ClusterAdminClient::SetTabletPeerInfo(
     const string& tablet_id,
     PeerMode mode,
-    string* leader_uuid,
-    Sockaddr* leader_socket) {
-  TSInfoPB leader_ts_info;
-  RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &leader_ts_info));
-  CHECK_GT(leader_ts_info.rpc_addresses_size(), 0) << leader_ts_info.ShortDebugString();
+    string* peer_uuid,
+    Sockaddr* peer_socket) {
+  TSInfoPB peer_ts_info;
+  RETURN_NOT_OK(GetTabletPeer(tablet_id, mode, &peer_ts_info));
+  CHECK_GT(peer_ts_info.rpc_addresses_size(), 0) << peer_ts_info.ShortDebugString();
 
-  HostPort leader_hostport;
-  RETURN_NOT_OK(HostPortFromPB(leader_ts_info.rpc_addresses(0), &leader_hostport));
-  vector<Sockaddr> leader_addrs;
-  RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
-  CHECK(!leader_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
-    << leader_hostport.ToString();
-  CHECK(leader_addrs.size() == 1) << "Expected only one tablet leader, but got : "
-    << leader_hostport.ToString();
-  *leader_socket = leader_addrs[0];
-  *leader_uuid = leader_ts_info.permanent_uuid();
+  HostPort peer_hostport;
+  RETURN_NOT_OK(HostPortFromPB(peer_ts_info.rpc_addresses(0), &peer_hostport));
+  vector<Sockaddr> peer_addrs;
+  RETURN_NOT_OK(peer_hostport.ResolveAddresses(&peer_addrs));
+  CHECK(!peer_addrs.empty()) << "Unable to resolve IP address for tablet leader host: "
+    << peer_hostport.ToString();
+  CHECK(peer_addrs.size() == 1) << "Expected only one tablet leader, but got : "
+    << peer_hostport.ToString();
+  *peer_socket = peer_addrs[0];
+  *peer_uuid = peer_ts_info.permanent_uuid();
   return Status::OK();
 }
 
@@ -338,6 +331,7 @@ Status ClusterAdminClient::ChangeConfig(const string& tablet_id,
                                    "a server or changing a role");
   }
 
+  // Look up RPC address of peer if adding as a new server.
   if (cc_type == consensus::ADD_SERVER) {
     HostPort host_port;
     RETURN_NOT_OK(GetFirstRpcAddressForTS(peer_uuid, &host_port));
@@ -444,16 +438,16 @@ Status ClusterAdminClient::ChangeMasterConfig(
 
   // If removing the leader master, then first make it step down and that
   // starts an election and gets a new leader master.
+  Sockaddr changed_leader_sock = leader_sock_;
   if (cc_type == master::REMOVE_MASTER &&
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
     sleep(5); // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
-    Sockaddr old_leader_sock = leader_sock_;
-    RETURN_NOT_OK(yb_client_->RegetAndSetMasterLeaderSocket(&leader_sock_, old_leader_sock));
+    RETURN_NOT_OK(yb_client_->RefreshMasterLeaderSocket(&leader_sock_));
     master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
-    leader_uuid = ""; // reset case, so it can be set to new leader in the call below
+    leader_uuid = ""; // reset so it can be set to new leader in the GetMasterLeaderInfo call below
     GetMasterLeaderInfo(&leader_uuid);
     if (leader_uuid.empty()) {
       return Status::ConfigurationError("Could not locate new master leader!");
@@ -479,6 +473,13 @@ Status ClusterAdminClient::ChangeMasterConfig(
   RpcController mrpc;
   mrpc.set_timeout(timeout_);
   RETURN_NOT_OK(master_proxy_->ChangeMasterConfig(req, &resp, &mrpc));
+
+  if (cc_type == master::ADD_MASTER) {
+    RETURN_NOT_OK(yb_client_->AddMasterToClient(changed_leader_sock));
+  } else {
+    RETURN_NOT_OK(yb_client_->RemoveMasterFromClient(changed_leader_sock));
+  }
+
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -613,12 +614,6 @@ Status ClusterAdminClient::ListAllMasters() {
     } else {
       std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
     }
-  }
-  if (!lresp.non_participants().empty()) {
-    std::cout << "\tNon-Participant Master UUID" << std::endl;
-  }
-  for (int i = 0; i < lresp.non_participants_size(); i++) {
-    std::cout << lresp.non_participants(i).instance_id().permanent_uuid() << std::endl;
   }
   return Status::OK();
 }

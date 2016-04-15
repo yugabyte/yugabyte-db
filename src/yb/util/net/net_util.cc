@@ -97,6 +97,12 @@ Status HostPort::RemoveAndGetHostPortList(
   }
 
   if (!found) {
+    LOG(ERROR) << "Current list of master addresses: ";
+    for (const string& master_server_addr : multiple_server_addresses) {
+      LOG(ERROR) << master_server_addr << " ";
+    }
+    LOG(ERROR) << "\n";
+
     return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
       remove.ToString()));
   }

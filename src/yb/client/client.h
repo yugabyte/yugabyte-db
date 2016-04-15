@@ -241,9 +241,12 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
   // to reset the client state to point to new master leader.
-  Status RegetAndSetMasterLeaderSocket(
-    Sockaddr* leader_socket,
-    const Sockaddr& ignore_host);
+  Status RefreshMasterLeaderSocket(Sockaddr* leader_socket);
+
+  // Once a config change is completed to add/remove a master, update the client to add/remove it
+  // from its own master address list.
+  Status AddMasterToClient(const Sockaddr& add);
+  Status RemoveMasterFromClient(const Sockaddr& remove);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

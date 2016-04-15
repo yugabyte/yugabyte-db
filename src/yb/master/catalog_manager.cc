@@ -1719,7 +1719,10 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
   }
 
   CHECK(sys_catalog_.get() != nullptr) << "sys_catalog_ must be initialized!";
-  // Empty tablet id also implies system tablet
+  // Empty tablet id also implies system tablet. This for helping yb_client & external test drivers
+  // which do not know about the tablet_id of the catalog manager's sys catalog tablet. So in
+  // order for the client to get the peers of catalog manager tablet, we pass in an empty string.
+  // For example, YBClient::ListMaster()'s request will have the tablet_id set to an empty string.
   if (tablet_id.empty() || sys_catalog_->tablet_id() == tablet_id) {
     *tablet_peer = sys_catalog_->tablet_peer();
   } else {
@@ -1749,7 +1752,7 @@ Status CatalogManager::ChangePeerOptions(
   Sockaddr sockaddr;
 
   for (RaftPeerPB peer : cpb.config().peers()) {
-    if (peer.permanent_uuid().compare(leader_uuid) == 0) {
+    if (peer.permanent_uuid() == leader_uuid) {
       continue;
     }
     HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
@@ -1780,14 +1783,14 @@ Status CatalogManager::ChangeMasterConfig(
     " @ " << leader_uuid << " " << req->type() << std::endl;
 
   // If we are the master being removed, clear our in-mem state
-  if (in_mem_only && new_master_uuid.compare(leader_uuid) == 0) {
+  if (in_mem_only && new_master_uuid == leader_uuid) {
     if (req->type() == REMOVE_MASTER) {
       master_->ClearMasters();
     }
     return Status::OK();
   }
 
-  if (leader_uuid.compare(new_master_uuid) == 0) {
+  if (leader_uuid == new_master_uuid) {
     return Status::InvalidArgument(
       Substitute("Leader uuid $0 cannot be the same as the peer being added/removed $1. Perform "
         "leader step down first.", leader_uuid, new_master_uuid));
@@ -1795,13 +1798,14 @@ Status CatalogManager::ChangeMasterConfig(
 
   if (req->type() == REMOVE_MASTER) {
     RETURN_NOT_OK(master_->RemoveMaster(req->change_host()));
-    RETURN_NOT_OK(master_->SetNonParticipant(req->change_host()));
   } else if (req->type() == ADD_MASTER) {
     RETURN_NOT_OK(master_->AddMaster(req->change_host()));
   } else {
     return Status::InvalidArgument(Substitute("Request type $0 is incorrect.", req->type()));
   }
 
+  // For master leader, this in_mem_only is set to false, so it can do the raft update on disk.
+  // When non-leader master peers get this rpc, they just update their in-memory options.
   if (in_mem_only) {
     return Status::OK();
   }

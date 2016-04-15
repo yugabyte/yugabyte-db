@@ -354,14 +354,10 @@ void MasterServiceImpl::ListMasters(
     ListMastersResponsePB* resp,
     rpc::RpcContext* rpc) {
   vector<ServerEntryPB> masters;
-  vector<ServerEntryPB> non_participants;
-  Status s = server_->ListMasters(&masters, &non_participants);
+  Status s = server_->ListMasters(&masters);
   if (s.ok()) {
     for (const ServerEntryPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
-    }
-    for (const ServerEntryPB& non_part : non_participants) {
-      resp->add_non_participants()->CopyFrom(non_part);
     }
   } else {
     StatusToPB(s, resp->mutable_error());

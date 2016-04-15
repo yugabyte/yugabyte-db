@@ -160,8 +160,10 @@ class YBClient::Data {
 
   void UpdateLatestObservedTimestamp(uint64_t timestamp);
 
+  // API's to add/remove/set the master address list in the client
   Status SetMasterAddresses(const std::string& addresses);
   Status RemoveMasterAddress(const Sockaddr& sockaddr);
+  Status AddMasterAddress(const Sockaddr& sockaddr);
 
   // Retry 'func' until either:
   //

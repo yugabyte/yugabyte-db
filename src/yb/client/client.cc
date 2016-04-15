@@ -388,6 +388,8 @@ Status YBClient::ListMasters(
   master_uuids->clear();
   for (ServerEntryPB master : list_resp.masters()) {
     if (master.has_error()) {
+      LOG(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+        << master.error().ShortDebugString();
       return StatusFromPB(master.error());
     }
     master_uuids->push_back(master.instance_id().permanent_uuid());
@@ -395,17 +397,20 @@ Status YBClient::ListMasters(
   return Status::OK();
 }
 
-Status YBClient::RegetAndSetMasterLeaderSocket(
-    Sockaddr* leader_socket,
-    const Sockaddr& ignore_host) {
-
-  RETURN_NOT_OK(data_->RemoveMasterAddress(ignore_host));
-
+Status YBClient::RefreshMasterLeaderSocket(Sockaddr* leader_socket) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
 
   return SetMasterLeaderSocket(leader_socket);
+}
+
+Status YBClient::RemoveMasterFromClient(const Sockaddr& remove) {
+  return data_->RemoveMasterAddress(remove);
+}
+
+Status YBClient::AddMasterToClient(const Sockaddr& add) {
+  return data_->AddMasterAddress(add);
 }
 
 Status YBClient::ListTables(vector<string>* tables,
