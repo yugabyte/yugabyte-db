@@ -24,12 +24,6 @@
 # If YB_COMPRESS_TEST_OUTPUT is set to 1 (0 by default), then the logs will be
 # gzip-compressed while they are written.
 #
-# If YB_FLAKY_TEST_ATTEMPTS is non-zero, and the test being run matches
-# one of the lines in the file YB_FLAKY_TEST_LIST, then the test will
-# be retried on failure up to the specified number of times. This can be
-# used in the gerrit workflow to prevent annoying false -1s caused by
-# tests that are known to be flaky in master.
-#
 # If YB_REPORT_TEST_RESULTS is non-zero, then tests are reported to the
 # central test server.
 
@@ -96,29 +90,11 @@ if [ ! -d "$TEST_DIR" ]; then
   exit 1
 fi
 TEST_NAME_WITH_EXT=$(basename "$TEST_PATH")
-TEST_NAME_WITH_EXT_SANITIZED=$( echo "$TEST_NAME_WITH_EXT" | tr '.' '_' )
+TMP_DIR_NAME_PREFIX=$( echo "$TEST_NAME_WITH_EXT" | tr '.' '_' )
 ABS_TEST_PATH=$TEST_DIR/$TEST_NAME_WITH_EXT
 
 # Remove path and extension, if any.
 TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
-
-# Determine whether the test is a known flaky by comparing against the user-specified
-# list.
-TEST_EXECUTION_ATTEMPTS=1
-if [ -n "${YB_FLAKY_TEST_LIST:-}" ]; then
-  if [ -f "$YB_FLAKY_TEST_LIST" ]; then
-    IS_KNOWN_FLAKY=$(grep --count --line-regexp "$TEST_NAME" "$YB_FLAKY_TEST_LIST")
-  else
-    echo "Flaky test list file $YB_FLAKY_TEST_LIST missing"
-    IS_KNOWN_FLAKY=0
-  fi
-  if [ "$IS_KNOWN_FLAKY" -gt 0 ]; then
-    TEST_EXECUTION_ATTEMPTS=${YB_FLAKY_TEST_ATTEMPTS:-1}
-    echo $TEST_NAME is a known-flaky test. Will attempt running it
-    echo up to $TEST_EXECUTION_ATTEMPTS times.
-  fi
-fi
-
 
 # We run each test in its own subdir to avoid core file related races.
 TEST_WORKDIR="$BUILD_ROOT/test-work/$TEST_NAME"
@@ -127,7 +103,8 @@ pushd "$TEST_WORKDIR" >/dev/null || exit 1
 rm -f *
 
 if [ "$( basename "$TEST_DIR" )" == "rocksdb-build" ]; then
-  LOG_PATH_PREFIX="$TEST_LOG_DIR/rocskdb_$TEST_NAME"
+  LOG_PATH_PREFIX="$TEST_LOG_DIR/rocksdb_$TEST_NAME"
+  TMP_DIR_NAME_PREFIX="rocksdb_$TMP_DIR_NAME_PREFIX"
 else
   LOG_PATH_PREFIX="$TEST_LOG_DIR/$TEST_NAME"
 fi
@@ -186,89 +163,80 @@ YB_TEST_ULIMIT_CORE=${YB_TEST_ULIMIT_CORE:-0}
 ulimit -c "$YB_TEST_ULIMIT_CORE"
 
 # Run the actual test.
-for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
-  export TEST_TMPDIR="$TEST_TMP_DIR_ROOT/${TEST_NAME_WITH_EXT_SANITIZED}__attempt_${ATTEMPT_NUMBER}"
-  # Ensure that the test data directory is usable.
-  mkdir -p "$TEST_TMPDIR"
-  if [ ! -w "$TEST_TMPDIR" ]; then
-    echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname)" \
-      "by user $(whoami)" >&2
-    exit 1
-  fi
 
-  # gtest won't overwrite old junit test files, resulting in a build failure
-  # even when retries are successful.
-  rm -f $XML_FILE_PATH
+export TEST_TMPDIR="$TEST_TMP_DIR_ROOT/${TMP_DIR_NAME_PREFIX}"
+# Ensure that the test data directory is usable.
+mkdir -p "$TEST_TMPDIR"
+if [ ! -w "$TEST_TMPDIR" ]; then
+  echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname)" \
+    "by user $(whoami)" >&2
+  exit 1
+fi
 
-  echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH" \
-    "(attempt ${ATTEMPT_NUMBER}/$TEST_EXECUTION_ATTEMPTS)"
-  RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
-  $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
-  STATUS=$?
+# gtest won't overwrite old junit test files, resulting in a build failure
+# even when retries are successful.
+rm -f $XML_FILE_PATH
 
-  STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
+echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
+RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
+$ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
+STATUS=$?
 
-  if [ "$STACK_TRACE_FILTER" == "cat" ]; then
-    # Don't pass the binary name as an argument to the cat command.
-    "$STACK_TRACE_FILTER" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
-      $pipe_cmd >"$LOG_PATH"
-  else
-    "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
-      $pipe_cmd >"$LOG_PATH"
-  fi
+STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
 
-  if [ $? -ne 0 ]; then
-    # Stack trace filtering or compression failed, create an uncompressed output file with the
-    # error message.
-    echo "Failed to run command '$STACK_TRACE_FILTER' piped to '$pipe_cmd'" | tee "$LOG_PATH_TXT"
-    echo >>"$LOG_PATH_TXT"
-    echo "Standard error from '$STACK_TRACE_FILTER'": >>"$LOG_PATH_TXT"
-    cat "$STACK_TRACE_FILTER_ERR_PATH" >>"$LOG_PATH_TXT"
-    echo >>"$LOG_PATH_TXT"
+if [ "$STACK_TRACE_FILTER" == "cat" ]; then
+  # Don't pass the binary name as an argument to the cat command.
+  "$STACK_TRACE_FILTER" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
+    $pipe_cmd >"$LOG_PATH"
+else
+  "$STACK_TRACE_FILTER" "$ABS_TEST_PATH" <"$RAW_LOG_PATH" 2>"$STACK_TRACE_FILTER_ERR_PATH" | \
+    $pipe_cmd >"$LOG_PATH"
+fi
 
-    echo "Raw output:" >>"$LOG_PATH_TXT"
-    echo >>"$LOG_PATH_TXT"
-    cat "$RAW_LOG_PATH" >>"$LOG_PATH_TXT"
-  fi
-  rm -f "$RAW_LOG_PATH" "$STACK_TRACE_FILTER_ERR_PATH"
+if [ $? -ne 0 ]; then
+  # Stack trace filtering or compression failed, create an uncompressed output file with the
+  # error message.
+  echo "Failed to run command '$STACK_TRACE_FILTER' piped to '$pipe_cmd'" | tee "$LOG_PATH_TXT"
+  echo >>"$LOG_PATH_TXT"
+  echo "Standard error from '$STACK_TRACE_FILTER'": >>"$LOG_PATH_TXT"
+  cat "$STACK_TRACE_FILTER_ERR_PATH" >>"$LOG_PATH_TXT"
+  echo >>"$LOG_PATH_TXT"
 
-  # TSAN doesn't always exit with a non-zero exit code due to a bug:
-  # mutex errors don't get reported through the normal error reporting infrastructure.
-  # So we make sure to detect this and exit 1.
-  #
-  # Additionally, certain types of failures won't show up in the standard JUnit
-  # XML output from gtest. We assume that gtest knows better than us and our
-  # regexes in most cases, but for certain errors we delete the resulting xml
-  # file and let our own post-processing step regenerate it.
-  export GREP=$(which egrep)
-  if zgrep --silent "ThreadSanitizer|Leak check.*detected leaks" "$LOG_PATH" ; then
-    echo "ThreadSanitizer or leak check failures in $LOG_PATH"
-    STATUS=1
-    rm -f "$XML_FILE_PATH"
-  fi
+  echo "Raw output:" >>"$LOG_PATH_TXT"
+  echo >>"$LOG_PATH_TXT"
+  cat "$RAW_LOG_PATH" >>"$LOG_PATH_TXT"
+fi
+rm -f "$RAW_LOG_PATH" "$STACK_TRACE_FILTER_ERR_PATH"
 
-  if [ -n "${YB_REPORT_TEST_RESULTS:-}" ]; then
-    echo Reporting results
-    $SOURCE_ROOT/build-support/report-test.sh "$ABS_TEST_PATH" "$LOG_PATH" "$STATUS" &
+# TSAN doesn't always exit with a non-zero exit code due to a bug:
+# mutex errors don't get reported through the normal error reporting infrastructure.
+# So we make sure to detect this and exit 1.
+#
+# Additionally, certain types of failures won't show up in the standard JUnit
+# XML output from gtest. We assume that gtest knows better than us and our
+# regexes in most cases, but for certain errors we delete the resulting xml
+# file and let our own post-processing step regenerate it.
+export GREP=$(which egrep)
+if zgrep --silent "ThreadSanitizer|Leak check.*detected leaks" "$LOG_PATH" ; then
+  echo "ThreadSanitizer or leak check failures in $LOG_PATH"
+  STATUS=1
+  rm -f "$XML_FILE_PATH"
+fi
 
-    # On success, we'll do "best effort" reporting, and disown the subprocess.
-    # On failure, we want to upload the failed test log. So, in that case,
-    # wait for the report-test.sh job to finish, lest we accidentally run
-    # a test retry and upload the wrong log.
-    if [ "$STATUS" -eq "0" ]; then
-      disown
-    else
-      wait
-    fi
-  fi
+if [ -n "${YB_REPORT_TEST_RESULTS:-}" ]; then
+  echo Reporting results
+  $SOURCE_ROOT/build-support/report-test.sh "$ABS_TEST_PATH" "$LOG_PATH" "$STATUS" &
 
+  # On success, we'll do "best effort" reporting, and disown the subprocess.
+  # On failure, we want to upload the failed test log. So, in that case,
+  # wait for the report-test.sh job to finish, lest we accidentally run
+  # a test retry and upload the wrong log.
   if [ "$STATUS" -eq "0" ]; then
-    break
-  elif [ "$ATTEMPT_NUMBER" -lt "$TEST_EXECUTION_ATTEMPTS" ]; then
-    echo "Test failed attempt number $ATTEMPT_NUMBER"
-    echo Will retry...
+    disown
+  else
+    wait
   fi
-done
+fi
 
 # If we have a LeakSanitizer report, and XML reporting is configured, add a new test
 # case result to the XML file for the leak report. Otherwise Jenkins won't show
@@ -306,5 +274,8 @@ fi
 
 popd
 rm -Rf "$TEST_WORKDIR"
+if [ -z "$( ls -A "$TEST_TMPDIR" )" ]; then
+  rmdir "$TEST_TMPDIR"
+fi
 
 exit "$STATUS"

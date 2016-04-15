@@ -46,13 +46,6 @@
 #     This must be configured for flaky test resistance or test result
 #     reporting to work.
 #
-#   ENABLE_DIST_TEST
-#   Default: 0
-#     If set to 1, will submit C++ tests to be run by the distributed
-#     test runner instead of running them locally. This requires that
-#     $DIST_TEST_HOME be set to a working dist_test checkout (and that
-#     dist_test itself be appropriately configured to point to a cluster)
-#
 #   BUILD_CPP
 #   Default: 1
 #     Build and test C++ code if this is set to 1.
@@ -276,16 +269,8 @@ if [ "$YB_FLAKY_TEST_ATTEMPTS" -gt 1 ]; then
   fi
 fi
 
-# On distributed tests, force dynamic linking even for release builds. Otherwise,
-# the test binaries are too large and we spend way too much time uploading them
-# to the test slaves.
-LINK_FLAGS=
-if [ "$ENABLE_DIST_TEST" == "1" ]; then
-  LINK_FLAGS="-DYB_LINK=dynamic"
-fi
-
 $SOURCE_ROOT/build-support/enable_devtoolset.sh \
-  "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $LINK_FLAGS $SOURCE_ROOT"
+  "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $SOURCE_ROOT"
 
 if [ "$BUILD_CPP" == "1" ]; then
   echo
@@ -321,22 +306,6 @@ if [ "$BUILD_CPP" == "1" ]; then
 
   EXIT_STATUS=0
   FAILURES=""
-
-  # If we're running distributed tests, submit them asynchronously while
-  # we run the Java and Python tests.
-  if [ "$ENABLE_DIST_TEST" == "1" ]; then
-    echo
-    echo Submitting distributed-test job.
-    echo ------------------------------------------------------------
-    export DIST_TEST_JOB_PATH=$BUILD_ROOT/dist-test-job-id
-    rm -f $DIST_TEST_JOB_PATH
-    if ! $SOURCE_ROOT/build-support/dist_test.py --no-wait run-all ; then
-      EXIT_STATUS=1
-      FAILURES="$FAILURES"$'Could not submit distributed test job\n'
-    fi
-    # Still need to run a few non-dist-test-capable tests locally.
-    EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
-  fi
 
   set +e
   (
@@ -435,39 +404,6 @@ if [ "$BUILD_PYTHON" == "1" ]; then
   popd
 fi
 
-# If we submitted the tasks earlier, go fetch the results now
-if [ "$ENABLE_DIST_TEST" == "1" ]; then
-  echo
-  echo Fetching previously submitted dist-test results...
-  echo ------------------------------------------------------------
-  if ! $DIST_TEST_HOME/client.py watch ; then
-    EXIT_STATUS=1
-    FAILURES="$FAILURES"$'Distributed tests failed\n'
-  fi
-  DT_DIR=$TEST_LOG_DIR/dist-test-out
-  rm -Rf "$DT_DIR"
-  $DIST_TEST_HOME/client.py fetch --artifacts -d $DT_DIR
-  # Fetching the artifacts expands each log into its own directory.
-  # Move them back into the main log directory
-  rm -f $DT_DIR/*zip
-  for arch_dir in $DT_DIR/* ; do
-    # In the case of sharded tests, we'll have multiple subdirs
-    # which contain files of the same name. We need to disambiguate
-    # when we move back. We can grab the shard index from the task name
-    # which is in the archive directory name.
-    shard_idx=$(echo $arch_dir | perl -ne '
-      if (/(\d+)$/) {
-        print $1;
-      } else {
-        print "unknown_shard";
-      }')
-    for log_file in "$arch_dir/build/$BUILD_TYPE_LOWER/test-logs/"* ; do
-      mv "$log_file" "$TEST_LOG_DIR/${shard_idx}_$(basename $log_file)"
-    done
-    rm -Rf "$arch_dir"
-  done
-fi
-
 if [ $EXIT_STATUS != 0 ]; then
   echo
   echo Tests failed, making sure we have XML files for all tests.
@@ -476,7 +412,7 @@ if [ $EXIT_STATUS != 0 ]; then
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
   for GTEST_OUTFILE in $TEST_LOG_DIR/*.${TEST_OUTPUT_EXTENSION}; do
-    TEST_EXE=$(basename $GTEST_OUTFILE .${TEST_OUTPUT_EXTENSION} )
+    TEST_EXE=$(basename "$GTEST_OUTFILE" .${TEST_OUTPUT_EXTENSION} )
     GTEST_XMLFILE="$TEST_LOG_DIR/$TEST_EXE.xml"
     if [ ! -f "$GTEST_XMLFILE" ]; then
       echo "JUnit report missing:" \
