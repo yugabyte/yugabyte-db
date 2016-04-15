@@ -175,7 +175,7 @@ class MiniCluster {
   const int num_masters_initial_;
   const int num_ts_initial_;
 
-  const std::vector<uint16_t> master_rpc_ports_;
+  std::vector<uint16_t> master_rpc_ports_;
   const std::vector<uint16_t> tserver_rpc_ports_;
 
   std::vector<std::shared_ptr<master::MiniMaster> > mini_masters_;

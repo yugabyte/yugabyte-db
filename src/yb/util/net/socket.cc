@@ -283,7 +283,7 @@ Status Socket::GetPeerAddress(Sockaddr *cur_addr) const {
   return Status::OK();
 }
 
-Status Socket::Bind(const Sockaddr& bind_addr) {
+Status Socket::Bind(const Sockaddr& bind_addr, bool explain_addr_in_use) {
   struct sockaddr_in addr = bind_addr.addr();
 
   DCHECK_GE(fd_, 0);
@@ -294,7 +294,8 @@ Status Socket::Bind(const Sockaddr& bind_addr) {
                             bind_addr.ToString(), ErrnoToString(err)),
         Slice(), err);
 
-    if (s.IsNetworkError() && s.posix_code() == EADDRINUSE && bind_addr.port() != 0) {
+    if (s.IsNetworkError() && s.posix_code() == EADDRINUSE && explain_addr_in_use &&
+        bind_addr.port() != 0) {
       TryRunLsof(bind_addr);
     }
     return s;

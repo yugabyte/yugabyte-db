@@ -264,7 +264,7 @@ class ExternalMiniCluster {
   Status DeduceBinRoot(std::string* ret);
   Status HandleOptions();
 
-  const ExternalMiniClusterOptions opts_;
+  ExternalMiniClusterOptions opts_;
 
   // The root for binaries.
   std::string daemon_bin_path_;

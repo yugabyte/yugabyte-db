@@ -153,7 +153,8 @@ extern bool ParseFileName(const std::string& filename, uint64_t* number,
 // specified number.
 extern Status SetCurrentFile(Env* env, const std::string& dbname,
                              uint64_t descriptor_number,
-                             Directory* directory_to_fsync);
+                             Directory* directory_to_fsync,
+                             bool disable_data_sync);
 
 // Make the IDENTITY file for the db
 extern Status SetIdentityFile(Env* env, const std::string& dbname);

@@ -29,12 +29,6 @@
 #     Runs the "slow" version of the unit tests. Set to 0 to
 #     run the tests more quickly.
 #
-#   TEST_TMPDIR
-#     Specifies the temporary directory where tests should write their
-#     data. It is expected that following the completion of all tests, this
-#     directory is empty (i.e. every test cleaned up after itself).
-#     The default location of this directory depends on the current user, Jenkins job name and id.
-#
 #   RUN_FLAKY_ONLY
 #   Default: 0
 #     Only runs tests which have failed recently, if this is 1.
@@ -51,13 +45,6 @@
 #     The host:port pair of a server running test_result_server.py.
 #     This must be configured for flaky test resistance or test result
 #     reporting to work.
-#
-#   ENABLE_DIST_TEST
-#   Default: 0
-#     If set to 1, will submit C++ tests to be run by the distributed
-#     test runner instead of running them locally. This requires that
-#     $DIST_TEST_HOME be set to a working dist_test checkout (and that
-#     dist_test itself be appropriately configured to point to a cluster)
 #
 #   BUILD_CPP
 #   Default: 1
@@ -158,26 +145,9 @@ export YB_FLAKY_TEST_ATTEMPTS=${YB_FLAKY_TEST_ATTEMPTS:-1}
 export YB_ALLOW_SLOW_TESTS=${YB_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
 export YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-1}
 
-if [ -z "${TEST_TMPDIR:-}" ]; then
-  JOB_NAME_CLEAN=${JOB_NAME:-unknown}
-  # Make sure the job name does not have spaces.
-  JOB_NAME_CLEAN=${JOB_NAME_CLEAN// /_}
-  TEST_TMPDIR=\
-"/tmp/ybtest.user_${USER:-unknown}.job_$JOB_NAME_CLEAN.executor_${EXECUTOR_NUMBER:-unknown}"
-fi
-export TEST_TMPDIR
-
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
-
-# Ensure that the test data directory is usable.
-mkdir -p "$TEST_TMPDIR"
-if [ ! -w "$TEST_TMPDIR" ]; then
-  echo "Error: Test output directory ($TEST_TMPDIR) is not writable on $(hostname)" \
-    "by user $(whoami)" >&2
-  exit 1
-fi
 
 SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
 BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
@@ -201,6 +171,7 @@ list_flaky_tests() {
 }
 
 TEST_LOG_DIR="$BUILD_ROOT/test-logs"
+TEST_TMP_ROOT_DIR="$BUILD_ROOT/test-tmp"
 
 TEST_LOG_URL_PREFIX=""
 if [ -n "${BUILD_URL:-}" ]; then
@@ -298,21 +269,8 @@ if [ "$YB_FLAKY_TEST_ATTEMPTS" -gt 1 ]; then
   fi
 fi
 
-# On distributed tests, force dynamic linking even for release builds. Otherwise,
-# the test binaries are too large and we spend way too much time uploading them
-# to the test slaves.
-LINK_FLAGS=
-if [ "$ENABLE_DIST_TEST" == "1" ]; then
-  LINK_FLAGS="-DYB_LINK=dynamic"
-fi
-
 $SOURCE_ROOT/build-support/enable_devtoolset.sh \
-  "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $LINK_FLAGS $SOURCE_ROOT"
-
-# our tests leave lots of data lying around, clean up before we run
-if [ -d "$TEST_TMPDIR" ]; then
-  rm -Rf "$TEST_TMPDIR"/*
-fi
+  "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $SOURCE_ROOT"
 
 if [ "$BUILD_CPP" == "1" ]; then
   echo
@@ -348,22 +306,6 @@ if [ "$BUILD_CPP" == "1" ]; then
 
   EXIT_STATUS=0
   FAILURES=""
-
-  # If we're running distributed tests, submit them asynchronously while
-  # we run the Java and Python tests.
-  if [ "$ENABLE_DIST_TEST" == "1" ]; then
-    echo
-    echo Submitting distributed-test job.
-    echo ------------------------------------------------------------
-    export DIST_TEST_JOB_PATH=$BUILD_ROOT/dist-test-job-id
-    rm -f $DIST_TEST_JOB_PATH
-    if ! $SOURCE_ROOT/build-support/dist_test.py --no-wait run-all ; then
-      EXIT_STATUS=1
-      FAILURES="$FAILURES"$'Could not submit distributed test job\n'
-    fi
-    # Still need to run a few non-dist-test-capable tests locally.
-    EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -L no_dist_test"
-  fi
 
   set +e
   (
@@ -462,39 +404,6 @@ if [ "$BUILD_PYTHON" == "1" ]; then
   popd
 fi
 
-# If we submitted the tasks earlier, go fetch the results now
-if [ "$ENABLE_DIST_TEST" == "1" ]; then
-  echo
-  echo Fetching previously submitted dist-test results...
-  echo ------------------------------------------------------------
-  if ! $DIST_TEST_HOME/client.py watch ; then
-    EXIT_STATUS=1
-    FAILURES="$FAILURES"$'Distributed tests failed\n'
-  fi
-  DT_DIR=$TEST_LOG_DIR/dist-test-out
-  rm -Rf "$DT_DIR"
-  $DIST_TEST_HOME/client.py fetch --artifacts -d $DT_DIR
-  # Fetching the artifacts expands each log into its own directory.
-  # Move them back into the main log directory
-  rm -f $DT_DIR/*zip
-  for arch_dir in $DT_DIR/* ; do
-    # In the case of sharded tests, we'll have multiple subdirs
-    # which contain files of the same name. We need to disambiguate
-    # when we move back. We can grab the shard index from the task name
-    # which is in the archive directory name.
-    shard_idx=$(echo $arch_dir | perl -ne '
-      if (/(\d+)$/) {
-        print $1;
-      } else {
-        print "unknown_shard";
-      }')
-    for log_file in "$arch_dir/build/$BUILD_TYPE_LOWER/test-logs/"* ; do
-      mv "$log_file" "$TEST_LOG_DIR/${shard_idx}_$(basename $log_file)"
-    done
-    rm -Rf "$arch_dir"
-  done
-fi
-
 if [ $EXIT_STATUS != 0 ]; then
   echo
   echo Tests failed, making sure we have XML files for all tests.
@@ -503,7 +412,7 @@ if [ $EXIT_STATUS != 0 ]; then
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
   for GTEST_OUTFILE in $TEST_LOG_DIR/*.${TEST_OUTPUT_EXTENSION}; do
-    TEST_EXE=$(basename $GTEST_OUTFILE .${TEST_OUTPUT_EXTENSION} )
+    TEST_EXE=$(basename "$GTEST_OUTFILE" .${TEST_OUTPUT_EXTENSION} )
     GTEST_XMLFILE="$TEST_LOG_DIR/$TEST_EXE.xml"
     if [ ! -f "$GTEST_XMLFILE" ]; then
       echo "JUnit report missing:" \

@@ -282,14 +282,15 @@ class RpcTestBase : public YBTest {
   }
 
  protected:
-  std::shared_ptr<Messenger> CreateMessenger(const string &name,
-                                        int n_reactors = 1) {
+  std::shared_ptr<Messenger> CreateMessenger(const string &name, int n_reactors = 1) {
     MessengerBuilder bld(name);
     bld.set_num_reactors(n_reactors);
+    auto coarse_time_granularity = std::max(std::min(keepalive_time_ms_ / 4, 100), 1);
+    VLOG(1) << "Creating a messenger with connection keepalive time " << keepalive_time_ms_
+            << " ms, coarse time granluarity " << coarse_time_granularity << " ms";
     bld.set_connection_keepalive_time(
       MonoDelta::FromMilliseconds(keepalive_time_ms_));
-    bld.set_coarse_timer_granularity(MonoDelta::FromMilliseconds(
-                                       std::min(keepalive_time_ms_, 100)));
+    bld.set_coarse_timer_granularity(MonoDelta::FromMilliseconds(coarse_time_granularity));
     bld.set_metric_entity(metric_entity_);
     std::shared_ptr<Messenger> messenger;
     CHECK_OK(bld.Build(&messenger));

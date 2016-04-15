@@ -348,21 +348,22 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
 
 Status SetCurrentFile(Env* env, const std::string& dbname,
                       uint64_t descriptor_number,
-                      Directory* directory_to_fsync) {
+                      Directory* directory_to_fsync,
+                      bool disable_data_sync) {
   // Remove leading "dbname/" and add newline to manifest file name
   std::string manifest = DescriptorFileName(dbname, descriptor_number);
   Slice contents = manifest;
   assert(contents.starts_with(dbname + "/"));
   contents.remove_prefix(dbname.size() + 1);
   std::string tmp = TempFileName(dbname, descriptor_number);
-  Status s = WriteStringToFile(env, contents.ToString() + "\n", tmp, true);
+  Status s = WriteStringToFile(env, contents.ToString() + "\n", tmp, !disable_data_sync);
   if (s.ok()) {
     TEST_KILL_RANDOM("SetCurrentFile:0", rocksdb_kill_odds * REDUCE_ODDS2);
     s = env->RenameFile(tmp, CurrentFileName(dbname));
     TEST_KILL_RANDOM("SetCurrentFile:1", rocksdb_kill_odds * REDUCE_ODDS2);
   }
   if (s.ok()) {
-    if (directory_to_fsync != nullptr) {
+    if (directory_to_fsync != nullptr && !disable_data_sync) {
       directory_to_fsync->Fsync();
     }
   } else {

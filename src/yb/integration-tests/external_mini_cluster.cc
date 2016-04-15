@@ -40,11 +40,13 @@
 #include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::MasterServiceProxy;
@@ -251,8 +253,16 @@ Status ExternalMiniCluster::StartDistributedMasters() {
   int num_masters = opts_.num_masters;
 
   if (opts_.master_rpc_ports.size() != num_masters) {
-    LOG(FATAL) << num_masters << " masters requested, but only " <<
+    LOG(FATAL) << num_masters << " masters requested, but " <<
         opts_.master_rpc_ports.size() << " ports specified in 'master_rpc_ports'";
+  }
+
+  for (int i = 0; i < opts_.master_rpc_ports.size(); ++i) {
+    if (opts_.master_rpc_ports[i] == 0) {
+      opts_.master_rpc_ports[i] = GetFreePort();
+      LOG(INFO) << "Using an auto-assigned port " << opts_.master_rpc_ports[i]
+        << " to start an external mini-cluster master";
+    }
   }
 
   vector<string> peer_addrs;

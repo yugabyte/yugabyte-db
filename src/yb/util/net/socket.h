@@ -98,8 +98,9 @@ class Socket {
 
   // Call bind() to bind the socket to a given address.
   // If bind() fails and indicates that the requested port is already in use,
-  // generates an informative log message by calling 'lsof' if available.
-  Status Bind(const Sockaddr& bind_addr);
+  // and if explain_addr_in_use is set to true, generates an informative log message by calling
+  // 'lsof' if available.
+  Status Bind(const Sockaddr& bind_addr, bool explain_addr_in_use = true);
 
   // Call accept(2) to get a new connection.
   Status Accept(Socket *new_conn, Sockaddr *remote, int flags);

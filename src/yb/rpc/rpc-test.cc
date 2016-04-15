@@ -34,6 +34,9 @@
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
 METRIC_DECLARE_histogram(rpc_incoming_queue_time);
 
+DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
+  "Number of iterations in TestRpc.TestConnectionKeepalive");
+
 using std::string;
 using std::shared_ptr;
 using std::unordered_map;
@@ -200,41 +203,42 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   // Only run one reactor per messenger, so we can grab the metrics from that
   // one without having to check all.
   n_server_reactor_threads_ = 1;
-  keepalive_time_ms_ = 50;
+  keepalive_time_ms_ = 100;
 
   // Set up server.
   Sockaddr server_addr;
   StartTestServer(&server_addr);
+  for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
+    // Set up client.
+    LOG(INFO) << "Connecting to " << server_addr.ToString();
+    shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+    Proxy p(client_messenger, server_addr, GenericCalculatorService::static_service_name());
 
-  // Set up client.
-  LOG(INFO) << "Connecting to " << server_addr.ToString();
-  shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
-  Proxy p(client_messenger, server_addr, GenericCalculatorService::static_service_name());
+    ASSERT_OK(DoTestSyncCall(p, GenericCalculatorService::kAddMethodName));
 
-  ASSERT_OK(DoTestSyncCall(p, GenericCalculatorService::kAddMethodName));
+    SleepFor(MonoDelta::FromMilliseconds(5));
 
-  SleepFor(MonoDelta::FromMilliseconds(5));
+    ReactorMetrics metrics;
+    ASSERT_OK(server_messenger_->reactors_[0]->GetMetrics(&metrics));
+    ASSERT_EQ(1, metrics.num_server_connections_) << "Server should have 1 server connection";
+    ASSERT_EQ(0, metrics.num_client_connections_) << "Server should have 0 client connections";
 
-  ReactorMetrics metrics;
-  ASSERT_OK(server_messenger_->reactors_[0]->GetMetrics(&metrics));
-  ASSERT_EQ(1, metrics.num_server_connections_) << "Server should have 1 server connection";
-  ASSERT_EQ(0, metrics.num_client_connections_) << "Server should have 0 client connections";
+    ASSERT_OK(client_messenger->reactors_[0]->GetMetrics(&metrics));
+    ASSERT_EQ(0, metrics.num_server_connections_) << "Client should have 0 server connections";
+    ASSERT_EQ(1, metrics.num_client_connections_) << "Client should have 1 client connections";
 
-  ASSERT_OK(client_messenger->reactors_[0]->GetMetrics(&metrics));
-  ASSERT_EQ(0, metrics.num_server_connections_) << "Client should have 0 server connections";
-  ASSERT_EQ(1, metrics.num_client_connections_) << "Client should have 1 client connections";
+    SleepFor(MonoDelta::FromMilliseconds(200));
 
-  SleepFor(MonoDelta::FromMilliseconds(100));
+    // After sleeping, the keepalive timer should have closed both sides of
+    // the connection.
+    ASSERT_OK(server_messenger_->reactors_[0]->GetMetrics(&metrics));
+    ASSERT_EQ(0, metrics.num_server_connections_) << "Server should have 0 server connections";
+    ASSERT_EQ(0, metrics.num_client_connections_) << "Server should have 0 client connections";
 
-  // After sleeping, the keepalive timer should have closed both sides of
-  // the connection.
-  ASSERT_OK(server_messenger_->reactors_[0]->GetMetrics(&metrics));
-  ASSERT_EQ(0, metrics.num_server_connections_) << "Server should have 0 server connections";
-  ASSERT_EQ(0, metrics.num_client_connections_) << "Server should have 0 client connections";
-
-  ASSERT_OK(client_messenger->reactors_[0]->GetMetrics(&metrics));
-  ASSERT_EQ(0, metrics.num_server_connections_) << "Client should have 0 server connections";
-  ASSERT_EQ(0, metrics.num_client_connections_) << "Client should have 0 client connections";
+    ASSERT_OK(client_messenger->reactors_[0]->GetMetrics(&metrics));
+    ASSERT_EQ(0, metrics.num_server_connections_) << "Client should have 0 server connections";
+    ASSERT_EQ(0, metrics.num_client_connections_) << "Client should have 0 client connections";
+  }
 }
 
 // Test that a call which takes longer than the keepalive time
@@ -242,7 +246,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
 // server if there is a call outstanding on it.
 TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   // set very short keepalive
-  keepalive_time_ms_ = 50;
+  keepalive_time_ms_ = 100;
 
   // Set up server.
   Sockaddr server_addr;
@@ -255,7 +259,7 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   // Make a call which sleeps longer than the keepalive.
   RpcController controller;
   SleepRequestPB req;
-  req.set_sleep_micros(100 * 1000);
+  req.set_sleep_micros(200 * 1000);
   req.set_deferred(true);
   SleepResponsePB resp;
   ASSERT_OK(p.SyncRequest(GenericCalculatorService::kSleepMethodName,
