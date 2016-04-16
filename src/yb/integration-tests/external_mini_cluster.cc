@@ -47,6 +47,8 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
+#include <thread>
+#include <mutex>
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::MasterServiceProxy;
@@ -583,9 +585,15 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
+  p->ShareParentStderr(false);
   LOG(INFO) << "Running " << exe_ << "\n" << JoinStrings(argv, "\n");
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
+
+  StartTailerThread(strings::Substitute("[pid $0 stdout]", p->pid()), p->ReleaseChildStdoutFd(),
+    &std::cout);
+  StartTailerThread(strings::Substitute("[pid $0 stderr]", p->pid()), p->ReleaseChildStderrFd(),
+    &std::cerr);
 
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;
@@ -724,6 +732,25 @@ HostPort ExternalDaemon::bound_http_hostport() const {
   HostPort ret;
   CHECK_OK(HostPortFromPB(status_->bound_http_addresses(0), &ret));
   return ret;
+}
+
+void ExternalDaemon::StartTailerThread(std::string line_prefix, int child_fd, ostream* out) {
+  // Synchronize tailing output from all child processes for simplicity.
+  static std::mutex tailer_output_mutex;
+
+  std::thread tailer_thread([line_prefix, child_fd, out] {
+    FILE* fp = fdopen(child_fd, "rb");
+    char buf[65536];
+    while (!feof(fp) && fgets(buf, sizeof(buf), fp) != nullptr) {
+      size_t l = strlen(buf);
+      const char* maybe_end_of_line = l > 0 && buf[l - 1] == '\n' ? "" : "\n";
+      std::lock_guard<std::mutex> lock(tailer_output_mutex);
+      // Make sure we always output an end-of-line character.
+      *out << line_prefix << " " << buf << maybe_end_of_line;
+    }
+    fclose(fp);
+  });
+  tailer_thread.detach();
 }
 
 const NodeInstancePB& ExternalDaemon::instance_id() const {

@@ -281,8 +281,11 @@ class ExternalMiniCluster {
 
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
-  ExternalDaemon(std::shared_ptr<rpc::Messenger> messenger, std::string exe,
-                 std::string data_dir, std::vector<std::string> extra_flags);
+  ExternalDaemon(
+    std::shared_ptr<rpc::Messenger> messenger,
+    std::string exe,
+    std::string data_dir,
+    std::vector<std::string> extra_flags);
 
   HostPort bound_rpc_hostport() const;
   Sockaddr bound_rpc_addr() const;
@@ -356,6 +359,9 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   HostPort bound_http_;
 
   DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
+
+ private:
+   void StartTailerThread(std::string line_prefix, int child_fd, ostream* out);
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon
