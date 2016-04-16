@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #
 # Licensed to the Apache Software Foundation (ASF) under one
@@ -175,12 +175,14 @@ fi
 
 # gtest won't overwrite old junit test files, resulting in a build failure
 # even when retries are successful.
-rm -f $XML_FILE_PATH
+rm -f "$XML_FILE_PATH"
 
 echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
 RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
-$ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
+$ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" \
+  "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
+
 
 STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
 
