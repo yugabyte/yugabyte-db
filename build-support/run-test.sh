@@ -184,7 +184,10 @@ $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" \
   "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
 set -e
-
+if [ ! -f "$XML_FILE_PATH" ]; then
+  echo "$ABS_TEST_PATH failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
+  STATUS=1
+fi
 
 STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
 
