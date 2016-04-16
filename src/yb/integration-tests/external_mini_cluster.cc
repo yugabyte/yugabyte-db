@@ -244,7 +244,7 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
 Status ExternalMiniCluster::StartSingleMaster() {
   string exe = GetBinaryPath(kMasterBinaryName);
   scoped_refptr<ExternalMaster> master =
-    new ExternalMaster(messenger_, exe, GetDataPath("master"),
+    new ExternalMaster(0, messenger_, exe, GetDataPath("master"),
                        SubstituteInFlags(opts_.extra_master_flags, 0));
   RETURN_NOT_OK(master->Start());
   masters_.push_back(master);
@@ -281,11 +281,13 @@ Status ExternalMiniCluster::StartDistributedMasters() {
   // Start the masters.
   for (int i = 0; i < num_masters; i++) {
     scoped_refptr<ExternalMaster> peer =
-        new ExternalMaster(messenger_,
-                           exe,
-                           GetDataPath(Substitute("master-$0", i)),
-                           peer_addrs[i],
-                           SubstituteInFlags(flags, i));
+      new ExternalMaster(
+        i,
+        messenger_,
+        exe,
+        GetDataPath(Substitute("master-$0", i)),
+        peer_addrs[i],
+        SubstituteInFlags(flags, i));
     RETURN_NOT_OK_PREPEND(peer->Start(),
                           Substitute("Unable to start Master at index $0", i));
     masters_.push_back(peer);
@@ -317,10 +319,9 @@ Status ExternalMiniCluster::AddTabletServer() {
   }
 
   scoped_refptr<ExternalTabletServer> ts =
-    new ExternalTabletServer(messenger_, exe, GetDataPath(Substitute("ts-$0", idx)),
-                             GetBindIpForTabletServer(idx),
-                             master_hostports,
-                             SubstituteInFlags(opts_.extra_tserver_flags, idx));
+    new ExternalTabletServer(
+      idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
+      master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
   RETURN_NOT_OK(ts->Start());
   tablet_servers_.push_back(ts);
   return Status::OK();
@@ -533,13 +534,17 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
 // ExternalDaemon
 //------------------------------------------------------------
 
-ExternalDaemon::ExternalDaemon(std::shared_ptr<rpc::Messenger> messenger,
-                               string exe, string data_dir,
-                               vector<string> extra_flags)
-    : messenger_(std::move(messenger)),
-      exe_(std::move(exe)),
-      data_dir_(std::move(data_dir)),
-      extra_flags_(std::move(extra_flags)) {}
+ExternalDaemon::ExternalDaemon(
+    std::string short_description,
+    std::shared_ptr<rpc::Messenger> messenger,
+    string exe,
+    string data_dir,
+    vector<string> extra_flags)
+  : short_description_(short_description),
+    messenger_(std::move(messenger)),
+    exe_(std::move(exe)),
+    data_dir_(std::move(data_dir)),
+    extra_flags_(std::move(extra_flags)) {}
 
 ExternalDaemon::~ExternalDaemon() {
 }
@@ -586,13 +591,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
-  LOG(INFO) << "Running " << exe_ << "\n" << JoinStrings(argv, "\n");
+  LOG(INFO) << "Running " << short_description_ << ": " << exe_ << "\n" << JoinStrings(argv, "\n");
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
-  StartTailerThread(strings::Substitute("[pid $0 stdout]", p->pid()), p->ReleaseChildStdoutFd(),
+  StartTailerThread(Substitute("[$0.O]", short_description_), p->ReleaseChildStdoutFd(),
     &std::cout);
-  StartTailerThread(strings::Substitute("[pid $0 stderr]", p->pid()), p->ReleaseChildStderrFd(),
+  StartTailerThread(Substitute("[$0.E]", short_description_), p->ReleaseChildStderrFd(),
     &std::cerr);
 
   // The process is now starting -- wait for the bound port info to show up.
@@ -735,7 +740,7 @@ HostPort ExternalDaemon::bound_http_hostport() const {
 }
 
 void ExternalDaemon::StartTailerThread(std::string line_prefix, int child_fd, ostream* out) {
-  // Synchronize tailing output from all child processes for simplicity.
+  // Synchronize tailing output from all external daemons for simplicity.
   static std::mutex tailer_output_mutex;
 
   std::thread tailer_thread([line_prefix, child_fd, out] {
@@ -838,20 +843,27 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 // ExternalMaster
 //------------------------------------------------------------
 
-ExternalMaster::ExternalMaster(const std::shared_ptr<rpc::Messenger>& messenger,
-                               const string& exe,
-                               const string& data_dir,
-                               const vector<string>& extra_flags)
-    : ExternalDaemon(messenger, exe, data_dir, extra_flags),
-      rpc_bind_address_("127.0.0.1:0") {
+ExternalMaster::ExternalMaster(
+    int master_index,
+    const std::shared_ptr<rpc::Messenger>& messenger,
+    const string& exe,
+    const string& data_dir,
+    const vector<string>& extra_flags)
+  : ExternalDaemon(
+      strings::Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
+    rpc_bind_address_("127.0.0.1:0") {
 }
 
-ExternalMaster::ExternalMaster(const std::shared_ptr<rpc::Messenger>& messenger,
-                               const string& exe, const string& data_dir,
-                               string rpc_bind_address,
-                               const std::vector<string>& extra_flags)
-    : ExternalDaemon(messenger, exe, data_dir, extra_flags),
-      rpc_bind_address_(std::move(rpc_bind_address)) {}
+ExternalMaster::ExternalMaster(
+    int master_index,
+    const std::shared_ptr<rpc::Messenger>& messenger,
+    const string& exe,
+    const string& data_dir,
+    string rpc_bind_address,
+    const std::vector<string>& extra_flags)
+  : ExternalDaemon(Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
+    rpc_bind_address_(std::move(rpc_bind_address)) {
+}
 
 ExternalMaster::~ExternalMaster() {
 }
@@ -888,12 +900,13 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
+    int tablet_server_index,
     const std::shared_ptr<rpc::Messenger>& messenger, const string& exe,
     const string& data_dir, string bind_host,
     const vector<HostPort>& master_addrs, const vector<string>& extra_flags)
-    : ExternalDaemon(messenger, exe, data_dir, extra_flags),
-      master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
-      bind_host_(std::move(bind_host)) {}
+  : ExternalDaemon(Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, extra_flags),
+    master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
+    bind_host_(std::move(bind_host)) {}
 
 ExternalTabletServer::~ExternalTabletServer() {
 }

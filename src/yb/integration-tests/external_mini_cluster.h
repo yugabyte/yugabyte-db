@@ -282,6 +282,7 @@ class ExternalMiniCluster {
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
   ExternalDaemon(
+    std::string short_description,
     std::shared_ptr<rpc::Messenger> messenger,
     std::string exe,
     std::string data_dir,
@@ -344,6 +345,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // In a non-coverage build, this does nothing.
   void FlushCoverage();
 
+  const std::string short_description_;
   const std::shared_ptr<rpc::Messenger> messenger_;
   const std::string exe_;
   const std::string data_dir_;
@@ -384,14 +386,20 @@ class ScopedResumeExternalDaemon {
 
 class ExternalMaster : public ExternalDaemon {
  public:
-  ExternalMaster(const std::shared_ptr<rpc::Messenger>& messenger,
-                 const std::string& exe, const std::string& data_dir,
-                 const std::vector<std::string>& extra_flags);
+  ExternalMaster(
+    int master_index,
+    const std::shared_ptr<rpc::Messenger>& messenger,
+    const std::string& exe,
+    const std::string& data_dir,
+    const std::vector<std::string>& extra_flags);
 
-  ExternalMaster(const std::shared_ptr<rpc::Messenger>& messenger,
-                 const std::string& exe, const std::string& data_dir,
-                 std::string rpc_bind_address,
-                 const std::vector<std::string>& extra_flags);
+  ExternalMaster(
+    int master_index,
+    const std::shared_ptr<rpc::Messenger>& messenger,
+    const std::string& exe,
+    const std::string& data_dir,
+    std::string rpc_bind_address,
+    const std::vector<std::string>& extra_flags);
 
   Status Start();
 
@@ -409,11 +417,14 @@ class ExternalMaster : public ExternalDaemon {
 
 class ExternalTabletServer : public ExternalDaemon {
  public:
-  ExternalTabletServer(const std::shared_ptr<rpc::Messenger>& messenger,
-                       const std::string& exe, const std::string& data_dir,
-                       std::string bind_host,
-                       const std::vector<HostPort>& master_addrs,
-                       const std::vector<std::string>& extra_flags);
+  ExternalTabletServer(
+    int tablet_server_index,
+    const std::shared_ptr<rpc::Messenger>& messenger,
+    const std::string& exe,
+    const std::string& data_dir,
+    std::string bind_host,
+    const std::vector<HostPort>& master_addrs,
+    const std::vector<std::string>& extra_flags);
 
   Status Start();
 
