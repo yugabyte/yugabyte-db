@@ -179,9 +179,11 @@ rm -f "$XML_FILE_PATH"
 
 echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
 RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
+set +e
 $ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" \
   "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
+set -e
 
 
 STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
