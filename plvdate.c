@@ -6,12 +6,9 @@
   with n days (n > 10000), can be slow (on my P4 31ms).
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006
+  PostgreSQL implementation author: Pavel Stehule, 2006-2016
 
   This module is under BSD Licence
-
-  History:
-    1.0. first public version 13. March 2006
 */
 
 #define PLVDATE_VERSION  "PostgreSQL PLVdate, version 1.1, April 2016"
