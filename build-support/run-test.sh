@@ -104,8 +104,10 @@ rm -f *
 if [ "$( basename "$TEST_DIR" )" == "rocksdb-build" ]; then
   LOG_PATH_PREFIX="$TEST_LOG_DIR/rocksdb_$TEST_NAME"
   TMP_DIR_NAME_PREFIX="rocksdb_$TMP_DIR_NAME_PREFIX"
+  IS_ROCKSDB=1
 else
   LOG_PATH_PREFIX="$TEST_LOG_DIR/$TEST_NAME"
+  IS_ROCKSDB=0
 fi
 
 LOG_PATH_TXT=$LOG_PATH_PREFIX.txt
@@ -178,9 +180,9 @@ rm -f "$XML_FILE_PATH"
 
 echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
 RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
-if [[ "$TEST_NAME" =~ \
-      ^(bloom|compact_on_deletion_collector|cuckoo_table_reader|dynamic_bloom|merge|prefix)_test$ ]]
-then
+if [ "$IS_ROCKSB" == "1" ]; then
+  # RocksDB does not know about --test_timeout_after.
+  # TODO: need an alternative timeout mechanism.
   TIMEOUT_ARG=""
 else
   TIMEOUT_ARG="--test_timeout_after $YB_TEST_TIMEOUT"
@@ -193,7 +195,14 @@ STATUS=$?
 set -e
 if [ ! -f "$XML_FILE_PATH" ]; then
   echo "$ABS_TEST_PATH failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
-  STATUS=1
+  if [ "$IS_ROCKSDB" == "1" ] && \
+     [[ "$TEST_NAME" =~ ^(compact_on_deletion_collector|merge)_test$ ]] || \
+     [ "$IS_ROCKSDB" == "0" ] && \
+     [[ "$TEST_NAME" == ^client_(samples|symbol)-test$ ]]; then
+    echo "This is a known non-gtest test, not considering this a failure" >&2
+  else
+    STATUS=1
+  fi
 fi
 
 STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
