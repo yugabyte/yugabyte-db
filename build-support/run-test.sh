@@ -198,7 +198,7 @@ if [ ! -f "$XML_FILE_PATH" ]; then
   if [ "$IS_ROCKSDB" == "1" ] && \
      [[ "$TEST_NAME" =~ ^(compact_on_deletion_collector|merge)_test$ ]] || \
      [ "$IS_ROCKSDB" == "0" ] && \
-     [[ "$TEST_NAME" =~ ^client_(samples|symbol)-test$ ]]; then
+     [[ "$TEST_NAME" =~ ^client_(samples|symbol)-test[.]sh$ ]]; then
     echo "$TEST_NAME (IS_ROCKSDB=$IS_ROCKSDB) is a known non-gtest test executable," \
          "not considering this a failure" >&2
   else
