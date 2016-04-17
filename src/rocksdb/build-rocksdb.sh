@@ -50,10 +50,11 @@ link_mode="d"
 cxx_compiler=""
 c_compiler=""
 use_ld_gold=false
-extra_ldflags=""
 verbose=false
 build_all_targets=false
 skip_link_dir_creation=false
+extra_include_dirs=()
+extra_lib_dirs=()
 
 make_opts=()
 make_targets=()
@@ -111,6 +112,14 @@ while [ $# -ne 0 ]; do
     --skip-link-dir-creation)
       skip_link_dir_creation=true
     ;;
+    --extra-include-dir)
+      extra_include_dirs+=( "$2" )
+      shift
+    ;;
+    --extra-lib-dir)
+      extra_lib_dirs+=( "$2" )
+      shift
+    ;;
     *)
       print_help >&2
       echo >&2
@@ -119,6 +128,9 @@ while [ $# -ne 0 ]; do
   esac
   shift
 done
+
+extra_cxxflags=""
+extra_ldflags=""
 
 if [ -z "$build_dir" ]; then
   echo "--build-dir is not specified"
@@ -153,8 +165,26 @@ fi
 
 if $use_ld_gold; then
   # TODO: replace this with an append if we're accumulating linker flags in multiple places.
-  extra_ldflags="-fuse-ld=gold"
+  extra_ldflags+=" -fuse-ld=gold"
 fi
+
+set +u
+for extra_include_dir in "${extra_include_dirs[@]}"; do
+  if [ ! -d "$extra_include_dir" ]; then
+    echo "Extra include directory '$extra_include_dir' does not exist" >&2
+    exit 1
+  fi
+  extra_cxxflags+=" -I'$extra_include_dir'"
+done
+for extra_lib_dir in "${extra_lib_dirs[@]}"; do
+  if [ ! -d "$extra_lib_dir" ]; then
+    echo "Extra library directory '$extra_lib_dir' does not exist" >&2
+    exit 1
+  fi
+  extra_ldflags+=" -L'$extra_lib_dir'"
+done
+
+set -u
 
 case "$link_mode" in
   d)
@@ -239,6 +269,10 @@ fi
 
 if [ -n "$extra_ldflags" ]; then
   make_opts+=( EXTRA_LDFLAGS="$extra_ldflags" )
+fi
+
+if [ -n "$extra_cxxflags" ]; then
+  make_opts+=( EXTRA_CXXFLAGS="$extra_cxxflags" )
 fi
 
 if ! $skip_link_dir_creation; then

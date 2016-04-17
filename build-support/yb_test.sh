@@ -105,21 +105,18 @@ if [[ ! "$build_type" =~ ^(debug|fastdebug|release|profile_gen|profile_build)$ ]
   exit 1
 fi
 
-build_dir="$project_dir/build/$build_type"
+BUILD_ROOT="$project_dir/build/$build_type"
 
-if [ ! -d "$build_dir" ]; then
-  echo "Build directory '$build_dir' not found" >&2
-  exit 1
-fi
+. "$( dirname "$BASH_SOURCE" )/common-test-env.sh"
 
 IFS=$'\n'  # so that we can iterate through lines even if they contain spaces
 test_binaries=()
 num_tests=0
-for test_binary in $( find "$build_dir/bin" -type f -name "*test" -executable ); do
+for test_binary in $( find "$BUILD_ROOT/bin" -type f -name "*test" -executable ); do
   test_binaries+=( "$test_binary" )
   let num_tests+=1
 done
-for test_binary in $( find "$build_dir/rocksdb-build" -type f -name "*test" -executable ); do
+for test_binary in $( find "$BUILD_ROOT/rocksdb-build" -type f -name "*test" -executable ); do
   test_binaries+=( "$test_binary" )
   let num_tests+=1
 done
@@ -137,7 +134,7 @@ num_binaries_to_run_at_once=0
 
 echo "Collecting test cases and tests from gtest binaries"
 for test_binary in "${test_binaries[@]}"; do
-  rel_test_binary="${test_binary#$build_dir/}"
+  rel_test_binary="${test_binary#$BUILD_ROOT/}"
   if [ -n "$test_binary_re" ] && [[ ! "$rel_test_binary" =~ $test_binary_re ]]; then
     continue
   fi
@@ -178,7 +175,7 @@ done
 echo "Found $num_tests GTest tests in $num_test_cases test cases, and" \
   "$num_binaries_to_run_at_once test executables to be run at once"
 
-test_log_dir="$build_dir/yb-test-logs"
+test_log_dir="$BUILD_ROOT/yb-test-logs"
 rm -rf "$test_log_dir"
 mkdir -p "$test_log_dir"
 test_index=1
@@ -214,7 +211,7 @@ for t in "${tests[@]}"; do
   echo "[$test_index/${#tests[@]}] $test_binary ($what_test_str)," \
        "logging to $test_log_path_prefix.log"
 
-  test_cmd_line=( "$build_dir/$test_binary" "--gtest_output=xml:$test_log_path_prefix.xml" )
+  test_cmd_line=( "$BUILD_ROOT/$test_binary" "--gtest_output=xml:$test_log_path_prefix.xml" )
   if ! $run_at_once; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi

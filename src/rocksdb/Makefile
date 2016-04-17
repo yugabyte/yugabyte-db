@@ -12,8 +12,8 @@ CLEAN_FILES = # deliberately empty, so we can append below.
 CFLAGS += ${EXTRA_CFLAGS}
 # See the following link for old vs. new C++ ABI differences:
 # https://gcc.gnu.org/onlinedocs/gcc-5.2.0/libstdc++/manual/manual/using_dual_abi.html
-CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 -fPIC ${EXTRA_CXXFLAGS}
-LDFLAGS += $(EXTRA_LDFLAGS)
+CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 -fPIC -DGFLAGS=google ${EXTRA_CXXFLAGS}
+LDFLAGS += $(EXTRA_LDFLAGS) -lgflags
 MACHINE ?= $(shell uname -m)
 ARFLAGS = rs
 

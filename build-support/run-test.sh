@@ -33,12 +33,11 @@
 set -euo pipefail
 
 TEST_PATH=${1:-}
-shift
-
 if [ -z "$TEST_PATH" ]; then
   echo "Test path must be specified as the first argument" >&2
   exit 1
 fi
+shift
 
 if [ ! -f "$TEST_PATH" ]; then
   echo "Test binary '$TEST_PATH' does not exist" >&2
@@ -62,14 +61,14 @@ if [ ! -d "$PWD" ]; then
   cd /tmp
 fi
 
-# Absolute path to the root source directory. This script is expected to live within it.
-SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/.. ; pwd)
+# Absolute path to the root build directory. The test path is expected to be one or two levels
+# within it. This works for tests that are in the "bin" directory as well as tests in
+# "rocksdb-build".
+BUILD_ROOT=$(cd "$(dirname "$TEST_PATH")"/.. && pwd)
 
-# Absolute path to the root build directory. The test path is expected to be within it.
-BUILD_ROOT=$(cd $(dirname "$TEST_PATH")/.. ; pwd)
+. "$( dirname "$BASH_SOURCE" )/common-test-env.sh"
 
-if [ "`uname`" == "Darwin" ]; then
-  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+if [ "$(uname)" == "Darwin" ]; then
   # Stack trace address to line number conversion is disabled on Mac OS X as of 04/04/2016/
   # See https://yugabyte.atlassian.net/browse/ENG-37
   STACK_TRACE_FILTER=cat
@@ -179,8 +178,16 @@ rm -f "$XML_FILE_PATH"
 
 echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
 RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
+if [[ "$TEST_NAME" =~ \
+      ^(bloom|compact_on_deletion_collector|cuckoo_table_reader|dynamic_bloom|merge|prefix)_test$ ]]
+then
+  TIMEOUT_ARG=""
+else
+  TIMEOUT_ARG="--test_timeout_after $YB_TEST_TIMEOUT"
+fi
+
 set +e
-$ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" \
+$ABS_TEST_PATH "$@" $TIMEOUT_ARG \
   "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
 set -e
@@ -279,7 +286,7 @@ if [ -n "$COREFILES" ]; then
   set -e
 fi
 
-popd
+popd >/dev/null
 rm -Rf "$TEST_WORKDIR"
 if [ -z "$( ls -A "$TEST_TMPDIR" )" ]; then
   rmdir "$TEST_TMPDIR"
