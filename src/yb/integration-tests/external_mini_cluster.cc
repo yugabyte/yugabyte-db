@@ -595,9 +595,11 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
-  StartTailerThread(Substitute("[$0.O]", short_description_), p->ReleaseChildStdoutFd(),
+  StartTailerThread(Substitute("[$0 stdout]", short_description_), p->ReleaseChildStdoutFd(),
     &std::cout);
-  StartTailerThread(Substitute("[$0.E]", short_description_), p->ReleaseChildStderrFd(),
+  // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
+  // assume that by default in the output prefix.
+  StartTailerThread(Substitute("[$0]", short_description_), p->ReleaseChildStderrFd(),
     &std::cerr);
 
   // The process is now starting -- wait for the bound port info to show up.
