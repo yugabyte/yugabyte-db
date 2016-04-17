@@ -188,17 +188,18 @@ else
   TIMEOUT_ARG="--test_timeout_after $YB_TEST_TIMEOUT"
 fi
 
+# Run the test.
 set +e
-$ABS_TEST_PATH "$@" $TIMEOUT_ARG \
-  "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
+$ABS_TEST_PATH "$@" $TIMEOUT_ARG "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
 set -e
+
 if [ ! -f "$XML_FILE_PATH" ]; then
   echo "$ABS_TEST_PATH failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
-  if [ "$IS_ROCKSDB" == "1" ] && \
-     [[ "$TEST_NAME" =~ ^(compact_on_deletion_collector|merge)_test$ ]] || \
-     [ "$IS_ROCKSDB" == "0" ] && \
-     [[ "$TEST_NAME" =~ ^client_(samples|symbol)-test[.]sh$ ]]; then
+  if ( [ "$IS_ROCKSDB" == "1" ] &&
+       [[ "$TEST_NAME" =~ ^(compact_on_deletion_collector|merge)_test$ ]] ) || \
+     ( [ "$IS_ROCKSDB" == "0" ] &&
+       [[ "$TEST_NAME" =~ ^client_(samples|symbol)-test$ ]] ); then
     echo "$TEST_NAME (IS_ROCKSDB=$IS_ROCKSDB) is a known non-gtest test executable," \
          "not considering this a failure" >&2
   else
