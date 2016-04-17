@@ -180,7 +180,7 @@ rm -f "$XML_FILE_PATH"
 
 echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
 RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
-if [ "$IS_ROCKSB" == "1" ]; then
+if [ "$IS_ROCKSDB" == "1" ]; then
   # RocksDB does not know about --test_timeout_after.
   # TODO: need an alternative timeout mechanism.
   TIMEOUT_ARG=""
