@@ -28,8 +28,10 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_rpc.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
@@ -38,6 +40,7 @@
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -53,8 +56,10 @@ using std::shared_ptr;
 using std::vector;
 
 using yb::consensus::RaftPeerPB;
+using yb::master::GetLeaderMasterRpc;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
+using yb::tserver::RemoteBootstrapServiceImpl;
 using strings::Substitute;
 
 namespace yb {
@@ -110,8 +115,8 @@ Status Master::StartAsync() {
   RETURN_NOT_OK(maintenance_manager_->Init());
 
   gscoped_ptr<ServiceIf> impl(new MasterServiceImpl(this));
-  gscoped_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
-                                                                    catalog_manager_.get()));
+  gscoped_ptr<ServiceIf> consensus_service(
+    new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
 
   RETURN_NOT_OK(ServerBase::RegisterService(impl.Pass()));
   RETURN_NOT_OK(ServerBase::RegisterService(consensus_service.Pass()));
@@ -234,6 +239,29 @@ Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
 
 } // anonymous namespace
 
+void Master::DumpMasterOptionsInfo(std::ostream* out) {
+  std::vector<HostPort>::iterator it;
+  *out << "Master options : ";
+  for (it = opts_.master_addresses.begin(); it != opts_.master_addresses.end(); it++) {
+    HostPort hp = *it;
+    *out << hp.ToString() << ", ";
+  }
+  *out << "\n";
+}
+
+Status Master::ListRaftConfigMasters(std::vector<RaftPeerPB>* masters) const {
+  consensus::ConsensusStatePB cpb;
+  RETURN_NOT_OK(catalog_manager_->GetCurrentConfig(&cpb));
+  if (cpb.has_config()) {
+    for (RaftPeerPB peer : cpb.config().peers()) {
+      masters->push_back(peer);
+    }
+    return Status::OK();
+  } else {
+    return Status::NotFound("No raft config found.");
+  }
+}
+
 Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
   if (!opts_.IsDistributed()) {
     ServerEntryPB local_entry;
@@ -249,8 +277,8 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     Status s = GetMasterEntryForHost(messenger_, peer_addr, &peer_entry);
     if (!s.ok()) {
       s = s.CloneAndPrepend(
-          Substitute("Unable to get registration information for peer ($0)",
-                     peer_addr.ToString()));
+        Substitute("Unable to get registration information for peer ($0)",
+          peer_addr.ToString()));
       LOG(WARNING) << s.ToString();
       StatusToPB(s, peer_entry.mutable_error());
     }

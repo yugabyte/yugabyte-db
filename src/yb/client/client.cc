@@ -22,6 +22,7 @@
 #include <set>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 
 #include "yb/client/batcher.h"
 #include "yb/client/callbacks.h"
@@ -65,6 +66,8 @@ using yb::master::GetTableSchemaRequestPB;
 using yb::master::GetTableSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
+using yb::master::ListMastersRequestPB;
+using yb::master::ListMastersResponsePB;
 using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;
 using yb::master::ListTabletServersRequestPB;
@@ -361,6 +364,53 @@ Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
   }
   *leader_socket = leader_addrs[0];
   return Status::OK();
+}
+
+Status YBClient::ListMasters(
+    MonoTime deadline,
+    std::vector<std::string>* master_uuids) {
+  ListMastersRequestPB list_req;
+  ListMastersResponsePB list_resp;
+  Status s =
+    data_->SyncLeaderMasterRpc<ListMastersRequestPB, ListMastersResponsePB>(
+      deadline,
+      this,
+      list_req,
+      &list_resp,
+      nullptr,
+      "ListMasters",
+      &MasterServiceProxy::ListMasters);
+  RETURN_NOT_OK(s);
+  if (list_resp.has_error()) {
+    return StatusFromPB(list_resp.error());
+  }
+
+  master_uuids->clear();
+  for (ServerEntryPB master : list_resp.masters()) {
+    if (master.has_error()) {
+      LOG(ERROR) << "Master " << master.ShortDebugString() << " hit error "
+        << master.error().ShortDebugString();
+      return StatusFromPB(master.error());
+    }
+    master_uuids->push_back(master.instance_id().permanent_uuid());
+  }
+  return Status::OK();
+}
+
+Status YBClient::RefreshMasterLeaderSocket(Sockaddr* leader_socket) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
+
+  return SetMasterLeaderSocket(leader_socket);
+}
+
+Status YBClient::RemoveMasterFromClient(const Sockaddr& remove) {
+  return data_->RemoveMasterAddress(remove);
+}
+
+Status YBClient::AddMasterToClient(const Sockaddr& add) {
+  return data_->AddMasterAddress(add);
 }
 
 Status YBClient::ListTables(vector<string>* tables,

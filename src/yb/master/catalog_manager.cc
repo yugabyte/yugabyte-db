@@ -52,6 +52,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/atomicops.h"
@@ -67,6 +68,7 @@
 #include "yb/gutil/walltime.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -157,6 +159,7 @@ using base::subtle::NoBarrier_CompareAndSwap;
 using cfile::TypeEncodingInfo;
 using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
+using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::Consensus;
 using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
@@ -172,6 +175,7 @@ using tablet::TabletDataState;
 using tablet::TabletPeer;
 using tablet::TabletStatePB;
 using tserver::TabletServerErrorPB;
+using master::MasterServiceProxy;
 
 ////////////////////////////////////////////////////////////
 // Table Loader
@@ -1728,7 +1732,8 @@ const NodeInstancePB& CatalogManager::NodeInstance() const {
   return master_->instance_pb();
 }
 
-Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+Status CatalogManager::StartRemoteBootstrap(const yb::consensus::StartRemoteBootstrapRequestPB& req) {
+  LOG(INFO) << "Start RBS leader master " << req.ShortDebugString() << std::endl;
   return Status::NotSupported("Remote bootstrap not yet implemented for the master tablet");
 }
 
@@ -3088,7 +3093,12 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::DumpState(std::ostream* out) const {
+Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB *cpb) const {
+  *cpb = sys_catalog_->tablet_peer()->consensus()->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
+  return Status::OK();
+}
+
+void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   TableInfoMap ids_copy, names_copy;
   TabletInfoMap tablets_copy;
 
@@ -3101,7 +3111,7 @@ void CatalogManager::DumpState(std::ostream* out) const {
     tablets_copy = tablet_map_;
   }
 
-  *out << "Tables:\n";
+  *out << "Dumping Current state of master.\nTables:\n";
   for (const TableInfoMap::value_type& e : ids_copy) {
     TableInfo* t = e.second.get();
     TableMetadataLock l(t, TableMetadataLock::READ);
@@ -3149,6 +3159,45 @@ void CatalogManager::DumpState(std::ostream* out) const {
       *out << "  name: \"" << CHexEscape(e.first) << "\"\n";
     }
   }
+
+  master_->DumpMasterOptionsInfo(out);
+
+  if (on_disk_dump) {
+    consensus::ConsensusStatePB cur_consensus_state;
+    GetCurrentConfig(&cur_consensus_state);
+    *out << "Current raft config: " << cur_consensus_state.ShortDebugString() << "\n";
+  }
+}
+
+Status CatalogManager::PeerStateDump(vector<RaftPeerPB>& peers, bool on_disk) {
+  std::unique_ptr<MasterServiceProxy> peer_proxy;
+  Sockaddr sockaddr;
+  MonoTime timeout = MonoTime::Now(MonoTime::FINE);
+  DumpMasterStateRequestPB req;
+  rpc::RpcController rpc;
+
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+  rpc.set_deadline(timeout);
+  req.set_on_disk(on_disk);
+
+  for (RaftPeerPB peer : peers) {
+    HostPort hostport(peer.last_known_addr().host(), peer.last_known_addr().port());
+    RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
+    peer_proxy.reset(new MasterServiceProxy(master_->messenger(), sockaddr));
+
+    DumpMasterStateResponsePB resp;
+    rpc.Reset();
+
+    peer_proxy->DumpState(req, &resp, &rpc);
+
+    if (resp.has_error()) {
+      LOG(WARNING) << "Hit err " << resp.ShortDebugString() << " during peer "
+        << peer.ShortDebugString() << " state dump.";
+      return StatusFromPB(resp.error().status());
+    }
+  }
+
+  return Status::OK();
 }
 
 std::string CatalogManager::LogPrefix() const {

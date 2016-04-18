@@ -423,6 +423,7 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
     return Status::OK();
   }
   RETURN_NOT_OK(BecomeReplicaUnlocked());
+
   return Status::OK();
 }
 

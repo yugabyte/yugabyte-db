@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "yb/common/partition.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/master/master.pb.h"
@@ -371,7 +372,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
-  void DumpState(std::ostream* out) const;
+  void DumpState(std::ostream* out, bool on_disk_dump=false) const;
 
   // Return true if the table with the specified ID exists,
   // and set the table pointer to the TableInfo object
@@ -403,6 +404,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
 
+  Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
+
   // Return OK if this CatalogManager is a leader in a consensus configuration and if
   // the required leader state (metadata for tables and tablets) has
   // been successfully loaded into memory. CatalogManager must be
@@ -412,6 +415,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns this CatalogManager's role in a consensus configuration. CatalogManager
   // must be initialized before calling this method.
   consensus::RaftPeerPB::Role Role() const;
+
+  Status PeerStateDump(vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
 
  private:
   friend class TableLoader;

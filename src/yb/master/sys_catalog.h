@@ -41,6 +41,8 @@ struct MasterOptions;
 class TableInfo;
 class TabletInfo;
 
+static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
+
 // The SysCatalogTable has two separate visitors because the tables
 // data must be loaded into memory before the tablets data.
 class TableVisitor {
@@ -115,6 +117,12 @@ class SysCatalogTable {
   // Scan of the tablet-related entries.
   Status VisitTablets(TabletVisitor* visitor);
 
+  std::string SysTabletId() const { return tablet_id(); }
+
+  const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
+    return tablet_peer_;
+  }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 
@@ -144,10 +152,6 @@ class SysCatalogTable {
   // TODO: Revisit this whole thing when integrating leader election.
   Status SetupDistributedConfig(const MasterOptions& options,
                                 consensus::RaftConfigPB* committed_config);
-
-  const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
-    return tablet_peer_;
-  }
 
   std::string tablet_id() const {
     return tablet_peer_->tablet_id();

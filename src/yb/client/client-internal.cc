@@ -21,6 +21,8 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <iostream>
+#include <sstream>
 
 #include "yb/client/meta_cache.h"
 #include "yb/common/schema.h"
@@ -29,6 +31,8 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/master/master.h"
 #include "yb/master/master_rpc.h"
@@ -63,6 +67,8 @@ using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
+using master::ListMastersRequestPB;
+using master::ListMastersResponsePB;
 using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
 using master::ListTabletServersRequestPB;
@@ -244,6 +250,18 @@ Status YBClient::Data::SyncLeaderMasterRpc(
   const boost::function<Status(MasterServiceProxy*,
                                const GetTableLocationsRequestPB&,
                                GetTableLocationsResponsePB*,
+                               RpcController*)>& func);
+template
+Status YBClient::Data::SyncLeaderMasterRpc(
+  const MonoTime& deadline,
+  YBClient* client,
+  const ListMastersRequestPB& req,
+  ListMastersResponsePB* resp,
+  int* num_attempts,
+  const char* func_name,
+  const boost::function<Status(MasterServiceProxy*,
+                               const ListMastersRequestPB&,
+                               ListMastersResponsePB*,
                                RpcController*)>& func);
 
 YBClient::Data::Data()
@@ -845,8 +863,47 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
     l.unlock();
     leader_master_rpc_->SendRpc();
   }
+}
 
+// API to clear and reset master addresses, used during master config change
+Status YBClient::Data::SetMasterAddresses(const string& addrs) {
+  if (addrs.empty()) {
+    std::ostringstream out;
+    out.str("Invalid empty master address cannot be set. Current list is: ");
+    for (const string& master_server_addr : master_server_addrs_) {
+      out.str(master_server_addr);
+      out.str(" ");
+    }
+    LOG(ERROR) << out.str();
+    return Status::InvalidArgument("master addresses cannot be empty");
+  }
 
+  master_server_addrs_.clear();
+  master_server_addrs_.push_back(addrs);
+
+  return Status::OK();
+}
+
+// Add a given master to the master address list
+Status YBClient::Data::AddMasterAddress(const Sockaddr& sockaddr) {
+  HostPort host_port(sockaddr.host(), sockaddr.port());
+  master_server_addrs_.push_back(host_port.ToString());
+  return Status::OK();
+}
+
+// Remove a given master from the list of master_server_addrs_
+Status YBClient::Data::RemoveMasterAddress(const Sockaddr& sockaddr) {
+  vector<HostPort> new_list;
+
+  RETURN_NOT_OK(HostPort::RemoveAndGetHostPortList(
+    sockaddr,
+    master_server_addrs_,
+    0, // defaultPort
+    &new_list));
+
+  RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));
+
+  return Status::OK();
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {

@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <iostream>
 
 #include <algorithm>
 #include <unordered_set>
@@ -72,6 +73,43 @@ HostPort::HostPort(std::string host, uint16_t port)
 HostPort::HostPort(const Sockaddr& addr)
   : host_(addr.host()),
     port_(addr.port()) {
+}
+
+Status HostPort::RemoveAndGetHostPortList(
+    const Sockaddr& remove,
+    const std::vector<string>& multiple_server_addresses,
+    uint16_t default_port,
+    std::vector<HostPort> *res) {
+  bool found = false;
+  // Note that this outer loop is over a vector of comma-separated strings.
+  for (const string& master_server_addr : multiple_server_addresses) {
+    vector<string> addr_strings = strings::Split(master_server_addr, ",", strings::SkipEmpty());
+    for (const string& single_addr : addr_strings) {
+      HostPort host_port;
+      RETURN_NOT_OK(host_port.ParseString(single_addr, default_port));
+      if (host_port.equals(remove)) {
+        found = true;
+        continue;
+      } else {
+        res->push_back(host_port);
+      }
+    }
+  }
+
+  if (!found) {
+    std::ostringstream out;
+    out.str("Current list of master addresses: ");
+    for (const string& master_server_addr : multiple_server_addresses) {
+      out.str(master_server_addr);
+      out.str(" ");
+    }
+    LOG(ERROR) << out.str();
+
+    return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
+      remove.ToString()));
+  }
+
+  return Status::OK();
 }
 
 Status HostPort::ParseString(const string& str, uint16_t default_port) {
@@ -298,6 +336,14 @@ uint16_t GetFreePort() {
   }
   LOG(FATAL) << "Could not find a free random port between 61000 and 65535 inclusively";
   return 0;  // never reached
+}
+
+bool HostPort::equals(const HostPortPB& hostPortPB) const {
+  return hostPortPB.host() == host() && hostPortPB.port() == port();
+}
+
+bool HostPort::equals(const Sockaddr& sockaddr) const {
+  return sockaddr.host() == host() && sockaddr.port() == port();
 }
 
 } // namespace yb

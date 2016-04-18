@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+// --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
+// --- client_samples-test.sh depends on this --- //
 #include "yb/client/row_result.h"
 #include "yb/client/scan_batch.h"
 #include "yb/client/scan_predicate.h"
@@ -37,13 +39,13 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+// --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
 
 namespace yb {
 
 class LinkedListTester;
 class PartitionSchema;
 class Sockaddr;
-
 namespace client {
 
 class YBLoggingCallback;
@@ -210,6 +212,11 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   Status ListTablets(const std::string& table_name,
                      std::vector<std::string>* tablets);
 
+  // Get the list of master uuids. Can be enhanced later to also return port/host info.
+  Status ListMasters(
+    MonoTime deadline,
+    std::vector<std::string>* master_uuids);
+
   // Check if the table given by 'table_name' exists.
   //
   // 'exists' is set only on success.
@@ -231,6 +238,15 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   // Return the socket address of the master leader for this client
   Status SetMasterLeaderSocket(Sockaddr* leader_socket);
+
+  // Caller knows that the existing leader might have died or stepped down, so it can use this API
+  // to reset the client state to point to new master leader.
+  Status RefreshMasterLeaderSocket(Sockaddr* leader_socket);
+
+  // Once a config change is completed to add/remove a master, update the client to add/remove it
+  // from its own master address list.
+  Status AddMasterToClient(const Sockaddr& add);
+  Status RemoveMasterFromClient(const Sockaddr& remove);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {

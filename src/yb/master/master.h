@@ -26,6 +26,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/master/master_options.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/server/server_base.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
@@ -84,13 +85,16 @@ class Master : public server::ServerBase {
   Status GetMasterRegistration(ServerRegistrationPB* registration) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
-  // masters.
-  //
+  // masters from the in-memory options used at master startup.
   // TODO move this to a separate class to be re-used in TS and
   // client; cache this information with a TTL (possibly in another
   // SysTable), so that we don't have to perform an RPC call on every
   // request.
   Status ListMasters(std::vector<ServerEntryPB>* masters) const;
+
+  // Get node instance, Raft role, RPC and HTTP addresses for all
+  // masters from the Raft config
+  Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
   bool IsShutdown() const {
     return state_ == kStopped;
@@ -99,6 +103,8 @@ class Master : public server::ServerBase {
   MaintenanceManager* maintenance_manager() {
     return maintenance_manager_.get();
   }
+
+  void DumpMasterOptionsInfo(std::ostream* out);
 
  private:
   friend class MasterTest;
