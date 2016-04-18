@@ -2,41 +2,6 @@
 
 set -euo pipefail
 
-make_regex() {
-  local regex=""
-  for item in "$@"; do
-    if [ -z "$item" ]; then
-      continue
-    fi
-    if [ -n "$regex" ]; then
-      regex+="|"
-    fi
-    regex+="$item"
-  done
-  echo "^($regex)$"
-}
-
-NON_GTEST_TEST_BINARIES=(
-  bin/merge-test
-  rocksdb-build/bloom_test
-  rocksdb-build/compact_on_deletion_collector_test
-  rocksdb-build/c_test
-  rocksdb-build/cuckoo_table_reader_test
-  rocksdb-build/db_sanity_test
-  rocksdb-build/dynamic_bloom_test
-  rocksdb-build/merge_test
-  rocksdb-build/prefix_test
-  rocksdb-build/stringappend_test
-)
-NON_GTEST_TEST_BINARIES_RE=$( make_regex "${NON_GTEST_TEST_BINARIES[@]}" )
-
-# Test binaries that we can't run one-by-one because of dependencies between test cases.
-TEST_BINARIES_TO_RUN_AT_ONCE=(
-  bin/tablet_server-test
-  rocksdb-build/thread_local_test
-)
-TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( make_regex "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}" )
-
 show_help() {
   cat <<-EOT
 Usage: ${0##*/} [<options>] <command>
@@ -109,6 +74,13 @@ BUILD_ROOT="$project_dir/build/$build_type"
 
 . "$( dirname "$BASH_SOURCE" )/common-test-env.sh"
 
+TEST_BINARIES_TO_RUN_AT_ONCE=(
+  bin/tablet_server-test
+  rocksdb-build/thread_local_test
+)
+TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( make_regex "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}" )
+
+
 IFS=$'\n'  # so that we can iterate through lines even if they contain spaces
 test_binaries=()
 num_tests=0
@@ -138,38 +110,54 @@ for test_binary in "${test_binaries[@]}"; do
   if [ -n "$test_binary_re" ] && [[ ! "$rel_test_binary" =~ $test_binary_re ]]; then
     continue
   fi
-  if [[ "$rel_test_binary" =~ $NON_GTEST_TEST_BINARIES_RE ]]; then
-    echo "Known non-gtest test: $test_binary, skipping"
-    continue
-  fi
-
-  if [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
+  if is_known_non_gtest_test_by_rel_path "$rel_test_binary" || \
+     [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
     tests+=( "$rel_test_binary" )
     let num_binaries_to_run_at_once+=1
     continue
   fi
 
+  gtest_list_stderr_path=$( mktemp -t "gtest_list_tests.stderr.XXXXXXXXXX" )
+
   set +e
-  gtest_list_tests_result=$( "$test_binary" --gtest_list_tests )
+  gtest_list_tests_result=$( "$test_binary" --gtest_list_tests 2>"$gtest_list_stderr_path" )
   exit_code=$?
   set -e
-  if [ "$exit_code" -ne 0 ]; then
-    echo "'$test_binary' does not seem to be a gtest test (--gtest_list_tests failed), skipping" >&2
-  else
-    for test_list_item in $gtest_list_tests_result; do
-      if [[ "$test_list_item" =~ ^\ \  ]]; then
-        test=${test_list_item#  }  # Remove two leading spaces
-        test=${test%%#*}  # Remove everything after a "#" comment
-        test=${test%  }  # Remove two trailing spaces
-        tests+=( "${rel_test_binary}:::$test_case$test" )
-        let num_tests+=1
-      else
-        test_case=${test_list_item%%#*}  # Remove everything after a "#" comment
-        test_case=${test_case%  }  # Remove two trailing spaces
-        let num_test_cases+=1
-      fi
-    done
+
+  if [ -s "$gtest_list_stderr_path" ]; then
+    echo >&2
+    echo "'$test_binary' produced stderr output when run with --gtest_list_tests:" >&2
+    echo >&2
+    cat "$gtest_list_stderr_path" >&2
+    echo >&2
+    echo "Please add the test '$rel_test_binary' to the appropriate list in common-test-env.sh" >&2
+    echo "or fix the underlying issue in the code." >&2
+
+    rm -f "$gtest_list_stderr_path"
+    exit 1
   fi
+
+  rm -f "$gtest_list_stderr_path"
+
+  if [ "$exit_code" -ne 0 ]; then
+    echo "'$test_binary' does not seem to be a gtest test (--gtest_list_tests failed)" >&2
+    echo "Please add this test to the appropriate list in common-test-env.sh" >&2
+    exit 1
+  fi
+
+  for test_list_item in $gtest_list_tests_result; do
+    if [[ "$test_list_item" =~ ^\ \  ]]; then
+      test=${test_list_item#  }  # Remove two leading spaces
+      test=${test%%#*}  # Remove everything after a "#" comment
+      test=${test%  }  # Remove two trailing spaces
+      tests+=( "${rel_test_binary}:::$test_case$test" )
+      let num_tests+=1
+    else
+      test_case=${test_list_item%%#*}  # Remove everything after a "#" comment
+      test_case=${test_case%  }  # Remove two trailing spaces
+      let num_test_cases+=1
+    fi
+  done
 done
 
 echo "Found $num_tests GTest tests in $num_test_cases test cases, and" \
@@ -179,6 +167,8 @@ test_log_dir="$BUILD_ROOT/yb-test-logs"
 rm -rf "$test_log_dir"
 mkdir -p "$test_log_dir"
 test_index=1
+
+global_exit_code=0
 
 echo "Starting tests at $(date)"
 
@@ -195,6 +185,7 @@ for t in "${tests[@]}"; do
     run_at_once=true
     what_test_str="all tests"
   fi
+
   test_binary_sanitized=$( sanitize_for_path "$test_binary" )
   test_name_sanitized=$( sanitize_for_path "$test_name" )
   test_log_dir_for_binary="$test_log_dir/$test_binary_sanitized"
@@ -211,21 +202,32 @@ for t in "${tests[@]}"; do
   echo "[$test_index/${#tests[@]}] $test_binary ($what_test_str)," \
        "logging to $test_log_path_prefix.log"
 
-  test_cmd_line=( "$BUILD_ROOT/$test_binary" "--gtest_output=xml:$test_log_path_prefix.xml" )
+  xml_output_file="$test_log_path_prefix.xml"
+  test_cmd_line=( "$BUILD_ROOT/$test_binary" "--gtest_output=xml:$xml_output_file" )
   if ! $run_at_once; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
   set +e
   "${test_cmd_line[@]}" >"$test_log_path_prefix.log" 2>&1
-  echo
-  if [ $? -ne 0 ]; then
-    echo "Test failed"
-    # TODO: make sure the xml file gets created.
-  fi
+  test_exit_code=$?
   set -e
+
+  if [ "$test_exit_code" -ne 0 ]; then
+    global_exit_code=1
+  fi
+  if [ ! -f "$xml_output_file" ]; then
+    if is_known_non_gtest_test_by_rel_path "$test_binary"; then
+      echo "$test_binary is a known non-gtest executable, OK that it did not produce XML output"
+    else
+      echo "Test failed to produce an XML output file at '$xml_output_file':  ${test_cmd_line[@]}"
+      global_exit_code=1
+    fi
+  fi
 
   let test_index+=1
 done
 
 echo "Finished running tests at $(date)"
+
+exit "$global_exit_code"

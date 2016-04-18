@@ -68,8 +68,8 @@ BUILD_ROOT=$(cd "$(dirname "$TEST_PATH")"/.. && pwd)
 
 . "$( dirname "$BASH_SOURCE" )/common-test-env.sh"
 
-if [ "$(uname)" == "Darwin" ]; then
-  # Stack trace address to line number conversion is disabled on Mac OS X as of 04/04/2016/
+if [ "$IS_MAC" == "1" ]; then
+  # Stack trace address to line number conversion is disabled on Mac OS X as of Apr 2016.
   # See https://yugabyte.atlassian.net/browse/ENG-37
   STACK_TRACE_FILTER=cat
 else
@@ -194,14 +194,15 @@ $ABS_TEST_PATH "$@" $TIMEOUT_ARG "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_
 STATUS=$?
 set -e
 
+if [ "$STATUS" -ne 0 ]; then
+  echo "$ABS_TEST_PATH exited with code $STATUS" >&2
+fi
+
 if [ ! -f "$XML_FILE_PATH" ]; then
   echo "$ABS_TEST_PATH failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
-  if ( [ "$IS_ROCKSDB" == "1" ] &&
-       [[ "$TEST_NAME" =~ ^(compact_on_deletion_collector|merge)_test$ ]] ) || \
-     ( [ "$IS_ROCKSDB" == "0" ] &&
-       [[ "$TEST_NAME" =~ ^client_(samples|symbol)-test$ ]] ); then
-    echo "$TEST_NAME (IS_ROCKSDB=$IS_ROCKSDB) is a known non-gtest test executable," \
-         "not considering this a failure" >&2
+  if is_known_non_gtest_test "$TEST_NAME" "$IS_ROCKSDB"; then
+    echo "$TEST_NAME (IS_ROCKSDB=$IS_ROCKSDB, IS_MAC=$IS_MAC) is a known non-gtest test" \
+         "executable, not considering this a failure" >&2
   else
     STATUS=1
   fi
