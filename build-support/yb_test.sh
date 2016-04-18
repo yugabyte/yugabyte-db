@@ -14,6 +14,8 @@ Options:
     one of debug (default), fastdebug, release, profile_gen, profile_build
   --test-binary-re <test_binary_regex>
     A regular expression for filtering test binary (executable) names.
+  --exit-on-failure
+    Stop running tests after the first failure
 
 Commands:
   run   Runs the tests one at a time
@@ -30,6 +32,8 @@ project_dir=$( cd "$( dirname $0 )"/.. && pwd )
 build_type="debug"
 test_binary_re=""
 cmd=""
+exit_on_failure=false
+
 while [ $# -ne 0 ]; do
   case "$1" in
     -h|--help)
@@ -43,6 +47,9 @@ while [ $# -ne 0 ]; do
     --test-binary-re)
       test_binary_re="$2"
       shift
+    ;;
+    --exit-on-failure)
+      exit_on_failure=true
     ;;
     run|list)
       if [ -n "$cmd" ] && [ "$cmd" != "$1" ]; then
@@ -172,6 +179,12 @@ global_exit_code=0
 
 echo "Starting tests at $(date)"
 
+# Given IFS=$'\n', this is a generic way to sort an array, even if some lines contain spaces
+# (which should not be the case for our "<test_binary>:::<test>" strings).
+tests=(
+  $( for test_str in "${tests[@]}"; do echo "$test_str"; done | sort )
+)
+
 for t in "${tests[@]}"; do
   if [[ "$t" =~ ::: ]]; then
     test_binary=${t%:::*}
@@ -208,24 +221,39 @@ for t in "${tests[@]}"; do
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
+  test_log_path="$test_log_path_prefix.log"
+
   set +e
-  "${test_cmd_line[@]}" >"$test_log_path_prefix.log" 2>&1
+  "${test_cmd_line[@]}" >"$test_log_path" 2>&1
   test_exit_code=$?
   set -e
 
+  test_failed=false
   if [ "$test_exit_code" -ne 0 ]; then
-    global_exit_code=1
+    echo "$test_binary returned exit code $test_exit_code"
+    test_failed=true
   fi
   if [ ! -f "$xml_output_file" ]; then
     if is_known_non_gtest_test_by_rel_path "$test_binary"; then
       echo "$test_binary is a known non-gtest executable, OK that it did not produce XML output"
     else
-      echo "Test failed to produce an XML output file at '$xml_output_file':  ${test_cmd_line[@]}"
-      global_exit_code=1
+      echo "$test_binary failed to produce an XML output file at $xml_output_file" >&2
+      test_failed=true
+    fi
+  fi
+
+  if $test_failed; then
+    echo "Test command line: ${test_cmd_line[@]}" >&2
+    echo "Log path: $test_log_path" >&2
+    echo >&2
+    if $exit_on_failure; then
+      echo "Exiting after the first failure (--exit-on-failure)" >&2
+      exit "$global_exit_code"
     fi
   fi
 
   let test_index+=1
+
 done
 
 echo "Finished running tests at $(date)"
