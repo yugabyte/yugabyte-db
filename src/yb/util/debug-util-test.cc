@@ -118,8 +118,9 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   ASSERT_TRUE(IsSignalHandlerRegistered(SIGUSR2));
   ASSERT_FALSE(IsSignalHandlerRegistered(SIGUSR1));
 
-  // Stack traces should work using the new handler.
-  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "SleeperThread");
+  // Stack traces should work using the new handler. Also has a test failure here, so using a retry
+  // loop.
+  WaitForSleeperThreadNameInStackTrace(t->tid());
 
   // Register our own signal handler on SIGUSR1, and ensure that
   // we get a bad Status if we try to use it.

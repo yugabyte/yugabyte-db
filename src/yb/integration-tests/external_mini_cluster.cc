@@ -591,7 +591,9 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
-  LOG(INFO) << "Running " << short_description_ << ": " << exe_ << "\n" << JoinStrings(argv, "\n");
+  auto default_output_prefix = Substitute("[$0]", short_description_);
+  LOG(INFO) << "Running " << default_output_prefix << ": " << exe_ << "\n"
+    << JoinStrings(argv, "\n");
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
@@ -599,8 +601,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
     &std::cout);
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
-  StartTailerThread(Substitute("[$0]", short_description_), p->ReleaseChildStderrFd(),
-    &std::cerr);
+  StartTailerThread(default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
 
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;
@@ -634,7 +635,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   status_.reset(new ServerStatusPB());
   RETURN_NOT_OK_PREPEND(pb_util::ReadPBFromPath(Env::Default(), info_path, status_.get()),
                         "Failed to read info file from " + info_path);
-  LOG(INFO) << "Started " << exe_ << " as pid " << p->pid();
+  LOG(INFO) << "Started " << default_output_prefix << " " << exe_ << " as pid " << p->pid();
   VLOG(1) << exe_ << " instance information:\n" << status_->DebugString();
 
   process_.swap(p);
