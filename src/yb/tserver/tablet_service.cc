@@ -1082,6 +1082,14 @@ void TabletServiceImpl::ListTablets(const ListTabletsRequestPB* req,
   context->RespondSuccess();
 }
 
+void TabletServiceImpl::GetLogLocation(
+    const GetLogLocationRequestPB* req,
+    GetLogLocationResponsePB* resp,
+    rpc::RpcContext* context) {
+  resp->set_log_location(FLAGS_log_dir);
+  context->RespondSuccess();
+}
+
 void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
                                  ChecksumResponsePB* resp,
                                  rpc::RpcContext* context) {

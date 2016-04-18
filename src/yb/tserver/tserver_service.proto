@@ -27,6 +27,7 @@ service TabletServerService {
   rpc Scan(ScanRequestPB) returns (ScanResponsePB);
   rpc ScannerKeepAlive(ScannerKeepAliveRequestPB) returns (ScannerKeepAliveResponsePB);
   rpc ListTablets(ListTabletsRequestPB) returns (ListTabletsResponsePB);
+  rpc GetLogLocation(GetLogLocationRequestPB) returns (GetLogLocationResponsePB);
 
   // Run full-scan data checksum on a tablet to verify data integrity.
   //
@@ -34,6 +35,13 @@ service TabletServerService {
   // function.
   rpc Checksum(ChecksumRequestPB)
       returns (ChecksumResponsePB);
+}
+
+message GetLogLocationRequestPB {
+}
+
+message GetLogLocationResponsePB {
+  optional string log_location = 1;
 }
 
 message ChecksumRequestPB {
