@@ -72,13 +72,6 @@ class MasterReplicationTest : public YBTest {
     YBTest::TearDown();
   }
 
-  Status RestartCluster() {
-    cluster_->Shutdown();
-    RETURN_NOT_OK(cluster_->Start());
-    RETURN_NOT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
-    return Status::OK();
-  }
-
   // This method is meant to be run in a separate thread.
   void StartClusterDelayed(int64_t micros) {
     LOG(INFO) << "Sleeping for "  << micros << " micro seconds...";
@@ -188,18 +181,22 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   cluster_->Shutdown();
   // ... start the cluster after a delay.
   scoped_refptr<yb::Thread> start_thread;
-  ASSERT_OK(Thread::Create("TestCycleThroughAllMasters", "start_thread",
-                                  &MasterReplicationTest::StartClusterDelayed,
-                                  this,
-                                  100 * 1000, // start after 100 millis.
-                                  &start_thread));
+  ASSERT_OK(Thread::Create(
+    "TestCycleThroughAllMasters", "start_thread",
+    &MasterReplicationTest::StartClusterDelayed,
+    this,
+    100 * 1000, // start after 100 millis.
+    &start_thread));
 
   // Verify that the client doesn't give up even though the entire
   // cluster is down for 100 milliseconds.
   shared_ptr<YBClient> client;
   YBClientBuilder builder;
   builder.master_server_addrs(master_addrs);
-  builder.default_admin_operation_timeout(MonoDelta::FromSeconds(15));
+  // Bumped up timeout from 15 sec to 30 sec because master election can take longer than 15 sec.
+  // https://yugabyte.atlassian.net/browse/ENG-51
+  // Test log: https://gist.githubusercontent.com/mbautin/9f4269292e6ecb5b9a2fc644e2ee4398/raw
+  builder.default_admin_operation_timeout(MonoDelta::FromSeconds(30));
   EXPECT_OK(builder.Build(&client));
 
   ASSERT_OK(ThreadJoiner(start_thread.get()).Join());
