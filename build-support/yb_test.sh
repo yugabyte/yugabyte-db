@@ -185,6 +185,13 @@ tests=(
   $( for test_str in "${tests[@]}"; do echo "$test_str"; done | sort )
 )
 
+test_log_url_prefix=""
+if [ -n "${BUILD_URL:-}" ]; then
+  build_url_no_trailing_slash=${BUILD_URL%/}
+  test_log_url_prefix="${build_url_no_trailing_slash}/artifact/build/$build_type/yb-test-logs"
+fi
+
+
 for t in "${tests[@]}"; do
   if [[ "$t" =~ ::: ]]; then
     test_binary=${t%:::*}
@@ -201,15 +208,16 @@ for t in "${tests[@]}"; do
 
   test_binary_sanitized=$( sanitize_for_path "$test_binary" )
   test_name_sanitized=$( sanitize_for_path "$test_name" )
-  test_log_dir_for_binary="$test_log_dir/$test_binary_sanitized"
-  mkdir -p "$test_log_dir_for_binary"
+  test_log_dir_for_binary="$test_log_dir"
+  rel_test_log_path="$test_binary_sanitized"
   if $run_at_once; then
     # Make this similar to the case when we run tests separately. Pretend that the test binary name
     # is the test name.
-    test_log_path_prefix="$test_log_dir_for_binary/${test_binary##*/}"
+    rel_test_log_path+="/${test_binary##*/}"
   else
-    test_log_path_prefix="$test_log_dir_for_binary/$test_name_sanitized"
+    rel_test_log_path="/$test_name_sanitized"
   fi
+  test_log_path_prefix="$test_log_dir/$rel_test_log_path"
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
   mkdir -p "$TEST_TMPDIR"
   echo "[$test_index/${#tests[@]}] $test_binary ($what_test_str)," \
@@ -245,6 +253,11 @@ for t in "${tests[@]}"; do
   if $test_failed; then
     echo "Test command line: ${test_cmd_line[@]}" >&2
     echo "Log path: $test_log_path" >&2
+    if [ -n "${BUILD_URL:-}" ]; then
+      # Produce a URL like
+      # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
+      echo "Log URL: $test_log_url_prefix/$rel_test_log_path"
+    fi
     echo >&2
     if $exit_on_failure; then
       echo "Exiting after the first failure (--exit-on-failure)" >&2

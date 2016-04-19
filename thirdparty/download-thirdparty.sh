@@ -114,6 +114,7 @@ fi
 
 cd "$TP_DIR"
 
+OS_LINUX=0
 if [[ "$OSTYPE" =~ ^linux ]]; then
   OS_LINUX=1
 fi
