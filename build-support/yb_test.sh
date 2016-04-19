@@ -23,8 +23,18 @@ Commands:
 EOT
 }
 
+# Sanitize the given string so we can make it a path component.
 sanitize_for_path() {
   echo "$1" | sed 's/\//__/g; s/[:.]/_/g;'
+}
+
+add_test_binary() {
+  local test_binary=$1
+  # Only add executable files.
+  if [ -x "$test_binary" ]; then
+    test_binaries+=( "$test_binary" )
+    let num_tests+=1
+  fi
 }
 
 project_dir=$( cd "$( dirname $0 )"/.. && pwd )
@@ -91,13 +101,11 @@ TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( make_regex "${TEST_BINARIES_TO_RUN_AT_ONCE[@]
 IFS=$'\n'  # so that we can iterate through lines even if they contain spaces
 test_binaries=()
 num_tests=0
-for test_binary in $( find "$BUILD_ROOT/bin" -type f -name "*test" -executable ); do
-  test_binaries+=( "$test_binary" )
-  let num_tests+=1
+for test_binary in $( find "$BUILD_ROOT/bin" -type f -name "*test" ); do
+  add_test_binary "$test_binary"
 done
-for test_binary in $( find "$BUILD_ROOT/rocksdb-build" -type f -name "*test" -executable ); do
-  test_binaries+=( "$test_binary" )
-  let num_tests+=1
+for test_binary in $( find "$BUILD_ROOT/rocksdb-build" -type f -name "*test" ); do
+  add_test_binary "$test_binary"
 done
 
 echo "Found $num_tests test binaries"
