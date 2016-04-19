@@ -224,8 +224,8 @@ for t in "${tests[@]}"; do
   test_log_path_prefix="$test_log_dir/$rel_test_log_path"
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
   mkdir -p "$TEST_TMPDIR"
-  echo "[$test_index/${#tests[@]}] $test_binary ($what_test_str)," \
-       "logging to $test_log_path_prefix.log"
+  test_log_path="$test_log_path_prefix.log"
+  echo "[$test_index/${#tests[@]}] $test_binary ($what_test_str), logging to $test_log_path"
 
   xml_output_file="$test_log_path_prefix.xml"
   abs_test_binary_path="$BUILD_ROOT/$test_binary"
@@ -256,6 +256,8 @@ for t in "${tests[@]}"; do
       echo "$test_binary failed to produce an XML output file at $xml_output_file" >&2
       test_failed=true
     fi
+    echo "Generating an XML output file using parse_test_failure.py"
+    "$project_dir"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
   fi
 
   if $test_failed; then
