@@ -208,15 +208,19 @@ for t in "${tests[@]}"; do
 
   test_binary_sanitized=$( sanitize_for_path "$test_binary" )
   test_name_sanitized=$( sanitize_for_path "$test_name" )
-  test_log_dir_for_binary="$test_log_dir"
+
   rel_test_log_path="$test_binary_sanitized"
   if $run_at_once; then
     # Make this similar to the case when we run tests separately. Pretend that the test binary name
     # is the test name.
     rel_test_log_path+="/${test_binary##*/}"
   else
-    rel_test_log_path="/$test_name_sanitized"
+    rel_test_log_path+="/$test_name_sanitized"
   fi
+  # At this point $rel_test_log_path contains the common prefix of the log (.log), the temporary
+  # directory (.tmp), and the XML report (.xml) for this test relative to the yb-test-logs
+  # directory.
+
   test_log_path_prefix="$test_log_dir/$rel_test_log_path"
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
   mkdir -p "$TEST_TMPDIR"
@@ -233,11 +237,12 @@ for t in "${tests[@]}"; do
   test_log_path="$test_log_path_prefix.log"
 
   pushd "$TEST_TMPDIR" >/dev/null
+  ulimit -c unlimited
   set +e
   "${test_cmd_line[@]}" >"$test_log_path" 2>&1
   test_exit_code=$?
   set -e
-  popd
+  popd >/dev/null
 
   test_failed=false
   if [ "$test_exit_code" -ne 0 ]; then
@@ -259,7 +264,7 @@ for t in "${tests[@]}"; do
     if [ -n "${BUILD_URL:-}" ]; then
       # Produce a URL like
       # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
-      echo "Log URL: $test_log_url_prefix/$rel_test_log_path" >&2
+      echo "Log URL: $test_log_url_prefix/$rel_test_log_path.log" >&2
     fi
     if [ -f "$TEST_TMPDIR/core" ]; then
       echo "Found a core file at '$TEST_TMPDIR/core', backtrace:" >&2
