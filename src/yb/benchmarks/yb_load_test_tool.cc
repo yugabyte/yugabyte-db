@@ -13,7 +13,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -61,28 +60,32 @@ DEFINE_int32(
 
 DEFINE_int32(
   insertion_tracker_delay_ms, 50,
-  "The internval at which the \"insertion tracker thread\" wakes up in milliseconds");
+  "The interval at which the \"insertion tracker thread\" wakes up in milliseconds");
 
 DEFINE_int32(
   load_test_num_tablets, 16,
   "Number of tablets to create in the table");
 
 DEFINE_bool(
-    load_test_reads_only, false,
-    "Only read the existing rows from the table.");
+  load_test_reads_only, false,
+  "Only read the existing rows from the table.");
 
 DEFINE_bool(
-    load_test_writes_only, false,
-    "Writes a new set of rows into an existing table.");
+  load_test_writes_only, false,
+  "Writes a new set of rows into an existing table.");
 
 DEFINE_bool(
-    create_table, true,
-    "Whether the table should be created. Its made false when either reads_only/writes_only is "
-    "true. If value is true, existing table will be deleted and recreated.");
+  create_table, true,
+  "Whether the table should be created. Its made false when either reads_only/writes_only is "
+  "true. If value is true, existing table will be deleted and recreated.");
 
 DEFINE_bool(
-    use_kv_table, false,
-    "Use key-value table type backed by RocksDB");
+  use_kv_table, false,
+  "Use key-value table type backed by RocksDB");
+
+DEFINE_int64(
+  value_size_bytes, 16,
+  "Approximate size of each value in a row being inserted");
 
 using strings::Substitute;
 using std::atomic_long;
@@ -208,8 +211,19 @@ protected:
     return Substitute("$0_$1", FormatHex(std::hash<string>()(key_index_str)), key_index_str);
   }
 
+  // The value returned is compared as a string on read, so having a '\0' will use incorrect size.
+  // This also creates a human readable string with hex characters between '0'-'f'.
   inline static string GetValueByIndex(int64 key_index) {
-    return strings::Substitute("value$0", key_index);
+    string value;
+    int64 x = key_index;
+    for (int i = 0; i < FLAGS_value_size_bytes; ++i) {
+      int val = (int)(x & 0xf);
+      char c = (char)((val > 9) ? val - 10 + 'a' : val + '0');
+      value.push_back(c);
+      // Create psuedo-randomization by using the iterator
+      x = (x >> 4) * 31 + i;
+    }
+    return value;
   }
 
   virtual void RunActionThread(int actionIndex) = 0;
@@ -333,7 +347,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
 
     gscoped_ptr<YBInsert> insert(table_->NewInsert());
     string key_str(GetKeyByIndex(key_index));
-    string value_str(Substitute("value$0", key_index));
+    string value_str(GetValueByIndex(key_index));
     insert->mutable_row()->SetBinary("k", key_str.c_str());
     insert->mutable_row()->SetBinary("v", value_str.c_str());
     Status apply_status = session->Apply(insert.release());
@@ -554,7 +568,8 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
     string expected_value(GetValueByIndex(key_index));
     if (returned_value != expected_value) {
       LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str << "': "
-        << "'" << returned_value << "', expected: '" << expected_value << "', read timestamp: "
+        << "'" << returned_value << "'( size : " << returned_value.size() << " bytes ), expected: '"
+        << expected_value << "'( size : " << expected_value.size() << " bytes ), read timestamp: "
         << read_ts;
       IncrementReadErrorCount();
       continue;
