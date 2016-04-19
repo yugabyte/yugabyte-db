@@ -224,17 +224,20 @@ for t in "${tests[@]}"; do
        "logging to $test_log_path_prefix.log"
 
   xml_output_file="$test_log_path_prefix.xml"
-  test_cmd_line=( "$BUILD_ROOT/$test_binary" "--gtest_output=xml:$xml_output_file" )
+  abs_test_binary_path="$BUILD_ROOT/$test_binary"
+  test_cmd_line=( "$abs_test_binary_path" "--gtest_output=xml:$xml_output_file" )
   if ! $run_at_once; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
   test_log_path="$test_log_path_prefix.log"
 
+  pushd "$TEST_TMPDIR" >/dev/null
   set +e
   "${test_cmd_line[@]}" >"$test_log_path" 2>&1
   test_exit_code=$?
   set -e
+  popd
 
   test_failed=false
   if [ "$test_exit_code" -ne 0 ]; then
@@ -256,7 +259,14 @@ for t in "${tests[@]}"; do
     if [ -n "${BUILD_URL:-}" ]; then
       # Produce a URL like
       # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
-      echo "Log URL: $test_log_url_prefix/$rel_test_log_path"
+      echo "Log URL: $test_log_url_prefix/$rel_test_log_path" >&2
+    fi
+    if [ -f "$TEST_TMPDIR/core" ]; then
+      echo "Found a core file at '$TEST_TMPDIR/core', backtrace:" >&2
+      set +e
+      # gdb command from http://www.commandlinefu.com/commands/view/6004/print-stack-trace-of-a-core-file-without-needing-to-enter-gdb-interactively
+      ( set -x; gdb -q -n -ex bt -batch "$abs_test_binary_path" "$TEST_TMPDIR/core" )
+      set -e
     fi
     echo >&2
     if $exit_on_failure; then
