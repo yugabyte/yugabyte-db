@@ -120,7 +120,7 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
     for (const auto& peer : loaded_config.peers()) {
       HostPortPB hp = peer.last_known_addr();
       if (!peer.has_permanent_uuid()) {
-        LOG(WARNING) << "No uuid for master peer at " << hp.host() << ":" << hp.port();
+        LOG(WARNING) << "No uuid for master peer at " << hp.ShortDebugString();
         missing_uuids = true;
         break;
       }
@@ -218,10 +218,11 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
       // TODO: Use ConsensusMetadata to cache the results of these lookups so
       // we only require RPC access to the full consensus configuration on first startup.
       // See KUDU-526.
-      WARN_NOT_OK(consensus::SetPermanentUuidForRemotePeer(master_->messenger(),
-                                                           &new_peer),
-                 Substitute("Unable to resolve UUID for peer $0",
-                            peer.ShortDebugString()));
+      RETURN_NOT_OK_PREPEND(
+        consensus::SetPermanentUuidForRemotePeer(
+          master_->messenger(),
+          &new_peer),
+        Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
       resolved_config.add_peers()->CopyFrom(new_peer);
     }
   }
