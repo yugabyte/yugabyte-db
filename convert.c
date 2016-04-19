@@ -131,12 +131,17 @@ orafce_to_char_timestamp(PG_FUNCTION_ARGS)
 	Timestamp ts = PG_GETARG_TIMESTAMP(0);
 	text *result = NULL;
 
-	if(nls_date_format && strlen(nls_date_format))
+	if(nls_date_format && strlen(nls_date_format) > 0)
 	{
 		/* it will return the DATE in nls_date_format*/
 		result = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
 							TimestampGetDatum(ts),
 								CStringGetDatum(cstring_to_text(nls_date_format))));
+	}
+	else
+	{
+		result = cstring_to_text(DatumGetCString(DirectFunctionCall1(timestamp_out,
+									TimestampGetDatum(ts))));
 	}
 
 	PG_RETURN_TEXT_P(result);

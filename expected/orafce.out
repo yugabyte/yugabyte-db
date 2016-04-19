@@ -3516,6 +3516,13 @@ SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
 SET search_path TO default;
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
 SET search_path TO oracle,"$user", public, pg_catalog;
+SET orafce.nls_date_format to default;
+select oracle.to_char(to_date('19-APR-16 21:41:48'));
+       to_char       
+---------------------
+ 2016-04-19 21:41:48
+(1 row)
+
 set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(to_date('14-Jan08 11:44:49+05:30'));
       to_char      

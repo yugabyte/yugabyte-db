@@ -758,6 +758,8 @@ SET search_path TO default;
 
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
 SET search_path TO oracle,"$user", public, pg_catalog;
+SET orafce.nls_date_format to default;
+select oracle.to_char(to_date('19-APR-16 21:41:48'));
 set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(to_date('14-Jan08 11:44:49+05:30'));
 set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
