@@ -297,6 +297,12 @@ for t in "${tests[@]}"; do
       echo "Exiting after the first failure (--exit-on-failure)" >&2
       exit "$global_exit_code"
     fi
+  else
+    # Mac OS X slaves are having trouble uploading artifacts, so we delete logs and temporary
+    # files for successful tests.
+    if [ "$IS_MAC" == "1" ]; then
+      rm -f "$test_log_path" "$TEST_TMPDIR"
+    fi
   fi
 
   let test_index+=1
