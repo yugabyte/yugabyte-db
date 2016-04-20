@@ -345,7 +345,8 @@ struct MirrorTable {
     ts_.ToStrings(&expected);
 
     // They should look the same.
-    ASSERT_EQ(rows, expected);
+    LogVectorDiff(expected, rows);
+    ASSERT_EQ(expected, rows);
   }
 
  private:
