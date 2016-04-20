@@ -94,6 +94,7 @@ BUILD_ROOT="$project_dir/build/$build_type"
 TEST_BINARIES_TO_RUN_AT_ONCE=(
   bin/tablet_server-test
   rocksdb-build/thread_local_test
+  rocksdb-build/backupable_db_test
 )
 TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( make_regex "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}" )
 
@@ -237,8 +238,16 @@ for t in "${tests[@]}"; do
 
   xml_output_file="$test_log_path_prefix.xml"
   abs_test_binary_path="$BUILD_ROOT/$test_binary"
-  test_cmd_line=( "$abs_test_binary_path" "--gtest_output=xml:$xml_output_file" )
-  if ! $run_at_once; then
+  test_cmd_line=( "$abs_test_binary_path" )
+
+  if is_known_non_gtest_test_by_rel_path "$test_binary"; then
+    is_gtest_test=false
+  else
+    test_cmd_line+=( "--gtest_output=xml:$xml_output_file" )
+    is_gtest_test=true
+  fi
+
+  if ! $run_at_once && $is_gtest_test; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
@@ -264,7 +273,7 @@ for t in "${tests[@]}"; do
       echo "$test_binary failed to produce an XML output file at $xml_output_file" >&2
       test_failed=true
     fi
-    echo "Generating an XML output file using parse_test_failure.py"
+    echo "Generating an XML output file using parse_test_failure.py: $xml_output_file"
     "$project_dir"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
   fi
 
