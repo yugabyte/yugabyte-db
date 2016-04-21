@@ -35,6 +35,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -88,6 +89,7 @@ using rpc::MessengerBuilder;
 using rpc::RpcController;
 using strings::Split;
 using strings::Substitute;
+using tserver::TabletServerServiceProxy;
 
 const char* const kChangeConfigOp = "change_config";
 const char* const kListTablesOp = "list_tables";
@@ -97,7 +99,8 @@ const char* const kDeleteTableOp = "delete_table";
 const char* const kListAllTabletServersOp = "list_all_tablet_servers";
 const char* const kListAllMastersOp ="list_all_masters";
 const char* const kChangeMasterConfigOp = "change_master_config";
-const char* const kDumpMastersState = "dump_masters_state";
+const char* const kDumpMastersStateOp = "dump_masters_state";
+const char* const kListTabletServersLogLocationsOp = "list_tablet_server_log_locations";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -157,6 +160,9 @@ class ClusterAdminClient {
 
   // List all masters
   Status ListAllMasters();
+
+  // List the log locations of all tablet servers, by uuid
+  Status ListTabletServersLogLocations();
 
 private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -634,6 +640,48 @@ Status ClusterAdminClient::ListAllMasters() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::ListTabletServersLogLocations() {
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+
+  if (!servers.empty()) {
+    std::cout << "\tTS UUID\t\t\t\tHost:Port\t\tLogLocation" << std::endl;
+  }
+
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+    auto ts_uuid = server.instance_id().permanent_uuid();
+
+    HostPort hp;
+    GetFirstRpcAddressForTS(ts_uuid, &hp);
+
+    vector<Sockaddr> ts_addrs;
+    RETURN_NOT_OK(hp.ResolveAddresses(&ts_addrs));
+    if (ts_addrs.empty()) {
+      LOG(WARNING) << "Unable to resolve IP address for ts host: " << hp.ToString();
+      continue;
+    }
+    if (ts_addrs.size() != 1) {
+      LOG(WARNING) << "Expected only one IP for ts host, but got : " << hp.ToString();
+      continue;
+    }
+
+    std::unique_ptr<TabletServerServiceProxy>
+      ts_proxy(new TabletServerServiceProxy(messenger_, ts_addrs[0]));
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    tserver::GetLogLocationRequestPB req;
+    tserver::GetLogLocationResponsePB resp;
+    ts_proxy.get()->GetLogLocation(req, &resp, &rpc);
+
+    std::cout << ts_uuid << "\t" 
+      << hp.ToString() << "\t"
+      << resp.log_location() << std::endl;
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListTables() {
   vector<string> tables;
   RETURN_NOT_OK(yb_client_->ListTables(&tables));
@@ -716,8 +764,8 @@ static void SetUsage(const char* argv0) {
       << " 7. " << kListAllMastersOp << std::endl
       << " 8. " << kChangeMasterConfigOp << " "
                 << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <uuid>" << std::endl
-      << " 9. " << kDumpMastersState;
-
+      << " 9. " << kDumpMastersStateOp << std::endl
+      << " 10. " << kListTabletServersLogLocationsOp;
   google::SetUsageMessage(str.str());
 }
 
@@ -839,10 +887,16 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       std::cerr << "Unable to change master config: " << s.ToString() << std::endl;
       return 1;
     }
-  } else if (op == kDumpMastersState) {
+  } else if (op == kDumpMastersStateOp) {
     Status s = client.DumpMasterState();
     if (!s.ok()) {
       std::cerr << "Unable to dump master state: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kListTabletServersLogLocationsOp) {
+    Status s = client.ListTabletServersLogLocations();
+    if (!s.ok()) {
+      std::cerr << "Unable to list tablet server log locations: " << s.ToString() << std::endl;
       return 1;
     }
   } else {
