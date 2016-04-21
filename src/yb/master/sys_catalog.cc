@@ -95,6 +95,10 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
     return(Status::Corruption("Unexpected schema", metadata->schema().ToString()));
   }
 
+  // TODO(bogdan) we should revisit this as well as next step to understand what happens if you
+  // started on this local config, but the consensus layer has a different config? (essentially,
+  // if your local cmeta is stale...
+  //
   // Allow for statically and explicitly assigning the consensus configuration and roles through
   // the master configuration on startup.
   //
@@ -111,11 +115,26 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
                                                   fs_manager->uuid(), &cmeta),
                           "Unable to load consensus metadata for tablet " + tablet_id);
 
-    RaftConfigPB config;
-    RETURN_NOT_OK(SetupDistributedConfig(master_->opts(), &config));
-    cmeta->set_committed_config(config);
-    RETURN_NOT_OK_PREPEND(cmeta->Flush(),
-                          "Unable to persist consensus metadata for tablet " + tablet_id);
+    bool missing_uuids = false;
+    const RaftConfigPB& loaded_config = cmeta->active_config();
+    for (const auto& peer : loaded_config.peers()) {
+      HostPortPB hp = peer.last_known_addr();
+      if (!peer.has_permanent_uuid()) {
+        LOG(WARNING) << "No uuid for master peer at " << hp.ShortDebugString();
+        missing_uuids = true;
+        break;
+      }
+    }
+
+    // If the config loaded from cmeta did not have all uuids, we need to revert back to master opt
+    if (missing_uuids) {
+      RaftConfigPB config;
+      RETURN_NOT_OK(SetupDistributedConfig(master_->opts(), &config));
+      cmeta->set_committed_config(config);
+      // TODO(bogdan) this config we just loaded will also have a leader assigned...is that ok?
+      RETURN_NOT_OK_PREPEND(cmeta->Flush(),
+                            "Unable to persist consensus metadata for tablet " + tablet_id);
+    }
   }
 
   RETURN_NOT_OK(SetupTablet(metadata));
@@ -199,10 +218,11 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
       // TODO: Use ConsensusMetadata to cache the results of these lookups so
       // we only require RPC access to the full consensus configuration on first startup.
       // See KUDU-526.
-      RETURN_NOT_OK_PREPEND(consensus::SetPermanentUuidForRemotePeer(master_->messenger(),
-                                                                     &new_peer),
-                            Substitute("Unable to resolve UUID for peer $0",
-                                       peer.ShortDebugString()));
+      RETURN_NOT_OK_PREPEND(
+        consensus::SetPermanentUuidForRemotePeer(
+          master_->messenger(),
+          &new_peer),
+        Substitute("Unable to resolve UUID for peer $0", peer.ShortDebugString()));
       resolved_config.add_peers()->CopyFrom(new_peer);
     }
   }
