@@ -38,6 +38,9 @@ if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}" AND
     "directory, otherwise future builds will not work.")
 endif()
 
+set(YB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+message("YB_SRC_DIR: ${YB_SRC_DIR}")
+
 set(YB_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 message("YB_BUILD_DIR: ${YB_BUILD_DIR}")
 
@@ -1077,7 +1080,7 @@ add_subdirectory(src/rocksdb)
 
 
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
-add_dependencies(rocksdb invoke_rocksdb_makefile)
+add_dependencies(rocksdb build_rocksdb_library)
 
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)

@@ -154,6 +154,15 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase2) {
   {
     MonoTime deadline = before;
     Status s = clock_->WaitUntilAfter(wait_until, deadline);
+    if (!s.IsTimedOut()) {
+      // Debug information for https://yugabyte.atlassian.net/browse/ENG-58
+      LOG(INFO) << "wait_until=" << wait_until.ToString();
+      LOG(INFO) << "deadline=" << deadline.ToString();
+      LOG(INFO) << "past_ts=" << past_ts.ToString();
+      LOG(INFO) << "past_max_error=" << past_max_error;
+      LOG(INFO) << "current_ts=" << current_ts.ToString();
+      LOG(INFO) << "current_max_error=" << current_max_error;
+    }
     ASSERT_TRUE(s.IsTimedOut());
   }
 

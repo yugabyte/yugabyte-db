@@ -202,7 +202,7 @@ void InboundCall::LogTrace() const {
       // TODO: consider pushing this onto another thread since it may be slow.
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
-                   << header_.timeout_millis() << ").";
+                   << header_.timeout_millis() << "ms).";
       std::string s = trace_->DumpToString(true);
       if (!s.empty()) {
         LOG(WARNING) << "Trace:\n" << s;

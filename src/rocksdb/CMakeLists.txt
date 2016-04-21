@@ -38,6 +38,7 @@ message("Detected RocksDB version: ${ROCKSDB_VERSION}")
 # compiler.
 file(GLOB_RECURSE ROCKSDB_SOURCES "*.h" "*.cc")
 
+# TODO: auto-detect the gflags version installed in the thirdparty directory.
 set(BUILD_ROCKSDB_ARGS
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-rocksdb.sh
   --make-parallelism "${PROCESSOR_COUNT}"
@@ -47,6 +48,8 @@ set(BUILD_ROCKSDB_ARGS
   --link-mode "${YB_LINK}"
   --cxx-compiler "${CMAKE_CXX_COMPILER}"
   --c-compiler "${CMAKE_C_COMPILER}"
+  --extra-include-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/include"
+  --extra-lib-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/lib"
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
 )
 

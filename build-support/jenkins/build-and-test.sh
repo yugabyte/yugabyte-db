@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -412,6 +413,9 @@ if [ $EXIT_STATUS != 0 ]; then
   # Tests that crash do not generate JUnit report XML files.
   # We go through and generate a kind of poor-man's version of them in those cases.
   for GTEST_OUTFILE in $TEST_LOG_DIR/*.${TEST_OUTPUT_EXTENSION}; do
+    if [[ "$GTEST_OUTFILE" =~ __(raw|stack_trace_filter_err).txt ]]; then
+      continue
+    fi
     TEST_EXE=$(basename "$GTEST_OUTFILE" .${TEST_OUTPUT_EXTENSION} )
     GTEST_XMLFILE="$TEST_LOG_DIR/$TEST_EXE.xml"
     if [ ! -f "$GTEST_XMLFILE" ]; then

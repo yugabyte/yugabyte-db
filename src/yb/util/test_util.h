@@ -79,5 +79,53 @@ int SeedRandom();
 // May only be called from within a gtest unit test.
 std::string GetTestDataDirectory();
 
+// Logs some of the differences between the two given vectors. This can be used immediately before
+// asserting that two vectors are equal to make debugging easier.
+template<typename T>
+void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual) {
+  if (expected.size() != actual.size()) {
+    LOG(WARNING) << "Expected size: " << expected.size() << ", actual size: " << actual.size();
+    const std::vector<T> *bigger_vector, *smaller_vector;
+    const char *bigger_vector_desc;
+    if (expected.size() > actual.size()) {
+      bigger_vector = &expected;
+      bigger_vector_desc = "expected";
+      smaller_vector = &actual;
+    } else {
+      bigger_vector = &actual;
+      bigger_vector_desc = "actual";
+      smaller_vector = &expected;
+    }
+
+    for (int i = smaller_vector->size();
+         i < min(smaller_vector->size() + 16, bigger_vector->size());
+         ++i) {
+      LOG(WARNING) << bigger_vector_desc << "[" << i << "]: " << (*bigger_vector)[i];
+    }
+  }
+  int num_differences_logged = 0;
+  size_t num_differences_left = 0;
+  size_t min_size = min(expected.size(), actual.size());
+  for (int i = 0; i < min_size; ++i) {
+    if (expected[i] != actual[i]) {
+      if (num_differences_logged < 16) {
+        LOG(WARNING) << "expected[" << i << "]: " << expected[i];
+        LOG(WARNING) << "actual  [" << i << "]: " << actual[i];
+        ++num_differences_logged;
+      } else {
+        ++num_differences_left;
+      }
+    }
+  }
+  if (num_differences_left > 0) {
+    if (expected.size() == actual.size()) {
+      LOG(WARNING) << num_differences_left << " more differences omitted";
+    } else {
+      LOG(WARNING) << num_differences_left << " more differences in the first " << min_size
+      << " elements omitted";
+    }
+  }
+}
+
 } // namespace yb
 #endif

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #
 # Licensed to the Apache Software Foundation (ASF) under one
@@ -33,12 +33,11 @@
 set -euo pipefail
 
 TEST_PATH=${1:-}
-shift
-
 if [ -z "$TEST_PATH" ]; then
   echo "Test path must be specified as the first argument" >&2
   exit 1
 fi
+shift
 
 if [ ! -f "$TEST_PATH" ]; then
   echo "Test binary '$TEST_PATH' does not exist" >&2
@@ -62,15 +61,15 @@ if [ ! -d "$PWD" ]; then
   cd /tmp
 fi
 
-# Absolute path to the root source directory. This script is expected to live within it.
-SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/.. ; pwd)
+# Absolute path to the root build directory. The test path is expected to be one or two levels
+# within it. This works for tests that are in the "bin" directory as well as tests in
+# "rocksdb-build".
+BUILD_ROOT=$(cd "$(dirname "$TEST_PATH")"/.. && pwd)
 
-# Absolute path to the root build directory. The test path is expected to be within it.
-BUILD_ROOT=$(cd $(dirname "$TEST_PATH")/.. ; pwd)
+. "$( dirname "$BASH_SOURCE" )/common-test-env.sh"
 
-if [ "`uname`" == "Darwin" ]; then
-  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
-  # Stack trace address to line number conversion is disabled on Mac OS X as of 04/04/2016/
+if [ "$IS_MAC" == "1" ]; then
+  # Stack trace address to line number conversion is disabled on Mac OS X as of Apr 2016.
   # See https://yugabyte.atlassian.net/browse/ENG-37
   STACK_TRACE_FILTER=cat
 else
@@ -105,8 +104,10 @@ rm -f *
 if [ "$( basename "$TEST_DIR" )" == "rocksdb-build" ]; then
   LOG_PATH_PREFIX="$TEST_LOG_DIR/rocksdb_$TEST_NAME"
   TMP_DIR_NAME_PREFIX="rocksdb_$TMP_DIR_NAME_PREFIX"
+  IS_ROCKSDB=1
 else
   LOG_PATH_PREFIX="$TEST_LOG_DIR/$TEST_NAME"
+  IS_ROCKSDB=0
 fi
 
 LOG_PATH_TXT=$LOG_PATH_PREFIX.txt
@@ -175,12 +176,37 @@ fi
 
 # gtest won't overwrite old junit test files, resulting in a build failure
 # even when retries are successful.
-rm -f $XML_FILE_PATH
+rm -f "$XML_FILE_PATH"
 
 echo "Running $TEST_NAME with timeout $YB_TEST_TIMEOUT sec, redirecting output into $LOG_PATH"
 RAW_LOG_PATH=${LOG_PATH_PREFIX}__raw.txt
-$ABS_TEST_PATH "$@" --test_timeout_after "$YB_TEST_TIMEOUT" >"$RAW_LOG_PATH" 2>&1
+if [ "$IS_ROCKSDB" == "1" ]; then
+  # RocksDB does not know about --test_timeout_after.
+  # TODO: need an alternative timeout mechanism.
+  TIMEOUT_ARG=""
+else
+  TIMEOUT_ARG="--test_timeout_after $YB_TEST_TIMEOUT"
+fi
+
+# Run the test.
+set +e
+$ABS_TEST_PATH "$@" $TIMEOUT_ARG "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
+set -e
+
+if [ "$STATUS" -ne 0 ]; then
+  echo "$ABS_TEST_PATH exited with code $STATUS" >&2
+fi
+
+if [ ! -f "$XML_FILE_PATH" ]; then
+  echo "$ABS_TEST_PATH failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
+  if is_known_non_gtest_test "$TEST_NAME" "$IS_ROCKSDB"; then
+    echo "$TEST_NAME (IS_ROCKSDB=$IS_ROCKSDB, IS_MAC=$IS_MAC) is a known non-gtest test" \
+         "executable, not considering this a failure" >&2
+  else
+    STATUS=1
+  fi
+fi
 
 STACK_TRACE_FILTER_ERR_PATH="${LOG_PATH_PREFIX}__stack_trace_filter_err.txt"
 
@@ -272,7 +298,7 @@ if [ -n "$COREFILES" ]; then
   set -e
 fi
 
-popd
+popd >/dev/null
 rm -Rf "$TEST_WORKDIR"
 if [ -z "$( ls -A "$TEST_TMPDIR" )" ]; then
   rmdir "$TEST_TMPDIR"
