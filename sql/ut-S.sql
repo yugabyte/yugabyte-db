@@ -3,7 +3,7 @@ LOAD 'pg_hint_plan';
 DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);
 INSERT INTO pg_db_role_setting (SELECT 0, (SELECT oid FROM pg_roles WHERE rolname = current_user), '{client_min_messages=log,pg_hint_plan.debug_print=on}');
 ALTER SYSTEM SET session_preload_libraries TO 'pg_hint_plan';
-\! pg_ctl reload
+SELECT pg_reload_conf();
 SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
@@ -1168,4 +1168,4 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);
 
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
-\! pg_ctl reload
+SELECT pg_reload_conf();
