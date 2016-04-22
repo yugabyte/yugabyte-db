@@ -1,5 +1,5 @@
 /*
- * Function to list all child partitions in a set.
+ * Function to list all child partitions in a set in logical order.
  */
 CREATE FUNCTION show_partitions (p_parent_table text, p_order text DEFAULT 'ASC') RETURNS TABLE (partition_schemaname text, partition_tablename text)
     LANGUAGE plpgsql STABLE SECURITY DEFINER 
@@ -31,8 +31,8 @@ WHERE parent_table = p_parent_table;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 IF v_type IN ('time', 'time-custom') THEN
 

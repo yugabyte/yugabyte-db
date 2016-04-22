@@ -78,8 +78,8 @@ END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
@@ -177,7 +177,7 @@ IF v_type = 'time' THEN
                 , v_control
                 , v_next_partition_timestamp);
     END IF;
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_current_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_current_partition_name::name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func || format('
                 INSERT INTO %I.%I VALUES (NEW.*); ', v_parent_schema, v_current_partition_name);
@@ -195,7 +195,7 @@ IF v_type = 'time' THEN
 
         -- Check that child table exist before making a rule to insert to them.
         -- Handles optimize_trigger being larger than premake (to go back in time further) and edge case of changing optimize_trigger immediately after running create_parent().
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_prev_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_prev_partition_name::name;
         IF v_count > 0 THEN
             IF v_epoch = false THEN
                 v_trig_func := v_trig_func ||format('
@@ -220,7 +220,7 @@ IF v_type = 'time' THEN
 
             END IF;
         END IF;
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_next_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_next_partition_name::name;
         IF v_count > 0 THEN
             IF v_epoch = false THEN
                 v_trig_func := v_trig_func ||format(' 
@@ -251,7 +251,7 @@ IF v_type = 'time' THEN
     v_trig_func := v_trig_func||format('
             ELSE
                 v_partition_name := @extschema@.check_name_length(%L, to_char(v_partition_timestamp, %L), TRUE);
-                SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = %L AND tablename = v_partition_name;
+                SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = %L::name AND tablename = v_partition_name::name;
                 IF v_count > 0 THEN 
                     EXECUTE format(''INSERT INTO %%I.%%I VALUES($1.*)'', %L, v_partition_name) USING NEW;
                 ELSE
@@ -266,6 +266,9 @@ IF v_type = 'time' THEN
     v_trig_func := v_trig_func ||'
         END IF; 
         RETURN NULL; 
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING ''pg_partman insert into child table failed, row inserted into parent (%.%). ERROR: %'', TG_TABLE_SCHEMA, TG_TABLE_NAME, COALESCE(SQLERRM, ''unknown'');
+            RETURN NEW;
         END $t$;';
 
     EXECUTE v_trig_func;
@@ -314,8 +317,8 @@ ELSIF v_type = 'time-custom' THEN
 
         SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename 
         FROM pg_catalog.pg_tables 
-        WHERE schemaname = split_part(v_child_table, ''.'', 1)
-        AND tablename = split_part(v_child_table, ''.'', 2);
+        WHERE schemaname = split_part(v_child_table, ''.'', 1)::name
+        AND tablename = split_part(v_child_table, ''.'', 2)::name;
         IF v_child_schemaname IS NOT NULL AND v_child_tablename IS NOT NULL THEN
             EXECUTE format(''INSERT INTO %I.%I VALUES ($1.*)'', v_child_schemaname, v_child_tablename) USING NEW;
         ELSE
@@ -323,6 +326,9 @@ ELSIF v_type = 'time-custom' THEN
         END IF;
 
         RETURN NULL; 
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING ''pg_partman insert into child table failed, row inserted into parent (%.%). ERROR: %'', TG_TABLE_SCHEMA, TG_TABLE_NAME, COALESCE(SQLERRM, ''unknown'');
+            RETURN NEW;
         END $t$;';
 
     EXECUTE v_trig_func;

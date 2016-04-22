@@ -51,13 +51,13 @@ END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 SELECT schemaname, tablename INTO v_schemaname, v_tablename 
 FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_child_table, '.', 1)
-AND tablename = split_part(p_child_table, '.', 2);
+WHERE schemaname = split_part(p_child_table, '.', 1)::name
+AND tablename = split_part(p_child_table, '.', 2)::name;
 
 IF v_tablename IS NULL THEN
     IF v_jobmon_schema IS NOT NULL THEN
@@ -128,5 +128,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

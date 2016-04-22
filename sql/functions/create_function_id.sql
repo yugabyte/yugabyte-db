@@ -84,8 +84,8 @@ END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
 -- Get the highest level top parent if multi-level partitioned in order to get proper max() value below
@@ -150,7 +150,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             , v_control
             , v_next_partition_id
         );
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_current_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_current_partition_name::name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func || format(' 
             INSERT INTO %I.%I VALUES (NEW.*); ', v_parent_schema, v_current_partition_name);
@@ -169,7 +169,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
 
         -- Check that child table exist before making a rule to insert to them.
         -- Handles optimize_trigger being larger than premake (to go back in time further) and edge case of changing optimize_trigger immediately after running create_parent().
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_prev_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_prev_partition_name::name;
         IF v_count > 0 THEN
             -- Only handle previous partitions if they're starting above zero
             IF v_prev_partition_id >= 0 THEN
@@ -186,7 +186,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             END IF;
         END IF;
 
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_next_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_next_partition_name::name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func ||format('
         ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
@@ -204,7 +204,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
         ELSE
             v_current_partition_id := NEW.%I - (NEW.%I %% %s);
             v_current_partition_name := @extschema@.check_name_length(%L, v_current_partition_id::text, TRUE);
-            SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = %L AND tablename = v_current_partition_name;
+            SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = %L::name AND tablename = v_current_partition_name::name;
             IF v_count > 0 THEN 
                 EXECUTE format(''INSERT INTO %%I.%%I VALUES($1.*)'', %L, v_current_partition_name) USING NEW;
             ELSE
@@ -253,6 +253,9 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
     v_trig_func := v_trig_func ||'
     END IF; 
     RETURN NULL; 
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING ''pg_partman insert into child table failed, row inserted into parent (%.%). ERROR: %'', TG_TABLE_SCHEMA, TG_TABLE_NAME, COALESCE(SQLERRM, ''unknown'');
+        RETURN NEW;
     END $t$;';
 
 EXECUTE v_trig_func;

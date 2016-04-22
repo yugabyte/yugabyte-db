@@ -28,8 +28,8 @@ BEGIN
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 -- CTE query is done individually for each type (time, id) because it should return NULL if the top parent is not the same type in a subpartition set (id->time or time->id)
 
@@ -89,5 +89,4 @@ RETURN;
 
 END
 $$;
-
 

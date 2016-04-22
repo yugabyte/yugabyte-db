@@ -76,8 +76,8 @@ END IF;
 SELECT schemaname, tablename 
 INTO v_parent_schema, v_parent_tablename 
 FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(v_parent_table, '.', 1)
-AND tablename = split_part(v_parent_table, '.', 2);
+WHERE schemaname = split_part(v_parent_table, '.', 1)::name
+AND tablename = split_part(v_parent_table, '.', 2)::name;
 
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
@@ -128,7 +128,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Applying additional constraints: Checking if target child table exists');
 END IF;
 
-SELECT tablename FROM pg_catalog.pg_tables INTO v_child_exists WHERE schemaname = v_parent_schema AND tablename = v_child_tablename;
+SELECT tablename FROM pg_catalog.pg_tables INTO v_child_exists WHERE schemaname = v_parent_schema::name AND tablename = v_child_tablename::name;
 IF v_child_exists IS NULL THEN
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'NOTICE', format('Target child table (%s) does not exist. Skipping constraint creation.', v_child_tablename));

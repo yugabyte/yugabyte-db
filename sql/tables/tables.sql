@@ -56,6 +56,7 @@ CREATE TABLE custom_time_partitions (
 CREATE INDEX custom_time_partitions_partition_range_idx ON custom_time_partitions USING gist (partition_range);
 SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
 
+
 -- Put constraint functions & definitions here because having them separate makes the ordering of their creation harder to control. Some require the above tables to exist first.
 /*
  * Check function for config table partition types
@@ -78,4 +79,9 @@ CHECK (@extschema@.check_partition_type(partition_type));
 ALTER TABLE @extschema@.part_config_sub
 ADD CONSTRAINT part_config_sub_type_check
 CHECK (@extschema@.check_partition_type(sub_partition_type));
+
+-- Ensure the control column cannot be one of the additional constraint columns. 
+ALTER TABLE @extschema@.part_config ADD CONSTRAINT control_constraint_col_chk CHECK ((constraint_cols @> ARRAY[control]) <> true);
+ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT control_constraint_col_chk CHECK ((sub_constraint_cols @> ARRAY[sub_control]) <> true);
+
 

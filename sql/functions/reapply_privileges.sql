@@ -31,8 +31,8 @@ END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 IF v_parent_tablename IS NULL THEN
     RAISE EXCEPTION 'Given parent table does not exist: %', p_parent_table;
 END IF;

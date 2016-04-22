@@ -32,8 +32,8 @@ IF v_jobmon IS NULL THEN
     RAISE EXCEPTION 'Given table is not managed by this extention: %.%', p_parent_schema, p_parent_tablename;
 END IF;
 
-SELECT tableowner INTO v_parent_owner FROM pg_catalog.pg_tables WHERE schemaname = p_parent_schema AND tablename = p_parent_tablename;
-SELECT tableowner INTO v_child_owner FROM pg_tables WHERE schemaname = p_child_schema AND tablename = p_child_tablename;
+SELECT tableowner INTO v_parent_owner FROM pg_catalog.pg_tables WHERE schemaname = p_parent_schema::name AND tablename = p_parent_tablename::name;
+SELECT tableowner INTO v_child_owner FROM pg_catalog.pg_tables WHERE schemaname = p_child_schema::name AND tablename = p_child_tablename::name;
 IF v_parent_owner IS NULL THEN
     RAISE EXCEPTION 'Given parent table does not exist: %.%', v_parent_schema, v_parent_tablename;
 END IF;
@@ -179,3 +179,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+

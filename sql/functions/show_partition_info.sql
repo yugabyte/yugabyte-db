@@ -1,3 +1,8 @@
+/*
+ * Show the data boundries for a given child table as well as the suffix that will be used.
+ * Passing the parent table argument improves performance by avoiding a catalog lookup.
+ * Passing an interval lets you set one different than the default configured one if desired.
+ */
 CREATE FUNCTION show_partition_info(p_child_table text
     , p_partition_interval text DEFAULT NULL
     , p_parent_table text DEFAULT NULL
@@ -26,8 +31,8 @@ BEGIN
 
 SELECT schemaname, tablename INTO v_child_schema, v_child_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_child_table, '.', 1)
-AND tablename = split_part(p_child_table, '.', 2);
+WHERE schemaname = split_part(p_child_table, '.', 1)::name
+AND tablename = split_part(p_child_table, '.', 2)::name;
 IF v_child_tablename IS NULL THEN
     RAISE EXCEPTION 'Child table given does not exist (%)', p_child_table;
 END IF;

@@ -54,8 +54,8 @@ END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
@@ -106,7 +106,7 @@ FOR i IN 1..p_batch_count LOOP
         END CASE;
     ELSIF v_type = 'time-custom' THEN
         SELECT child_start_time INTO v_min_partition_timestamp FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition
-            , v_partition_interval
+            , v_partition_interval::text
             , p_parent_table);
         v_max_partition_timestamp := v_min_partition_timestamp + v_partition_interval;
         LOOP
@@ -234,5 +234,4 @@ RETURN v_total_rows;
 
 END
 $$;
-
 

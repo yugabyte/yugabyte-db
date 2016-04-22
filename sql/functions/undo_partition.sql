@@ -1,5 +1,5 @@
 /*
- * Function to undo partitioning. 
+ * Function to undo partitioning. Copies data to parent without removing any data from children.
  * Will actually work on any parent/child table set, not just ones created by pg_partman.
  */
 CREATE FUNCTION undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint
@@ -55,8 +55,8 @@ END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
@@ -71,7 +71,7 @@ JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid
 WHERE tgname = v_trig_name 
 AND c.relname = v_parent_tablename;
 
-SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema AND proname = v_function_name;
+SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema::name AND proname = v_function_name::name;
 
 IF v_trig_name IS NOT NULL THEN
     -- lockwait for trigger drop

@@ -76,21 +76,6 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE format('SELECT %I.add_step(%L, %L)', v_jobmon_schema, v_job_id, 'Running maintenance loop') INTO v_step_id;
 END IF;
 
--- Check for consistent data in part_config_sub table. Was unable to get this working properly as either a constraint or trigger. 
--- Would either delay raising an error until the next write (which I cannot predict) or disallow future edits to update a sub-partition set's configuration.
--- This way at least provides a consistent way to check that I know will run. If anyone can get a working constraint/trigger, please help!
--- Don't have to worry about this in the serial trigger maintenance since subpartitioning requires run_maintenance().
-FOR v_row IN 
-    SELECT sub_parent FROM @extschema@.part_config_sub
-LOOP
-    SELECT count(*) INTO v_check_subpart FROM @extschema@.check_subpart_sameconfig(v_row.sub_parent);
-    IF v_check_subpart > 1 THEN
-        RAISE EXCEPTION 'Inconsistent data in part_config_sub table. Sub-partition tables that are themselves sub-partitions cannot have differing configuration values among their siblings. 
-        Run this query: "SELECT * FROM @extschema@.check_subpart_sameconfig(''%'');" This should only return a single row or nothing. 
-        If multiple rows are returned, results are all children of the given parent. Update the differing values to be consistent for your desired values.', v_row.sub_parent;
-    END IF;
-END LOOP;
-
 v_row := NULL; -- Ensure it's reset
 
 v_tables_list_sql := 'SELECT parent_table
@@ -118,11 +103,25 @@ LOOP
     CONTINUE WHEN v_row.undo_in_progress;
     v_skip_maint := true; -- reset every loop
 
+    -- Check for consistent data in part_config_sub table. Was unable to get this working properly as either a constraint or trigger. 
+    -- Would either delay raising an error until the next write (which I cannot predict) or disallow future edits to update a sub-partition set's configuration.
+    -- This way at least provides a consistent way to check that I know will run. If anyone can get a working constraint/trigger, please help!
+    -- Don't have to worry about this in the serial trigger maintenance since subpartitioning requires run_maintenance().
+    SELECT sub_parent INTO v_sub_parent FROM @extschema@.part_config_sub WHERE sub_parent = v_row.parent_table;
+    IF v_sub_parent IS NOT NULL THEN
+        SELECT count(*) INTO v_check_subpart FROM @extschema@.check_subpart_sameconfig(v_row.parent_table);
+        IF v_check_subpart > 1 THEN
+            RAISE EXCEPTION 'Inconsistent data in part_config_sub table. Sub-partition tables that are themselves sub-partitions cannot have differing configuration values among their siblings. 
+            Run this query: "SELECT * FROM @extschema@.check_subpart_sameconfig(''%'');" This should only return a single row or nothing. 
+            If multiple rows are returned, results are all children of the given parent. Update the differing values to be consistent for your desired values.', v_row.sub_parent;
+        END IF;
+    END IF;
+
     SELECT schemaname, tablename 
     INTO v_parent_schema, v_parent_tablename 
     FROM pg_catalog.pg_tables 
-    WHERE schemaname = split_part(v_row.parent_table, '.', 1)
-    AND tablename = split_part(v_row.parent_table, '.', 2);
+    WHERE schemaname = split_part(v_row.parent_table, '.', 1)::name
+    AND tablename = split_part(v_row.parent_table, '.', 2)::name;
 
     SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(v_row.parent_table, 'DESC') LIMIT 1;
     IF p_debug THEN
@@ -363,4 +362,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

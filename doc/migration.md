@@ -63,7 +63,7 @@ Rename the existing partitions to new naming convention. pg_partman uses a stati
     _pYYYY                - Yearly (and any custom time greater than this)
     _pYYYY"q"Q            - Quarterly (double quotes required to add another string value inside a date/time format string)
     _pYYYY_MM             - Monthly (and all custom time intervals between yearly and monthly)
-    _pIYYY"w"IW           - Weekly (ISO Year and ISO Month)
+    _pIYYY"w"IW           - Weekly (ISO Year and ISO Week)
     _pYYYY_MM_DD          - Daily (and all custom time intervals between monthly and daily)
     _pYYYY_MM_DD_HH24MI   - Hourly, Half-Hourly, Quarter-Hourly (and all custom time intervals between daily and hourly)
     _pYYYY_MM_DD_HH24MISS - Only used with custom time if interval is less than 1 minute (cannot be less than 1 second)

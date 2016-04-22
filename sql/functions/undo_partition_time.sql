@@ -12,8 +12,8 @@ ex_hint                 text;
 ex_message              text;
 v_adv_lock              boolean;
 v_batch_loop_count      int := 0;
-v_child_min             timestamptz;
 v_child_loop_total      bigint := 0;
+v_child_min             timestamptz;
 v_child_table           text;
 v_control               text;
 v_epoch                 boolean;
@@ -101,8 +101,8 @@ END IF;
 SELECT schemaname, tablename 
 INTO v_parent_schema, v_parent_tablename 
 FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;

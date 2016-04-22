@@ -1,3 +1,11 @@
+2.3.3
+-- Fixed bug in partition_data_time() that was causing it to fail with custom time partition sets. This bug was introduced in v2.3.2.
+-- New constraint on partman config tables does not allow constraint_cols column to contain the control column. If you get this constraint volation during extension update, please review your part_config (and part_config_sub) table for this condition. You also likely have additional, unnecessary constraints on your child partitions that should be reviewed and removed. (Github Issue #100).
+-- Further optimizations for databases with many tables and large partition sets. Thanks to https://github.com/Crack for the contributions here (Github Issue #107).
+-- If an error is encountered when the partition trigger is run, pg_partman's trigger function now catches the exception and writes the row to the parent instead of just throwing an error. Reduces chance of losing data when encountering issues. Gives a WARNING in the log when this happens along with the original error that caused the issue. Thanks to David Turon for this suggestion (https://github.com/dturon/pg_partman/blob/lbox-trigger-support/sql/functions/create_function_id.sql#L192).
+    -- Note this feature will not go into affect immediately upon extension update. It requires recreating the trigger function, which occurs when a new child table is created. You can force this by running create_function_id(parent_table) or create_function_time(parent_table).
+
+
 2.3.2
 -- Fixed issue where additional constraints would not get applied on all older partitions if more than one new partition was made for a single partition set in a single maintenance run. You can fix this by using the reapply_constraints.py script to remove then reapply all additional constraints on older tables. Or if you know the specific children that are missing a constraint, you can run apply_constraints() and pass it the child table argument. 
 

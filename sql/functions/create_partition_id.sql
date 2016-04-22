@@ -70,8 +70,8 @@ SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @ex
 SELECT tableowner, schemaname, tablename, tablespace 
 INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace 
 FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_parent_table, '.', 1)
-AND tablename = split_part(p_parent_table, '.', 2);
+WHERE schemaname = split_part(p_parent_table, '.', 1)::name
+AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
@@ -87,7 +87,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
     v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_id::text, TRUE);
     -- If child table already exists, skip creation
-    SELECT tablename INTO v_exists FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_partition_name;
+    SELECT tablename INTO v_exists FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_partition_name::name;
     IF v_exists IS NOT NULL THEN
         CONTINUE;
     END IF;
@@ -269,5 +269,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

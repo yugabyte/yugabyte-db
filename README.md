@@ -51,6 +51,8 @@ Run "make install" same as above to put the script files and libraries in place.
 
     ALTER EXTENSION pg_partman UPDATE TO '<latest version>';
 
+If you are doing a pg_dump/restore and you've upgraded pg_partman in place from previous versions, it is recommended you use the --column-inserts option when dumping and/or restoring pg_partman's configuration tables. This is due to ordering of the configuration columns possibly being different (upgrades just add the columns onto the end, whereas the default of a new install may be different).
+
 If upgrading from 1.x to 2.x, please see the CHANGELOG or the notes in the update script itself for additional instructions for updating your trigger functions to the newer version and other important considerations for the update.
 
 EXAMPLE

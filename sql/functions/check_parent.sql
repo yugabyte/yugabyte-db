@@ -18,7 +18,11 @@ BEGIN
 FOR v_row IN 
     SELECT DISTINCT parent_table FROM @extschema@.part_config
 LOOP
-    SELECT schemaname, tablename INTO v_schemaname, v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_row.parent_table;
+    SELECT schemaname, tablename 
+    INTO v_schemaname, v_tablename
+    FROM pg_catalog.pg_tables 
+    WHERE schemaname = split_part(v_row.parent_table, '.', 1)::name
+    AND tablename = split_part(v_row.parent_table, '.', 2)::name;
 
     v_sql := format('SELECT count(1) AS n FROM ONLY %I.%I', v_schemaname, v_tablename);
     EXECUTE v_sql INTO v_count;
