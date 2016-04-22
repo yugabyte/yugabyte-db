@@ -99,10 +99,10 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
 
   MasterOptions opts;
 
-  vector<HostPort> peer_addresses;
+  auto peer_addresses = std::make_shared<std::vector<HostPort>>();
   for (uint16_t peer_port : peer_ports) {
     HostPort peer_address("127.0.0.1", peer_port);
-    peer_addresses.push_back(peer_address);
+    peer_addresses->push_back(peer_address);
   }
   opts.master_addresses = peer_addresses;
 

@@ -139,8 +139,10 @@ class RemoteBootstrapTest : public YBTabletTest {
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(2)));
   }
 
-  void TabletPeerStateChangedCallback(const string& tablet_id, const string& reason) {
-    LOG(INFO) << "Tablet peer state changed for tablet " << tablet_id << ". Reason: " << reason;
+  void TabletPeerStateChangedCallback(const string& tablet_id,
+                                      std::shared_ptr<consensus::StateChangeContext> context) {
+    LOG(INFO) << "Tablet peer state changed for tablet " << tablet_id
+              << ". Reason: " << context->ToString();
   }
 
   void PopulateTablet() {

@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tablet_peer_lookup.h"
@@ -176,7 +177,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Marks tablet with 'tablet_id' dirty.
   // Used for state changes outside of the control of TsTabletManager, such as consensus role
   // changes.
-  void MarkTabletDirty(const std::string& tablet_id, const std::string& reason);
+  void MarkTabletDirty(const std::string& tablet_id,
+                       std::shared_ptr<consensus::StateChangeContext> context);
 
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
   int GetNumDirtyTabletsForTests() const;
@@ -272,7 +274,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // account in the next report.
   //
   // NOTE: requires that the caller holds the lock.
-  void MarkDirtyUnlocked(const std::string& tablet_id, const std::string& reason);
+  void MarkDirtyUnlocked(const std::string& tablet_id,
+                         std::shared_ptr<consensus::StateChangeContext> context);
 
   // Handle the case on startup where we find a tablet that is not in
   // TABLET_DATA_READY state. Generally, we tombstone the replica.

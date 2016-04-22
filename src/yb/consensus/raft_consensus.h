@@ -72,21 +72,21 @@ class RaftConsensus : public Consensus,
     const std::shared_ptr<rpc::Messenger>& messenger,
     const scoped_refptr<log::Log>& log,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    const Callback<void(const std::string& reason)>& mark_dirty_clbk);
+    const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
   RaftConsensus(const ConsensusOptions& options,
-                gscoped_ptr<ConsensusMetadata> cmeta,
-                gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
-                gscoped_ptr<PeerMessageQueue> queue,
-                gscoped_ptr<PeerManager> peer_manager,
-                gscoped_ptr<ThreadPool> thread_pool,
-                const scoped_refptr<MetricEntity>& metric_entity,
-                const std::string& peer_uuid,
-                const scoped_refptr<server::Clock>& clock,
-                ReplicaTransactionFactory* txn_factory,
-                const scoped_refptr<log::Log>& log,
-                std::shared_ptr<MemTracker> parent_mem_tracker,
-                Callback<void(const std::string& reason)> mark_dirty_clbk);
+    gscoped_ptr<ConsensusMetadata> cmeta,
+    gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
+    gscoped_ptr<PeerMessageQueue> queue,
+    gscoped_ptr<PeerManager> peer_manager,
+    gscoped_ptr<ThreadPool> thread_pool,
+    const scoped_refptr<MetricEntity>& metric_entity,
+    const std::string& peer_uuid,
+    const scoped_refptr<server::Clock>& clock,
+    ReplicaTransactionFactory* txn_factory,
+    const scoped_refptr<log::Log>& log,
+    std::shared_ptr<MemTracker> parent_mem_tracker,
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
   virtual ~RaftConsensus();
 
@@ -216,7 +216,7 @@ class RaftConsensus : public Consensus,
   // Replicate (as leader) a pre-validated config change. This includes
   // updating the peers and setting the new_configuration as pending.
   // The old_configuration must be the currently-committed configuration.
-  Status ReplicateConfigChangeUnlocked(const RaftConfigPB& old_config,
+  Status ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
                                        const RaftConfigPB& new_config,
                                        const StatusCallback& client_cb);
 
@@ -395,11 +395,11 @@ class RaftConsensus : public Consensus,
 
   // Asynchronously (on thread_pool_) notify the tablet peer that the consensus configuration
   // has changed, thus reporting it back to the master.
-  void MarkDirty(const std::string& reason);
+  void MarkDirty(std::shared_ptr<StateChangeContext> context);
 
   // Calls MarkDirty() if 'status' == OK. Then, always calls 'client_cb' with
   // 'status' as its argument.
-  void MarkDirtyOnSuccess(const std::string& reason,
+  void MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> context,
                           const StatusCallback& client_cb,
                           const Status& status);
 
@@ -442,7 +442,7 @@ class RaftConsensus : public Consensus,
   // nodes from disturbing the healthy leader.
   MonoTime withhold_votes_until_;
 
-  const Callback<void(const std::string& reason)> mark_dirty_clbk_;
+  const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 
   // TODO hack to serialize updates due to repeated/out-of-order messages
   // should probably be refactored out.

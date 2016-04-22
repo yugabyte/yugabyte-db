@@ -71,7 +71,7 @@ using strings::SubstituteAndAppend;
 
 const char* kTestTablet = "TestTablet";
 
-void DoNothing(const string& s) {
+void DoNothing(std::shared_ptr<consensus::StateChangeContext> context) {
 }
 
 Status WaitUntilLeaderForTests(RaftConsensus* raft) {

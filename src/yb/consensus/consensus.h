@@ -28,6 +28,7 @@
 #include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
@@ -291,6 +292,66 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   };
  private:
   DISALLOW_COPY_AND_ASSIGN(Consensus);
+};
+
+// Context provided for callback on master/tablet-server peer state change for post processing
+// e.g., update in-memory contents.
+struct StateChangeContext {
+
+  enum StateChangeReason {
+    INVALID_REASON = 0,
+    TABLET_PEER_STARTED,
+    CONSENSUS_STARTED,
+    NEW_LEADER_ELECTED,
+    FOLLOWER_NO_OP_COMPLETE,
+    LEADER_CONFIG_CHANGE_COMPLETE,
+    FOLLOWER_CONFIG_CHANGE_COMPLETE
+  };
+
+  const StateChangeReason reason;
+
+  StateChangeContext(StateChangeReason in_reason)
+    : reason(in_reason) {
+  }
+
+  StateChangeContext(StateChangeReason in_reason, string uuid)
+    : reason(in_reason), new_leader_uuid(uuid) {
+  }
+
+  StateChangeContext(StateChangeReason in_reason, ChangeConfigRecordPB change_rec)
+    : reason(in_reason), change_record(change_rec) {
+  }
+
+  ~StateChangeContext() {}
+
+  std::string ToString() const {
+    switch(reason) {
+      case TABLET_PEER_STARTED:
+        return "Started TabletPeer";
+      case CONSENSUS_STARTED:
+        return "RaftConsensus started";
+      case NEW_LEADER_ELECTED:
+        return strings::Substitute("New leader $0 elected", new_leader_uuid);
+      case FOLLOWER_NO_OP_COMPLETE:
+        return "Replicate of NO_OP complete on follower";
+      case LEADER_CONFIG_CHANGE_COMPLETE:
+        return strings::Substitute("Replicated change config $0 round complete on leader",
+          change_record.ShortDebugString());
+      case FOLLOWER_CONFIG_CHANGE_COMPLETE:
+        return strings::Substitute("Config change $0 complete on follower",
+          change_record.ShortDebugString());
+      case INVALID_REASON:
+      default:
+        return "INVALID REASON";
+    }
+  }
+
+  // Auxiliary info for some of the reasons above.
+  // Value is filled when the change reason is NEW_LEADER_ELECTED.
+  const std::string new_leader_uuid;
+
+  // Value is filled when the change reason is LEADER/FOLLOWER_CONFIG_CHANGE_COMPLETE.
+  const ChangeConfigRecordPB change_record;
 };
 
 // Factory for replica transactions.

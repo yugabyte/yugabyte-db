@@ -168,13 +168,15 @@ Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
 
 Status HostPort::ParseStrings(const string& comma_sep_addrs,
                               uint16_t default_port,
-                              vector<HostPort>* res) {
+                              std::shared_ptr<vector<HostPort>> res) {
   vector<string> addr_strings = strings::Split(comma_sep_addrs, ",", strings::SkipEmpty());
+  vector<HostPort> host_ports;
   for (const string& addr_string : addr_strings) {
     HostPort host_port;
     RETURN_NOT_OK(host_port.ParseString(addr_string, default_port));
-    res->push_back(host_port);
+    host_ports.push_back(host_port);
   }
+  *res = host_ports;
   return Status::OK();
 }
 
@@ -197,11 +199,11 @@ bool IsPrivilegedPort(uint16_t port) {
 Status ParseAddressList(const std::string& addr_list,
                         uint16_t default_port,
                         std::vector<Sockaddr>* addresses) {
-  vector<HostPort> host_ports;
-  RETURN_NOT_OK(HostPort::ParseStrings(addr_list, default_port, &host_ports));
+  auto host_ports = std::make_shared<std::vector<HostPort>>();
+  RETURN_NOT_OK(HostPort::ParseStrings(addr_list, default_port, host_ports));
   unordered_set<Sockaddr> uniqued;
 
-  for (const HostPort& host_port : host_ports) {
+  for (const HostPort& host_port : *host_ports.get()) {
     vector<Sockaddr> this_addresses;
     RETURN_NOT_OK(host_port.ResolveAddresses(&this_addresses));
 

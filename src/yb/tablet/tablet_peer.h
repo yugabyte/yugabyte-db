@@ -33,6 +33,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 
+using yb::consensus::StateChangeContext;
+
 namespace yb {
 
 namespace log {
@@ -70,7 +72,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
              const consensus::RaftPeerPB& local_peer_pb, ThreadPool* apply_pool,
-             Callback<void(const std::string& reason)> mark_dirty_clbk);
+             Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
@@ -319,7 +321,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Function to mark this TabletPeer's tablet as dirty in the TSTabletManager.
   // This function must be called any time the cluster membership or cluster
   // leadership changes.
-  Callback<void(const std::string& reason)> mark_dirty_clbk_;
+  Callback<void(std::shared_ptr<consensus::StateChangeContext> context)> mark_dirty_clbk_;
 
   // List of maintenance operations for the tablet that need information that only the peer
   // can provide.

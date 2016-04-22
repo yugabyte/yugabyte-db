@@ -103,6 +103,5 @@ Status Consensus::ExecuteHook(HookPoint point) {
   }
   return Status::OK();
 }
-
 } // namespace consensus
 } // namespace yb

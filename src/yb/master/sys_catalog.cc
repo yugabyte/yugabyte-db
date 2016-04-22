@@ -17,6 +17,7 @@
 
 #include "yb/master/sys_catalog.h"
 
+#include <cmath>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -57,6 +58,9 @@ using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using std::shared_ptr;
 using strings::Substitute;
+using yb::consensus::StateChangeContext;
+using yb::consensus::ChangeConfigRequestPB;
+using yb::consensus::ChangeConfigRecordPB;
 
 namespace yb {
 namespace master {
@@ -193,7 +197,7 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
   new_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
   // Build the set of followers from our server options.
-  for (const HostPort& host_port : options.master_addresses) {
+  for (const HostPort& host_port : *options.master_addresses) {
     RaftPeerPB peer;
     HostPortPB peer_host_port_pb;
     RETURN_NOT_OK(HostPortToPB(host_port, &peer_host_port_pb));
@@ -234,24 +238,60 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
   return Status::OK();
 }
 
-void SysCatalogTable::SysCatalogStateChanged(const string& tablet_id, const string& reason) {
+void SysCatalogTable::SysCatalogStateChanged(
+    const string& tablet_id,
+    std::shared_ptr<StateChangeContext> context) {
   CHECK_EQ(tablet_id, tablet_peer_->tablet_id());
   scoped_refptr<consensus::Consensus> consensus  = tablet_peer_->shared_consensus();
   if (!consensus) {
     LOG_WITH_PREFIX(WARNING) << "Received notification of tablet state change "
                              << "but tablet no longer running. Tablet ID: "
-                             << tablet_id << ". Reason: " << reason;
+                             << tablet_id << ". Reason: " << context->ToString();
     return;
   }
   consensus::ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
-  LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Reason: " << reason << ". "
-                        << "Latest consensus state: " << cstate.ShortDebugString();
+  LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Reason: " << context->ToString()
+                        << ". Latest consensus state: " << cstate.ShortDebugString();
   RaftPeerPB::Role new_role = GetConsensusRole(tablet_peer_->permanent_uuid(), cstate);
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
                         << RaftPeerPB::Role_Name(new_role)
                         << ", previous role was: " << RaftPeerPB::Role_Name(old_role_);
   if (new_role == RaftPeerPB::LEADER) {
     CHECK_OK(leader_cb_.Run());
+  }
+
+  if (!context) {
+    LOG(WARNING) << "No context provided for state change, no action taken";
+    return;
+  }
+
+  // Perform any further changes for context based reasons.
+  // For config change peer update, both leader and follower need to update their in-memory state.
+  // NOTE: if there are any errors, we check in debug mode, but ignore the error in non-debug case.
+  if (context->reason == StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE ||
+      context->reason == StateChangeContext::FOLLOWER_CONFIG_CHANGE_COMPLETE) {
+    int new_count = context->change_record.new_config().peers_size();
+    int old_count = context->change_record.old_config().peers_size();
+
+    LOG(INFO) << "Processing context '" << context->ToString()
+              << "' - new count " << new_count << ", old count " << old_count;
+
+    if (std::abs(new_count - old_count) != 1) {
+      LOG(FATAL) << "Expected exactly one server addition or deletion, found " << new_count
+                 << " servers in new config and " << old_count << " servers in old config.";
+      CHECK(false);
+      return;
+    }
+
+    Status s = master_->ResetMemoryState(context->change_record.new_config());
+    if (!s.ok()) {
+      LOG(WARNING) << "Change Memory state failed " << s.message();
+      DCHECK(false);
+      return;
+    }
+  } else {
+    VLOG(2) << "Reason '" << context->ToString() << "' provided in state change context, "
+            << "no action needed.";
   }
 }
 
@@ -264,10 +304,12 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>&
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   tablet_peer_.reset(new TabletPeer(
-      metadata,
-      local_peer_pb_,
-      apply_pool_.get(),
-      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->tablet_id())));
+    metadata,
+    local_peer_pb_,
+    apply_pool_.get(),
+    Bind(&SysCatalogTable::SysCatalogStateChanged,
+         Unretained(this),
+         metadata->tablet_id())));
 
   consensus::ConsensusBootstrapInfo consensus_info;
   tablet_peer_->SetBootstrapping();

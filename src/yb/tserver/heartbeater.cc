@@ -114,7 +114,7 @@ class Heartbeater::Thread {
   // We keep the HostPort around rather than a Sockaddr because the
   // masters may change IP addresses, and we'd like to re-resolve on
   // every new attempt at connecting.
-  vector<HostPort> master_addrs_;
+  std::shared_ptr<vector<HostPort>> master_addrs_;
 
   // Index of the master we last succesfully obtained the master
   // consensus configuration information from.
@@ -182,7 +182,7 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
     cond_(&mutex_),
     should_run_(false),
     heartbeat_asap_(false) {
-  CHECK(!master_addrs_.empty());
+  CHECK(!master_addrs_->empty());
 }
 
 namespace {
@@ -200,13 +200,13 @@ void LeaderMasterCallback(HostPort* dst_hostport,
 Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
                                              HostPort* leader_hostport) {
   Status s = Status::OK();
-  if (master_addrs_.size() == 1) {
+  if (master_addrs_->size() == 1) {
     // "Shortcut" the process when a single master is specified.
-    *leader_hostport = master_addrs_[0];
+    *leader_hostport = (*master_addrs_)[0];
     return Status::OK();
   }
   vector<Sockaddr> master_sock_addrs;
-  for (const HostPort& master_addr : master_addrs_) {
+  for (const HostPort& master_addr : *master_addrs_) {
     vector<Sockaddr> addrs;
     Status s = master_addr.ResolveAddresses(&addrs);
     if (!s.ok()) {
@@ -411,7 +411,7 @@ void Heartbeater::Thread::RunThread() {
       LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
                    << ": " << s.ToString();
       consecutive_failed_heartbeats_++;
-      if (master_addrs_.size() > 1) {
+      if (master_addrs_->size() > 1) {
         // If we encountered a network error (e.g., connection
         // refused) and there's more than one master available, try
         // determining the leader master again.

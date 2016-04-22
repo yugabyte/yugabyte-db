@@ -177,9 +177,9 @@ Status MiniCluster::AddTabletServer() {
     new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port));
 
   // set the master addresses
-  tablet_server->options()->master_addresses.clear();
+  tablet_server->options()->master_addresses->clear();
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
-    tablet_server->options()->master_addresses.push_back(HostPort(master->bound_rpc_addr()));
+    tablet_server->options()->master_addresses->push_back(HostPort(master->bound_rpc_addr()));
   }
   RETURN_NOT_OK(tablet_server->Start())
   mini_tablet_servers_.push_back(shared_ptr<MiniTabletServer>(tablet_server.release()));

@@ -780,9 +780,10 @@ void TSTabletManager::GetTabletPeers(vector<scoped_refptr<TabletPeer> >* tablet_
   AppendValuesFromMap(tablet_map_, tablet_peers);
 }
 
-void TSTabletManager::MarkTabletDirty(const std::string& tablet_id, const std::string& reason) {
+void TSTabletManager::MarkTabletDirty(const std::string& tablet_id,
+                                      std::shared_ptr<consensus::StateChangeContext> context) {
   boost::lock_guard<rw_spinlock> lock(lock_);
-  MarkDirtyUnlocked(tablet_id, reason);
+  MarkDirtyUnlocked(tablet_id, context);
 }
 
 int TSTabletManager::GetNumDirtyTabletsForTests() const {
@@ -803,7 +804,8 @@ int TSTabletManager::GetNumLiveTablets() const {
   return count;
 }
 
-void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id, const std::string& reason) {
+void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
+                                        std::shared_ptr<consensus::StateChangeContext> context) {
   TabletReportState* state = FindOrNull(dirty_tablets_, tablet_id);
   if (state != nullptr) {
     CHECK_GE(next_report_seq_, state->change_seq);
@@ -813,7 +815,7 @@ void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id, const std:
     state.change_seq = next_report_seq_;
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
-  VLOG(2) << LogPrefix(tablet_id) << "Marking dirty. Reason: " << reason
+  VLOG(2) << LogPrefix(tablet_id) << "Marking dirty. Reason: " << context->ToString()
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
   server_->heartbeater()->TriggerASAP();

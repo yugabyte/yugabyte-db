@@ -158,7 +158,7 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
     const shared_ptr<rpc::Messenger>& messenger,
     const scoped_refptr<log::Log>& log,
     const shared_ptr<MemTracker>& parent_mem_tracker,
-    const Callback<void(const std::string& reason)>& mark_dirty_clbk) {
+    const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk) {
   gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(messenger));
 
   // The message queue that keeps track of which operations need to be replicated
@@ -210,7 +210,7 @@ RaftConsensus::RaftConsensus(
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
     ReplicaTransactionFactory* txn_factory, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
-    Callback<void(const std::string& reason)> mark_dirty_clbk)
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
     : thread_pool_(thread_pool.Pass()),
       log_(log),
       clock_(clock),
@@ -310,7 +310,8 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
   RETURN_NOT_OK(ExecuteHook(POST_START));
 
   // Report become visible to the Master.
-  MarkDirty("RaftConsensus started");
+  auto context = std::make_shared<StateChangeContext>(StateChangeContext::CONSENSUS_STARTED);
+  MarkDirty(context);
 
   return Status::OK();
 }
@@ -685,10 +686,12 @@ Status RaftConsensus::Update(const ConsensusRequestPB* request,
 
 // Helper function to check if the op is a non-Transaction op.
 static bool IsConsensusOnlyOperation(OperationType op_type) {
-  if (op_type == NO_OP || op_type == CHANGE_CONFIG_OP) {
-    return true;
-  }
-  return false;
+  return op_type == NO_OP || op_type == CHANGE_CONFIG_OP;
+}
+
+// Helper to check if the op is Change Config op.
+static bool IsChangeConfigOperation(OperationType op_type) {
+  return op_type == CHANGE_CONFIG_OP;
 }
 
 Status RaftConsensus::StartReplicaTransactionUnlocked(const ReplicateRefPtr& msg) {
@@ -1442,11 +1445,29 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         return Status::NotSupported("Role change is not yet implemented.");
     }
 
-    RETURN_NOT_OK(ReplicateConfigChangeUnlocked(committed_config, new_config,
-                                                Bind(&RaftConsensus::MarkDirtyOnSuccess,
-                                                     Unretained(this),
-                                                     string("Config change replication complete"),
-                                                     client_cb)));
+    auto cc_replicate = new ReplicateMsg();
+    cc_replicate->set_op_type(CHANGE_CONFIG_OP);
+    ChangeConfigRecordPB* cc_req = cc_replicate->mutable_change_config_record();
+    cc_req->set_tablet_id(tablet_id());
+    *cc_req->mutable_old_config() = committed_config;
+    *cc_req->mutable_new_config() = new_config;
+    // TODO: We should have no-ops (?) and config changes be COMMIT_WAIT
+    // transactions. See KUDU-798.
+    // Note: This timestamp has no meaning from a serialization perspective
+    // because this method is not executed on the TabletPeer's prepare thread.
+    cc_replicate->set_timestamp(clock_->Now().ToUint64());
+
+    auto context =
+      std::make_shared<StateChangeContext>(StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE,
+                                           *cc_req);
+
+    RETURN_NOT_OK(ReplicateConfigChangeUnlocked(
+      make_scoped_refptr(new RefCountedReplicate(cc_replicate)),
+      new_config,
+      Bind(&RaftConsensus::MarkDirtyOnSuccess,
+        Unretained(this),
+        context,
+        client_cb)));
   }
   peer_manager_->SignalRequest();
   return Status::OK();
@@ -1513,12 +1534,25 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateRefPtr& msg
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Starting consensus round: "
                                << msg->get()->id().ShortDebugString();
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, msg));
+  std::shared_ptr<StateChangeContext> context = nullptr;
+
+  // We are here for NO_OP or CHANGE_CONFIG_OP type ops. We need to set the change record for an
+  // actual config change operation. The NO_OP does not update the config, as it is used for a new
+  // leader election term change replicate message, which keeps the same config.
+  if (IsChangeConfigOperation(op_type)) {
+    context =
+      std::make_shared<StateChangeContext>(StateChangeContext::FOLLOWER_CONFIG_CHANGE_COMPLETE,
+                                           msg->get()->change_config_record());
+  } else {
+    context = std::make_shared<StateChangeContext>(StateChangeContext::FOLLOWER_NO_OP_COMPLETE);
+  }
+
   round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
                                              Unretained(this),
                                              Unretained(round.get()),
                                              Bind(&RaftConsensus::MarkDirtyOnSuccess,
                                                   Unretained(this),
-                                                  string("Replicated consensus-only round"),
+                                                  context,
                                                   Bind(&DoNothingStatusCB))));
   return state_->AddPendingOperation(round);
 }
@@ -1671,27 +1705,14 @@ std::string RaftConsensus::LogPrefix() {
 
 void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
   state_->SetLeaderUuidUnlocked(uuid);
-  MarkDirty("New leader " + uuid);
+  auto context = std::make_shared<StateChangeContext>(StateChangeContext::NEW_LEADER_ELECTED, uuid);
+  MarkDirty(context);
 }
 
-Status RaftConsensus::ReplicateConfigChangeUnlocked(const RaftConfigPB& old_config,
+Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
                                                     const RaftConfigPB& new_config,
                                                     const StatusCallback& client_cb) {
-  auto cc_replicate = new ReplicateMsg();
-  cc_replicate->set_op_type(CHANGE_CONFIG_OP);
-  ChangeConfigRecordPB* cc_req = cc_replicate->mutable_change_config_record();
-  cc_req->set_tablet_id(tablet_id());
-  *cc_req->mutable_old_config() = old_config;
-  *cc_req->mutable_new_config() = new_config;
-
-  // TODO: We should have no-ops (?) and config changes be COMMIT_WAIT
-  // transactions. See KUDU-798.
-  // Note: This timestamp has no meaning from a serialization perspective
-  // because this method is not executed on the TabletPeer's prepare thread.
-  cc_replicate->set_timestamp(clock_->Now().ToUint64());
-
-  scoped_refptr<ConsensusRound> round(
-      new ConsensusRound(this, make_scoped_refptr(new RefCountedReplicate(cc_replicate))));
+  scoped_refptr<ConsensusRound> round(new ConsensusRound(this, replicate_ref));
   round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
                                              Unretained(this),
                                              Unretained(round.get()),
@@ -1853,16 +1874,16 @@ Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
   return Status::OK();
 }
 
-void RaftConsensus::MarkDirty(const std::string& reason) {
-  WARN_NOT_OK(thread_pool_->SubmitClosure(Bind(mark_dirty_clbk_, reason)),
+void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
+  WARN_NOT_OK(thread_pool_->SubmitClosure(Bind(mark_dirty_clbk_, context)),
               state_->LogPrefixThreadSafe() + "Unable to run MarkDirty callback");
 }
 
-void RaftConsensus::MarkDirtyOnSuccess(const string& reason,
+void RaftConsensus::MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> context,
                                        const StatusCallback& client_cb,
                                        const Status& status) {
   if (PREDICT_TRUE(status.ok())) {
-    MarkDirty(reason);
+    MarkDirty(context);
   }
   client_cb.Run(status);
 }

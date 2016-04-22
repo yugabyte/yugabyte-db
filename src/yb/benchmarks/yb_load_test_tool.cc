@@ -85,7 +85,7 @@ DEFINE_bool(
 
 DEFINE_int64(
   value_size_bytes, 16,
-  "Approximate size of each value in a row being inserted");
+  "Size of each value in a row being inserted");
 
 using strings::Substitute;
 using std::atomic_long;

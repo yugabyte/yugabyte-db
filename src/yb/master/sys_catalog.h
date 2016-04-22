@@ -117,8 +117,6 @@ class SysCatalogTable {
   // Scan of the tablet-related entries.
   Status VisitTablets(TabletVisitor* visitor);
 
-  std::string SysTabletId() const { return tablet_id(); }
-
   const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
     return tablet_peer_;
   }
@@ -137,7 +135,8 @@ class SysCatalogTable {
   // Returns 'Status::OK()' if the WriteTranasction completed
   Status SyncWrite(const tserver::WriteRequestPB *req, tserver::WriteResponsePB *resp);
 
-  void SysCatalogStateChanged(const std::string& tablet_id, const std::string& reason);
+  void SysCatalogStateChanged(const std::string& tablet_id,
+                              std::shared_ptr<consensus::StateChangeContext> context);
 
   Status SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
 

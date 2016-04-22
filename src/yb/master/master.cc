@@ -245,12 +245,28 @@ Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
 
 } // anonymous namespace
 
+Status Master::ResetMemoryState(const RaftConfigPB& config) {
+  LOG(INFO) << "Memory state set to config: " << config.ShortDebugString();
+
+  auto master_addr = std::make_shared<std::vector<HostPort>>();
+  for (const RaftPeerPB& peer : config.peers()) {
+    master_addr->push_back(HostPort(peer.last_known_addr().host(), peer.last_known_addr().port()));
+  }
+
+  opts_.master_addresses = master_addr;
+
+  return Status::OK();
+}
+
 void Master::DumpMasterOptionsInfo(std::ostream* out) {
-  std::vector<HostPort>::iterator it;
   *out << "Master options : ";
-  for (it = opts_.master_addresses.begin(); it != opts_.master_addresses.end(); it++) {
-    HostPort hp = *it;
-    *out << hp.ToString() << ", ";
+  bool need_comma = false;
+  for (auto hp : *opts_.master_addresses.get()) {
+    if (need_comma) {
+      *out << ", ";
+    }
+    need_comma = true;
+    *out << hp.ToString();
   }
   *out << "\n";
 }
@@ -278,7 +294,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     return Status::OK();
   }
 
-  for (const HostPort& peer_addr : opts_.master_addresses) {
+  for (const HostPort& peer_addr : *opts_.master_addresses) {
     ServerEntryPB peer_entry;
     Status s = GetMasterEntryForHost(messenger_, peer_addr, &peer_entry);
     if (!s.ok()) {

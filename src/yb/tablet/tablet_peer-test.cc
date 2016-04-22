@@ -145,8 +145,11 @@ class TabletPeerTest : public YBTabletTest {
     return Status::OK();
   }
 
-  void TabletPeerStateChangedCallback(const string& tablet_id, const string& reason) {
-    LOG(INFO) << "Tablet peer state changed for tablet " << tablet_id << ". Reason: " << reason;
+  void TabletPeerStateChangedCallback(
+      const string& tablet_id,
+      std::shared_ptr<consensus::StateChangeContext> context) {
+    LOG(INFO) << "Tablet peer state changed for tablet " << tablet_id
+              << ". Reason: " << context->ToString();
   }
 
   virtual void TearDown() OVERRIDE {

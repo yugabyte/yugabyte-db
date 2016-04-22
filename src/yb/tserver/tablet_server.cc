@@ -67,7 +67,7 @@ string TabletServer::ToString() const {
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
-  for (const HostPort& master_addr : opts_.master_addresses) {
+  for (const HostPort& master_addr : *opts_.master_addresses) {
     RETURN_NOT_OK_PREPEND(master_addr.ResolveAddresses(NULL),
                           strings::Substitute(
                               "Couldn't resolve master service address '$0'",

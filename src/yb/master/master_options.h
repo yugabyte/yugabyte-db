@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "yb/server/server_base_options.h"
-#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace master {
@@ -31,7 +30,10 @@ namespace master {
 struct MasterOptions : public server::ServerBaseOptions {
   MasterOptions();
 
-  std::vector<HostPort> master_addresses;
+  // List of peer masters. This will get recreated on a master config change. We should ensure that
+  // the vector elements are not individually updated. And the shared pointer will guarantee
+  // inconsistent in-transit views of the vector are never seen during/across config changes.
+  std::shared_ptr<std::vector<HostPort>> master_addresses;
 
   bool IsDistributed() const;
 };

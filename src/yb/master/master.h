@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <yb/consensus/consensus.pb.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -44,6 +45,8 @@ namespace rpc {
 class Messenger;
 class ServicePool;
 }
+
+using yb::consensus::RaftConfigPB;
 
 namespace master {
 
@@ -105,6 +108,9 @@ class Master : public server::ServerBase {
   MaintenanceManager* maintenance_manager() {
     return maintenance_manager_.get();
   }
+
+  // Recreates the master list based on the new config peers
+  Status ResetMemoryState(const RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 

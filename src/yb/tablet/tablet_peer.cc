@@ -83,6 +83,7 @@ using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
 using consensus::LocalConsensus;
+using consensus::StateChangeContext;
 using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
@@ -98,18 +99,19 @@ using tserver::TabletServerErrorPB;
 // ============================================================================
 //  Tablet Peer
 // ============================================================================
-TabletPeer::TabletPeer(const scoped_refptr<TabletMetadata>& meta,
-                       const consensus::RaftPeerPB& local_peer_pb,
-                       ThreadPool* apply_pool,
-                       Callback<void(const std::string& reason)> mark_dirty_clbk)
-    : meta_(meta),
-      tablet_id_(meta->tablet_id()),
-      local_peer_pb_(local_peer_pb),
-      state_(NOT_STARTED),
-      status_listener_(new TabletStatusListener(meta)),
-      apply_pool_(apply_pool),
-      log_anchor_registry_(new LogAnchorRegistry()),
-      mark_dirty_clbk_(std::move(mark_dirty_clbk)) {}
+TabletPeer::TabletPeer(
+  const scoped_refptr<TabletMetadata>& meta,
+  const consensus::RaftPeerPB& local_peer_pb,
+  ThreadPool* apply_pool,
+  Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
+  : meta_(meta),
+    tablet_id_(meta->tablet_id()),
+    local_peer_pb_(local_peer_pb),
+    state_(NOT_STARTED),
+    status_listener_(new TabletStatusListener(meta)),
+    apply_pool_(apply_pool),
+    log_anchor_registry_(new LogAnchorRegistry()),
+    mark_dirty_clbk_(std::move(mark_dirty_clbk)) {}
 
 TabletPeer::~TabletPeer() {
   boost::lock_guard<simple_spinlock> lock(lock_);
@@ -202,7 +204,8 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   }
 
   // Because we changed the tablet state, we need to re-report the tablet to the master.
-  mark_dirty_clbk_.Run("Started TabletPeer");
+  auto context = std::make_shared<StateChangeContext>(StateChangeContext::TABLET_PEER_STARTED);
+  mark_dirty_clbk_.Run(context);
 
   return Status::OK();
 }

@@ -112,7 +112,8 @@ class RaftConsensusSpy : public RaftConsensus {
                    ReplicaTransactionFactory* txn_factory,
                    const scoped_refptr<log::Log>& log,
                    const shared_ptr<MemTracker>& parent_mem_tracker,
-                   const Callback<void(const std::string& reason)>& mark_dirty_clbk)
+                   const Callback<void(std::shared_ptr<consensus::StateChangeContext> context)>&
+                     mark_dirty_clbk)
     : RaftConsensus(options,
                     cmeta.Pass(),
                     proxy_factory.Pass(),
@@ -159,7 +160,7 @@ class RaftConsensusSpy : public RaftConsensus {
   DISALLOW_COPY_AND_ASSIGN(RaftConsensusSpy);
 };
 
-void DoNothing(const string& s) {
+void DoNothing(std::shared_ptr<consensus::StateChangeContext> context) {
 }
 
 class RaftConsensusTest : public YBTest {
