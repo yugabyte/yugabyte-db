@@ -79,6 +79,8 @@ class Master : public server::ServerBase {
 
   CatalogManager* catalog_manager() { return catalog_manager_.get(); }
 
+  scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
+
   const MasterOptions& opts() { return opts_; }
 
   // Get the RPC and HTTP addresses for this master instance.
@@ -143,6 +145,9 @@ class Master : public server::ServerBase {
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
+
+  // The metric entity for the cluster.
+  scoped_refptr<MetricEntity> metric_entity_cluster_;
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

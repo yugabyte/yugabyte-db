@@ -47,6 +47,9 @@ namespace yb {
 class Schema;
 class ThreadPool;
 
+template<class T>
+class AtomicGauge;
+
 namespace rpc {
 class RpcContext;
 } // namespace rpc
@@ -608,6 +611,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   void AbortTableCreation(TableInfo* table, const std::vector<TabletInfo*>& tablets);
 
+  // Report metrics.
+  void ReportMetrics();
+
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
@@ -672,6 +678,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Async operations are accessing some private methods
   // (TODO: this stuff should be deferred and done in the background thread)
   friend class AsyncAlterTable;
+
+  // Number of live tservers metric.
+  scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_live_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

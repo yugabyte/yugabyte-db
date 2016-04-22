@@ -151,6 +151,12 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
+METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
+                           "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
+                           "The number of tablet servers that have responded or done a heartbeat "
+                           "in the time interval defined by the gflag "
+                           "FLAGS_tserver_unresponsive_timeout_ms.");
+
 namespace yb {
 namespace master {
 
@@ -355,6 +361,9 @@ void CatalogManagerBgTasks::Run() {
     if (!catalog_manager_->IsInitialized()) {
       LOG(WARNING) << "Catalog manager is not initialized!";
     } else if (catalog_manager_->CheckIsLeaderAndReady().ok()) {
+      // Report metrics.
+      catalog_manager_->ReportMetrics();
+
       std::vector<scoped_refptr<TabletInfo> > to_delete;
       std::vector<scoped_refptr<TabletInfo> > to_process;
 
@@ -447,6 +456,10 @@ Status CatalogManager::Init(bool is_first_run) {
     CHECK_EQ(kConstructed, state_);
     state_ = kStarting;
   }
+
+  // Initialize the metrics emitted by the catalog manager.
+  metric_num_tablet_servers_live_ =
+    METRIC_num_tablet_servers_live.Instantiate(master_->metric_entity_cluster(), 0);
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(is_first_run),
                         "Failed to initialize sys tables async");
@@ -3198,6 +3211,13 @@ Status CatalogManager::PeerStateDump(vector<RaftPeerPB>& peers, bool on_disk) {
   }
 
   return Status::OK();
+}
+
+void CatalogManager::ReportMetrics() {
+  // Report metrics on how many tservers are alive.
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  metric_num_tablet_servers_live_->set_value(ts_descs.size());
 }
 
 std::string CatalogManager::LogPrefix() const {

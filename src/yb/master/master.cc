@@ -39,9 +39,11 @@
 #include "yb/rpc/service_pool.h"
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/server/default-path-handlers.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -50,6 +52,8 @@
 DEFINE_int32(master_registration_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_registration_rpc_timeout_ms, experimental);
+
+METRIC_DEFINE_entity(cluster);
 
 using std::min;
 using std::shared_ptr;
@@ -73,7 +77,9 @@ Master::Master(const MasterOptions& opts)
     path_handlers_(new MasterPathHandlers(this)),
     opts_(opts),
     registration_initialized_(false),
-    maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)) {
+    maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
+    metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
+                                                             "yb.cluster")) {
 }
 
 Master::~Master() {
