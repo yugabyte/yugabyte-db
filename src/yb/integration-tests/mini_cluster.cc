@@ -47,20 +47,24 @@ using std::shared_ptr;
 using tserver::MiniTabletServer;
 using tserver::TabletServer;
 
+static const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
+
 MiniClusterOptions::MiniClusterOptions()
  :  num_masters(1),
     num_tablet_servers(1) {
 }
 
 MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
-  : running_(false),
-    env_(env),
-    fs_root_(!options.data_root.empty() ? options.data_root :
-                JoinPathSegments(GetTestDataDirectory(), "minicluster-data")),
-    num_masters_initial_(options.num_masters),
-    num_ts_initial_(options.num_tablet_servers),
-    master_rpc_ports_(options.master_rpc_ports),
-    tserver_rpc_ports_(options.tserver_rpc_ports) {
+    : running_(false),
+      is_creating_(true),
+      env_(env),
+      fs_root_(!options.data_root.empty()
+                   ? options.data_root
+                   : JoinPathSegments(GetTestDataDirectory(), "minicluster-data")),
+      num_masters_initial_(options.num_masters),
+      num_ts_initial_(options.num_tablet_servers),
+      master_rpc_ports_(options.master_rpc_ports),
+      tserver_rpc_ports_(options.tserver_rpc_ports) {
   mini_masters_.resize(num_masters_initial_);
 }
 
@@ -97,12 +101,15 @@ Status MiniCluster::Start() {
                         "Waiting for tablet servers to start");
 
   running_ = true;
+  is_creating_ = false;
   return Status::OK();
 }
 
 Status MiniCluster::StartDistributedMasters() {
   CHECK_GE(master_rpc_ports_.size(), num_masters_initial_);
   CHECK_GT(master_rpc_ports_.size(), 1);
+  const std::vector<uint16_t>& master_ports =
+      is_creating_ ? master_rpc_ports_ : EMPTY_MASTER_RPC_PORTS;
 
   for (int i = 0; i < master_rpc_ports_.size(); ++i) {
     if (master_rpc_ports_[i] == 0) {
@@ -117,8 +124,8 @@ Status MiniCluster::StartDistributedMasters() {
 
   for (int i = 0; i < num_masters_initial_; i++) {
     gscoped_ptr<MiniMaster> mini_master(
-        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i]));
-    RETURN_NOT_OK_PREPEND(mini_master->StartDistributedMaster(master_rpc_ports_),
+        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], is_creating_));
+    RETURN_NOT_OK_PREPEND(mini_master->StartDistributedMaster(master_ports),
                           Substitute("Couldn't start follower $0", i));
     VLOG(1) << "Started MiniMaster with UUID " << mini_master->permanent_uuid()
             << " at index " << i;
@@ -155,7 +162,7 @@ Status MiniCluster::StartSingleMaster() {
 
   // start the master (we need the port to set on the servers).
   gscoped_ptr<MiniMaster> mini_master(
-      new MiniMaster(env_, GetMasterFsRoot(0), master_rpc_port));
+      new MiniMaster(env_, GetMasterFsRoot(0), master_rpc_port, is_creating_));
   RETURN_NOT_OK_PREPEND(mini_master->Start(), "Couldn't start master");
   RETURN_NOT_OK(mini_master->master()->
       WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));

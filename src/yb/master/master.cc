@@ -253,7 +253,7 @@ Status Master::ResetMemoryState(const RaftConfigPB& config) {
     master_addr->push_back(HostPort(peer.last_known_addr().host(), peer.last_known_addr().port()));
   }
 
-  opts_.master_addresses = master_addr;
+  SetMasterAddresses(master_addr);
 
   return Status::OK();
 }
@@ -261,7 +261,7 @@ Status Master::ResetMemoryState(const RaftConfigPB& config) {
 void Master::DumpMasterOptionsInfo(std::ostream* out) {
   *out << "Master options : ";
   bool need_comma = false;
-  for (auto hp : *opts_.master_addresses.get()) {
+  for (const HostPort& hp : *opts_.GetMasterAddresses()) {
     if (need_comma) {
       *out << ", ";
     }
@@ -294,7 +294,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     return Status::OK();
   }
 
-  for (const HostPort& peer_addr : *opts_.master_addresses) {
+  for (const HostPort& peer_addr : *opts_.GetMasterAddresses()) {
     ServerEntryPB peer_entry;
     Status s = GetMasterEntryForHost(messenger_, peer_addr, &peer_entry);
     if (!s.ok()) {

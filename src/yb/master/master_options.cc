@@ -27,38 +27,67 @@ namespace yb {
 namespace master {
 
 DEFINE_string(master_addresses, "",
-              "Comma-separated list of all the RPC addresses for Master config. "
-              "This is used to configure the replicated Master process "
-              "(currently considered experimental). "
-              "NOTE: if not specified, configures a non-replicated Master.");
+    "Comma-separated list of all the RPC addresses of the initial Masters when you "
+    "create a cluster. This should only be set the very first time when the cluster is "
+    "brought up and must be used together with the create_cluster flag. "
+    "If this flag is set and it is not the first start of this node (local consensus metadata "
+    "already exists) that is considered a fatal error and will intentionally crash the process! "
+    "This flag also defaults to empty, which is overloaded to be able to either: "
+    "a) start a non-distributed mode Master if create_cluster is true. "
+    "b) allow for a Master to be restarted gracefully and get its peer list from the "
+    "local cmeta file of the last committed config, if create_cluster is false.");
 TAG_FLAG(master_addresses, experimental);
 
-MasterOptions::MasterOptions() {
+DEFINE_bool(create_cluster, false,
+    "This should only be set the very first time a cluster is brought up. It signals that we wish "
+    "to start a new clean deployment and generate the filesystem data from scratch. This has to "
+    "be used in conjunction with the master_addresses flag, to inform the other masters of their "
+    "starting peer group.");
+
+MasterOptions::MasterOptions(
+    std::shared_ptr<std::vector<HostPort>> master_addresses,
+    bool is_creating)
+    : master_addresses_(std::move(master_addresses)),
+      is_creating_(is_creating) {
   rpc_opts.default_port = Master::kDefaultPort;
 
-  master_addresses = std::make_shared<std::vector<HostPort>>();
+  ValidateMasterAddresses();
+}
+
+MasterOptions::MasterOptions() : is_creating_(FLAGS_create_cluster) {
+  rpc_opts.default_port = Master::kDefaultPort;
+
+  master_addresses_ = std::make_shared<std::vector<HostPort>>();
   if (!FLAGS_master_addresses.empty()) {
     Status s = HostPort::ParseStrings(FLAGS_master_addresses, Master::kDefaultPort,
-                                      master_addresses);
+                                      master_addresses_);
     if (!s.ok()) {
-      LOG(FATAL) << "Couldn't parse the master_addresses flag('" << FLAGS_master_addresses << "'): "
-                 << s.ToString();
+      LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
+          << FLAGS_master_addresses << "'): " << s.ToString();
     }
-    if (master_addresses->size() < 2) {
+  }
+
+  ValidateMasterAddresses();
+}
+
+void MasterOptions::ValidateMasterAddresses() const {
+  if (!master_addresses_->empty()) {
+    if (master_addresses_->size() < 2) {
       LOG(FATAL) << "At least 2 masters are required for a distributed config, but "
-          "master_addresses flag ('" << FLAGS_master_addresses << "') only specifies "
-                 << master_addresses->size() << " masters.";
+          "master addresses flag ('" << FLAGS_master_addresses << "') only specifies "
+          << master_addresses_->size() << " masters.";
     }
-    if (master_addresses->size() == 2) {
-      LOG(WARNING) << "Only 2 masters are specified by master_addresses_flag ('" <<
-          FLAGS_master_addresses << "'), but minimum of 3 are required to tolerate failures"
+    if (master_addresses_->size() == 2) {
+      LOG(WARNING) << "Only 2 masters are specified by master_addresses__flag ('"
+          << FLAGS_master_addresses << "'), but minimum of 3 are required to tolerate failures"
           " of any one master. It is recommended to use at least 3 masters.";
     }
   }
 }
 
-bool MasterOptions::IsDistributed() const {
-  return !master_addresses->empty();
+void MasterOptions::SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses) {
+  master_addresses_ = std::move(master_addresses);
+  ValidateMasterAddresses();
 }
 
 } // namespace master

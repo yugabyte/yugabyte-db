@@ -110,6 +110,7 @@ $OUTPUT_DIR/yb-master \
   "--log_dir=$BASE_DIR" \
   "--fs_wal_dir=$BASE_DIR/master" \
   "--fs_data_dirs=$BASE_DIR/master" \
+  --create_cluster \
   --webserver_interface=localhost \
   --webserver_port=0 \
   --rpc_bind_addresses=$LOCALHOST_IP &

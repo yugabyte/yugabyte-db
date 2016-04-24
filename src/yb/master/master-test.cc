@@ -56,8 +56,8 @@ class MasterTest : public YBTest {
     // but we have no tablet servers. Typically this would be disallowed.
     FLAGS_catalog_manager_check_ts_count_for_create_table = false;
 
-    // Start master
-    mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0));
+    // Start master with the create flag on.
+    mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0, true));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));
@@ -103,7 +103,7 @@ static void MakeHostPortPB(const string& host, uint32_t port, HostPortPB* pb) {
 // Test that shutting down a MiniMaster without starting it does not
 // SEGV.
 TEST_F(MasterTest, TestShutdownWithoutStart) {
-  MiniMaster m(Env::Default(), "/xxxx", 0);
+  MiniMaster m(Env::Default(), "/xxxx", 0, true);
   m.Shutdown();
 }
 

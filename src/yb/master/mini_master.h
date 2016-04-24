@@ -33,7 +33,7 @@ class HostPort;
 namespace master {
 
 class Master;
-struct MasterOptions;
+class MasterOptions;
 
 // An in-process Master meant for use in test cases.
 //
@@ -41,7 +41,7 @@ struct MasterOptions;
 // having multiple Start methods.
 class MiniMaster {
  public:
-  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port);
+  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, bool is_creating);
   ~MiniMaster();
 
   // Start a master running on the loopback interface and
@@ -70,6 +70,12 @@ class MiniMaster {
 
   std::string bound_rpc_addr_str() const;
 
+  // This class is essentially the driver for starting up masters properly. As such, it handles
+  // Start and Restart properly by knowing if there is state. That is provided by the MiniCluster
+  // class, that is essentially the driver for the whole cluster. If we want to fake a mistake, we
+  // need a setter for the is_creating_ field.
+  void SetIsCreatingForFailureTesting(bool is_creating) { is_creating_ = is_creating; }
+
  private:
   Status StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
                                        const std::vector<uint16_t>& peer_ports);
@@ -80,6 +86,7 @@ class MiniMaster {
                       MasterOptions* options);
 
   bool running_;
+  bool is_creating_;
 
   ATTRIBUTE_MEMBER_UNUSED Env* const env_;
   const std::string fs_root_;

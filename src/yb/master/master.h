@@ -84,6 +84,10 @@ class Master : public server::ServerBase {
 
   scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
 
+  void SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses) {
+    opts_.SetMasterAddresses(master_addresses);
+  }
+
   const MasterOptions& opts() { return opts_; }
 
   // Get the RPC and HTTP addresses for this master instance.

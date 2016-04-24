@@ -243,9 +243,13 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
 
 Status ExternalMiniCluster::StartSingleMaster() {
   string exe = GetBinaryPath(kMasterBinaryName);
+  uint16_t free_port = GetFreePort();
+  LOG(INFO) << "Using an auto-assigned port " << free_port
+      << " to start an external mini-cluster non-distributed master";
   scoped_refptr<ExternalMaster> master =
     new ExternalMaster(0, messenger_, exe, GetDataPath("master"),
-                       SubstituteInFlags(opts_.extra_master_flags, 0));
+                       SubstituteInFlags(opts_.extra_master_flags, 0),
+                       Substitute("127.0.0.1:$0", free_port));
   RETURN_NOT_OK(master->Start());
   masters_.push_back(master);
   return Status::OK();
@@ -274,7 +278,6 @@ Status ExternalMiniCluster::StartDistributedMasters() {
   }
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
-  flags.push_back("--master_addresses=" + peer_addrs_str);
   flags.push_back("--enable_leader_failure_detection=true");
   string exe = GetBinaryPath(kMasterBinaryName);
 
@@ -286,8 +289,9 @@ Status ExternalMiniCluster::StartDistributedMasters() {
         messenger_,
         exe,
         GetDataPath(Substitute("master-$0", i)),
+        SubstituteInFlags(flags, i),
         peer_addrs[i],
-        SubstituteInFlags(flags, i));
+        peer_addrs_str);
     RETURN_NOT_OK_PREPEND(peer->Start(),
                           Substitute("Unable to start Master at index $0", i));
     masters_.push_back(peer);
@@ -845,27 +849,17 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 //------------------------------------------------------------
 // ExternalMaster
 //------------------------------------------------------------
-
 ExternalMaster::ExternalMaster(
     int master_index,
     const std::shared_ptr<rpc::Messenger>& messenger,
     const string& exe,
     const string& data_dir,
-    const vector<string>& extra_flags)
-  : ExternalDaemon(
-      strings::Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
-    rpc_bind_address_("127.0.0.1:0") {
-}
-
-ExternalMaster::ExternalMaster(
-    int master_index,
-    const std::shared_ptr<rpc::Messenger>& messenger,
-    const string& exe,
-    const string& data_dir,
-    string rpc_bind_address,
-    const std::vector<string>& extra_flags)
-  : ExternalDaemon(Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
-    rpc_bind_address_(std::move(rpc_bind_address)) {
+    const std::vector<string>& extra_flags,
+    const string& rpc_bind_address,
+    const string& master_addrs)
+    : ExternalDaemon(Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
+      rpc_bind_address_(std::move(rpc_bind_address)),
+      master_addrs_(std::move(master_addrs)) {
 }
 
 ExternalMaster::~ExternalMaster() {
@@ -878,6 +872,10 @@ Status ExternalMaster::Start() {
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
   flags.push_back("--webserver_port=0");
+  // On first start, we need to tell the masters what their list of expected peers is and set the
+  // create_cluster flag.
+  flags.push_back("--create_cluster=true");
+  flags.push_back("--master_addresses=" + master_addrs_);
   RETURN_NOT_OK(StartProcess(flags));
   return Status::OK();
 }

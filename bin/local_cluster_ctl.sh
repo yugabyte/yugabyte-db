@@ -237,6 +237,10 @@ start_master() {
     echo "Internal error: directory '$master_base_dir' does not exist" >&2
     exit 1
   fi
+  local master_flags=""
+  if "$create"; then
+    master_flags="--create_cluster=true --master_addresses $master_addresses"
+  fi
   (
     echo "Starting master $master_index"
     set -x
@@ -245,7 +249,7 @@ start_master() {
       --fs_wal_dir "$master_base_dir/wal" \
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
-      --master_addresses "$master_addresses" \
+      $master_flags \
       --webserver_port $(( $master_http_port_base + $master_index )) \
       --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) \
       >"$master_base_dir/master.out" \
@@ -300,11 +304,13 @@ start_daemon() {
 }
 
 start_cluster() {
-  validate_num_servers "$num_masters"
-  validate_num_servers "$num_tservers"
-
-  create_directories master $num_masters
-  create_directories tserver $num_tservers
+  if "$create"; then
+    create_directories master $num_masters
+    create_directories tserver $num_tservers
+  else
+    validate_num_servers "$num_masters"
+    validate_num_servers "$num_tservers"
+  fi
 
   master_indexes=$( $SEQ 1 $num_masters )
   tserver_indexes=$( $SEQ 1 $num_tservers )
@@ -398,6 +404,7 @@ daemon_index_to_restart=""
 master_indexes=""
 tserver_indexes=""
 verbose_level=0
+create=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -427,7 +434,7 @@ while [ $# -gt 0 ]; do
       daemon_index_to_restart="$2"
       shift
     ;;
-    start|stop|status|add|add-master|add-tserver|destroy|restart|wipe-restart)
+    create|start|stop|status|add|add-master|add-tserver|destroy|restart|wipe-restart)
       set_cmd "$1"
     ;;
     *)
@@ -490,7 +497,13 @@ if [[ "$cmd" =~ ^[a-z]+-(master|tserver)$ ]]; then
 fi
 
 case "$cmd" in
-  start) start_cluster ;;
+  create)
+    create=true
+    start_cluster
+  ;;
+  start)
+    start_cluster
+  ;;
   stop) stop_cluster ;;
   restart)
     stop_cluster
@@ -504,6 +517,7 @@ case "$cmd" in
     output_separator
     destroy_cluster
     output_separator
+    create=true
     start_cluster_as_before
   ;;
   add-master|add-tserver)

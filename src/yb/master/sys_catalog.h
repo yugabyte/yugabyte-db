@@ -37,7 +37,7 @@ class WriteResponsePB;
 
 namespace master {
 class Master;
-struct MasterOptions;
+class MasterOptions;
 class TableInfo;
 class TabletInfo;
 

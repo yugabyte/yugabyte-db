@@ -89,6 +89,12 @@ void SysCatalogTable::Shutdown() {
 }
 
 Status SysCatalogTable::Load(FsManager *fs_manager) {
+  LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
+  if (master_->opts().IsClusterCreationMode()) {
+    return Status::IllegalState(Substitute(
+        "In cluster creation mode for ($0), but found local consensus metadata",
+        HostPort::ToCommaSeparatedString(*master_->opts().GetMasterAddresses())));
+  }
   // Load Metadata Information from disk
   scoped_refptr<tablet::TabletMetadata> metadata;
   RETURN_NOT_OK(tablet::TabletMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
@@ -110,34 +116,47 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
   // 1. We always believe the local config options for who is in the consensus configuration.
   // 2. We always want to look up all node's UUIDs on start (via RPC).
   //    - TODO: Cache UUIDs. See KUDU-526.
-  if (master_->opts().IsDistributed()) {
+  string tablet_id = metadata->tablet_id();
+  gscoped_ptr<ConsensusMetadata> cmeta;
+  RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(fs_manager, tablet_id, fs_manager->uuid(), &cmeta),
+                        "Unable to load consensus metadata for tablet " + tablet_id);
+
+  bool missing_uuids = false;
+  const RaftConfigPB& loaded_config = cmeta->active_config();
+  DCHECK(!loaded_config.peers().empty()) << "Loaded consensus metadata, but had no peers!";
+
+  std::shared_ptr<std::vector<HostPort>> loaded_master_addresses =
+      std::make_shared<std::vector<HostPort>>();
+  // if this is a distributed config
+  if (loaded_config.peers().size() > 1) {
     LOG(INFO) << "Configuring consensus for distributed operation...";
-
-    string tablet_id = metadata->tablet_id();
-    gscoped_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(fs_manager, tablet_id,
-                                                  fs_manager->uuid(), &cmeta),
-                          "Unable to load consensus metadata for tablet " + tablet_id);
-
-    bool missing_uuids = false;
-    const RaftConfigPB& loaded_config = cmeta->active_config();
     for (const auto& peer : loaded_config.peers()) {
-      HostPortPB hp = peer.last_known_addr();
+      HostPort hp;
+      HostPortFromPB(peer.last_known_addr(), &hp);
       if (!peer.has_permanent_uuid()) {
-        LOG(WARNING) << "No uuid for master peer at " << hp.ShortDebugString();
+        LOG(WARNING) << "No uuid for master peer at " << hp.ToString();
         missing_uuids = true;
         break;
       }
+
+      loaded_master_addresses->push_back(hp);
     }
 
-    // If the config loaded from cmeta did not have all uuids, we need to revert back to master opt
     if (missing_uuids) {
-      RaftConfigPB config;
-      RETURN_NOT_OK(SetupDistributedConfig(master_->opts(), &config));
-      cmeta->set_committed_config(config);
-      // TODO(bogdan) this config we just loaded will also have a leader assigned...is that ok?
-      RETURN_NOT_OK_PREPEND(cmeta->Flush(),
-                            "Unable to persist consensus metadata for tablet " + tablet_id);
+      return Status::IllegalState("Trying to load distributed config, but had missing uuids!");
+    }
+    master_->SetMasterAddresses(loaded_master_addresses);
+  } else {
+    LOG(INFO) << "Configuring consensus for local operation...";
+    // We know we have exactly one peer.
+    const auto& peer = loaded_config.peers().Get(0);
+    if (!peer.has_permanent_uuid()) {
+      return Status::IllegalState("Loaded consesnsus metadata, but peer did not have a uuid");
+    }
+    if (peer.permanent_uuid() != fs_manager->uuid()) {
+      return Status::IllegalState(Substitute(
+          "Loaded consensus metadata, but peer uuid ($0) was different than our uuid ($1)",
+          peer.permanent_uuid(), fs_manager->uuid()));
     }
   }
 
@@ -146,6 +165,11 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
 }
 
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
+  LOG(INFO) << "Creating new SysCatalogTable data";
+  if (!master_->opts().IsClusterCreationMode()) {
+    // TODO(bharat): perhaps change this once we can actually start empty shells
+    return Status::IllegalState("Need to create data, but am not in cluster creation mode!");
+  }
   // Create the new Metadata
   scoped_refptr<tablet::TabletMetadata> metadata;
   Schema schema = BuildTableSchema();
@@ -197,7 +221,7 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
   new_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
   // Build the set of followers from our server options.
-  for (const HostPort& host_port : *options.master_addresses) {
+  for (const HostPort& host_port : *options.GetMasterAddresses()) {
     RaftPeerPB peer;
     HostPortPB peer_host_port_pb;
     RETURN_NOT_OK(HostPortToPB(host_port, &peer_host_port_pb));

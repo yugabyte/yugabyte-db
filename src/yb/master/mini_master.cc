@@ -36,8 +36,9 @@ DECLARE_bool(rpc_server_allow_ephemeral_ports);
 namespace yb {
 namespace master {
 
-MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port)
+MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, bool is_creating)
     : running_(false),
+      is_creating_(is_creating),
       env_(env),
       fs_root_(std::move(fs_root)),
       rpc_port_(rpc_port) {}
@@ -71,7 +72,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!running_);
   CHECK(!master_);
 
-  MasterOptions opts;
+  MasterOptions opts(std::make_shared<std::vector<HostPort>>(), is_creating_);
   return StartOnPorts(rpc_port, web_port, &opts);
 }
 
@@ -97,26 +98,27 @@ Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web
   CHECK(!running_);
   CHECK(!master_);
 
-  MasterOptions opts;
-
   auto peer_addresses = std::make_shared<std::vector<HostPort>>();
+
   for (uint16_t peer_port : peer_ports) {
     HostPort peer_address("127.0.0.1", peer_port);
     peer_addresses->push_back(peer_address);
   }
-  opts.master_addresses = peer_addresses;
+  MasterOptions opts(peer_addresses, is_creating_);
 
   return StartOnPorts(rpc_port, web_port, &opts);
 }
 
 Status MiniMaster::Restart() {
   CHECK(running_);
+  is_creating_ = false;
 
   Sockaddr prev_rpc = bound_rpc_addr();
   Sockaddr prev_http = bound_http_addr();
   Shutdown();
 
-  RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port()));
+  MasterOptions opts(std::make_shared<std::vector<HostPort>>(), is_creating_);
+  RETURN_NOT_OK(StartOnPorts(prev_rpc.port(), prev_http.port(), &opts));
   CHECK(running_);
   return WaitForCatalogManagerInit();
 }

@@ -48,8 +48,8 @@ class SysCatalogTest : public YBTest {
   virtual void SetUp() OVERRIDE {
     YBTest::SetUp();
 
-    // Start master
-    mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0));
+    // Start master with the create flag on.
+    mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0, true));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));

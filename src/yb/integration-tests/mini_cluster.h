@@ -169,6 +169,7 @@ class MiniCluster {
   };
 
   bool running_;
+  bool is_creating_;
 
   Env* const env_;
   const std::string fs_root_;

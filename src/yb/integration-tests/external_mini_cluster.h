@@ -391,15 +391,9 @@ class ExternalMaster : public ExternalDaemon {
     const std::shared_ptr<rpc::Messenger>& messenger,
     const std::string& exe,
     const std::string& data_dir,
-    const std::vector<std::string>& extra_flags);
-
-  ExternalMaster(
-    int master_index,
-    const std::shared_ptr<rpc::Messenger>& messenger,
-    const std::string& exe,
-    const std::string& data_dir,
-    std::string rpc_bind_address,
-    const std::vector<std::string>& extra_flags);
+    const std::vector<std::string>& extra_flags,
+    const std::string& rpc_bind_address = "127.0.0.1",
+    const std::string& master_addrs = "");
 
   Status Start();
 
@@ -412,6 +406,8 @@ class ExternalMaster : public ExternalDaemon {
   friend class RefCountedThreadSafe<ExternalMaster>;
   virtual ~ExternalMaster();
 
+  // used on start to create the cluster; on restart, this should not be used!
+  const std::string master_addrs_;
   const std::string rpc_bind_address_;
 };
 
