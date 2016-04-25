@@ -9,16 +9,6 @@
  */
 
 
-/* Copied from backend/optimizer/util/plancat.c, not exported.
- *
- * Build a targetlist representing the columns of the specified index.
- * Each column is represented by a Var for the corresponding base-relation
- * column, or an expression in base-relation Vars, as appropriate.
- *
- * There are never any dropped columns in indexes, so unlike
- * build_physical_tlist, we need no failure case.
- */
-
 #include "postgres.h"
 
 #if PG_VERSION_NUM >= 90300
@@ -38,6 +28,16 @@
 
 #include "hypopg_import.h"
 
+
+/* Copied from backend/optimizer/util/plancat.c, not exported.
+ *
+ * Build a targetlist representing the columns of the specified index.
+ * Each column is represented by a Var for the corresponding base-relation
+ * column, or an expression in base-relation Vars, as appropriate.
+ *
+ * There are never any dropped columns in indexes, so unlike
+ * build_physical_tlist, we need no failure case.
+ */
 List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation)
