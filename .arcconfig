@@ -4,5 +4,8 @@
   "git:arc.feature.start.default" : "upstream/master",
   "arc.land.onto.default": "master",
   "arc.land.remote.default": "upstream",
-  "arc.feature.start.default" : "master"
+  "arc.feature.start.default" : "master",
+  "load": [
+    "./arcanist_util/yugabyte-clang-format"
+  ]
 }

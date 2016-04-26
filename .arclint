@@ -1,0 +1,8 @@
+{
+  "linters": {
+    "git-clang-format": {
+      "type": "git-clang-format",
+      "include": "(src/.*\\.(h|cc))"
+    }
+  }
+}
