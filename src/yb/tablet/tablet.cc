@@ -59,6 +59,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -67,6 +68,8 @@
 #include "yb/util/url-coding.h"
 
 #include "rocksdb/db.h"
+#include "rocksdb/include/rocksdb/options.h"
+#include "rocksdb/statistics.h"
 #include "rocksdb/write_batch.h"
 #include "key_value_iterator.h"
 
@@ -149,7 +152,8 @@ Tablet::Tablet(const scoped_refptr<TabletMetadata>& metadata,
     clock_(clock),
     mvcc_(clock),
     rowsets_flush_sem_(1),
-    state_(kInitialized) {
+    state_(kInitialized),
+    rocksdb_statistics_(nullptr) {
       CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
 
@@ -161,6 +165,13 @@ Tablet::Tablet(const scoped_refptr<TabletMetadata>& metadata,
     attrs["partition"] = metadata_->partition_schema().PartitionDebugString(metadata_->partition(),
                                                                             *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry, tablet_id(), attrs);
+    // If we are creating a KV table create the metrics callback.
+    if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+      metric_entity_->AddExternalMetricsCb([this](JsonWriter* writer,
+                                                  const MetricJsonOptions& opts) {
+        EmitRocksDBMetrics(writer, opts);
+      });
+    }
     metrics_.reset(new TabletMetrics(metric_entity_));
     METRIC_memrowset_size.InstantiateFunctionGauge(
       metric_entity_, Bind(&Tablet::MemRowSetSize, Unretained(this)))
@@ -205,10 +216,12 @@ Status Tablet::OpenKeyValueTablet() {
   // Use the first data root directory for now, and create per-tablet directories there.
   auto data_root_dir = data_root_dirs.front();
 
-  rocksdb::DB* db;
+  rocksdb::DB* db = nullptr;
+  rocksdb_statistics_ = rocksdb::CreateDBStatistics();
   rocksdb::Options rocksdb_options;
   rocksdb_options.create_if_missing = true;
   rocksdb_options.disableDataSync = true;
+  rocksdb_options.statistics = rocksdb_statistics_;
 
   // TODO: move RocksDB directory management to FsManager.
   auto rocksdb_top_dir = JoinPathSegments(data_root_dir, "rocksdb");
@@ -222,6 +235,9 @@ Status Tablet::OpenKeyValueTablet() {
   if (!rocksdb_open_status.ok()) {
     LOG(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
     << rocksdb_open_status.ToString();
+    if (db != nullptr) {
+      delete db;
+    }
     return Status::IllegalState(rocksdb_open_status.ToString());
   }
   rocksdb_.reset(db);
@@ -255,6 +271,48 @@ Status Tablet::OpenKuduColumnarTablet() {
                                               mem_tracker_));
   components_ = new TabletComponents(new_mrs, new_rowset_tree);
   return Status::OK();
+}
+
+void Tablet::EmitRocksDBMetrics(JsonWriter* writer,
+                                const MetricJsonOptions& opts) {
+  // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
+  // maintained by RocksDB for this tablet.
+  if (rocksdb_statistics_ == nullptr) {
+    return;
+  }
+  // Emit all the ticker (gauge) metrics.
+  for (std::pair<rocksdb::Tickers, std::string> entry : rocksdb::TickersNameMap) {
+    // Start the metric object.
+    writer->StartObject();
+    // Write the name.
+    writer->String("name");
+    writer->String(entry.second);
+    // Write the value.
+    uint64_t value = rocksdb_statistics_->getTickerCount(entry.first);
+    writer->String("value");
+    writer->Uint64(value);
+    // Finish the metric object.
+    writer->EndObject();
+  }
+  // Emit all the histogram metrics.
+  rocksdb::HistogramData histogram_data;
+  for (std::pair<rocksdb::Histograms, std::string> entry : rocksdb::HistogramsNameMap) {
+    // Start the metric object.
+    writer->StartObject();
+    // Write the name.
+    writer->String("name");
+    writer->String(entry.second);
+    // Write the value.
+    rocksdb_statistics_->histogramData(entry.first, &histogram_data);
+    writer->String("median");
+    writer->Double(histogram_data.median);
+    writer->String("avg");
+    writer->Double(histogram_data.average);
+    writer->String("stddev");
+    writer->Double(histogram_data.standard_deviation);
+    // Finish the metric object.
+    writer->EndObject();
+  }
 }
 
 void Tablet::MarkFinishedBootstrapping() {

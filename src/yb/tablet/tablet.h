@@ -25,6 +25,9 @@
 
 #include <boost/thread/shared_mutex.hpp>
 
+#include "rocksdb/include/rocksdb/options.h"
+#include "rocksdb/statistics.h"
+
 #include "yb/common/iterator.h"
 #include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
@@ -484,6 +487,9 @@ class Tablet {
   Status OpenKeyValueTablet();
   Status OpenKuduColumnarTablet();
 
+  void EmitRocksDBMetrics(JsonWriter* writer,
+                          const MetricJsonOptions& opts);
+
   // Helper method to find the rowset that has the DMS with the highest retention.
   std::shared_ptr<RowSet> FindBestDMSToFlush(
       const MaxIdxToSegmentMap& max_idx_to_segment_size) const;
@@ -576,6 +582,9 @@ class Tablet {
   std::shared_ptr<FlushCompactCommonHooks> common_hooks_;
 
   std::vector<MaintenanceOp*> maintenance_ops_;
+
+  // Statistics for the RocksDB database.
+  std::shared_ptr<rocksdb::Statistics> rocksdb_statistics_;
 
   // RocksDB database for key-value tables.
   gscoped_ptr<rocksdb::DB> rocksdb_;

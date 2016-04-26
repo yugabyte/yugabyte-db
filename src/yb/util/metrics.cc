@@ -158,7 +158,8 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
                            std::string id, AttributeMap attributes)
     : prototype_(prototype),
       id_(std::move(id)),
-      attributes_(std::move(attributes)) {}
+      attributes_(std::move(attributes)),
+      external_metrics_cbs_() {}
 
 MetricEntity::~MetricEntity() {
 }
@@ -243,6 +244,10 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
     WARN_NOT_OK(val.second->WriteAsJson(writer, opts),
                 strings::Substitute("Failed to write $0 as JSON", val.first));
 
+  }
+  // Run the external metrics collection callback if there is one set.
+  for (const ExternalMetricsCb& cb : external_metrics_cbs_) {
+    cb(writer, opts);
   }
   writer->EndArray();
 

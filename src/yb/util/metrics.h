@@ -441,6 +441,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
  public:
   typedef std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
   typedef std::unordered_map<std::string, std::string> AttributeMap;
+  typedef std::function<void (JsonWriter* writer, const MetricJsonOptions& opts)>
+    ExternalMetricsCb;
 
   scoped_refptr<Counter> FindOrCreateCounter(const CounterPrototype* proto);
   scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);
@@ -490,6 +492,10 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     return metric_map_.size();
   }
 
+  void AddExternalMetricsCb(const ExternalMetricsCb &external_metrics_cb) {
+    external_metrics_cbs_.push_back(external_metrics_cb);
+  }
+
  private:
   friend class MetricRegistry;
   friend class RefCountedThreadSafe<MetricEntity>;
@@ -516,6 +522,9 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // The set of metrics which should never be retired. Protected by lock_.
   std::vector<scoped_refptr<Metric> > never_retire_metrics_;
+
+  // Callbacks fired each time WriteAsJson is called.
+  std::vector<ExternalMetricsCb> external_metrics_cbs_;
 };
 
 // Base class to allow for putting all metrics into a single container.
