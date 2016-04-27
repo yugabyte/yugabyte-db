@@ -41,8 +41,9 @@
 
 DEFINE_int32(test_delete_leader_num_iters, 3,
              "Number of iterations to run in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
-DEFINE_int32(test_delete_leader_min_rows_per_iter, 20,
-             "Number of writer threads in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
+DEFINE_int32(test_delete_leader_min_rows_per_iter, 200,
+             "Minimum number of rows to insert per iteration "
+              "in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 DEFINE_int32(test_delete_leader_payload_bytes, 16 * 1024,
              "Payload byte size in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 DEFINE_int32(test_delete_leader_num_writer_threads, 1,
@@ -558,6 +559,10 @@ TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTest) {
                                   timeout));
 
     // Wait for remote bootstrap to start.
+    // ENG-81: There is a frequent race condition here: if the bootstrap happens too quickly, we can
+    // see TABLET_DATA_READY right away without seeing TABLET_DATA_COPYING first (at last that's a
+    // working hypothesis of an explanation). In an attempt to remedy this, we have increased the
+    // number of rows inserted per iteration from 20 to 200.
     ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(follower_index, tablet_id,
                                                    tablet::TABLET_DATA_COPYING, timeout));
 
