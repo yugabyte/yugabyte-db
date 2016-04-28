@@ -14,6 +14,6 @@ phutil_register_library_map(array(
   ),
   'function' => array(),
   'xmap' => array(
-    'ClangFormatLinter' => 'ArcanistExternalLinter',
+    'ClangFormatLinter' => 'ArcanistLinter',
   ),
 ));

@@ -3,7 +3,29 @@
 /**
  * Uses git-clang-format to lint and autofix your C/C++ code.
  */
-final class ClangFormatLinter extends ArcanistExternalLinter {
+final class ClangFormatLinter extends ArcanistLinter {
+  // Not parallel for now.
+  final public function willLintPaths(array $paths) {
+    return;
+  }
+
+  // Not parallel for now.
+  final public function didLintPaths(array $paths) {
+    return;
+  }
+
+  // One path at a time execution.
+  final public function lintPath($path) {
+    list($err, $stdout, $stderr) = exec_manual(
+      "%C %Ls %C",
+      $this->getDefaultBinary(),
+      $this->getMandatoryFlags(),
+      $path);
+    $messages = $this->parseLinterOutput($path, $err, $stdout, $stderr);
+    foreach ($messages as $message) {
+      $this->addLintMessage($message);
+    }
+  }
 
   public function getInfoName() {
     return 'git-clang-format';
@@ -34,16 +56,6 @@ final class ClangFormatLinter extends ArcanistExternalLinter {
 
   public function getDefaultBinary() {
     return 'git-clang-format';
-  }
-
-  public function getInstallInstructions() {
-    return pht('Download git-clang-format through ' .
-      '`wget https://llvm.org/svn/llvm-project/cfe/trunk/tools/clang-format/git-clang-format`\n' .
-      'Make sure you add it to your $PATH.');
-  }
-
-  public function shouldExpectCommandErrors() {
-    return false;
   }
 
   protected function getMandatoryFlags() {
