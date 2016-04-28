@@ -4,8 +4,16 @@
  * Uses git-clang-format to lint and autofix your C/C++ code.
  */
 final class ClangFormatLinter extends ArcanistLinter {
-  // Not parallel for now.
+  private $commit = "";
+
   final public function willLintPaths(array $paths) {
+    list($err, $stdout, $stderr) = exec_manual("git merge-base master HEAD");
+    if ($err !== 0) {
+      $this->commit = "HEAD^";
+    } else {
+      $this->commit = trim($stdout);
+    }
+
     return;
   }
 
@@ -17,11 +25,15 @@ final class ClangFormatLinter extends ArcanistLinter {
   // One path at a time execution.
   final public function lintPath($path) {
     list($err, $stdout, $stderr) = exec_manual(
-      "%C %Ls %C",
+      "%C --diff --commit %C %C",
       $this->getDefaultBinary(),
-      $this->getMandatoryFlags(),
+      $this->commit,
       $path);
     $messages = $this->parseLinterOutput($path, $err, $stdout, $stderr);
+    if ($messages === false) {
+      return false;
+    }
+
     foreach ($messages as $message) {
       $this->addLintMessage($message);
     }
@@ -56,22 +68,6 @@ final class ClangFormatLinter extends ArcanistLinter {
 
   public function getDefaultBinary() {
     return 'git-clang-format';
-  }
-
-  protected function getMandatoryFlags() {
-    // If we ever find ourselves having issues with the fixes, we could run this interactively,
-    // using --patch, where you could y/n individual fixes. However, arc lint doesn't have an
-    // interactive-friendly mode.
-    //
-    // For now, we also do not get an actual git hash trickled down to the linter, so we cannot
-    // run over the full set of differences in your whole diff, but rather over your latest set
-    // of changes. As such, we're hardcoding HEAD^ here as the diff point, but we should probably
-    // setup a simple wrapper script that sets up the commit hash accordingly. Tracking in ENG-83.
-    return array(
-      "--diff",
-      "--commit",
-      "HEAD^"
-    );
   }
 
   protected function generateMessage($path, $diff_group_metadata) {
