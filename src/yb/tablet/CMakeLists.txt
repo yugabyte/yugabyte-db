@@ -81,6 +81,7 @@ target_link_libraries(tablet
   gutil
   server_common
   yb_fs
+  yb_rocksutil
   yb_util
   consensus
   rocksdb)

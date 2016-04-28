@@ -55,6 +55,7 @@
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
+#include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -222,6 +223,8 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb_options.create_if_missing = true;
   rocksdb_options.disableDataSync = true;
   rocksdb_options.statistics = rocksdb_statistics_;
+  rocksdb_options.info_log = make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id()));
+  rocksdb_options.info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
 
   // TODO: move RocksDB directory management to FsManager.
   auto rocksdb_top_dir = JoinPathSegments(data_root_dir, "rocksdb");
