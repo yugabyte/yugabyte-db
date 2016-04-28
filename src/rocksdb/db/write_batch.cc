@@ -23,12 +23,16 @@
 // varstring :=
 //    len: varint32
 //    data: uint8[len]
+//
+// YugaByte-specific extensions stored out-of-band:
+//   user_sequence_numbers_
 
 #include "rocksdb/write_batch.h"
 
 #include <stack>
 #include <stdexcept>
 #include <vector>
+#include <iostream>
 
 #include "db/column_family.h"
 #include "db/db_impl.h"
@@ -95,7 +99,9 @@ struct SavePoints {
 };
 
 WriteBatch::WriteBatch(size_t reserved_bytes)
-    : save_points_(nullptr), content_flags_(0), rep_() {
+    : save_points_(nullptr),
+      content_flags_(0),
+      rep_() {
   rep_.reserve((reserved_bytes > kHeader) ? reserved_bytes : kHeader);
   rep_.resize(kHeader);
 }
@@ -108,11 +114,13 @@ WriteBatch::WriteBatch(const std::string& rep)
 WriteBatch::WriteBatch(const WriteBatch& src)
     : save_points_(src.save_points_),
       content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
+      user_sequence_numbers_(src.user_sequence_numbers_),
       rep_(src.rep_) {}
 
 WriteBatch::WriteBatch(WriteBatch&& src)
     : save_points_(std::move(src.save_points_)),
       content_flags_(src.content_flags_.load(std::memory_order_relaxed)),
+      user_sequence_numbers_(std::move(src.user_sequence_numbers_)),
       rep_(std::move(src.rep_)) {}
 
 WriteBatch& WriteBatch::operator=(const WriteBatch& src) {
@@ -155,6 +163,8 @@ void WriteBatch::Clear() {
       save_points_->stack.pop();
     }
   }
+
+  user_sequence_numbers_.clear();
 }
 
 int WriteBatch::Count() const {
@@ -257,10 +267,17 @@ Status WriteBatch::Iterate(Handler* handler) const {
   Slice key, value, blob;
   int found = 0;
   Status s;
+
+  bool has_user_sequence_numbers = HasUserSequenceNumbers();
+  auto user_sequence_number_iter = user_sequence_numbers_.begin();
+
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
     uint32_t column_family = 0;  // default
 
+    if (has_user_sequence_numbers) {
+      handler->SetUserSequenceNumber(*(user_sequence_number_iter++));
+    }
     s = ReadRecordFromWriteBatch(&input, &tag, &column_family, &key, &value,
                                  &blob);
     if (!s.ok()) {
@@ -528,10 +545,34 @@ Status WriteBatch::RollbackToSavePoint() {
   } else if (savepoint.size == 0) {
     // Rollback everything
     Clear();
+    user_sequence_numbers_.clear();
   } else {
+    if (HasUserSequenceNumbers()) {
+      Status validation_status = ValidateUserSequenceNumbers();
+      if (!validation_status.ok()) {
+        return validation_status;
+      }
+      user_sequence_numbers_.resize(savepoint.count);
+    }
     rep_.resize(savepoint.size);
     WriteBatchInternal::SetCount(this, savepoint.count);
     content_flags_.store(savepoint.content_flags, std::memory_order_relaxed);
+  }
+
+  return Status::OK();
+}
+
+Status WriteBatch::ValidateUserSequenceNumbers() {
+  if (user_sequence_numbers_.empty()) {
+    return Status::OK();
+  }
+
+  if (static_cast<int64_t>(user_sequence_numbers_.size()) !=
+      static_cast<int64_t>(Count())) {
+    std::stringstream ss;
+    ss << "num_user_sequence_numbers=" << user_sequence_numbers_.size() << ", "
+      << "count=" << Count();
+    return Status::Corruption(ss.str());
   }
 
   return Status::OK();
@@ -549,6 +590,11 @@ class MemTableInserter : public WriteBatch::Handler {
   const bool dont_filter_deletes_;
   const bool concurrent_memtable_writes_;
 
+  // User-defined sequence number for the next operation to be processed. This is set using
+  // SetUserSequenceNumber.
+  SequenceNumber user_sequence_number_;
+  bool has_user_sequence_number_;
+
   // cf_mems should not be shared with concurrent inserters
   MemTableInserter(SequenceNumber sequence, ColumnFamilyMemTables* cf_mems,
                    FlushScheduler* flush_scheduler,
@@ -562,7 +608,9 @@ class MemTableInserter : public WriteBatch::Handler {
         log_number_(log_number),
         db_(reinterpret_cast<DBImpl*>(db)),
         dont_filter_deletes_(dont_filter_deletes),
-        concurrent_memtable_writes_(concurrent_memtable_writes) {
+        concurrent_memtable_writes_(concurrent_memtable_writes),
+        user_sequence_number_(kMaxSequenceNumber),
+        has_user_sequence_number_(false) {
     assert(cf_mems_);
     if (!dont_filter_deletes_) {
       assert(db_);
@@ -607,18 +655,19 @@ class MemTableInserter : public WriteBatch::Handler {
     MemTable* mem = cf_mems_->GetMemTable();
     auto* moptions = mem->GetMemTableOptions();
     if (!moptions->inplace_update_support) {
-      mem->Add(sequence_, kTypeValue, key, value, concurrent_memtable_writes_);
+      mem->Add(CurrentSequenceNumber(), kTypeValue, key, value, concurrent_memtable_writes_);
     } else if (moptions->inplace_callback == nullptr) {
       assert(!concurrent_memtable_writes_);
-      mem->Update(sequence_, key, value);
+      mem->Update(CurrentSequenceNumber(), key, value);
       RecordTick(moptions->statistics, NUMBER_KEYS_UPDATED);
     } else {
       assert(!concurrent_memtable_writes_);
-      if (mem->UpdateCallback(sequence_, key, value)) {
+      SequenceNumber current_seq = CurrentSequenceNumber();
+      if (mem->UpdateCallback(current_seq, key, value)) {
       } else {
         // key not found in memtable. Do sst get, update, add
         SnapshotImpl read_from_snapshot;
-        read_from_snapshot.number_ = sequence_;
+        read_from_snapshot.number_ = current_seq;
         ReadOptions ropts;
         ropts.snapshot = &read_from_snapshot;
 
@@ -638,16 +687,16 @@ class MemTableInserter : public WriteBatch::Handler {
                                                  value, &merged_value);
         if (status == UpdateStatus::UPDATED_INPLACE) {
           // prev_value is updated in-place with final value.
-          mem->Add(sequence_, kTypeValue, key, Slice(prev_buffer, prev_size));
+          mem->Add(current_seq, kTypeValue, key, Slice(prev_buffer, prev_size));
           RecordTick(moptions->statistics, NUMBER_KEYS_WRITTEN);
         } else if (status == UpdateStatus::UPDATED) {
           // merged_value contains the final value.
-          mem->Add(sequence_, kTypeValue, key, Slice(merged_value));
+          mem->Add(current_seq, kTypeValue, key, Slice(merged_value));
           RecordTick(moptions->statistics, NUMBER_KEYS_WRITTEN);
         }
       }
     }
-    // Since all Puts are logged in trasaction logs (if enabled), always bump
+    // Since all Puts are logged in transaction logs (if enabled), always bump
     // sequence number. Even if the update eventually fails and does not result
     // in memtable add/update.
     sequence_++;
@@ -680,7 +729,7 @@ class MemTableInserter : public WriteBatch::Handler {
         return Status::OK();
       }
     }
-    mem->Add(sequence_, delete_type, key, Slice(), concurrent_memtable_writes_);
+    mem->Add(CurrentSequenceNumber(), delete_type, key, Slice(), concurrent_memtable_writes_);
     sequence_++;
     CheckMemtableFull();
     return Status::OK();
@@ -708,8 +757,9 @@ class MemTableInserter : public WriteBatch::Handler {
     auto* moptions = mem->GetMemTableOptions();
     bool perform_merge = false;
 
+    SequenceNumber current_seq = CurrentSequenceNumber();
     if (moptions->max_successive_merges > 0 && db_ != nullptr) {
-      LookupKey lkey(key, sequence_);
+      LookupKey lkey(key, current_seq);
 
       // Count the number of successive merges at the head
       // of the key in the memtable
@@ -727,7 +777,7 @@ class MemTableInserter : public WriteBatch::Handler {
       // Pass in the sequence number so that we also include previous merge
       // operations in the same batch.
       SnapshotImpl read_from_snapshot;
-      read_from_snapshot.number_ = sequence_;
+      read_from_snapshot.number_ = current_seq;
       ReadOptions read_options;
       read_options.snapshot = &read_from_snapshot;
 
@@ -763,13 +813,13 @@ class MemTableInserter : public WriteBatch::Handler {
         perform_merge = false;
       } else {
         // 3) Add value to memtable
-        mem->Add(sequence_, kTypeValue, key, new_value);
+        mem->Add(current_seq, kTypeValue, key, new_value);
       }
     }
 
     if (!perform_merge) {
       // Add merge operator to memtable
-      mem->Add(sequence_, kTypeMerge, key, value);
+      mem->Add(current_seq, kTypeMerge, key, value);
     }
 
     sequence_++;
@@ -789,6 +839,28 @@ class MemTableInserter : public WriteBatch::Handler {
       }
     }
   }
+
+  virtual void SetUserSequenceNumber(SequenceNumber user_sequence_number) override {
+    assert(user_sequence_number != kMaxSequenceNumber);
+    user_sequence_number_ = user_sequence_number;
+    has_user_sequence_number_ = true;
+  }
+
+ private:
+  SequenceNumber CurrentSequenceNumber() {
+    if (has_user_sequence_number_) {
+      assert(user_sequence_number_ != kMaxSequenceNumber);
+      SequenceNumber seq = user_sequence_number_;
+#ifndef NDEBUG
+      // Don't allow the user sequence number set by the same SetUserSequenceNumber call to be used
+      // more than once.
+      user_sequence_number_ = kMaxSequenceNumber;
+#endif
+      return seq;
+    } else {
+      return sequence_;
+    }
+  };
 };
 }  // namespace
 
@@ -845,6 +917,9 @@ void WriteBatchInternal::Append(WriteBatch* dst, const WriteBatch* src) {
       dst->content_flags_.load(std::memory_order_relaxed) |
           src->content_flags_.load(std::memory_order_relaxed),
       std::memory_order_relaxed);
+  assert(dst->HasUserSequenceNumbers() == src->HasUserSequenceNumbers());
+  std::copy(src->user_sequence_numbers_.begin(), src->user_sequence_numbers_.end(),
+    std::back_inserter(dst->user_sequence_numbers_));
 }
 
 size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
@@ -854,6 +929,10 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
   } else {
     return leftByteSize + rightByteSize - kHeader;
   }
+}
+
+std::vector<SequenceNumber> WriteBatchInternal::GetUserSequenceNumbers(const WriteBatch& b) {
+  return b.user_sequence_numbers_;
 }
 
 }  // namespace rocksdb

@@ -84,7 +84,6 @@ target_link_libraries(tablet
   yb_util
   consensus
   rocksdb)
-add_dependencies(tablet rocksdb)
 
 set(YB_TEST_LINK_LIBS tablet ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)

@@ -392,10 +392,6 @@ class Tablet {
     WriteTransactionState *tx_state,
     RowOp* insert);
 
-  Status KeyValuePutUnlocked(
-    WriteTransactionState *tx_state,
-    RowOp *insert);
-
   Status KuduColumnarInsertUnlocked(
     WriteTransactionState *tx_state,
     RowOp* insert,

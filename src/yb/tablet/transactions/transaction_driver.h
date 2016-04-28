@@ -100,7 +100,8 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
                     log::Log* log,
                     ThreadPool* prepare_pool,
                     ThreadPool* apply_pool,
-                    TransactionOrderVerifier* order_verifier);
+                    TransactionOrderVerifier* order_verifier,
+                    TableType table_type_);
 
   // Perform any non-constructor initialization. Sets the transaction
   // that will be executed.
@@ -251,6 +252,8 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
   MicrosecondsInt64 prepare_physical_timestamp_;
 
   DISALLOW_COPY_AND_ASSIGN(TransactionDriver);
+
+  TableType table_type_;
 };
 
 }  // namespace tablet

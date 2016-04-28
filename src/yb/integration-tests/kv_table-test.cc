@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <string>
 #include <vector>
+#include <future>
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
@@ -50,6 +51,8 @@ using yb::client::YBScanner;
 using yb::client::YBScanBatch;
 using yb::client::YBPredicate;
 using yb::client::YBValue;
+
+using yb::client::sp::shared_ptr;
 
 namespace yb {
 namespace tablet {
@@ -102,6 +105,7 @@ namespace tablet {
         .Create());
       ASSERT_OK(client_->OpenTable(kTableName, &table_));
       ASSERT_EQ(YBTableType::KEY_VALUE_TABLE_TYPE, table_->table_type());
+      session_ = NewSession();
     }
 
     void InitCluster() {
@@ -118,9 +122,7 @@ namespace tablet {
     // Adds newly generated client's session and table pointers to arrays at id
     void CreateNewClient() {
       ASSERT_OK(client_->OpenTable(kTableName, &table_));
-      session_ = client_->NewSession();
-      session_->SetTimeoutMillis(kSessionTimeoutMs);
-      ASSERT_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
+
     }
 
     void ReadWriteKeysValues() {
@@ -162,16 +164,49 @@ namespace tablet {
         ASSERT_EQ("key200", result_kvs.front().first);
         ASSERT_EQ("value200", result_kvs.front().second);
       }
+
+      {
+        vector<std::future<void>> futures;
+        for (int thread_idx = 0; thread_idx < 16; ++thread_idx) {
+          futures.push_back( std::async(std::launch::async, [this, thread_idx]() {
+            auto session = NewSession();
+            LOG(INFO) << "Starting writer thread " << thread_idx;
+            for (int i = 1; i <= 5000; ++i) {
+              PutKeyValue(session.get(),
+                strings::Substitute("key$0", i), strings::Substitute("value$0", i));
+              if (i % 1000 == 0) {
+                LOG(INFO) << "Writer thread " << thread_idx << " has written " << i << " rows";
+              }
+            }
+          }));
+        }
+
+        for (auto& fut : futures) {
+          fut.wait();
+        }
+      }
     }
 
    private:
-    void PutKeyValue(string key, string value) {
+    shared_ptr<YBSession> NewSession() {
+      shared_ptr<YBSession> session = client_->NewSession();
+      session->SetTimeoutMillis(60000);
+      CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+      return session;
+    }
+
+    void PutKeyValue(YBSession* session, string key, string value) {
       gscoped_ptr<YBInsert> insert(table_->NewInsert());
       insert->mutable_row()->SetBinary("k", key);
       insert->mutable_row()->SetBinary("v", value);
-      CHECK_OK(session_->Apply(insert.release()));
-      CHECK_OK(session_->Flush());
+      CHECK_OK(session->Apply(insert.release()));
+      CHECK_OK(session->Flush());
     }
+
+    void PutKeyValue(string key, string value) {
+      PutKeyValue(session_.get(), std::move(key), std::move(value));
+    }
+
 
     void ConfigureScanner(YBScanner* scanner) {
       scanner->SetSelection(YBClient::ReplicaSelection::LEADER_ONLY);
@@ -195,10 +230,10 @@ namespace tablet {
     static const int kSessionTimeoutMs = 60000;
 
     std::shared_ptr<MiniCluster> cluster_;
-    client::sp::shared_ptr<YBClient> client_;
-    client::sp::shared_ptr<YBTable> table_;
+    shared_ptr<YBClient> client_;
+    shared_ptr<YBTable> table_;
     YBSchema schema_;
-    client::sp::shared_ptr<YBSession> session_;
+    shared_ptr<YBSession> session_;
   };
 
   const char* const KVTableTest::kTableName = "kv-table-test-tbl";

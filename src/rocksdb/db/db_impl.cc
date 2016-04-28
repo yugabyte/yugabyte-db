@@ -4166,6 +4166,7 @@ Status DBImpl::WriteWithCallback(const WriteOptions& write_options,
 
 Status DBImpl::WriteImpl(const WriteOptions& write_options,
                          WriteBatch* my_batch, WriteCallback* callback) {
+
   if (my_batch == nullptr) {
     return Status::Corruption("Batch is nullptr!");
   }
@@ -4174,6 +4175,11 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
 
   Status status;
+
+  status = my_batch->ValidateUserSequenceNumbers();
+  if (!status.ok()) {
+    return status;
+  }
 
   bool xfunc_attempted_write = false;
   XFUNC_TEST("transaction", "transaction_xftest_write_impl",
@@ -4371,6 +4377,8 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     // 3. Deletes or SingleDeletes are not okay if filtering deletes
     //    (controlled by both batch and memtable setting)
     // 4. Merges are not okay
+    // 5. YugaByte-specific user-specified sequence numbers are currently not compatible with
+    //    parallel memtable writes.
     //
     // Rules 1..3 are enforced by checking the options
     // during startup (CheckConcurrentWritesSupported), so if
@@ -4382,17 +4390,51 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         db_options_.allow_concurrent_memtable_write && write_group.size() > 1;
     int total_count = 0;
     uint64_t total_byte_size = 0;
+    bool has_user_sequence_numbers = false;
+    bool has_auto_sequence_numbers = false;
+    SequenceNumber min_user_sequence_number = kMaxSequenceNumber;
+    SequenceNumber max_user_sequence_number = 0;
     for (auto writer : write_group) {
       if (writer->CheckCallback(this)) {
         total_count += WriteBatchInternal::Count(writer->batch);
         total_byte_size = WriteBatchInternal::AppendedByteSize(
             total_byte_size, WriteBatchInternal::ByteSize(writer->batch));
         parallel = parallel && !writer->batch->HasMerge();
+        if (writer->batch->HasUserSequenceNumbers()) {
+          has_user_sequence_numbers = true;
+          min_user_sequence_number = std::min(min_user_sequence_number,
+            writer->batch->MinUserSequenceNumber());
+          max_user_sequence_number = std::max(max_user_sequence_number,
+            writer->batch->MaxUserSequenceNumber());
+          parallel = false;
+        } else if (writer->batch->Count() > 0) {
+          has_auto_sequence_numbers = true;
+        }
       }
     }
+    // Only one of the two modes of specifying sequence numbers is allowed.
+    assert(!has_user_sequence_numbers || !has_auto_sequence_numbers);
 
-    const SequenceNumber current_sequence = last_sequence + 1;
-    last_sequence += total_count;
+    const SequenceNumber current_sequence =
+      has_user_sequence_numbers ? min_user_sequence_number : last_sequence + 1;
+
+#ifndef NDEBUG
+    if (current_sequence <= last_sequence) {
+      Log(InfoLogLevel::FATAL_LEVEL, db_options_.info_log,
+        "Current sequence number %" PRIu64 " is <= last sequence number %" PRIu64,
+        current_sequence, last_sequence);
+    }
+#endif
+
+    if (has_user_sequence_numbers) {
+      // YugaByte use case: we are assuming that we are applying batches in the order they appear
+      // in the Raft log one by one. Each batch has user-specified sequence numbers for all updates
+      // (puts, deletes, etc.) within it.
+      last_sequence = max_user_sequence_number;
+    } else {
+      // Reserve sequence numbers for all individual updates in this batch group.
+      last_sequence += total_count;
+    }
 
     // Record statistics
     RecordTick(stats_, NUMBER_KEYS_WRITTEN, total_count);
@@ -4406,6 +4448,8 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
     uint64_t log_size = 0;
     if (!write_options.disableWAL) {
+      // User-defined sequence numbers currently can only be used with disabled WAL.
+      assert(!has_user_sequence_numbers);
       PERF_TIMER_GUARD(write_wal_time);
 
       WriteBatch* merged_batch = nullptr;
@@ -4501,6 +4545,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
         }
 
       } else {
+        // User-defined sequence numbers are currently incompatible with parallel memstore
+        // insertion.
+        assert(!has_user_sequence_numbers);
         WriteThread::ParallelGroup pg;
         pg.leader = &w;
         pg.last_writer = last_writer;

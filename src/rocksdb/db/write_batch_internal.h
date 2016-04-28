@@ -97,7 +97,7 @@ class WriteBatchInternal {
   // Return the seqeunce number for the start of this batch.
   static SequenceNumber Sequence(const WriteBatch* batch);
 
-  // Store the specified number as the seqeunce number for the start of
+  // Store the specified number as the sequence number for the start of
   // this batch.
   static void SetSequence(WriteBatch* batch, SequenceNumber seq);
 
@@ -158,6 +158,9 @@ class WriteBatchInternal {
   // Returns the byte size of appending a WriteBatch with ByteSize
   // leftByteSize and a WriteBatch with ByteSize rightByteSize
   static size_t AppendedByteSize(size_t leftByteSize, size_t rightByteSize);
+
+  // Return user sequence numbers by value. This can be used for logging;
+  static std::vector<SequenceNumber> GetUserSequenceNumbers(const WriteBatch& b);
 };
 
 }  // namespace rocksdb

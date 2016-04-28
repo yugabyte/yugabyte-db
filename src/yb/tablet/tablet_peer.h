@@ -269,6 +269,8 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   Status StartPendingTransactions(consensus::RaftPeerPB::Role my_role,
                                   const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
+  scoped_refptr<TransactionDriver> CreateTransactionDriver();
+
   const scoped_refptr<TabletMetadata> meta_;
 
   const std::string tablet_id_;

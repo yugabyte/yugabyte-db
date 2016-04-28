@@ -12,7 +12,8 @@ CLEAN_FILES = # deliberately empty, so we can append below.
 CFLAGS += ${EXTRA_CFLAGS}
 # See the following link for old vs. new C++ ABI differences:
 # https://gcc.gnu.org/onlinedocs/gcc-5.2.0/libstdc++/manual/manual/using_dual_abi.html
-CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 -fPIC -DGFLAGS=google ${EXTRA_CXXFLAGS}
+CXXFLAGS += -D_GLIBCXX_USE_CXX11_ABI=0 -fPIC -DGFLAGS=google ${EXTRA_CXXFLAGS} \
+  -include precompiled_header.h -Winvalid-pch
 LDFLAGS += $(EXTRA_LDFLAGS) -lgflags
 MACHINE ?= $(shell uname -m)
 ARFLAGS = rs
@@ -352,7 +353,8 @@ TESTS = \
 	compaction_job_stats_test \
 	transaction_test \
 	ldb_cmd_test \
-	iostats_context_test
+	iostats_context_test \
+	user_sequence_number_test
 
 SUBSET :=  $(shell echo $(TESTS) |sed s/^.*$(ROCKSDBTESTS_START)/$(ROCKSDBTESTS_START)/)
 
@@ -720,6 +722,7 @@ clean:
 	rm -f librocksdb*.a librocksdb*.so librocksdb*.so.*
 	rm -f librocksdb*.dylib librocksdb*.dylib.*
 	rm -rf $(CLEAN_FILES) ios-x86 ios-arm scan_build_report
+	rm -f *.gch
 	find . -name "*.[oda]" -exec rm -f {} \;
 	find . -type f -regex ".*\.\(\(gcda\)\|\(gcno\)\)" -exec rm {} \;
 	rm -rf bzip2* snappy* zlib* lz4*
@@ -1080,6 +1083,9 @@ ldb: tools/ldb.o $(LIBOBJECTS)
 iostats_context_test: util/iostats_context_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS)
 
+user_sequence_number_test: db/user_sequence_number_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
 #-------------------------------------------------
 # make install related stuff
 INSTALL_PATH ?= /usr/local
@@ -1251,7 +1257,6 @@ xfunc:
 		make check ROCKSDB_XFUNC_TEST="$$xftest" tests-regexp="DBTest" ;\
 	done
 
-
 # ---------------------------------------------------------------------------
 #  	Platform-specific compilation
 # ---------------------------------------------------------------------------
@@ -1285,6 +1290,15 @@ else
 .c.o:
 	$(AM_V_CC)$(CC) $(CFLAGS) -c $< -o $@
 endif
+
+precompiled_header: precompiled_header.h.gch
+
+precompiled_header.h.gch: precompiled_header.h
+	$(AM_V_CC)$(CXX) $(CXXFLAGS) -x c++-header -c $< -o $@
+
+# This does not include all object files, but the rest of them (e.g. tests) depend on ones listed
+# here.
+$(LIBOBJECTS) $(BENCHTOOLOBJECTS) $(MOCKOBJECTS): precompiled_header.h.gch
 
 # ---------------------------------------------------------------------------
 #  	Source files dependencies detection

@@ -67,6 +67,7 @@
 #include "yb/util/url-coding.h"
 
 #include "rocksdb/db.h"
+#include "rocksdb/write_batch.h"
 #include "key_value_iterator.h"
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
@@ -435,42 +436,10 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarInsertUnlocked(tx_state, insert, comps, &stats);
-    case TableType::KEY_VALUE_TABLE_TYPE:
-      return KeyValuePutUnlocked(tx_state, insert);
     default:
       LOG(FATAL) << "Cannot perform an insert for table type " << table_type_;
   }
   return Status::IllegalState("This cannot happen");
-}
-
-Status Tablet::KeyValuePutUnlocked(
-    WriteTransactionState *tx_state,
-    RowOp *insert) {
-
-  CHECK_EQ(insert->decoded_op.type, RowOperationsPB_Type_INSERT);
-  ConstContiguousRow r(schema(), insert->decoded_op.row_data);
-
-  rocksdb::WriteOptions write_options;
-  write_options.sync = false;
-  // We disable the WAL in RocksDB because we already have the Raft log and we should replay it
-  // during recovery.
-  write_options.disableWAL = true;
-
-  const Slice* key_slice = reinterpret_cast<const Slice*>(r.cell(0).ptr());
-  const Slice* value_slice = reinterpret_cast<const Slice*>(r.cell(1).ptr());
-
-  rocksdb::Status put_status = rocksdb_->Put(
-    write_options,
-    rocksdb::Slice(reinterpret_cast<const char*>(key_slice->data()), key_slice->size()),
-    rocksdb::Slice(reinterpret_cast<const char*>(value_slice->data()), value_slice->size()));
-
-  if (put_status.ok()) {
-    insert->SetInsertSucceeded(0);
-    return Status::OK();
-  }
-  auto error_status = Status::IOError(put_status.ToString());
-  insert->SetFailed(error_status);
-  return error_status;
 }
 
 Status Tablet::KuduColumnarInsertUnlocked(
@@ -604,13 +573,74 @@ void Tablet::StartApplying(WriteTransactionState* tx_state) {
 
 void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
   StartApplying(tx_state);
-  for (RowOp* row_op : tx_state->row_ops()) {
-    ApplyRowOperation(tx_state, row_op);
+  switch (table_type_) {
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      for (RowOp* row_op : tx_state->row_ops()) {
+        ApplyRowOperation(tx_state, row_op);
+      }
+      break;
+    case TableType::KEY_VALUE_TABLE_TYPE:
+      {
+        rocksdb::WriteOptions write_options;
+        write_options.sync = false;
+        // We disable the WAL in RocksDB because we already have the Raft log and we should
+        // replay it during recovery.
+        write_options.disableWAL = true;
+        rocksdb::WriteBatch write_batch;
+        auto seq_num = static_cast<rocksdb::SequenceNumber>(tx_state->op_id().index());
+        for (RowOp* row_op : tx_state->row_ops()) {
+          switch (row_op->decoded_op.type) {
+            case RowOperationsPB_Type_INSERT:
+              {
+                ConstContiguousRow r(schema(), row_op->decoded_op.row_data);
+                const Slice* key_slice = reinterpret_cast<const Slice*>(r.cell(0).ptr());
+                const Slice* value_slice = reinterpret_cast<const Slice*>(r.cell(1).ptr());
+
+                // Use the Raft index as the basis of RocksDB sequence id. Note that the index part
+                // of the Raft OpId keeps increasing even across term boundaries, and all peers must
+                // agree at the log entry located at a particular index as long as it has been
+                // committed, so we can ignore the term here. We are also converting from signed to
+                // unsigned 64-bit integer. For now we are assuming that it will be a while until
+                // the Raft index gets close to kMaxSequenceNumber (72057594037927935).
+                write_batch.AddUserSequenceNumber(seq_num);
+
+                write_batch.Put(
+                    rocksdb::Slice(
+                        reinterpret_cast<const char*>(key_slice->data()), key_slice->size()),
+                    rocksdb::Slice(
+                        reinterpret_cast<const char*>(value_slice->data()), value_slice->size()));
+                }
+              break;
+            default:
+              LOG(FATAL) << "Unsupported row operation type " << row_op->decoded_op.type
+                         << " for key-value tables";
+          }
+        }
+        auto rocksdb_write_status = rocksdb_->Write(write_options, &write_batch);
+        if (!rocksdb_write_status.ok()) {
+          LOG(FATAL) << "Failed to write a batch with " << write_batch.Count() << " operations"
+                     << " into RocksDB";
+        }
+        for (RowOp* row_op : tx_state->row_ops()) {
+          switch (row_op->decoded_op.type) {
+            case RowOperationsPB_Type_INSERT:
+              row_op->SetInsertSucceeded(/* mrs_id = */ 0);
+              break;
+            default:
+              LOG(FATAL) << "Unsupported row operation type " << row_op->decoded_op.type
+                         << " (we should never get here -- should have failed earlier)";
+          }
+        }
+      }
+      break;
+    default:
+      LOG(FATAL) << "Invalid table type: " << table_type_;
   }
 }
 
 void Tablet::ApplyRowOperation(WriteTransactionState* tx_state,
                                RowOp* row_op) {
+  assert(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE);
   switch (row_op->decoded_op.type) {
     case RowOperationsPB::INSERT:
       ignore_result(InsertUnlocked(tx_state, row_op));

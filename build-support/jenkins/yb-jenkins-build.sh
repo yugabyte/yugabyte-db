@@ -8,6 +8,9 @@ Usage: ${0##*} <options>
 Options:
   -h, --help
     Show help
+  --delete-arc-patch-branches
+    Delete branches starting with "arcpatch-D..." (except the current branch) so that the Jenkins
+    Phabricator plugin does not give up after three attempts.
 
 Environment variables:
   JOB_NAME
@@ -21,11 +24,16 @@ EOT
 
 }
 
+delete_arc_patch_branches=false
+
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
       print_help
       exit 0
+    ;;
+    --delete-arc-patch-branches)
+      delete_arc_patch_branches=true
     ;;
     *)
       echo "Invalid option: $1" >&2
@@ -36,7 +44,20 @@ done
 
 # TODO: determine BUILD_TYPE automatically based on JOB_NAME if not specified.
 
-rm -rf build/debug/test-logs/*
+if "$delete_arc_patch_branches"; then
+  echo "Deleting branches starting with 'arcpatch-D'"
+  current_branch=$( git rev-parse --abbrev-ref HEAD )
+  for branch_name in $( git for-each-ref --format="%(refname)" refs/heads/ ); do
+    branch_name=${branch_name#refs/heads/}
+    if [[ "$branch_name" =~ ^arcpatch-D ]]; then
+      if [ "$branch_name" == "$current_branch" ]; then
+        echo "'$branch_name' is the current branch, not deleting."
+      else
+        ( set -x; git branch -D "$branch_name" )
+      fi
+    fi
+  done
+fi
 
 if [ -n "${YB_NUM_TESTS_TO_RUN:-}" ]; then
 

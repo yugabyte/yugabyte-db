@@ -31,10 +31,12 @@ Options:
   --use-ld-gold
     Specify to use the ld.gold linker.
   --build-all-targets
-    Specify to build tests, tools, and benchmarks
-  --target <target>
-    Explicitly specify an additional Makefile target to build. This option can be repeated and all
-    targets specified this way will be built.
+
+  --targets <targets>
+    Explicitly specify additional Makefile targets to build. <targets> can be one target or a
+    whitespace-spearated list of targets. This option can be repeated and all targets specified this
+    way will be built. A special-case target "all" is replaced with our custom "complete set" of
+    targets (tests, tools, etc.)
   --skip-link-dir-creation
     Skip creation of a symlink directory tree for an out-of-source RocksDB build. This can be used
     if we know this has already been done (e.g. when building a test right after building the
@@ -51,10 +53,10 @@ cxx_compiler=""
 c_compiler=""
 use_ld_gold=false
 verbose=false
-build_all_targets=false
 skip_link_dir_creation=false
 extra_include_dirs=()
 extra_lib_dirs=()
+build_all_targets=false
 
 make_opts=()
 make_targets=()
@@ -105,8 +107,8 @@ while [ $# -ne 0 ]; do
     --build-all-targets)
       build_all_targets=true
     ;;
-    --target)
-      make_targets+=( "$2" )
+    --targets)
+      make_targets+=( $2 )
       shift
     ;;
     --skip-link-dir-creation)
@@ -199,16 +201,31 @@ case "$link_mode" in
     exit 1
 esac
 
+new_make_targets=()
+build_all_targets=false
+for target in "${make_targets[@]}"; do
+  if [ "$target" == "all" ]; then
+    build_all_targets=true
+  else
+    new_make_targets+=( "$target" )
+  fi
+done
+
 if [ "$debug_level" -gt 0 ] && $build_all_targets; then
   # We can only build tests if NDEBUG is not defined (otherwise e.g. db_test.cc fails to build).
   # TODO: try to build as many tests as possible in release mode.
   # env_mirror_test does not seem to be built as part of the tests target, so we add it explicitly.
-  make_targets+=( tests env_mirror_test )
+  new_make_targets+=( tests env_mirror_test )
 fi
 
 if $build_all_targets; then
-  make_targets+=( tools benchmarks )
+  new_make_targets+=( tools benchmarks )
 fi
+
+# Sort / deduplicate the targets
+IFS=$'\n'
+make_targets=( $( for t in "${new_make_targets[@]}"; do echo "$t"; done | sort | uniq ) )
+unset IFS
 
 # Normalize the directory in case it contains relative components ("..").
 build_dir=$( cd "$build_dir" && pwd )

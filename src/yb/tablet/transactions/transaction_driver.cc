@@ -51,7 +51,8 @@ TransactionDriver::TransactionDriver(TransactionTracker *txn_tracker,
                                      Log* log,
                                      ThreadPool* prepare_pool,
                                      ThreadPool* apply_pool,
-                                     TransactionOrderVerifier* order_verifier)
+                                     TransactionOrderVerifier* order_verifier,
+                                     TableType table_type)
     : txn_tracker_(txn_tracker),
       consensus_(consensus),
       log_(log),
@@ -61,7 +62,8 @@ TransactionDriver::TransactionDriver(TransactionTracker *txn_tracker,
       trace_(new Trace()),
       start_time_(MonoTime::Now(MonoTime::FINE)),
       replication_state_(NOT_REPLICATING),
-      prepare_state_(NOT_PREPARED) {
+      prepare_state_(NOT_PREPARED),
+      table_type_(table_type) {
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
@@ -344,7 +346,17 @@ Status TransactionDriver::ApplyAsync() {
   }
 
   TRACE_EVENT_FLOW_BEGIN0("txn", "ApplyTask", this);
-  return apply_pool_->SubmitClosure(Bind(&TransactionDriver::ApplyTask, Unretained(this)));
+  switch (table_type_) {
+    case TableType::KEY_VALUE_TABLE_TYPE:
+      // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
+      // the order.
+      ApplyTask();
+      return Status::OK();
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      return apply_pool_->SubmitClosure(Bind(&TransactionDriver::ApplyTask, Unretained(this)));
+    default:
+      LOG(FATAL) << "Invalid table type: " << table_type_;
+  }
 }
 
 void TransactionDriver::ApplyTask() {
@@ -381,10 +393,14 @@ void TransactionDriver::ApplyTask() {
       CHECK_OK(CommitWait());
     }
 
-    transaction_->PreCommit();
-    {
-      TRACE_EVENT1("txn", "AsyncAppendCommit", "txn", this);
-      CHECK_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(DoNothingStatusCB)));
+    // We only write the "commit" records to the local log for legacy Kudu tables. We are not
+    // writing these records for RocksDB-based tables.
+    if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      transaction_->PreCommit();
+      {
+        TRACE_EVENT1("txn", "AsyncAppendCommit", "txn", this);
+        CHECK_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(DoNothingStatusCB)));
+      }
     }
     Finalize();
   }

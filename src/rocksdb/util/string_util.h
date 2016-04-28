@@ -27,4 +27,20 @@ inline std::string ToString(T value) {
 #endif
 }
 
+template <typename T>
+inline std::string VectorToString(const std::vector<T> vec) {
+  std::stringstream os;
+  os << "[";
+  bool need_separator = false;
+  for (auto item : vec) {
+    if (need_separator) {
+      os << ", ";
+    }
+    need_separator = true;
+    os << item;
+  }
+  os << "]";
+  return os.str();
+}
+
 }  // namespace rocksdb

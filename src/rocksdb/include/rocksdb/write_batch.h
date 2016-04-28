@@ -29,8 +29,11 @@
 #include <stack>
 #include <string>
 #include <stdint.h>
+#include <vector>
+#include <algorithm>
 #include "rocksdb/status.h"
 #include "rocksdb/write_batch_base.h"
+#include "rocksdb/types.h"
 
 namespace rocksdb {
 
@@ -190,6 +193,13 @@ class WriteBatch : public WriteBatchBase {
     // iteration is halted. Otherwise, it continues iterating. The default
     // implementation always returns true.
     virtual bool Continue();
+
+    // YugaByte-specific feature:
+    // Set the user-defined sequence number for the next operation to be handled. The implementation
+    // has to store it in a field and use it for the the next operation instead of the default
+    // auto-incremented sequence number. The alternative would be to add a YB-specific parameter to
+    // each of the above-listed update methods, which would be much more invasive.
+    virtual void SetUserSequenceNumber(SequenceNumber user_sequence_number) {}
   };
   Status Iterate(Handler* handler) const;
 
@@ -214,6 +224,30 @@ class WriteBatch : public WriteBatchBase {
   // Returns trie if MergeCF will be called during Iterate
   bool HasMerge() const;
 
+  // Add a user-defined sequence number. This has to be called before each update method, or not
+  // called at all. This is a YB-specific feature, and we are implementing this out-of-band to
+  // disrupt the regular API as little as possible.
+  void AddUserSequenceNumber(SequenceNumber user_sequence_number) {
+    // Guard against the case when this is being called for the first time after some update methods
+    // have already been called.
+    assert(Count() == 0 || !user_sequence_numbers_.empty());
+    user_sequence_numbers_.push_back(user_sequence_number);
+  }
+
+  bool HasUserSequenceNumbers() const {
+    return !user_sequence_numbers_.empty();
+  }
+
+  SequenceNumber MinUserSequenceNumber() const {
+    assert(HasUserSequenceNumbers());
+    return *std::min_element(user_sequence_numbers_.begin(), user_sequence_numbers_.end());
+  }
+
+  SequenceNumber MaxUserSequenceNumber() const {
+    assert(HasUserSequenceNumbers());
+    return *std::max_element(user_sequence_numbers_.begin(), user_sequence_numbers_.end());
+  }
+
   using WriteBatchBase::GetWriteBatch;
   WriteBatch* GetWriteBatch() override { return this; }
 
@@ -225,6 +259,8 @@ class WriteBatch : public WriteBatchBase {
   WriteBatch& operator=(const WriteBatch& src);
   WriteBatch& operator=(WriteBatch&& src);
 
+  Status ValidateUserSequenceNumbers();
+
  private:
   friend class WriteBatchInternal;
   SavePoints* save_points_;
@@ -234,6 +270,8 @@ class WriteBatch : public WriteBatchBase {
 
   // Performs deferred computation of content_flags if necessary
   uint32_t ComputeContentFlags() const;
+
+  std::vector<SequenceNumber> user_sequence_numbers_;
 
  protected:
   std::string rep_;  // See comment in write_batch.cc for the format of rep_

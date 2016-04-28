@@ -126,6 +126,26 @@ TEST_F(WriteBatchTest, Multiple) {
   ASSERT_EQ(3, batch.Count());
 }
 
+TEST_F(WriteBatchTest, MultipleWithUserSequenceNumbers) {
+  WriteBatch batch;
+
+  batch.AddUserSequenceNumber(2001);
+  batch.Put(Slice("foo"), Slice("bar"));
+
+  batch.AddUserSequenceNumber(2002);
+  batch.Delete(Slice("box"));
+
+  batch.AddUserSequenceNumber(2003);
+  batch.Put(Slice("baz"), Slice("boo"));
+
+  ASSERT_EQ(3, WriteBatchInternal::Count(&batch));
+  ASSERT_EQ("Put(baz, boo)@2003"
+    "Delete(box)@2002"
+    "Put(foo, bar)@2001",
+    PrintContents(&batch));
+  ASSERT_EQ(3, batch.Count());
+}
+
 TEST_F(WriteBatchTest, Corruption) {
   WriteBatch batch;
   batch.Put(Slice("foo"), Slice("bar"));

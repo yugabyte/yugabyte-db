@@ -156,6 +156,7 @@ CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 
 if [ "$IS_MAC" == "1" ]; then
   export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
+  export DYLD_FALLBACK_LIBRARY_PATH+=":$SOURCE_ROOT/thirdparty/gflags-2.1.2/lib"
   echo "Set DYLD_FALLBACK_LIBRARY_PATH to $DYLD_FALLBACK_LIBRARY_PATH"
 fi
 

@@ -1078,7 +1078,6 @@ endif (UNIX)
 
 add_subdirectory(src/rocksdb)
 
-
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
 add_dependencies(rocksdb build_rocksdb_library)
 

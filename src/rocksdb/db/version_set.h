@@ -643,7 +643,9 @@ class VersionSet {
 
   // Set the last sequence number to s.
   void SetLastSequence(uint64_t s) {
-    assert(s >= last_sequence_);
+#ifndef NDEBUG
+    EnsureIncreasingLastSequence(last_sequence_, s);
+#endif
     last_sequence_.store(s, std::memory_order_release);
   }
 
@@ -735,6 +737,10 @@ class VersionSet {
 
   ColumnFamilyData* CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                                        VersionEdit* edit);
+
+#ifndef NDEBUG
+  void EnsureIncreasingLastSequence(SequenceNumber prev_last_seq, SequenceNumber new_last_seq);
+#endif
 
   std::unique_ptr<ColumnFamilySet> column_family_set_;
 

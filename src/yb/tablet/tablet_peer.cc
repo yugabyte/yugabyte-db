@@ -531,13 +531,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
 
 Status TabletPeer::NewLeaderTransactionDriver(gscoped_ptr<Transaction> transaction,
                                               scoped_refptr<TransactionDriver>* driver) {
-  scoped_refptr<TransactionDriver> tx_driver = new TransactionDriver(
-    &txn_tracker_,
-    consensus_.get(),
-    log_.get(),
-    prepare_pool_.get(),
-    apply_pool_,
-    &txn_order_verifier_);
+  scoped_refptr<TransactionDriver> tx_driver = CreateTransactionDriver();
   RETURN_NOT_OK(tx_driver->Init(transaction.Pass(), consensus::LEADER));
   driver->swap(tx_driver);
 
@@ -546,13 +540,7 @@ Status TabletPeer::NewLeaderTransactionDriver(gscoped_ptr<Transaction> transacti
 
 Status TabletPeer::NewReplicaTransactionDriver(gscoped_ptr<Transaction> transaction,
                                                scoped_refptr<TransactionDriver>* driver) {
-  scoped_refptr<TransactionDriver> tx_driver = new TransactionDriver(
-    &txn_tracker_,
-    consensus_.get(),
-    log_.get(),
-    prepare_pool_.get(),
-    apply_pool_,
-    &txn_order_verifier_);
+  scoped_refptr<TransactionDriver> tx_driver = CreateTransactionDriver();
   RETURN_NOT_OK(tx_driver->Init(transaction.Pass(), consensus::REPLICA));
   driver->swap(tx_driver);
 
@@ -647,6 +635,16 @@ Status FlushInflightsToLogCallback::WaitForInflightsAndFlushLog() {
   return Status::OK();
 }
 
+scoped_refptr<TransactionDriver> TabletPeer::CreateTransactionDriver() {
+  return scoped_refptr<TransactionDriver>(new TransactionDriver(
+      &txn_tracker_,
+      consensus_.get(),
+      log_.get(),
+      prepare_pool_.get(),
+      apply_pool_,
+      &txn_order_verifier_,
+      tablet_->table_type()));
+}
 
 }  // namespace tablet
 }  // namespace yb

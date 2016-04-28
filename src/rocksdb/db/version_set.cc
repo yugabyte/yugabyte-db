@@ -3457,4 +3457,17 @@ uint64_t VersionSet::GetTotalSstFilesSize(Version* dummy_versions) {
   return total_files_size;
 }
 
+#ifndef NDEBUG
+void VersionSet::EnsureIncreasingLastSequence(
+    SequenceNumber prev_last_seq,
+    SequenceNumber new_last_seq) {
+  if (new_last_seq <= prev_last_seq) {
+    Log(InfoLogLevel::FATAL_LEVEL, db_options_->info_log,
+        "New last sequence id %" PRIu64 " is lower than or equal to "
+        "the previous last sequence id %" PRIu64,
+        new_last_seq, prev_last_seq);
+  }
+};
+#endif
+
 }  // namespace rocksdb

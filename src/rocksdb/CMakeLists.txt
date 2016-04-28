@@ -59,7 +59,7 @@ add_custom_target(build_rocksdb_library ALL
   COMMENT "Building RocksDB library")
 
 add_custom_target(build_rocksdb_all_targets ALL
-  COMMAND ${BUILD_ROCKSDB_ARGS} --build-all-targets
+  COMMAND ${BUILD_ROCKSDB_ARGS} --targets all
   COMMENT "Building all RocksDB targets, including tests, benchmarks, and tools"
   VERBATIM)
 
@@ -68,7 +68,7 @@ add_dependencies(build_rocksdb_all_targets build_rocksdb_library)
 set(ROCKSDB_BUILD_DIR "${YB_BUILD_DIR}/rocksdb-build")
 
 # Add separate targets for tests so we can run in them in CLion. A potential problem with this setup
-# is that make may be invoked multiple times
+# is that make may be invoked multiple times.
 file(GLOB_RECURSE ROCKSDB_TEST_SOURCES "*_test.cc")
 foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
   get_filename_component(ROCKSDB_TEST_NAME "${ROCKSDB_TEST_SRC}" NAME_WE)
@@ -80,7 +80,7 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
      NOT "${ROCKSDB_TEST_NAME}" STREQUAL "db_sanity_test")
     set(ROCKSDB_TEST_TARGET_NAME "rocksdb_${ROCKSDB_TEST_NAME}")
     add_custom_target("${ROCKSDB_TEST_TARGET_NAME}"
-      COMMAND ${BUILD_ROCKSDB_ARGS} --target "${ROCKSDB_TEST_NAME}" --skip-link-dir-creation
+      COMMAND ${BUILD_ROCKSDB_ARGS} --targets "${ROCKSDB_TEST_NAME}" --skip-link-dir-creation
       DEPENDS build_rocksdb_library ${ROCKSDB_TEST_SRC}
       COMMENT "RocksDB test ${ROCKSDB_TEST_NAME}"
       VERBATIM)
@@ -91,13 +91,6 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
     endif()
     add_test(NAME "${ROCKSDB_TEST_TARGET_NAME}"
       COMMAND "${BUILD_SUPPORT_DIR}/run-test.sh" "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_BINARY_NAME}")
-
-    # The "imported executable" below is an attempt to make it possible to run RocksDB tests from
-    # CLion without extra configuration.
-    # TODO: make this work or remove it.
-    add_executable("rocksdb_${ROCKSDB_TEST_NAME}_executable" IMPORTED GLOBAL)
-    set_property(TARGET "rocksdb_${ROCKSDB_TEST_NAME}_executable" PROPERTY IMPORTED_LOCATION
-      "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_NAME}")
   endif()
 endforeach(ROCKSDB_TEST_SRC)
 
@@ -106,9 +99,8 @@ endforeach(ROCKSDB_TEST_SRC)
 add_library(
   rocksdb_dummy_library_for_clion
   EXCLUDE_FROM_ALL
-  ${ROCKSDB_SOURCES}
+  ${ROCKSDB_SOURCES})
 
-)
 # Allow navigating to RocksDB's internal include files in CLion.
 target_include_directories(rocksdb_dummy_library_for_clion PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
