@@ -1,5 +1,5 @@
 {
-  "phabricator.uri" : "http://phabricator.dev.yugabyte.com/",
+  "phabricator.uri" : "https://phabricator.dev.yugabyte.com/",
   "repository.callsign": "YB",
   "git:arc.feature.start.default" : "upstream/master",
   "arc.land.onto.default": "master",
