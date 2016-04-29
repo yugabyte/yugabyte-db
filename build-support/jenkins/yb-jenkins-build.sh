@@ -74,6 +74,18 @@ export BUILD_PYTHON=0
 export BUILD_JAVA=0
 export YB_KEEP_BUILD_ARTIFACTS=true
 
+echo
+echo ----------------------------------------------------------------------------------------------
+echo ifconfig
+echo ----------------------------------------------------------------------------------------------
+echo
+
+ifconfig
+
+echo
+echo ----------------------------------------------------------------------------------------------
+echo
+
 set +e
 build-support/jenkins/build-and-test.sh
 exit_code=$?

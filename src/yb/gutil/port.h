@@ -231,9 +231,6 @@ inline size_t strnlen(const char *s, size_t maxlen) {
   return maxlen;
 }
 
-namespace std {}  // Avoid error if we didn't see std.
-using namespace std;  // Just like VC++, we need a using here.
-
 // Doesn't exist on OSX; used in google.cc for send() to mean "no flags".
 #define MSG_NOSIGNAL 0
 
