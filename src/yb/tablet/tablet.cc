@@ -223,7 +223,7 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb_options.create_if_missing = true;
   rocksdb_options.disableDataSync = true;
   rocksdb_options.statistics = rocksdb_statistics_;
-  rocksdb_options.info_log = make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id()));
+  rocksdb_options.info_log = std::make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id()));
   rocksdb_options.info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
 
   // TODO: move RocksDB directory management to FsManager.
