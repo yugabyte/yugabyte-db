@@ -190,6 +190,10 @@ std::string HistogramImpl::ToString() const {
 
 void HistogramImpl::Data(HistogramData * const data) const {
   assert(data);
+  data->count = num_;
+  data->sum = sum_;
+  data->min = min_;
+  data->max = max_;
   data->median = Median();
   data->percentile95 = Percentile(95);
   data->percentile99 = Percentile(99);

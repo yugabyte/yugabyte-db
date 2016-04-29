@@ -327,6 +327,10 @@ const std::vector<std::pair<Histograms, std::string>> HistogramsNameMap = {
 };
 
 struct HistogramData {
+  double count;
+  double min;
+  double max;
+  double sum;
   double median;
   double percentile95;
   double percentile99;

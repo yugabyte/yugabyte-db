@@ -307,12 +307,24 @@ void Tablet::EmitRocksDBMetrics(JsonWriter* writer,
     writer->String(entry.second);
     // Write the value.
     rocksdb_statistics_->histogramData(entry.first, &histogram_data);
+    writer->String("total_count");
+    writer->Double(histogram_data.count);
+    writer->String("min");
+    writer->Double(histogram_data.min);
+    writer->String("mean");
+    writer->Double(histogram_data.average);
     writer->String("median");
     writer->Double(histogram_data.median);
-    writer->String("avg");
-    writer->Double(histogram_data.average);
-    writer->String("stddev");
+    writer->String("std_dev");
     writer->Double(histogram_data.standard_deviation);
+    writer->String("percentile_95");
+    writer->Double(histogram_data.percentile95);
+    writer->String("percentile_99");
+    writer->Double(histogram_data.percentile99);
+    writer->String("max");
+    writer->Double(histogram_data.max);
+    writer->String("total_sum");
+    writer->Double(histogram_data.sum);
     // Finish the metric object.
     writer->EndObject();
   }
