@@ -126,6 +126,10 @@ for test_binary in "${test_binaries[@]}"; do
   if [ -n "$test_binary_re" ] && [[ ! "$rel_test_binary" =~ $test_binary_re ]]; then
     continue
   fi
+  if [ "$rel_test_binary" == "rocksdb-build/db_sanity_test" ]; then
+    # db_sanity_check is not a test, but a command-line tool.
+    continue
+  fi
   if is_known_non_gtest_test_by_rel_path "$rel_test_binary" || \
      [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
     tests+=( "$rel_test_binary" )
@@ -187,6 +191,13 @@ test_index=1
 global_exit_code=0
 
 echo "Starting tests at $(date)"
+
+set +u
+if [ ${#tests[@]} -eq 0 ]; then
+  echo "No tests found" >&2
+  exit 1
+fi
+set -u
 
 # Given IFS=$'\n', this is a generic way to sort an array, even if some lines contain spaces
 # (which should not be the case for our "<test_binary>:::<test>" strings).
@@ -278,6 +289,7 @@ for t in "${tests[@]}"; do
   fi
 
   if $test_failed; then
+    global_exit_code=1
     echo "Test command line: ${test_cmd_line[@]}" >&2
     echo "Log path: $test_log_path" >&2
     if [ -n "${BUILD_URL:-}" ]; then

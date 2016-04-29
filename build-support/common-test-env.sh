@@ -1,3 +1,8 @@
+if [ "$BASH_SOURCE" == "$0" ]; then
+  echo "$BASH_SOURCE must be sourced, not executed" >&2
+  exit 1
+fi
+
 make_regex() {
   local regex=""
   for item in "$@"; do
@@ -27,7 +32,6 @@ NON_GTEST_ROCKSDB_TESTS=(
   stringappend_test
 )
 NON_GTEST_ROCKSDB_TESTS_RE=$( make_regex "${NON_GTEST_ROCKSDB_TESTS[@]}" )
-
 
 # Some tests are not based on the gtest framework and don't generate an XML output file.
 # Also, RocksDB's thread_list_test is like that on Mac OS X.
