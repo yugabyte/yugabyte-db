@@ -650,7 +650,8 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
   req.set_type(REMOVE_SERVER);
   req.set_cas_config_opid_index(committed_config.opid_index());
   LOG(INFO) << state_->LogPrefixThreadSafe() << "Attempting to remove follower "
-            << uuid << " from the Raft config. Reason: " << reason;
+            << uuid << " from the Raft config at commit index "
+            << committed_config.opid_index() << ". Reason: " << reason;
   boost::optional<TabletServerErrorPB::Code> error_code;
   WARN_NOT_OK(ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code),
               state_->LogPrefixThreadSafe() + "Unable to remove follower " + uuid);
@@ -1810,7 +1811,6 @@ void RaftConsensus::DoElectionCallback(const ElectionResult& result) {
     ignore_result(SnoozeFailureDetectorUnlocked(LeaderElectionExpBackoffDeltaUnlocked(),
                                                 ALLOW_LOGGING));
   }
-
   if (result.decision == VOTE_DENIED) {
     LOG_WITH_PREFIX(INFO) << "Leader election lost for term " << result.election_term
                              << ". Reason: "
@@ -2003,7 +2003,8 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   }
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Stepping down as leader of term "
-                                   << state_->GetCurrentTermUnlocked();
+                                   << state_->GetCurrentTermUnlocked()
+                                   << " since new term is " << new_term;
     RETURN_NOT_OK(BecomeReplicaUnlocked());
   }
 

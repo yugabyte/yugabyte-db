@@ -3092,8 +3092,6 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   vector<scoped_refptr<TabletInfo> > tablets_in_range;
   table->GetTabletsInRange(req, &tablets_in_range);
 
-  TSRegistrationPB reg;
-  vector<TabletReplica> locs;
   for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
     if (!BuildLocationsForTablet(tablet, resp->add_tablet_locations()).ok()) {
       // Not running.

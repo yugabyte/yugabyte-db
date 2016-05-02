@@ -256,13 +256,17 @@ void SysCatalogTable::SysCatalogStateChanged(
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
                         << RaftPeerPB::Role_Name(new_role)
                         << ", previous role was: " << RaftPeerPB::Role_Name(old_role_);
-  if (new_role == RaftPeerPB::LEADER) {
-    CHECK_OK(leader_cb_.Run());
-  }
 
-  if (!context) {
-    LOG(WARNING) << "No context provided for state change, no action taken";
-    return;
+  // For LEADER election case only, load the sysCatalog into memory via the callback.
+  // Note that for a *single* master case, the TABLET_PEER_START is being overloaded to imply a
+  // leader creation step, as there is no election done per-se.
+  // For the change config case, LEADER is the one which started the operation, so new role is same
+  // as its old role of LEADER and hence it need not reload the sysCatalog via the callback.
+  if (new_role == RaftPeerPB::LEADER &&
+      (context->reason == StateChangeContext::NEW_LEADER_ELECTED ||
+       (cstate.config().peers_size() == 1 &&
+        context->reason == StateChangeContext::TABLET_PEER_STARTED))) {
+    CHECK_OK(leader_cb_.Run());
   }
 
   // Perform any further changes for context based reasons.
@@ -279,7 +283,6 @@ void SysCatalogTable::SysCatalogStateChanged(
     if (std::abs(new_count - old_count) != 1) {
       LOG(FATAL) << "Expected exactly one server addition or deletion, found " << new_count
                  << " servers in new config and " << old_count << " servers in old config.";
-      CHECK(false);
       return;
     }
 

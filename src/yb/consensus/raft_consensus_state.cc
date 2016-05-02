@@ -574,7 +574,6 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
     }
 
     pending_txns_.erase(iter++);
-
     // Set committed configuration.
     if (PREDICT_FALSE(round->replicate_msg()->op_type() == CHANGE_CONFIG_OP)) {
       DCHECK(round->replicate_msg()->change_config_record().has_old_config());
@@ -621,7 +620,9 @@ Status ReplicaState::CheckHasCommittedOpInCurrentTermUnlocked() const {
   int64_t term = GetCurrentTermUnlocked();
   const OpId& opid = GetCommittedOpIdUnlocked();
   if (opid.term() != term) {
-    return Status::IllegalState("Latest committed op is not from this term", OpIdToString(opid));
+    return Status::IllegalState(
+      Substitute("Latest committed opid $0 is different from current term $1",
+        OpIdToString(opid), term));
   }
   return Status::OK();
 }
