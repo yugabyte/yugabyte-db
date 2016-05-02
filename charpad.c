@@ -39,7 +39,7 @@ orafce_lpad(PG_FUNCTION_ARGS)
 	text	*string2 = PG_GETARG_TEXT_PP(2);
 	text	*ret;
 	char	*ptr1,
-			*ptr2,
+			*ptr2 = NULL,
 			*ptr2start = NULL,
 			*ptr2end = NULL,
 			*ptr_ret,
@@ -269,7 +269,7 @@ orafce_rpad(PG_FUNCTION_ARGS)
 	text	*string2 = PG_GETARG_TEXT_PP(2);
 	text	*ret;
 	char	*ptr1,
-			*ptr2,
+			*ptr2 = NULL,
 			*ptr2start = NULL,
 			*ptr2end = NULL,
 			*ptr_ret,
