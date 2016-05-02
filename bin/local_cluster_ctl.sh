@@ -324,7 +324,7 @@ start_cluster() {
   for i in $tserver_indexes; do
     existing_tserver_pid=$( find_daemon_pid tserver $i )
     if [ -n "$existing_tserver_pid" ]; then
-      echo "Tabled server $i is already running as PID $existing_tserver_pid"
+      echo "Tablet server $i is already running as PID $existing_tserver_pid"
     else
       start_tserver $i
     fi

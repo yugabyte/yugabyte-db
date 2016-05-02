@@ -1090,6 +1090,28 @@ void TabletServiceImpl::GetLogLocation(
   context->RespondSuccess();
 }
 
+void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
+                                                   ListTabletsForTabletServerResponsePB* resp,
+                                                   rpc::RpcContext* context) {
+  // Replicating logic from path-handlers.
+  vector<scoped_refptr<TabletPeer> > peers;
+  server_->tablet_manager()->GetTabletPeers(&peers);
+  for (const scoped_refptr<TabletPeer>& peer : peers) {
+    TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+
+    ListTabletsForTabletServerResponsePB::Entry* data_entry = resp->add_entries();
+    data_entry->set_table_name(status.table_name());
+    data_entry->set_tablet_id(status.tablet_id());
+
+    scoped_refptr<consensus::Consensus> consensus = peer->shared_consensus();
+    data_entry->set_is_leader(consensus && consensus->role() == consensus::RaftPeerPB::LEADER);
+    data_entry->set_state(status.state());
+  }
+
+  context->RespondSuccess();
+}
+
 void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
                                  ChecksumResponsePB* resp,
                                  rpc::RpcContext* context) {

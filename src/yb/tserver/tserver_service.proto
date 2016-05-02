@@ -19,6 +19,7 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/tserver/tserver.proto";
+import "yb/tablet/metadata.proto";
 
 service TabletServerService {
 
@@ -35,6 +36,9 @@ service TabletServerService {
   // function.
   rpc Checksum(ChecksumRequestPB)
       returns (ChecksumResponsePB);
+
+  rpc ListTabletsForTabletServer(ListTabletsForTabletServerRequestPB)
+      returns (ListTabletsForTabletServerResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -75,4 +79,19 @@ message ChecksumResponsePB {
   optional bytes scanner_id = 3;
   optional bool has_more_results = 4;
   optional fixed64 snap_timestamp = 5;
+}
+
+message ListTabletsForTabletServerRequestPB {
+}
+
+message ListTabletsForTabletServerResponsePB {
+  // An entry for each tablet.
+  message Entry {
+    optional string table_name = 1;
+    optional bytes tablet_id = 2;
+    optional bool is_leader = 3;
+    optional tablet.TabletStatePB state = 4;
+  }
+
+  repeated Entry entries = 1;
 }

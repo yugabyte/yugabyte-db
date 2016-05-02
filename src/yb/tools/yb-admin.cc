@@ -101,6 +101,7 @@ const char* const kListAllMastersOp ="list_all_masters";
 const char* const kChangeMasterConfigOp = "change_master_config";
 const char* const kDumpMastersStateOp = "dump_masters_state";
 const char* const kListTabletServersLogLocationsOp = "list_tablet_server_log_locations";
+const char* const kListTabletsForTabletServerOp = "list_tablets_for_tablet_server";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -164,7 +165,10 @@ class ClusterAdminClient {
   // List the log locations of all tablet servers, by uuid
   Status ListTabletServersLogLocations();
 
-private:
+  // List all the tablets a certain tablet server is serving
+  Status ListTabletsForTabletServer(const std::string& ts_uuid);
+
+ private:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const std::string& tablet_id,
                             TabletLocationsPB* locations);
@@ -187,6 +191,8 @@ private:
 
   // Look up the RPC address of the server with the specified UUID from the Master.
   Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
+
+  Status GetSockAddrForTS(const std::string& ts_uuid, Sockaddr* ts_addr);
 
   Status LeaderStepDown(
     const string& leader_uuid,
@@ -651,22 +657,11 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     auto ts_uuid = server.instance_id().permanent_uuid();
 
-    HostPort hp;
-    GetFirstRpcAddressForTS(ts_uuid, &hp);
+    Sockaddr ts_addr;
+    RETURN_NOT_OK(GetSockAddrForTS(ts_uuid, &ts_addr));
 
-    vector<Sockaddr> ts_addrs;
-    RETURN_NOT_OK(hp.ResolveAddresses(&ts_addrs));
-    if (ts_addrs.empty()) {
-      LOG(WARNING) << "Unable to resolve IP address for ts host: " << hp.ToString();
-      continue;
-    }
-    if (ts_addrs.size() != 1) {
-      LOG(WARNING) << "Expected only one IP for ts host, but got : " << hp.ToString();
-      continue;
-    }
-
-    std::unique_ptr<TabletServerServiceProxy>
-      ts_proxy(new TabletServerServiceProxy(messenger_, ts_addrs[0]));
+    std::unique_ptr<TabletServerServiceProxy> ts_proxy(
+        new TabletServerServiceProxy(messenger_, ts_addr));
 
     rpc::RpcController rpc;
     rpc.set_timeout(timeout_);
@@ -674,9 +669,7 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
     tserver::GetLogLocationResponsePB resp;
     ts_proxy.get()->GetLogLocation(req, &resp, &rpc);
 
-    std::cout << ts_uuid << "\t" 
-      << hp.ToString() << "\t"
-      << resp.log_location() << std::endl;
+    std::cout << ts_uuid << "\t" << ts_addr.ToString() << "\t" << resp.log_location() << std::endl;
   }
 
   return Status::OK();
@@ -747,6 +740,47 @@ Status ClusterAdminClient::DeleteTable(const string& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetSockAddrForTS(const std::string& ts_uuid, Sockaddr* ts_addr) {
+  HostPort hp;
+  GetFirstRpcAddressForTS(ts_uuid, &hp);
+
+  vector<Sockaddr> ts_addrs;
+  RETURN_NOT_OK(hp.ResolveAddresses(&ts_addrs));
+  if (ts_addrs.empty()) {
+    return Status::IllegalState(
+        Substitute("Unable to resolve IP address for ts host: $0", hp.ToString()));
+  }
+  if (ts_addrs.size() != 1) {
+    return Status::IllegalState(
+        Substitute("Expected only one IP for ts host, but got : $0", hp.ToString()));
+  }
+
+  *ts_addr = ts_addrs[0];
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListTabletsForTabletServer(const std::string& ts_uuid) {
+  Sockaddr ts_addr;
+  RETURN_NOT_OK(GetSockAddrForTS(ts_uuid, &ts_addr));
+
+  std::unique_ptr<TabletServerServiceProxy> ts_proxy(
+      new TabletServerServiceProxy(messenger_, ts_addr));
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  tserver::ListTabletsForTabletServerRequestPB req;
+  tserver::ListTabletsForTabletServerResponsePB resp;
+  RETURN_NOT_OK(ts_proxy.get()->ListTabletsForTabletServer(req, &resp, &rpc));
+
+  std::cout << "Table name\t\tTablet ID\t\t\tIs Leader\t\tState" << std::endl;
+  for (const auto& entry : resp.entries()) {
+    std::cout << entry.table_name() << "\t" << entry.tablet_id() << "\t" << entry.is_leader()
+              << "\t" << tablet::TabletStatePB_Name(entry.state()) << std::endl;
+  }
+  return Status::OK();
+}
+
 static void SetUsage(const char* argv0) {
   ostringstream str;
 
@@ -765,14 +799,20 @@ static void SetUsage(const char* argv0) {
       << " 8. " << kChangeMasterConfigOp << " "
                 << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <uuid>" << std::endl
       << " 9. " << kDumpMastersStateOp << std::endl
-      << " 10. " << kListTabletServersLogLocationsOp;
+      << " 10. " << kListTabletServersLogLocationsOp << std::endl
+      << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>";
+
   google::SetUsageMessage(str.str());
+}
+
+static void UsageAndExit(const char* prog_name) {
+  google::ShowUsageWithFlagsRestrict(prog_name, __FILE__);
+  exit(1);
 }
 
 static string GetOp(int argc, char** argv) {
   if (argc < 2) {
-    google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-    exit(1);
+    UsageAndExit(argv[0]);
   }
 
   return argv[1];
@@ -794,8 +834,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
 
   if (op == kChangeConfigOp) {
     if (argc < 5) {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
+      UsageAndExit(argv[0]);
     }
     string tablet_id = argv[2];
     string change_type = argv[3];
@@ -829,8 +868,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     }
   } else if (op == kListTabletsOp) {
     if (argc < 3) {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
+      UsageAndExit(argv[0]);
     }
     string table_name = argv[2];
     Status s = client.ListTablets(table_name);
@@ -841,8 +879,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     }
   } else if (op == kListTabletServersOp) {
     if (argc < 3) {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
+      UsageAndExit(argv[0]);
     }
     string tablet_id = argv[2];
     Status s = client.ListPerTabletTabletServers(tablet_id);
@@ -853,8 +890,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     }
   } else if (op == kDeleteTableOp) {
     if (argc < 3) {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
+      UsageAndExit(argv[0]);
     }
     string table_name = argv[2];
     Status s = client.DeleteTable(table_name);
@@ -868,14 +904,12 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     string new_uuid;
 
     if (argc != 6) {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
+      UsageAndExit(argv[0]);
     }
 
     string change_type = argv[2];
     if (change_type != "ADD_SERVER" && change_type != "REMOVE_SERVER") {
-      google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-      exit(1);
+      UsageAndExit(argv[0]);
     }
 
     new_host = argv[3];
@@ -899,10 +933,19 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       std::cerr << "Unable to list tablet server log locations: " << s.ToString() << std::endl;
       return 1;
     }
+  } else if (op == kListTabletsForTabletServerOp) {
+    if (argc != 3) {
+      UsageAndExit(argv[0]);
+    }
+    const string& ts_uuid = argv[2];
+    Status s = client.ListTabletsForTabletServer(ts_uuid);
+    if (!s.ok()) {
+      std::cerr << "Unable to list tablet server tablets: " << s.ToString() << std::endl;
+      return 1;
+    }
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
-    google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
-    exit(1);
+    UsageAndExit(argv[0]);
   }
 
   return 0;

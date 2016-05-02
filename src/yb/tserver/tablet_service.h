@@ -67,6 +67,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                            ListTabletsResponsePB* resp,
                            rpc::RpcContext* context) OVERRIDE;
 
+  virtual void ListTabletsForTabletServer(const ListTabletsForTabletServerRequestPB* req,
+                                          ListTabletsForTabletServerResponsePB* resp,
+                                          rpc::RpcContext* context) OVERRIDE;
+
   virtual void GetLogLocation(
     const GetLogLocationRequestPB* req,
     GetLogLocationResponsePB* resp,
