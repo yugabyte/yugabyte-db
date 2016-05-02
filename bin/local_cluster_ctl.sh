@@ -163,7 +163,7 @@ stop_daemon() {
     echo "Killing $daemon_type $daemon_index (pid $daemon_pid)"
     ( set -x; kill $daemon_pid )
   else
-    echo "$daemon_type $i already stopped"
+    echo "$daemon_type $daemon_index already stopped"
   fi
 }
 
@@ -217,20 +217,6 @@ increment_masters() {
   let max_running_master_index=max_running_master_index+1
   new_daemon_index=$max_running_master_index
   master_indexes=$( $SEQ 1 $max_running_master_index )
-}
-
-stop_daemon() {
-  local daemon_type=$1
-  validate_daemon_type "$daemon_type"
-  local id=$2
-  validate_daemon_index "$id"
-  local daemon_pid=$( find_daemon_pid "$daemon_type" "$id" )
-  if [ -n "$daemon_pid" ]; then
-    echo "Killing $daemon_type $id (pid $daemon_pid)"
-    ( set -x; kill $daemon_pid )
-  else
-    echo "$daemon_type $id already stopped"
-  fi
 }
 
 set_master_addresses() {
@@ -527,7 +513,7 @@ case "$cmd" in
     set_master_addresses
     start_daemon "${daemon_type}" "$new_daemon_index"
   ;;
-  stop-master|stop_tserver)
+  stop-master|stop-tserver)
     set_master_addresses
     validate_running_daemon_index "$daemon_type" "$daemon_index_to_stop"
     stop_daemon "$daemon_type" "$daemon_index_to_stop"
