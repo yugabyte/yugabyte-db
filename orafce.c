@@ -15,7 +15,6 @@ char  *orafce_timezone = NULL;
 void
 _PG_init(void)
 {
-	EmitWarningsOnPlaceholders("orafce");
 
 #if PG_VERSION_NUM < 90600
 
@@ -44,4 +43,6 @@ _PG_init(void)
 									PGC_USERSET,
 									0,
 									check_timezone, NULL, show_timezone);
+
+	EmitWarningsOnPlaceholders("orafce");
 }
