@@ -150,7 +150,9 @@ BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
 
-SOURCE_ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
+SOURCE_ROOT=$(cd "$(dirname "$BASH_SOURCE")/../.." && pwd)
+. "$SOURCE_ROOT/build-support/common-build-env.sh"
+
 BUILD_ROOT="$SOURCE_ROOT/build/$BUILD_TYPE_LOWER"
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 
@@ -201,7 +203,9 @@ if [ -d "$TOOLCHAIN_DIR" ]; then
   PATH=$TOOLCHAIN_DIR/apache-maven-3.0/bin:$PATH
 fi
 
-$SOURCE_ROOT/build-support/enable_devtoolset.sh thirdparty/build-if-necessary.sh
+log "Starting third-party dependency build"
+time $SOURCE_ROOT/build-support/enable_devtoolset.sh thirdparty/build-if-necessary.sh
+log "Third-party dependency build finished (see timing information above)"
 
 THIRDPARTY_BIN=$(pwd)/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
@@ -223,29 +227,44 @@ rm -rf "$SOURCE_ROOT/CMakeCache.txt" "$SOURCE_ROOT/CMakeFiles"
 # library (which the bindings depend on) is missing ASAN/TSAN symbols.
 cd $BUILD_ROOT
 if [ "$BUILD_TYPE" = "ASAN" ]; then
-  $SOURCE_ROOT/build-support/enable_devtoolset.sh \
+  log "Starting ASAN build"
+  time $SOURCE_ROOT/build-support/enable_devtoolset.sh \
     "env CC=$CLANG CXX=$CLANG++ $THIRDPARTY_BIN/cmake -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 $SOURCE_ROOT"
+  log "ASAN build finished (see timing information above)"
   BUILD_TYPE=fastdebug
   BUILD_PYTHON=0
 elif [ "$BUILD_TYPE" = "TSAN" ]; then
-  $SOURCE_ROOT/build-support/enable_devtoolset.sh \
+  log "Starting TSAN build"
+  time $SOURCE_ROOT/build-support/enable_devtoolset.sh \
     "env CC=$CLANG CXX=$CLANG++ $THIRDPARTY_BIN/cmake -DYB_USE_TSAN=1 $SOURCE_ROOT"
+  log "TSAN build finished (see timing information above)"
   BUILD_TYPE=fastdebug
   EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -LE no_tsan"
   BUILD_PYTHON=0
 elif [ "$BUILD_TYPE" = "COVERAGE" ]; then
   DO_COVERAGE=1
   BUILD_TYPE=debug
-  $SOURCE_ROOT/build-support/enable_devtoolset.sh "$THIRDPARTY_BIN/cmake -DYB_GENERATE_COVERAGE=1 $SOURCE_ROOT"
+  log "Starting coverage build"
+  time $SOURCE_ROOT/build-support/enable_devtoolset.sh \
+    "$THIRDPARTY_BIN/cmake -DYB_GENERATE_COVERAGE=1 $SOURCE_ROOT"
+  log "Coverage build finished (see timing information above)"
 elif [ "$BUILD_TYPE" = "LINT" ]; then
   # Create empty test logs or else Jenkins fails to archive artifacts, which
   # results in the build failing.
   mkdir -p Testing/Temporary
   mkdir -p "$TEST_LOG_DIR"
 
-  $SOURCE_ROOT/build-support/enable_devtoolset.sh "$THIRDPARTY_BIN/cmake $SOURCE_ROOT"
-  make lint | tee "$TEST_LOG_DIR"/lint.log
-  exit $?
+  log "Starting lint build"
+  set +e
+  time (
+    set -e
+    $SOURCE_ROOT/build-support/enable_devtoolset.sh "$THIRDPARTY_BIN/cmake $SOURCE_ROOT"
+    make lint
+  ) | tee "$TEST_LOG_DIR"/lint.log
+  exit_code=$?
+  log "Lint build finished (see timing information above)"
+  exit $exit_code
+  set -e
 fi
 
 # Only enable test core dumps for certain build types.
@@ -271,15 +290,18 @@ if [ "$YB_FLAKY_TEST_ATTEMPTS" -gt 1 ]; then
   fi
 fi
 
-$SOURCE_ROOT/build-support/enable_devtoolset.sh \
+log "Running CMake with build type $BUILD_TYPE"
+time $SOURCE_ROOT/build-support/enable_devtoolset.sh \
   "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $SOURCE_ROOT"
+log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
 
 if [ "$BUILD_CPP" == "1" ]; then
   echo
   echo Building C++ code.
   echo ------------------------------------------------------------
   NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
-  make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | tee build.log
+  time make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | tee build.log
+  log "Finished building C++ code (see timing information above)"
 
   # If compilation succeeds, try to run all remaining steps despite any failures.
   set +e
@@ -309,20 +331,24 @@ if [ "$BUILD_CPP" == "1" ]; then
   EXIT_STATUS=0
   FAILURES=""
 
+  log "Starting ctest"
   set +e
-  (
+  time (
     set -x
-    $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
+    time $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
       tee "$CTEST_OUTPUT_PATH"
   )
   if [ $? -ne 0 ]; then
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'C++ tests failed\n'
   fi
+  set -e
+  log "Finished running ctest (see timing information above)"
 
   if [ -n "${BUILD_URL:-}" ]; then
     echo
     echo "Failed test logs:"
+    set +e
     for failed_test_name in $(
       egrep "[0-9]+/[0-9]+ +Test +#[0-9]+: +[A-Za-z0-9_-]+ .*Failed" "$CTEST_OUTPUT_PATH" | \
         awk '{print $4}'
@@ -331,6 +357,7 @@ if [ "$BUILD_CPP" == "1" ]; then
       # https://jenkins.dev.yugabyte.com/job/yugabyte-ubuntu/116/artifact/build/debug/test-logs/block_manager_util-test.txt
       echo "  - $TEST_LOG_URL_PREFIX/$failed_test_name.txt"
     done
+    set -e
     echo
   fi
 
@@ -426,10 +453,12 @@ if [ $EXIT_STATUS != 0 ]; then
         $SOURCE_ROOT/build-support/parse_test_failure.py -x >"$GTEST_XMLFILE"
       if [ "$IS_MAC" == "1" ] && \
          $CAT_TEST_OUTPUT "$GTEST_OUTFILE" | grep "Referenced from: " >/dev/null; then
+        set +e
         MISSING_LIBRARY_REFERENCED_FROM=$(
           $CAT_TEST_OUTPUT "$GTEST_OUTFILE" | grep "Referenced from: " | \
             head -1 | awk '{print $NF}'
         )
+        set -e
         echo
         echo "$GTEST_OUTFILE says there is a missing library" \
              "referenced from $MISSING_LIBRARY_REFERENCED_FROM"

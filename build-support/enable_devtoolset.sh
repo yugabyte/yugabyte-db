@@ -28,5 +28,7 @@ if [[ "$OSTYPE" =~ ^linux ]] && \
    [[ "$(lsb_release -irs)" =~ (CentOS|RedHatEnterpriseServer)[[:space:]]+6\.[[:digit:]]+ ]]; then
   scl enable devtoolset-3 "$*"
 else
+  # No quotes around $@ because we pass multiple commands in one parameter to this script
+  # (see build-and-test.sh for usage).
   $@
 fi

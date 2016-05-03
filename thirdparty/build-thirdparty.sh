@@ -35,21 +35,39 @@
 #   * EXTRA_LDFLAGS - additional flags passed to the linker.
 #   * EXTRA_LIBS - additional libraries to link.
 
-set -ex
+# TODO: also enable -u
+
+set -eo pipefail
 
 TP_DIR=$(cd "$(dirname "$BASH_SOURCE")"; pwd)
 
 source $TP_DIR/vars.sh
 source $TP_DIR/build-definitions.sh
+source $TP_DIR/thirdparty-packaging-common.sh
 
-for PREFIX_DIR in $PREFIX_COMMON $PREFIX_DEPS $PREFIX_DEPS_TSAN $PREFIX_LIBSTDCXX $PREFIX_LIBSTDCXX_TSAN; do
+if download_prebuilt_thirdparty_deps; then
+  echo "Using prebuilt third-party code, skipping the build"
+  exit 0
+fi
+
+for PREFIX_DIR in \
+    "$PREFIX_COMMON" \
+    "$PREFIX_DEPS" \
+    "$PREFIX_DEPS_TSAN" \
+    "$PREFIX_LIBSTDCXX" \
+    "$PREFIX_LIBSTDCXX_TSAN"; do
   mkdir -p $PREFIX_DIR/lib
   mkdir -p $PREFIX_DIR/include
 
   # On some systems, autotools installs libraries to lib64 rather than lib.  Fix
   # this by setting up lib64 as a symlink to lib.  We have to do this step first
-  # to handle cases where one third-party library depends on another.
-  ln -sf "$PREFIX_DIR/lib" "$PREFIX_DIR/lib64"
+  # to handle cases where one third-party library depends on another.  Make sure
+  # we create a relative symlink so that the entire PREFIX_DIR could be moved,
+  # e.g. after it is packaged and then downloaded on a different build node.
+  (
+    cd "$PREFIX_DIR"
+    ln -sf lib lib64
+  )
 done
 
 # We use -O2 instead of -O3 for thirdparty since benchmarks indicate

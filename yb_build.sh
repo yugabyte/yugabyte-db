@@ -1,5 +1,4 @@
 #!/bin/bash 
-
 set -euo pipefail
 
 show_help() {
@@ -71,8 +70,9 @@ done
 
 cmake_opts=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
 
-project_dir=$( cd "$( dirname $0 )" && pwd )
+project_dir=$( cd "$( dirname "$0" )" && pwd )
 build_dir="$project_dir/build/$cmake_build_type"
+. "$project_dir"/build-support/common-build-env.sh
 
 if $verbose; then 
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
