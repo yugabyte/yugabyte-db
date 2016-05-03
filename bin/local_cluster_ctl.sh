@@ -446,7 +446,7 @@ fi
 
 cluster_base_dir=/tmp/yugabyte-local-cluster
 
-yugabyte_root=$( cd `dirname $0`/.. && pwd )
+yugabyte_root=$( cd "$( dirname "$0" )"/.. && pwd )
 
 if [ ! -d "$yugabyte_root/src" ] || \
    [ ! -d "$yugabyte_root/build" ]; then
