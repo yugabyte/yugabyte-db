@@ -6,7 +6,7 @@ cd "$yugabyte_root"
 
 if [ "$( uname )" == "Darwin" ]; then
   set -x
-  export DYLD_FALLBACK_LIBRARY_PATH="$yugabyte_root"/latest/rocksdb-build
+  export DYLD_FALLBACK_LIBRARY_PATH="$yugabyte_root"/build/latest/rocksdb-build
   set +x
 fi
 
