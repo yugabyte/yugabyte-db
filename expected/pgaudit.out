@@ -42,12 +42,18 @@ CREATE ROLE auditor;
 NOTICE:  AUDIT: SESSION,1,1,ROLE,CREATE ROLE,,,CREATE ROLE auditor;,<not logged>
 --
 -- Create first test user
-CREATE USER user1;
-NOTICE:  AUDIT: SESSION,2,1,ROLE,CREATE ROLE,,,CREATE USER user1;,<not logged>
+CREATE USER user1 password 'password';
+NOTICE:  AUDIT: SESSION,2,1,ROLE,CREATE ROLE,,,CREATE USER user1 password <REDACTED>,<not logged>
 ALTER ROLE user1 SET pgaudit.log = 'ddl, ROLE';
 NOTICE:  AUDIT: SESSION,3,1,ROLE,ALTER ROLE,,,"ALTER ROLE user1 SET pgaudit.log = 'ddl, ROLE';",<not logged>
 ALTER ROLE user1 SET pgaudit.log_level = 'notice';
 NOTICE:  AUDIT: SESSION,4,1,ROLE,ALTER ROLE,,,ALTER ROLE user1 SET pgaudit.log_level = 'notice';,<not logged>
+ALTER ROLE user1 PassWord 'password2' NOLOGIN;
+NOTICE:  AUDIT: SESSION,5,1,ROLE,ALTER ROLE,,,ALTER ROLE user1 PassWord <REDACTED>,<not logged>
+ALTER USER user1 encrypted /* random comment */PASSWORD
+	/* random comment */
+    'md565cb1da342495ea6bb0418a6e5718c38' LOGIN;
+NOTICE:  AUDIT: SESSION,6,1,ROLE,ALTER ROLE,,,ALTER USER user1 encrypted /* random comment */PASSWORD <REDACTED>,<not logged>
 --
 -- Create, select, drop (select will not be audited)
 \connect - user1
@@ -70,8 +76,8 @@ NOTICE:  AUDIT: SESSION,2,1,DDL,DROP TABLE,TABLE,public.test,DROP TABLE test;,<n
 --
 -- Create second test user
 \connect - :current_user
-CREATE USER user2;
-NOTICE:  AUDIT: SESSION,1,1,ROLE,CREATE ROLE,,,CREATE USER user2;,<not logged>
+CREATE ROLE user2 LOGIN password 'password';
+NOTICE:  AUDIT: SESSION,1,1,ROLE,CREATE ROLE,,,CREATE ROLE user2 LOGIN password <REDACTED>,<not logged>
 ALTER ROLE user2 SET pgaudit.log = 'Read, writE';
 NOTICE:  AUDIT: SESSION,2,1,ROLE,ALTER ROLE,,,"ALTER ROLE user2 SET pgaudit.log = 'Read, writE';",<not logged>
 ALTER ROLE user2 SET pgaudit.log_catalog = OFF;

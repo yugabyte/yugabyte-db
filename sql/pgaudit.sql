@@ -48,9 +48,14 @@ CREATE ROLE auditor;
 
 --
 -- Create first test user
-CREATE USER user1;
+CREATE USER user1 password 'password';
 ALTER ROLE user1 SET pgaudit.log = 'ddl, ROLE';
 ALTER ROLE user1 SET pgaudit.log_level = 'notice';
+
+ALTER ROLE user1 PassWord 'password2' NOLOGIN;
+ALTER USER user1 encrypted /* random comment */PASSWORD
+	/* random comment */
+    'md565cb1da342495ea6bb0418a6e5718c38' LOGIN;
 
 --
 -- Create, select, drop (select will not be audited)
@@ -70,7 +75,7 @@ DROP TABLE test;
 -- Create second test user
 \connect - :current_user
 
-CREATE USER user2;
+CREATE ROLE user2 LOGIN password 'password';
 ALTER ROLE user2 SET pgaudit.log = 'Read, writE';
 ALTER ROLE user2 SET pgaudit.log_catalog = OFF;
 ALTER ROLE user2 SET pgaudit.log_level = 'warning';
