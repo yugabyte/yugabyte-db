@@ -153,6 +153,15 @@ find_daemon_pid() {
   echo "$daemon_pid"
 }
 
+wait_for_stop() {
+  local daemon_pid=$1
+  echo "Waiting for $daemon_pid to stop..."
+  while $(kill -0 "$daemon_pid" 2>/dev/null); do
+    sleep 0.1
+  done
+  echo "Daemon $daemon_pid stopped."
+}
+
 stop_daemon() {
   local daemon_type=$1
   validate_daemon_type "$daemon_type"
@@ -161,7 +170,7 @@ stop_daemon() {
   local daemon_pid=$( find_daemon_pid "$daemon_type" "$daemon_index" )
   if [ -n "$daemon_pid" ]; then
     echo "Killing $daemon_type $daemon_index (pid $daemon_pid)"
-    ( set -x; kill $daemon_pid )
+    ( set -x; kill $daemon_pid; wait_for_stop $daemon_pid )
   else
     echo "$daemon_type $daemon_index already stopped"
   fi
