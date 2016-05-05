@@ -26,20 +26,20 @@
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/join.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/server/webui_util.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/server/webui_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/url-coding.h"
-
 
 namespace yb {
 
@@ -52,6 +52,52 @@ using strings::Substitute;
 namespace master {
 
 MasterPathHandlers::~MasterPathHandlers() {
+}
+
+void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
+    const Webserver::WebRequest& req, stringstream* output,
+    const boost::function<void(const Webserver::WebRequest&, std::stringstream*)>& callback) {
+  if (!master_->catalog_manager()->CheckIsLeaderAndReady().ok()) {
+    *output << "<h1>This is not the Master Leader!</h1>\n";
+
+    do {
+      vector<ServerEntryPB> masters;
+      Status s = master_->ListMasters(&masters);
+      if (!s.ok()) {
+        break;
+      }
+
+      string redirect;
+      for (const ServerEntryPB& master : masters) {
+        if (master.has_error()) {
+          // This will leave redirect empty and thus fail accordingly.
+          break;
+        }
+
+        if (master.role() == consensus::RaftPeerPB::LEADER) {
+          // URI already starts with a /, so none is needed between $1 and $2.
+          redirect = Substitute("<a class=\"alert-link\" href=\"http://$0:$1$2$3\">Leader</a>",
+                                master.registration().http_addresses(0).host(),
+                                master.registration().http_addresses(0).port(), req.redirect_uri,
+                                req.query_string.empty() ? "" : "?" + req.query_string);
+        }
+      }
+
+      if (redirect.empty()) {
+        break;
+      }
+
+      *output << "<h3><div class=\"alert alert-warning\">"
+              << "Please click  " << redirect << " to get redirected to the Master Leader!"
+              << "</div></h3>";
+
+      return;
+    } while (0);
+
+    *output << "Cannot get Leader information to help you redirect...\n";
+  } else {
+    callback(req, output);
+  }
 }
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
@@ -386,21 +432,32 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
-  server->RegisterPathHandler("/tablet-servers", "Tablet Servers",
-                              boost::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2),
-                              is_styled, is_on_nav_bar);
-  server->RegisterPathHandler("/tables", "Tables",
-                              boost::bind(&MasterPathHandlers::HandleCatalogManager, this, _1, _2),
-                              is_styled, is_on_nav_bar);
-  server->RegisterPathHandler("/table", "",
-                              boost::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2),
-                              is_styled, false);
-  server->RegisterPathHandler("/masters", "Masters",
-                              boost::bind(&MasterPathHandlers::HandleMasters, this, _1, _2),
-                              is_styled, is_on_nav_bar);
-  server->RegisterPathHandler("/dump-entities", "Dump Entities",
-                              boost::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2),
-                              false, false);
+  // Cannot use auto with callbacks, as they won't properly deduce types with boost magic...
+  Webserver::PathHandlerCallback cb =
+      boost::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
+  server->RegisterPathHandler(
+      "/tablet-servers", "Tablet Servers",
+      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      is_on_nav_bar);
+  cb = boost::bind(&MasterPathHandlers::HandleCatalogManager, this, _1, _2);
+  server->RegisterPathHandler(
+      "/tables", "Tables",
+      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      is_on_nav_bar);
+  cb = boost::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
+  server->RegisterPathHandler(
+      "/table", "", boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
+      is_styled, false);
+  cb = boost::bind(&MasterPathHandlers::HandleMasters, this, _1, _2);
+  server->RegisterPathHandler(
+      "/masters", "Masters",
+      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      is_on_nav_bar);
+  cb = boost::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
+  server->RegisterPathHandler(
+      "/dump-entities", "Dump Entities",
+      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
+      false);
   return Status::OK();
 }
 

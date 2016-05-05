@@ -309,6 +309,7 @@ int Webserver::RunPathHandler(const PathHandler& handler,
   bool use_style = true;
 
   WebRequest req;
+  req.redirect_uri = request_info->uri;
   if (request_info->query_string != nullptr) {
     req.query_string = request_info->query_string;
     BuildArgumentMap(request_info->query_string, &req.parsed_args);

@@ -40,6 +40,9 @@ class WebCallbackRegistry {
 
     // In the case of a POST, the posted data.
     std::string post_data;
+
+    // The URI where we were pointing, for potential redirects.
+    std::string redirect_uri;
   };
 
   typedef boost::function<void (const WebRequest& args, std::stringstream* output)>

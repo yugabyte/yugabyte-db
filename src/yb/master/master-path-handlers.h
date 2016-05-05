@@ -47,6 +47,9 @@ class MasterPathHandlers {
   Status Register(Webserver* server);
 
  private:
+  void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
+                                   const Webserver::PathHandlerCallback& callback);
+
   void HandleTabletServers(const Webserver::WebRequest& req,
                            std::stringstream* output);
   void HandleCatalogManager(const Webserver::WebRequest& req,
