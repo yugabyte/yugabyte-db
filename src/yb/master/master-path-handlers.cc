@@ -62,15 +62,15 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   *output << "<h1>Tablet Servers</h1>\n";
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>UUID</th><th>Time since heartbeat</th><th>Registration</th></tr>\n";
+  *output << "  <tr><th>UUID</th><th>Time since heartbeat</th><th>Tablet "
+             "Load</th><th>Registration</th></tr>\n";
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
     TSRegistrationPB reg;
     desc->GetRegistration(&reg);
-    *output << Substitute("<tr><th>$0</th><td>$1</td><td><code>$2</code></td></tr>\n",
-                          RegistrationToHtml(reg, desc->permanent_uuid()),
-                          time_since_hb,
-                          EscapeForHtmlToString(reg.ShortDebugString()));
+    *output << Substitute("<tr><th>$0</th><td>$1</td><td>$2</td><td><code>$3</code></td></tr>\n",
+                          RegistrationToHtml(reg, desc->permanent_uuid()), time_since_hb,
+                          desc->num_live_replicas(), EscapeForHtmlToString(reg.ShortDebugString()));
   }
   *output << "</table>\n";
 }
