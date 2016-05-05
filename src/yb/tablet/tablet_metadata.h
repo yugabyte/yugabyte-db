@@ -114,6 +114,8 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   TableType table_type() const;
 
+  const std::string rocksdb_dir() const { return rocksdb_dir_; };
+
   uint32_t schema_version() const;
 
   void SetSchema(const Schema& schema, uint32_t version);
@@ -236,9 +238,14 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   //
   // TODO: get rid of this many-arg constructor in favor of just passing in a
   // SuperBlock, which already contains all of these fields.
-  TabletMetadata(FsManager* fs_manager, std::string tablet_id,
-                 std::string table_name, TableType table_type, const Schema& schema,
-                 PartitionSchema partition_schema, Partition partition,
+  TabletMetadata(FsManager* fs_manager,
+                 std::string tablet_id,
+                 std::string table_name,
+                 TableType table_type,
+                 const std::string rocksdb_dir,
+                 const Schema& schema,
+                 PartitionSchema partition_schema,
+                 Partition partition,
                  const TabletDataState& tablet_data_state);
 
   // Constructor for loading an existing tablet.
@@ -313,6 +320,10 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   uint32_t schema_version_;
   std::string table_name_;
   TableType table_type_;
+
+  // The directory where the RocksDB data for this tablet is stored.
+  std::string rocksdb_dir_;
+
   PartitionSchema partition_schema_;
 
   // Previous values of 'schema_'.

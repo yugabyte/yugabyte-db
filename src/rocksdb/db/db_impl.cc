@@ -321,6 +321,8 @@ void DBImpl::CancelAllBackgroundWork(bool wait) {
 }
 
 DBImpl::~DBImpl() {
+  Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log, "Shutting down RocksDB at: %s\n",
+      dbname_.c_str());
   mutex_.Lock();
 
   if (!shutting_down_.load(std::memory_order_acquire) &&

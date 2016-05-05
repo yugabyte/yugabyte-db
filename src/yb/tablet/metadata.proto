@@ -119,6 +119,9 @@ message TabletSuperBlockPB {
   // It's always safe to delete the blocks found here.
   repeated BlockIdPB orphaned_blocks = 11;
 
+  // The RocksDB directory for this tablet.
+  optional string rocksdb_dir = 16;
+
   // For tablets that have been tombstoned, stores the last OpId stored in the
   // WAL before tombstoning.
   // Only relevant for TOMBSTONED tablets.

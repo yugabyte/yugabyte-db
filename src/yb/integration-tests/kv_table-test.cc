@@ -95,6 +95,7 @@ class KVTableTest : public YBTest {
   }
 
   virtual void TearDown() OVERRIDE {
+    ASSERT_OK(client_->DeleteTable(kTableName));
     if (cluster_) {
       cluster_->Shutdown();
     }

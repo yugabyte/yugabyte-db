@@ -5,11 +5,13 @@
 #######################################
 
 set(ROCKSUTIL_SRCS
+    yb_rocksdb.cc
     yb_rocksdb_logger.cc)
 
 set(ROCKSUTIL_LIBS
     gflags
     glog
+    gutil
     rocksdb)
 
 ADD_EXPORTABLE_LIBRARY(yb_rocksutil

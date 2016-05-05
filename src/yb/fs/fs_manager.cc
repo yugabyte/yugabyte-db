@@ -91,6 +91,7 @@ namespace yb {
 const char *FsManager::kWalDirName = "wals";
 const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
+const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kTabletMetadataDirName = "tablet-meta";
 const char *FsManager::kDataDirName = "data";
 const char *FsManager::kCorruptedSuffix = ".corrupted";
@@ -309,8 +310,20 @@ Status FsManager::CreateInitialFileSystemLayout() {
     }
   }
 
-  // And lastly, the block manager.
+  // Create the block manager.
   RETURN_NOT_OK_PREPEND(block_manager_->Create(), "Unable to create block manager");
+
+  // Create the RocksDB directory under each data directory.
+  for (const string& data_root : GetDataRootDirs()) {
+    const string dir = JoinPathSegments(data_root, kRocksDBDirName);
+    bool created = false;
+    RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
+                          Substitute("Unable to create directory $0", dir));
+    if (created) {
+      delete_on_failure.push_front(new ScopedFileDeleter(env_, dir));
+      to_sync.insert(DirName(dir));
+    }
+  }
 
   // Success: don't delete any files.
   for (ScopedFileDeleter* deleter : delete_on_failure) {

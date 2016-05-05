@@ -23,6 +23,8 @@
 #include <boost/thread/locks.hpp>
 #include <string>
 
+#include "rocksdb/db.h"
+#include "rocksdb/include/rocksdb/options.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/opid.pb.h"
 #include "yb/consensus/opid_util.h"
@@ -34,6 +36,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/rowset_metadata.h"
+#include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
@@ -81,10 +85,21 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
     return Status::AlreadyPresent("Tablet already exists", tablet_id);
   }
 
+  string rocksdb_dir;
+  if (table_type == TableType::KEY_VALUE_TABLE_TYPE) {
+    // Determine the data dir to use for this tablet. Use the first data root directory for now.
+    auto data_root_dirs = fs_manager->GetDataRootDirs();
+    CHECK(!data_root_dirs.empty()) << "No data root directories found";
+    auto data_root_dir = data_root_dirs.front();
+    auto rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
+    rocksdb_dir = JoinPathSegments(rocksdb_top_dir, tablet_id);
+  }
+
   scoped_refptr<TabletMetadata> ret(new TabletMetadata(fs_manager,
                                                        tablet_id,
                                                        table_name,
                                                        table_type,
+                                                       rocksdb_dir,
                                                        schema,
                                                        partition_schema,
                                                        partition,
@@ -175,6 +190,21 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
     }
   }
 
+  if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+    rocksdb::Options rocksdb_options;
+    InitRocksDBOptions(&rocksdb_options, tablet_id_, nullptr /* statistics */);
+
+    LOG(INFO) << "Destroying RocksDB at: " << rocksdb_dir_;
+    rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);
+
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to destroy RocksDB at: " << rocksdb_dir_ << ": "
+                 << status.ToString();
+    } else {
+      LOG(INFO) << "Successfully destroyed RocksDB at: " << rocksdb_dir_;
+    }
+  }
+
   // Flushing will sync the new tablet_data_state_ to disk and will now also
   // delete all the data.
   RETURN_NOT_OK(Flush());
@@ -209,8 +239,12 @@ Status TabletMetadata::DeleteSuperBlock() {
   return Status::OK();
 }
 
-TabletMetadata::TabletMetadata(FsManager* fs_manager, string tablet_id,
-                               string table_name, TableType table_type, const Schema& schema,
+TabletMetadata::TabletMetadata(FsManager* fs_manager,
+                               string tablet_id,
+                               string table_name,
+                               TableType table_type,
+                               const string rocksdb_dir,
+                               const Schema& schema,
                                PartitionSchema partition_schema,
                                Partition partition,
                                const TabletDataState& tablet_data_state)
@@ -224,6 +258,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager, string tablet_id,
       schema_version_(0),
       table_name_(std::move(table_name)),
       table_type_(table_type),
+      rocksdb_dir_(rocksdb_dir),
       partition_schema_(std::move(partition_schema)),
       tablet_data_state_(tablet_data_state),
       tombstone_last_logged_opid_(MinimumOpId()),
@@ -285,6 +320,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
 
     table_name_ = superblock.table_name();
     table_type_ = superblock.table_type();
+    rocksdb_dir_ = superblock.rocksdb_dir();
 
     uint32_t schema_version = superblock.schema_version();
     gscoped_ptr<Schema> schema(new Schema());
@@ -536,6 +572,8 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
   pb.set_schema_version(schema_version_);
   partition_schema_.ToPB(pb.mutable_partition_schema());
   pb.set_table_name(table_name_);
+  pb.set_table_type(table_type_);
+  pb.set_rocksdb_dir(rocksdb_dir_);
 
   for (const shared_ptr<RowSetMetadata>& meta : rowsets) {
     meta->ToProtobuf(pb.add_rowsets());

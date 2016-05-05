@@ -55,6 +55,7 @@
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
@@ -212,28 +213,17 @@ Status Tablet::Open() {
 }
 
 Status Tablet::OpenKeyValueTablet() {
-  auto data_root_dirs = metadata()->fs_manager()->GetDataRootDirs();
-  CHECK(!data_root_dirs.empty()) << "No data root directories found";
-  // Use the first data root directory for now, and create per-tablet directories there.
-  auto data_root_dir = data_root_dirs.front();
-
   rocksdb::DB* db = nullptr;
   rocksdb_statistics_ = rocksdb::CreateDBStatistics();
+
   rocksdb::Options rocksdb_options;
-  rocksdb_options.create_if_missing = true;
-  rocksdb_options.disableDataSync = true;
-  rocksdb_options.statistics = rocksdb_statistics_;
-  rocksdb_options.info_log = std::make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id()));
-  rocksdb_options.info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
+  InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_);
 
-  // TODO: move RocksDB directory management to FsManager.
-  auto rocksdb_top_dir = JoinPathSegments(data_root_dir, "rocksdb");
-  auto db_dir = JoinPathSegments(rocksdb_top_dir, tablet_id());
-  RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(rocksdb_top_dir),
-    "Failed to create top-level directory for all RocksDB databases");
+  const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(db_dir),
-    "Failed to create RocksDB database directory for the tablet");
+                        "Failed to create RocksDB directory for the tablet");
 
+  LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options, db_dir, &db);
   if (!rocksdb_open_status.ok()) {
     LOG(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
@@ -340,6 +330,8 @@ void Tablet::Shutdown() {
 
   boost::lock_guard<rw_spinlock> lock(component_lock_);
   components_ = nullptr;
+  // Shutdown the RocksDB instance for this table, if present.
+  rocksdb_.reset();
   state_ = kShutdown;
 
   // In the case of deleting a tablet, we still keep the metadata around after
