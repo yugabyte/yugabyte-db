@@ -70,6 +70,10 @@ class ListTabletsResponsePB_StatusAndSchemaPB;
 class TabletServerErrorPB;
 }
 
+using consensus::ConsensusServiceProxy;
+using consensus::OpIdType;
+using consensus::OpId;
+
 namespace itest {
 
 struct TServerDetails {
@@ -296,6 +300,15 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
                             const HostPort& bootstrap_source_addr,
                             int64_t caller_term,
                             const MonoDelta& timeout);
+
+// Get the latest OpId for the given master replica proxy. Note that this works for tablet servers
+// also, though GetLastOpIdForReplica is customized for tablet server for now.
+Status GetLastOpIdForMasterReplica(const std::shared_ptr<ConsensusServiceProxy>& consensus_proxy,
+                                   const std::string& tablet_id,
+                                   const std::string& dest_uuid,
+                                   const OpIdType opid_type,
+                                   const MonoDelta& timeout,
+                                   OpId* op_id);
 
 } // namespace itest
 } // namespace yb

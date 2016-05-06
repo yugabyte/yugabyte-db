@@ -309,8 +309,11 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
 
   RETURN_NOT_OK(ExecuteHook(POST_START));
 
+  // The context tracks that the current caller does not hold the lock for consensus state.
+  // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
+  // SysCatalogStateChanged, can get the lock when needed.
+  auto context = std::make_shared<StateChangeContext>(StateChangeContext::CONSENSUS_STARTED, false);
   // Report become visible to the Master.
-  auto context = std::make_shared<StateChangeContext>(StateChangeContext::CONSENSUS_STARTED);
   MarkDirty(context);
 
   return Status::OK();
@@ -1757,6 +1760,11 @@ ConsensusStatePB RaftConsensus::ConsensusState(ConsensusConfigType type) const {
   return state_->ConsensusStateUnlocked(type);
 }
 
+ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(ConsensusConfigType type) const {
+  CHECK(state_->IsLocked());
+  return state_->ConsensusStateUnlocked(type);
+}
+
 RaftConfigPB RaftConsensus::CommittedConfig() const {
   ReplicaState::UniqueLock lock;
   CHECK_OK(state_->LockForRead(&lock));
@@ -1876,8 +1884,8 @@ Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
 }
 
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {
-  WARN_NOT_OK(thread_pool_->SubmitClosure(Bind(mark_dirty_clbk_, context)),
-              state_->LogPrefixThreadSafe() + "Unable to run MarkDirty callback");
+  LOG(INFO) << "Calling mark dirty synchronously for reason code " << context->reason;
+  mark_dirty_clbk_.Run(context);
 }
 
 void RaftConsensus::MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> context,

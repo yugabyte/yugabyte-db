@@ -81,6 +81,10 @@ Status ReplicaState::LockForStart(UniqueLock* lock) const {
   return Status::OK();
 }
 
+bool ReplicaState::IsLocked() const {
+  return update_lock_.is_locked();
+}
+
 Status ReplicaState::LockForRead(UniqueLock* lock) const {
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(&update_lock_);

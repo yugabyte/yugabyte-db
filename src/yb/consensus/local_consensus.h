@@ -75,6 +75,8 @@ class LocalConsensus : public Consensus {
 
   virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const OVERRIDE;
 
+  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const OVERRIDE;
+
   virtual RaftConfigPB CommittedConfig() const OVERRIDE;
 
   virtual void Shutdown() OVERRIDE;

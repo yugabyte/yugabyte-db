@@ -163,7 +163,7 @@ Status TpchRealWorld::Init() {
 
     cluster_.reset(new ExternalMiniCluster(opts));
     RETURN_NOT_OK(cluster_->Start());
-    master_addresses_ = cluster_->leader_master()->bound_rpc_hostport().ToString();
+    master_addresses_ = cluster_->GetLeaderMaster()->bound_rpc_hostport().ToString();
   } else {
     master_addresses_ = FLAGS_tpch_master_addresses;
   }

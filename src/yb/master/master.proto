@@ -540,7 +540,7 @@ message GetMasterRegistrationResponsePB {
 }
 
 // ListMastersRequest/Response: get information about all of the known
-// master servers, including this node.
+// master servers, including this node from the in-memory options.
 message ListMastersRequestPB {
 }
 
@@ -553,8 +553,10 @@ message ListMastersResponsePB {
   optional AppStatusPB error = 2;
 }
 
-// ListMasterRaftPeersRequest/Response: get information about all of the known
-// master servers which are part of this masters version of the currently active Raft quorum.
+// ListMasterRaftPeersRequest/Response: get information about all of the known servers
+// which are part of this master's version of the currently active Raft quorum. This also
+// captures any inflight change config operations which are not yet tracked by in-memory options
+// and hence can give a more current picture of peers compared with ListMastersResponse.
 message ListMasterRaftPeersRequestPB {
 }
 

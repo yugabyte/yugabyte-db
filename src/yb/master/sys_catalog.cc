@@ -125,6 +125,10 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
   const RaftConfigPB& loaded_config = cmeta->active_config();
   DCHECK(!loaded_config.peers().empty()) << "Loaded consensus metadata, but had no peers!";
 
+  if (loaded_config.peers().empty()) {
+    return Status::IllegalState("Trying to load distributed config, but contains no peers.");
+  }
+
   std::shared_ptr<std::vector<HostPort>> loaded_master_addresses =
       std::make_shared<std::vector<HostPort>>();
   // if this is a distributed config
@@ -145,7 +149,11 @@ Status SysCatalogTable::Load(FsManager *fs_manager) {
     if (missing_uuids) {
       return Status::IllegalState("Trying to load distributed config, but had missing uuids!");
     }
+
     master_->SetMasterAddresses(loaded_master_addresses);
+
+    LOG(INFO) << "Updated in-memory masters list after load from cmeta of size "
+              << loaded_master_addresses.get()->size();
   } else {
     LOG(INFO) << "Configuring consensus for local operation...";
     // We know we have exactly one peer.
@@ -273,8 +281,11 @@ void SysCatalogTable::SysCatalogStateChanged(
                              << tablet_id << ". Reason: " << context->ToString();
     return;
   }
-  consensus::ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
-  LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Reason: " << context->ToString()
+  consensus::ConsensusStatePB cstate = context->is_config_locked() ?
+      consensus->ConsensusStateUnlocked(CONSENSUS_CONFIG_COMMITTED) :
+      consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Locked=" << context->is_config_locked_
+                        << ". Reason: " << context->ToString()
                         << ". Latest consensus state: " << cstate.ShortDebugString();
   RaftPeerPB::Role new_role = GetConsensusRole(tablet_peer_->permanent_uuid(), cstate);
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
@@ -330,13 +341,13 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>&
 
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
-  tablet_peer_.reset(new TabletPeer(
-    metadata,
-    local_peer_pb_,
-    apply_pool_.get(),
-    Bind(&SysCatalogTable::SysCatalogStateChanged,
-         Unretained(this),
-         metadata->tablet_id())));
+  tablet_peer_.reset(
+    new TabletPeer(metadata,
+                   local_peer_pb_,
+                   apply_pool_.get(),
+                   Bind(&SysCatalogTable::SysCatalogStateChanged,
+                        Unretained(this),
+                        metadata->tablet_id())));
 
   consensus::ConsensusBootstrapInfo consensus_info;
   tablet_peer_->SetBootstrapping();

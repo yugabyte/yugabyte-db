@@ -51,6 +51,7 @@ ADD_YB_TEST(client-stress-test
   RUN_SERIAL true)
 ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_failover-itest RESOURCE_LOCK "master-rpc-ports")
+ADD_YB_TEST(master_config-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(raft_consensus-itest RUN_SERIAL true)
 ADD_YB_TEST(ts_tablet_manager-itest)
 ADD_YB_TEST(ts_recovery-itest)

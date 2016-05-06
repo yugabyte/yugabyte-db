@@ -803,5 +803,36 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
   return Status::OK();
 }
 
+Status GetLastOpIdForMasterReplica(const shared_ptr<ConsensusServiceProxy>& consensus_proxy,
+                                   const string& tablet_id,
+                                   const string& dest_uuid,
+                                   const consensus::OpIdType opid_type,
+                                   const MonoDelta& timeout,
+                                   OpId* opid) {
+  GetLastOpIdRequestPB opid_req;
+  GetLastOpIdResponsePB opid_resp;
+  RpcController controller;
+  controller.Reset();
+  controller.set_timeout(timeout);
+
+  opid_req.set_dest_uuid(dest_uuid);
+  opid_req.set_tablet_id(tablet_id);
+  opid_req.set_opid_type(opid_type);
+
+  Status s = consensus_proxy->GetLastOpId(opid_req, &opid_resp, &controller);
+  if (!s.ok()) {
+    return Status::InvalidArgument(Substitute(
+        "Failed to fetch opid type $0 from master uuid $1 with error : $2",
+        opid_type, dest_uuid, s.ToString()));
+  }
+  if (opid_resp.has_error()) {
+    return StatusFromPB(opid_resp.error().status());
+  }
+
+  *opid = opid_resp.opid();
+
+  return Status::OK();
+}
+
 } // namespace itest
 } // namespace yb

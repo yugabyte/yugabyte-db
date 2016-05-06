@@ -26,6 +26,9 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
@@ -53,6 +56,10 @@ class Messenger;
 namespace server {
 class ServerStatusPB;
 } // namespace server
+
+using yb::consensus::ChangeConfigType;
+using yb::consensus::ConsensusServiceProxy;
+using yb::consensus::OpId;
 
 struct ExternalMiniClusterOptions {
   ExternalMiniClusterOptions();
@@ -110,6 +117,13 @@ struct ExternalMiniClusterOptions {
   // masters in a consensus configuration. Port at index 0 is used for the leader
   // master.
   std::vector<uint16_t> master_rpc_ports;
+
+  // Default timeout for operations involving RPC's, when none provided in the API.
+  // Default : 10sec
+  MonoDelta timeout_;
+
+  Status RemovePort(const uint16_t port);
+  Status AddPort(const uint16_t port);
 };
 
 // A mini-cluster made up of subprocesses running each of the daemons
@@ -156,11 +170,7 @@ class ExternalMiniCluster {
 
   // Return a pointer to the running leader master. This may be NULL
   // if the cluster is not started.
-  //
-  // TODO: Use the appropriate RPC here to return the leader master,
-  // to allow some of the existing tests (e.g., raft_consensus-itest)
-  // to use multiple masters.
-  ExternalMaster* leader_master() { return master(0); }
+  ExternalMaster* GetLeaderMaster();
 
   // Perform an RPC to determine the leader of the external mini
   // cluster.  Set 'index' to the leader master's index (for calls to
@@ -170,13 +180,42 @@ class ExternalMiniCluster {
   // the last result may not be valid.
   Status GetLeaderMasterIndex(int* idx);
 
+  // Return a non-leader master index
+  Status GetFirstNonLeaderMasterIndex(int* idx);
+
+  // Starts a new master and returns the address of the master object on success.
+  // Not thread safe for now. We could move this to a static function outside External Mini Cluster,
+  // but keeping it here for now as it is currently used only in conjunction with EMC.
+  Status StartNewMaster(ExternalMaster** new_master);
+
+  // Performs an add or remove from the existing config of this EMC, of the given master.
+  Status ChangeConfig(ExternalMaster* master, ChangeConfigType type);
+
+  // Performs an RPC to the given master to get the number of masters it is tracking in-memory.
+  Status GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers);
+
+  // Get the last committed opid for the current leader master.
+  Status GetLastOpIdForLeader(OpId* opid);
+
+  // The leader master sometimes does not commit the config in time on first setup, causing
+  // CheckHasCommittedOpInCurrentTermUnlocked check - that the current term
+  // should have had at least one commit - to fail. This API waits for the leader's commit term to
+  // move ahead by one.
+  Status WaitForLeaderCommitTermAdvance();
+
+  // This API waits for the commit indices of all the master peers to reach the target index.
+  Status WaitForMastersToCommitUpTo(int target_index);
+
   // If this cluster is configured for a single non-distributed
   // master, return the single master or NULL if the master is not
   // started. Exits with a CHECK failure if there are multiple
   // masters.
   ExternalMaster* master() const {
+    if (masters_.empty())
+      return nullptr;
+
     CHECK_EQ(masters_.size(), 1)
-        << "master() should not be used with multiple masters, use leader_master() instead.";
+        << "master() should not be used with multiple masters, use GetLeaderMaster() instead.";
     return master(0);
   }
 
@@ -212,6 +251,13 @@ class ExternalMiniCluster {
 
   // Return the client messenger used by the ExternalMiniCluster.
   std::shared_ptr<rpc::Messenger> messenger();
+
+  // Get the master leader consensus proxy.
+  std::shared_ptr<consensus::ConsensusServiceProxy> GetLeaderConsensusProxy();
+
+  // Get the given master's consensus proxy.
+  std::shared_ptr<consensus::ConsensusServiceProxy> GetConsensusProxy(
+      scoped_refptr<ExternalMaster> master);
 
   // If the cluster is configured for a single non-distributed master,
   // return a proxy to that master. Requires that the single master is
@@ -263,6 +309,26 @@ class ExternalMiniCluster {
 
   Status DeduceBinRoot(std::string* ret);
   Status HandleOptions();
+
+  // Helper function to get a leader or (random) follower index
+  Status GetPeerMasterIndex(int* idx, bool is_leader);
+
+  // API to help update the cluster state (rpc ports)
+  Status AddMaster(ExternalMaster* master);
+  Status RemoveMaster(ExternalMaster* master);
+
+  // Get the index of this master in the vector of masters. This might not be the insertion
+  // order as we might have removed some masters within the vector.
+  int GetIndexOfMaster(ExternalMaster* master) const;
+
+  // Checks that the masters_ list and opts_ match in terms of the number of elements.
+  Status CheckPortAndMasterSizes() const;
+
+  // Return the list of opid's for all master's in this cluster.
+  Status GetLastOpIdForEachMasterPeer(
+      const MonoDelta& timeout,
+      consensus::OpIdType opid_type,
+      vector<OpId>* op_ids);
 
   ExternalMiniClusterOptions opts_;
 
@@ -392,7 +458,7 @@ class ExternalMaster : public ExternalDaemon {
     const std::string& exe,
     const std::string& data_dir,
     const std::vector<std::string>& extra_flags,
-    const std::string& rpc_bind_address = "127.0.0.1",
+    const std::string& rpc_bind_address = "127.0.0.1:0",
     const std::string& master_addrs = "");
 
   Status Start();
@@ -400,7 +466,6 @@ class ExternalMaster : public ExternalDaemon {
   // Restarts the daemon.
   // Requires that it has previously been shutdown.
   Status Restart() WARN_UNUSED_RESULT;
-
 
  private:
   friend class RefCountedThreadSafe<ExternalMaster>;
@@ -435,6 +500,20 @@ class ExternalTabletServer : public ExternalDaemon {
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;
   virtual ~ExternalTabletServer();
+};
+
+// Custom functor for predicate based comparison with the master list.
+struct MasterComparator {
+  MasterComparator(ExternalMaster* master) : master_(master) { }
+
+  // We look for the exact master match. Since it is possible to stop/restart master on
+  // a given host/port, we do not want a stale master pointer input to match a newer master.
+  bool operator()(const scoped_refptr<ExternalMaster>& other) const {
+    return master_ == other.get();
+  }
+
+ private:
+  const ExternalMaster* master_;
 };
 
 } // namespace yb

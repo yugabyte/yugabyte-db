@@ -96,6 +96,9 @@ class ReplicaState {
 
   Status StartUnlocked(const OpId& last_in_wal);
 
+  // Should be used only to assert that the update_lock_ is held.
+  bool IsLocked() const WARN_UNUSED_RESULT;
+
   // Locks a replica in preparation for StartUnlocked(). Makes
   // sure the replica is in kInitialized state.
   Status LockForStart(UniqueLock* lock) const WARN_UNUSED_RESULT;

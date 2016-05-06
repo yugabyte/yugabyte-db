@@ -320,7 +320,10 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Function to mark this TabletPeer's tablet as dirty in the TSTabletManager.
   // This function must be called any time the cluster membership or cluster
-  // leadership changes.
+  // leadership changes. Note that this function is called synchronously on the followers
+  // or leader via the consensus round completion callback of NonTxRoundReplicationFinished.
+  // Hence this should be a relatively lightweight function - e.g., update in-memory only state
+  // and defer any other heavy duty operations to a thread pool.
   Callback<void(std::shared_ptr<consensus::StateChangeContext> context)> mark_dirty_clbk_;
 
   // List of maintenance operations for the tablet that need information that only the peer

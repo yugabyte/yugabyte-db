@@ -202,8 +202,8 @@ endif()
 #     GCC cannot always verify whether strict aliasing rules are indeed followed due to
 #     fundamental limitations in escape analysis, which can result in subtle bad code generation.
 #     This has a small perf hit but worth it to avoid hard to debug crashes.
-set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
-set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread ${CXX_GLOBAL_COMMON_FLAGS}")
+set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated ")
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread ${CXX_GLOBAL_COMMON_FLAGS} -Wno-parentheses")
 
 # We want access to the PRI* print format macros.
 add_definitions(-D__STDC_FORMAT_MACROS)

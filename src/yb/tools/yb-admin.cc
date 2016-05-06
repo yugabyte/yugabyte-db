@@ -79,6 +79,8 @@ using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
+using master::ListMasterRaftPeersRequestPB;
+using master::ListMasterRaftPeersResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
 using master::MasterServiceProxy;
@@ -622,11 +624,11 @@ Status ClusterAdminClient::ListAllTabletServers() {
 }
 
 Status ClusterAdminClient::ListAllMasters() {
-  master::ListMastersRequestPB lreq;
-  master::ListMastersResponsePB lresp;
+  ListMastersRequestPB lreq;
+  ListMastersResponsePB lresp;
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  master_proxy_->ListMasters(lreq, &lresp, &rpc);
+  RETURN_NOT_OK(master_proxy_->ListMasters(lreq, &lresp, &rpc));
   if (lresp.has_error()) {
     return StatusFromPB(lresp.error());
   }
@@ -643,6 +645,31 @@ Status ClusterAdminClient::ListAllMasters() {
       std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
     }
   }
+
+  ListMasterRaftPeersRequestPB r_req;
+  ListMasterRaftPeersResponsePB r_resp;
+  rpc.Reset();
+  RETURN_NOT_OK(master_proxy_->ListMasterRaftPeers(r_req, &r_resp, &rpc));
+  if (r_resp.has_error()) {
+    return Status::RuntimeError(Substitute(
+        "List Raft Masters RPC response hit error: $0", r_resp.error().ShortDebugString()));
+  }
+
+  if (r_resp.masters_size() != lresp.masters_size()) {
+    std::cout << "WARNING: Mismatch in in-memory masters and raft peers info."
+              << "Raft peer info from master leader dumped below.\n";
+    for (int i = 0; i < r_resp.masters_size(); i++) {
+      if (r_resp.masters(i).member_type() != consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE) {
+        const auto& master = r_resp.masters(i);
+        std::cout << master.permanent_uuid() << "  "
+                  << master.last_known_addr().host() << "/"
+                  << master.last_known_addr().port() << std::endl;
+      } else {
+        std::cout << "UNREACHABLE MASTER at index " << i << "." << std::endl;
+      }
+    }
+  }
+
   return Status::OK();
 }
 

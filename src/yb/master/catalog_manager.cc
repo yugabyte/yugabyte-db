@@ -3211,8 +3211,19 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB *cpb) const {
-  *cpb = sys_catalog_->tablet_peer()->consensus()->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
+Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const {
+  string uuid = master_->fs_manager()->uuid();
+  if (!sys_catalog_->tablet_peer() ||
+      !sys_catalog_->tablet_peer()->consensus()) {
+    return Status::IllegalState(Substitute("Node $0 peer not initialized.", uuid));
+  }
+  Consensus* consensus = sys_catalog_->tablet_peer()->consensus();
+  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
+    return Status::IllegalState(Substitute(
+        "Node $0 not leader. Consensus state: $1", uuid, cstate.ShortDebugString()));
+  }
+  *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   return Status::OK();
 }
 

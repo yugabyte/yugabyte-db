@@ -459,7 +459,7 @@ scoped_refptr<TabletPeer> TSTabletManager::CreateAndRegisterTabletPeer(
       new TabletPeer(meta,
                      local_peer_pb_,
                      apply_pool_.get(),
-                     Bind(&TSTabletManager::MarkTabletDirty, Unretained(this), meta->tablet_id())));
+                     Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->tablet_id())));
   RegisterTablet(meta->tablet_id(), tablet_peer, mode);
   return tablet_peer;
 }
@@ -778,6 +778,15 @@ const NodeInstancePB& TSTabletManager::NodeInstance() const {
 void TSTabletManager::GetTabletPeers(vector<scoped_refptr<TabletPeer> >* tablet_peers) const {
   boost::shared_lock<rw_spinlock> shared_lock(lock_);
   AppendValuesFromMap(tablet_map_, tablet_peers);
+}
+
+void TSTabletManager::ApplyChange(const string& tablet_id,
+                                  shared_ptr<consensus::StateChangeContext> context) {
+  WARN_NOT_OK(apply_pool_->SubmitFunc(boost::bind(&TSTabletManager::MarkTabletDirty,
+                                                  this,
+                                                  tablet_id,
+                                                  context)),
+              "Unable to run MarkDirty callback")
 }
 
 void TSTabletManager::MarkTabletDirty(const std::string& tablet_id,

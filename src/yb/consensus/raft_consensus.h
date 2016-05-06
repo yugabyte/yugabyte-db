@@ -131,6 +131,8 @@ class RaftConsensus : public Consensus,
 
   virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const OVERRIDE;
 
+  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const OVERRIDE;
+
   virtual RaftConfigPB CommittedConfig() const OVERRIDE;
 
   virtual void DumpStatusHtml(std::ostream& out) const OVERRIDE;
@@ -384,8 +386,8 @@ class RaftConsensus : public Consensus,
   // Handle when the term has advanced beyond the current term.
   Status HandleTermAdvanceUnlocked(ConsensusTerm new_term);
 
-  // Asynchronously (on thread_pool_) notify the tablet peer that the consensus configuration
-  // has changed, thus reporting it back to the master.
+  // Notify the tablet peer that the consensus configuration
+  // has changed, thus reporting it back to the master. This is performed inline.
   void MarkDirty(std::shared_ptr<StateChangeContext> context);
 
   // Calls MarkDirty() if 'status' == OK. Then, always calls 'client_cb' with

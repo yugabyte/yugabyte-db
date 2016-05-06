@@ -174,6 +174,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Get all of the tablets currently hosted on this server.
   void GetTabletPeers(std::vector<scoped_refptr<tablet::TabletPeer> >* tablet_peers) const;
 
+  // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
+  // role change. They are applied asynchronously internally.
+  void ApplyChange(const std::string& tablet_id,
+                   std::shared_ptr<consensus::StateChangeContext> context);
+
   // Marks tablet with 'tablet_id' dirty.
   // Used for state changes outside of the control of TsTabletManager, such as consensus role
   // changes.

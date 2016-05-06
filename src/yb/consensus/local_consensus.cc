@@ -168,6 +168,11 @@ ConsensusStatePB LocalConsensus::ConsensusState(ConsensusConfigType type) const 
   return cmeta_->ToConsensusStatePB(type);
 }
 
+ConsensusStatePB LocalConsensus::ConsensusStateUnlocked(ConsensusConfigType type) const {
+  CHECK(lock_.is_locked());
+  return cmeta_->ToConsensusStatePB(type);
+}
+
 RaftConfigPB LocalConsensus::CommittedConfig() const {
   boost::lock_guard<simple_spinlock> lock(lock_);
   return cmeta_->committed_config();

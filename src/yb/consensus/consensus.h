@@ -237,6 +237,10 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // Returns a copy of the committed state of the Consensus system.
   virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const = 0;
 
+  // Returns a copy of the committed state of the Consensus system,
+  // assuming caller holds the needed locks
+  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const = 0;
+
   // Returns a copy of the current committed Raft configuration.
   virtual RaftConfigPB CommittedConfig() const = 0;
 
@@ -311,15 +315,26 @@ struct StateChangeContext {
   const StateChangeReason reason;
 
   StateChangeContext(StateChangeReason in_reason)
-    : reason(in_reason) {
+      : reason(in_reason) {
+  }
+
+  StateChangeContext(StateChangeReason in_reason, bool is_locked)
+      : reason(in_reason),
+        is_config_locked_(is_locked) {
   }
 
   StateChangeContext(StateChangeReason in_reason, string uuid)
-    : reason(in_reason), new_leader_uuid(uuid) {
+      : reason(in_reason),
+        new_leader_uuid(uuid) {
   }
 
   StateChangeContext(StateChangeReason in_reason, ChangeConfigRecordPB change_rec)
-    : reason(in_reason), change_record(change_rec) {
+      : reason(in_reason),
+        change_record(change_rec) {
+  }
+
+  bool is_config_locked() const {
+    return is_config_locked_;
   }
 
   ~StateChangeContext() {}
@@ -352,6 +367,13 @@ struct StateChangeContext {
 
   // Value is filled when the change reason is LEADER/FOLLOWER_CONFIG_CHANGE_COMPLETE.
   const ChangeConfigRecordPB change_record;
+
+  // If this is true, the call-stack above has taken the lock for the raft consensus state. Needed
+  // in SysCatalogStateChanged for master to not re-get the lock. Not used for tserver callback.
+  // Note that the state changes using the UpdateConsensus() mechanism always hold the lock, so
+  // defaulting to true as they are majority. For ones that do not hold the lock, setting
+  // it to false in their constructor suffices currently, so marking it const.
+  const bool is_config_locked_ = true;
 };
 
 // Factory for replica transactions.

@@ -78,7 +78,7 @@ void ClusterVerifier::CheckCluster() {
 }
 
 Status ClusterVerifier::DoYsck() {
-  Sockaddr addr = cluster_->leader_master()->bound_rpc_addr();
+  Sockaddr addr = cluster_->GetLeaderMaster()->bound_rpc_addr();
 
   std::shared_ptr<YsckMaster> master;
   RETURN_NOT_OK(RemoteYsckMaster::Build(addr, &master));

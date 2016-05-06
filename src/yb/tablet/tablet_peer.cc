@@ -100,10 +100,10 @@ using tserver::TabletServerErrorPB;
 //  Tablet Peer
 // ============================================================================
 TabletPeer::TabletPeer(
-  const scoped_refptr<TabletMetadata>& meta,
-  const consensus::RaftPeerPB& local_peer_pb,
-  ThreadPool* apply_pool,
-  Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
+    const scoped_refptr<TabletMetadata>& meta,
+    const consensus::RaftPeerPB& local_peer_pb,
+    ThreadPool* apply_pool,
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
   : meta_(meta),
     tablet_id_(meta->tablet_id()),
     local_peer_pb_(local_peer_pb),
@@ -203,8 +203,12 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     state_ = RUNNING;
   }
 
+  // The context tracks that the current caller does not hold the lock for consensus state.
+  // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
+  // SysCatalogStateChanged, can get the lock when needed.
+  auto context =
+      std::make_shared<StateChangeContext>(StateChangeContext::TABLET_PEER_STARTED, false);
   // Because we changed the tablet state, we need to re-report the tablet to the master.
-  auto context = std::make_shared<StateChangeContext>(StateChangeContext::TABLET_PEER_STARTED);
   mark_dirty_clbk_.Run(context);
 
   return Status::OK();

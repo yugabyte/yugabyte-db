@@ -31,6 +31,15 @@
     } \
   } while (0);
 
+#define ASSERT_OK_PREPEND(status, msg) do { \
+  Status _s = status; \
+  if (_s.ok()) { \
+    SUCCEED(); \
+  } else { \
+    FAIL() << (msg) << " - status: " << _s.ToString();  \
+  } \
+} while (0)
+
 #define EXPECT_OK(status) do { \
     Status _s = status; \
     if (_s.ok()) { \
