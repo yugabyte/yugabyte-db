@@ -369,10 +369,6 @@ Status MvccManager::WaitForCleanSnapshotAtTimestamp(Timestamp timestamp,
   return Status::OK();
 }
 
-void MvccManager::WaitForCleanSnapshot(MvccSnapshot* snap) const {
-  CHECK_OK(WaitForCleanSnapshotAtTimestamp(clock_->Now(), snap, MonoTime::Max()));
-}
-
 void MvccManager::WaitForApplyingTransactionsToCommit() const {
   TRACE_EVENT0("tablet", "MvccManager::WaitForApplyingTransactionsToCommit");
 
@@ -401,11 +397,6 @@ void MvccManager::WaitForApplyingTransactionsToCommit() const {
 bool MvccManager::AreAllTransactionsCommitted(Timestamp ts) const {
   boost::lock_guard<LockType> l(lock_);
   return AreAllTransactionsCommittedUnlocked(ts);
-}
-
-int MvccManager::CountTransactionsInFlight() const {
-  boost::lock_guard<LockType> l(lock_);
-  return timestamps_in_flight_.size();
 }
 
 Timestamp MvccManager::GetCleanTimestamp() const {

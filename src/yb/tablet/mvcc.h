@@ -263,19 +263,6 @@ class MvccManager {
                                          MvccSnapshot* snapshot,
                                          const MonoTime& deadline) const WARN_UNUSED_RESULT;
 
-  // Take a snapshot at the current timestamp, and then wait for any
-  // currently running transactions at an earlier timestamp to finish.
-  //
-  // The returned snapshot acts as a "barrier":
-  // - all transactions which started prior to this call are included in
-  //   snapshot
-  // - no transactions which start after the call returns will be included
-  //   in snapshot
-  // - snapshot->is_clean() is guaranteed
-  //
-  // Note that transactions are not blocked during this call.
-  void WaitForCleanSnapshot(MvccSnapshot* snapshot) const;
-
   // Wait for all operations that are currently APPLYING to commit.
   //
   // NOTE: this does _not_ guarantee that no transactions are APPLYING upon
@@ -284,9 +271,6 @@ class MvccManager {
   void WaitForApplyingTransactionsToCommit() const;
 
   bool AreAllTransactionsCommitted(Timestamp ts) const;
-
-  // Return the number of transactions in flight..
-  int CountTransactionsInFlight() const;
 
   // Returns the earliest possible timestamp for an uncommitted transaction.
   // All timestamps before this one are guaranteed to be committed.

@@ -330,9 +330,6 @@ class Tablet {
   // Return the MVCC manager for this tablet.
   MvccManager* mvcc_manager() { return &mvcc_; }
 
-  // Return the Lock Manager for this tablet
-  LockManager* lock_manager() { return &lock_manager_; }
-
   const TabletMetadata *metadata() const { return metadata_.get(); }
   TabletMetadata *metadata() { return metadata_.get(); }
 

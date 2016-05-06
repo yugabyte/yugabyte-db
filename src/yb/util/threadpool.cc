@@ -19,7 +19,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <limits>
-#include <string>
+#include <memory>
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/stl_util.h"
@@ -33,6 +33,7 @@
 namespace yb {
 
 using strings::Substitute;
+using std::unique_ptr;
 
 ////////////////////////////////////////////////////////
 // FunctionRunnable
@@ -85,6 +86,12 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_tim
 }
 
 Status ThreadPoolBuilder::Build(gscoped_ptr<ThreadPool>* pool) const {
+  pool->reset(new ThreadPool(*this));
+  RETURN_NOT_OK((*pool)->Init());
+  return Status::OK();
+}
+
+Status ThreadPoolBuilder::Build(unique_ptr<ThreadPool>* pool) const {
   pool->reset(new ThreadPool(*this));
   RETURN_NOT_OK((*pool)->Init());
   return Status::OK();

@@ -86,6 +86,7 @@ class ThreadPoolBuilder {
 
   // Instantiate a new ThreadPool with the existing builder arguments.
   Status Build(gscoped_ptr<ThreadPool>* pool) const;
+  Status Build(std::unique_ptr<ThreadPool>* pool) const;
 
  private:
   friend class ThreadPool;

@@ -4552,6 +4552,8 @@ class RecoveryTestHelper {
         versions->SetLastSequence(seq);
       }
     }
+
+
   }
 
   // Recreate and fill the store with some data

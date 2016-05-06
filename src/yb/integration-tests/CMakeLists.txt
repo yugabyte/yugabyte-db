@@ -22,6 +22,7 @@ set(INTEGRATION_TESTS_SRCS
   external_mini_cluster_fs_inspector.cc
   mini_cluster.cc
   test_workload.cc
+  load_generator.cc
 )
 
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
