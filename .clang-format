@@ -3,7 +3,7 @@ Language:        Cpp
 # BasedOnStyle:  Google
 AccessModifierOffset: -1
 # this is the one that defines alignment on arguments
-AlignAfterOpenBracket: Align
+AlignAfterOpenBracket: AlwaysBreak
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignEscapedNewlinesLeft: true

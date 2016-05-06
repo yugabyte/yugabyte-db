@@ -45,6 +45,7 @@
 #include <algorithm>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/cfile/type_encodings.h"
@@ -52,8 +53,8 @@
 #include "yb/common/partition.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
@@ -66,6 +67,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
@@ -82,8 +84,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000, // 30 sec
@@ -149,6 +151,7 @@ TAG_FLAG(catalog_manager_check_ts_count_for_create_table, hidden);
 
 using std::shared_ptr;
 using std::string;
+using std::unique_ptr;
 using std::vector;
 
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
@@ -383,6 +386,8 @@ void CatalogManagerBgTasks::Run() {
           LOG(ERROR) << "Error processing pending assignments, aborting the current task: "
                      << s.ToString();
         }
+      } else {
+        catalog_manager_->load_balance_policy_->RunLoadBalancer();
       }
     } else {
       VLOG(1) << "We are no longer the leader, aborting the current task...";
@@ -436,11 +441,12 @@ void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
 
 } // anonymous namespace
 
-CatalogManager::CatalogManager(Master *master)
-  : master_(master),
-    rng_(GetRandomSeed32()),
-    state_(kConstructed),
-    leader_ready_term_(-1) {
+CatalogManager::CatalogManager(Master* master)
+    : master_(master),
+      rng_(GetRandomSeed32()),
+      state_(kConstructed),
+      leader_ready_term_(-1),
+      load_balance_policy_(new ClusterLoadBalancer(this)) {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));
@@ -2323,47 +2329,53 @@ bool SelectRandomTSForReplica(const TSDescriptorVector& ts_descs,
 
 } // anonymous namespace
 
-class AsyncAddServerTask : public RetryingTSRpcTask {
+class AsyncChangeConfigTask : public RetryingTSRpcTask {
  public:
-  AsyncAddServerTask(Master *master,
-                     ThreadPool* callback_pool,
-                     const scoped_refptr<TabletInfo>& tablet,
-                     const ConsensusStatePB& cstate)
-    : RetryingTSRpcTask(master,
-                        callback_pool,
-                        gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-                        tablet->table()),
-      tablet_(tablet),
-      cstate_(cstate) {
+  AsyncChangeConfigTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+      : RetryingTSRpcTask(
+            master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+            tablet->table()),
+        tablet_(tablet),
+        cstate_(cstate),
+        change_config_ts_uuid_(change_config_ts_uuid) {
     deadline_ = MonoTime::Max(); // Never time out.
   }
 
   virtual string type_name() const OVERRIDE { return "AddServer ChangeConfig"; }
 
   virtual string description() const OVERRIDE {
-    return Substitute("AddServer ChangeConfig RPC for tablet $0 on peer $1 "
-                      "with cas_config_opid_index $2",
-                      tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
+    return Substitute(
+        "$0 RPC for tablet $1 on peer $2 with cas_config_opid_index $3", type_name(),
+        tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
   }
 
  protected:
-  virtual bool SendRequest(int attempt) OVERRIDE;
-  virtual void HandleResponse(int attempt) OVERRIDE;
+  void HandleResponse(int attempt) OVERRIDE;
+  bool SendRequest(int attempt) OVERRIDE;
 
- private:
+  virtual bool PrepareRequest(int attempt) = 0;
+
   virtual string tablet_id() const OVERRIDE { return tablet_->tablet_id(); }
-  string permanent_uuid() const {
-    return target_ts_desc_->permanent_uuid();
-  }
+  string permanent_uuid() const { return target_ts_desc_->permanent_uuid(); }
 
   const scoped_refptr<TabletInfo> tablet_;
   const ConsensusStatePB cstate_;
+
+  // The uuid of the TabletServer we intend to change in the config, for example, the one we are
+  // adding to a new config, or the one we intend to remove from the current config.
+  //
+  // This is different from the target_ts_desc_, which points to the tablet server to whom we
+  // issue the ChangeConfig RPC call, which is the Leader in the case of this class, due to the
+  // PickLeaderReplica set in the constructor.
+  const string change_config_ts_uuid_;
 
   consensus::ChangeConfigRequestPB req_;
   consensus::ChangeConfigResponsePB resp_;
 };
 
-bool AsyncAddServerTask::SendRequest(int attempt) {
+bool AsyncChangeConfigTask::SendRequest(int attempt) {
   // Bail if we're retrying in vain.
   int64_t latest_index;
   {
@@ -2378,6 +2390,60 @@ bool AsyncAddServerTask::SendRequest(int attempt) {
     return false;
   }
 
+  // Logging should be covered inside based on failure reasons.
+  if (!PrepareRequest(attempt)) {
+    return false;
+  }
+
+  consensus_proxy_->ChangeConfigAsync(
+      req_, &resp_, &rpc_, boost::bind(&AsyncChangeConfigTask::RpcCallback, this));
+  VLOG(1) << "Sent " << type_name() << " request to " << permanent_uuid() << ":\n"
+          << req_.DebugString();
+  return true;
+}
+
+void AsyncChangeConfigTask::HandleResponse(int attempt) {
+  if (!resp_.has_error()) {
+    MarkComplete();
+    LOG_WITH_PREFIX(INFO) << Substitute(
+        "Change config succeeded on leader TS $0 for tablet $1 with type $2 for replica $3",
+        permanent_uuid(), tablet_->tablet_id(), type_name(), change_config_ts_uuid_);
+    return;
+  }
+
+  Status status = StatusFromPB(resp_.error().status());
+
+  // Do not retry on a CAS error, otherwise retry forever or until cancelled.
+  switch (resp_.error().code()) {
+    case TabletServerErrorPB::CAS_FAILED:
+      LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed with leader " << permanent_uuid()
+                               << " due to CAS failure. No further retry: " << status.ToString();
+      MarkFailed();
+      break;
+    default:
+      LOG_WITH_PREFIX(INFO) << "ChangeConfig() failed with leader " << permanent_uuid()
+                            << " due to error "
+                            << TabletServerErrorPB::Code_Name(resp_.error().code())
+                            << ". This operation will be retried. Error detail: "
+                            << status.ToString();
+      break;
+  }
+}
+
+class AsyncAddServerTask : public AsyncChangeConfigTask {
+ public:
+  AsyncAddServerTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid = "")
+      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
+
+  virtual string type_name() const OVERRIDE { return "AddServer ChangeConfig"; }
+
+ protected:
+  virtual bool PrepareRequest(int attempt) OVERRIDE;
+};
+
+bool AsyncAddServerTask::PrepareRequest(int attempt) {
   // Select the replica we wish to add to the config.
   // Do not include current members of the config.
   unordered_set<string> replica_uuids;
@@ -2387,6 +2453,23 @@ bool AsyncAddServerTask::SendRequest(int attempt) {
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   shared_ptr<TSDescriptor> replacement_replica;
+  if (!change_config_ts_uuid_.empty()) {
+    for (auto ts_desc : ts_descs) {
+      if (ts_desc->permanent_uuid() == change_config_ts_uuid_) {
+        // This is given by the client, so we assume it is a well chosen uuid.
+        replacement_replica = ts_desc;
+        break;
+      }
+    }
+    if (PREDICT_FALSE(!replacement_replica)) {
+      LOG(WARNING) << "Could not find desired replica " << change_config_ts_uuid_
+                   << " in live set!";
+      return false;
+    }
+  }
+
+  // TODO(bogdan): Refactor this so we can use the same code path both for rebalance as well as
+  // under replication.
   if (PREDICT_FALSE(!SelectRandomTSForReplica(ts_descs, replica_uuids, &replacement_replica))) {
     YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "No candidate replacement replica found "
                                << "for tablet " << tablet_->ToString();
@@ -2410,38 +2493,46 @@ bool AsyncAddServerTask::SendRequest(int attempt) {
   }
   *peer->mutable_last_known_addr() = peer_reg.rpc_addresses(0);
   peer->set_member_type(RaftPeerPB::VOTER);
-  consensus_proxy_->ChangeConfigAsync(req_, &resp_, &rpc_,
-                                      boost::bind(&AsyncAddServerTask::RpcCallback, this));
-  VLOG(1) << "Sent AddServer ChangeConfig request to " << permanent_uuid() << ":\n"
-          << req_.DebugString();
+
   return true;
 }
 
-void AsyncAddServerTask::HandleResponse(int attempt) {
-  if (!resp_.has_error()) {
-    MarkComplete();
-    LOG_WITH_PREFIX(INFO) << "Change config succeeded";
-    return;
+// Task to remove a tablet server peer from an overly-replicated tablet config.
+class AsyncRemoveServerTask : public AsyncChangeConfigTask {
+ public:
+  AsyncRemoveServerTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
+
+  string type_name() const OVERRIDE { return "RemoveServer ChangeConfig"; }
+
+ protected:
+  virtual bool PrepareRequest(int attempt) OVERRIDE;
+};
+
+bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
+  bool found = false;
+  for (const RaftPeerPB& peer : cstate_.config().peers()) {
+    if (change_config_ts_uuid_ == peer.permanent_uuid()) {
+      found = true;
+    }
   }
 
-  Status status = StatusFromPB(resp_.error().status());
-
-  // Do not retry on a CAS error, otherwise retry forever or until cancelled.
-  switch (resp_.error().code()) {
-    case TabletServerErrorPB::CAS_FAILED:
-      LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed with leader " << permanent_uuid()
-                               << " due to CAS failure. No further retry: "
-                               << status.ToString();
-      MarkFailed();
-      break;
-    default:
-      LOG_WITH_PREFIX(INFO) << "ChangeConfig() failed with leader " << permanent_uuid()
-                            << " due to error "
-                            << TabletServerErrorPB::Code_Name(resp_.error().code())
-                            << ". This operation will be retried. Error detail: "
-                            << status.ToString();
-      break;
+  if (!found) {
+    LOG(WARNING) << "Asked to remove TS with uuid " << change_config_ts_uuid_
+                 << " but could not find it in config peers!";
+    return false;
   }
+
+  req_.set_dest_uuid(permanent_uuid());
+  req_.set_tablet_id(tablet_->tablet_id());
+  req_.set_type(consensus::REMOVE_SERVER);
+  req_.set_cas_config_opid_index(cstate_.config().opid_index());
+  RaftPeerPB* peer = req_.mutable_server();
+  peer->set_permanent_uuid(change_config_ts_uuid_);
+
+  return true;
 }
 
 void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table) {
@@ -2514,9 +2605,26 @@ void CatalogManager::SendDeleteTabletRequest(
   WARN_NOT_OK(call->Run(), "Failed to send delete tablet request");
 }
 
-void CatalogManager::SendAddServerRequest(const scoped_refptr<TabletInfo>& tablet,
-                                          const ConsensusStatePB& cstate) {
-  auto task = new AsyncAddServerTask(master_, worker_pool_.get(), tablet, cstate);
+// TODO: refactor this into a joint method with the add one.
+void CatalogManager::SendRemoveServerRequest(
+    const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
+    const string& change_config_ts_uuid) {
+  auto task =
+      new AsyncRemoveServerTask(master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+  tablet->table()->AddTask(task);
+  Status status = task->Run();
+  WARN_NOT_OK(status, "Failed to send new RemoveServer request");
+
+  // Need to print this after Run() because that's where it picks the TS which description()
+  // needs.
+  if (status.ok()) LOG(INFO) << "Started RemoveServer task: " << task->description();
+}
+
+void CatalogManager::SendAddServerRequest(
+    const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
+    const string& change_config_ts_uuid) {
+  auto task =
+      new AsyncAddServerTask(master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
   tablet->table()->AddTask(task);
   Status status = task->Run();
   WARN_NOT_OK(status, "Failed to send new AddServer request");
@@ -2530,7 +2638,6 @@ void CatalogManager::SendAddServerRequest(const scoped_refptr<TabletInfo>& table
 void CatalogManager::ExtractTabletsToProcess(
     std::vector<scoped_refptr<TabletInfo> > *tablets_to_delete,
     std::vector<scoped_refptr<TabletInfo> > *tablets_to_process) {
-
   boost::shared_lock<LockType> l(lock_);
 
   // TODO: At the moment we loop through all the tablets

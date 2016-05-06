@@ -57,6 +57,7 @@ class RpcContext;
 namespace master {
 
 class CatalogManagerBgTasks;
+class ClusterLoadBalancer;
 class Master;
 class SysCatalogTable;
 class TableInfo;
@@ -597,10 +598,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                TSDescriptor* ts_desc,
                                const std::string& reason);
 
+  // Start a task to change the config to remove a certain voter because the specified tablet is
+  // over-replicated.
+  void SendRemoveServerRequest(
+      const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
+      const string& change_config_ts_uuid);
+
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
-  void SendAddServerRequest(const scoped_refptr<TabletInfo>& tablet,
-                            const consensus::ConsensusStatePB& cstate);
+  void SendAddServerRequest(
+      const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
+      const string& change_config_ts_uuid = "");
 
   std::string GenerateId() { return oid_generator_.Next(); }
 
@@ -681,6 +689,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Number of live tservers metric.
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_live_;
+
+  friend class ClusterLoadBalancer;
+
+  // Policy for load balancing tablets on tablet servers.
+  std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

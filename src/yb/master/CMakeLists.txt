@@ -34,6 +34,7 @@ ADD_EXPORTABLE_LIBRARY(master_proto
 
 set(MASTER_SRCS
   catalog_manager.cc
+  cluster_balance.cc
   master.cc
   master_options.cc
   master_service.cc
