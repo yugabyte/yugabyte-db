@@ -52,13 +52,8 @@ DEFINE_bool(enable_data_block_fsync, true,
             "Disabling this flag may cause data loss in the event of a system crash.");
 TAG_FLAG(enable_data_block_fsync, unsafe);
 
-#if defined(__linux__)
-DEFINE_string(block_manager, "log", "Which block manager to use for storage. "
-              "Valid options are 'file' and 'log'.");
-#else
 DEFINE_string(block_manager, "file", "Which block manager to use for storage. "
               "Only the file block manager is supported for non-Linux systems.");
-#endif
 TAG_FLAG(block_manager, advanced);
 
 DEFINE_string(fs_wal_dir, "",
