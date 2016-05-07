@@ -61,10 +61,10 @@ if [ ! -d "$PWD" ]; then
   cd /tmp
 fi
 
-# Absolute path to the root build directory. The test path is expected to be one or two levels
-# within it. This works for tests that are in the "bin" directory as well as tests in
-# "rocksdb-build".
+# Absolute path to the root build directory. The test path is expected to be in a subdirectory
+# of it. This works for tests that are in the "bin" directory as well as tests in "rocksdb-build".
 BUILD_ROOT=$(cd "$(dirname "$TEST_PATH")"/.. && pwd)
+BUILD_ROOT_BASENAME=${BUILD_ROOT##*/}
 
 . "$( dirname "$BASH_SOURCE" )/common-test-env.sh"
 
@@ -73,7 +73,7 @@ if [ "$IS_MAC" == "1" ]; then
   # See https://yugabyte.atlassian.net/browse/ENG-37
   STACK_TRACE_FILTER=cat
 else
-  STACK_TRACE_FILTER="$SOURCE_ROOT"/build-support/stacktrace_addr2line.pl
+  STACK_TRACE_FILTER=$SOURCE_ROOT/build-support/stacktrace_addr2line.pl
 fi
 
 TEST_TMP_DIR_ROOT=$BUILD_ROOT/test-tmp
@@ -102,14 +102,15 @@ pushd "$TEST_WORKDIR" >/dev/null || exit 1
 rm -f *
 
 if [ "$( basename "$TEST_DIR" )" == "rocksdb-build" ]; then
-  LOG_PATH_PREFIX="$TEST_LOG_DIR/rocksdb_$TEST_NAME"
+  LOG_PATH_BASENAME_PREFIX=rocksdb_$TEST_NAME
   TMP_DIR_NAME_PREFIX="rocksdb_$TMP_DIR_NAME_PREFIX"
   IS_ROCKSDB=1
 else
-  LOG_PATH_PREFIX="$TEST_LOG_DIR/$TEST_NAME"
+  LOG_PATH_BASENAME_PREFIX=$TEST_NAME
   IS_ROCKSDB=0
 fi
 
+LOG_PATH_PREFIX=$TEST_LOG_DIR/$LOG_PATH_BASENAME_PREFIX
 LOG_PATH_TXT=$LOG_PATH_PREFIX.txt
 XML_FILE_PATH=$LOG_PATH_PREFIX.xml
 
@@ -190,16 +191,24 @@ fi
 
 # Run the test.
 set +e
-$ABS_TEST_PATH "$@" $TIMEOUT_ARG "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
+"$ABS_TEST_PATH" "$@" $TIMEOUT_ARG "--gtest_output=xml:$XML_FILE_PATH" >"$RAW_LOG_PATH" 2>&1
 STATUS=$?
 set -e
 
 if [ "$STATUS" -ne 0 ]; then
-  echo "$ABS_TEST_PATH exited with code $STATUS" >&2
+  echo "'$ABS_TEST_PATH' exited with code $STATUS" >&2
 fi
 
-if [ ! -f "$XML_FILE_PATH" ]; then
-  echo "$ABS_TEST_PATH failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
+if [ -f "$XML_FILE_PATH" ]; then
+  if [ -n "${BUILD_URL:-}" ]; then
+    echo "Updating $XML_FILE_PATH with a link to test log"
+    "$SOURCE_ROOT"/build-support/update_test_result_xml.py \
+      --result-xml "$XML_FILE_PATH" \
+      --log-url \
+        "${BUILD_URL%/}/artifact/build/$BUILD_ROOT_BASENAME/test-logs/$LOG_PATH_BASENAME_PREFIX.txt"
+  fi
+else
+  echo "'$ABS_TEST_PATH' failed to generate $XML_FILE_PATH, exit code: $STATUS" >&2
   if is_known_non_gtest_test "$TEST_NAME" "$IS_ROCKSDB"; then
     echo "$TEST_NAME (IS_ROCKSDB=$IS_ROCKSDB, IS_MAC=$IS_MAC) is a known non-gtest test" \
          "executable, not considering this a failure" >&2
@@ -268,15 +277,15 @@ fi
 # case result to the XML file for the leak report. Otherwise Jenkins won't show
 # us which tests had LSAN errors.
 if zgrep --silent "ERROR: LeakSanitizer: detected memory leaks" $LOG_PATH ; then
-    echo Test had memory leaks. Editing XML
-    perl -p -i -e '
-    if (m#</testsuite>#) {
-      print "<testcase name=\"LeakSanitizer\" status=\"run\" classname=\"LSAN\">\n";
-      print "  <failure message=\"LeakSanitizer failed\" type=\"\">\n";
-      print "    See txt log file for details\n";
-      print "  </failure>\n";
-      print "</testcase>\n";
-    }' $XML_FILE_PATH
+  echo Test had memory leaks. Editing XML
+  perl -p -i -e '
+  if (m#</testsuite>#) {
+    print "<testcase name=\"LeakSanitizer\" status=\"run\" classname=\"LSAN\">\n";
+    print "  <failure message=\"LeakSanitizer failed\" type=\"\">\n";
+    print "    See txt log file for details\n";
+    print "  </failure>\n";
+    print "</testcase>\n";
+  }' $XML_FILE_PATH
 fi
 
 # Capture and compress core file and binary.
