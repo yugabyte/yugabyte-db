@@ -69,6 +69,15 @@ PG_MODULE_MAGIC;
 
 bool		isExplain = false;
 
+#if PG_VERSION_NUM >= 90600
+/* hardcode some bloom values, bloom.h is not exported */
+#define sizeof_BloomPageOpaqueData 8
+#define sizeof_SignType 2
+#define BLOOMTUPLEHDRSZ 6
+/* this will be updated, when needed, by hypo_discover_am */
+static Oid BLOOM_AM_OID = InvalidOid;
+#endif
+
 /* GUC for enabling / disabling hypopg during EXPLAIN */
 static bool hypo_is_enabled;
 
@@ -207,6 +216,7 @@ static void hypo_estimate_index_simple(hypoEntry *entry,
 						   BlockNumber *pages, double *tuples);
 static void hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel);
 static bool hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname);
+static void hypo_discover_am(char *amname, Oid oid);
 
 void
 _PG_init(void)
@@ -277,6 +287,8 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 				 errmsg("hypopg: access method \"%s\" does not exist",
 						accessMethod)));
 	}
+
+	hypo_discover_am(accessMethod, HeapTupleGetOid(tuple));
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -367,15 +379,15 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 		 * reject unsupported am. It could be done earlier but it's simpler
 		 * (and was previously done) here.
 		 */
-		switch (entry->relam)
-		{
-			case BTREE_AM_OID:
+		if (entry->relam != BTREE_AM_OID
 #if PG_VERSION_NUM >= 90500
-			case BRIN_AM_OID:
+			&& entry->relam != BRIN_AM_OID
 #endif
-				break;
-			default:
-
+#if PG_VERSION_NUM >= 90600
+			&& entry->relam != BLOOM_AM_OID
+#endif
+		)
+		{
 				/*
 				 * do not store hypothetical indexes with access method not
 				 * supported
@@ -1414,6 +1426,9 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 #if PG_VERSION_NUM >= 90500
 	int			pages_per_range = BRIN_DEFAULT_PAGES_PER_RANGE;
 #endif
+#if PG_VERSION_NUM >= 90600
+	int			bloomLength = 5;
+#endif
 	int			additional_bloat = 20;
 	ListCell   *lc;
 
@@ -1496,101 +1511,130 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		if (strcmp(elem->defname, "pages_per_range") == 0)
 			pages_per_range = (int32) intVal(elem->arg);
 #endif
+#if PG_VERSION_NUM >= 90600
+		if (strcmp(elem->defname, "length") == 0)
+			bloomLength = (int32) intVal(elem->arg);
+#endif
 	}
 
-	switch (entry->relam)
+	if (entry->relam == BTREE_AM_OID)
 	{
-		case BTREE_AM_OID:
+		/* -------------------------------
+		 * quick estimating of index size:
+		 *
+		 * sizeof(PageHeader) : 24 (1 per page)
+		 * sizeof(BTPageOpaqueData): 16 (1 per page)
+		 * sizeof(IndexTupleData): 8 (1 per tuple, referencing heap)
+		 * sizeof(ItemIdData): 4 (1 per tuple, storing the index item)
+		 * default fillfactor: 90%
+		 * no NULL handling
+		 * fixed additional bloat: 20%
+		 *
+		 * I'll also need to read more carefully nbtree code to check if
+		 * this is accurate enough.
+		 *
+		 */
+		line_size = ind_avg_width +
+			+(sizeof(IndexTupleData) * entry->ncolumns)
+			+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
 
-			/* -------------------------------
-			 * quick estimating of index size:
-			 *
-			 * sizeof(PageHeader) : 24 (1 per page)
-			 * sizeof(BTPageOpaqueData): 16 (1 per page)
-			 * sizeof(IndexTupleData): 8 (1 per tuple, referencing heap)
-			 * sizeof(ItemIdData): 4 (1 per tuple, storing the index item)
-			 * default fillfactor: 90%
-			 * no NULL handling
-			 * fixed additional bloat: 20%
-			 *
-			 * I'll also need to read more carefully nbtree code to check if
-			 * this is accurate enough.
-			 *
-			 */
-			line_size = ind_avg_width +
-				+(sizeof(IndexTupleData) * entry->ncolumns)
-				+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
+		usable_page_size = BLCKSZ - SizeOfPageHeaderData - sizeof(BTPageOpaqueData);
+		bloat_factor = (200.0
+			  - (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
+						+ additional_bloat) / 100;
 
-			usable_page_size = BLCKSZ - SizeOfPageHeaderData - sizeof(BTPageOpaqueData);
-			bloat_factor = (200.0
-				  - (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
-							+ additional_bloat) / 100;
-
-			entry->pages =
-				entry->tuples * line_size * bloat_factor / usable_page_size;
+		entry->pages =
+			entry->tuples * line_size * bloat_factor / usable_page_size;
 #if PG_VERSION_NUM >= 90300
-			entry->tree_height = -1;	/* TODO */
+		entry->tree_height = -1;	/* TODO */
 #endif
-			break;
+	}
 #if PG_VERSION_NUM >= 90500
-		case BRIN_AM_OID:
-			{
-				HeapTuple	ht_opc;
-				Form_pg_opclass opcrec;
-				char	   *opcname;
-				int			ranges = rel->pages / pages_per_range + 1;
-				bool		is_minmax = true;
-				int			data_size;
+	else if (entry->relam == BRIN_AM_OID)
+	{
+		HeapTuple	ht_opc;
+		Form_pg_opclass opcrec;
+		char	   *opcname;
+		int			ranges = rel->pages / pages_per_range + 1;
+		bool		is_minmax = true;
+		int			data_size;
 
-				/* -------------------------------
-				 * quick estimation of index size. A BRIN index contains
-				 * - a root page
-				 * - a range map: REVMAP_PAGE_MAXITEMS items (one per range
-				 *	 block) per revmap block
-				 * - regular type: sizeof(BrinTuple) per range, plus depending
-				 *	 on opclass:
-				 *	 - *_minmax_ops: 2 Datums (min & max obviously)
-				 *	 - *_inclusion_ops: 3 datumes (inclusion and 2 bool)
-				 *
-				 * I assume same minmax VS. inclusion opclass for all columns.
-				 * BRIN access method does not bloat, don't add any additional.
-				 */
+		/* -------------------------------
+		 * quick estimation of index size. A BRIN index contains
+		 * - a root page
+		 * - a range map: REVMAP_PAGE_MAXITEMS items (one per range
+		 *	 block) per revmap block
+		 * - regular type: sizeof(BrinTuple) per range, plus depending
+		 *	 on opclass:
+		 *	 - *_minmax_ops: 2 Datums (min & max obviously)
+		 *	 - *_inclusion_ops: 3 datumes (inclusion and 2 bool)
+		 *
+		 * I assume same minmax VS. inclusion opclass for all columns.
+		 * BRIN access method does not bloat, don't add any additional.
+		 */
 
-				entry->pages = 1	/* root page */
-					+ (ranges / REVMAP_PAGE_MAXITEMS) + 1;		/* revmap */
+		entry->pages = 1	/* root page */
+			+ (ranges / REVMAP_PAGE_MAXITEMS) + 1;		/* revmap */
 
-				/* get the operator class name */
-				ht_opc = SearchSysCache1(CLAOID,
-										 ObjectIdGetDatum(entry->opclass[0]));
-				if (!HeapTupleIsValid(ht_opc))
-					elog(ERROR, "hypopg: cache lookup failed for opclass %u",
-						 entry->opclass[0]);
-				opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
+		/* get the operator class name */
+		ht_opc = SearchSysCache1(CLAOID,
+								 ObjectIdGetDatum(entry->opclass[0]));
+		if (!HeapTupleIsValid(ht_opc))
+			elog(ERROR, "hypopg: cache lookup failed for opclass %u",
+				 entry->opclass[0]);
+		opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
 
-				opcname = NameStr(opcrec->opcname);
-				ReleaseSysCache(ht_opc);
+		opcname = NameStr(opcrec->opcname);
+		ReleaseSysCache(ht_opc);
 
-				/* is it a minmax or an inclusion operator class ? */
-				if (!strstr(opcname, "minmax_ops"))
-					is_minmax = false;
+		/* is it a minmax or an inclusion operator class ? */
+		if (!strstr(opcname, "minmax_ops"))
+			is_minmax = false;
 
-				/* compute data_size according to opclass kind */
-				if (is_minmax)
-					data_size = sizeof(BrinTuple) + 2 * ind_avg_width;
-				else
-					data_size = sizeof(BrinTuple) + ind_avg_width
-						+ 2 * sizeof(bool);
+		/* compute data_size according to opclass kind */
+		if (is_minmax)
+			data_size = sizeof(BrinTuple) + 2 * ind_avg_width;
+		else
+			data_size = sizeof(BrinTuple) + ind_avg_width
+				+ 2 * sizeof(bool);
 
-				data_size = data_size * ranges
-					/ (BLCKSZ - MAXALIGN(SizeOfPageHeaderData)) + 1;
+		data_size = data_size * ranges
+			/ (BLCKSZ - MAXALIGN(SizeOfPageHeaderData)) + 1;
 
-				entry->pages += data_size;
-			}
-			break;
+		entry->pages += data_size;
+	}
 #endif
-		default:
-			elog(WARNING, "hypopg: access method %d is not supported",
-				 entry->relam);
+#if PG_VERSION_NUM >= 90500
+	else if (entry->relam == BLOOM_AM_OID)
+	{
+		/* ----------------------------
+		 * bloom indexes are fixed size, depending on bloomLength (default 5B),
+		 * see blutils.c
+		 *
+		 * A bloom index contains a meta page.
+		 * Each other pages contains:
+		 * - page header
+		 * - opaque data
+		 * - lines:
+		 *   - ItemPointerData (BLOOMTUPLEHDRSZ)
+		 *   - SignType * bloomLength
+		 *
+		 */
+		usable_page_size = BLCKSZ - MAXALIGN(SizeOfPageHeaderData)
+			- MAXALIGN(sizeof_BloomPageOpaqueData);
+		line_size = BLOOMTUPLEHDRSZ +
+			sizeof_SignType * bloomLength;
+
+		entry->pages = 1; /* meta page */
+		entry->pages += ceil(
+				((double) entry->tuples * line_size) / usable_page_size);
+	}
+#endif
+	else
+	{
+		/* we shouldn't raise this error */
+		elog(WARNING, "hypopg: access method %d is not supported",
+			 entry->relam);
 	}
 
 	/* make sure the index size is at least one block */
@@ -1684,4 +1728,30 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 			return false;
 			break;
 	}
+}
+
+/*
+ * Given an access method name and its oid, try to find out if it's a supported
+ * pluggable access method.  If so, save its oid for future use.
+ */
+static void
+hypo_discover_am(char *amname, Oid oid)
+{
+#if PG_VERSION_NUM < 90600
+	/* no (reliable) external am before 9.6 */
+	return;
+#endif
+
+	/* don't try to handle builtin access method */
+	if (oid == BTREE_AM_OID ||
+		oid == GIST_AM_OID ||
+		oid == GIN_AM_OID ||
+		oid == SPGIST_AM_OID ||
+		oid == BRIN_AM_OID ||
+		oid == HASH_AM_OID)
+		return;
+
+	/* Is it the bloom access method? */
+	if (strcmp(amname, "bloom") == 0)
+		BLOOM_AM_OID = oid;
 }
