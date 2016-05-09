@@ -31,8 +31,8 @@ add_library(yb_fs
   block_manager_metrics.cc
   block_manager_util.cc
   file_block_manager.cc
-  fs_manager.cc
-  log_block_manager.cc)
+  fs_manager.cc)
+
 
 target_link_libraries(yb_fs
   fs_proto

@@ -56,7 +56,6 @@ DECLARE_string(block_manager);
 METRIC_DECLARE_counter(rows_inserted);
 METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
-METRIC_DECLARE_gauge_uint64(log_block_manager_blocks_under_management);
 
 namespace yb {
 namespace tserver {
@@ -1839,26 +1838,11 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Verify that the tablet exists
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
 
-  // Fetch the metric for the number of on-disk blocks, so we can later verify
-  // that we actually remove data.
-  scoped_refptr<AtomicGauge<uint64_t> > ondisk =
-    METRIC_log_block_manager_blocks_under_management.Instantiate(
-        mini_server_->server()->metric_entity(), 0);
-  const int block_count_before_flush = ondisk->value();
-  if (FLAGS_block_manager == "log") {
-    ASSERT_EQ(block_count_before_flush, 0);
-  }
-
   // Put some data in the tablet. We flush and insert more rows to ensure that
   // there is data both in the MRS and on disk.
   ASSERT_NO_FATAL_FAILURE(InsertTestRowsRemote(0, 1, 1));
   ASSERT_OK(tablet_peer_->tablet()->Flush());
   ASSERT_NO_FATAL_FAILURE(InsertTestRowsRemote(0, 2, 1));
-
-  const int block_count_after_flush = ondisk->value();
-  if (FLAGS_block_manager == "log") {
-    ASSERT_GT(block_count_after_flush, block_count_before_flush);
-  }
 
   // Drop any local references to the tablet from within this test,
   // so that when we delete it on the server, it's not held alive
@@ -1892,13 +1876,6 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
                                 "http://$0/jsonmetricz",
                                 mini_server_->bound_http_addr().ToString()),
                               &buf));
-
-  // Verify data was actually removed.
-  // TODO(KUDU-678): this should be 0 but we leak an empty delta block.
-  const int block_count_after_delete = ondisk->value();
-  if (FLAGS_block_manager == "log") {
-    ASSERT_EQ(block_count_after_delete, 1);
-  }
 
   // Verify that after restarting the TS, the tablet is still not in the tablet manager.
   // This ensures that the on-disk metadata got removed.

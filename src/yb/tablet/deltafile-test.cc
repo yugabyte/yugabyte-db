@@ -30,7 +30,6 @@
 #include "yb/util/test_macros.h"
 
 DECLARE_int32(deltafile_default_block_size);
-DECLARE_bool(log_block_manager_test_hole_punching);
 DEFINE_int32(first_row_to_update, 10000, "the first row to update");
 DEFINE_int32(last_row_to_update, 100000, "the last row to update");
 DEFINE_int32(n_verify, 1, "number of times to verify the updates"
@@ -55,8 +54,6 @@ class TestDeltaFile : public ::testing::Test {
     env_(NewMemEnv(Env::Default())),
     schema_(CreateSchema()),
     arena_(1024, 1024) {
-    // Can't check on-disk file size with a memenv.
-    FLAGS_log_block_manager_test_hole_punching = false;
   }
 
  public:

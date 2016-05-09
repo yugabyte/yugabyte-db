@@ -66,9 +66,6 @@ class AlterTableRandomized : public YBTest {
     // and rewriting metadata files quite a bit. Globally disabling fsync
     // speeds the test runtime up dramatically.
     opts.extra_tserver_flags.push_back("--never_fsync");
-    // This test produces tables with lots of columns. With container preallocation,
-    // we end up using quite a bit of disk space. So, we disable it.
-    opts.extra_tserver_flags.push_back("--log_container_preallocate_bytes=0");
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 

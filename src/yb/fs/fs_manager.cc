@@ -29,7 +29,6 @@
 #include "yb/fs/block_id.h"
 #include "yb/fs/file_block_manager.h"
 #include "yb/fs/fs.pb.h"
-#include "yb/fs/log_block_manager.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
@@ -71,7 +70,6 @@ using yb::env_util::ScopedFileDeleter;
 using yb::fs::BlockManagerOptions;
 using yb::fs::CreateBlockOptions;
 using yb::fs::FileBlockManager;
-using yb::fs::LogBlockManager;
 using yb::fs::ReadableBlock;
 using yb::fs::WritableBlock;
 using std::map;
@@ -212,8 +210,6 @@ void FsManager::InitBlockManager() {
   opts.read_only = read_only_;
   if (FLAGS_block_manager == "file") {
     block_manager_.reset(new FileBlockManager(env_, opts));
-  } else if (FLAGS_block_manager == "log") {
-    block_manager_.reset(new LogBlockManager(env_, opts));
   } else {
     LOG(FATAL) << "Invalid block manager: " << FLAGS_block_manager;
   }

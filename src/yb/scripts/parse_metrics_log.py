@@ -37,7 +37,6 @@ import sys
 # The second is the name that will be used in the TSV header line.
 SIMPLE_METRICS = [
   ("server.generic_current_allocated_bytes", "heap_allocated"),
-  ("server.log_block_manager_bytes_under_management", "bytes_on_disk"),
   ("tablet.memrowset_size", "mrs_size"),
   ("server.block_cache_usage", "bc_usage"),
 ]

@@ -25,7 +25,6 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/fs/log_block_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/server/logical_clock.h"
@@ -792,26 +791,6 @@ TEST_F(TestCompaction, TestCompactionFreesDiskSpace) {
     }
     SleepFor(MonoDelta::FromMilliseconds(200));
   }
-}
-
-// Regression test for KUDU-1237, a bug in which empty flushes or compactions
-// would result in orphaning near-empty cfile blocks on the disk.
-TEST_F(TestCompaction, TestEmptyFlushDoesntLeakBlocks) {
-  if (FLAGS_block_manager != "log") {
-    LOG(WARNING) << "Test requires the log block manager";
-    return;
-  }
-
-  // Fetch the metric for the number of on-disk blocks, so we can later verify
-  // that we actually remove data.
-  fs::LogBlockManager* lbm = down_cast<fs::LogBlockManager*>(
-      harness_->fs_manager()->block_manager());
-
-  int64_t before_count = lbm->CountBlocksForTests();
-  ASSERT_OK(tablet()->Flush());
-  int64_t after_count = lbm->CountBlocksForTests();
-
-  ASSERT_EQ(after_count, before_count);
 }
 
 } // namespace tablet

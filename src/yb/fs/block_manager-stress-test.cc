@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "yb/fs/file_block_manager.h"
-#include "yb/fs/log_block_manager.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -364,11 +363,7 @@ void BlockManagerStressTest<T>::DeleterThread() {
 }
 
 // What kinds of BlockManagers are supported?
-#if defined(__linux__)
-typedef ::testing::Types<FileBlockManager, LogBlockManager> BlockManagers;
-#else
 typedef ::testing::Types<FileBlockManager> BlockManagers;
-#endif
 TYPED_TEST_CASE(BlockManagerStressTest, BlockManagers);
 
 TYPED_TEST(BlockManagerStressTest, StressTest) {

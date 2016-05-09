@@ -70,9 +70,6 @@ class FlexPartitioningITest : public YBTest {
 
     ExternalMiniClusterOptions opts;
     opts.num_tablet_servers = 1;
-    // This test produces lots of tablets. With container and log preallocation,
-    // we end up using quite a bit of disk space. So, we disable them.
-    opts.extra_tserver_flags.push_back("--log_container_preallocate_bytes=0");
     opts.extra_tserver_flags.push_back("--log_preallocate_segments=false");
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
