@@ -37,9 +37,12 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
+#include "yb/util/env.h"
+#include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/random.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 
@@ -324,19 +327,49 @@ void TryRunLsof(const Sockaddr& addr, vector<string>* log) {
 }
 
 uint16_t GetFreePort() {
+  // To avoid a race condition where the free port returned to the caller gets used by another
+  // process before this caller can use it, we will lock the port using a file level lock.
+  // First create the directory, if it doesn't already exist, where these lock files will live.
+  Env* env = Env::Default();
+  bool created = false;
+  const string lock_file_dir = "/tmp/yb-port-locks";
+  Status status = env_util::CreateDirIfMissing(env, lock_file_dir, &created);
+  if (!status.ok()) {
+    LOG(FATAL) << "Could not create " << lock_file_dir << " directory: "
+               << status.ToString();
+  }
+
+  // Now, find a unused port in the [kMinPort..kMaxPort] range.
+  constexpr uint16_t kMinPort = 40000;
+  constexpr uint16_t kMaxPort = 65535;
+  static yb::Random rand(GetCurrentTimeMicros());
   for (int i = 0; i < 1000; ++i) {
-    uint16_t random_port = 61000 + rand() % (65535 - 61000 + 1);
+    uint16_t random_port = kMinPort + rand.Next() % (kMaxPort -  kMinPort + 1);
 
     Sockaddr sock_addr;
     CHECK_OK(sock_addr.ParseString("127.0.0.1", random_port));
     Socket sock;
     sock.Init(0);
+
     if (sock.Bind(sock_addr, /* explain_addr_in_use */ false).ok()) {
-      LOG(INFO) << "Selected random free RPC port " << random_port;
-      return random_port;
+      // We found an unused port.
+
+      // Now, lock this "port" for use by the current process before 'sock' goes out of scope.
+      // This will ensure that no other process can get this port while this process is still
+      // running. LockFile() returns immediately if we can't get the lock. That's the behavior
+      // we want. In that case, we'll just try another port.
+      string lock_file = lock_file_dir + "/" + std::to_string(random_port) + ".lck";
+      FileLock *lock = nullptr;
+      if (env->LockFile(lock_file, &lock).ok()) {
+        CHECK(lock) << "Lock should not be NULL";
+        LOG(INFO) << "Selected random free RPC port " << random_port;
+        return random_port;
+      }
     }
   }
-  LOG(FATAL) << "Could not find a free random port between 61000 and 65535 inclusively";
+
+  LOG(FATAL) << "Could not find a free random port between " <<  kMinPort << " and "
+             << kMaxPort << " inclusively";
   return 0;  // never reached
 }
 
