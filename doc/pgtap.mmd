@@ -2550,6 +2550,46 @@ missing operators, like so:
     #     Missing enums:
     #         +(integer,text) RETURNS text
 
+### `extensions_are()` ###
+
+    SELECT extensions_are( :schema, :extensions, :description );
+    SELECT extensions_are( :schema, :extensions );
+    SELECT extensions_are( :extensions, :description );
+    SELECT extensions_are( :extensions );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find extensions.
+
+`:extensions`
+: An array of extension names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the extensions in the named schema, or that
+are visible in the search path, are only the extensions that *should* be
+there. If the `:schema` argument is omitted, all extensions will be checked.
+If the description is omitted, a generally useful default description will be
+generated. Example:
+
+    SELECT extensions_are(
+        'myschema',
+        ARRAY[ 'citext', 'isn', 'plpgsql' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing extensions, like so:
+
+    # Failed test 91: "Schema public should have the correct extensions"
+    #     Extra extensions:
+    #         pgtap
+    #         ltree
+    #     Missing extensions:
+    #         citext
+    #         isn
+
 To Have or Have Not
 -------------------
 
@@ -7570,6 +7610,8 @@ No changes. Everything should just work.
 ------------
 * The `foreign_table_owner_is()` function will not work, because, of course,
   there were no foreign tables until 9.1.
+* The `extensions_are()` functions will not work, because extensions were not
+  introduced until 9.1.
 
 8.4 and Down
 ------------
