@@ -461,7 +461,7 @@ class ExternalMaster : public ExternalDaemon {
     const std::string& rpc_bind_address = "127.0.0.1:0",
     const std::string& master_addrs = "");
 
-  Status Start();
+  Status Start(bool shell_mode = false);
 
   // Restarts the daemon.
   // Requires that it has previously been shutdown.

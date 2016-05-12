@@ -48,13 +48,16 @@ MasterOptions::MasterOptions(
     std::shared_ptr<std::vector<HostPort>> master_addresses,
     bool is_creating)
     : master_addresses_(std::move(master_addresses)),
-      is_creating_(is_creating) {
+      is_creating_(is_creating),
+      is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
 
   ValidateMasterAddresses();
 }
 
-MasterOptions::MasterOptions() : is_creating_(FLAGS_create_cluster) {
+MasterOptions::MasterOptions()
+    : is_creating_(FLAGS_create_cluster),
+      is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
 
   master_addresses_ = std::make_shared<std::vector<HostPort>>();
@@ -66,6 +69,16 @@ MasterOptions::MasterOptions() : is_creating_(FLAGS_create_cluster) {
           << FLAGS_master_addresses << "'): " << s.ToString();
     }
   }
+
+  ValidateMasterAddresses();
+}
+
+MasterOptions::MasterOptions(const MasterOptions& other)
+    : is_shell_mode_(false)  {
+  master_addresses_= other.master_addresses_;
+  is_creating_ = other.is_creating_;
+  is_shell_mode_.Store(other.IsShellMode());
+  rpc_opts.default_port = other.rpc_opts.default_port;
 
   ValidateMasterAddresses();
 }

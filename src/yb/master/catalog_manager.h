@@ -164,7 +164,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo> {
   // Also set when the Master first attempts to create the tablet.
   MonoTime last_update_time_;
 
-  // The locations in the latest raft config where this tablet has been
+  // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
   ReplicaMap replica_locations_;
 
@@ -651,6 +651,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   gscoped_ptr<SysCatalogTable> sys_catalog_;
 
+  // Tracks if there is a remote bootstrap in progress.
+  bool remote_bootstrap_in_progress_;
+
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner
   friend class CatalogManagerBgTasks;
@@ -694,6 +697,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Policy for load balancing tablets on tablet servers.
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
+
+  // Tablet peer for the sys catalog tablet's peer.
+  const scoped_refptr<tablet::TabletPeer> tablet_peer() const;
+
+  // Use the Raft config that has been bootstrapped to update the in-memory state of master options
+  // and also the on-disk state of the consensus meta object.
+  Status UpdateMastersListInMemoryAndDisk();
+
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

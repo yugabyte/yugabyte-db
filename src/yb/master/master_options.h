@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "yb/server/server_base_options.h"
+#include "yb/util/atomic.h"
 
 namespace yb {
 namespace master {
@@ -34,9 +35,15 @@ class MasterOptions : public server::ServerBaseOptions {
   // To be used for testing
   MasterOptions(std::shared_ptr<std::vector<HostPort>> master_addresses, bool is_creating);
 
+  // Need copy constructor as AtomicBool doesnt allow default copy.
+  MasterOptions(const MasterOptions& other);
+
   bool IsDistributed() const { return !master_addresses_->empty(); }
 
   bool IsClusterCreationMode() const { return is_creating_; }
+
+  bool IsShellMode() const { return is_shell_mode_.Load(); }
+  void SetShellMode(bool mode) { is_shell_mode_.Store(mode); }
 
   // This can crash the process if you pass in an invalid list of master addresses!
   void SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses);
@@ -50,7 +57,13 @@ class MasterOptions : public server::ServerBaseOptions {
   // the vector elements are not individually updated. And the shared pointer will guarantee
   // inconsistent in-transit views of the vector are never seen during/across config changes.
   std::shared_ptr<std::vector<HostPort>> master_addresses_;
+
+  // Set when its first setup of the cluster - master_addresses is non-empty and is_create is true.
   bool is_creating_;
+
+  // Set during startup of a new master which is not part of any cluster yet - master_addresses is
+  // not set and is_create is not set.
+  AtomicBool is_shell_mode_;
 };
 
 } // namespace master

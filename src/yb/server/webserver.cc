@@ -285,7 +285,7 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
     if (it == path_handlers_.end()) {
       // Let Mongoose deal with this request; returning NULL will fall through
       // to the default handler which will serve files.
-      if (!opts_.doc_root.empty() && opts_.enable_doc_root) {
+      if (static_pages_available()) {
         VLOG(2) << "HTTP File access: " << request_info->uri;
         return 0;
       } else {
@@ -402,7 +402,7 @@ static const char* const NAVIGATION_BAR_PREFIX =
 "      <div class='navbar-inner'>"
 "        <div class='container-fluid'>"
 "          <a href='/'>"
-"            <img src=\"/logo.png\" width='61' height='45' alt=\"Kudu\" style=\"float:left\"/>"
+"            <img src=\"/logo.png\" width='61' height='45' alt=\"YugaByte\" style=\"float:left\"/>"
 "          </a>"
 "          <div class='nav-collapse collapse'>"
 "            <ul class='nav'>";

@@ -118,6 +118,10 @@ class Master : public server::ServerBase {
 
   void DumpMasterOptionsInfo(std::ostream* out);
 
+  bool IsShellMode() const { return opts_.IsShellMode(); }
+
+  void SetShellMode(bool mode) { opts_.SetShellMode(mode); }
+
  private:
   friend class MasterTest;
 

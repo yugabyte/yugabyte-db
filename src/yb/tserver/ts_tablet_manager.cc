@@ -313,30 +313,81 @@ Status TSTabletManager::CreateNewTablet(
   return Status::OK();
 }
 
-// If 'expr' fails, log a message, tombstone the given tablet, and return the
-// error status.
-#define TOMBSTONE_NOT_OK(expr, meta, msg) \
-  do { \
-    Status _s = (expr); \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      LogAndTombstone((meta), (msg), _s); \
-      return _s; \
-    } \
-  } while (0)
+string LogPrefix(const string& tablet_id, const string& uuid) {
+  return "T " + tablet_id + " P " + uuid + ": ";
+}
 
-Status TSTabletManager::CheckLeaderTermNotLower(const string& tablet_id,
-                                                int64_t leader_term,
-                                                int64_t last_logged_term) {
+Status CheckLeaderTermNotLower(
+    const string& tablet_id,
+    const string& uuid,
+    int64_t leader_term,
+    int64_t last_logged_term) {
   if (PREDICT_FALSE(leader_term < last_logged_term)) {
     Status s = Status::InvalidArgument(
-        Substitute("Leader has replica of tablet $0 with term $1 "
-                    "lower than last logged term $2 on local replica. Rejecting "
-                    "remote bootstrap request",
-                    tablet_id,
-                    leader_term, last_logged_term));
-    LOG(WARNING) << LogPrefix(tablet_id) << "Remote boostrap: " << s.ToString();
+        Substitute("Leader has replica of tablet $0 with term $1 lower than last "
+                   "logged term $2 on local replica. Rejecting remote bootstrap request",
+                   tablet_id, leader_term, last_logged_term));
+    LOG(WARNING) << LogPrefix(tablet_id, uuid) << "Remote bootstrap: " << s.ToString();
     return s;
   }
+  return Status::OK();
+}
+
+Status HandleReplacingStaleTablet(
+    scoped_refptr<TabletMetadata> meta,
+    scoped_refptr<TabletPeer> old_tablet_peer,
+    const string& tablet_id,
+    const string& uuid,
+    const int64_t& leader_term) {
+  TabletDataState data_state = meta->tablet_data_state();
+  switch (data_state) {
+    case TABLET_DATA_COPYING: {
+      // This should not be possible due to the transition_in_progress_ "lock".
+      LOG(FATAL) << LogPrefix(tablet_id, uuid) << " Remote bootstrap: "
+                 << "Found tablet in TABLET_DATA_COPYING state during StartRemoteBootstrap()";
+    }
+    case TABLET_DATA_TOMBSTONED: {
+      int64_t last_logged_term = meta->tombstone_last_logged_opid().term();
+      RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id,
+                                            uuid,
+                                            leader_term,
+                                            last_logged_term));
+      break;
+    }
+    case TABLET_DATA_READY: {
+      Log* log = old_tablet_peer->log();
+      if (!log) {
+        return Status::IllegalState("Log unavailable. Tablet is not running", tablet_id);
+      }
+      OpId last_logged_opid;
+      log->GetLatestEntryOpId(&last_logged_opid);
+      int64_t last_logged_term = last_logged_opid.term();
+      RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id,
+                                            uuid,
+                                            leader_term,
+                                            last_logged_term));
+
+      // Tombstone the tablet and store the last-logged OpId.
+      old_tablet_peer->Shutdown();
+      // TODO: Because we begin shutdown of the tablet after we check our
+      // last-logged term against the leader's term, there may be operations
+      // in flight and it may be possible for the same check in the remote
+      // bootstrap client Start() method to fail. This will leave the replica in
+      // a tombstoned state, and then the leader with the latest log entries
+      // will simply remote bootstrap this replica again. We could try to
+      // check again after calling Shutdown(), and if the check fails, try to
+      // reopen the tablet. For now, we live with the (unlikely) race.
+      RETURN_NOT_OK_PREPEND(DeleteTabletData(meta, TABLET_DATA_TOMBSTONED, uuid, last_logged_opid),
+                            Substitute("Unable to delete on-disk data from tablet $0", tablet_id));
+      break;
+    }
+    default: {
+      return Status::IllegalState(
+          Substitute("Found tablet $0 in unexpected state $1 for remote bootstrap.",
+                     tablet_id, TabletDataState_Name(data_state)));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -347,7 +398,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   RETURN_NOT_OK(HostPortFromPB(req.bootstrap_peer_addr(), &bootstrap_peer_addr));
   int64_t leader_term = req.caller_term();
 
-  const string kLogPrefix = LogPrefix(tablet_id);
+  const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
 
   scoped_refptr<TabletPeer> old_tablet_peer;
   scoped_refptr<TabletMetadata> meta;
@@ -359,54 +410,18 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       meta = old_tablet_peer->tablet_metadata();
       replacing_tablet = true;
     }
-    RETURN_NOT_OK(StartTabletStateTransitionUnlocked(tablet_id, "remote bootstrapping tablet",
+    RETURN_NOT_OK(StartTabletStateTransitionUnlocked(tablet_id,
+                                                     "remote bootstrapping tablet",
                                                      &deleter));
   }
 
   if (replacing_tablet) {
     // Make sure the existing tablet peer is shut down and tombstoned.
-    TabletDataState data_state = meta->tablet_data_state();
-    switch (data_state) {
-      case TABLET_DATA_COPYING:
-        // This should not be possible due to the transition_in_progress_ "lock".
-        LOG(FATAL) << LogPrefix(tablet_id) << " Remote bootstrap: "
-                   << "Found tablet in TABLET_DATA_COPYING state during StartRemoteBootstrap()";
-      case TABLET_DATA_TOMBSTONED: {
-        int64_t last_logged_term = meta->tombstone_last_logged_opid().term();
-        RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id, leader_term, last_logged_term));
-        break;
-      }
-      case TABLET_DATA_READY: {
-        Log* log = old_tablet_peer->log();
-        if (!log) {
-          return Status::IllegalState("Log unavailable. Tablet is not running", tablet_id);
-        }
-        OpId last_logged_opid;
-        log->GetLatestEntryOpId(&last_logged_opid);
-        int64_t last_logged_term = last_logged_opid.term();
-        RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id, leader_term, last_logged_term));
-
-        // Tombstone the tablet and store the last-logged OpId.
-        old_tablet_peer->Shutdown();
-        // TODO: Because we begin shutdown of the tablet after we check our
-        // last-logged term against the leader's term, there may be operations
-        // in flight and it may be possible for the same check in the remote
-        // bootstrap client Start() method to fail. This will leave the replica in
-        // a tombstoned state, and then the leader with the latest log entries
-        // will simply remote boostrap this replica again. We could try to
-        // check again after calling Shutdown(), and if the check fails, try to
-        // reopen the tablet. For now, we live with the (unlikely) race.
-        RETURN_NOT_OK_PREPEND(DeleteTabletData(meta, TABLET_DATA_TOMBSTONED, last_logged_opid),
-                              Substitute("Unable to delete on-disk data from tablet $0",
-                                         tablet_id));
-        break;
-      }
-      default:
-        return Status::IllegalState(
-            Substitute("Found tablet in unsupported state for remote bootstrap. "
-                        "Tablet: $0, tablet data state: $1",
-                        tablet_id, TabletDataState_Name(data_state)));
-    }
+    RETURN_NOT_OK(HandleReplacingStaleTablet(meta,
+                                             old_tablet_peer,
+                                             tablet_id,
+                                             fs_manager_->uuid(),
+                                             leader_term));
   }
 
   string init_msg = kLogPrefix + Substitute("Initiating remote bootstrap from Peer $0 ($1)",
@@ -415,8 +430,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   TRACE(init_msg);
 
   gscoped_ptr<RemoteBootstrapClient> rb_client(
-      new RemoteBootstrapClient(tablet_id, fs_manager_, server_->messenger(),
-                                fs_manager_->uuid()));
+      new RemoteBootstrapClient(tablet_id, fs_manager_, server_->messenger(), fs_manager_->uuid()));
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
   if (replacing_tablet) {
@@ -425,30 +439,36 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid, bootstrap_peer_addr, &meta));
 
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
-  // state, and we need to tombtone the tablet if additional steps prior to
+  // state, and we need to tombstone the tablet if additional steps prior to
   // getting to a TABLET_DATA_READY state fail.
 
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
   RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
   scoped_refptr<TabletPeer> tablet_peer = CreateAndRegisterTabletPeer(meta, mode);
-  string peer_str = bootstrap_peer_uuid + " (" + bootstrap_peer_addr.ToString() + ")";
 
   // Download all of the remote files.
-  TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()), meta,
+  TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()),
+                   meta,
+                   fs_manager_->uuid(),
                    "Remote bootstrap: Unable to fetch data from remote peer " +
-                   bootstrap_peer_uuid + " (" + bootstrap_peer_addr.ToString() + ")");
+                       bootstrap_peer_uuid + " (" + bootstrap_peer_addr.ToString() + ")");
 
   MAYBE_FAULT(FLAGS_fault_crash_after_rb_files_fetched);
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
-  TOMBSTONE_NOT_OK(rb_client->Finish(), meta, "Remote bootstrap: Failure calling Finish()");
+  TOMBSTONE_NOT_OK(rb_client->Finish(),
+                   meta,
+                   fs_manager_->uuid(),
+                   "Remote bootstrap: Failure calling Finish()");
 
   // We run this asynchronously. We don't tombstone the tablet if this fails,
   // because if we were to fail to open the tablet, on next startup, it's in a
   // valid fully-copied state.
   RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(boost::bind(&TSTabletManager::OpenTablet,
-                                              this, meta, deleter)));
+                                                          this,
+                                                          meta,
+                                                          deleter)));
   return Status::OK();
 }
 
@@ -535,7 +555,10 @@ Status TSTabletManager::DeleteTablet(
     opt_last_logged_opid = last_logged_opid;
   }
 
-  Status s = DeleteTabletData(tablet_peer->tablet_metadata(), delete_type, opt_last_logged_opid);
+  Status s = DeleteTabletData(tablet_peer->tablet_metadata(),
+                              delete_type,
+                              fs_manager_->uuid(),
+                              opt_last_logged_opid);
   if (PREDICT_FALSE(!s.ok())) {
     s = s.CloneAndPrepend(Substitute("Unable to delete on-disk data from tablet $0",
                                      tablet_id));
@@ -554,10 +577,6 @@ Status TSTabletManager::DeleteTablet(
   }
 
   return Status::OK();
-}
-
-string TSTabletManager::LogPrefix(const string& tablet_id) const {
-  return "T " + tablet_id + " P " + fs_manager_->uuid() + ": ";
 }
 
 Status TSTabletManager::CheckRunningUnlocked(
@@ -609,13 +628,14 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 
   shared_ptr<Tablet> tablet;
   scoped_refptr<Log> log;
+  const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
 
-  LOG(INFO) << LogPrefix(tablet_id) << "Bootstrapping tablet";
+  LOG(INFO) << kLogPrefix << "Bootstrapping tablet";
   TRACE("Bootstrapping tablet");
 
   consensus::ConsensusBootstrapInfo bootstrap_info;
   Status s;
-  LOG_TIMING_PREFIX(INFO, LogPrefix(tablet_id), "bootstrapping tablet") {
+  LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
     tablet_peer->SetBootstrapping();
@@ -629,7 +649,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                         tablet_peer->log_anchor_registry(),
                         &bootstrap_info);
     if (!s.ok()) {
-      LOG(ERROR) << LogPrefix(tablet_id) << "Tablet failed to bootstrap: "
+      LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
                  << s.ToString();
       tablet_peer->SetFailed(s);
       return;
@@ -637,7 +657,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   }
 
   MonoTime start(MonoTime::Now(MonoTime::FINE));
-  LOG_TIMING_PREFIX(INFO, LogPrefix(tablet_id), "starting tablet") {
+  LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
     s =  tablet_peer->Init(tablet,
                            scoped_refptr<server::Clock>(server_->clock()),
@@ -646,7 +666,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
                            tablet->GetMetricEntity());
 
     if (!s.ok()) {
-      LOG(ERROR) << LogPrefix(tablet_id) << "Tablet failed to init: "
+      LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
                  << s.ToString();
       tablet_peer->SetFailed(s);
       return;
@@ -655,7 +675,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     TRACE("Starting tablet peer");
     s = tablet_peer->Start(bootstrap_info);
     if (!s.ok()) {
-      LOG(ERROR) << LogPrefix(tablet_id) << "Tablet failed to start: "
+      LOG(ERROR) << kLogPrefix << "Tablet failed to start: "
                  << s.ToString();
       tablet_peer->SetFailed(s);
       return;
@@ -666,9 +686,9 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 
   int elapsed_ms = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToMilliseconds();
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
-    LOG(WARNING) << LogPrefix(tablet_id) << "Tablet startup took " << elapsed_ms << "ms";
+    LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {
-      LOG(WARNING) << LogPrefix(tablet_id) << "Trace:" << std::endl
+      LOG(WARNING) << kLogPrefix << "Trace:" << std::endl
                    << Trace::CurrentTrace()->DumpToString(true);
     }
   }
@@ -824,7 +844,7 @@ void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
     state.change_seq = next_report_seq_;
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
-  VLOG(2) << LogPrefix(tablet_id) << "Marking dirty. Reason: " << context->ToString()
+  VLOG(2) << LogPrefix(tablet_id, fs_manager_->uuid()) << "Marking dirty. Reason: " << context->ToString()
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
   server_->heartbeater()->TriggerASAP();
@@ -924,17 +944,19 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
     data_state = TABLET_DATA_TOMBSTONED;
   }
 
+  const string kLogPrefix = LogPrefix(tablet_id, fs_manager_->uuid());
+
   // Roll forward deletions, as needed.
-  LOG(INFO) << LogPrefix(tablet_id) << "Tablet Manager startup: Rolling forward tablet deletion "
-                                    << "of type " << TabletDataState_Name(data_state);
+  LOG(INFO) << kLogPrefix << "Tablet Manager startup: Rolling forward tablet deletion "
+            << "of type " << TabletDataState_Name(data_state);
   // Passing no OpId will retain the last_logged_opid that was previously in the metadata.
-  RETURN_NOT_OK(DeleteTabletData(meta, data_state, boost::none));
+  RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), boost::none));
 
   // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
   // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.
   // See KUDU-941.
   if (data_state == TABLET_DATA_DELETED) {
-    LOG(INFO) << LogPrefix(tablet_id) << "Deleting tablet superblock";
+    LOG(INFO) << kLogPrefix << "Deleting tablet superblock";
     return meta->DeleteSuperBlock();
   }
 
@@ -948,11 +970,13 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
   return Status::OK();
 }
 
-Status TSTabletManager::DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
-                                         TabletDataState data_state,
-                                         const boost::optional<OpId>& last_logged_opid) {
+Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
+                        TabletDataState data_state,
+                        const string& uuid,
+                        const boost::optional<OpId>& last_logged_opid) {
   const string& tablet_id = meta->tablet_id();
-  LOG(INFO) << LogPrefix(tablet_id) << "Deleting tablet data with delete state "
+  const string kLogPrefix = LogPrefix(tablet_id, uuid);
+  LOG(INFO) << kLogPrefix << "Deleting tablet data with delete state "
             << TabletDataState_Name(data_state);
   CHECK(data_state == TABLET_DATA_DELETED ||
         data_state == TABLET_DATA_TOMBSTONED)
@@ -962,7 +986,7 @@ Status TSTabletManager::DeleteTabletData(const scoped_refptr<TabletMetadata>& me
   // Note: Passing an unset 'last_logged_opid' will retain the last_logged_opid
   // that was previously in the metadata.
   RETURN_NOT_OK(meta->DeleteTabletData(data_state, last_logged_opid));
-  LOG(INFO) << LogPrefix(tablet_id) << "Tablet deleted. Last logged OpId: "
+  LOG(INFO) << kLogPrefix << "Tablet deleted. Last logged OpId: "
             << meta->tombstone_last_logged_opid();
   MAYBE_FAULT(FLAGS_fault_crash_after_blocks_deleted);
 
@@ -982,16 +1006,20 @@ Status TSTabletManager::DeleteTabletData(const scoped_refptr<TabletMetadata>& me
   return Status::OK();
 }
 
-void TSTabletManager::LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
-                                      const std::string& msg,
-                                      const Status& s) {
+void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
+                     const std::string& msg,
+                     const std::string& uuid,
+                     const Status& s) {
   const string& tablet_id = meta->tablet_id();
-  const string kLogPrefix = "T " + tablet_id + " P " + fs_manager_->uuid() + ": ";
+  const string kLogPrefix = LogPrefix(tablet_id, uuid);
   LOG(WARNING) << kLogPrefix << msg << ": " << s.ToString();
 
   // Tombstone the tablet when remote bootstrap fails.
   LOG(INFO) << kLogPrefix << "Tombstoning tablet after failed remote bootstrap";
-  Status delete_status = DeleteTabletData(meta, TABLET_DATA_TOMBSTONED, boost::optional<OpId>());
+  Status delete_status = DeleteTabletData(meta,
+                                          TABLET_DATA_TOMBSTONED,
+                                          uuid,
+                                          boost::optional<OpId>());
   if (PREDICT_FALSE(!delete_status.ok())) {
     // This failure should only either indicate a bug or an IO error.
     LOG(FATAL) << kLogPrefix << "Failed to tombstone tablet after remote bootstrap: "

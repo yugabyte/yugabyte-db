@@ -121,6 +121,21 @@ class SysCatalogTable {
     return tablet_peer_;
   }
 
+  // Create a new tablet peer with information from the metadata
+  void SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata>& metadata);
+
+  // Update the in-memory master addresses. Report missing uuid's in the
+  // config when check_missing_uuids is set to true.
+  Status ConvertConfigToMasterAddresses(
+      const yb::consensus::RaftConfigPB& config,
+      bool check_missing_uuids = false);
+
+  // Create consensus metadata object and flush it to disk.
+  Status CreateAndFlushConsensusMeta(
+      FsManager* fs_manager,
+      const yb::consensus::RaftConfigPB& config,
+      int64_t current_term);
+
  private:
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 
@@ -139,6 +154,8 @@ class SysCatalogTable {
                               std::shared_ptr<consensus::StateChangeContext> context);
 
   Status SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
+
+  Status OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
 
   // Use the master options to generate a new consensus configuration.
   // In addition, resolve all UUIDs of this consensus configuration.

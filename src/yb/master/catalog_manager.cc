@@ -74,8 +74,10 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -87,6 +89,7 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/tserver/remote_bootstrap_client.h"
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000, // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
@@ -170,6 +173,7 @@ using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::Consensus;
+using consensus::ConsensusMetadata;
 using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
 using consensus::GetConsensusRole;
@@ -178,11 +182,19 @@ using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
 using rpc::RpcContext;
 using strings::Substitute;
+using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
+using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
+using tablet::TabletMetadata;
 using tablet::TabletPeer;
 using tablet::TabletStatePB;
+using tablet::TabletStatusListener;
+using tablet::TabletStatusPB;
+using tserver::HandleReplacingStaleTablet;
+using tserver::LogAndTombstone;
+using tserver::RemoteBootstrapClient;
 using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 
@@ -444,6 +456,7 @@ void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
 CatalogManager::CatalogManager(Master* master)
     : master_(master),
       rng_(GetRandomSeed32()),
+      remote_bootstrap_in_progress_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
       load_balance_policy_(new ClusterLoadBalancer(this)) {
@@ -473,15 +486,17 @@ Status CatalogManager::Init(bool is_first_run) {
   // WaitUntilRunning() must run outside of the lock as to prevent
   // deadlock. This is safe as WaitUntilRunning waits for another
   // thread to finish its work and doesn't itself depend on any state
-  // within CatalogManager.
+  // within CatalogManager. Need not start sys catalog or background tasks
+  // when we are started in shell mode.
+  if (!master_->opts().IsShellMode()) {
+    RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
+                          "Failed waiting for the catalog tablet to run");
 
-  RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
-                        "Failed waiting for the catalog tablet to run");
-
-  boost::lock_guard<LockType> l(lock_);
-  background_tasks_.reset(new CatalogManagerBgTasks(this));
-  RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
-                        "Failed to initialize catalog manager background tasks");
+    boost::lock_guard<LockType> l(lock_);
+    background_tasks_.reset(new CatalogManagerBgTasks(this));
+    RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
+                          "Failed to initialize catalog manager background tasks");
+  }
 
   {
     boost::lock_guard<simple_spinlock> l(state_lock_);
@@ -500,7 +515,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
-  Consensus* consensus = sys_catalog_->tablet_peer()->consensus();
+  Consensus* consensus = tablet_peer()->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
     return Status::IllegalState(
@@ -509,13 +524,13 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   }
 
   // Wait for all transactions to be committed.
-  RETURN_NOT_OK(sys_catalog_->tablet_peer()->transaction_tracker()->WaitForAllToFinish(timeout));
+  RETURN_NOT_OK(tablet_peer()->transaction_tracker()->WaitForAllToFinish(timeout));
   return Status::OK();
 }
 
 void CatalogManager::VisitTablesAndTabletsTask() {
 
-  Consensus* consensus = sys_catalog_->tablet_peer()->consensus();
+  Consensus* consensus = tablet_peer()->consensus();
   int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
       MonoDelta::FromMilliseconds(FLAGS_master_failover_catchup_timeout_ms));
@@ -574,6 +589,13 @@ Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
                                          Bind(&CatalogManager::ElectedAsLeaderCb,
                                               Unretained(this))));
   if (is_first_run) {
+    if (!master_->opts().IsClusterCreationMode() &&
+        !master_->opts().IsDistributed()) {
+      master_->SetShellMode(true);
+      LOG(INFO) << "Starting master in shell mode.";
+      return Status::OK();
+    }
+
     RETURN_NOT_OK(sys_catalog_->CreateNew(master_->fs_manager()));
   } else {
     RETURN_NOT_OK(sys_catalog_->Load(master_->fs_manager()));
@@ -592,7 +614,11 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return Status::ServiceUnavailable(
         Substitute("Catalog manager is shutting down. State: $0", state_));
   }
-  Consensus* consensus = sys_catalog_->tablet_peer_->consensus();
+  if (master_->opts().IsShellMode()) {
+    DCHECK(tablet_peer() == nullptr);
+    return Status::IllegalState("Catalog manager is in shell mode, not the leader.");
+  }
+  Consensus* consensus = tablet_peer()->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   string uuid = master_->fs_manager()->uuid();
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
@@ -606,9 +632,16 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   return Status::OK();
 }
 
+const scoped_refptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
+  return sys_catalog_->tablet_peer();
+}
+
 RaftPeerPB::Role CatalogManager::Role() const {
   CHECK(IsInitialized());
-  return sys_catalog_->tablet_peer_->consensus()->role();
+  if (!tablet_peer())
+    return RaftPeerPB::NON_PARTICIPANT;
+
+  return tablet_peer()->consensus()->role();
 }
 
 void CatalogManager::Shutdown() {
@@ -1723,7 +1756,7 @@ void CatalogManager::NewReplica(TSDescriptor* ts_desc,
 }
 
 Status CatalogManager::GetTabletPeer(const string& tablet_id,
-                                     scoped_refptr<TabletPeer>* tablet_peer) const {
+                                     scoped_refptr<TabletPeer>* ret_tablet_peer) const {
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
   boost::shared_lock<LockType> l(lock_);
@@ -1738,8 +1771,14 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
   }
 
   CHECK(sys_catalog_.get() != nullptr) << "sys_catalog_ must be initialized!";
+
+  if (master_->opts().IsShellMode()) {
+    return Status::NotFound(
+        Substitute("In shell mode: no tablet_id $0 exists in CatalogManager.", tablet_id));
+  }
+
   if (sys_catalog_->tablet_id() == tablet_id) {
-    *tablet_peer = sys_catalog_->tablet_peer();
+    *ret_tablet_peer = tablet_peer();
   } else {
     return Status::NotFound(Substitute("no SysTable exists with tablet_id $0 in CatalogManager",
                                        tablet_id));
@@ -1751,9 +1790,121 @@ const NodeInstancePB& CatalogManager::NodeInstance() const {
   return master_->instance_pb();
 }
 
-Status CatalogManager::StartRemoteBootstrap(const yb::consensus::StartRemoteBootstrapRequestPB& req) {
-  LOG(INFO) << "Start RBS leader master " << req.ShortDebugString() << std::endl;
-  return Status::NotSupported("Remote bootstrap not yet implemented for the master tablet");
+Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
+  DCHECK(master_->opts().IsShellMode());
+
+  if (!master_->opts().IsShellMode()) {
+    return Status::IllegalState("Cannot update master's info when process is not in shell mode.");
+  }
+
+  consensus::ConsensusStatePB consensus_state;
+  RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
+
+  if (!consensus_state.has_config()) {
+    return Status::NotFound("No Raft config found.");
+  }
+
+  RETURN_NOT_OK(sys_catalog_->ConvertConfigToMasterAddresses(consensus_state.config()));
+  RETURN_NOT_OK(sys_catalog_->CreateAndFlushConsensusMeta(master_->fs_manager(),
+                                                          consensus_state.config(),
+                                                          consensus_state.current_term()));
+
+  return Status::OK();
+}
+
+Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+  if (!master_->opts().IsShellMode()) {
+    return Status::IllegalState("Cannot bootstrap a master which is not in shell mode.");
+  }
+
+  LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
+  HostPort bootstrap_peer_addr;
+  RETURN_NOT_OK(HostPortFromPB(req.bootstrap_peer_addr(), &bootstrap_peer_addr));
+
+  const string& tablet_id = req.tablet_id();
+  const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
+  int64_t leader_term = req.caller_term();
+
+  scoped_refptr<TabletPeer> old_tablet_peer;
+  scoped_refptr<TabletMetadata> meta;
+  bool replacing_tablet = false;
+  {
+    boost::lock_guard<rw_spinlock> lock(lock_);
+    if (remote_bootstrap_in_progress_) {
+      old_tablet_peer = tablet_peer();
+      // Nothing to recover if the remote bootstrap client start failed the last time
+      if (old_tablet_peer) {
+        meta = old_tablet_peer->tablet_metadata();
+        replacing_tablet = true;
+      }
+    } else {
+      remote_bootstrap_in_progress_ = true;
+    }
+  }
+
+  if (replacing_tablet) {
+    // Make sure the existing tablet peer is shut down and tombstoned.
+    RETURN_NOT_OK(tserver::HandleReplacingStaleTablet(meta,
+                                                      old_tablet_peer,
+                                                      tablet_id,
+                                                      master_->fs_manager()->uuid(),
+                                                      leader_term));
+  }
+
+  LOG(INFO) << Substitute("$0 Initiating remote bootstrap from peer $1 ($2).",
+                          LogPrefix(), bootstrap_peer_uuid, bootstrap_peer_addr.ToString());
+
+  gscoped_ptr<RemoteBootstrapClient> rb_client(
+      new RemoteBootstrapClient(tablet_id,
+                                master_->fs_manager(),
+                                master_->messenger(),
+                                master_->fs_manager()->uuid()));
+
+  // Download and persist the remote superblock in TABLET_DATA_COPYING state.
+  if (replacing_tablet) {
+    RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
+  }
+  RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid, bootstrap_peer_addr, &meta));
+
+  // This SetupTabletPeer is needed by rb_client to perform the remote bootstrap/fetch.
+  // And the SetupTablet below to perform "local bootstrap" cannot be done until the remote fetch
+  // has succeeded. So keeping them seperate for now.
+  sys_catalog_->SetupTabletPeer(meta);
+
+  // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
+  // state, and we need to tombstone the tablet if additional steps prior to
+  // getting to a TABLET_DATA_READY state fail.
+
+  // Download all of the remote files.
+  TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer()->status_listener()),
+                   meta,
+                   master_->fs_manager()->uuid(),
+                   Substitute("Remote bootstrap: Unable to fetch data from remote peer $0 ($1)",
+                              bootstrap_peer_uuid, bootstrap_peer_addr.ToString()));
+
+  // Write out the last files to make the new replica visible and update the
+  // TabletDataState in the superblock to TABLET_DATA_READY.
+  TOMBSTONE_NOT_OK(rb_client->Finish(),
+                   meta,
+                   master_->fs_manager()->uuid(),
+                   "Remote bootstrap: Failure calling Finish()");
+
+  // Synchronous tablet open for "local bootstrap".
+  RETURN_NOT_OK(sys_catalog_->OpenTablet(meta));
+
+  // Set up the in-memory master list and also flush the cmeta.
+  RETURN_NOT_OK(UpdateMastersListInMemoryAndDisk());
+
+  master_->SetShellMode(false);
+
+  LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
+
+  {
+    boost::lock_guard<rw_spinlock> lock(lock_);
+    remote_bootstrap_in_progress_ = false;
+  }
+
+  return Status::OK();
 }
 
 // Interface used by RetryingTSRpcTask to pick the tablet server to
@@ -3217,12 +3368,8 @@ Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const 
       !sys_catalog_->tablet_peer()->consensus()) {
     return Status::IllegalState(Substitute("Node $0 peer not initialized.", uuid));
   }
+
   Consensus* consensus = sys_catalog_->tablet_peer()->consensus();
-  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
-  if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
-    return Status::IllegalState(Substitute(
-        "Node $0 not leader. Consensus state: $1", uuid, cstate.ShortDebugString()));
-  }
   *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   return Status::OK();
 }
@@ -3337,9 +3484,11 @@ void CatalogManager::ReportMetrics() {
 }
 
 std::string CatalogManager::LogPrefix() const {
-  return Substitute("T $0 P $1: ",
-                    sys_catalog_->tablet_peer()->tablet_id(),
-                    sys_catalog_->tablet_peer()->permanent_uuid());
+  if (tablet_peer()) {
+    return Substitute("T $0 P $1: ", tablet_peer()->tablet_id(), tablet_peer()->permanent_uuid());
+  } else {
+    return Substitute("T $0 P $1: ", kSysCatalogTabletId, master_->fs_manager()->uuid());
+  }
 }
 
 ////////////////////////////////////////////////////////////

@@ -227,7 +227,9 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   const std::string& tablet_id() const { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  std::string permanent_uuid() const { return tablet_->metadata()->fs_manager()->uuid(); }
+  std::string permanent_uuid() const {
+    return tablet_ != nullptr ? tablet_->metadata()->fs_manager()->uuid() : "";
+  }
 
   Status NewLeaderTransactionDriver(gscoped_ptr<Transaction> transaction,
                                     scoped_refptr<TransactionDriver>* driver);

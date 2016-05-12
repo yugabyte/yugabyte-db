@@ -448,11 +448,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/table", "", boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
       is_styled, false);
-  cb = boost::bind(&MasterPathHandlers::HandleMasters, this, _1, _2);
-  server->RegisterPathHandler(
-      "/masters", "Masters",
-      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar);
+  server->RegisterPathHandler("/masters",
+                              "Masters",
+                              boost::bind(&MasterPathHandlers::HandleMasters, this, _1, _2),
+                              is_styled,
+                              is_on_nav_bar);
   cb = boost::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",

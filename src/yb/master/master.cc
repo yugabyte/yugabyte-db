@@ -123,9 +123,13 @@ Status Master::StartAsync() {
   gscoped_ptr<ServiceIf> impl(new MasterServiceImpl(this));
   gscoped_ptr<ServiceIf> consensus_service(
     new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
+  gscoped_ptr<ServiceIf> remote_bootstrap_service(
+    new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
+
 
   RETURN_NOT_OK(ServerBase::RegisterService(impl.Pass()));
   RETURN_NOT_OK(ServerBase::RegisterService(consensus_service.Pass()));
+  RETURN_NOT_OK(ServerBase::RegisterService(remote_bootstrap_service.Pass()));
   RETURN_NOT_OK(ServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
@@ -285,11 +289,11 @@ Status Master::ListRaftConfigMasters(std::vector<RaftPeerPB>* masters) const {
 }
 
 Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
-  if (!opts_.IsDistributed()) {
+  if (IsShellMode() || !opts_.IsDistributed()) {
     ServerEntryPB local_entry;
     local_entry.mutable_instance_id()->CopyFrom(catalog_manager_->NodeInstance());
     RETURN_NOT_OK(GetMasterRegistration(local_entry.mutable_registration()));
-    local_entry.set_role(RaftPeerPB::LEADER);
+    local_entry.set_role(IsShellMode() ? RaftPeerPB::NON_PARTICIPANT : RaftPeerPB::LEADER);
     masters->push_back(local_entry);
     return Status::OK();
   }

@@ -70,6 +70,17 @@ typedef std::unordered_map<std::string, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
 
+// If 'expr' fails, log a message, tombstone the given tablet, and return the
+// error status.
+#define TOMBSTONE_NOT_OK(expr, meta, uuid, msg) \
+  do { \
+    Status _s = (expr); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      LogAndTombstone((meta), (msg), (uuid), _s); \
+      return _s; \
+    } \
+  } while (0)
+
 // Keeps track of the tablets hosted on the tablet server side.
 //
 // TODO: will also be responsible for keeping the local metadata about
@@ -211,9 +222,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   };
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
 
-  // Standard log prefix, given a tablet id.
-  std::string LogPrefix(const std::string& tablet_id) const;
-
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
   Status CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const;
 
@@ -286,25 +294,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // TABLET_DATA_READY state. Generally, we tombstone the replica.
   Status HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
 
-  // Delete the tablet using the specified delete_type as the final metadata
-  // state. Deletes the on-disk data, as well as all WAL segments.
-  Status DeleteTabletData(const scoped_refptr<tablet::TabletMetadata>& meta,
-                          tablet::TabletDataState delete_type,
-                          const boost::optional<consensus::OpId>& last_logged_opid);
-
-  // Return Status::IllegalState if leader_term < last_logged_term.
-  // Helper function for use with remote bootstrap.
-  Status CheckLeaderTermNotLower(const std::string& tablet_id,
-                                 int64_t leader_term,
-                                 int64_t last_logged_term);
-
-  // Print a log message using the given info and tombstone the specified
-  // tablet. If tombstoning the tablet fails, a FATAL error is logged, resulting
-  // in a crash.
-  void LogAndTombstone(const scoped_refptr<tablet::TabletMetadata>& meta,
-                       const std::string& msg,
-                       const Status& s);
-
   TSTabletManagerStatePB state() const {
     boost::shared_lock<rw_spinlock> lock(lock_);
     return state_;
@@ -371,6 +360,34 @@ class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProg
   rw_spinlock* const lock_;
   const std::string entry_;
 };
+
+// Print a log message using the given info and tombstone the specified tablet.
+// If tombstoning the tablet fails, a FATAL error is logged, resulting in a crash.
+void LogAndTombstone(const scoped_refptr<tablet::TabletMetadata>& meta,
+                     const std::string& msg,
+                     const std::string& uuid,
+                     const Status& s);
+
+// Delete the tablet using the specified delete_type as the final metadata
+// state. Deletes the on-disk data, as well as all WAL segments.
+Status DeleteTabletData(const scoped_refptr<tablet::TabletMetadata>& meta,
+                        tablet::TabletDataState delete_type,
+                        const std::string& uuid,
+                        const boost::optional<consensus::OpId>& last_logged_opid);
+
+// Return Status::IllegalState if leader_term < last_logged_term.
+// Helper function for use with remote bootstrap.
+Status CheckLeaderTermNotLower(const std::string& tablet_id,
+                               const std::string& uuid,
+                               int64_t leader_term,
+                               int64_t last_logged_term);
+
+// Helper function to replace a stale tablet found from earlier failed tries.
+Status HandleReplacingStaleTablet(scoped_refptr<tablet::TabletMetadata> meta,
+                                  scoped_refptr<tablet::TabletPeer> old_tablet_peer,
+                                  const std::string& tablet_id,
+                                  const std::string& uuid,
+                                  const int64_t& leader_term);
 
 } // namespace tserver
 } // namespace yb

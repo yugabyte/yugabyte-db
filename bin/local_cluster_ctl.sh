@@ -9,12 +9,21 @@ Options:
   --verbose_level <level>
     Dictates amount logging on servers trace files. Default is 0, maximum is 4.
 Commands:
+  create
+    Creates a brand new cluster. Starts the master and tablet server processes after creating
+    the required directories.
+     --num-masters <num_masters>
+       Number of master processes to create. 3 by default.
+     --num-tservers <num_tablet_servers>
+       Number of tablet server processes to create. 3 by default.
   start
-    Start master & tablet server processes.
+    Start master & tablet server processes. This expects a 'create' to have been issued before.
      --num-masters <num_masters>
        Number of master processes to start. 3 by default.
+       Ideally should match the num-masters used in the corresponding 'create' option.
      --num-tservers <num_tablet_servers>
        Number of tablet server processes to start. 3 by default.
+       Ideally should match the num-tservers used in the corresponding 'create' option.
   stop
     Stop all master & tablet server processes.
   restart
@@ -25,10 +34,10 @@ Commands:
     Stop all master & tablet server processes as well as remove any associated data.
   wipe-restart
     Stop the cluster, wipe all the data files, and start the cluster.
-  add-master
-    Add one master process
+  start-master
+    Start a new master process in shell mode (not part of cluster).
   add-tserver
-    Add one tablet server process
+    Start a new tablet server process and add it to the cluster.
   stop-master <master_index>
     Stop the master process with the given index. The index can be obtained from the "status"
     command.
@@ -443,7 +452,7 @@ while [ $# -gt 0 ]; do
       daemon_index_to_restart="$2"
       shift
     ;;
-    create|start|stop|status|add|add-master|add-tserver|destroy|restart|wipe-restart)
+    create|start|stop|status|add|start-master|add-tserver|destroy|restart|wipe-restart)
       set_cmd "$1"
     ;;
     *)
@@ -529,7 +538,7 @@ case "$cmd" in
     create=true
     start_cluster_as_before
   ;;
-  add-master|add-tserver)
+  start-master|add-tserver)
     increment_${daemon_type}s
     validate_num_servers "$max_running_master_index"
     validate_num_servers "$max_running_tserver_index"

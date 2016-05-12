@@ -280,19 +280,8 @@ Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
   LOG(INFO) << "Using an auto-assigned port " << new_port
             << " to start a new external mini-cluster master.";
 
-  // This loop will go away once we start new one in "shell" mode - TODO(Bharat)
-  vector<string> peer_addrs;
-  string addr;
-  for (int i = 0; i < opts_.num_masters; ++i) {
-    addr = Substitute("127.0.0.1:$0", opts_.master_rpc_ports[i]);
-    peer_addrs.push_back(addr);
-  }
-  addr = Substitute("127.0.0.1:$0", new_port);
-  peer_addrs.push_back(addr);
-  string peer_addrs_str = JoinStrings(peer_addrs, ",");
+  string addr = Substitute("127.0.0.1:$0", new_port);
 
-  vector<string> flags = opts_.extra_master_flags;
-  flags.push_back("--enable_leader_failure_detection=false");
   string exe = GetBinaryPath(kMasterBinaryName);
 
   ExternalMaster* master = new ExternalMaster(
@@ -300,12 +289,12 @@ Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
       messenger_,
       exe,
       GetDataPath(Substitute("master-$0", add_at_index)),
-      SubstituteInFlags(flags, add_at_index),
-      peer_addrs[add_at_index],
-      peer_addrs_str);
+      opts_.extra_master_flags,
+      addr,
+      "");
   RETURN_NOT_OK_PREPEND(
-      master->Start(),
-      Substitute("Unable to start new Master at index $0", add_at_index));
+      master->Start(true),
+      Substitute("Unable to start 'shell' mode master at index $0", add_at_index));
 
   *new_master = master;
 
@@ -1227,7 +1216,7 @@ ExternalMaster::ExternalMaster(
 ExternalMaster::~ExternalMaster() {
 }
 
-Status ExternalMaster::Start() {
+Status ExternalMaster::Start(bool shell_mode) {
   vector<string> flags;
   flags.push_back("--fs_wal_dir=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
@@ -1235,9 +1224,11 @@ Status ExternalMaster::Start() {
   flags.push_back("--webserver_interface=localhost");
   flags.push_back("--webserver_port=0");
   // On first start, we need to tell the masters what their list of expected peers is and set the
-  // create_cluster flag.
-  flags.push_back("--create_cluster=true");
-  flags.push_back("--master_addresses=" + master_addrs_);
+  // create_cluster flag. For 'shell' master, there is no create flag or master addresses needed.
+  if (!shell_mode) {
+    flags.push_back("--create_cluster=true");
+    flags.push_back("--master_addresses=" + master_addrs_);
+  }
   RETURN_NOT_OK(StartProcess(flags));
   return Status::OK();
 }
