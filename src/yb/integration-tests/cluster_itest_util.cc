@@ -178,6 +178,7 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
         }
       }
       if (!any_behind && !any_disagree) {
+        LOG(INFO) << "All servers converged on OpIds: " << ids;
         return Status::OK();
       }
     } else {
@@ -367,10 +368,13 @@ Status WaitUntilCommittedOpIdIndexIs(int64_t opid_index,
     s = GetLastOpIdForReplica(tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout,
                               &op_id);
     if (s.ok() && op_id.index() == opid_index) {
+      LOG(INFO) << "Committed op_id index is: " << op_id << " for replica: "
+                <<  replica->instance_id.permanent_uuid();;
       return Status::OK();
     }
     if (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).MoreThan(timeout)) break;
-    SleepFor(MonoDelta::FromMilliseconds(10));
+    LOG(INFO) << "Committed index is at: " << op_id.index() << " and not yet at " << opid_index;
+    SleepFor(MonoDelta::FromMilliseconds(100));
   }
   return Status::TimedOut(Substitute("Committed consensus opid_index does not equal $0 "
                                      "after waiting for $1. Last status: $2",

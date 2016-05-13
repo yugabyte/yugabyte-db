@@ -1548,6 +1548,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveServer) {
   const string& leader_uuid = tservers[0]->uuid();
   ASSERT_OK(StartElection(leader_tserver, tablet_id_, kTimeout));
   ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, kTimeout));
 
   // Make sure the server rejects removal of itself from the configuration.
   Status s = RemoveServer(leader_tserver, tablet_id_, leader_tserver, boost::none, kTimeout);
@@ -1631,9 +1632,10 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   TabletServerMap original_followers = tablet_servers_;
   ASSERT_EQ(1, original_followers.erase(leader_tserver->uuid()));
 
-
-  ASSERT_OK(StartElection(leader_tserver, tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(leader_tserver, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
 
   // Shut down servers 1 and 2, so that server 1 can't replicate anything.
   cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Shutdown();
@@ -1682,8 +1684,10 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
   TServerDetails* leader_tserver = tservers[0];
-  ASSERT_OK(StartElection(leader_tserver, tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(leader_tserver, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
   int64_t cur_log_index = 1;
 
   TabletServerMap active_tablet_servers = tablet_servers_;
@@ -1766,8 +1770,10 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
   TServerDetails* initial_leader = tservers[0];
-  ASSERT_OK(StartElection(initial_leader, tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(initial_leader, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, timeout));
 
   // The server we will remove and then bring back.
   TServerDetails* final_leader = tservers[4];
@@ -1877,8 +1883,10 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
   TServerDetails* leader_tserver = tservers[0];
-  ASSERT_OK(StartElection(leader_tserver, tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
+  MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(leader_tserver, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
 
   TabletServerMap active_tablet_servers = tablet_servers_;
 
@@ -1991,6 +1999,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(tablet_servers_, tablet_id, timeout, &leader_ts));
   ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_ts, tablet_id, timeout));
 
   // Change the config.
   TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add];

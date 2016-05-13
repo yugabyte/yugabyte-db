@@ -79,6 +79,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   // Elect a leader (TS 0)
   ASSERT_OK(itest::StartElection(leader_ts, tablet_id, timeout));
   ASSERT_OK(itest::WaitForServersToAgree(timeout, ts_map_, tablet_id, 1)); // Wait for NO_OP.
+  ASSERT_OK(itest::WaitUntilCommittedOpIdIndexIs(1, leader_ts, tablet_id, timeout));
 
   // Remove a follower from the config.
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, boost::none, timeout));
@@ -147,6 +148,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   // Elect a leader (TS 0)
   ASSERT_OK(itest::StartElection(leader_ts, tablet_id, timeout));
   ASSERT_OK(itest::WaitForServersToAgree(timeout, ts_map_, tablet_id, 1)); // Wait for NO_OP.
+  ASSERT_OK(itest::WaitUntilCommittedOpIdIndexIs(1, leader_ts, tablet_id, timeout));
 
   // Shut down the follower to be removed, then remove it from the config.
   // We will wait for the Master to be notified of the config change, then shut
@@ -287,6 +289,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
 
   // Wait for the replicate to show up (this doesn't wait for COMMIT messages).
   ASSERT_OK(itest::WaitForServersToAgree(timeout, ts_map_, tablet_id, 3));
+  ASSERT_OK(itest::WaitUntilCommittedOpIdIndexIs(3, leader_ts, tablet_id, timeout));
 
   // Manually evict the server from the cluster, tombstone the replica, then
   // add the replica back to the cluster. Without the fix for KUDU-1233, this
