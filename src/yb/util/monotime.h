@@ -117,6 +117,7 @@ class YB_EXPORT MonoTime {
   bool ComesBefore(const MonoTime &rhs) const;
   std::string ToString() const;
   bool Equals(const MonoTime& other) const;
+  bool IsMax() const;
 
  private:
   friend class MonoDelta;

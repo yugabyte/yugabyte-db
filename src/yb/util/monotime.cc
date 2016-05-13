@@ -189,6 +189,12 @@ MonoTime MonoTime::Min() {
   return MonoTime(1);
 }
 
+bool MonoTime::IsMax() const {
+  static const MonoTime MAX_MONO = Max();
+
+  return Equals(MAX_MONO);
+}
+
 const MonoTime& MonoTime::Earliest(const MonoTime& a, const MonoTime& b) {
   if (b.nanos_ < a.nanos_) {
     return b;

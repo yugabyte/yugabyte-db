@@ -120,20 +120,34 @@ static Status WaitForClientConnect(Connection* conn, const MonoTime& deadline) {
 
   MonoTime now;
   MonoDelta remaining;
+  bool have_timeout = !deadline.IsMax();
   while (true) {
-    now = MonoTime::Now(MonoTime::FINE);
-    remaining = deadline.GetDeltaSince(now);
-    DVLOG(4) << "Client waiting to connect for negotiation, time remaining until timeout deadline: "
-             << remaining.ToString();
-    if (PREDICT_FALSE(remaining.ToNanoseconds() <= 0)) {
-      return Status::TimedOut("Timeout exceeded waiting to connect");
+    if (have_timeout) {
+      now = MonoTime::Now(MonoTime::FINE);
+      remaining = deadline.GetDeltaSince(now);
+      DVLOG(4) << "Client waiting to connect for negotiation, time remaining until timeout deadline: "
+               << remaining.ToString();
+      if (PREDICT_FALSE(remaining.ToNanoseconds() <= 0)) {
+        return Status::TimedOut("Timeout exceeded waiting to connect");
+      }
     }
 #if defined(__linux__)
     struct timespec ts;
-    remaining.ToTimeSpec(&ts);
-    int ready = ppoll(&poll_fd, 1, &ts, NULL);
+    struct timespec* ts_ptr = nullptr;
+    if (have_timeout) {
+      remaining.ToTimeSpec(&ts);
+      ts_ptr = &ts;
+    }
+    int ready = ppoll(&poll_fd, 1, ts_ptr, nullptr);
 #else
-    int ready = poll(&poll_fd, 1, remaining.ToMilliseconds());
+    int32_t timeout = -1;
+    if (have_timeout) {
+      int64_t remaining_ms = remaining.ToMilliseconds();
+      CHECK(remaining_ms >= 0 && remaining_ms <= std::numeric_limits<int32>::max())
+          << "Invalid timeout: " << remaining_ms;
+      timeout = static_cast<int32_t>(remaining_ms);
+    }
+    int ready = poll(&poll_fd, 1, timeout);
 #endif
     if (ready == -1) {
       int err = errno;
