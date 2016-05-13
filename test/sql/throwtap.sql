@@ -126,6 +126,7 @@ SELECT * FROM check_test(
         CONTEXT:
             SQL statement "SELECT * FROM todo_end()"
             PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE'
+    || CASE WHEN pg_version_num() >= 90500 THEN '' ELSE ' statement' END
 );
 
 /****************************************************************************/
