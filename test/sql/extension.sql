@@ -62,7 +62,7 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT* FROM check_test(
-            extensions_are( 'empty schema', ARRAY[]::name[] ),
+            extensions_are( 'empty schema', '{}'::name[] ),
             true,
             'extensions_are(non-sch, exts)',
             'Schema "empty schema" should have the correct extensions',

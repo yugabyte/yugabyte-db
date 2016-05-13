@@ -1334,7 +1334,7 @@ BEGIN
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
             ], 'whatever' ),
             true,
-            'column_privs_are(LOL, ATable, AColumn role, privs, desc)',
+            'column_privs_are(LOL, ATable, AColumn, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1543,7 +1543,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'column_privs_are(LOL, ATable, AColumn, role, privs, desc)',
+            'column_privs_are(tab, col, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1559,7 +1559,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'column_privs_are(LOL, ATable, AColumn, role, privs)',
+            'column_privs_are(tab, col, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1833,7 +1833,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             server_privs_are( 'SomeServer', current_user, '{USAGE}' ),
             true,
-            'server_privs_are(SomeSrver, role, privs, desc)',
+            'server_privs_are(SomeServer, role, privs, desc)',
             'Role ' || current_user || ' should be granted USAGE on server "SomeServer"',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
