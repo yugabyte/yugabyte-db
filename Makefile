@@ -121,17 +121,8 @@ endif
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 	mv sql/pgtap.tmp sql/pgtap.sql
 
-sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test/setup.sql
-	cp sql/uninstall_pgtap.sql.in sql/uninstall_pgtap.sql
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1234]" && echo yes || echo no),yes)
-	patch -p0 < compat/uninstall-8.4.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
-	patch -p0 < compat/uninstall-8.3.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
-	patch -p0 < compat/uninstall-8.2.patch
-endif
+sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
+	grep 'CREATE OR REPLACE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE OR REPLACE/DROP/; print "$$_;\n" }' > sql/uninstall_pgtap.sql
 
 sql/pgtap-core.sql: sql/pgtap.sql.in
 	cp $< $@
