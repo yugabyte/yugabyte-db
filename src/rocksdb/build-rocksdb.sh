@@ -28,6 +28,8 @@ Options:
   --cxx-compiler <c++_compiler_path>
   --c-compiler <c_compiler_path>
     These options specify C++ and C compilers to use.
+  --cxx-flags <flags>
+    A list of additional CXX flags to use when building.
   --use-ld-gold
     Specify to use the ld.gold linker.
   --build-all-targets
@@ -51,6 +53,7 @@ debug_level=""
 link_mode="d"
 cxx_compiler=""
 c_compiler=""
+cxx_flags=""
 use_ld_gold=false
 verbose=false
 skip_link_dir_creation=false
@@ -93,6 +96,10 @@ while [ $# -ne 0 ]; do
     ;;
     --c-compiler)
       c_compiler=$2
+      shift
+    ;;
+    --cxx-flags)
+      cxx_flags=$2
       shift
     ;;
     --use-ld-gold)
@@ -178,6 +185,8 @@ for extra_include_dir in "${extra_include_dirs[@]}"; do
   fi
   extra_cxxflags+=" -I'$extra_include_dir'"
 done
+# Add the common CXX flags to the extra flags variable.
+extra_cxxflags+=" $cxx_flags"
 for extra_lib_dir in "${extra_lib_dirs[@]}"; do
   if [ ! -d "$extra_lib_dir" ]; then
     echo "Extra library directory '$extra_lib_dir' does not exist" >&2

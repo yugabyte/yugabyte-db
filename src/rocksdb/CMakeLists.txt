@@ -50,6 +50,7 @@ set(BUILD_ROCKSDB_ARGS
   --c-compiler "${CMAKE_C_COMPILER}"
   --extra-include-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/include"
   --extra-lib-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/lib"
+  --cxx-flags "${CXX_GLOBAL_COMMON_FLAGS}"
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
 )
 

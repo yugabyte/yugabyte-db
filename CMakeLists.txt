@@ -178,6 +178,14 @@ endif()
 # Compiler flags
 ############################################################
 
+# CXX_GLOBAL_COMMON_FLAGS are flags that are common to the YB and RocksDB parts of the codebase.
+# The following flags are required to not assume the presence of too many CPU features so that the
+# code built can run on many platforms. For example, support building on c4.xlarge in AWS (dev
+# servers) and running on c3.xlarge (flash-based cluster machines).
+set(CXX_GLOBAL_COMMON_FLAGS "-mno-avx2 -mno-bmi -mno-bmi2 -mno-abm -mno-fma -mno-movbe")
+
+# CXX_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do not
+# apply to the 'src/rocksdb' part).
 # compiler flags that are common across debug/release builds
 #  - msse4.2: Enable sse4.2 compiler intrinsics.
 #  - Wall: Enable all warnings.
@@ -190,7 +198,8 @@ endif()
 #     GCC cannot always verify whether strict aliasing rules are indeed followed due to
 #     fundamental limitations in escape analysis, which can result in subtle bad code generation.
 #     This has a small perf hit but worth it to avoid hard to debug crashes.
-set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated -pthread")
+set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread ${CXX_GLOBAL_COMMON_FLAGS}")
 
 # We want access to the PRI* print format macros.
 add_definitions(-D__STDC_FORMAT_MACROS)
