@@ -743,18 +743,8 @@ RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), NULL, NULL );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _error_diag(
-    sqlstate TEXT DEFAULT NULL,
-    errmsg   TEXT DEFAULT NULL,
-    detail   TEXT DEFAULT NULL,
-    hint     TEXT DEFAULT NULL,
-    context  TEXT DEFAULT NULL,
-    schname  TEXT DEFAULT NULL,
-    tabname  TEXT DEFAULT NULL,
-    colname  TEXT DEFAULT NULL,
-    chkname  TEXT DEFAULT NULL,
-    typname  TEXT DEFAULT NULL
-) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION _error_diag( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT)
+RETURNS TEXT AS $$
     SELECT COALESCE(
                COALESCE( NULLIF($1, '') || ': ', '' ) || COALESCE( NULLIF($2, ''), '' ),
                'NO ERROR FOUND'
@@ -888,7 +878,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- performs_within( sql, average_milliseconds, within, iterations, description )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT, TEXT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT, TEXT)
+RETURNS TEXT AS $$
 DECLARE
     query          TEXT := _query($1);
     expected_avg   ALIAS FOR $2;
@@ -906,20 +897,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- performs_within( sql, average_milliseconds, within, iterations )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT)
+RETURNS TEXT AS $$
 SELECT performs_within(
           $1, $2, $3, $4,
           'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
 $$ LANGUAGE sql;
 -- performs_within( sql, average_milliseconds, within, description )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, TEXT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, TEXT)
+RETURNS TEXT AS $$
 SELECT performs_within(
           $1, $2, $3, 10, $4
         );
 $$ LANGUAGE sql;
 
 -- performs_within( sql, average_milliseconds, within )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC)
+RETURNS TEXT AS $$
 SELECT performs_within(
           $1, $2, $3, 10,
           'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
@@ -9282,26 +9276,6 @@ RETURNS TEXT AS $$
             || ' on FDW ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION _get_schema_privs(NAME, TEXT)
-RETURNS TEXT[] AS $$
-DECLARE
-    privs  TEXT[] := ARRAY['CREATE', 'USAGE'];
-    grants TEXT[] := '{}';
-BEGIN
-    FOR i IN 1..array_upper(privs, 1) LOOP
-        IF pg_catalog.has_schema_privilege($1, $2, privs[i]) THEN
-            grants := grants || privs[i];
-        END IF;
-    END LOOP;
-    RETURN grants;
-EXCEPTION
-    -- Not a valid schema name.
-    WHEN invalid_schema_name THEN RETURN '{invalid_schema_name}';
-    -- Not a valid role.
-    WHEN undefined_object   THEN RETURN '{undefined_role}';
-END;
-$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION _get_server_privs (NAME, TEXT)
 RETURNS TEXT[] AS $$

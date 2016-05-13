@@ -948,7 +948,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'sequence_privs_are(LOL, ASeq, role, privs)',
+            'sequence_privs_are(sch, seq, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -980,7 +980,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'sequence_privs_are(ASeq, role, privs)',
+            'sequence_privs_are(seq, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
