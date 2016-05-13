@@ -7612,6 +7612,12 @@ No changes. Everything should just work.
   include schema, table, column, data type, or constraint information, since
   such diagnostics were not introduced until 9.3.
 
+9.1 and Down
+------------
+* Diagnostic output from `lives_ok()` and xUnit function exceptions will not
+  error context or details, since such diagnostics were not introduced until
+  9.2.
+
 9.0 and Down
 ------------
 * The `foreign_table_owner_is()` function will not work, because, of course,

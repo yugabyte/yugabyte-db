@@ -756,19 +756,19 @@ CREATE OR REPLACE FUNCTION _error_diag(
     typname  TEXT DEFAULT NULL
 ) RETURNS TEXT AS $$
     SELECT COALESCE(
-               COALESCE( NULLIF(sqlstate, '') || ': ', '' ) || COALESCE( NULLIF(errmsg, ''), '' ),
+               COALESCE( NULLIF($1, '') || ': ', '' ) || COALESCE( NULLIF($2, ''), '' ),
                'NO ERROR FOUND'
            )
-        || COALESCE(E'\n        DETAIL:     ' || nullif(detail, ''), '')
-        || COALESCE(E'\n        HINT:       ' || nullif(hint, ''), '')
-        || COALESCE(E'\n        SCHEMA:     ' || nullif(schname, ''), '')
-        || COALESCE(E'\n        TABLE:      ' || nullif(tabname, ''), '')
-        || COALESCE(E'\n        COLUMN:     ' || nullif(colname, ''), '')
-        || COALESCE(E'\n        CONSTRAINT: ' || nullif(chkname, ''), '')
-        || COALESCE(E'\n        TYPE:       ' || nullif(typname, ''), '')
+        || COALESCE(E'\n        DETAIL:     ' || nullif($3, ''), '')
+        || COALESCE(E'\n        HINT:       ' || nullif($4, ''), '')
+        || COALESCE(E'\n        SCHEMA:     ' || nullif($6, ''), '')
+        || COALESCE(E'\n        TABLE:      ' || nullif($7, ''), '')
+        || COALESCE(E'\n        COLUMN:     ' || nullif($8, ''), '')
+        || COALESCE(E'\n        CONSTRAINT: ' || nullif($9, ''), '')
+        || COALESCE(E'\n        TYPE:       ' || nullif($10, ''), '')
         -- We need to manually indent all the context lines
         || COALESCE(E'\n        CONTEXT:\n'
-               || regexp_replace(NULLIF( context, ''), '^', '            ', 'gn'
+               || regexp_replace(NULLIF( $5, ''), '^', '            ', 'gn'
            ), '');
 $$ LANGUAGE sql IMMUTABLE;
 
