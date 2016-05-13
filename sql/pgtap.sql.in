@@ -743,19 +743,65 @@ RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), NULL, NULL );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _error_diag(
+    sqlstate TEXT DEFAULT NULL,
+    errmsg   TEXT DEFAULT NULL,
+    detail   TEXT DEFAULT NULL,
+    hint     TEXT DEFAULT NULL,
+    context  TEXT DEFAULT NULL,
+    schname  TEXT DEFAULT NULL,
+    tabname  TEXT DEFAULT NULL,
+    colname  TEXT DEFAULT NULL,
+    chkname  TEXT DEFAULT NULL,
+    typname  TEXT DEFAULT NULL
+) RETURNS TEXT AS $$
+    SELECT COALESCE(
+               COALESCE( NULLIF(sqlstate, '') || ': ', '' ) || COALESCE( NULLIF(errmsg, ''), '' ),
+               'NO ERROR FOUND'
+           )
+        || COALESCE(E'\n        DETAIL:     ' || nullif(detail, ''), '')
+        || COALESCE(E'\n        HINT:       ' || nullif(hint, ''), '')
+        || COALESCE(E'\n        SCHEMA:     ' || nullif(schname, ''), '')
+        || COALESCE(E'\n        TABLE:      ' || nullif(tabname, ''), '')
+        || COALESCE(E'\n        COLUMN:     ' || nullif(colname, ''), '')
+        || COALESCE(E'\n        CONSTRAINT: ' || nullif(chkname, ''), '')
+        || COALESCE(E'\n        TYPE:       ' || nullif(typname, ''), '')
+        -- We need to manually indent all the context lines
+        || COALESCE(E'\n        CONTEXT:\n'
+               || regexp_replace(NULLIF( context, ''), '^', '            ', 'gn'
+           ), '');
+$$ LANGUAGE sql IMMUTABLE;
+
 -- lives_ok( sql, description )
 CREATE OR REPLACE FUNCTION lives_ok ( TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     code  TEXT := _query($1);
     descr ALIAS FOR $2;
+    detail  text;
+    hint    text;
+    context text;
+    schname text;
+    tabname text;
+    colname text;
+    chkname text;
+    typname text;
 BEGIN
     EXECUTE code;
     RETURN ok( TRUE, descr );
 EXCEPTION WHEN OTHERS THEN
     -- There should have been no exception.
+    GET STACKED DIAGNOSTICS
+        detail  = PG_EXCEPTION_DETAIL,
+        hint    = PG_EXCEPTION_HINT,
+        context = PG_EXCEPTION_CONTEXT,
+        schname = SCHEMA_NAME,
+        tabname = TABLE_NAME,
+        colname = COLUMN_NAME,
+        chkname = CONSTRAINT_NAME,
+        typname = PG_DATATYPE_NAME;
     RETURN ok( FALSE, descr ) || E'\n' || diag(
-           '        died: ' || SQLSTATE || ': ' || SQLERRM
+           '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -6037,7 +6083,6 @@ DECLARE
     tnumb    INTEGER := 0;
     fnumb    INTEGER := 0;
     tok      BOOLEAN := TRUE;
-    errmsg   TEXT;
 BEGIN
     BEGIN
         -- No plan support.
@@ -6067,6 +6112,17 @@ BEGIN
             PERFORM _set('failed', 0);
         END IF;
 
+        DECLARE
+            errstate text;
+            errmsg   text;
+            detail   text;
+            hint     text;
+            context  text;
+            schname  text;
+            tabname  text;
+            colname  text;
+            chkname  text;
+            typname  text;
         BEGIN
             BEGIN
                 -- Run the setup functions.
@@ -6107,7 +6163,17 @@ BEGIN
 
             EXCEPTION WHEN raise_exception THEN
                 -- Something went wrong. Record that fact.
+                errstate := SQLSTATE;
                 errmsg := SQLERRM;
+                GET STACKED DIAGNOSTICS
+                    detail  = PG_EXCEPTION_DETAIL,
+                    hint    = PG_EXCEPTION_HINT,
+                    context = PG_EXCEPTION_CONTEXT,
+                    schname = SCHEMA_NAME,
+                    tabname = TABLE_NAME,
+                    colname = COLUMN_NAME,
+                    chkname = CONSTRAINT_NAME,
+                    typname = PG_DATATYPE_NAME;
             END;
 
             -- Always raise an exception to rollback any changes.
@@ -6117,10 +6183,12 @@ BEGIN
             IF errmsg IS NOT NULL THEN
                 -- Something went wrong. Emit the error message.
                 tok := FALSE;
-                RETURN NEXT '    ' || diag('Test died: ' || errmsg);
+               RETURN NEXT regexp_replace( diag('Test died: ' || _error_diag(
+                   errstate, errmsg, detail, hint, context, schname, tabname, colname, chkname, typname
+               )), '^', '    ', 'gn');
                 errmsg := NULL;
             END IF;
-       END;
+        END;
 
         -- Restore the sequence.
         EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb + 1;
