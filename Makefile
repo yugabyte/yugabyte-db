@@ -97,6 +97,9 @@ endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
+ifeq ($(shell echo $(VERSION) | grep -qE "9[.][012]|8[.][1234]" && echo yes || echo no),yes)
+	patch -p0 < compat/install-9.2.patch
+endif
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.]0|8[.][1234]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.0.patch
 endif
@@ -134,6 +137,7 @@ sql/pgtap-core.sql: sql/pgtap.sql.in
 
 sql/pgtap-schema.sql: sql/pgtap.sql.in
 	cp $< $@
+	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.2.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.0.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.4.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.3.patch | patch -p0

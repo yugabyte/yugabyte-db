@@ -36,7 +36,7 @@ ok 4 - whatever.testplpgsql
     #         TYPE:       TYPE
     #         CONTEXT:
     #             SQL statement "SELECT __die();"
-    #             PL/pgSQL function whatever.testplpgsqldie() line 34 at EXECUTE
+    #             PL/pgSQL function whatever.testplpgsqldie() line 34 at EXECUTE statement
     #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
     #             SQL function "runtests" statement 1
     #             SQL function "runtests" statement 1
@@ -114,7 +114,7 @@ ok 4 - whatever.testplpgsql
     #         TYPE:       TYPE
     #         CONTEXT:
     #             SQL statement "SELECT __die();"
-    #             PL/pgSQL function whatever.testplpgsqldie() line 34 at EXECUTE
+    #             PL/pgSQL function whatever.testplpgsqldie() line 34 at EXECUTE statement
     #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
     #             SQL function "runtests" statement 1
 not ok 5 - whatever.testplpgsqldie
