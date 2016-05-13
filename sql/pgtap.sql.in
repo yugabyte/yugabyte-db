@@ -839,7 +839,8 @@ $$ LANGUAGE sql;
 -- I could have left this logic in performs_within, but I have
 -- plans to hook into this function for other purposes outside
 -- of pgTAP
-CREATE TYPE _time_trial_type AS (a_time NUMERIC);
+CREATE TYPE _time_trial_type
+AS (a_time NUMERIC);
 CREATE OR REPLACE FUNCTION _time_trials(TEXT, INT, NUMERIC)
 RETURNS SETOF _time_trial_type AS $$
 DECLARE

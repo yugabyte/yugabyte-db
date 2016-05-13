@@ -122,7 +122,7 @@ endif
 	mv sql/pgtap.tmp sql/pgtap.sql
 
 sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
-	grep 'CREATE OR REPLACE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE OR REPLACE/DROP/; print "$$_;\n" }' > sql/uninstall_pgtap.sql
+	grep '^CREATE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE (OR REPLACE)?/DROP/; print "$$_;\n" }' > sql/uninstall_pgtap.sql
 
 sql/pgtap-core.sql: sql/pgtap.sql.in
 	cp $< $@
