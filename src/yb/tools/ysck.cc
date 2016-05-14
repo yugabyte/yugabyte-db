@@ -85,34 +85,34 @@ ChecksumOptions::ChecksumOptions(MonoDelta timeout, int scan_concurrency,
 
 const uint64_t ChecksumOptions::kCurrentTimestamp = 0;
 
-KsckCluster::~KsckCluster() {
+YsckCluster::~YsckCluster() {
 }
 
-Status KsckCluster::FetchTableAndTabletInfo() {
+Status YsckCluster::FetchTableAndTabletInfo() {
   RETURN_NOT_OK(master_->Connect());
   RETURN_NOT_OK(RetrieveTablesList());
   RETURN_NOT_OK(RetrieveTabletServers());
-  for (const shared_ptr<KsckTable>& table : tables()) {
+  for (const shared_ptr<YsckTable>& table : tables()) {
     RETURN_NOT_OK(RetrieveTabletsList(table));
   }
   return Status::OK();
 }
 
 // Gets the list of tablet servers from the Master.
-Status KsckCluster::RetrieveTabletServers() {
+Status YsckCluster::RetrieveTabletServers() {
   return master_->RetrieveTabletServers(&tablet_servers_);
 }
 
 // Gets the list of tables from the Master.
-Status KsckCluster::RetrieveTablesList() {
+Status YsckCluster::RetrieveTablesList() {
   return master_->RetrieveTablesList(&tables_);
 }
 
-Status KsckCluster::RetrieveTabletsList(const shared_ptr<KsckTable>& table) {
+Status YsckCluster::RetrieveTabletsList(const shared_ptr<YsckTable>& table) {
   return master_->RetrieveTabletsList(table);
 }
 
-Status Ksck::CheckMasterRunning() {
+Status Ysck::CheckMasterRunning() {
   VLOG(1) << "Connecting to the Master";
   Status s = cluster_->master()->Connect();
   if (s.ok()) {
@@ -121,11 +121,11 @@ Status Ksck::CheckMasterRunning() {
   return s;
 }
 
-Status Ksck::FetchTableAndTabletInfo() {
+Status Ysck::FetchTableAndTabletInfo() {
   return cluster_->FetchTableAndTabletInfo();
 }
 
-Status Ksck::CheckTabletServersRunning() {
+Status Ysck::CheckTabletServersRunning() {
   VLOG(1) << "Getting the Tablet Servers list";
   int servers_count = cluster_->tablet_servers().size();
   VLOG(1) << Substitute("List of $0 Tablet Servers retrieved", servers_count);
@@ -136,7 +136,7 @@ Status Ksck::CheckTabletServersRunning() {
 
   int bad_servers = 0;
   VLOG(1) << "Connecting to all the Tablet Servers";
-  for (const KsckMaster::TSMap::value_type& entry : cluster_->tablet_servers()) {
+  for (const YsckMaster::TSMap::value_type& entry : cluster_->tablet_servers()) {
     Status s = ConnectToTabletServer(entry.second);
     if (!s.ok()) {
       bad_servers++;
@@ -152,7 +152,7 @@ Status Ksck::CheckTabletServersRunning() {
   }
 }
 
-Status Ksck::ConnectToTabletServer(const shared_ptr<KsckTabletServer>& ts) {
+Status Ysck::ConnectToTabletServer(const shared_ptr<YsckTabletServer>& ts) {
   VLOG(1) << "Going to connect to Tablet Server: " << ts->uuid();
   Status s = ts->Connect();
   if (s.ok()) {
@@ -164,7 +164,7 @@ Status Ksck::ConnectToTabletServer(const shared_ptr<KsckTabletServer>& ts) {
   return s;
 }
 
-Status Ksck::CheckTablesConsistency() {
+Status Ysck::CheckTablesConsistency() {
   VLOG(1) << "Getting the tables list";
   int tables_count = cluster_->tables().size();
   VLOG(1) << Substitute("List of $0 tables retrieved", tables_count);
@@ -176,7 +176,7 @@ Status Ksck::CheckTablesConsistency() {
 
   VLOG(1) << "Verifying each table";
   int bad_tables_count = 0;
-  for (const shared_ptr<KsckTable> &table : cluster_->tables()) {
+  for (const shared_ptr<YsckTable> &table : cluster_->tables()) {
     if (!VerifyTable(table)) {
       bad_tables_count++;
     }
@@ -254,7 +254,7 @@ typedef shared_ptr<BlockingQueue<std::pair<Schema, std::string> > > TabletQueue;
 // a new async checksum scan is started.
 void TabletServerChecksumCallback(
     const scoped_refptr<ChecksumResultReporter>& reporter,
-    const shared_ptr<KsckTabletServer>& tablet_server,
+    const shared_ptr<YsckTabletServer>& tablet_server,
     const TabletQueue& queue,
     const std::string& tablet_id,
     const ChecksumOptions& options,
@@ -276,7 +276,7 @@ void TabletServerChecksumCallback(
   }
 }
 
-Status Ksck::ChecksumData(const vector<string>& tables,
+Status Ysck::ChecksumData(const vector<string>& tables,
                           const vector<string>& tablets,
                           const ChecksumOptions& opts) {
   const unordered_set<string> tables_filter(tables.begin(), tables.end());
@@ -285,14 +285,14 @@ Status Ksck::ChecksumData(const vector<string>& tables,
   // Copy options so that local modifications can be made and passed on.
   ChecksumOptions options = opts;
 
-  typedef unordered_map<shared_ptr<KsckTablet>, shared_ptr<KsckTable>> TabletTableMap;
+  typedef unordered_map<shared_ptr<YsckTablet>, shared_ptr<YsckTable>> TabletTableMap;
   TabletTableMap tablet_table_map;
 
   int num_tablet_replicas = 0;
-  for (const shared_ptr<KsckTable>& table : cluster_->tables()) {
+  for (const shared_ptr<YsckTable>& table : cluster_->tables()) {
     VLOG(1) << "Table: " << table->name();
     if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name())) continue;
-    for (const shared_ptr<KsckTablet>& tablet : table->tablets()) {
+    for (const shared_ptr<YsckTablet>& tablet : table->tablets()) {
       VLOG(1) << "Tablet: " << tablet->id();
       if (!tablets_filter.empty() && !ContainsKey(tablets_filter, tablet->id())) continue;
       InsertOrDie(&tablet_table_map, tablet, table);
@@ -314,17 +314,17 @@ Status Ksck::ChecksumData(const vector<string>& tables,
   }
 
   // Map of tablet servers to tablet queue.
-  typedef unordered_map<shared_ptr<KsckTabletServer>, TabletQueue> TabletServerQueueMap;
+  typedef unordered_map<shared_ptr<YsckTabletServer>, TabletQueue> TabletServerQueueMap;
 
   TabletServerQueueMap tablet_server_queues;
   scoped_refptr<ChecksumResultReporter> reporter(new ChecksumResultReporter(num_tablet_replicas));
 
   // Create a queue of checksum callbacks grouped by the tablet server.
   for (const TabletTableMap::value_type& entry : tablet_table_map) {
-    const shared_ptr<KsckTablet>& tablet = entry.first;
-    const shared_ptr<KsckTable>& table = entry.second;
-    for (const shared_ptr<KsckTabletReplica>& replica : tablet->replicas()) {
-      const shared_ptr<KsckTabletServer>& ts =
+    const shared_ptr<YsckTablet>& tablet = entry.first;
+    const shared_ptr<YsckTable>& table = entry.second;
+    for (const shared_ptr<YsckTabletReplica>& replica : tablet->replicas()) {
+      const shared_ptr<YsckTabletServer>& ts =
           FindOrDie(cluster_->tablet_servers(), replica->ts_uuid());
 
       const TabletQueue& queue =
@@ -343,7 +343,7 @@ Status Ksck::ChecksumData(const vector<string>& tables,
   // scan_concurrency scans. Each callback then initiates one additional
   // scan when it returns if the queue for that TS is not empty.
   for (const TabletServerQueueMap::value_type& entry : tablet_server_queues) {
-    const shared_ptr<KsckTabletServer>& tablet_server = entry.first;
+    const shared_ptr<YsckTabletServer>& tablet_server = entry.first;
     const TabletQueue& queue = entry.second;
     queue->Shutdown(); // Ensures that BlockingGet() will not block.
     for (int i = 0; i < options.scan_concurrency; i++) {
@@ -371,9 +371,9 @@ Status Ksck::ChecksumData(const vector<string>& tables,
   int num_errors = 0;
   int num_mismatches = 0;
   int num_results = 0;
-  for (const shared_ptr<KsckTable>& table : cluster_->tables()) {
+  for (const shared_ptr<YsckTable>& table : cluster_->tables()) {
     bool printed_table_name = false;
-    for (const shared_ptr<KsckTablet>& tablet : table->tablets()) {
+    for (const shared_ptr<YsckTablet>& tablet : table->tablets()) {
       if (ContainsKey(checksums, tablet->id())) {
         if (!printed_table_name) {
           printed_table_name = true;
@@ -388,7 +388,7 @@ Status Ksck::ChecksumData(const vector<string>& tables,
                       FindOrDie(checksums, tablet->id())) {
           const string& replica_uuid = r.first;
 
-          shared_ptr<KsckTabletServer> ts = FindOrDie(cluster_->tablet_servers(), replica_uuid);
+          shared_ptr<YsckTabletServer> ts = FindOrDie(cluster_->tablet_servers(), replica_uuid);
           const ChecksumResultReporter::ResultPair& result = r.second;
           const Status& status = result.first;
           uint64_t checksum = result.second;
@@ -430,9 +430,9 @@ Status Ksck::ChecksumData(const vector<string>& tables,
   return Status::OK();
 }
 
-bool Ksck::VerifyTable(const shared_ptr<KsckTable>& table) {
+bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   bool good_table = true;
-  vector<shared_ptr<KsckTablet> > tablets = table->tablets();
+  vector<shared_ptr<YsckTablet> > tablets = table->tablets();
   int tablets_count = tablets.size();
   if (tablets_count == 0) {
     Warn() << Substitute("Table $0 has 0 tablets", table->name()) << endl;
@@ -443,7 +443,7 @@ bool Ksck::VerifyTable(const shared_ptr<KsckTable>& table) {
                         tablets_count, table->name(), table_num_replicas);
   int bad_tablets_count = 0;
   // TODO check if the tablets are contiguous and in order.
-  for (const shared_ptr<KsckTablet> &tablet : tablets) {
+  for (const shared_ptr<YsckTablet> &tablet : tablets) {
     if (!VerifyTablet(tablet, table_num_replicas)) {
       bad_tablets_count++;
     }
@@ -457,8 +457,8 @@ bool Ksck::VerifyTable(const shared_ptr<KsckTable>& table) {
   return good_table;
 }
 
-bool Ksck::VerifyTablet(const shared_ptr<KsckTablet>& tablet, int table_num_replicas) {
-  vector<shared_ptr<KsckTabletReplica> > replicas = tablet->replicas();
+bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_replicas) {
+  vector<shared_ptr<YsckTabletReplica> > replicas = tablet->replicas();
   bool good_tablet = true;
   if (replicas.size() != table_num_replicas) {
     Warn() << Substitute("Tablet $0 has $1 instead of $2 replicas",
@@ -470,7 +470,7 @@ bool Ksck::VerifyTablet(const shared_ptr<KsckTablet>& tablet, int table_num_repl
   }
   int leaders_count = 0;
   int followers_count = 0;
-  for (const shared_ptr<KsckTabletReplica> replica : replicas) {
+  for (const shared_ptr<YsckTabletReplica> replica : replicas) {
     if (replica->is_leader()) {
       VLOG(1) << Substitute("Replica at $0 is a LEADER", replica->ts_uuid());
       leaders_count++;
@@ -488,7 +488,7 @@ bool Ksck::VerifyTablet(const shared_ptr<KsckTablet>& tablet, int table_num_repl
   return good_tablet;
 }
 
-Status Ksck::CheckAssignments() {
+Status Ysck::CheckAssignments() {
   // TODO
   return Status::NotSupported("CheckAssignments hasn't been implemented");
 }

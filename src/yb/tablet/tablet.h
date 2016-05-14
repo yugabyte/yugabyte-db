@@ -374,9 +374,15 @@ class Tablet {
   // Returns a reference to this tablet's memory tracker.
   const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
 
-  static const char* kDMSMemTrackerId;
-
   TableType table_type() const { return table_type_; }
+
+  // Returns true if a RocksDB-backed tablet has any SSTables.
+  bool HasSSTables() const;
+
+  // Returns the maximum persistent sequence number from all SSTables in RocksDB.
+  rocksdb::SequenceNumber MaxPersistentSequenceNumber() const;
+
+  static const char* kDMSMemTrackerId;
 
  private:
   friend class Iterator;

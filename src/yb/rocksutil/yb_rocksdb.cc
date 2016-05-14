@@ -23,6 +23,7 @@ void InitRocksDBOptions(rocksdb::Options *options,
   options->statistics = statistics;
   options->info_log = std::make_shared<YBRocksDBLogger>(Substitute("T $0: ", tablet_id));
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
+  options->set_last_seq_based_on_sstable_metadata = true;
 }
 
 }

@@ -407,8 +407,8 @@ class ExternalMaster : public ExternalDaemon {
   virtual ~ExternalMaster();
 
   // used on start to create the cluster; on restart, this should not be used!
-  const std::string master_addrs_;
   const std::string rpc_bind_address_;
+  const std::string master_addrs_;
 };
 
 class ExternalTabletServer : public ExternalDaemon {

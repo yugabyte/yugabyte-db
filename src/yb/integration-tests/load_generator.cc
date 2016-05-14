@@ -44,14 +44,23 @@ using yb::client::YBPredicate;
 using yb::client::YBValue;
 using yb::client::YBScanBatch;
 
-DEFINE_bool(
-    load_gen_verbose, false,
-    "Custom verbose log messages for debugging the load test tool");
+DEFINE_bool(load_gen_verbose,
+            false,
+            "Custom verbose log messages for debugging the load test tool");
 
-DEFINE_int32(
-    load_gen_insertion_tracker_delay_ms, 50,
-    "The interval (ms) at which the load generator's \"insertion tracker thread\" "
-    "wakes in up ");
+DEFINE_int32(load_gen_insertion_tracker_delay_ms,
+             50,
+             "The interval (ms) at which the load generator's \"insertion tracker thread\" "
+             "wakes in up ");
+
+DEFINE_int32(load_gen_scanner_open_retries,
+             10,
+             "Number of times to re-try when opening a scanner");
+
+DEFINE_int32(load_gen_wait_time_increment_step_ms,
+             100,
+             "In retry loops used in the load test we increment the wait time by this number of "
+             "milliseconds after every attempt.");
 
 namespace {
 
@@ -136,8 +145,8 @@ ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
 
 MultiThreadedAction::MultiThreadedAction(
     const string& description,
-    int64 num_keys,
-    int64 start_key,
+    int64_t num_keys,
+    int64_t start_key,
     int num_action_threads,
     int num_extra_threads,
     YBClient* client,
@@ -158,22 +167,22 @@ MultiThreadedAction::MultiThreadedAction(
       .Build(&thread_pool_);
 }
 
-string MultiThreadedAction::GetKeyByIndex(int64 key_index) {
+string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
   string key_index_str(Substitute("key$0", key_index));
   return Substitute("$0_$1",
       FormatHexForLoadTestKey(std::hash<string>()(key_index_str)), key_index_str);
 }
 
-// The value returned is compared as a string on read, so having a '\0' will use incorrect size.
-// This also creates a human readable string with hex characters between '0'-'f'.
-string MultiThreadedAction::GetValueByIndex(int64 key_index) {
+// Creates a human-readable string with hex characters to be used as a value in our test. This is
+// deterministic based on key_index.
+string MultiThreadedAction::GetValueByIndex(int64_t key_index) {
   string value;
-  int64 x = key_index;
+  int64_t x = key_index;
   for (int i = 0; i < value_size_; ++i) {
-    int val = (int)(x & 0xf);
-    char c = (char)((val > 9) ? val - 10 + 'a' : val + '0');
+    int val = static_cast<int>(x & 0xf);
+    char c = static_cast<char>(val > 9 ? val - 10 + 'a' : val + '0');
     value.push_back(c);
-    // Create psuedo-randomization by using the iterator
+    // Add pseudo-randomness by using the loop index.
     x = (x >> 4) * 31 + i;
   }
   return value;
@@ -196,8 +205,8 @@ void MultiThreadedAction::WaitForCompletion() {
 // ------------------------------------------------------------------------------------------------
 
 MultiThreadedWriter::MultiThreadedWriter(
-    int64 num_keys,
-    int64 start_key,
+    int64_t num_keys,
+    int64_t start_key,
     int num_writer_threads,
     YBClient* client,
     YBTable* table,
@@ -227,7 +236,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
   shared_ptr<YBSession> session(client_->NewSession());
   ConfigureSession(session.get());
   while (!IsStopRequested()) {
-    int64 key_index = next_key_++;
+    int64_t key_index = next_key_++;
     if (key_index >= num_keys_) {
       break;
     }
@@ -260,10 +269,10 @@ void MultiThreadedWriter::RunStatsThread() {
   MicrosecondsInt64 start_time = GetMonoTimeMicros();
   while (!IsStopRequested() && running_threads_latch_.count() > 0) {
     running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
-    int64 current_key = next_key_.load();
+    int64_t num_writes = this->num_writes();
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
-    LOG(INFO) << "Wrote " << current_key - start_key_ << " rows ("
-              << current_key * 1000000.0 / (current_time - start_time) << " writes/sec)"
+    LOG(INFO) << "Wrote " << num_writes << " rows ("
+              << num_writes * 1000000.0 / (current_time - start_time) << " writes/sec)"
               << ", contiguous insertion point: " << inserted_up_to_inclusive_.load()
               << ", write errors: " << failed_keys_.NumElements();
   }
@@ -271,7 +280,7 @@ void MultiThreadedWriter::RunStatsThread() {
 
 void MultiThreadedWriter::RunInsertionTrackerThread() {
   LOG(INFO) << "Insertion tracker thread started";
-  int64 current_key = 0;  // the first key to be inserted
+  int64_t current_key = 0;  // the first key to be inserted
   while (!IsStopRequested() && running_threads_latch_.count() > 0) {
     while (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
       VLOG(2) << "Advancing insertion tracker to key #" << current_key;
@@ -291,7 +300,7 @@ bool MultiThreadedWriter::HandleInsertionFailure(
   LOG(WARNING) << "Error inserting key '" << key_str << "': " << reason
                << " (" << status.ToString() << ")";
   failed_keys_.Insert(key_index);
-  if (NumWriteErrors() > max_num_write_errors_) {
+  if (num_write_errors() > max_num_write_errors_) {
     LOG(ERROR) << "Exceeded the maximum number of write errors " << max_num_write_errors_
                << ", stopping the test.";
     Stop();
@@ -309,7 +318,7 @@ SingleThreadedScanner::SingleThreadedScanner(YBTable* table)
       num_rows_(0) {
 }
 
-int64 SingleThreadedScanner::CountRows() {
+int64_t SingleThreadedScanner::CountRows() {
   YBScanner scanner(table_);
   CHECK_OK(scanner.Open());
   vector<YBRowResult> results;
@@ -328,7 +337,7 @@ int64 SingleThreadedScanner::CountRows() {
 // ------------------------------------------------------------------------------------------------
 
 MultiThreadedReader::MultiThreadedReader(
-    int64 num_keys,
+    int64_t num_keys,
     int num_reader_threads,
     YBClient* client,
     YBTable* table,
@@ -337,15 +346,17 @@ MultiThreadedReader::MultiThreadedReader(
     const KeyIndexSet* failed_keys,
     atomic_bool* stop_flag,
     int value_size,
-    int max_num_read_errors)
+    int max_num_read_errors,
+    int retries_on_empty_read)
     : MultiThreadedAction(
           "readers", num_keys, 0, num_reader_threads, 1, client, table, stop_flag, value_size),
       insertion_point_(insertion_point),
       inserted_keys_(inserted_keys),
       failed_keys_(failed_keys),
-      num_read_errors_(0),
       num_reads_(0),
-      max_num_read_errors_(max_num_read_errors) {
+      num_read_errors_(0),
+      max_num_read_errors_(max_num_read_errors),
+      retries_on_empty_read_(retries_on_empty_read){
 }
 
 void MultiThreadedReader::RunActionThread(int reader_index) {
@@ -359,8 +370,8 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
   }
 
   while (!IsStopRequested()) {
-    int64 key_index;
-    int64 written_up_to = insertion_point_->load();
+    int64_t key_index;
+    int64_t written_up_to = insertion_point_->load();
     do {
       switch (rand() % 3) {
         case 0:
@@ -385,61 +396,88 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
       // Ensure we don't try to read a key for which a write failed.
     } while (failed_keys_->Contains(key_index) && !IsStopRequested());
 
-    VLOG(2) << "Reader thread " << reader_index << " saw written_up_to="
+    VLOG(1) << "Reader thread " << reader_index << " saw written_up_to="
             << written_up_to << " and picked key #" << key_index;
 
-    uint64_t read_ts = client_->GetLatestObservedTimestamp();
-    YBScanner scanner(table_);
-    scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY);
-    string key_str(GetKeyByIndex(key_index));
-    CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
-    CHECK_OK(scanner.AddConjunctPredicate(
-        table_->NewComparisonPredicate(
-            "k", YBPredicate::EQUAL,
-            YBValue::CopyString(key_str))));
+    ++num_reads_;
+    ReadStatus read_status = PerformRead(key_index);
 
-    CHECK_OK(scanner.Open());
-    num_reads_++;
-    if (!scanner.HasMoreRows()) {
-      LOG(ERROR) << "No rows found for key #" << key_index
-                 << " (read timestamp: " << read_ts << ")";
-      IncrementReadErrorCount();
-      continue;
+    // We support a mode in which we don't treat a read operation returning zero rows as an error
+    // for up to a configured number of attempts. This is because a new leader might not yet be able
+    // to serve up-to-date data for raw RocksDB-backed tables with no additional MVCC.
+    // See https://yugabyte.atlassian.net/browse/ENG-115 for details.
+    for (int i = 1; i <= retries_on_empty_read_ && read_status == ReadStatus::NO_ROWS; ++i) {
+      SleepFor(MonoDelta::FromMilliseconds(i * FLAGS_load_gen_wait_time_increment_step_ms));
+      read_status = PerformRead(key_index);
     }
 
-    vector<YBScanBatch::RowPtr> rows;
-    scanner.NextBatch(&rows);
-    if (rows.size() != 1) {
-      LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": "
-                 << rows.size() << " (expected to find 1 row), read timestamp: " << read_ts;
-      IncrementReadErrorCount();
-      continue;
-    }
-
-    Slice returned_key, returned_value;
-    CHECK_OK(rows.front().GetBinary("k", &returned_key));
-    if (returned_key != key_str) {
-      LOG(ERROR) << "Invalid key returned by the read operation: '" << returned_key << "', "
-                 << "expected: '" << key_str << "', read timestamp: " << read_ts;
-      IncrementReadErrorCount();
-      continue;
-    }
-
-    CHECK_OK(rows.front().GetBinary("v", &returned_value));
-    string expected_value(GetValueByIndex(key_index));
-    if (returned_value != expected_value) {
-      LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str << "': "
-                 << FormatWithSize(returned_value.ToString())
-                 << ", expected: " << FormatWithSize(expected_value)
-                 << ", read timestamp: " << read_ts;
-      IncrementReadErrorCount();
-      continue;
-    }
+    if (read_status != ReadStatus::OK) IncrementReadErrorCount();
   }
 
   session->Close();
   LOG(INFO) << "Reader thread " << reader_index << " finished";
   running_threads_latch_.CountDown();
+}
+
+ReadStatus MultiThreadedReader::PerformRead(int64_t key_index) {
+  uint64_t read_ts = client_->GetLatestObservedTimestamp();
+  YBScanner scanner(table_);
+  scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY);
+  string key_str(GetKeyByIndex(key_index));
+  CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
+  CHECK_OK(scanner.AddConjunctPredicate(
+      table_->NewComparisonPredicate(
+          "k", YBPredicate::EQUAL,
+          YBValue::CopyString(key_str))));
+
+  Status scanner_open_status = scanner.Open();
+  for (int i = 1;
+       i <= FLAGS_load_gen_scanner_open_retries && !scanner_open_status.ok();
+       ++i) {
+    LOG(ERROR) << "Failed to open scanner: " << scanner_open_status.ToString() << ", re-trying.";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_load_gen_wait_time_increment_step_ms * i));
+    scanner_open_status = scanner.Open();
+  }
+  CHECK_OK(scanner_open_status);
+
+  if (!scanner.HasMoreRows()) {
+    LOG(ERROR) << "No rows found for key #" << key_index
+               << " (read timestamp: " << read_ts << ")";
+    // We don't increment the read error count here because the caller may retry up to the
+    // configured number of times in this case.
+    return ReadStatus::NO_ROWS;
+  }
+
+  vector<YBScanBatch::RowPtr> rows;
+  scanner.NextBatch(&rows);
+  if (rows.size() != 1) {
+    LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": "
+               << rows.size() << " (expected to find 1 row), read timestamp: " << read_ts;
+    IncrementReadErrorCount();
+    return ReadStatus::OTHER_ERROR;
+  }
+
+  Slice returned_key, returned_value;
+  CHECK_OK(rows.front().GetBinary("k", &returned_key));
+  if (returned_key != key_str) {
+    LOG(ERROR) << "Invalid key returned by the read operation: '" << returned_key << "', "
+               << "expected: '" << key_str << "', read timestamp: " << read_ts;
+    IncrementReadErrorCount();
+    return ReadStatus::OTHER_ERROR;
+  }
+
+  CHECK_OK(rows.front().GetBinary("v", &returned_value));
+  string expected_value(GetValueByIndex(key_index));
+  if (returned_value != expected_value) {
+    LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str << "': "
+               << FormatWithSize(returned_value.ToString())
+               << ", expected: " << FormatWithSize(expected_value)
+               << ", read timestamp: " << read_ts;
+    IncrementReadErrorCount();
+    return ReadStatus::OTHER_ERROR;
+  }
+
+  return ReadStatus::OK;
 }
 
 void MultiThreadedReader::RunStatsThread() {

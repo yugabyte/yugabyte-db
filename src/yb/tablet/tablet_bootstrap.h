@@ -83,8 +83,6 @@ class TabletStatusListener {
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };
 
-extern const char* kLogRecoveryDir;
-
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet
 // has blocks and log segments, this method rebuilds the soft state by replaying
 // the Log.

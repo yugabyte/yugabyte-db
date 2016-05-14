@@ -592,6 +592,9 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.push_back("--logtostderr");
   argv.push_back("--logbuflevel=-1");
 
+  // Use the same verbose logging level in the child process as in the test driver.
+  argv.push_back(Substitute("-v=$0", FLAGS_v));
+
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);

@@ -1050,6 +1050,23 @@ Status DBImpl::Recover(
         }
       }
     }
+
+    if (db_options_.set_last_seq_based_on_sstable_metadata) {
+      std::vector<rocksdb::LiveFileMetaData> live_files_metadata;
+      versions_->GetLiveFilesMetaData(&live_files_metadata);
+      SequenceNumber max_seq_num_from_sstable_metadata = 0;
+      for (const auto& live_file_metadata : live_files_metadata) {
+        max_seq_num_from_sstable_metadata = std::max(
+            max_seq_num_from_sstable_metadata, live_file_metadata.largest_seqno);
+      }
+      Log(InfoLogLevel::INFO_LEVEL,
+          db_options_.info_log,
+          "Setting last_sequence based on SSTable metadata: %" PRIu64
+          " (would have been %" PRIu64 " otherwise)",
+          max_seq_num_from_sstable_metadata, versions_->LastSequence());
+      versions_->SetLastSequenceNoSanityChecking(max_seq_num_from_sstable_metadata);
+    }
+
     SetTickerCount(stats_, SEQUENCE_NUMBER, versions_->LastSequence());
   }
 

@@ -35,10 +35,10 @@ using std::vector;
 namespace yb {
 
 using strings::Substitute;
-using tools::Ksck;
-using tools::KsckCluster;
-using tools::KsckMaster;
-using tools::RemoteKsckMaster;
+using tools::Ysck;
+using tools::YsckCluster;
+using tools::YsckMaster;
+using tools::RemoteYsckMaster;
 
 ClusterVerifier::ClusterVerifier(ExternalMiniCluster* cluster)
   : cluster_(cluster),
@@ -64,7 +64,7 @@ void ClusterVerifier::CheckCluster() {
   Status s;
   double sleep_time = 0.1;
   while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
-    s = DoKsck();
+    s = DoYsck();
     if (s.ok()) {
       break;
     }
@@ -77,13 +77,13 @@ void ClusterVerifier::CheckCluster() {
   ASSERT_OK(s);
 }
 
-Status ClusterVerifier::DoKsck() {
+Status ClusterVerifier::DoYsck() {
   Sockaddr addr = cluster_->leader_master()->bound_rpc_addr();
 
-  std::shared_ptr<KsckMaster> master;
-  RETURN_NOT_OK(RemoteKsckMaster::Build(addr, &master));
-  std::shared_ptr<KsckCluster> cluster(new KsckCluster(master));
-  std::shared_ptr<Ksck> ysck(new Ksck(cluster));
+  std::shared_ptr<YsckMaster> master;
+  RETURN_NOT_OK(RemoteYsckMaster::Build(addr, &master));
+  std::shared_ptr<YsckCluster> cluster(new YsckCluster(master));
+  std::shared_ptr<Ysck> ysck(new Ysck(cluster));
 
   // This is required for everything below.
   RETURN_NOT_OK(ysck->CheckMasterRunning());

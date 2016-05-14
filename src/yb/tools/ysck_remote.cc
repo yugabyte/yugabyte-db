@@ -45,7 +45,7 @@ MonoDelta GetDefaultTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_timeout_ms);
 }
 
-Status RemoteKsckTabletServer::Connect() const {
+Status RemoteYsckTabletServer::Connect() const {
   tserver::PingRequestPB req;
   tserver::PingResponsePB resp;
   RpcController rpc;
@@ -53,7 +53,7 @@ Status RemoteKsckTabletServer::Connect() const {
   return ts_proxy_->Ping(req, &resp, &rpc);
 }
 
-Status RemoteKsckTabletServer::CurrentTimestamp(uint64_t* timestamp) const {
+Status RemoteYsckTabletServer::CurrentTimestamp(uint64_t* timestamp) const {
   server::ServerClockRequestPB req;
   server::ServerClockResponsePB resp;
   RpcController rpc;
@@ -203,7 +203,7 @@ void ChecksumCallbackHandler::Run() {
   delete this;
 }
 
-void RemoteKsckTabletServer::RunTabletChecksumScanAsync(
+void RemoteYsckTabletServer::RunTabletChecksumScanAsync(
         const string& tablet_id,
         const Schema& schema,
         const ChecksumOptions& options,
@@ -214,7 +214,7 @@ void RemoteKsckTabletServer::RunTabletChecksumScanAsync(
   ignore_result(stepper.release()); // Deletes self on callback.
 }
 
-Status RemoteKsckMaster::Connect() const {
+Status RemoteYsckMaster::Connect() const {
   master::PingRequestPB req;
   master::PingResponsePB resp;
   RpcController rpc;
@@ -222,15 +222,15 @@ Status RemoteKsckMaster::Connect() const {
   return proxy_->Ping(req, &resp, &rpc);
 }
 
-Status RemoteKsckMaster::Build(const Sockaddr& address, shared_ptr<KsckMaster>* master) {
+Status RemoteYsckMaster::Build(const Sockaddr& address, shared_ptr<YsckMaster>* master) {
   shared_ptr<Messenger> messenger;
   MessengerBuilder builder(kMessengerName);
   RETURN_NOT_OK(builder.Build(&messenger));
-  master->reset(new RemoteKsckMaster(address, messenger));
+  master->reset(new RemoteYsckMaster(address, messenger));
   return Status::OK();
 }
 
-Status RemoteKsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
+Status RemoteYsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
   RpcController rpc;
@@ -243,14 +243,14 @@ Status RemoteKsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
     vector<Sockaddr> addresses;
     RETURN_NOT_OK(ParseAddressList(HostPort(addr.host(), addr.port()).ToString(),
                                    tserver::TabletServer::kDefaultPort, &addresses));
-    shared_ptr<KsckTabletServer> ts(
-        new RemoteKsckTabletServer(e.instance_id().permanent_uuid(), addresses[0], messenger_));
+    shared_ptr<YsckTabletServer> ts(
+        new RemoteYsckTabletServer(e.instance_id().permanent_uuid(), addresses[0], messenger_));
     InsertOrDie(tablet_servers, ts->uuid(), ts);
   }
   return Status::OK();
 }
 
-Status RemoteKsckMaster::RetrieveTablesList(vector<shared_ptr<KsckTable> >* tables) {
+Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tables) {
   master::ListTablesRequestPB req;
   master::ListTablesResponsePB resp;
   RpcController rpc;
@@ -260,20 +260,20 @@ Status RemoteKsckMaster::RetrieveTablesList(vector<shared_ptr<KsckTable> >* tabl
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  vector<shared_ptr<KsckTable> > tables_temp;
+  vector<shared_ptr<YsckTable> > tables_temp;
   for (const master::ListTablesResponsePB_TableInfo& info : resp.tables()) {
     Schema schema;
     int num_replicas;
     RETURN_NOT_OK(GetTableInfo(info.name(), &schema, &num_replicas));
-    shared_ptr<KsckTable> table(new KsckTable(info.name(), schema, num_replicas));
+    shared_ptr<YsckTable> table(new YsckTable(info.name(), schema, num_replicas));
     tables_temp.push_back(table);
   }
   tables->assign(tables_temp.begin(), tables_temp.end());
   return Status::OK();
 }
 
-Status RemoteKsckMaster::RetrieveTabletsList(const shared_ptr<KsckTable>& table) {
-  vector<shared_ptr<KsckTablet> > tablets;
+Status RemoteYsckMaster::RetrieveTabletsList(const shared_ptr<YsckTable>& table) {
+  vector<shared_ptr<YsckTablet> > tablets;
   bool more_tablets = true;
   string last_key;
   while (more_tablets) {
@@ -284,9 +284,9 @@ Status RemoteKsckMaster::RetrieveTabletsList(const shared_ptr<KsckTable>& table)
   return Status::OK();
 }
 
-Status RemoteKsckMaster::GetTabletsBatch(const string& table_name,
+Status RemoteYsckMaster::GetTabletsBatch(const string& table_name,
                                          string* last_partition_key,
-                                         vector<shared_ptr<KsckTablet> >& tablets,
+                                         vector<shared_ptr<YsckTablet> >& tablets,
                                          bool* more_tablets) {
   master::GetTableLocationsRequestPB req;
   master::GetTableLocationsResponsePB resp;
@@ -299,13 +299,13 @@ Status RemoteKsckMaster::GetTabletsBatch(const string& table_name,
   rpc.set_timeout(GetDefaultTimeout());
   RETURN_NOT_OK(proxy_->GetTableLocations(req, &resp, &rpc));
   for (const master::TabletLocationsPB& locations : resp.tablet_locations()) {
-    shared_ptr<KsckTablet> tablet(new KsckTablet(locations.tablet_id()));
-    vector<shared_ptr<KsckTabletReplica> > replicas;
+    shared_ptr<YsckTablet> tablet(new YsckTablet(locations.tablet_id()));
+    vector<shared_ptr<YsckTabletReplica> > replicas;
     for (const master::TabletLocationsPB_ReplicaPB& replica : locations.replicas()) {
       bool is_leader = replica.role() == consensus::RaftPeerPB::LEADER;
       bool is_follower = replica.role() == consensus::RaftPeerPB::FOLLOWER;
-      replicas.push_back(shared_ptr<KsckTabletReplica>(
-          new KsckTabletReplica(replica.ts_info().permanent_uuid(), is_leader, is_follower)));
+      replicas.push_back(shared_ptr<YsckTabletReplica>(
+          new YsckTabletReplica(replica.ts_info().permanent_uuid(), is_leader, is_follower)));
     }
     tablet->set_replicas(replicas);
     tablets.push_back(tablet);
@@ -323,7 +323,7 @@ Status RemoteKsckMaster::GetTabletsBatch(const string& table_name,
   return Status::OK();
 }
 
-Status RemoteKsckMaster::GetTableInfo(const string& table_name, Schema* schema, int* num_replicas) {
+Status RemoteYsckMaster::GetTableInfo(const string& table_name, Schema* schema, int* num_replicas) {
   master::GetTableSchemaRequestPB req;
   master::GetTableSchemaResponsePB resp;
   RpcController rpc;

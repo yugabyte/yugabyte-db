@@ -101,17 +101,6 @@ Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg)
   return Status::OK();
 }
 
-Status ReplicaState::LockForCommit(UniqueLock* lock) const {
-  TRACE_EVENT0("consensus", "ReplicaState::LockForCommit");
-  ThreadRestrictions::AssertWaitAllowed();
-  UniqueLock l(&update_lock_);
-  if (PREDICT_FALSE(state_ != kRunning && state_ != kShuttingDown)) {
-    return Status::IllegalState("Replica not in running state");
-  }
-  lock->swap(&l);
-  return Status::OK();
-}
-
 Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) const {
   TRACE_EVENT0("consensus", "ReplicaState::LockForMajorityReplicatedIndexUpdate");
   ThreadRestrictions::AssertWaitAllowed();
@@ -223,10 +212,6 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
   return Status::OK();
 }
 
-void ReplicaState::ClearPendingConfigUnlocked() {
-  cmeta_->clear_pending_config();
-}
-
 const RaftConfigPB& ReplicaState::GetPendingConfigUnlocked() const {
   DCHECK(update_lock_.is_locked());
   CHECK(IsConfigChangePendingUnlocked()) << "No pending config";
@@ -272,16 +257,20 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
 
   *term_mismatch = false;
 
-  if (op_id.index() <= GetCommittedOpIdUnlocked().index()) {
+  int64_t committed_index = GetCommittedOpIdUnlocked().index();
+  if (op_id.index() <= committed_index) {
     return true;
   }
 
-  if (op_id.index() > GetLastReceivedOpIdUnlocked().index()) {
+  int64_t last_received_index = GetLastReceivedOpIdUnlocked().index();
+  if (op_id.index() > last_received_index) {
     return false;
   }
 
   scoped_refptr<ConsensusRound> round = GetPendingOpByIndexOrNullUnlocked(op_id.index());
-  DCHECK(round);
+  DCHECK(round) << "(consensus round not found for op id " << op_id << ": "
+      << "committed_index=" << committed_index << ", "
+      << "last_received_index=" << last_received_index << ")";
 
   if (round->id().term() != op_id.term()) {
     *term_mismatch = true;
@@ -354,11 +343,6 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
   return options_;
 }
 
-int ReplicaState::GetNumPendingTxnsUnlocked() const {
-  DCHECK(update_lock_.is_locked());
-  return pending_txns_.size();
-}
-
 Status ReplicaState::CancelPendingTransactions() {
   {
     ThreadRestrictions::AssertWaitAllowed();
@@ -381,15 +365,6 @@ Status ReplicaState::CancelPendingTransactions() {
     }
   }
   return Status::OK();
-}
-
-void ReplicaState::GetUncommittedPendingOperationsUnlocked(
-    vector<scoped_refptr<ConsensusRound> >* ops) {
-  for (const IndexToRoundMap::value_type& entry : pending_txns_) {
-    if (entry.first > last_committed_index_.index()) {
-      ops->push_back(entry.second);
-    }
-  }
 }
 
 Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {

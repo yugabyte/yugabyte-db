@@ -90,10 +90,6 @@ class ReplicaState {
 
   typedef std::map<int64_t, scoped_refptr<ConsensusRound> > IndexToRoundMap;
 
-  typedef std::set<int64_t> OutstandingCommits;
-
-  typedef IndexToRoundMap::value_type IndexToRoundEntry;
-
   ReplicaState(ConsensusOptions options, std::string peer_uuid,
                gscoped_ptr<ConsensusMetadata> cmeta,
                ReplicaTransactionFactory* txn_factory);
@@ -112,12 +108,6 @@ class ReplicaState {
   // contains a replicate message and is of the appropriate type, and returns
   // Status::IllegalState if that is not the case.
   Status LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const WARN_UNUSED_RESULT;
-
-  // Locks a replica down until the critical section of a commit completes.
-  // This succeeds for all states since a replica which has initiated
-  // a Prepare()/Replicate() must eventually commit even if it's state
-  // has changed after the initial Append()/Update().
-  Status LockForCommit(UniqueLock* lock) const WARN_UNUSED_RESULT;
 
   // Locks a replica down until an the critical section of an update completes.
   // Further updates from the same or some other leader will be blocked until
@@ -180,9 +170,6 @@ class ReplicaState {
   // metadata. In order to be persisted, SetCommittedConfigUnlocked() must be called.
   Status SetPendingConfigUnlocked(const RaftConfigPB& new_config) WARN_UNUSED_RESULT;
 
-  // Clear (cancel) the pending configuration.
-  void ClearPendingConfigUnlocked();
-
   // Return the pending configuration, or crash if one is not set.
   const RaftConfigPB& GetPendingConfigUnlocked() const;
 
@@ -229,9 +216,6 @@ class ReplicaState {
   const std::string& GetPeerUuid() const;
 
   const ConsensusOptions& GetOptions() const;
-
-  // Returns the operations that are not consensus committed.
-  void GetUncommittedPendingOperationsUnlocked(std::vector<scoped_refptr<ConsensusRound> >* ops);
 
   // Aborts pending operations after, but not including 'index'. The OpId with 'index'
   // will become our new last received id. If there are pending operations with indexes
@@ -284,18 +268,6 @@ class ReplicaState {
   // latest index). This must be called under the lock.
   OpId GetLastPendingTransactionOpIdUnlocked() const;
 
-  // Updates the last committed operation including removing it from the pending commits.
-  //
-  // 'commit_op_id' refers to the OpId of the actual commit operation, whereas
-  // 'committed_op_id' refers to the OpId of the original REPLICATE message which was
-  // committed.
-  //
-  // This must be called under a lock.
-  void UpdateReplicaCommittedOpIdUnlocked(const OpId& committed_op_id);
-
-  // Waits for already triggered Apply()s to commit.
-  Status WaitForOustandingApplies();
-
   // Used by replicas to cancel pending transactions. Pending transaction are those
   // that have completed prepare/replicate but are waiting on the LEADER's commit
   // to complete. This does not cancel transactions being applied.
@@ -307,10 +279,6 @@ class ReplicaState {
   // a part of the state machine. Basically restores the id gen to the state it was before
   // generating 'id'.
   void CancelPendingOperation(const OpId& id);
-
-  // Returns the number of transactions that are currently in the pending state
-  // i.e. transactions for which Prepare() is done or under way.
-  int GetNumPendingTxnsUnlocked() const;
 
   std::string ToString() const;
   std::string ToStringUnlocked() const;

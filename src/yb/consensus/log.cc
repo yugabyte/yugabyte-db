@@ -251,8 +251,6 @@ void Log::SegmentAllocationTask() {
 const Status Log::kLogShutdownStatus(
     Status::ServiceUnavailable("WAL is shutting down", "", ESHUTDOWN));
 
-const uint64_t Log::kInitialLogSegmentSequenceNumber = 0L;
-
 Status Log::Open(const LogOptions &options,
                  FsManager *fs_manager,
                  const std::string& tablet_id,

@@ -41,10 +41,13 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/tablet/compaction.h"
 #include "yb/tablet/compaction_policy.h"
 #include "yb/tablet/delta_compaction.h"
 #include "yb/tablet/diskrowset.h"
+#include "yb/tablet/key_value_iterator.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/rowset_info.h"
@@ -55,8 +58,6 @@
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
-#include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -73,7 +74,6 @@
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/write_batch.h"
-#include "key_value_iterator.h"
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
@@ -681,6 +681,7 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
                          << " for key-value tables";
           }
         }
+
         auto rocksdb_write_status = rocksdb_->Write(write_options, &write_batch);
         if (!rocksdb_write_status.ok()) {
           LOG(FATAL) << "Failed to write a batch with " << write_batch.Count() << " operations"
@@ -705,7 +706,6 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
 
 void Tablet::ApplyRowOperation(WriteTransactionState* tx_state,
                                RowOp* row_op) {
-  assert(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE);
   switch (row_op->decoded_op.type) {
     case RowOperationsPB::INSERT:
       ignore_result(InsertUnlocked(tx_state, row_op));
@@ -949,6 +949,9 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
 
 Status Tablet::RewindSchemaForBootstrap(const Schema& new_schema,
                                         int64_t schema_version) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
   CHECK_EQ(state_, kBootstrapping);
 
   // We know that the MRS should be empty at this point, because we
@@ -1313,6 +1316,24 @@ void Tablet::UnregisterMaintenanceOps() {
     op->Unregister();
   }
   STLDeleteElements(&maintenance_ops_);
+}
+
+bool Tablet::HasSSTables() const {
+  assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  vector<rocksdb::LiveFileMetaData> live_files_metadata;
+  rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
+  return !live_files_metadata.empty();
+}
+
+rocksdb::SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
+  assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  vector<rocksdb::LiveFileMetaData> live_files_metadata;
+  rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
+  rocksdb::SequenceNumber max_seqno = 0;
+  for (auto& live_file_metadata : live_files_metadata) {
+    max_seqno = std::max(max_seqno, live_file_metadata.largest_seqno);
+  }
+  return max_seqno;
 }
 
 Status Tablet::FlushMetadata(const RowSetVector& to_remove,
@@ -1915,9 +1936,7 @@ double Tablet::GetPerfImprovementForBestDeltaCompactUnlocked(RowSet::DeltaCompac
 }
 
 size_t Tablet::num_rowsets() const {
-  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    return 0;
-  }
+  assert(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE);
   boost::shared_lock<rw_spinlock> lock(component_lock_);
   return components_->rowsets->all_rowsets().size();
 }

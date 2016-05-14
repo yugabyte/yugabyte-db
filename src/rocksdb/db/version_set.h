@@ -642,10 +642,15 @@ class VersionSet {
   }
 
   // Set the last sequence number to s.
-  void SetLastSequence(uint64_t s) {
+  void SetLastSequence(SequenceNumber s) {
 #ifndef NDEBUG
     EnsureIncreasingLastSequence(last_sequence_, s);
 #endif
+    SetLastSequenceNoSanityChecking(s);
+  }
+
+  // Set last sequence number without verifying that it always keeps increasing.
+  void SetLastSequenceNoSanityChecking(SequenceNumber s) {
     last_sequence_.store(s, std::memory_order_release);
   }
 

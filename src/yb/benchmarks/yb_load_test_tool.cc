@@ -28,10 +28,9 @@ DEFINE_int32(rpc_timeout_sec, 30, "Timeout for RPC calls, in seconds");
 
 DEFINE_int32(num_iter, 1, "Run the entire test this number of times");
 
-DEFINE_string(
-    load_test_master_addresses,
-    "localhost",
-    "Addresses of masters for the cluster to operate on");
+DEFINE_string(load_test_master_addresses,
+              "localhost",
+              "Addresses of masters for the cluster to operate on");
 
 DEFINE_string(table_name, "yb_load_test", "Table name to use for YugaByte load testing");
 
@@ -41,15 +40,13 @@ DEFINE_int32(num_writer_threads, 4, "Number of writer threads");
 
 DEFINE_int32(num_reader_threads, 4, "Number of reader threads");
 
-DEFINE_int64(
-    max_num_write_errors,
-    1000,
-    "Maximum number of write errors. The test is aborted after this number of errors.");
+DEFINE_int64(max_num_write_errors,
+             1000,
+             "Maximum number of write errors. The test is aborted after this number of errors.");
 
-DEFINE_int64(
-    max_num_read_errors,
-    1000,
-    "Maximum number of read errors. The test is aborted after this number of errors.");
+DEFINE_int64(max_num_read_errors,
+             1000,
+             "Maximum number of read errors. The test is aborted after this number of errors.");
 
 DEFINE_int32(num_replicas, 3, "Replication factor for the load test table");
 
@@ -59,15 +56,20 @@ DEFINE_bool(reads_only, false, "Only read the existing rows from the table.");
 
 DEFINE_bool(writes_only, false, "Writes a new set of rows into an existing table.");
 
-DEFINE_bool(
-    create_table,
-    true,
-    "Whether the table should be created. Its made false when either reads_only/writes_only is "
-    "true. If value is true, existing table will be deleted and recreated.");
+DEFINE_bool(create_table,
+            true,
+            "Whether the table should be created. Its made false when either "
+            "reads_only/writes_only is true. If value is true, existing table will be deleted and "
+            "recreated.");
 
 DEFINE_bool(use_kv_table, false, "Use key-value table type backed by RocksDB");
 
 DEFINE_int64(value_size_bytes, 16, "Size of each value in a row being inserted");
+
+DEFINE_int32(retries_on_empty_read,
+             0,
+             "We can retry up to this many times if we get an empty set of rows on a read "
+             "operation");
 
 using strings::Substitute;
 using std::atomic_long;
@@ -238,7 +240,8 @@ int main(int argc, char* argv[]) {
           writer.FailedKeys(),
           &stop_flag,
           FLAGS_value_size_bytes,
-          FLAGS_max_num_read_errors);
+          FLAGS_max_num_read_errors,
+          FLAGS_retries_on_empty_read);
 
       reader.Start();
 

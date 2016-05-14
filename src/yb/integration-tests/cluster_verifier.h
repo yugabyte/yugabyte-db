@@ -77,7 +77,7 @@ class ClusterVerifier {
                                 const MonoDelta& timeout);
 
  private:
-  Status DoKsck();
+  Status DoYsck();
 
   // Implementation for CheckRowCount -- returns a Status instead of firing
   // gtest assertions.

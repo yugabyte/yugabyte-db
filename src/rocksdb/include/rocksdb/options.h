@@ -882,7 +882,7 @@ struct DBOptions {
   // to stable storage. Their contents remain in the OS buffers till the
   // OS decides to flush them. This option is good for bulk-loading
   // of data. Once the bulk-loading is complete, please issue a
-  // sync to the OS to flush all dirty buffesrs to stable storage.
+  // sync to the OS to flush all dirty buffers to stable storage.
   // Default: false
   bool disableDataSync;
 
@@ -1267,6 +1267,15 @@ struct DBOptions {
   //
   // DEFAULT: false
   bool fail_if_options_file_error;
+
+  // Set last_sequence as the max sequence number from existing SSTables instead of using the
+  // manifest. This is a YugaByte-specific feature needed at tablet bootstrap to ensure that
+  // the sequence number always increases. Without this, we may have a slightly higher value of
+  // sequence number persisted in the manifest (because RocksDB just grabs the latest value of the
+  // atomic variable when it flushes the manifest instead of taking a "snapshot" of the last
+  // sequence number at flush), and we'll get an assertion error at bootstrap as we try to apply
+  // Raft log records indexes / sequence numbers lower than last_sequence.
+  bool set_last_seq_based_on_sstable_metadata;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

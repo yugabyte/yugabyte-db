@@ -458,6 +458,9 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   replicate->set_op_type(NO_OP);
   replicate->mutable_noop_request(); // Define the no-op request field.
 
+  // This committed OpId is used for tablet bootstrap for RocksDB-backed tables.
+  replicate->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
+
   // TODO: We should have no-ops (?) and config changes be COMMIT_WAIT
   // transactions. See KUDU-798.
   // Note: This timestamp has no meaning from a serialization perspective
@@ -522,6 +525,9 @@ Status RaftConsensus::CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRo
 }
 
 Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round) {
+  // We include the last committed id into every REPLICATE log record so we can bootstrap
+  // RocksDB-backed tablets more efficiently.
+  round->replicate_msg()->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
   state_->NewIdUnlocked(round->replicate_msg()->mutable_id());
   RETURN_NOT_OK(state_->AddPendingOperation(round));
 
@@ -1457,6 +1463,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     // Note: This timestamp has no meaning from a serialization perspective
     // because this method is not executed on the TabletPeer's prepare thread.
     cc_replicate->set_timestamp(clock_->Now().ToUint64());
+    cc_replicate->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
 
     auto context =
       std::make_shared<StateChangeContext>(StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE,
@@ -1556,12 +1563,6 @@ Status RaftConsensus::StartConsensusOnlyRoundUnlocked(const ReplicateRefPtr& msg
                                                   context,
                                                   Bind(&DoNothingStatusCB))));
   return state_->AddPendingOperation(round);
-}
-
-Status RaftConsensus::AdvanceTermForTests(int64_t new_term) {
-  ReplicaState::UniqueLock lock;
-  CHECK_OK(state_->LockForConfigChange(&lock));
-  return HandleTermAdvanceUnlocked(new_term);
 }
 
 std::string RaftConsensus::GetRequestVoteLogPrefixUnlocked() const {

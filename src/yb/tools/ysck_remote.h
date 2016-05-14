@@ -39,12 +39,12 @@ class Schema;
 namespace tools {
 
 // This implementation connects to a Tablet Server via RPC.
-class RemoteKsckTabletServer : public KsckTabletServer {
+class RemoteYsckTabletServer : public YsckTabletServer {
  public:
-  explicit RemoteKsckTabletServer(const std::string& id,
+  explicit RemoteYsckTabletServer(const std::string& id,
                                   const Sockaddr& address,
                                   const std::shared_ptr<rpc::Messenger>& messenger)
-      : KsckTabletServer(id),
+      : YsckTabletServer(id),
         address_(address.ToString()),
         messenger_(messenger),
         generic_proxy_(new server::GenericServiceProxy(messenger, address)),
@@ -74,24 +74,24 @@ class RemoteKsckTabletServer : public KsckTabletServer {
 };
 
 // This implementation connects to a Master via RPC.
-class RemoteKsckMaster : public KsckMaster {
+class RemoteYsckMaster : public YsckMaster {
  public:
 
-  static Status Build(const Sockaddr& address, std::shared_ptr<KsckMaster>* master);
+  static Status Build(const Sockaddr& address, std::shared_ptr<YsckMaster>* master);
 
-  virtual ~RemoteKsckMaster() { }
+  virtual ~RemoteYsckMaster() { }
 
   virtual Status Connect() const OVERRIDE;
 
   virtual Status RetrieveTabletServers(TSMap* tablet_servers) OVERRIDE;
 
-  virtual Status RetrieveTablesList(std::vector<std::shared_ptr<KsckTable> >* tables) OVERRIDE;
+  virtual Status RetrieveTablesList(std::vector<std::shared_ptr<YsckTable> >* tables) OVERRIDE;
 
-  virtual Status RetrieveTabletsList(const std::shared_ptr<KsckTable>& table) OVERRIDE;
+  virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) OVERRIDE;
 
  private:
 
-  explicit RemoteKsckMaster(const Sockaddr& address,
+  explicit RemoteYsckMaster(const Sockaddr& address,
                             const std::shared_ptr<rpc::Messenger>& messenger)
       : messenger_(messenger),
         proxy_(new master::MasterServiceProxy(messenger, address)) {
@@ -104,7 +104,7 @@ class RemoteKsckMaster : public KsckMaster {
   // last_partition_key is updated to point at the new last key that came in
   // the batch.
   Status GetTabletsBatch(const std::string& table_name, std::string* last_partition_key,
-    std::vector<std::shared_ptr<KsckTablet> >& tablets, bool* more_tablets);
+    std::vector<std::shared_ptr<YsckTablet> >& tablets, bool* more_tablets);
 
   std::shared_ptr<rpc::Messenger> messenger_;
   std::shared_ptr<master::MasterServiceProxy> proxy_;

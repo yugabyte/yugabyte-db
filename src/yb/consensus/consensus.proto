@@ -176,6 +176,9 @@ message ReplicateMsg {
   optional tserver.WriteRequestPB write_request = 5;
   optional tserver.AlterSchemaRequestPB alter_schema_request = 6;
   optional ChangeConfigRecordPB change_config_record = 7;
+  // The Raft operation ID known to the leader to be committed at the time this message was sent.
+  // This is used during tablet bootstrap for RocksDB-backed tables.
+  optional OpId committed_op_id = 8;
 
   optional NoOpRequestPB noop_request = 999;
 }
@@ -183,6 +186,7 @@ message ReplicateMsg {
 // A commit message for a previous operation.
 // This is a commit in the consensus sense and may abort/commit any operation
 // that required a consensus round.
+// This is not being used for RocksDB-backed tables.
 message CommitMsg {
   required OperationType op_type = 1;
   // the id of the message this commit pertains to

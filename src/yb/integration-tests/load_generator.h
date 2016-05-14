@@ -82,7 +82,6 @@ class MultiThreadedAction {
   const int value_size_;
 };
 
-
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedWriter
 // ------------------------------------------------------------------------------------------------
@@ -107,14 +106,9 @@ class MultiThreadedWriter : public MultiThreadedAction {
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
   const KeyIndexSet* InsertedKeys() const { return &inserted_keys_; }
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
-  int NumWriteErrors() { return failed_keys_.NumElements(); }
 
-  // The number of inserted keys (successful or failed). This may not be precise if called while the
-  // workload is running, as this is not taking any global locks.
-  int NumInsertedKeys() {
-    return inserted_up_to_inclusive_.load() - start_key_ + 1 + inserted_keys_.NumElements()
-      + failed_keys_.NumElements();
-  }
+  int64_t num_writes() { return next_key_.load() - start_key_; }
+  int num_write_errors() { return failed_keys_.NumElements(); }
 
  private:
   virtual void RunActionThread(int writerIndex);
@@ -135,7 +129,6 @@ class MultiThreadedWriter : public MultiThreadedAction {
   int max_num_write_errors_;
 };
 
-
 // ------------------------------------------------------------------------------------------------
 // SingleThreadedScanner
 // ------------------------------------------------------------------------------------------------
@@ -155,6 +148,9 @@ class SingleThreadedScanner {
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedReader
 // ------------------------------------------------------------------------------------------------
+
+enum class ReadStatus { OK, NO_ROWS, OTHER_ERROR };
+
 class MultiThreadedReader : public MultiThreadedAction {
  public:
   MultiThreadedReader(
@@ -167,22 +163,30 @@ class MultiThreadedReader : public MultiThreadedAction {
       const KeyIndexSet* failed_keys,
       std::atomic_bool* stop_flag,
       int value_size,
-      int max_num_read_errors);
+      int max_num_read_errors,
+      int retries_on_empty_read);
+
   void IncrementReadErrorCount();
 
-  int64_t NumReadErrors() { return num_read_errors_.load(); }
+  int64_t num_reads() { return num_reads_; }
+  int64_t num_read_errors() { return num_read_errors_.load(); }
 
  protected:
   virtual void RunActionThread(int reader_index) OVERRIDE;
   virtual void RunStatsThread() OVERRIDE;
 
  private:
+
   const std::atomic<int64_t>* insertion_point_;
   const KeyIndexSet* inserted_keys_;
   const KeyIndexSet* failed_keys_;
-  std::atomic<int64_t> num_read_errors_;
+
+  ReadStatus PerformRead(int64_t key_index);
+
   std::atomic<int64_t> num_reads_;
+  std::atomic<int64_t> num_read_errors_;
   const int max_num_read_errors_;
+  const int retries_on_empty_read_;
 };
 
 }

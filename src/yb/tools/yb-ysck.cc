@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Command line tool to run Ksck against a cluster. Defaults to running against a local Master
+// Command line tool to run Ysck against a cluster. Defaults to running against a local Master
 // on the default RPC port. It verifies that all the reported Tablet Servers are running and that
 // the tablets are in a consistent state.
 
@@ -60,7 +60,7 @@ DEFINE_string(tablets, "",
 namespace yb {
 namespace tools {
 
-static string GetKsckUsage(const char* progname) {
+static string GetYsckUsage(const char* progname) {
   string msg = Substitute("Usage: $0 --master_address=<addr> <flags>\n\n", progname);
   msg += "Check the health of a YB cluster.\n\n"
          "By default, ysck checks that master and tablet server processes are running,\n"
@@ -74,19 +74,19 @@ static string GetKsckUsage(const char* progname) {
 // Run ysck.
 // Error information is appended to the provided vector.
 // If the vector is empty upon completion, ysck ran successfully.
-static void RunKsck(vector<string>* error_messages) {
+static void RunYsck(vector<string>* error_messages) {
   vector<Sockaddr> master_addrs;
   PUSH_PREPEND_NOT_OK(ParseAddressList(FLAGS_master_address,
                                        master::Master::kDefaultPort,
                                        &master_addrs),
                       error_messages, "Unable to parse master address");
 
-  shared_ptr<KsckMaster> master;
-  PUSH_PREPEND_NOT_OK(RemoteKsckMaster::Build(master_addrs[0], &master),
-                      error_messages, "Unable to build KsckMaster");
+  shared_ptr<YsckMaster> master;
+  PUSH_PREPEND_NOT_OK(RemoteYsckMaster::Build(master_addrs[0], &master),
+                      error_messages, "Unable to build YsckMaster");
   if (!error_messages->empty()) return;
-  shared_ptr<KsckCluster> cluster(new KsckCluster(master));
-  shared_ptr<Ksck> ysck(new Ksck(cluster));
+  shared_ptr<YsckCluster> cluster(new YsckCluster(master));
+  shared_ptr<Ysck> ysck(new Ysck(cluster));
 
   // This is required for everything below.
   PUSH_PREPEND_NOT_OK(ysck->CheckMasterRunning(), error_messages,
@@ -117,7 +117,7 @@ static void RunKsck(vector<string>* error_messages) {
 } // namespace yb
 
 int main(int argc, char** argv) {
-  google::SetUsageMessage(yb::tools::GetKsckUsage(argv[0]));
+  google::SetUsageMessage(yb::tools::GetYsckUsage(argv[0]));
   if (argc < 2) {
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
     exit(1);
@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
   yb::InitGoogleLoggingSafe(argv[0]);
 
   vector<string> error_messages;
-  yb::tools::RunKsck(&error_messages);
+  yb::tools::RunYsck(&error_messages);
 
   // All good.
   if (error_messages.empty()) {

@@ -151,6 +151,25 @@ Status MiniCluster::StartSync() {
   return Status::OK();
 }
 
+Status MiniCluster::RestartSync() {
+  LOG(INFO) << string(80, '-');
+  LOG(INFO) << __FUNCTION__;
+  LOG(INFO) << string(80, '-');
+
+  LOG(INFO) << "Restart tablet server(s)...";
+  for (auto& tablet_server : mini_tablet_servers_) {
+    tablet_server->Restart();
+    tablet_server->WaitStarted();
+  }
+  LOG(INFO) << "Restart master server(s)...";
+  for (auto& master_server : mini_masters_) {
+    master_server->Restart();
+    master_server->WaitForCatalogManagerInit();
+  }
+  return Status::OK();
+}
+
+
 Status MiniCluster::StartSingleMaster() {
   // If there's a single master, 'mini_masters_' must be size 1.
   CHECK_EQ(mini_masters_.size(), 1);

@@ -34,10 +34,10 @@ using std::string;
 using std::unordered_map;
 using std::vector;
 
-class MockKsckTabletServer : public KsckTabletServer {
+class MockYsckTabletServer : public YsckTabletServer {
  public:
-  explicit MockKsckTabletServer(const string& uuid)
-      : KsckTabletServer(uuid),
+  explicit MockYsckTabletServer(const string& uuid)
+      : YsckTabletServer(uuid),
         connect_status_(Status::OK()),
         address_("<mock>") {
   }
@@ -70,9 +70,9 @@ class MockKsckTabletServer : public KsckTabletServer {
   const string address_;
 };
 
-class MockKsckMaster : public KsckMaster {
+class MockYsckMaster : public YsckMaster {
  public:
-  MockKsckMaster()
+  MockYsckMaster()
       : connect_status_(Status::OK()) {
   }
 
@@ -85,31 +85,31 @@ class MockKsckMaster : public KsckMaster {
     return Status::OK();
   }
 
-  virtual Status RetrieveTablesList(vector<shared_ptr<KsckTable>>* tables) OVERRIDE {
+  virtual Status RetrieveTablesList(vector<shared_ptr<YsckTable>>* tables) OVERRIDE {
     tables->assign(tables_.begin(), tables_.end());
     return Status::OK();
   }
 
-  virtual Status RetrieveTabletsList(const shared_ptr<KsckTable>& table) OVERRIDE {
+  virtual Status RetrieveTabletsList(const shared_ptr<YsckTable>& table) OVERRIDE {
     return Status::OK();
   }
 
   // Public because the unit tests mutate these variables directly.
   Status connect_status_;
   TSMap tablet_servers_;
-  vector<shared_ptr<KsckTable>> tables_;
+  vector<shared_ptr<YsckTable>> tables_;
 };
 
-class KsckTest : public YBTest {
+class YsckTest : public YBTest {
  public:
-  KsckTest()
-      : master_(new MockKsckMaster()),
-        cluster_(new KsckCluster(static_pointer_cast<KsckMaster>(master_))),
-        ysck_(new Ksck(cluster_)) {
-    unordered_map<string, shared_ptr<KsckTabletServer>> tablet_servers;
+  YsckTest()
+      : master_(new MockYsckMaster()),
+        cluster_(new YsckCluster(static_pointer_cast<YsckMaster>(master_))),
+        ysck_(new Ysck(cluster_)) {
+    unordered_map<string, shared_ptr<YsckTabletServer>> tablet_servers;
     for (int i = 0; i < 3; i++) {
       string name = strings::Substitute("$0", i);
-      shared_ptr<MockKsckTabletServer> ts(new MockKsckTabletServer(name));
+      shared_ptr<MockYsckTabletServer> ts(new MockYsckTabletServer(name));
       InsertOrDie(&tablet_servers, ts->uuid(), ts);
     }
     master_->tablet_servers_.swap(tablet_servers);
@@ -118,7 +118,7 @@ class KsckTest : public YBTest {
  protected:
   void CreateDefaultAssignmentPlan(int tablets_count) {
     while (tablets_count > 0) {
-      for (const KsckMaster::TSMap::value_type& entry : master_->tablet_servers_) {
+      for (const YsckMaster::TSMap::value_type& entry : master_->tablet_servers_) {
         if (tablets_count-- == 0) return;
         assignment_plan_.push_back(entry.second->uuid());
       }
@@ -128,7 +128,7 @@ class KsckTest : public YBTest {
   void CreateOneTableOneTablet() {
     CreateDefaultAssignmentPlan(1);
 
-    shared_ptr<KsckTablet> tablet(new KsckTablet("1"));
+    shared_ptr<YsckTablet> tablet(new YsckTablet("1"));
     CreateAndFillTablet(tablet, 1, true);
 
     CreateAndAddTable({ tablet }, "test", 1);
@@ -137,10 +137,10 @@ class KsckTest : public YBTest {
   void CreateOneSmallReplicatedTable() {
     int num_replicas = 3;
     int num_tablets = 3;
-    vector<shared_ptr<KsckTablet>> tablets;
+    vector<shared_ptr<YsckTablet>> tablets;
     CreateDefaultAssignmentPlan(num_replicas * num_tablets);
     for (int i = 0; i < num_tablets; i++) {
-      shared_ptr<KsckTablet> tablet(new KsckTablet(boost::lexical_cast<string>(i)));
+      shared_ptr<YsckTablet> tablet(new YsckTablet(boost::lexical_cast<string>(i)));
       CreateAndFillTablet(tablet, num_replicas, true);
       tablets.push_back(tablet);
     }
@@ -152,23 +152,23 @@ class KsckTest : public YBTest {
     // We're placing only two tablets, the 3rd goes nowhere.
     CreateDefaultAssignmentPlan(2);
 
-    shared_ptr<KsckTablet> tablet(new KsckTablet("1"));
+    shared_ptr<YsckTablet> tablet(new YsckTablet("1"));
     CreateAndFillTablet(tablet, 2, false);
 
     CreateAndAddTable({ tablet }, "test", 3);
   }
 
-  void CreateAndAddTable(vector<shared_ptr<KsckTablet>> tablets,
+  void CreateAndAddTable(vector<shared_ptr<YsckTablet>> tablets,
                          const string& name, int num_replicas) {
-    shared_ptr<KsckTable> table(new KsckTable(name, Schema(), num_replicas));
+    shared_ptr<YsckTable> table(new YsckTable(name, Schema(), num_replicas));
     table->set_tablets(tablets);
 
-    vector<shared_ptr<KsckTable>> tables = { table };
+    vector<shared_ptr<YsckTable>> tables = { table };
     master_->tables_.assign(tables.begin(), tables.end());
   }
 
-  void CreateAndFillTablet(shared_ptr<KsckTablet>& tablet, int num_replicas, bool has_leader) {
-    vector<shared_ptr<KsckTabletReplica>> replicas;
+  void CreateAndFillTablet(shared_ptr<YsckTablet>& tablet, int num_replicas, bool has_leader) {
+    vector<shared_ptr<YsckTabletReplica>> replicas;
     if (has_leader) {
       CreateReplicaAndAdd(replicas, true);
       num_replicas--;
@@ -179,16 +179,16 @@ class KsckTest : public YBTest {
     tablet->set_replicas(replicas);
   }
 
-  void CreateReplicaAndAdd(vector<shared_ptr<KsckTabletReplica>>& replicas, bool is_leader) {
-    shared_ptr<KsckTabletReplica> replica(new KsckTabletReplica(assignment_plan_.back(),
+  void CreateReplicaAndAdd(vector<shared_ptr<YsckTabletReplica>>& replicas, bool is_leader) {
+    shared_ptr<YsckTabletReplica> replica(new YsckTabletReplica(assignment_plan_.back(),
                                                                 is_leader, !is_leader));
     assignment_plan_.pop_back();
     replicas.push_back(replica);
   }
 
-  shared_ptr<MockKsckMaster> master_;
-  shared_ptr<KsckCluster> cluster_;
-  shared_ptr<Ksck> ysck_;
+  shared_ptr<MockYsckMaster> master_;
+  shared_ptr<YsckCluster> cluster_;
+  shared_ptr<Ysck> ysck_;
   // This is used as a stack. First the unit test is responsible to create a plan to follow, that
   // is the order in which each replica of each tablet will be assigned, starting from the end.
   // So if you have 2 tablets with num_replicas=3 and 3 tablet servers, then to distribute evenly
@@ -197,40 +197,40 @@ class KsckTest : public YBTest {
   vector<string> assignment_plan_;
 };
 
-TEST_F(KsckTest, TestMasterOk) {
+TEST_F(YsckTest, TestMasterOk) {
   ASSERT_OK(ysck_->CheckMasterRunning());
 }
 
-TEST_F(KsckTest, TestMasterUnavailable) {
+TEST_F(YsckTest, TestMasterUnavailable) {
   Status error = Status::NetworkError("Network failure");
   master_->connect_status_ = error;
   ASSERT_TRUE(ysck_->CheckMasterRunning().IsNetworkError());
 }
 
-TEST_F(KsckTest, TestTabletServersOk) {
+TEST_F(YsckTest, TestTabletServersOk) {
   ASSERT_OK(ysck_->CheckMasterRunning());
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   ASSERT_OK(ysck_->CheckTabletServersRunning());
 }
 
-TEST_F(KsckTest, TestBadTabletServer) {
+TEST_F(YsckTest, TestBadTabletServer) {
   ASSERT_OK(ysck_->CheckMasterRunning());
   Status error = Status::NetworkError("Network failure");
-  static_pointer_cast<MockKsckTabletServer>(master_->tablet_servers_.begin()->second)
+  static_pointer_cast<MockYsckTabletServer>(master_->tablet_servers_.begin()->second)
       ->connect_status_ = error;
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   Status s = ysck_->CheckTabletServersRunning();
   ASSERT_TRUE(s.IsNetworkError()) << "Status returned: " << s.ToString();
 }
 
-TEST_F(KsckTest, TestZeroTableCheck) {
+TEST_F(YsckTest, TestZeroTableCheck) {
   ASSERT_OK(ysck_->CheckMasterRunning());
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   ASSERT_OK(ysck_->CheckTabletServersRunning());
   ASSERT_OK(ysck_->CheckTablesConsistency());
 }
 
-TEST_F(KsckTest, TestOneTableCheck) {
+TEST_F(YsckTest, TestOneTableCheck) {
   CreateOneTableOneTablet();
   ASSERT_OK(ysck_->CheckMasterRunning());
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
@@ -238,7 +238,7 @@ TEST_F(KsckTest, TestOneTableCheck) {
   ASSERT_OK(ysck_->CheckTablesConsistency());
 }
 
-TEST_F(KsckTest, TestOneSmallReplicatedTable) {
+TEST_F(YsckTest, TestOneSmallReplicatedTable) {
   CreateOneSmallReplicatedTable();
   ASSERT_OK(ysck_->CheckMasterRunning());
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
@@ -246,7 +246,7 @@ TEST_F(KsckTest, TestOneSmallReplicatedTable) {
   ASSERT_OK(ysck_->CheckTablesConsistency());
 }
 
-TEST_F(KsckTest, TestOneOneTabletBrokenTable) {
+TEST_F(YsckTest, TestOneOneTabletBrokenTable) {
   CreateOneOneTabletReplicatedBrokenTable();
   ASSERT_OK(ysck_->CheckMasterRunning());
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());

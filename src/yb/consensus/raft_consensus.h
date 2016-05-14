@@ -137,9 +137,6 @@ class RaftConsensus : public Consensus,
 
   virtual void Shutdown() OVERRIDE;
 
-  // Makes this peer advance it's term (and step down if leader), for tests.
-  virtual Status AdvanceTermForTests(int64_t new_term);
-
   // Return the active (as opposed to committed) role.
   RaftPeerPB::Role GetActiveRole() const;
 
@@ -274,12 +271,6 @@ class RaftConsensus : public Consensus,
   Status CheckLeaderRequestUnlocked(const ConsensusRequestPB* request,
                                     ConsensusResponsePB* response,
                                     LeaderRequest* deduped_req);
-
-  // Pushes a new Raft configuration to a majority of peers. Contrary to write operations,
-  // this actually waits for the commit round to reach a majority of peers, so that we know
-  // we can proceed. If this returns Status::OK(), a majority of peers have accepted the new
-  // configuration. The peer cannot perform any additional operations until this succeeds.
-  Status PushConfigurationToPeersUnlocked(const RaftConfigPB& new_config);
 
   // Returns the most recent OpId written to the Log.
   OpId GetLatestOpIdFromLog();

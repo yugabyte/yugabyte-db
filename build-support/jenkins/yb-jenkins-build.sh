@@ -86,6 +86,10 @@ echo
 echo ----------------------------------------------------------------------------------------------
 echo
 
+echo "Max number of open files:"
+ulimit -n
+echo
+
 set +e
 build-support/jenkins/build-and-test.sh
 exit_code=$?

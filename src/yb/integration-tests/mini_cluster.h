@@ -84,6 +84,9 @@ class MiniCluster {
   // use this if they interact with tablets immediately after Start();
   Status StartSync();
 
+  // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
+  Status RestartSync();
+
   void Shutdown();
 
   // Shuts down masters only.

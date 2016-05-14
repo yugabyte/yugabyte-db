@@ -34,7 +34,6 @@ using consensus::CommitMsg;
 using consensus::Consensus;
 using consensus::ConsensusRound;
 using consensus::ReplicateMsg;
-using consensus::CommitMsg;
 using consensus::DriverType;
 using log::Log;
 using std::shared_ptr;

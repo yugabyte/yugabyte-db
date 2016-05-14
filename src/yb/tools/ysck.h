@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Ksck, a tool to run a YB System Check.
+// Ysck, a tool to run a YB System Check.
 
 #ifndef YB_TOOLS_KSCK_H
 #define YB_TOOLS_KSCK_H
@@ -63,9 +63,9 @@ struct ChecksumOptions {
 };
 
 // Representation of a tablet replica on a tablet server.
-class KsckTabletReplica {
+class YsckTabletReplica {
  public:
-  KsckTabletReplica(const std::string ts_uuid, const bool is_leader, const bool is_follower)
+  YsckTabletReplica(const std::string ts_uuid, const bool is_leader, const bool is_follower)
       : is_leader_(is_leader),
         is_follower_(is_follower),
         ts_uuid_(ts_uuid) {
@@ -87,36 +87,36 @@ class KsckTabletReplica {
   const bool is_leader_;
   const bool is_follower_;
   const std::string ts_uuid_;
-  DISALLOW_COPY_AND_ASSIGN(KsckTabletReplica);
+  DISALLOW_COPY_AND_ASSIGN(YsckTabletReplica);
 };
 
 // Representation of a tablet belonging to a table. The tablet is composed of replicas.
-class KsckTablet {
+class YsckTablet {
  public:
   // TODO add start/end keys, stale.
-  explicit KsckTablet(std::string id) : id_(std::move(id)) {}
+  explicit YsckTablet(std::string id) : id_(std::move(id)) {}
 
   const std::string& id() const {
     return id_;
   }
 
-  const std::vector<std::shared_ptr<KsckTabletReplica> >& replicas() const {
+  const std::vector<std::shared_ptr<YsckTabletReplica> >& replicas() const {
     return replicas_;
   }
 
-  void set_replicas(std::vector<std::shared_ptr<KsckTabletReplica> >& replicas) {
+  void set_replicas(std::vector<std::shared_ptr<YsckTabletReplica> >& replicas) {
     replicas_.assign(replicas.begin(), replicas.end());
   }
  private:
   const std::string id_;
-  std::vector<std::shared_ptr<KsckTabletReplica>> replicas_;
-  DISALLOW_COPY_AND_ASSIGN(KsckTablet);
+  std::vector<std::shared_ptr<YsckTabletReplica>> replicas_;
+  DISALLOW_COPY_AND_ASSIGN(YsckTablet);
 };
 
 // Representation of a table. Composed of tablets.
-class KsckTable {
+class YsckTable {
  public:
-  KsckTable(std::string name, const Schema& schema, int num_replicas)
+  YsckTable(std::string name, const Schema& schema, int num_replicas)
       : name_(std::move(name)), schema_(schema), num_replicas_(num_replicas) {}
 
   const std::string& name() const {
@@ -131,11 +131,11 @@ class KsckTable {
     return num_replicas_;
   }
 
-  void set_tablets(std::vector<std::shared_ptr<KsckTablet>>& tablets) {
+  void set_tablets(std::vector<std::shared_ptr<YsckTablet>>& tablets) {
     tablets_.assign(tablets.begin(), tablets.end());
   }
 
-  std::vector<std::shared_ptr<KsckTablet> >& tablets() {
+  std::vector<std::shared_ptr<YsckTablet> >& tablets() {
     return tablets_;
   }
 
@@ -143,22 +143,22 @@ class KsckTable {
   const std::string name_;
   const Schema schema_;
   const int num_replicas_;
-  std::vector<std::shared_ptr<KsckTablet>> tablets_;
-  DISALLOW_COPY_AND_ASSIGN(KsckTable);
+  std::vector<std::shared_ptr<YsckTablet>> tablets_;
+  DISALLOW_COPY_AND_ASSIGN(YsckTable);
 };
 
 typedef Callback<void(const Status& status, uint64_t checksum)> ReportResultCallback;
 
 // The following two classes must be extended in order to communicate with their respective
 // components. The two main use cases envisioned for this are:
-// - To be able to mock a cluster to more easily test the Ksck checks.
+// - To be able to mock a cluster to more easily test the Ysck checks.
 // - To be able to communicate with a real YB cluster.
 
 // Class that must be extended to represent a tablet server.
-class KsckTabletServer {
+class YsckTabletServer {
  public:
-  explicit KsckTabletServer(std::string uuid) : uuid_(std::move(uuid)) {}
-  virtual ~KsckTabletServer() { }
+  explicit YsckTabletServer(std::string uuid) : uuid_(std::move(uuid)) {}
+  virtual ~YsckTabletServer() { }
 
   // Connects to the configured Tablet Server.
   virtual Status Connect() const = 0;
@@ -181,17 +181,17 @@ class KsckTabletServer {
 
  private:
   const std::string uuid_;
-  DISALLOW_COPY_AND_ASSIGN(KsckTabletServer);
+  DISALLOW_COPY_AND_ASSIGN(YsckTabletServer);
 };
 
 // Class that must be extended to represent a master.
-class KsckMaster {
+class YsckMaster {
  public:
-  // Map of KsckTabletServer objects keyed by tablet server permanent_uuid.
-  typedef std::unordered_map<std::string, std::shared_ptr<KsckTabletServer> > TSMap;
+  // Map of YsckTabletServer objects keyed by tablet server permanent_uuid.
+  typedef std::unordered_map<std::string, std::shared_ptr<YsckTabletServer> > TSMap;
 
-  KsckMaster() { }
-  virtual ~KsckMaster() { }
+  YsckMaster() { }
+  virtual ~YsckMaster() { }
 
   // Connects to the configured Master.
   virtual Status Connect() const = 0;
@@ -204,37 +204,37 @@ class KsckMaster {
   // Gets the list of tables from the Master and stores it in the passed vector.
   // tables is only modified if this method returns OK.
   virtual Status RetrieveTablesList(
-      std::vector<std::shared_ptr<KsckTable> >* tables) = 0;
+      std::vector<std::shared_ptr<YsckTable> >* tables) = 0;
 
   // Gets the list of tablets for the specified table and stores the list in it.
   // The table's tablet list is only modified if this method returns OK.
-  virtual Status RetrieveTabletsList(const std::shared_ptr<KsckTable>& table) = 0;
+  virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) = 0;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(KsckMaster);
+  DISALLOW_COPY_AND_ASSIGN(YsckMaster);
 };
 
 // Class used to communicate with the cluster. It bootstraps this by using the provided master.
-class KsckCluster {
+class YsckCluster {
  public:
-  explicit KsckCluster(std::shared_ptr<KsckMaster> master)
+  explicit YsckCluster(std::shared_ptr<YsckMaster> master)
       : master_(std::move(master)) {}
-  ~KsckCluster();
+  ~YsckCluster();
 
   // Fetches list of tables, tablets, and tablet servers from the master and
   // populates the full list in cluster_->tables().
   Status FetchTableAndTabletInfo();
 
-  const std::shared_ptr<KsckMaster>& master() {
+  const std::shared_ptr<YsckMaster>& master() {
     return master_;
   }
 
   const std::unordered_map<std::string,
-                           std::shared_ptr<KsckTabletServer> >& tablet_servers() {
+                           std::shared_ptr<YsckTabletServer> >& tablet_servers() {
     return tablet_servers_;
   }
 
-  const std::vector<std::shared_ptr<KsckTable> >& tables() {
+  const std::vector<std::shared_ptr<YsckTable> >& tables() {
     return tables_;
   }
 
@@ -246,20 +246,20 @@ class KsckCluster {
   Status RetrieveTablesList();
 
   // Fetch the list of tablets for the given table from the Master.
-  Status RetrieveTabletsList(const std::shared_ptr<KsckTable>& table);
+  Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table);
 
-  const std::shared_ptr<KsckMaster> master_;
-  std::unordered_map<std::string, std::shared_ptr<KsckTabletServer> > tablet_servers_;
-  std::vector<std::shared_ptr<KsckTable> > tables_;
-  DISALLOW_COPY_AND_ASSIGN(KsckCluster);
+  const std::shared_ptr<YsckMaster> master_;
+  std::unordered_map<std::string, std::shared_ptr<YsckTabletServer> > tablet_servers_;
+  std::vector<std::shared_ptr<YsckTable> > tables_;
+  DISALLOW_COPY_AND_ASSIGN(YsckCluster);
 };
 
 // Externally facing class to run checks against the provided cluster.
-class Ksck {
+class Ysck {
  public:
-  explicit Ksck(std::shared_ptr<KsckCluster> cluster)
+  explicit Ysck(std::shared_ptr<YsckCluster> cluster)
       : cluster_(std::move(cluster)) {}
-  ~Ksck() {}
+  ~Ysck() {}
 
   // Verifies that it can connect to the Master.
   Status CheckMasterRunning();
@@ -273,7 +273,7 @@ class Ksck {
 
   // Establishes a connection with the specified Tablet Server.
   // Must first call FetchTableAndTabletInfo().
-  Status ConnectToTabletServer(const std::shared_ptr<KsckTabletServer>& ts);
+  Status ConnectToTabletServer(const std::shared_ptr<YsckTabletServer>& ts);
 
   // Verifies that all the tables have contiguous tablets and that each tablet has enough replicas
   // and a leader.
@@ -296,14 +296,14 @@ class Ksck {
   Status CheckAssignments();
 
  private:
-  bool VerifyTable(const std::shared_ptr<KsckTable>& table);
-  bool VerifyTableWithTimeout(const std::shared_ptr<KsckTable>& table,
+  bool VerifyTable(const std::shared_ptr<YsckTable>& table);
+  bool VerifyTableWithTimeout(const std::shared_ptr<YsckTable>& table,
                               const MonoDelta& timeout,
                               const MonoDelta& retry_interval);
-  bool VerifyTablet(const std::shared_ptr<KsckTablet>& tablet, int table_num_replicas);
+  bool VerifyTablet(const std::shared_ptr<YsckTablet>& tablet, int table_num_replicas);
 
-  const std::shared_ptr<KsckCluster> cluster_;
-  DISALLOW_COPY_AND_ASSIGN(Ksck);
+  const std::shared_ptr<YsckCluster> cluster_;
+  DISALLOW_COPY_AND_ASSIGN(Ysck);
 };
 } // namespace tools
 } // namespace yb

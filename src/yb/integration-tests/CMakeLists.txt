@@ -23,6 +23,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster.cc
   test_workload.cc
   load_generator.cc
+  kv_table_test_base.cc
 )
 
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
@@ -62,6 +63,7 @@ ADD_YB_TEST(remote_bootstrap-itest)
 ADD_YB_TEST(tablet_replacement-itest)
 ADD_YB_TEST(create-table-itest)
 ADD_YB_TEST(kv_table-test)
+ADD_YB_TEST(kv_table_ts_failover-test)
 
 # Some tests have additional dependencies
 set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})

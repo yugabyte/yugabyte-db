@@ -53,7 +53,7 @@ class LogReader;
 typedef BlockingQueue<LogEntryBatch*, LogEntryBatchLogicalSize> LogEntryBatchQueue;
 
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to
-// Kudu as a normal Write Ahead Log and also plays the role of persistent
+// YugaByte as a normal Write Ahead Log and also plays the role of persistent
 // storage for the consensus state machine.
 //
 // Note: This class is not thread safe, the caller is expected to synchronize
@@ -83,7 +83,6 @@ class Log : public RefCountedThreadSafe<Log> {
   class LogFaultHooks;
 
   static const Status kLogShutdownStatus;
-  static const uint64_t kInitialLogSegmentSequenceNumber;
 
   // Opens or continues a log and sets 'log' to the newly built Log.
   // After a successful Open() the Log is ready to receive entries.

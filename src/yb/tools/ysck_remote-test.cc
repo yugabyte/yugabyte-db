@@ -46,9 +46,9 @@ using strings::Substitute;
 
 static const char *kTableName = "ysck-test-table";
 
-class RemoteKsckTest : public YBTest {
+class RemoteYsckTest : public YBTest {
  public:
-  RemoteKsckTest()
+  RemoteYsckTest()
     : random_(SeedRandom()) {
     YBSchemaBuilder b;
     b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
@@ -84,9 +84,9 @@ class RemoteKsckTest : public YBTest {
     // Make sure we can open the table.
     ASSERT_OK(client_->OpenTable(kTableName, &client_table_));
 
-    ASSERT_OK(RemoteKsckMaster::Build(master_rpc_addr_, &master_));
-    cluster_.reset(new KsckCluster(master_));
-    ysck_.reset(new Ksck(cluster_));
+    ASSERT_OK(RemoteYsckMaster::Build(master_rpc_addr_, &master_));
+    cluster_.reset(new YsckCluster(master_));
+    ysck_.reset(new Ysck(cluster_));
   }
 
   virtual void TearDown() OVERRIDE {
@@ -165,7 +165,7 @@ class RemoteKsckTest : public YBTest {
     return Status::OK();
   }
 
-  std::shared_ptr<Ksck> ysck_;
+  std::shared_ptr<Ysck> ysck_;
   shared_ptr<client::YBClient> client_;
 
  private:
@@ -173,23 +173,23 @@ class RemoteKsckTest : public YBTest {
   std::shared_ptr<MiniCluster> mini_cluster_;
   client::YBSchema schema_;
   shared_ptr<client::YBTable> client_table_;
-  std::shared_ptr<KsckMaster> master_;
-  std::shared_ptr<KsckCluster> cluster_;
+  std::shared_ptr<YsckMaster> master_;
+  std::shared_ptr<YsckCluster> cluster_;
   Random random_;
 };
 
-TEST_F(RemoteKsckTest, TestMasterOk) {
+TEST_F(RemoteYsckTest, TestMasterOk) {
   ASSERT_OK(ysck_->CheckMasterRunning());
 }
 
-TEST_F(RemoteKsckTest, TestTabletServersOk) {
+TEST_F(RemoteYsckTest, TestTabletServersOk) {
   LOG(INFO) << "Fetching table and tablet info...";
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   LOG(INFO) << "Checking tablet servers are running...";
   ASSERT_OK(ysck_->CheckTabletServersRunning());
 }
 
-TEST_F(RemoteKsckTest, TestTableConsistency) {
+TEST_F(RemoteYsckTest, TestTableConsistency) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   Status s;
@@ -204,7 +204,7 @@ TEST_F(RemoteKsckTest, TestTableConsistency) {
   ASSERT_OK(s);
 }
 
-TEST_F(RemoteKsckTest, TestChecksum) {
+TEST_F(RemoteYsckTest, TestChecksum) {
   uint64_t num_writes = 100;
   LOG(INFO) << "Generating row writes...";
   ASSERT_OK(GenerateRowWrites(num_writes));
@@ -225,7 +225,7 @@ TEST_F(RemoteKsckTest, TestChecksum) {
   ASSERT_OK(s);
 }
 
-TEST_F(RemoteKsckTest, TestChecksumTimeout) {
+TEST_F(RemoteYsckTest, TestChecksumTimeout) {
   uint64_t num_writes = 10000;
   LOG(INFO) << "Generating row writes...";
   ASSERT_OK(GenerateRowWrites(num_writes));
@@ -237,14 +237,14 @@ TEST_F(RemoteKsckTest, TestChecksumTimeout) {
   ASSERT_TRUE(s.IsTimedOut()) << "Expected TimedOut Status, got: " << s.ToString();
 }
 
-TEST_F(RemoteKsckTest, TestChecksumSnapshot) {
+TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
   CountDownLatch started_writing(1);
   AtomicBool continue_writing(true);
   Promise<Status> promise;
   scoped_refptr<Thread> writer_thread;
 
-  Thread::Create("RemoteKsckTest", "TestChecksumSnapshot",
-                 &RemoteKsckTest::GenerateRowWritesLoop, this,
+  Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
+                 &RemoteYsckTest::GenerateRowWritesLoop, this,
                  &started_writing, boost::cref(continue_writing), &promise,
                  &writer_thread);
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
@@ -278,14 +278,14 @@ TEST_F(RemoteKsckTest, TestChecksumSnapshot) {
 
 // Test that followers & leader wait until safe time to respond to a snapshot
 // scan at current timestamp. TODO: Safe time not yet implemented. See KUDU-1056.
-TEST_F(RemoteKsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
+TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
   CountDownLatch started_writing(1);
   AtomicBool continue_writing(true);
   Promise<Status> promise;
   scoped_refptr<Thread> writer_thread;
 
-  Thread::Create("RemoteKsckTest", "TestChecksumSnapshot",
-                 &RemoteKsckTest::GenerateRowWritesLoop, this,
+  Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
+                 &RemoteYsckTest::GenerateRowWritesLoop, this,
                  &started_writing, boost::cref(continue_writing), &promise,
                  &writer_thread);
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));

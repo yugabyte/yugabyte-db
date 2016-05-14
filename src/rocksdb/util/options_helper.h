@@ -313,6 +313,9 @@ static std::unordered_map<std::string, OptionTypeInfo> db_options_type_info = {
       OptionType::kAccessHint, OptionVerificationType::kNormal}},
     {"info_log_level",
      {offsetof(struct DBOptions, info_log_level), OptionType::kInfoLogLevel,
+      OptionVerificationType::kNormal}},
+    {"set_last_seq_based_on_sstable_metadata",
+     {offsetof(struct DBOptions, set_last_seq_based_on_sstable_metadata), OptionType::kBoolean,
       OptionVerificationType::kNormal}}};
 
 static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
