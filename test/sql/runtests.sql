@@ -81,6 +81,7 @@ Note that in some cases we get what appears to be a duplicate context message, b
             END;
             $F$;
         $E$;
+        EXECUTE 'SELECT __die();';
     ELSIF pg_version_num() >= 80400 THEN
         EXECUTE $E$
             CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
@@ -91,17 +92,10 @@ Note that in some cases we get what appears to be a duplicate context message, b
             END;
             $F$;
         $E$;
+        EXECUTE 'SELECT __die();';
     ELSE
-        EXECUTE $E$
-            CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
-            BEGIN
-            RAISE EXCEPTION 'This test should die, but not halt execution.
-Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.';
-            END;
-            $F$;
-        $E$;
+        RAISE EXCEPTION 'This test should die, but not halt execution';
     END IF;
-    EXECUTE 'SELECT __die();';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -124,6 +118,6 @@ $$ LANGUAGE plpgsql;
 SELECT * FROM runtests('whatever'::name);
 
 -- Verify that startup, shutdown, etc aren't run as normal tests
-SELECT * FROM runtests('whatever'::name, '.*');
+SELECT * FROM runtests('whatever'::name, '.*') WHERE pg_version_num() >= 80300;
 
 ROLLBACK;
