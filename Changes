@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.96.0
+0.96.0 2016-05-16T20:53:57Z
 ---------------------------
 * Added an optional `:exclude_pattern` parameter to `findfuncs()` to prevent
   matching of some functions. This is useful to prevent matching
