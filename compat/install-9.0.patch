@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -3622,7 +3622,7 @@ RETURNS TEXT AS $$
+@@ -3617,7 +3617,7 @@
                 AND n.nspname = $1
                 AND t.typname = $2
                 AND t.typtype = 'e'
@@ -9,7 +9,7 @@
          ),
          $3,
          $4
-@@ -3650,7 +3650,7 @@ RETURNS TEXT AS $$
+@@ -3645,7 +3645,7 @@
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typname = $1
                 AND t.typtype = 'e'
@@ -18,7 +18,7 @@
          ),
          $2,
          $3
-@@ -9484,54 +9484,3 @@
+@@ -9459,54 +9459,3 @@
  
  GRANT SELECT ON tap_funky           TO PUBLIC;
  GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;

@@ -123,7 +123,8 @@ SELECT * FROM check_test(
     'lives_ok failure diagnostics',
     '',
     '    died: P0001: todo_end() called without todo_start()'
-    || CASE WHEN pg_version_num() < 90200 THEN '' ELSE '        CONTEXT:
+    || CASE WHEN pg_version_num() < 90200 THEN '' ELSE '
+        CONTEXT:
             SQL statement "SELECT * FROM todo_end()"
             PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE'
     || CASE WHEN pg_version_num() >= 90500 THEN '' ELSE ' statement' END END
