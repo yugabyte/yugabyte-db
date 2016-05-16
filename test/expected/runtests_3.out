@@ -28,18 +28,6 @@ ok 4 - whatever.testplpgsql
     ok 3 - setup more
     # Test died: P0001: This test should die, but not halt execution.
     # Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.
-    #         DETAIL:     DETAIL
-    #         SCHEMA:     SCHEMA
-    #         TABLE:      TABLE
-    #         COLUMN:     COLUMN
-    #         CONSTRAINT: CONSTRAINT
-    #         TYPE:       TYPE
-    #         CONTEXT:
-    #             SQL statement "SELECT __die();"
-    #             PL/pgSQL function whatever.testplpgsqldie() line 23 at EXECUTE
-    #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
-    #             SQL function "runtests" statement 1
-    #             SQL function "runtests" statement 1
 not ok 5 - whatever.testplpgsqldie
 # Failed test 5: "whatever.testplpgsqldie"
     # Subtest: whatever.testthis()
@@ -106,17 +94,6 @@ ok 4 - whatever.testplpgsql
     ok 3 - setup more
     # Test died: P0001: This test should die, but not halt execution.
     # Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.
-    #         DETAIL:     DETAIL
-    #         SCHEMA:     SCHEMA
-    #         TABLE:      TABLE
-    #         COLUMN:     COLUMN
-    #         CONSTRAINT: CONSTRAINT
-    #         TYPE:       TYPE
-    #         CONTEXT:
-    #             SQL statement "SELECT __die();"
-    #             PL/pgSQL function whatever.testplpgsqldie() line 23 at EXECUTE
-    #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
-    #             SQL function "runtests" statement 1
 not ok 5 - whatever.testplpgsqldie
 # Failed test 5: "whatever.testplpgsqldie"
     # Subtest: whatever.testthis()

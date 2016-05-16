@@ -65,7 +65,37 @@ BEGIN
     RETURN NEXT pass( 'plpgsql simple 2' );
     INSERT INTO whatever.foo VALUES(1);
     RETURN NEXT is( MAX(id), 1, 'Should be a 1 in the test table') FROM whatever.foo;
-    RAISE EXCEPTION 'This test should die, but not halt execution';
+    IF pg_version_num() >= 90300 THEN
+        EXECUTE $E$
+            CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
+            BEGIN
+            RAISE EXCEPTION 'This test should die, but not halt execution.
+Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.'
+            USING
+                    DETAIL =      'DETAIL',
+                    COLUMN =      'COLUMN',
+                    CONSTRAINT =  'CONSTRAINT',
+                    DATATYPE =    'TYPE',
+                    TABLE =       'TABLE',
+                    SCHEMA =      'SCHEMA';
+            END;
+            $F$;
+        $E$;
+        EXECUTE 'SELECT __die();';
+    ELSIF pg_version_num() >= 80400 THEN
+        EXECUTE $E$
+            CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
+            BEGIN
+            RAISE EXCEPTION 'This test should die, but not halt execution.
+Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.'
+                USING DETAIL = 'DETAIL';
+            END;
+            $F$;
+        $E$;
+        EXECUTE 'SELECT __die();';
+    ELSE
+        RAISE EXCEPTION 'This test should die, but not halt execution';
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -88,6 +118,6 @@ $$ LANGUAGE plpgsql;
 SELECT * FROM runtests('whatever'::name);
 
 -- Verify that startup, shutdown, etc aren't run as normal tests
-SELECT * FROM runtests('whatever'::name, '.*');
+SELECT * FROM runtests('whatever'::name, '.*') WHERE pg_version_num() >= 80300;
 
 ROLLBACK;

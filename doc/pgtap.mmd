@@ -7601,17 +7601,29 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
-9.1 and Up
+9.3 and Up
 ----------
 
 No changes. Everything should just work.
+
+9.2 and Down
+------------
+* Diagnostic output from `lives_ok()` and xUnit function exceptions will not
+  include schema, table, column, data type, or constraint information, since
+  such diagnostics were not introduced until 9.3.
+
+9.1 and Down
+------------
+* Diagnostic output from `lives_ok()` and xUnit function exceptions will not
+  error context or details, since such diagnostics were not introduced until
+  9.2.
 
 9.0 and Down
 ------------
 * The `foreign_table_owner_is()` function will not work, because, of course,
   there were no foreign tables until 9.1.
-* The `extensions_are()` functions will not work, because extensions were not
-  introduced until 9.1.
+* The `extensions_are()` functions are not available, because extensions were
+  not introduced until 9.1.
 
 8.4 and Down
 ------------
