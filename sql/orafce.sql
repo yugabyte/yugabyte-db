@@ -981,3 +981,6 @@ SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
 SELECT plvdate.include_start(false);
 SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
 SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
+
+SELECT oracle.round(1.234::double precision, 2), oracle.trunc(1.234::double precision, 2);
+SELECT oracle.round(1.234::float, 2), oracle.trunc(1.234::float, 2);

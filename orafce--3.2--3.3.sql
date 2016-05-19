@@ -49,3 +49,23 @@ RETURNS bool
 AS 'MODULE_PATHNAME','plvdate_using_great_friday'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.using_great_friday() IS 'Use Great Friday?';
+
+CREATE or REPLACE FUNCTION oracle.round(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE or REPLACE FUNCTION oracle.trunc(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE or REPLACE FUNCTION oracle.round(float, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE or REPLACE FUNCTION oracle.trunc(float, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE sql;

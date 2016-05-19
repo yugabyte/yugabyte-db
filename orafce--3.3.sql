@@ -3255,3 +3255,23 @@ RETURNS timestamp without time zone
 AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
+
+CREATE or REPLACE FUNCTION oracle.round(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE or REPLACE FUNCTION oracle.trunc(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE or REPLACE FUNCTION oracle.round(float, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE or REPLACE FUNCTION oracle.trunc(float, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE sql;
