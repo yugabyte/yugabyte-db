@@ -115,6 +115,7 @@ class TSDescriptor {
 
  private:
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
+  friend class TestLoadBalancer;
 
   explicit TSDescriptor(std::string perm_id);
 

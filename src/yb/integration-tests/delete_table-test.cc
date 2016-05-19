@@ -496,7 +496,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   vector<string> flags;
   flags.push_back("--log_segment_size_mb=1"); // Faster log rolls.
-  NO_FATALS(StartCluster(flags));
+  // Start the cluster with load balancer turned off.
+  NO_FATALS(StartCluster(flags, {"--enable_load_balancing=false"}));
   const MonoDelta timeout = MonoDelta::FromSeconds(20);
   const int kTsIndex = 0; // We'll test with the first TS.
 

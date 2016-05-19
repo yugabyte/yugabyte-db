@@ -126,6 +126,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   vector<string> ts_flags;
   vector<string> master_flags;
   ts_flags.push_back("--never_fsync"); // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false"); // disable load balancing moves
   NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());

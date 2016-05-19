@@ -21,8 +21,8 @@ using std::make_pair;
 using strings::Substitute;
 
 DEFINE_bool(enable_load_balancing,
-            false,
-            "Chose whether to enable the load balancing algorithm, to move tablets around.");
+            true,
+            "Choose whether to enable the load balancing algorithm, to move tablets around.");
 
 class ClusterLoadBalancer::ClusterLoadState {
  public:
@@ -267,7 +267,7 @@ void ClusterLoadBalancer::ResetState() {
 
 void ClusterLoadBalancer::AnalyzeTablets() {
   // Loop over tablet map to register the load that is already live in the cluster.
-  for (const auto& entry : catalog_manager_->tablet_map_) {
+  for (const auto& entry : GetTabletMap()) {
     scoped_refptr<TabletInfo> tablet = entry.second;
     bool tablet_running = false;
     {
@@ -299,7 +299,7 @@ void ClusterLoadBalancer::AnalyzeTablets() {
   // and registered with the Master, but that have not been issued any config changes yet and added
   // as peers to any tablets. We will use those for load balancing!
   TSDescriptorVector ts_descs;
-  catalog_manager_->master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  GetAllLiveDescriptors(&ts_descs);
   for (const auto ts_desc : ts_descs) {
     ComputeAndSetLoad(ts_desc->permanent_uuid());
   }
@@ -309,6 +309,14 @@ void ClusterLoadBalancer::AnalyzeTablets() {
   LOG(INFO) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2",
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets());
+}
+
+void ClusterLoadBalancer::GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const {
+  catalog_manager_->master_->ts_manager()->GetAllLiveDescriptors(ts_descs);
+}
+
+const unordered_map<string, scoped_refptr<TabletInfo>>& ClusterLoadBalancer::GetTabletMap() const {
+  return catalog_manager_->tablet_map_;
 }
 
 bool ClusterLoadBalancer::HandleHighLoad() {
@@ -341,7 +349,7 @@ bool ClusterLoadBalancer::HandleHighLoad() {
 
   LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
 
-  auto tablet = catalog_manager_->tablet_map_[tablet_id];
+  auto tablet = GetTabletMap().at(tablet_id);
   {
     TabletMetadataLock tablet_lock(tablet.get(), TabletMetadataLock::READ);
     catalog_manager_->SendAddServerRequest(
@@ -354,7 +362,7 @@ bool ClusterLoadBalancer::HandleHighLoad() {
 }
 
 bool ClusterLoadBalancer::GetLoadToMove(
-    TabletServerId* from_ts, TabletServerId* to_ts, TabletId* tablet_id) {
+    TabletServerId* from_ts, TabletServerId* to_ts, TabletId* moving_tablet_id) {
   if (state_->sorted_load_.empty()) {
     return false;
   }
@@ -397,37 +405,45 @@ bool ClusterLoadBalancer::GetLoadToMove(
         }
       }
 
-      set<TabletId> non_over_replicated_tablets;
-      for (const TabletId& tablet_id : GetTabletsByTS(high_load_uuid)) {
-        // We don't want to add a new replica to an already over-replicated tablet.
-        if (!IsOverReplicated(tablet_id)) {
-          // TODO(bogdan): should make sure we pick tablets that this TS is not a leader of, so we
-          // can ensure HandleOverReplication removes them from this TS.
-          non_over_replicated_tablets.insert(tablet_id);
-        }
+      // If we don't find a tablet_id to move between these two TSs, advance the state.
+      if (GetTabletToMove(high_load_uuid, low_load_uuid, moving_tablet_id)) {
+        // If we got this far, we have the candidate we want, so fill in the output params and
+        // return. The tablet_id is filled in from GetTabletToMove.
+        *from_ts = high_load_uuid;
+        *to_ts = low_load_uuid;
+        return true;
       }
-
-      // Pick tablets from the max load server to move to the min load server (that it does not
-      // already have and that are also not already over-replicated).
-      vector<TabletId> add_candidates;
-      random_.ReservoirSample(
-          non_over_replicated_tablets, 1, GetTabletsByTS(low_load_uuid), &add_candidates);
-      if (add_candidates.empty()) {
-        // We could not find any tablets between these two TS. Advance the state normally.
-        continue;
-      }
-
-      // If we got this far, we have the candidate we want, so fill in the output params and return.
-      *from_ts = high_load_uuid;
-      *to_ts = low_load_uuid;
-      *tablet_id = add_candidates[0];
-
-      return true;
     }
   }
 
   // Should never get here.
+  LOG(FATAL) << "Load balancing algorithm reached invalid state!";
   return false;
+}
+
+bool ClusterLoadBalancer::GetTabletToMove(
+    const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
+  set<TabletId> non_over_replicated_tablets;
+  for (const TabletId& tablet_id : GetTabletsByTS(from_ts)) {
+    // We don't want to add a new replica to an already over-replicated tablet.
+    if (!IsOverReplicated(tablet_id)) {
+      // TODO(bogdan): should make sure we pick tablets that this TS is not a leader of, so we
+      // can ensure HandleOverReplication removes them from this TS.
+      non_over_replicated_tablets.insert(tablet_id);
+    }
+  }
+
+  // Pick tablets from the max load server to move to the min load server (that it does not
+  // already have and that are also not already over-replicated).
+  vector<TabletId> add_candidates;
+  random_.ReservoirSample(non_over_replicated_tablets, 1, GetTabletsByTS(to_ts), &add_candidates);
+  if (add_candidates.empty()) {
+    // We could not find any tablets between these two TS. Advance the state normally.
+    return false;
+  }
+
+  *moving_tablet_id = add_candidates[0];
+  return true;
 }
 
 bool ClusterLoadBalancer::HandleOverReplication() {
@@ -452,7 +468,7 @@ bool ClusterLoadBalancer::HandleOverReplication() {
   }
 
   const TabletId& tablet_id = removal_candidates[0];
-  auto tablet = catalog_manager_->tablet_map_[tablet_id];
+  auto tablet = GetTabletMap().at(tablet_id);
 
   // We need a sorted data structure to go through in order of load.
   vector<TabletReplica> sorted_tablet_replicas;

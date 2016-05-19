@@ -108,6 +108,9 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
         opts.extra_tserver_flags.push_back(flag);
       }
     }
+    // Disable load balancer for master by default for these tests. You can override this through
+    // setting flags in the passed in non_default_master_flags argument.
+    opts.extra_master_flags.push_back("--enable_load_balancing=false");
     for (const std::string& flag : non_default_master_flags) {
       opts.extra_master_flags.push_back(flag);
     }

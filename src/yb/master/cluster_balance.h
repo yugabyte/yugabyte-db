@@ -38,7 +38,16 @@ class ClusterLoadBalancer {
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
- private:
+  // Catalog manager indirection methods.
+ protected:
+  // Indirection to CatalogManager to get the list of live TSDescriptors.
+  virtual void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const;
+
+  // Indirection to CatalogManager to get access to the tablet map.
+  virtual const std::unordered_map<std::string, scoped_refptr<TabletInfo>>& GetTabletMap() const;
+
+  // Higher level methods and members.
+ protected:
   // Recreates the ClusterLoadState object.
   void ResetState();
 
@@ -106,7 +115,8 @@ class ClusterLoadBalancer {
 
   const Options options_;
 
- private:
+  // Lower level implementation details.
+ protected:
   using TabletId = std::string;
   using TabletServerId = std::string;
 
@@ -133,7 +143,10 @@ class ClusterLoadBalancer {
   //
   // Returns true if we could find a tablet to rebalance and sets the three output parameters.
   // Returns false otherwise.
-  bool GetLoadToMove(TabletServerId* from_ts, TabletServerId* to_ts, TabletId* tablet_id);
+  bool GetLoadToMove(TabletServerId* from_ts, TabletServerId* to_ts, TabletId* moving_tablet_id);
+
+  bool GetTabletToMove(
+      const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id);
 
   void RemoveFromMemory(const TabletServerId& ts_uuid, const TabletId& tablet_id);
   void AddInMemory(
