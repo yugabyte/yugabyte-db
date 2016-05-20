@@ -46,6 +46,10 @@ struct ServerBaseOptions {
 
   int32_t metrics_log_interval_ms;
 
+  std::string placement_cloud;
+  std::string placement_region;
+  std::string placement_zone;
+
  protected:
   ServerBaseOptions();
 };

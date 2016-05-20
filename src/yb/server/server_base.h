@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 
+#include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -86,6 +87,9 @@ class ServerBase {
 
   // Return a PB describing the status of the server (version info, bound ports, etc)
   void GetStatusPB(ServerStatusPB* status) const;
+
+  // Centralized method to get the Registration information for either the Master or Tserver.
+  Status GetRegistration(ServerRegistrationPB* reg) const;
 
  protected:
   ServerBase(std::string name, const ServerBaseOptions& options,

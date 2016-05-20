@@ -41,12 +41,27 @@ DEFINE_int32(metrics_log_interval_ms, 0,
              "value, then metrics logging will be disabled.");
 TAG_FLAG(metrics_log_interval_ms, advanced);
 
+// The following flags related to the cloud, region and availability zone that an instance is
+// started in. These are passed in from whatever provisioning mechanics start the servers. They
+// are used for generic placement policies on table creation and tablet load balancing, to
+// either constrain data to a certain location (table A should only live in aws.us-west2.a), or to
+// define the required level of fault tolerance expected (table B should have N replicas, across
+// two regions of AWS and one of GCE).
+//
+// These are currently for use in a cloud-based deployment, but could be retrofitted to work for
+// an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
+DEFINE_string(placement_cloud, "", "The cloud in which this instance is started.");
+DEFINE_string(placement_region, "", "The cloud region in which this instance is started.");
+DEFINE_string(placement_zone, "", "The cloud availability zone in which this instance is started.");
+
 ServerBaseOptions::ServerBaseOptions()
-  : env(Env::Default()),
-    dump_info_path(FLAGS_server_dump_info_path),
-    dump_info_format(FLAGS_server_dump_info_format),
-    metrics_log_interval_ms(FLAGS_metrics_log_interval_ms) {
-}
+    : env(Env::Default()),
+      dump_info_path(FLAGS_server_dump_info_path),
+      dump_info_format(FLAGS_server_dump_info_format),
+      metrics_log_interval_ms(FLAGS_metrics_log_interval_ms),
+      placement_cloud(FLAGS_placement_cloud),
+      placement_region(FLAGS_placement_region),
+      placement_zone(FLAGS_placement_zone) {}
 
 } // namespace server
 } // namespace yb

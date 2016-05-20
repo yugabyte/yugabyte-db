@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/wire_protocol.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -33,12 +33,12 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/logical_clock.h"
 #include "yb/server/rpc_server.h"
-#include "yb/server/tcmalloc_metrics.h"
-#include "yb/server/webserver.h"
 #include "yb/server/rpcz-path-handler.h"
-#include "yb/server/server_base_options.h"
 #include "yb/server/server_base.pb.h"
+#include "yb/server/server_base_options.h"
+#include "yb/server/tcmalloc_metrics.h"
 #include "yb/server/tracing-path-handlers.h"
+#include "yb/server/webserver.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
@@ -210,6 +210,25 @@ void ServerBase::GetStatusPB(ServerStatusPB* status) const {
   }
 
   VersionInfo::GetVersionInfoPB(status->mutable_version_info());
+}
+
+Status ServerBase::GetRegistration(ServerRegistrationPB* reg) const {
+  vector<Sockaddr> addrs;
+  RETURN_NOT_OK(CHECK_NOTNULL(rpc_server())->GetBoundAddresses(&addrs));
+  RETURN_NOT_OK_PREPEND(
+      AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
+      "Failed to add RPC addresses to registration");
+
+  addrs.clear();
+  RETURN_NOT_OK_PREPEND(
+      CHECK_NOTNULL(web_server())->GetBoundAddresses(&addrs), "Unable to get bound HTTP addresses");
+  RETURN_NOT_OK_PREPEND(
+      AddHostPortPBs(addrs, reg->mutable_http_addresses()),
+      "Failed to add HTTP addresses to registration");
+
+  reg->set_placement_cloud(options_.placement_cloud);
+  reg->set_placement_region(options_.placement_region);
+  reg->set_placement_zone(options_.placement_zone);
 }
 
 Status ServerBase::DumpServerInfo(const string& path,

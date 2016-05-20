@@ -208,14 +208,7 @@ Status Master::InitMasterRegistration() {
   CHECK(!registration_initialized_.load());
 
   ServerRegistrationPB reg;
-  vector<Sockaddr> rpc_addrs;
-  RETURN_NOT_OK_PREPEND(rpc_server()->GetBoundAddresses(&rpc_addrs),
-                        "Couldn't get RPC addresses");
-  RETURN_NOT_OK(AddHostPortPBs(rpc_addrs, reg.mutable_rpc_addresses()));
-  vector<Sockaddr> http_addrs;
-  web_server()->GetBoundAddresses(&http_addrs);
-  RETURN_NOT_OK(AddHostPortPBs(http_addrs, reg.mutable_http_addresses()));
-
+  RETURN_NOT_OK(GetRegistration(&reg));
   registration_.Swap(&reg);
   registration_initialized_.store(true);
 

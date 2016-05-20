@@ -8,6 +8,12 @@ Usage: ${0##*/} [<options>] <command>
 Options:
   --verbose_level <level>
     Dictates amount logging on servers trace files. Default is 0, maximum is 4.
+  --placement_cloud <cloud_name>
+    Which cloud this instance is started in.
+  --placement_region <region_name>
+    Which region this instance is started in.
+  --placement_zone <zone_name>
+    Which zone this instance is started in.
 Commands:
   create
     Creates a brand new cluster. Starts the master and tablet server processes after creating
@@ -270,6 +276,9 @@ start_master() {
       $master_flags \
       --webserver_port $(( $master_http_port_base + $master_index )) \
       --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) \
+      --placement_cloud "$placement_cloud" \
+      --placement_region "$placement_region" \
+      --placement_zone "$placement_zone" \
       >"$master_base_dir/master.out" \
       2>"$master_base_dir/master.err" &
   )
@@ -296,6 +305,9 @@ start_tserver() {
        --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
        --webserver_port $(( $tserver_http_port_base + $tserver_index )) \
        --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $tserver_index )) \
+      --placement_cloud "$placement_cloud" \
+      --placement_region "$placement_region" \
+      --placement_zone "$placement_zone" \
        >"$tserver_base_dir/tserver.out" \
        2>"$tserver_base_dir/tserver.err" &
   )
@@ -423,9 +435,16 @@ master_indexes=""
 tserver_indexes=""
 verbose_level=0
 create=false
+placement_cloud=""
+placement_region=""
+placement_zone=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --placement_cloud|--placement_region|--placement_zone)
+      eval "${1#--}=$2"
+      shift
+    ;;
     --verbose_level)
       verbose_level="$2"
       shift
