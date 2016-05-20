@@ -15,6 +15,8 @@ v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_timestamp   timestamp;
 v_min_partition_timestamp   timestamp;
+v_new_search_path           text := '@extschema@,pg_temp';
+v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        interval;
@@ -31,6 +33,9 @@ v_year                      text;
 
 BEGIN
 
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
 SELECT partition_type
     , partition_interval::interval
     , control
@@ -45,6 +50,7 @@ FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
 AND (partition_type = 'time' OR partition_type = 'time-custom');
 IF NOT FOUND THEN
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
@@ -229,6 +235,8 @@ FOR i IN 1..p_batch_count LOOP
 END LOOP; 
 
 PERFORM @extschema@.create_function_time(p_parent_table);
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_total_rows;
 

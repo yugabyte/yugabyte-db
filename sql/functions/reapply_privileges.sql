@@ -13,6 +13,8 @@ ex_message          text;
 v_job_id            bigint;
 v_jobmon            boolean;
 v_jobmon_schema     text;
+v_new_search_path   text := '@extschema@,pg_temp';
+v_old_search_path   text;
 v_parent_schema     text;
 v_parent_tablename  text;
 v_row               record;
@@ -25,21 +27,27 @@ IF v_jobmon IS NULL THEN
     RAISE EXCEPTION 'Given table is not managed by this extention: %', p_parent_table;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+    END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
 IF v_parent_tablename IS NULL THEN
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RAISE EXCEPTION 'Given parent table does not exist: %', p_parent_table;
 END IF;
 
-
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE format('SELECT %I.add_job(%L)', v_jobmon_schema, format('PARTMAN RE-APPLYING PRIVILEGES TO ALL CHILD TABLES OF: %s', p_parent_table)) INTO v_job_id;
+    v_job_id := add_job(format('PARTMAN RE-APPLYING PRIVILEGES TO ALL CHILD TABLES OF: %s', p_parent_table));
 END IF;
 
 FOR v_row IN 
@@ -49,8 +57,10 @@ LOOP
 END LOOP;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE format('SELECT %I.close_job(%L)', v_jobmon_schema, v_job_id);
+    PERFORM close_job(v_job_id);
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 EXCEPTION
     WHEN OTHERS THEN

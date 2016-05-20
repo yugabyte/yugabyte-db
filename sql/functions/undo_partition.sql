@@ -1,3 +1,4 @@
+
 /*
  * Function to undo partitioning. Copies data to parent without removing any data from children.
  * Will actually work on any parent/child table set, not just ones created by pg_partman.
@@ -21,6 +22,7 @@ v_job_id                bigint;
 v_jobmon_schema         text;
 v_lock_iter             int := 1;
 v_lock_obtained         boolean := FALSE;
+v_new_search_path       text := '@extschema@,pg_temp';
 v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
@@ -40,13 +42,14 @@ IF v_adv_lock = 'false' THEN
     RETURN 0;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF p_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN UNDO PARTITIONING: %s', p_parent_table));
@@ -68,8 +71,8 @@ v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig
 SELECT tgname INTO v_trig_name 
 FROM pg_catalog.pg_trigger t
 JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid
-WHERE tgname = v_trig_name 
-AND c.relname = v_parent_tablename;
+WHERE tgname = v_trig_name::name
+AND c.relname = v_parent_tablename::name;
 
 SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema::name AND proname = v_function_name::name;
 
@@ -117,8 +120,8 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         SELECT c1.oid 
         FROM pg_catalog.pg_class c1 
         JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
-        WHERE c1.relname = v_parent_tablename
-        AND n1.nspname = v_parent_schema
+        WHERE c1.relname = v_parent_tablename::name
+        AND n1.nspname = v_parent_schema::name
     )
     SELECT c.relname INTO v_child_table
     FROM pg_catalog.pg_inherits i
@@ -205,8 +208,9 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_total;
 
@@ -232,5 +236,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

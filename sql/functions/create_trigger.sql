@@ -8,12 +8,17 @@ DECLARE
 
 v_function_name         text;
 v_new_length            int;
+v_new_search_path       text := '@extschema@,pg_temp';
+v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_trig_name             text;
 v_trig_sql              text;
 
 BEGIN
+
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
@@ -31,7 +36,8 @@ v_trig_sql := format('CREATE TRIGGER %I BEFORE INSERT ON %I.%I FOR EACH ROW EXEC
 
 EXECUTE v_trig_sql;
 
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
+
 END
 $$;
-
 

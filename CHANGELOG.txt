@@ -1,3 +1,12 @@
+2.3.4
+-- IMPORTANT NOTICE: The next minor version (2.4.0) will officially drop support for the 1.x series. No further fixes (bugs, features, etc) will be backported and 1.8.8 will likely be the last version in the 1.x series. If you encounter a bug, the only supported method of fixing it will be to upgrade to the 2.x series where it may already have been fixed or you can submit an Issue on Github.
+
+-- Properly handle SECURITY DEFINER functions in a safe manner by resetting search_path as recommended in the PG docs (http://www.postgresql.org/docs/current/static/sql-createfunction.html#SQL-CREATEFUNCTION-SECURITY) (Github Pull Request #108).
+-- Made the exception handling in the partitioning trigger introduced in v2.3.3 optional. This was causing unexpected behavior whenever an exception was being handled by some other external process when it used a partitioned table. The trigger exception handling would take over and not allow the external process to handle it. New configuration option "trigger_exception_handling" has been added to the part_config (and part_config_sub) table to enable/disable this feature. It has been set to false by default to avoid unexpected default behavior  which means any partition sets that had a trigger created by v2.3.3 will have the exception handling removed the next time it is updated. If you'd like to keep this feature, set the config table column to true.
+-- Added parameter p_exact_count to check_parent() to allow faster checks for data in parent table. If set to false, will only look for a single row existing in the parent instead of trying to get an exact count which could take a long time if a lot of data is in the parent (Github Pull Request #114).
+-- Further optimization to catalog lookups to improve performance on larger databases (Github Issue #107).
+
+
 2.3.3
 -- Fixed bug in partition_data_time() that was causing it to fail with custom time partition sets. This bug was introduced in v2.3.2.
 -- New constraint on partman config tables does not allow constraint_cols column to contain the control column. If you get this constraint volation during extension update, please review your part_config (and part_config_sub) table for this condition. You also likely have additional, unnecessary constraints on your child partitions that should be reviewed and removed. (Github Issue #100).

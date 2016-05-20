@@ -19,6 +19,7 @@ CREATE TABLE part_config (
     , jobmon boolean NOT NULL DEFAULT true
     , sub_partition_set_full boolean NOT NULL DEFAULT false
     , undo_in_progress boolean NOT NULL DEFAULT false
+    , trigger_exception_handling BOOLEAN DEFAULT false
     , CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
     , CONSTRAINT positive_premake_check CHECK (premake > 0)
 );
@@ -45,6 +46,7 @@ CREATE TABLE part_config_sub (
     , sub_infinite_time_partitions boolean NOT NULL DEFAULT false
     , sub_use_run_maintenance BOOLEAN NOT NULL DEFAULT true
     , sub_jobmon boolean NOT NULL DEFAULT true
+    , sub_trigger_exception_handling BOOLEAN DEFAULT false
 );
 SELECT pg_catalog.pg_extension_config_dump('part_config_sub', '');
 

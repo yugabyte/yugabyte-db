@@ -28,6 +28,7 @@ v_last_partition_id             bigint;
 v_last_partition_timestamp      timestamp;
 v_max_id                        bigint;
 v_max_timestamp                 timestamp;
+v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_optimize_constraint           int;
 v_parent_schema                 text;
@@ -79,13 +80,14 @@ FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(v_parent_table, '.', 1)::name
 AND tablename = split_part(v_parent_table, '.', 2)::name;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF v_jobmon_schema IS NOT NULL THEN
     IF p_job_id IS NULL THEN
@@ -135,11 +137,11 @@ IF v_child_exists IS NULL THEN
         IF p_job_id IS NULL THEN
             PERFORM close_job(v_job_id);
         END IF;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     END IF;
     IF p_debug THEN
         RAISE NOTICE 'Target child table (%) does not exist. Skipping constraint creation.', v_child_tablename;
     END IF;
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RETURN;
 ELSE
     IF v_jobmon_schema IS NOT NULL THEN
@@ -155,11 +157,11 @@ LOOP
     JOIN pg_class c ON c.oid = con.conrelid
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     JOIN pg_catalog.pg_attribute a ON con.conrelid = a.attrelid 
-    WHERE c.relname = v_child_tablename
-        AND n.nspname = v_parent_schema
+    WHERE c.relname = v_child_tablename::name
+        AND n.nspname = v_parent_schema::name
         AND con.conname LIKE 'partmanconstr_%'
         AND con.contype = 'c' 
-        AND a.attname = v_col
+        AND a.attname = v_col::name
         AND ARRAY[a.attnum] OPERATOR(pg_catalog.<@) con.conkey
         AND a.attisdropped = false;
 
@@ -227,8 +229,9 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 EXCEPTION
     WHEN OTHERS THEN

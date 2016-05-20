@@ -34,6 +34,7 @@ v_jobmon_schema                 text;
 v_last_partition_created        boolean;
 v_max                           bigint;
 v_notnull                       boolean;
+v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_parent_partition_id           bigint;
 v_parent_partition_timestamp    timestamp;
@@ -74,9 +75,9 @@ SELECT attnotnull INTO v_notnull
 FROM pg_catalog.pg_attribute a
 JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-WHERE c.relname = v_parent_tablename
-AND n.nspname = v_parent_schema
-AND a.attname = p_control;
+WHERE c.relname = v_parent_tablename::name
+AND n.nspname = v_parent_schema::name
+AND a.attname = p_control::name;
     IF v_notnull = false OR v_notnull IS NULL THEN
         RAISE EXCEPTION 'Control column given (%) for parent table (%) does not exist or must be set to NOT NULL', p_control, p_parent_table;
     END IF;
@@ -89,13 +90,14 @@ IF NOT @extschema@.check_partition_type(p_type) THEN
     RAISE EXCEPTION '% is not a valid partitioning type', p_type;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF p_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF p_use_run_maintenance IS NOT NULL THEN
     IF p_use_run_maintenance IS FALSE AND (p_type = 'time' OR p_type = 'time-custom') THEN
@@ -125,8 +127,8 @@ FOR v_row IN
         FROM pg_catalog.pg_inherits h
         JOIN pg_catalog.pg_class c ON h.inhrelid = c.oid
         JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-        WHERE c.relname = v_parent_tablename
-        AND n.nspname = v_parent_schema
+        WHERE c.relname = v_parent_tablename::name
+        AND n.nspname = v_parent_schema::name
     ), sibling_children AS (
         SELECT i.inhrelid::regclass::text AS tablename 
         FROM pg_inherits i
@@ -148,6 +150,7 @@ FOR v_row IN
         , sub_optimize_constraint
         , sub_infinite_time_partitions
         , sub_jobmon
+        , sub_trigger_exception_handling
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -168,7 +171,8 @@ LOOP
         , sub_optimize_trigger
         , sub_optimize_constraint
         , sub_infinite_time_partitions
-        , sub_jobmon)
+        , sub_jobmon
+        , sub_trigger_exception_handling)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -186,7 +190,8 @@ LOOP
         , v_row.sub_optimize_trigger
         , v_row.sub_optimize_constraint
         , v_row.sub_infinite_time_partitions
-        , v_row.sub_jobmon);
+        , v_row.sub_jobmon
+        , v_row.sub_trigger_exception_handling);
 END LOOP;
 
 IF p_type = 'time' OR p_type = 'time-custom' THEN
@@ -316,8 +321,8 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
             FROM pg_catalog.pg_inherits i
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = v_parent_tablename
-            AND n.nspname = v_parent_schema
+            WHERE c.relname = v_parent_tablename::name
+            AND n.nspname = v_parent_schema::name
         ) SELECT n.nspname, c.relname 
         INTO v_top_parent_schema, v_top_parent_table 
         FROM pg_catalog.pg_class c
@@ -365,8 +370,8 @@ IF p_type = 'id' THEN
             FROM pg_catalog.pg_inherits i
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = v_higher_parent_schema
-            AND c.relname = v_higher_parent_table
+            WHERE n.nspname = v_higher_parent_schema::name
+            AND c.relname = v_higher_parent_table::name
         ) SELECT n.nspname, c.relname
         INTO v_higher_parent_schema, v_higher_parent_table
         FROM pg_catalog.pg_class c
@@ -434,8 +439,8 @@ IF p_type = 'id' THEN
             FROM pg_catalog.pg_inherits i
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = v_parent_tablename
-            AND n.nspname = v_parent_schema
+            WHERE c.relname = v_parent_tablename::name
+            AND n.nspname = v_parent_schema::name
         ) SELECT n.nspname||'.'||c.relname
         INTO v_top_parent_table
         FROM pg_catalog.pg_class c
@@ -494,8 +499,9 @@ IF v_jobmon_schema IS NOT NULL THEN
     ELSE
         PERFORM close_job(v_job_id);
     END IF;
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 v_success := true;
 
@@ -523,4 +529,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

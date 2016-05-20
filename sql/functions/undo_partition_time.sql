@@ -25,6 +25,7 @@ v_job_id                bigint;
 v_jobmon                boolean;
 v_jobmon_schema         text;
 v_move_sql              text;
+v_new_search_path       text := '@extschema@,pg_temp';
 v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
@@ -64,6 +65,15 @@ IF v_partition_interval IS NULL THEN
     RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
+IF v_jobmon THEN
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+    END IF;
+END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
 -- Check if any child tables are themselves partitioned or part of an inheritance tree. Prevent undo at this level if so.
 -- Need to either lock child tables at all levels or handle the proper removal of triggers on all child tables first 
 --  before multi-level undo can be performed safely.
@@ -74,20 +84,12 @@ LOOP
     FROM pg_catalog.pg_inherits i
     JOIN pg_catalog.pg_class c ON i.inhparent = c.oid
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-    WHERE c.relname = v_row.partition_tablename
-    AND n.nspname = v_row.partition_schemaname;
+    WHERE c.relname = v_row.partition_tablename::name
+    AND n.nspname = v_row.partition_schemaname::name;
     IF v_sub_count > 0 THEN
         RAISE EXCEPTION 'Child table for this parent has child table(s) itself (%). Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent', v_row.partition_schemaname||'.'||v_row.partition_tablename;
     END IF;
 END LOOP;
-
-IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
-    IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
-    END IF;
-END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN UNDO PARTITIONING: %s', p_parent_table));
@@ -113,10 +115,10 @@ v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig
 SELECT tgname INTO v_trig_name 
 FROM pg_catalog.pg_trigger t
 JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid
-WHERE tgname = v_trig_name 
-AND c.relname = v_parent_tablename;
+WHERE tgname = v_trig_name::name 
+AND c.relname = v_parent_tablename::name;
 
-SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema AND proname = v_function_name;
+SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema::name AND proname = v_function_name::name;
 
 IF v_trig_name IS NOT NULL THEN
     -- lockwait for trigger drop
@@ -310,8 +312,9 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_total;
 

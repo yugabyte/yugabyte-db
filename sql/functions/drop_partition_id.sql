@@ -19,6 +19,7 @@ v_job_id                    bigint;
 v_jobmon                    boolean;
 v_jobmon_schema             text;
 v_max                       bigint;
+v_new_search_path           text := '@extschema@,pg_temp';
 v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
@@ -91,13 +92,14 @@ ELSE
     END IF;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF p_keep_table IS NOT NULL THEN
     v_retention_keep_table = p_keep_table;
@@ -166,8 +168,8 @@ LOOP
                         SELECT c1.oid
                         FROM pg_catalog.pg_class c1
                         JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
-                        WHERE c1.relname = v_row.partition_tablename
-                        AND n1.nspname = v_row.partition_schema
+                        WHERE c1.relname = v_row.partition_tablename::name
+                        AND n1.nspname = v_row.partition_schema::name
                     )
                     SELECT c.relname as name
                         , con.conname
@@ -224,8 +226,9 @@ IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', format('%s partitions dropped.', v_drop_count));
         PERFORM close_job(v_job_id);
     END IF;
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_drop_count;
 

@@ -24,6 +24,8 @@ RETURNS boolean
 DECLARE
 
 v_last_partition    text;
+v_new_search_path   text := '@extschema@,pg_temp';
+v_old_search_path   text;
 v_parent_interval   text;
 v_parent_type       text;
 v_row               record;
@@ -42,6 +44,9 @@ ELSIF v_run_maint = false THEN
     RAISE EXCEPTION 'Any parent table that will be part of a sub-partitioned set (on any level) must have use_run_maintenance set to true in part_config table, even for serial partitioning. See documentation for more info.';
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
 FOR v_row IN 
     -- Loop through all current children to turn them into partitioned tables
     SELECT partition_schemaname||'.'||partition_tablename AS child_table FROM @extschema@.show_partitions(p_top_parent)
@@ -49,6 +54,7 @@ LOOP
     SELECT partition_type, partition_interval INTO v_parent_type, v_parent_interval FROM @extschema@.part_config WHERE parent_table = v_row.child_table;
 
     IF v_parent_interval = p_interval THEN
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
         RAISE EXCEPTION 'Sub-partition interval cannot be equal to parent interval';
     END IF;
 
@@ -56,13 +62,16 @@ LOOP
        AND (p_type = 'time' OR p_type = 'time-custom') 
     THEN
         IF p_interval::interval > v_parent_interval::interval THEN
+            EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Sub-partition interval cannot be greater than the given parent interval';
         END IF;
         IF p_interval = 'weekly' AND v_parent_interval::interval > '1 week'::interval THEN
+            EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Due to conflicting data boundaries between ISO weeks and any larger interval of time, pg_partman cannot support a sub-partition interval of weekly';
         END IF;
     ELSIF v_parent_type = 'id' THEN
         IF p_interval::bigint > v_parent_interval::bigint THEN
+            EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Sub-partition interval cannot be greater than the given parent interval';
         END IF;
     END IF;
@@ -121,6 +130,8 @@ VALUES (
     , p_jobmon);
 
 v_success := true;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_success;
 

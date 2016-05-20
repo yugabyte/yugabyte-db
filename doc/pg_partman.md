@@ -196,11 +196,12 @@ As a note for people that were not aware, you can name arguments in function cal
  * Also returns a boolean value (table_exists) to say whether that child table actually exists
 
 
-*`check_parent()`*
+*`check_parent(p_exact_count boolean DEFAULT true)`*
 
  * Run this function to monitor that the parent tables of the partition sets that `pg_partman` manages do not get rows inserted to them.
  * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
  * `partition_data_time()` & `partition_data_id()` can be used to move data from these parent tables into the proper children.
+ * p_exact_count will tell the function to give back an exact count of how many rows are in each parent if any is found. This is the default if the parameter is left out. If you don't care about an exact count, you can set this to false and it will return if it finds even just a single row in any parent. This can significantly speed up the check if a lot of data ends up in a parent or there are many partitions being managed.
 
 
 *`apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_job_id bigint DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)`*
@@ -382,6 +383,8 @@ The rest are managed by the extension itself and should not be changed unless ab
     - Boolean value to denote that the final partition for a sub-partition set has been created. Allows run_maintenance() to run more efficiently when there are large numbers of subpartition sets.
  - `undo_in_progress`
     - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation and retention management by the `run_maintenance()` function to stop. Default is false.
+- `trigger_exception_handling`
+    - Boolean value that can be set to allow the partitioning trigger function to handle any exceptions encountered while writing to this table. Handling it in this case means putting the data into the parent table to try and ensure no data loss in case of errors. Be aware that catching the exception here will override any other exception handling that may be done when writing to this partitioned set (Ex. handling a unique constraint violation to ignore it). This option is set to false by default to avoid causing unexpected behavior in other exception handling situations.
 
 **`part_config_sub`**
 

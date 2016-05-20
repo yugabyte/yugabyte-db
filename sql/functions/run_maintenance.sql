@@ -32,8 +32,10 @@ v_last_partition_id             bigint;
 v_last_partition_timestamp      timestamp;
 v_max_id_parent                 bigint;
 v_max_time_parent               timestamp;
+v_new_search_path               text := '@extschema@,pg_temp';
 v_next_partition_id             bigint;
 v_next_partition_timestamp      timestamp;
+v_old_search_path               text;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_premade_count                 int;
@@ -48,7 +50,6 @@ v_row_sub                       record;
 v_skip_maint                    boolean;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
-v_step_serial_id                bigint;
 v_sub_id_max                    bigint;
 v_sub_id_max_suffix             bigint;
 v_sub_id_min                    bigint;
@@ -67,13 +68,18 @@ IF v_adv_lock = 'false' THEN
     RETURN;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF p_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
+    END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE format('SELECT %I.add_job(%L)', v_jobmon_schema, 'PARTMAN RUN MAINTENANCE') INTO v_job_id;
-    EXECUTE format('SELECT %I.add_step(%L, %L)', v_jobmon_schema, v_job_id, 'Running maintenance loop') INTO v_step_id;
+    v_job_id := add_job('PARTMAN RUN MAINTENANCE');
+    v_step_id := add_step(v_job_id, 'Running maintenance loop');
 END IF;
 
 v_row := NULL; -- Ensure it's reset
@@ -214,8 +220,8 @@ LOOP
             EXCEPTION WHEN datetime_field_overflow THEN
                 v_premade_count := v_row.premake; -- do this so it can exit the premake check loop and continue in the outer for loop 
                 IF v_jobmon_schema IS NOT NULL THEN
-                    EXECUTE format('SELECT %I.add_step(%L, %L)', v_jobmon_schema, v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.') INTO v_step_overflow_id;
-                    EXECUTE format('SELECT %I.update_step(%L, %L, %L)', v_jobmon_schema, v_step_overflow_id, 'CRITICAL', 'Child partition creation skippd for parent table '||v_partition_time);
+                    v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
+                    PERFORM update_step(v_step_overflow_id, 'CRITICAL', format('Child partition creation skipped for parent table: %s', v_partition_time));
                 END IF;
                 RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. Child partition creation skipped for parent table %', v_row.parent_table;
                 CONTINUE;
@@ -327,18 +333,15 @@ LOOP
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE format('SELECT %I.update_step(%L, %L, ''Partition maintenance finished. %s partitons made. %s partitions dropped.'')'
-        , v_jobmon_schema
-        , v_step_id
-        , 'OK'
-        , v_create_count
-        , v_drop_count);
-    IF v_step_overflow_id IS NOT NULL OR v_step_serial_id IS NOT NULL THEN
-        EXECUTE format('SELECT %I.fail_job(%L)', v_jobmon_schema, v_job_id);
+    PERFORM update_step(v_step_id, 'OK', format('Partition maintenance finished. %s partitons made. %s partitions dropped.', v_create_count, v_drop_count));
+    IF v_step_overflow_id IS NOT NULL THEN
+        PERFORM fail_job(v_job_id);
     ELSE
-        EXECUTE format('SELECT %I.close_job(%L)', v_jobmon_schema, v_job_id);
+        PERFORM close_job(v_job_id);
     END IF;
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 EXCEPTION
     WHEN OTHERS THEN
@@ -362,5 +365,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

@@ -5,7 +5,7 @@
  * If anyone can get a working constraint/trigger, please help!
 */
 CREATE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text) 
-RETURNS TABLE (sub_partition_type text
+    RETURNS TABLE (sub_partition_type text
         , sub_control text
         , sub_partition_interval text
         , sub_constraint_cols text[]
@@ -21,15 +21,16 @@ RETURNS TABLE (sub_partition_type text
         , sub_optimize_constraint int
         , sub_infinite_time_partitions boolean
         , sub_jobmon boolean)
-LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path = @extschema@,pg_temp
 AS $$
 
     WITH parent_info AS (
         SELECT c1.oid
         FROM pg_catalog.pg_class c1 
         JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
-        WHERE n1.nspname = split_part(p_parent_table, '.', 1)
-        AND c1.relname = split_part(p_parent_table, '.', 2)
+        WHERE n1.nspname = split_part(p_parent_table, '.', 1)::name
+        AND c1.relname = split_part(p_parent_table, '.', 2)::name
     )
     , child_tables AS (
         SELECT n.nspname||'.'||c.relname AS tablename
@@ -58,4 +59,5 @@ AS $$
     FROM @extschema@.part_config_sub a
     JOIN child_tables b on a.sub_parent = b.tablename;
 $$;
+
 

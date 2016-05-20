@@ -7,6 +7,8 @@ CREATE FUNCTION show_partitions (p_parent_table text, p_order text DEFAULT 'ASC'
 DECLARE
 
 v_datetime_string       text;
+v_new_search_path       text := '@extschema@,pg_temp';
+v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_partition_interval    text;
@@ -16,7 +18,11 @@ v_year                  text;
 
 BEGIN
 
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
 IF upper(p_order) NOT IN ('ASC', 'DESC') THEN
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RAISE EXCEPTION 'p_order paramter must be one of the following values: ASC, DESC';
 END IF;
 
@@ -78,6 +84,8 @@ ELSIF v_type = 'id' THEN
         , p_order);
 
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 END
 $$;

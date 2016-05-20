@@ -23,6 +23,7 @@ v_inherit_fk                    boolean;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
+v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_parent_grant                  record;
 v_parent_owner                  text;
@@ -73,13 +74,14 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
 SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
@@ -135,8 +137,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     SELECT relpersistence INTO v_unlogged 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-    WHERE c.relname = v_parent_tablename
-    AND n.nspname = v_parent_schema;
+    WHERE c.relname = v_parent_tablename::name
+    AND n.nspname = v_parent_schema::name;
     v_sql := 'CREATE';
     IF v_unlogged = 'u' THEN
         v_sql := v_sql || ' UNLOGGED';
@@ -149,8 +151,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     SELECT relhasoids INTO v_hasoids 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-    WHERE c.relname = v_parent_tablename
-    AND n.nspname = v_parent_schema;
+    WHERE c.relname = v_parent_tablename::name
+    AND n.nspname = v_parent_schema::name;
     IF v_hasoids IS TRUE THEN
         v_sql := v_sql || ' WITH (OIDS)';
     END IF;
@@ -171,7 +173,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (to_timestamp(%I) >= %L AND to_timestamp(%I) < %L)'
                         , v_parent_schema
                         , v_partition_name
-                        , v_partition_name||'_partition_check'
+                        , v_partition_name||'_partition_time_check'
                         , v_control
                         , v_partition_timestamp_start
                         , v_control
@@ -222,6 +224,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_use_run_maintenance
             , sub_infinite_time_partitions
             , sub_jobmon
+            , sub_trigger_exception_handling
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -258,6 +261,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , optimize_trigger = v_row.sub_optimize_trigger
             , optimize_constraint = v_row.sub_optimize_constraint
             , infinite_time_partitions = v_row.sub_infinite_time_partitions
+            , trigger_exception_handling = v_row.sub_trigger_exception_handling
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
     END LOOP; -- end sub partitioning LOOP
@@ -296,9 +300,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     END IF;
 END IF;
 
-IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
-END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_partition_created;
 

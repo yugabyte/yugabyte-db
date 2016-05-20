@@ -44,7 +44,7 @@ Functions must either be run as a superuser or you can set the ownership of the 
 
 I've received many requests for being able to install this extension on Amazon RDS. RDS does not support third-party extension management outside of the ones it has approved and provides itself. If you'd like to see this extension available there, please send an email to rds-postgres-extensions-request@amazon.com requesting that they include it. The more people that do so, the more likely it will happen!
 
-The 1.8.x branch is still available on github if you have PostgreSQL versions 9.1 - 9.3. You will have to install the 1.8.7 tagged release located here: https://github.com/keithf4/pg_partman/releases/tag/v1.8.7 then check the "updates" folder in the latest 2.x.x release to see if there have been any updates to the 1.8.x series since then and apply them. Only bug fixes are being applied to the 1.8.x series and only while versions of PostgreSQL prior to 9.4 are still officially supported themselves. All new development is being done on 2.x.x, so it's advised that you update your PostgreSQL cluster to make managing this extension easier.
+Version 1.8.8 of pg_partman is still available on github if you're running a version of PostgreSQL older than 9.4. Note however that as of version 2.4.0 of pg_partman, no further updates (bug fixes, features, etc) are being released for the 1.x series. If you encounter any issues, please plan for upgrading your database to 9.4+ so that you can use the 2.x series of pg_partman.  
 
 UPGRADE
 -------

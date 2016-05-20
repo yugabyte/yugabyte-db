@@ -27,6 +27,7 @@ v_last_partition                text;
 v_max                           bigint;
 v_next_partition_id             bigint;
 v_next_partition_name           text;
+v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_parent_schema                 text;
 v_parent_tablename              text;
@@ -39,6 +40,7 @@ v_run_maint                     boolean;
 v_step_id                       bigint;
 v_top_parent                    text := p_parent_table;
 v_trig_func                     text;
+v_trigger_exception_handling    boolean;
 v_optimize_trigger              int;
 
 BEGIN
@@ -49,12 +51,14 @@ SELECT partition_interval::bigint
     , optimize_trigger
     , use_run_maintenance
     , jobmon
+    , trigger_exception_handling
 INTO v_partition_interval
     , v_control
     , v_premake
     , v_optimize_trigger
     , v_run_maint
     , v_jobmon
+    , v_trigger_exception_handling
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND partition_type = 'id';
@@ -63,15 +67,16 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
-SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
-
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
+SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
 IF v_jobmon_schema IS NOT NULL THEN
     IF p_job_id IS NULL THEN
@@ -95,8 +100,8 @@ WHILE v_higher_parent_table IS NOT NULL LOOP -- initially set in DECLARE
         FROM pg_catalog.pg_inherits i
         JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = v_higher_parent_schema
-        AND c.relname = v_higher_parent_table
+        WHERE n.nspname = v_higher_parent_schema::name
+        AND c.relname = v_higher_parent_table::name
     ) SELECT n.nspname, c.relname
     INTO v_higher_parent_schema, v_higher_parent_table
     FROM pg_catalog.pg_class c
@@ -252,10 +257,15 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
 
     v_trig_func := v_trig_func ||'
     END IF; 
-    RETURN NULL; 
+    RETURN NULL;';
+    IF v_trigger_exception_handling THEN 
+        v_trig_func := v_trig_func ||'
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING ''pg_partman insert into child table failed, row inserted into parent (%.%). ERROR: %'', TG_TABLE_SCHEMA, TG_TABLE_NAME, COALESCE(SQLERRM, ''unknown'');
-        RETURN NEW;
+        RETURN NEW;';
+    END IF;
+
+    v_trig_func := v_trig_func ||'
     END $t$;';
 
 EXECUTE v_trig_func;
@@ -266,8 +276,9 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 EXCEPTION
     WHEN OTHERS THEN

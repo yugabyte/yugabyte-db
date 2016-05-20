@@ -12,13 +12,15 @@ CREATE FUNCTION show_partition_info(p_child_table text
     , OUT child_end_id bigint 
     , OUT suffix text)
 RETURNS record
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     AS $$
 DECLARE
 
 v_child_schema          text;
 v_child_tablename       text;
 v_datetime_string       text;
+v_new_search_path       text := '@extschema@,pg_temp';
+v_old_search_path       text;
 v_parent_table          text;
 v_partition_interval    text;
 v_partition_type        text;
@@ -29,11 +31,15 @@ v_year                  text;
 
 BEGIN
 
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
 SELECT schemaname, tablename INTO v_child_schema, v_child_tablename
 FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_child_table, '.', 1)::name
 AND tablename = split_part(p_child_table, '.', 2)::name;
 IF v_child_tablename IS NULL THEN
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     RAISE EXCEPTION 'Child table given does not exist (%)', p_child_table;
 END IF;
 
@@ -96,8 +102,11 @@ END IF;
 
 suffix = v_suffix;
 
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
+
 RETURN;
 
 END
 $$;
+
 

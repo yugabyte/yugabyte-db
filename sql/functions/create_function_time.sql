@@ -21,6 +21,7 @@ v_function_name                 text;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
+v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_new_length                    int;
 v_next_partition_name           text;
@@ -33,6 +34,7 @@ v_prev_partition_timestamp      timestamptz;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_optimize_trigger              int;
+v_trigger_exception_handling    boolean;
 v_type                          text;
 
 BEGIN
@@ -44,6 +46,7 @@ SELECT partition_type
     , optimize_trigger
     , datetime_string
     , jobmon
+    , trigger_exception_handling
 INTO v_type
     , v_partition_interval
     , v_epoch
@@ -51,6 +54,7 @@ INTO v_type
     , v_optimize_trigger
     , v_datetime_string
     , v_jobmon
+    , v_trigger_exception_handling
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (partition_type = 'time' OR partition_type = 'time-custom');
@@ -59,13 +63,14 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
+SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon'::name AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
-        SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
+        v_new_search_path := '@extschema@,'||v_jobmon_schema||',pg_temp';
     END IF;
 END IF;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF v_jobmon_schema IS NOT NULL THEN
     IF p_job_id IS NULL THEN
@@ -265,10 +270,14 @@ IF v_type = 'time' THEN
 
     v_trig_func := v_trig_func ||'
         END IF; 
-        RETURN NULL; 
+        RETURN NULL;'; 
+    IF v_trigger_exception_handling THEN 
+        v_trig_func := v_trig_func ||'
         EXCEPTION WHEN OTHERS THEN
             RAISE WARNING ''pg_partman insert into child table failed, row inserted into parent (%.%). ERROR: %'', TG_TABLE_SCHEMA, TG_TABLE_NAME, COALESCE(SQLERRM, ''unknown'');
-            RETURN NEW;
+            RETURN NEW;';
+    END IF;
+    v_trig_func := v_trig_func ||'
         END $t$;';
 
     EXECUTE v_trig_func;
@@ -325,10 +334,14 @@ ELSIF v_type = 'time-custom' THEN
             RETURN NEW;
         END IF;
 
-        RETURN NULL; 
+        RETURN NULL;';
+    IF v_trigger_exception_handling THEN 
+        v_trig_func := v_trig_func ||'
         EXCEPTION WHEN OTHERS THEN
             RAISE WARNING ''pg_partman insert into child table failed, row inserted into parent (%.%). ERROR: %'', TG_TABLE_SCHEMA, TG_TABLE_NAME, COALESCE(SQLERRM, ''unknown'');
-            RETURN NEW;
+            RETURN NEW;';
+    END IF;
+    v_trig_func := v_trig_func ||'
         END $t$;';
 
     EXECUTE v_trig_func;
@@ -343,8 +356,9 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
+
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 EXCEPTION
     WHEN OTHERS THEN

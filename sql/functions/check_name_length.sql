@@ -4,7 +4,7 @@
  * Returns original name with schema given if it doesn't require truncation
  */
 CREATE FUNCTION check_name_length (p_object_name text, p_suffix text DEFAULT NULL, p_table_partition boolean DEFAULT FALSE) RETURNS text
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql IMMUTABLE
     AS $$
 DECLARE
     v_new_length    int;
@@ -35,4 +35,5 @@ RETURN v_new_name;
 
 END
 $$;
+
 

@@ -12,6 +12,8 @@ v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
 v_min_partition_id          bigint;
+v_new_search_path           text := '@extschema@,pg_temp';
+v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        bigint;
@@ -33,6 +35,9 @@ AND partition_type = 'id';
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
+
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
@@ -128,8 +133,11 @@ END LOOP;
 
 PERFORM @extschema@.create_function_id(p_parent_table);
 
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
+
 RETURN v_total_rows;
 
 END
 $$;
+
 
