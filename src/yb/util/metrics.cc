@@ -202,10 +202,13 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
   typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
   OrderedMetricMap metrics;
   AttributeMap attrs;
+  std::vector<ExternalMetricsCb> external_metrics_cbs;
   {
-    // Snapshot the metrics in this registry (not guaranteed to be a consistent snapshot)
+    // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
+    // this is not guaranteed to be a consistent snapshot).
     lock_guard<simple_spinlock> l(&lock_);
     attrs = attributes_;
+    external_metrics_cbs = external_metrics_cbs_;
     for (const MetricMap::value_type& val : metric_map_) {
       const MetricPrototype* prototype = val.first;
       const scoped_refptr<Metric>& metric = val.second;
@@ -246,7 +249,7 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 
   }
   // Run the external metrics collection callback if there is one set.
-  for (const ExternalMetricsCb& cb : external_metrics_cbs_) {
+  for (const ExternalMetricsCb& cb : external_metrics_cbs) {
     cb(writer, opts);
   }
   writer->EndArray();

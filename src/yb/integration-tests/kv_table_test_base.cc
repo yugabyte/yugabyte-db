@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/integration-tests/kv_table_test_base.h"
+#include "yb/util/curl_util.h"
 
 using std::unique_ptr;
 using yb::client::sp::shared_ptr;
@@ -17,6 +18,7 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTableCreator;
 using client::YBTableType;
+using strings::Substitute;
 
 namespace integration_tests {
 
@@ -70,23 +72,16 @@ void KVTableTestBase::SetUp() {
   }
 
   CreateClient();
-
-  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-
-  YBSchemaBuilder b;
-  b.AddColumn("k")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
-  b.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
-  ASSERT_OK(b.Build(&schema_));
-
-  ASSERT_OK(table_creator->table_name(table_name())
-      .table_type(YBTableType::KEY_VALUE_TABLE_TYPE)
-      .num_replicas(3)
-      .schema(&schema_)
-      .Create());
+  CreateTable();
   OpenTable();
 }
 
 void KVTableTestBase::TearDown() {
+  DeleteTable();
+
+  // Fetch the tablet server metrics page after we delete the table. [ENG-135].
+  FetchTSMetricsPage();
+
   if (use_external_mini_cluster()) {
     external_mini_cluster_->Shutdown();
   } else {
@@ -118,6 +113,28 @@ void KVTableTestBase::OpenTable() {
   ASSERT_OK(client_->OpenTable(kDefaultTableName, &table_));
   ASSERT_EQ(YBTableType::KEY_VALUE_TABLE_TYPE, table_->table_type());
   session_ = NewSession();
+}
+
+void KVTableTestBase::CreateTable() {
+  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  YBSchemaBuilder b;
+  b.AddColumn("k")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
+  b.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
+  ASSERT_OK(b.Build(&schema_));
+
+  ASSERT_OK(table_creator->table_name(table_name())
+      .table_type(YBTableType::KEY_VALUE_TABLE_TYPE)
+      .num_replicas(3)
+      .schema(&schema_)
+      .Create());
+  table_exists_ = true;
+}
+
+void KVTableTestBase::DeleteTable() {
+  if (table_exists_) {
+    ASSERT_OK(client_->DeleteTable(table_name()));
+    table_exists_ = false;
+  }
 }
 
 shared_ptr<YBSession> KVTableTestBase::NewSession() {
@@ -164,6 +181,20 @@ void KVTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, str
   }
 }
 
+void KVTableTestBase::FetchTSMetricsPage() {
+  EasyCurl c;
+  faststring buf;
+
+  string addr;
+  if (use_external_mini_cluster()) {
+    addr = external_mini_cluster_->tablet_server(0)->bound_http_hostport().ToString();
+  } else {
+    addr = mini_cluster_->mini_tablet_server(0)->bound_http_addr().ToString();
+  }
+
+  LOG(INFO) << "Fetching metrics from " << addr;
+  ASSERT_OK(c.FetchURL(Substitute("http://$0/metrics", addr), &buf));
+}
 
 }; // namespace integration_tests
 } // namespace yb

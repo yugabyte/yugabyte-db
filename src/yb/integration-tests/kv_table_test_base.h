@@ -51,15 +51,20 @@ class KVTableTestBase : public YBTest {
   virtual int client_rpc_timeout_ms();
   virtual string table_name();
 
+  void CreateTable();
+  void OpenTable();
+  void DeleteTable();
   void PutKeyValue(yb::client::YBSession* session, string key, string value);
   void PutKeyValue(string key, string value);
   void ConfigureScanner(yb::client::YBScanner* scanner);
   void RestartCluster();
   void GetScanResults(yb::client::YBScanner* scanner,
                       vector<pair<string, string>>* result_kvs);
+  void FetchTSMetricsPage();
 
   yb::client::sp::shared_ptr<yb::client::YBTable> table_;
   yb::client::sp::shared_ptr<yb::client::YBClient> client_;
+  bool table_exists_ = false;
 
   yb::MiniCluster* mini_cluster() {
     assert(!use_external_mini_cluster());
@@ -83,7 +88,6 @@ class KVTableTestBase : public YBTest {
 
   vector<uint16_t> master_rpc_ports();
   void CreateClient();
-  void OpenTable();
 
   yb::client::sp::shared_ptr<yb::client::YBSession> NewSession();
 

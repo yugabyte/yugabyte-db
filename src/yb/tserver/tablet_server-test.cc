@@ -161,7 +161,7 @@ TEST_F(TabletServerTest, TestWebPages) {
 
   // Tablets page should list tablet.
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablets", addr),
-                              &buf));
+                       &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), kTabletId);
   ASSERT_STR_CONTAINS(buf.ToString(), "<td>range: [(&lt;start&gt;), (&lt;end&gt;))</td>");
 

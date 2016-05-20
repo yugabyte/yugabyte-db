@@ -169,9 +169,11 @@ Tablet::Tablet(const scoped_refptr<TabletMetadata>& metadata,
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
     if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
-      metric_entity_->AddExternalMetricsCb([this](JsonWriter* writer,
-                                                  const MetricJsonOptions& opts) {
-        EmitRocksDBMetrics(writer, opts);
+      rocksdb_statistics_ = rocksdb::CreateDBStatistics();
+      auto rocksdb_statistics = rocksdb_statistics_;
+      metric_entity_->AddExternalMetricsCb([rocksdb_statistics](JsonWriter* writer,
+                                                                const MetricJsonOptions& opts) {
+        Tablet::EmitRocksDBMetrics(rocksdb_statistics, writer, opts);
       });
     }
     metrics_.reset(new TabletMetrics(metric_entity_));
@@ -213,9 +215,6 @@ Status Tablet::Open() {
 }
 
 Status Tablet::OpenKeyValueTablet() {
-  rocksdb::DB* db = nullptr;
-  rocksdb_statistics_ = rocksdb::CreateDBStatistics();
-
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_);
 
@@ -224,6 +223,7 @@ Status Tablet::OpenKeyValueTablet() {
                         "Failed to create RocksDB directory for the tablet");
 
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
+  rocksdb::DB* db = nullptr;
   rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options, db_dir, &db);
   if (!rocksdb_open_status.ok()) {
     LOG(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
@@ -266,11 +266,12 @@ Status Tablet::OpenKuduColumnarTablet() {
   return Status::OK();
 }
 
-void Tablet::EmitRocksDBMetrics(JsonWriter* writer,
+void Tablet::EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
+                                JsonWriter* writer,
                                 const MetricJsonOptions& opts) {
   // Make sure the class member 'rocksdb_statistics_' exists, as this is the stats object
   // maintained by RocksDB for this tablet.
-  if (rocksdb_statistics_ == nullptr) {
+  if (rocksdb_statistics == nullptr) {
     return;
   }
   // Emit all the ticker (gauge) metrics.
@@ -281,7 +282,7 @@ void Tablet::EmitRocksDBMetrics(JsonWriter* writer,
     writer->String("name");
     writer->String(entry.second);
     // Write the value.
-    uint64_t value = rocksdb_statistics_->getTickerCount(entry.first);
+    uint64_t value = rocksdb_statistics->getTickerCount(entry.first);
     writer->String("value");
     writer->Uint64(value);
     // Finish the metric object.
@@ -296,7 +297,7 @@ void Tablet::EmitRocksDBMetrics(JsonWriter* writer,
     writer->String("name");
     writer->String(entry.second);
     // Write the value.
-    rocksdb_statistics_->histogramData(entry.first, &histogram_data);
+    rocksdb_statistics->histogramData(entry.first, &histogram_data);
     writer->String("total_count");
     writer->Double(histogram_data.count);
     writer->String("min");

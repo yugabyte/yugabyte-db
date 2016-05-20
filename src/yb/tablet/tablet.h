@@ -490,8 +490,9 @@ class Tablet {
   Status OpenKeyValueTablet();
   Status OpenKuduColumnarTablet();
 
-  void EmitRocksDBMetrics(JsonWriter* writer,
-                          const MetricJsonOptions& opts);
+  static void EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
+                                 JsonWriter* writer,
+                                 const MetricJsonOptions& opts);
 
   // Helper method to find the rowset that has the DMS with the highest retention.
   std::shared_ptr<RowSet> FindBestDMSToFlush(

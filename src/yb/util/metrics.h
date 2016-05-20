@@ -493,6 +493,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   }
 
   void AddExternalMetricsCb(const ExternalMetricsCb &external_metrics_cb) {
+    lock_guard<simple_spinlock> l(&lock_);
     external_metrics_cbs_.push_back(external_metrics_cb);
   }
 

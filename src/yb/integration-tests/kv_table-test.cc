@@ -52,7 +52,6 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 using strings::Split;
-using strings::Substitute;
 
 class KVTableTest : public KVTableTestBase {
  protected:
@@ -64,7 +63,7 @@ class KVTableTest : public KVTableTestBase {
   void PutSampleKeysValues() {
     PutKeyValue("key123", "value123");
     PutKeyValue("key200", "value200");
-    PutKeyValue("key300", "value300");    
+    PutKeyValue("key300", "value300");
   }
 
   void CheckSampleKeysValues() {
@@ -105,7 +104,17 @@ TEST_F(KVTableTest, PointQuery) {
   GetScanResults(&scanner, &result_kvs);
   ASSERT_EQ(1, result_kvs.size());
   ASSERT_EQ("key200", result_kvs.front().first);
-  ASSERT_EQ("value200", result_kvs.front().second);  
+  ASSERT_EQ("value200", result_kvs.front().second);
+}
+
+TEST_F(KVTableTest, Eng135MetricsTest) {
+  for (int idx = 0; idx < 10; ++idx) {
+    NO_FATALS(PutSampleKeysValues());
+    NO_FATALS(CheckSampleKeysValues());
+    NO_FATALS(DeleteTable());
+    NO_FATALS(CreateTable());
+    NO_FATALS(OpenTable());
+  }
 }
 
 TEST_F(KVTableTest, LoadTest) {
