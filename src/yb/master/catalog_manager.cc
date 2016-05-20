@@ -2484,14 +2484,14 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
   TSRegistrationPB peer_reg;
   replacement_replica->GetRegistration(&peer_reg);
-  if (peer_reg.rpc_addresses_size() == 0) {
+  if (peer_reg.common().rpc_addresses_size() == 0) {
     YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "Candidate replacement "
                                << replacement_replica->permanent_uuid()
                                << " has no registered rpc address: "
                                << peer_reg.ShortDebugString();
     return false;
   }
-  *peer->mutable_last_known_addr() = peer_reg.rpc_addresses(0);
+  *peer->mutable_last_known_addr() = peer_reg.common().rpc_addresses(0);
   peer->set_member_type(RaftPeerPB::VOTER);
 
   return true;
@@ -3077,7 +3077,7 @@ void CatalogManager::SelectReplicas(const TSDescriptorVector& ts_descs,
     peer->set_permanent_uuid(ts->permanent_uuid());
 
     // TODO: This is temporary, we will use only UUIDs
-    for (const HostPortPB& addr : reg.rpc_addresses()) {
+    for (const HostPortPB& addr : reg.common().rpc_addresses()) {
       peer->mutable_last_known_addr()->CopyFrom(addr);
     }
   }
@@ -3120,7 +3120,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       tsinfo_pb->set_permanent_uuid(replica.second.ts_desc->permanent_uuid());
 
       replica.second.ts_desc->GetRegistration(&reg);
-      tsinfo_pb->mutable_rpc_addresses()->Swap(reg.mutable_rpc_addresses());
+      tsinfo_pb->mutable_rpc_addresses()->Swap(reg.mutable_common()->mutable_rpc_addresses());
     }
     return Status::OK();
   }

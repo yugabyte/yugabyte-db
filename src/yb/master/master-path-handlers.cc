@@ -25,7 +25,6 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
@@ -114,9 +113,10 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
     TSRegistrationPB reg;
     desc->GetRegistration(&reg);
-    *output << Substitute("<tr><th>$0</th><td>$1</td><td>$2</td><td><code>$3</code></td></tr>\n",
-                          RegistrationToHtml(reg, desc->permanent_uuid()), time_since_hb,
-                          desc->num_live_replicas(), EscapeForHtmlToString(reg.ShortDebugString()));
+    *output << Substitute(
+        "<tr><th>$0</th><td>$1</td><td>$2</td><td><code>$3</code></td></tr>\n",
+        RegistrationToHtml(reg.common(), desc->permanent_uuid()), time_since_hb,
+        desc->num_live_replicas(), EscapeForHtmlToString(reg.ShortDebugString()));
   }
   *output << "</table>\n";
 }
@@ -484,20 +484,18 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
   TSRegistrationPB reg;
   desc.GetRegistration(&reg);
 
-  if (reg.http_addresses().size() > 0) {
-    return Substitute("<a href=\"http://$0:$1/tablet?id=$2\">$3</a>",
-                      reg.http_addresses(0).host(),
-                      reg.http_addresses(0).port(),
-                      EscapeForHtmlToString(tablet_id),
-                      EscapeForHtmlToString(reg.http_addresses(0).host()));
+  if (reg.common().http_addresses().size() > 0) {
+    return Substitute(
+        "<a href=\"http://$0:$1/tablet?id=$2\">$3</a>", reg.common().http_addresses(0).host(),
+        reg.common().http_addresses(0).port(), EscapeForHtmlToString(tablet_id),
+        EscapeForHtmlToString(reg.common().http_addresses(0).host()));
   } else {
     return EscapeForHtmlToString(desc.permanent_uuid());
   }
 }
 
-template<class RegistrationType>
-string MasterPathHandlers::RegistrationToHtml(const RegistrationType& reg,
-                                              const std::string& link_text) const {
+string MasterPathHandlers::RegistrationToHtml(
+    const ServerRegistrationPB& reg, const std::string& link_text) const {
   string link_html = EscapeForHtmlToString(link_text);
   if (reg.http_addresses().size() > 0) {
     link_html = Substitute("<a href=\"http://$0:$1/\">$2</a>",

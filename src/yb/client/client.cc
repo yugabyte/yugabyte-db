@@ -317,8 +317,8 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
     auto ts = new YBTabletServer();
-    ts->data_ = new YBTabletServer::Data(e.instance_id().permanent_uuid(),
-                                           e.registration().rpc_addresses(0).host());
+    ts->data_ = new YBTabletServer::Data(
+        e.instance_id().permanent_uuid(), e.registration().common().rpc_addresses(0).host());
     tablet_servers->push_back(ts);
   }
   return Status::OK();

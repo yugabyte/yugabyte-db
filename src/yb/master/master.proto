@@ -179,8 +179,7 @@ message PingResponsePB {
 // master all of the necessary information about the current instance
 // of the TS.
 message TSRegistrationPB {
-  repeated HostPortPB rpc_addresses = 1;
-  repeated HostPortPB http_addresses = 2;
+  optional ServerRegistrationPB common = 1;
 
   // TODO: add stuff like software version, etc.
 }

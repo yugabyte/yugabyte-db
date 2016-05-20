@@ -156,7 +156,7 @@ Status TSDescriptor::ResolveSockaddr(Sockaddr* addr) const {
   vector<HostPort> hostports;
   {
     boost::lock_guard<simple_spinlock> l(lock_);
-    for (const HostPortPB& addr : registration_->rpc_addresses()) {
+    for (const HostPortPB& addr : registration_->common().rpc_addresses()) {
       hostports.push_back(HostPort(addr.host(), addr.port()));
     }
   }

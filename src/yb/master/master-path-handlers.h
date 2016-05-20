@@ -17,12 +17,13 @@
 #ifndef YB_MASTER_MASTER_PATH_HANDLERS_H
 #define YB_MASTER_MASTER_PATH_HANDLERS_H
 
-#include "yb/gutil/macros.h"
-#include "yb/server/webserver.h"
-
 #include <string>
 #include <sstream>
 #include <vector>
+
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/server/webserver.h"
 
 namespace yb {
 
@@ -74,11 +75,9 @@ class MasterPathHandlers {
 
   // Convert the specified server registration to HTML, adding a link
   // to the server's own web server (if specified in 'reg') with
-  // anchor text 'link_text'. 'RegistrationType' must be
-  // TSRegistrationPB or MasterRegistrationPB.
-  template<class RegistrationType>
-  std::string RegistrationToHtml(const RegistrationType& reg,
-                                 const std::string& link_text) const;
+  // anchor text 'link_text'.
+  std::string RegistrationToHtml(
+      const ServerRegistrationPB& reg, const std::string& link_text) const;
 
   Master* master_;
   DISALLOW_COPY_AND_ASSIGN(MasterPathHandlers);

@@ -91,9 +91,9 @@ const string& TServerDetails::uuid() const {
 }
 
 string TServerDetails::ToString() const {
-  return Substitute("TabletServer: $0, Rpc address: $1",
-                    instance_id.permanent_uuid(),
-                    registration.rpc_addresses(0).ShortDebugString());
+  return Substitute(
+      "TabletServer: $0, Rpc address: $1", instance_id.permanent_uuid(),
+      registration.common().rpc_addresses(0).ShortDebugString());
 }
 
 client::YBSchema SimpleIntKeyYBSchema() {
@@ -249,7 +249,7 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
   ts_map->clear();
   for (const ListTabletServersResponsePB::Entry& entry : resp.servers()) {
     HostPort host_port;
-    RETURN_NOT_OK(HostPortFromPB(entry.registration().rpc_addresses(0), &host_port));
+    RETURN_NOT_OK(HostPortFromPB(entry.registration().common().rpc_addresses(0), &host_port));
     vector<Sockaddr> addresses;
     host_port.ResolveAddresses(&addresses);
 
@@ -541,7 +541,7 @@ Status AddServer(const TServerDetails* leader,
   RaftPeerPB* peer = req.mutable_server();
   peer->set_permanent_uuid(replica_to_add->uuid());
   peer->set_member_type(member_type);
-  *peer->mutable_last_known_addr() = replica_to_add->registration.rpc_addresses(0);
+  *peer->mutable_last_known_addr() = replica_to_add->registration.common().rpc_addresses(0);
   if (cas_config_opid_index) {
     req.set_cas_config_opid_index(*cas_config_opid_index);
   }

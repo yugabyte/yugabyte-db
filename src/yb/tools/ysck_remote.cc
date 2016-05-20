@@ -239,7 +239,7 @@ Status RemoteYsckMaster::RetrieveTabletServers(TSMap* tablet_servers) {
   RETURN_NOT_OK(proxy_->ListTabletServers(req, &resp, &rpc));
   tablet_servers->clear();
   for (const master::ListTabletServersResponsePB_Entry& e : resp.servers()) {
-    HostPortPB addr = e.registration().rpc_addresses(0);
+    HostPortPB addr = e.registration().common().rpc_addresses(0);
     vector<Sockaddr> addresses;
     RETURN_NOT_OK(ParseAddressList(HostPort(addr.host(), addr.port()).ToString(),
                                    tserver::TabletServer::kDefaultPort, &addresses));

@@ -419,7 +419,7 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
   RaftPeerPB peer;
   TServerDetails* leader = nullptr;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
-  peer.mutable_last_known_addr()->CopyFrom(leader->registration.rpc_addresses(0));
+  peer.mutable_last_known_addr()->CopyFrom(leader->registration.common().rpc_addresses(0));
   const string expected_uuid = leader->instance_id.permanent_uuid();
 
   rpc::MessengerBuilder builder("test builder");

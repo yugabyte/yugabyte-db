@@ -136,8 +136,8 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   // Register the fake TS, without sending any tablet report.
   TSRegistrationPB fake_reg;
-  MakeHostPortPB("localhost", 1000, fake_reg.add_rpc_addresses());
-  MakeHostPortPB("localhost", 2000, fake_reg.add_http_addresses());
+  MakeHostPortPB("localhost", 1000, fake_reg.mutable_common()->add_rpc_addresses());
+  MakeHostPortPB("localhost", 2000, fake_reg.mutable_common()->add_http_addresses());
 
   {
     TSHeartbeatRequestPB req;

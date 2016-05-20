@@ -593,10 +593,10 @@ Status ClusterAdminClient::GetFirstRpcAddressForTS(
   RETURN_NOT_OK(ListTabletServers(&servers));
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (server.instance_id().permanent_uuid() == uuid) {
-      if (!server.has_registration() || server.registration().rpc_addresses_size() == 0) {
+      if (!server.has_registration() || server.registration().common().rpc_addresses_size() == 0) {
         break;
       }
-      RETURN_NOT_OK(HostPortFromPB(server.registration().rpc_addresses(0), hp));
+      RETURN_NOT_OK(HostPortFromPB(server.registration().common().rpc_addresses(0), hp));
       return Status::OK();
     }
   }
@@ -614,8 +614,8 @@ Status ClusterAdminClient::ListAllTabletServers() {
   }
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     std::cout << server.instance_id().permanent_uuid() << "  "
-      << server.registration().rpc_addresses(0).host() << "/"
-      << server.registration().rpc_addresses(0).port() << std::endl;
+              << server.registration().common().rpc_addresses(0).host() << "/"
+              << server.registration().common().rpc_addresses(0).port() << std::endl;
   }
 
   return Status::OK();

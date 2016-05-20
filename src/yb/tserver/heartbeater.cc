@@ -269,14 +269,16 @@ Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
 
   vector<Sockaddr> addrs;
   RETURN_NOT_OK(CHECK_NOTNULL(server_->rpc_server())->GetBoundAddresses(&addrs));
-  RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
-                        "Failed to add RPC addresses to registration");
+  RETURN_NOT_OK_PREPEND(
+      AddHostPortPBs(addrs, reg->mutable_common()->mutable_rpc_addresses()),
+      "Failed to add RPC addresses to registration");
 
   addrs.clear();
   RETURN_NOT_OK_PREPEND(CHECK_NOTNULL(server_->web_server())->GetBoundAddresses(&addrs),
                         "Unable to get bound HTTP addresses");
-  RETURN_NOT_OK_PREPEND(AddHostPortPBs(addrs, reg->mutable_http_addresses()),
-                        "Failed to add HTTP addresses to registration");
+  RETURN_NOT_OK_PREPEND(
+      AddHostPortPBs(addrs, reg->mutable_common()->mutable_http_addresses()),
+      "Failed to add HTTP addresses to registration");
   return Status::OK();
 }
 
