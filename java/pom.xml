@@ -22,15 +22,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.kududb</groupId>
+    <groupId>org.yb</groupId>
     <artifactId>kudu-parent</artifactId>
     <version>0.8.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Kudu</name>
+    <name>YugaByte</name>
 
     <description>
-        Kudu.
+        YugaByte client, tools, mapreduce bindings, etc.
     </description>
 
     <!-- Properties Management -->
@@ -70,10 +70,10 @@
 
     <modules>
         <module>interface-annotations</module>
-        <module>kudu-client</module>
-        <module>kudu-client-tools</module>
-        <module>kudu-mapreduce</module>
-        <module>kudu-spark</module>
+        <module>yb-client</module>
+        <module>yb-client-tools</module>
+        <module>yb-mapreduce</module>
+        <module>yb-spark</module>
     </modules>
 
     <build>
@@ -206,23 +206,23 @@
                     <maxmemory>2048m</maxmemory>
                     <notimestamp>true</notimestamp>
                     <doclet>
-                        org.kududb.annotations.tools.IncludePublicAnnotationsStandardDoclet
+                        org.yb.annotations.tools.IncludePublicAnnotationsStandardDoclet
                     </doclet>
                     <docletArtifact>
-                        <groupId>org.kududb</groupId>
+                        <groupId>org.yb</groupId>
                         <artifactId>interface-annotations</artifactId>
                         <version>${project.version}</version>
                     </docletArtifact>
                     <name>User API</name>
-                    <description>The Kudu Application Programmer's API</description>
+                    <description>The YB Application Programmer's API</description>
                     <excludePackageNames>
-                        com.google:org.kududb.cfile:org.kududb.consensus:org.kududb.log:org.kududb.master:org.kududb.rpc:org.kududb.server:org.kududb.tablet:org.kududb.tserver
+                        com.google:org.yb.cfile:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver
                     </excludePackageNames>
                     <includeDependencySources>false</includeDependencySources>
 
                     <dependencySourceIncludes>
                         <dependencySourceInclude>
-                            org.kududb:interface-annotations
+                            org.yb:interface-annotations
                         </dependencySourceInclude>
                     </dependencySourceIncludes>
                 </configuration>
@@ -269,7 +269,7 @@
     <profile>
       <id>buildCSD</id>
       <modules>
-        <module>kudu-csd</module>
+        <module>yb-csd</module>
       </modules>
     </profile>
     <profile>

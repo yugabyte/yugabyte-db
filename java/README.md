@@ -11,7 +11,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Asynchronous Native Java Client for Kudu
+Asynchronous Native Java Client for YB
 
 System Requirements
 ------------------------------------------------------------
@@ -26,17 +26,17 @@ Building the Client
 
 $ mvn package -DskipTests
 
-The client jar will can then be found at kudu-client/target.
+The client jar will can then be found at yb-client/target.
 
 
-Building the Kudu CSD
+Building the YB CSD
 ------------------------------------------------------------
 
-By default, the Kudu CSD will not be built with the client.
-It requires access to the Kudu binaries which may not be
+By default, the YB CSD will not be built with the client.
+It requires access to the YB binaries which may not be
 available. For example, when building on OSX.
 
-Here's how to build the kudu-csd module:
+Here's how to build the yb-csd module:
 
 $ mvn package -DskipTests -PbuildCSD
 
@@ -44,7 +44,7 @@ Also by default, building the CSD does not validate it,
 because (for the moment) this requires access to an internal
 Cloudera repository containing the validator maven plugin.
 
-Here's how to build the kudu-csd module with validation:
+Here's how to build the yb-csd module with validation:
 
 $ mvn package -DskipTests -PbuildCSD -PvalidateCSD
 
@@ -60,7 +60,7 @@ server using the flags file located in the src/test/resources/
 directory. The tests will locate the master and tablet server
 binaries by looking in 'build/latest/bin' from the root of
 the git repository. If you have recently built the C++ code
-for Kudu, those should be present already.
+for YB, those should be present already.
 
 Once everything is setup correctly, run:
 
@@ -110,9 +110,9 @@ information is either conveyed through explicit mapping
 metadata found in pom.xml, or in an m2e "extension". m2e
 ships with extensions for some of the common maven plugins,
 but not for maven-antrun-plugin or maven-protoc-plugin. The
-explicit metadata mapping found in kudu-client/pom.xml has
+explicit metadata mapping found in yb-client/pom.xml has
 placated m2e in both cases (in Eclipse see
-kudu-client->Properties->Maven->Lifecycle Mapping).
+yb-client->Properties->Maven->Lifecycle Mapping).
 Nevertheless, maven-protoc-plugin isn't being run correctly.
 
 To work around this, you can download, build, and install a
@@ -152,9 +152,9 @@ maven-protoc-plugin must be absolute and prefixed with
 ${project.baseDir). This absolute path is copied verbatim
 to an Eclipse .classpath <classpathentry/>, and Eclipse
 doesn't know what to do with it, causing it avoid building
-kudu-client altogether. Other plugins (like
+yb-client altogether. Other plugins (like
 maven-avro-plugin) don't seem to have this problem, so it's
 likely a bug in maven-protoc-plugin.
 
 There's a simple workaround: delete the errant folder within
-Eclipse and refresh the kudu-client project.
+Eclipse and refresh the yb-client project.
