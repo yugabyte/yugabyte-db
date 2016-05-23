@@ -58,8 +58,8 @@ import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
 public abstract class YRpc<R> {
 
   // Service names.
-  protected static final String MASTER_SERVICE_NAME = "kudu.master.MasterService";
-  protected static final String TABLET_SERVER_SERVICE_NAME = "kudu.tserver.TabletServerService";
+  protected static final String MASTER_SERVICE_NAME = "yb.master.MasterService";
+  protected static final String TABLET_SERVER_SERVICE_NAME = "yb.tserver.TabletServerService";
 
   public interface HasKey {
     /**

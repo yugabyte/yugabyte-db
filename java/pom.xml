@@ -23,7 +23,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.yb</groupId>
-    <artifactId>kudu-parent</artifactId>
+    <artifactId>yb-parent</artifactId>
     <version>0.8.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
@@ -262,30 +262,4 @@
     </snapshotRepository>
   </distributionManagement>
 
-  <profiles>
-    <!-- Build the CSD.
-
-         Disabled by default; add -PbuildCSD to the maven command line. -->
-    <profile>
-      <id>buildCSD</id>
-      <modules>
-        <module>yb-csd</module>
-      </modules>
-    </profile>
-    <profile>
-      <id>deploy-local</id>
-      <activation>
-        <activeByDefault>true</activeByDefault>
-      </activation>
-      <properties>
-         <deploy.maven>http://maven.jenkins.cloudera.com:8081/artifactory/libs-release-local</deploy.maven>
-       </properties>
-    </profile>
-    <profile>
-      <id>deploy-remote</id>
-      <properties>
-         <deploy.maven>https://repository.cloudera.com/cloudera/libs-release-local</deploy.maven>
-      </properties>
-    </profile>
-  </profiles>
 </project>
