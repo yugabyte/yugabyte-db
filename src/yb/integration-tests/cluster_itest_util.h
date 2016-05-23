@@ -265,7 +265,7 @@ Status WaitForNumVotersInConfigOnMaster(
     int num_voters,
     const MonoDelta& timeout);
 
-// Repeatedly invoke ListTablets(), waiting for up to 'timeout' time for the
+// Repeatedly invoke GetTablets(), waiting for up to 'timeout' time for the
 // specified 'count' number of replicas.
 Status WaitForNumTabletsOnTS(
     TServerDetails* ts,

@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 #include <iostream>
+#include <limits>
 
 #include "yb/client/batcher.h"
 #include "yb/client/callbacks.h"
@@ -324,11 +325,20 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   return Status::OK();
 }
 
-Status YBClient::ListTablets(const std::string& table_name,
-                             std::vector<std::string>* tablets) {
+Status YBClient::GetTablets(const string& table_name,
+                            const int max_tablets,
+                            vector<string>* tablet_uuids,
+                            vector<string>* range_starts,
+                            vector<string>* range_ends) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
+
+  if (max_tablets == 0) {
+    req.set_max_returned_locations(std::numeric_limits<int>::max());
+  } else if (max_tablets > 0) {
+    req.set_max_returned_locations(max_tablets);
+  }
 
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
@@ -345,9 +355,15 @@ Status YBClient::ListTablets(const std::string& table_name,
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  tablets->clear();
+  tablet_uuids->clear();
+  range_starts->clear();
+  range_ends->clear();
   for (int i = 0; i < resp.tablet_locations_size(); i++) {
-    tablets->push_back(resp.tablet_locations(i).tablet_id());
+    TabletLocationsPB tablet = resp.tablet_locations(i);
+    PartitionPB partition = tablet.partition();
+    tablet_uuids->push_back(tablet.tablet_id());
+    range_starts->push_back(partition.partition_key_start());
+    range_ends->push_back(partition.partition_key_end());
   }
 
   return Status::OK();

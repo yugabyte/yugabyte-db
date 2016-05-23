@@ -209,8 +209,11 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
-  Status ListTablets(const std::string& table_name,
-                     std::vector<std::string>* tablets);
+  Status GetTablets(const std::string& table_name,
+                    const int max_tablets,
+                    std::vector<std::string>* tablet_uuids,
+                    std::vector<std::string>* range_starts,
+                    std::vector<std::string>* range_ends);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(

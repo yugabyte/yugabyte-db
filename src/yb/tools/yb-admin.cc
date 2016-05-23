@@ -150,7 +150,7 @@ class ClusterAdminClient {
   Status ListTables();
 
   // List all tablets of this table
-  Status ListTablets(const string& table_name);
+  Status ListTablets(const string& table_name, const int max_tablets);
 
   // Per Tablet list of all tablet servers
   Status ListPerTabletTabletServers(const std::string& tablet_id);
@@ -633,7 +633,7 @@ Status ClusterAdminClient::ListAllMasters() {
     return StatusFromPB(lresp.error());
   }
   if (!lresp.masters().empty()) {
-    std::cout << "\tMaster UUID\t\t  RPC Host/Port\tRole" << std::endl;
+    std::cout << "\tMaster UUID\t\t  RPC Host/Port\t\tRole" << std::endl;
   }
   for (int i = 0; i < lresp.masters_size(); i++) {
     if (lresp.masters(i).role() != consensus::RaftPeerPB::UNKNOWN_ROLE) {
@@ -711,11 +711,18 @@ Status ClusterAdminClient::ListTables() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTablets(const string& table_name) {
-  vector<string> tablets;
-  RETURN_NOT_OK(yb_client_->ListTablets(table_name, &tablets));
-  for (const string& tablet : tablets) {
-    std::cout << tablet << std::endl;
+Status ClusterAdminClient::ListTablets(const string& table_name, const int max_tablets) {
+  vector<string> tablet_uuids, range_starts, range_ends;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, max_tablets, &tablet_uuids, &range_starts, &range_ends));
+  const string header = "Tablet UUID\t\t\t\tKey range start\t\t\tKey range end";
+  std::cout << header << std::endl;
+  for (int i = 0; i < tablet_uuids.size(); i++) {
+    string uuid = tablet_uuids[i];
+    string start = range_starts[i];
+    if (start.empty()) start = "<start>\t\t";
+    string end = range_ends.at(i);
+    if (end.empty()) end = "<end>\t";
+    std::cout << uuid << "\t" << start << "\t" + end << std::endl;
   }
   return Status::OK();
 }
@@ -819,7 +826,7 @@ static void SetUsage(const char* argv0) {
                 << "[VOTER|NON_VOTER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
-      << " 4. " << kListTabletsOp << " <table_name>" << std::endl
+      << " 4. " << kListTabletsOp << " <table_name>"  << " [max_tablets]" << " (default 10, set 0 for max)" << std::endl
       << " 5. " << kDeleteTableOp << " <table_name>" << std::endl
       << " 6. " << kListAllTabletServersOp << std::endl
       << " 7. " << kListAllMastersOp << std::endl
@@ -898,7 +905,11 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       UsageAndExit(argv[0]);
     }
     string table_name = argv[2];
-    Status s = client.ListTablets(table_name);
+    int max = -1;
+    if (argc > 3) {
+      max = std::stoi(argv[3]);
+    }
+    Status s = client.ListTablets(table_name, max);
     if (!s.ok()) {
       std::cerr << "Unable to list tablets of table " << table_name << ": " << s.ToString() <<
         std::endl;
