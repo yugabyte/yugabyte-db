@@ -145,13 +145,15 @@ for test_binary in "${test_binaries[@]}"; do
   set -e
 
   if [ -s "$gtest_list_stderr_path" ]; then
-    echo >&2
-    echo "'$test_binary' produced stderr output when run with --gtest_list_tests:" >&2
-    echo >&2
-    cat "$gtest_list_stderr_path" >&2
-    echo >&2
-    echo "Please add the test '$rel_test_binary' to the appropriate list in common-test-env.sh" >&2
-    echo "or fix the underlying issue in the code." >&2
+    (
+      echo
+      echo "'$test_binary' produced stderr output when run with --gtest_list_tests:"
+      echo
+      cat "$gtest_list_stderr_path"
+      echo
+      echo "Please add the test '$rel_test_binary' to the appropriate list in common-test-env.sh"
+      echo "or fix the underlying issue in the code."
+    ) >&2
 
     rm -f "$gtest_list_stderr_path"
     exit 1
@@ -181,7 +183,7 @@ for test_binary in "${test_binaries[@]}"; do
 done
 
 echo "Found $num_tests GTest tests in $num_test_cases test cases, and" \
-  "$num_binaries_to_run_at_once test executables to be run at once"
+     "$num_binaries_to_run_at_once test executables to be run at once"
 
 test_log_dir="$BUILD_ROOT/yb-test-logs"
 rm -rf "$test_log_dir"
@@ -258,7 +260,7 @@ for t in "${tests[@]}"; do
     is_gtest_test=true
   fi
 
-  if ! $run_at_once && $is_gtest_test; then
+  if ! "$run_at_once" && "$is_gtest_test"; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
@@ -288,7 +290,7 @@ for t in "${tests[@]}"; do
     "$project_dir"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
   fi
 
-  if $test_failed; then
+  if "$test_failed"; then
     global_exit_code=1
     echo "Test command line: ${test_cmd_line[@]}" >&2
     echo "Log path: $test_log_path" >&2
@@ -305,7 +307,7 @@ for t in "${tests[@]}"; do
       set -e
     fi
     echo >&2
-    if $exit_on_failure; then
+    if "$exit_on_failure"; then
       echo "Exiting after the first failure (--exit-on-failure)" >&2
       exit "$global_exit_code"
     fi

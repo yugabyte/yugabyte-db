@@ -43,6 +43,7 @@ quoted_perl_command = $(subst ','\'',$(perl_command))
 DEBUG_LEVEL?=1
 AUTO_DEBUG_LEVEL=
 
+ifneq ($(NO_DEBUG_LEVEL_OVERRIDE),1)
 ifeq ($(MAKECMDGOALS),dbg)
 AUTO_DEBUG_LEVEL=2
 endif
@@ -85,6 +86,7 @@ endif
 
 ifeq ($(MAKECMDGOALS),rocksdbjavastaticpublish)
 AUTO_DEBUG_LEVEL=0
+endif
 endif
 
 ifeq ($(AUTO_DEBUG_LEVEL),)
@@ -255,39 +257,20 @@ VALGRIND_OPTS = --error-exitcode=$(VALGRIND_ERROR) --leak-check=full
 BENCHTOOLOBJECTS = $(BENCH_SOURCES:.cc=.o) $(LIBOBJECTS) $(TESTUTIL)
 
 TESTS = \
-	db_test \
-	db_test2 \
-	db_block_cache_test \
-	db_iter_test \
-	db_log_iter_test \
-	db_compaction_filter_test \
-	db_compaction_test \
-	db_dynamic_level_test \
-	db_inplace_update_test \
-	db_tailing_iter_test \
-	db_universal_compaction_test \
-	db_wal_test \
-	db_properties_test \
-	db_table_properties_test \
 	block_hash_index_test \
 	autovector_test \
-	column_family_test \
 	table_properties_collector_test \
 	arena_test \
-	auto_roll_logger_test \
 	block_test \
 	bloom_test \
 	dynamic_bloom_test \
 	c_test \
 	cache_test \
-	checkpoint_test \
 	coding_test \
-	corruption_test \
 	crc32c_test \
 	slice_transform_test \
 	dbformat_test \
 	env_test \
-	fault_injection_test \
 	filelock_test \
 	filename_test \
 	file_reader_writer_test \
@@ -301,23 +284,18 @@ TESTS = \
 	mock_env_test \
 	memtable_list_test \
 	merge_helper_test \
-	memory_test \
 	merge_test \
 	merger_test \
 	options_file_test \
 	redis_test \
-	reduce_levels_test \
-	plain_table_db_test \
 	comparator_db_test \
 	prefix_test \
 	skiplist_test \
 	stringappend_test \
 	ttl_test \
-	backupable_db_test \
 	document_db_test \
 	json_document_test \
 	spatial_db_test \
-	version_edit_test \
 	version_set_test \
 	compaction_picker_test \
 	version_builder_test \
@@ -325,36 +303,65 @@ TESTS = \
 	write_batch_test \
 	write_batch_with_index_test \
 	write_controller_test\
-	deletefile_test \
 	table_test \
-	thread_local_test \
 	geodb_test \
 	rate_limiter_test \
-	delete_scheduler_test \
 	options_test \
 	options_util_test \
 	event_logger_test \
 	cuckoo_table_builder_test \
 	cuckoo_table_reader_test \
-	cuckoo_table_db_test \
 	flush_job_test \
 	wal_manager_test \
-	listener_test \
 	compaction_iterator_test \
 	compaction_job_test \
 	thread_list_test \
 	sst_dump_test \
-	compact_files_test \
 	perf_context_test \
 	optimistic_transaction_test \
-	write_callback_test \
 	heap_test \
 	compact_on_deletion_collector_test \
-	compaction_job_stats_test \
-	transaction_test \
 	ldb_cmd_test \
 	iostats_context_test \
 	user_sequence_number_test
+
+ifneq ($(DEBUG_LEVEL),0)
+# These tests can only be built in debug mode.
+TESTS += \
+	auto_roll_logger_test \
+	backupable_db_test \
+	checkpoint_test \
+	column_family_test \
+	compact_files_test \
+	compaction_job_stats_test \
+	corruption_test \
+	cuckoo_table_db_test \
+	db_block_cache_test \
+	db_compaction_filter_test \
+	db_compaction_test \
+	db_dynamic_level_test \
+	db_inplace_update_test \
+	db_iter_test \
+	db_log_iter_test \
+	db_properties_test \
+	db_table_properties_test \
+	db_tailing_iter_test \
+	db_test \
+	db_test2 \
+	db_universal_compaction_test \
+	db_wal_test \
+	delete_scheduler_test \
+	deletefile_test \
+	fault_injection_test \
+	listener_test \
+	memory_test \
+	plain_table_db_test \
+	reduce_levels_test \
+	thread_local_test \
+	transaction_test \
+	version_edit_test \
+	write_callback_test
+endif
 
 SUBSET :=  $(shell echo $(TESTS) |sed s/^.*$(ROCKSDBTESTS_START)/$(ROCKSDBTESTS_START)/)
 

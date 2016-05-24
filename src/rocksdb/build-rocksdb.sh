@@ -32,8 +32,6 @@ Options:
     A list of additional CXX flags to use when building.
   --use-ld-gold
     Specify to use the ld.gold linker.
-  --build-all-targets
-
   --targets <targets>
     Explicitly specify additional Makefile targets to build. <targets> can be one target or a
     whitespace-spearated list of targets. This option can be repeated and all targets specified this
@@ -48,20 +46,19 @@ EOT
 
 build_dir=""
 build_type=""
-make_parallelism=""
-debug_level=""
-link_mode="d"
-cxx_compiler=""
 c_compiler=""
+cxx_compiler=""
 cxx_flags=""
-use_ld_gold=false
-verbose=false
-skip_link_dir_creation=false
+debug_level=""
 extra_include_dirs=()
 extra_lib_dirs=()
-build_all_targets=false
+link_mode="d"
+make_parallelism=""
+skip_link_dir_creation=false
+use_ld_gold=false
+verbose=false
 
-make_opts=()
+make_opts=( NO_DEBUG_LEVEL_OVERRIDE=1 )
 make_targets=()
 
 while [ $# -ne 0 ]; do
@@ -110,9 +107,6 @@ while [ $# -ne 0 ]; do
     ;;
     --build-tests)
       build_tests=true
-    ;;
-    --build-all-targets)
-      build_all_targets=true
     ;;
     --targets)
       make_targets+=( $2 )
@@ -220,15 +214,15 @@ for target in "${make_targets[@]}"; do
   fi
 done
 
-if [ "$debug_level" -gt 0 ] && $build_all_targets; then
-  # We can only build tests if NDEBUG is not defined (otherwise e.g. db_test.cc fails to build).
-  # TODO: try to build as many tests as possible in release mode.
+if "$build_all_targets"; then
+  # Build tests.
   # env_mirror_test does not seem to be built as part of the tests target, so we add it explicitly.
-  new_make_targets+=( tests env_mirror_test )
-fi
-
-if $build_all_targets; then
-  new_make_targets+=( tools benchmarks )
+  new_make_targets+=(
+    benchmarks
+    env_mirror_test
+    tests
+    tools
+  )
 fi
 
 # Sort / deduplicate the targets
@@ -249,6 +243,10 @@ if [ -n "$make_parallelism" ]; then
     exit 1
   fi
   make_opts+=( "-j$make_parallelism" )
+fi
+
+if [ "$build_type" == "release" ]; then
+  debug_level=0
 fi
 
 if [ -n "$debug_level" ]; then

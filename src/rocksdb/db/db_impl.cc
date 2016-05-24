@@ -4410,7 +4410,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     int total_count = 0;
     uint64_t total_byte_size = 0;
     bool has_user_sequence_numbers = false;
+#ifndef NDEBUG
     bool has_auto_sequence_numbers = false;
+#endif
     SequenceNumber min_user_sequence_number = kMaxSequenceNumber;
     SequenceNumber max_user_sequence_number = 0;
     for (auto writer : write_group) {
@@ -4427,7 +4429,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
             writer->batch->MaxUserSequenceNumber());
           parallel = false;
         } else if (writer->batch->Count() > 0) {
+#ifndef NDEBUG
           has_auto_sequence_numbers = true;
+#endif
         }
       }
     }

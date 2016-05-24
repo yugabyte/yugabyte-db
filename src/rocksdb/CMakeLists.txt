@@ -70,6 +70,42 @@ add_dependencies(build_rocksdb_all_targets build_rocksdb_library)
 
 set(ROCKSDB_BUILD_DIR "${YB_BUILD_DIR}/rocksdb-build")
 
+set(ROCKSDB_DEBUG_ONLY_TESTS
+  auto_roll_logger_test 
+  backupable_db_test 
+  checkpoint_test 
+  column_family_test 
+  compact_files_test 
+  compaction_job_stats_test 
+  corruption_test 
+  cuckoo_table_db_test 
+  db_block_cache_test 
+  db_compaction_filter_test 
+  db_compaction_test 
+  db_dynamic_level_test 
+  db_inplace_update_test 
+  db_iter_test 
+  db_log_iter_test 
+  db_properties_test 
+  db_table_properties_test 
+  db_tailing_iter_test 
+  db_test 
+  db_test2 
+  db_universal_compaction_test 
+  db_wal_test 
+  delete_scheduler_test 
+  deletefile_test 
+  fault_injection_test 
+  listener_test 
+  memory_test 
+  plain_table_db_test 
+  reduce_levels_test 
+  thread_local_test 
+  transaction_test 
+  version_edit_test 
+  write_callback_test
+)
+
 # Add separate targets for tests so we can run in them in CLion. A potential problem with this setup
 # is that make may be invoked multiple times.
 file(GLOB_RECURSE ROCKSDB_TEST_SOURCES "*_test.cc")
@@ -92,8 +128,25 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
     else()
       set(ROCKSDB_TEST_BINARY_NAME "${ROCKSDB_TEST_NAME}")
     endif()
-    add_test(NAME "${ROCKSDB_TEST_TARGET_NAME}"
-      COMMAND "${BUILD_SUPPORT_DIR}/run-test.sh" "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_BINARY_NAME}")
+
+    set(ROCKSDB_SHOULD_INCLUDE_TEST true)
+    if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+      list(FIND ROCKSDB_DEBUG_ONLY_TESTS "${ROCKSDB_TEST_NAME}"
+        ROCKSDB_TEST_POSITION_IN_LIST_OF_DEBUG_ONLY_TESTS)
+      if (NOT ROCKSDB_TEST_POSITION_IN_LIST_OF_DEBUG_ONLY_TESTS EQUAL -1)
+        # This is a debug-only RocksDB test.
+        set(ROCKSDB_SHOULD_INCLUDE_TEST false)
+      endif()
+    
+    endif()
+
+    if (ROCKSDB_SHOULD_INCLUDE_TEST)
+      add_test(NAME "${ROCKSDB_TEST_TARGET_NAME}"
+               COMMAND "${BUILD_SUPPORT_DIR}/run-test.sh"
+               "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_BINARY_NAME}")
+    else()
+      message("Skipping test ${ROCKSDB_TEST_TARGET_NAME} in release mode")
+    endif()
   endif()
 endforeach(ROCKSDB_TEST_SRC)
 

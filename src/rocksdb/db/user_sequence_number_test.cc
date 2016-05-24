@@ -133,6 +133,10 @@ TEST_F(UserSequenceNumberTest, Append) {
   ASSERT_EQ(4, b1.Count());
 }
 
+#ifndef NDEBUG
+// This test is only allowed in debug mode, because we're testing that an assertion fires under
+// certain conditions, and assertions are only enabled in debug mode.
+
 TEST_F(UserSequenceNumberTest, DisallowStartingAddingUserSeqNumbersAfterAddingUpdates) {
   ASSERT_DEATH({
     WriteBatch b;
@@ -142,6 +146,7 @@ TEST_F(UserSequenceNumberTest, DisallowStartingAddingUserSeqNumbersAfterAddingUp
     b.AddUserSequenceNumber(123);
   }, "Assertion.*Count.*user_sequence_numbers_");
 }
+#endif
 
 TEST_F(UserSequenceNumberTest, SetUserSequenceNumber) {
   WriteBatch b;
