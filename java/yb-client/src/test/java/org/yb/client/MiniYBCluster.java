@@ -218,6 +218,7 @@ public class MiniYBCluster implements AutoCloseable {
       // ports, only checks that when it was last called, these ports could be used).
       List<String> masterCmdLine = Lists.newArrayList(
           TestUtils.findBinary("yb-master"),
+          "--create_cluster",
           "--flagfile=" + flagsPath,
           "--fs_wal_dir=" + dataDirPath,
           "--fs_data_dirs=" + dataDirPath,

@@ -69,7 +69,7 @@ public class TestUtils {
       // Somewhat unintuitively, createTempFile() actually creates the file,
       // not just the path, so we have to use REPLACE_EXISTING below.
       Path tmpFile = Files.createTempFile(
-          Paths.get(getBaseDir()), "kudu-flags", ".flags");
+          Paths.get(getBaseDir()), "yb-flags", ".flags");
       Files.copy(BaseYBTest.class.getResourceAsStream("/flags"), tmpFile,
           StandardCopyOption.REPLACE_EXISTING);
       return tmpFile.toAbsolutePath().toString();
@@ -91,7 +91,7 @@ public class TestUtils {
     }
   }
 
-  private static String findBuildDir() {
+  public static String findBuildDir() {
     URL myUrl = BaseYBTest.class.getProtectionDomain().getCodeSource().getLocation();
     File myPath = new File(urlToPath(myUrl));
     while (myPath != null) {

@@ -57,7 +57,7 @@ public class ListTabletServersRequest extends YRpc<ListTabletServersResponse> {
     int serversCount = respBuilder.getServersCount();
     List<String> servers = new ArrayList<String>(serversCount);
     for (ListTabletServersResponsePB.Entry entry : respBuilder.getServersList()) {
-      servers.add(entry.getRegistration().getRpcAddresses(0).getHost());
+      servers.add(entry.getRegistration().getCommon().getRpcAddresses(0).getHost());
     }
     ListTabletServersResponse response = new ListTabletServersResponse(deadlineTracker
         .getElapsedMillis(), tsUUID, serversCount, servers);

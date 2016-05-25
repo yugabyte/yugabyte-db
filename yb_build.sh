@@ -146,3 +146,13 @@ set -u
 
 touch "$thirdparty_built_flag_file"
 
+# Fix rpath's for various binaries on OSX so that the executables can be launched without having
+# to set the DYLD_FALLBACK_LIBRARY_PATH before running them.
+if [ "`uname`" == "Darwin" ]; then
+  echo "Fixing rpath for binaries on OSX"
+  for binary in $build_dir/bin/yb-* $build_dir/lib/*.dylib
+  do
+    install_name_tool -change librocksdb_debug.4.6.dylib \
+      "$build_dir"/rocksdb-build/librocksdb_debug.4.6.dylib "$binary"
+  done
+fi
