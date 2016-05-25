@@ -41,6 +41,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/random.h"
 #include "yb/util/status.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/trace.h"
@@ -87,11 +88,12 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
 
   string rocksdb_dir;
   if (table_type == TableType::KEY_VALUE_TABLE_TYPE) {
-    // Determine the data dir to use for this tablet. Use the first data root directory for now.
+    yb::Random rand(GetCurrentTimeMicros());
+    // Determine the data dir to use for this tablet. Pick one of the data dirs at random.
     auto data_root_dirs = fs_manager->GetDataRootDirs();
     CHECK(!data_root_dirs.empty()) << "No data root directories found";
-    auto data_root_dir = data_root_dirs.front();
-    auto rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
+    string data_root_dir = data_root_dirs[rand.Uniform(data_root_dirs.size())];
+    string rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
     rocksdb_dir = JoinPathSegments(rocksdb_top_dir, tablet_id);
   }
 
