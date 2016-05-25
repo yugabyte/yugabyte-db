@@ -35,6 +35,9 @@ class ClusterLoadBalancer {
   // create a new ClusterLoadState object.
   void RunLoadBalancer();
 
+  // Sets whether to enable or disable the load balancer, on demand.
+  void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
+
  private:
   // Recreates the ClusterLoadState object.
   void ResetState();
@@ -64,6 +67,9 @@ class ClusterLoadBalancer {
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
+
+  // Controls whether to run the load balancing algorithm or not.
+  bool is_enabled_;
 
   class Options {
    public:

@@ -3491,6 +3491,10 @@ std::string CatalogManager::LogPrefix() const {
   }
 }
 
+void CatalogManager::SetLoadBalancerEnabled(bool is_enabled) {
+  load_balance_policy_->SetLoadBalancerEnabled(is_enabled);
+}
+
 ////////////////////////////////////////////////////////////
 // TabletInfo
 ////////////////////////////////////////////////////////////

@@ -378,6 +378,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // given output stream. This is verbose, meant for debugging.
   void DumpState(std::ostream* out, bool on_disk_dump=false) const;
 
+  void SetLoadBalancerEnabled(bool is_enabled);
+
   // Return true if the table with the specified ID exists,
   // and set the table pointer to the TableInfo object
   // NOTE: This should only be used by tests or web-ui

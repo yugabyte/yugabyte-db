@@ -104,6 +104,7 @@ const char* const kChangeMasterConfigOp = "change_master_config";
 const char* const kDumpMastersStateOp = "dump_masters_state";
 const char* const kListTabletServersLogLocationsOp = "list_tablet_server_log_locations";
 const char* const kListTabletsForTabletServerOp = "list_tablets_for_tablet_server";
+const char* const kSetLoadBalancerEnabled = "set_load_balancer_enabled";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -170,6 +171,8 @@ class ClusterAdminClient {
   // List all the tablets a certain tablet server is serving
   Status ListTabletsForTabletServer(const std::string& ts_uuid);
 
+  Status SetLoadBalancerEnabled(const bool is_enabled);
+
  private:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const std::string& tablet_id,
@@ -193,6 +196,8 @@ class ClusterAdminClient {
 
   // Look up the RPC address of the server with the specified UUID from the Master.
   Status GetFirstRpcAddressForTS(const std::string& uuid, HostPort* hp);
+
+  Status GetSockAddrForHostPort(const HostPort& hp, Sockaddr* addr);
 
   Status GetSockAddrForTS(const std::string& ts_uuid, Sockaddr* ts_addr);
 
@@ -774,22 +779,28 @@ Status ClusterAdminClient::DeleteTable(const string& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetSockAddrForHostPort(const HostPort& hp, Sockaddr* addr) {
+  vector<Sockaddr> sock_addrs;
+  RETURN_NOT_OK(hp.ResolveAddresses(&sock_addrs));
+  if (sock_addrs.empty()) {
+    return Status::IllegalState(
+        Substitute("Unable to resolve IP address for host: $0", hp.ToString()));
+  }
+  if (sock_addrs.size() != 1) {
+    return Status::IllegalState(
+        Substitute("Expected only one IP for host, but got : $0", hp.ToString()));
+  }
+
+  *addr = sock_addrs[0];
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::GetSockAddrForTS(const std::string& ts_uuid, Sockaddr* ts_addr) {
   HostPort hp;
-  GetFirstRpcAddressForTS(ts_uuid, &hp);
+  RETURN_NOT_OK(GetFirstRpcAddressForTS(ts_uuid, &hp));
+  RETURN_NOT_OK(GetSockAddrForHostPort(hp, ts_addr));
 
-  vector<Sockaddr> ts_addrs;
-  RETURN_NOT_OK(hp.ResolveAddresses(&ts_addrs));
-  if (ts_addrs.empty()) {
-    return Status::IllegalState(
-        Substitute("Unable to resolve IP address for ts host: $0", hp.ToString()));
-  }
-  if (ts_addrs.size() != 1) {
-    return Status::IllegalState(
-        Substitute("Expected only one IP for ts host, but got : $0", hp.ToString()));
-  }
-
-  *ts_addr = ts_addrs[0];
   return Status::OK();
 }
 
@@ -815,6 +826,45 @@ Status ClusterAdminClient::ListTabletsForTabletServer(const std::string& ts_uuid
   return Status::OK();
 }
 
+Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
+  master::ListMastersRequestPB list_req;
+  master::ListMastersResponsePB list_resp;
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_proxy_->ListMasters(list_req, &list_resp, &rpc));
+  if (list_resp.has_error()) {
+    return StatusFromPB(list_resp.error());
+  }
+
+  master::ChangeLoadBalancerStateRequestPB req;
+  req.set_is_enabled(is_enabled);
+  master::ChangeLoadBalancerStateResponsePB resp;
+  for (int i = 0; i < list_resp.masters_size(); ++i) {
+    rpc.Reset();
+    resp.Clear();
+
+    if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
+      master_proxy_->ChangeLoadBalancerState(req, &resp, &rpc);
+    } else {
+      HostPortPB hp_pb = list_resp.masters(i).registration().rpc_addresses(0);
+      HostPort hp(hp_pb.host(), hp_pb.port());
+      Sockaddr master_addr;
+      RETURN_NOT_OK(GetSockAddrForHostPort(hp, &master_addr));
+
+      auto proxy =
+          std::unique_ptr<MasterServiceProxy>(new MasterServiceProxy(messenger_, master_addr));
+      proxy->ChangeLoadBalancerState(req, &resp, &rpc);
+    }
+
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+  }
+
+  return Status::OK();
+}
+
 static void SetUsage(const char* argv0) {
   ostringstream str;
 
@@ -834,7 +884,8 @@ static void SetUsage(const char* argv0) {
                 << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <uuid>" << std::endl
       << " 9. " << kDumpMastersStateOp << std::endl
       << " 10. " << kListTabletServersLogLocationsOp << std::endl
-      << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>";
+      << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
+      << " 12. " << kSetLoadBalancerEnabled << " <0|1>";
 
   google::SetUsageMessage(str.str());
 }
@@ -979,6 +1030,17 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.ListTabletsForTabletServer(ts_uuid);
     if (!s.ok()) {
       std::cerr << "Unable to list tablet server tablets: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kSetLoadBalancerEnabled) {
+    if (argc != 3) {
+      UsageAndExit(argv[0]);
+    }
+
+    const bool is_enabled = atoi(argv[2]) != 0;
+    Status s = client.SetLoadBalancerEnabled(is_enabled);
+    if (!s.ok()) {
+      std::cerr << "Unable to change load balancer state: " << s.ToString() << std::endl;
       return 1;
     }
   } else {

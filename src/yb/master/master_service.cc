@@ -442,5 +442,20 @@ void MasterServiceImpl::DumpState(
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::ChangeLoadBalancerState(
+    const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+    return;
+  }
+
+  if (req->has_is_enabled()) {
+    LOG(INFO) << "Changing balancer state to " << req->is_enabled();
+    server_->catalog_manager()->SetLoadBalancerEnabled(req->is_enabled());
+  }
+
+  rpc->RespondSuccess();
+}
+
 } // namespace master
 } // namespace yb

@@ -227,7 +227,7 @@ void ClusterLoadBalancer::SortLoad() {
 
 // Load balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
-    : random_(GetRandomSeed32()), options_() {
+    : random_(GetRandomSeed32()), is_enabled_(FLAGS_enable_load_balancing), options_() {
   ResetState();
 
   catalog_manager_ = cm;
@@ -237,7 +237,7 @@ ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
 
 void ClusterLoadBalancer::RunLoadBalancer() {
-  if (!FLAGS_enable_load_balancing) {
+  if (!is_enabled_) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
   }

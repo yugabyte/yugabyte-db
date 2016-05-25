@@ -584,6 +584,14 @@ message DumpMasterStateResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message ChangeLoadBalancerStateRequestPB {
+  optional bool is_enabled = 1;
+}
+
+message ChangeLoadBalancerStateResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   rpc Ping(PingRequestPB) returns (PingResponsePB);
 
@@ -614,4 +622,7 @@ service MasterService {
 
   // Dump master state from all the peers in the current master's quorum
   rpc DumpState(DumpMasterStateRequestPB) returns (DumpMasterStateResponsePB);
+
+  rpc ChangeLoadBalancerState(ChangeLoadBalancerStateRequestPB)
+      returns (ChangeLoadBalancerStateResponsePB);
 }

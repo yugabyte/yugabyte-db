@@ -94,6 +94,10 @@ class MasterServiceImpl : public MasterServiceIf {
     DumpMasterStateResponsePB* resp,
     rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void ChangeLoadBalancerState(
+      const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
+      rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   Master* server_;
 
