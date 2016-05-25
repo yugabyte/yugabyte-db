@@ -96,6 +96,11 @@ ExternalMiniClusterOptions::ExternalMiniClusterOptions()
       num_tablet_servers(1),
       bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),
       timeout_(MonoDelta::FromMilliseconds(1000 * 10)) {
+  if (bind_to_unique_loopback_addresses && sizeof(pid_t) > 2) {
+    LOG(WARNING) << "pid size is " << sizeof(pid_t)
+                 << ", setting bind_to_unique_loopback_addresses=false";
+    bind_to_unique_loopback_addresses = false;
+  }
 }
 
 ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
@@ -623,7 +628,8 @@ Status ExternalMiniCluster::StartDistributedMasters() {
 string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
   if (opts_.bind_to_unique_loopback_addresses) {
     pid_t p = getpid();
-    CHECK_LE(p, MathLimits<uint16_t>::kMax) << "Cannot run on systems with >16-bit pid";
+    CHECK_LE(p, MathLimits<uint16_t>::kMax)
+        << "bind_to_unique_loopback_addresses does not work on systems with >16-bit pid";
     return Substitute("127.$0.$1.$2", p >> 8, p & 0xff, index);
   } else {
     return "127.0.0.1";
