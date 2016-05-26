@@ -76,7 +76,6 @@ if [ -z "$NEEDS_BUILD" ]; then
 fi
 
 rm -f .build-hash .build-stamp
-./download-thirdparty.sh
 ./build-thirdparty.sh
 
 if [ -n "$IS_IN_GIT" ]; then

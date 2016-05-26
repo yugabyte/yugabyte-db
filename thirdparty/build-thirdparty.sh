@@ -50,6 +50,8 @@ if download_prebuilt_thirdparty_deps; then
   exit 0
 fi
 
+$TP_DIR/download-thirdparty.sh
+
 for PREFIX_DIR in \
     "$PREFIX_COMMON" \
     "$PREFIX_DEPS" \
