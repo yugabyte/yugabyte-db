@@ -31,14 +31,11 @@ namespace tserver {
 //
 // This allows tests to easily start miniclusters with different
 // tablet servers having different options.
-struct TabletServerOptions : public yb::server::ServerBaseOptions {
+class TabletServerOptions : public yb::server::ServerBaseOptions {
+ public:
   TabletServerOptions();
 
-  // List of masters to which this tablet server heartbeats. This will get recreated on a master
-  // config change. We should ensure that the vector elements are not individually updated. And the
-  // shared pointer will guarantee inconsistent in-transit views of the vector are never seen
-  // during/across config changes.
-  std::shared_ptr<std::vector<HostPort>> master_addresses;
+  ~TabletServerOptions() {}
 };
 
 } // namespace tserver

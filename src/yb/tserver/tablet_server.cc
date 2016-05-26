@@ -40,6 +40,7 @@
 
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
+using std::make_shared;
 using std::shared_ptr;
 using std::vector;
 
@@ -54,7 +55,8 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
     scanner_manager_(new ScannerManager(metric_entity())),
     path_handlers_(new TabletServerPathHandlers(this)),
-    maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)) {
+    maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
+    master_config_index_(0) {
 }
 
 TabletServer::~TabletServer() {
@@ -62,17 +64,37 @@ TabletServer::~TabletServer() {
 }
 
 string TabletServer::ToString() const {
-  // TODO: include port numbers, etc.
-  return "TabletServer";
+  return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
+                             first_rpc_address().ToString(), fs_manager_->uuid());
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
-  for (const HostPort& master_addr : *opts_.master_addresses) {
+  for (const HostPort& master_addr : *opts_.GetMasterAddresses().get()) {
     RETURN_NOT_OK_PREPEND(master_addr.ResolveAddresses(NULL),
                           strings::Substitute(
                               "Couldn't resolve master service address '$0'",
                               master_addr.ToString()));
   }
+  return Status::OK();
+}
+
+Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config) {
+  shared_ptr<vector<HostPort>> new_master_addresses = make_shared<vector<HostPort>>();
+
+  LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
+            << new_config.opid_index();
+
+  SetCurrentMasterIndex(new_config.opid_index());
+
+  for (const auto& peer : new_config.peers()) {
+    HostPort hp;
+    RETURN_NOT_OK(HostPortFromPB(peer.last_known_addr(), &hp));
+    new_master_addresses->push_back(std::move(hp));
+  }
+  opts_.SetMasterAddresses(new_master_addresses);
+
+  heartbeater_->set_master_addresses(new_master_addresses);
+
   return Status::OK();
 }
 

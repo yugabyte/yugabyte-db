@@ -21,6 +21,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/master.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/net/net_util.h"
 
 #include <boost/thread/locks.hpp>
@@ -80,6 +81,7 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
 
   registration_.reset(new TSRegistrationPB(registration));
   ts_admin_proxy_.reset();
+  ts_service_proxy_.reset();
   consensus_proxy_.reset();
 
   return Status::OK();
@@ -233,6 +235,27 @@ Status TSDescriptor::GetConsensusProxy(const shared_ptr<rpc::Messenger>& messeng
     consensus_proxy_.reset(new consensus::ConsensusServiceProxy(messenger, addr));
   }
   *proxy = consensus_proxy_;
+  return Status::OK();
+}
+
+Status TSDescriptor::GetTSServiceProxy(const shared_ptr<rpc::Messenger>& messenger,
+                                       shared_ptr<tserver::TabletServerServiceProxy>* proxy) {
+  {
+    boost::lock_guard<simple_spinlock> l(lock_);
+    if (ts_service_proxy_) {
+      *proxy = ts_service_proxy_;
+      return Status::OK();
+    }
+  }
+
+  Sockaddr addr;
+  RETURN_NOT_OK(ResolveSockaddr(&addr));
+
+  boost::lock_guard<simple_spinlock> l(lock_);
+  if (!ts_service_proxy_) {
+    ts_service_proxy_.reset(new tserver::TabletServerServiceProxy(messenger, addr));
+  }
+  *proxy = ts_service_proxy_;
   return Status::OK();
 }
 

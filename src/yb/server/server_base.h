@@ -50,7 +50,7 @@ class ServiceIf;
 namespace server {
 class Clock;
 
-struct ServerBaseOptions;
+class ServerBaseOptions;
 class ServerStatusPB;
 
 // Base class for tablet server and master.

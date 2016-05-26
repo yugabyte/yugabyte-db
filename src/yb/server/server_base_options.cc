@@ -36,6 +36,9 @@ DEFINE_string(placement_zone, "", "The cloud availability zone in which this ins
 namespace yb {
 namespace server {
 
+using std::vector;
+using std::shared_ptr;
+
 DEFINE_string(server_dump_info_path, "",
               "Path into which the server information will be "
               "dumped after startup. The dumped data is described by "
@@ -62,6 +65,22 @@ ServerBaseOptions::ServerBaseOptions()
       placement_cloud(FLAGS_placement_cloud),
       placement_region(FLAGS_placement_region),
       placement_zone(FLAGS_placement_zone) {}
+
+void ServerBaseOptions::ValidateMasterAddresses() const {
+  if (!master_addresses_->empty()) {
+    if (master_addresses_->size() == 2) {
+      LOG(WARNING) << "Only 2 masters are specified by master addresses flag '"
+                   << master_addresses_flag << "' , but minimum of 3 "
+                   << "are required to tolerate failures of any one master. "
+                   << "It is recommended to use at least 3 masters.";
+    }
+  }
+}
+
+void ServerBaseOptions::SetMasterAddresses(shared_ptr<vector<HostPort>> master_addresses) {
+  master_addresses_ = std::move(master_addresses);
+  ValidateMasterAddresses();
+}
 
 } // namespace server
 } // namespace yb

@@ -87,6 +87,13 @@ class TabletServer : public server::ServerBase {
     return maintenance_manager_.get();
   }
 
+  int GetCurrentMasterIndex() { return master_config_index_; }
+
+  void SetCurrentMasterIndex(int index) { master_config_index_ = index; }
+
+  // Update in-memory list of master addresses that this tablet server pings to.
+  Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config);
+
  private:
   friend class TabletServerTestBase;
 
@@ -97,8 +104,8 @@ class TabletServer : public server::ServerBase {
   // If true, all heartbeats will be seen as failed.
   Atomic32 fail_heartbeats_for_tests_;
 
-  // The options passed at construction time.
-  const TabletServerOptions opts_;
+  // The options passed at construction time, and will be updated if master config changes.
+  TabletServerOptions opts_;
 
   // Manager for tablets which are available on this server.
   gscoped_ptr<TSTabletManager> tablet_manager_;
@@ -116,6 +123,9 @@ class TabletServer : public server::ServerBase {
 
   // The maintenance manager for this tablet server
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
+
+  // Index at which master sent us the last config
+  int master_config_index_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

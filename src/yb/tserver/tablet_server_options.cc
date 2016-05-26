@@ -38,12 +38,14 @@ TAG_FLAG(tserver_master_addrs, stable);
 TabletServerOptions::TabletServerOptions() {
   rpc_opts.default_port = TabletServer::kDefaultPort;
 
-  master_addresses = std::make_shared<std::vector<HostPort>>();
+  master_addresses_flag = FLAGS_tserver_master_addrs;
+
+  master_addresses_ = std::make_shared<std::vector<HostPort>>();
   Status s = HostPort::ParseStrings(FLAGS_tserver_master_addrs,
                                     master::Master::kDefaultPort,
-                                    master_addresses);
+                                    master_addresses_);
   if (!s.ok()) {
-    LOG(FATAL) << "Couldn't parse tablet_server_master_addrs flag: " << s.ToString();
+    LOG(FATAL) << "Couldn't parse " << FLAGS_tserver_master_addrs << " flag: " << s.ToString();
   }
 }
 

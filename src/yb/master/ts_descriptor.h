@@ -21,6 +21,7 @@
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -40,6 +41,10 @@ class Messenger;
 
 namespace tserver {
 class TabletServerAdminServiceProxy;
+}
+
+namespace tserver {
+class TabletServerServiceProxy;
 }
 
 namespace master {
@@ -90,6 +95,10 @@ class TSDescriptor {
   // Return an RPC proxy to the consensus service.
   Status GetConsensusProxy(const std::shared_ptr<rpc::Messenger>& messenger,
                            std::shared_ptr<consensus::ConsensusServiceProxy>* proxy);
+
+  // Return an RPC proxy to the tablet server service.
+  Status GetTSServiceProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+                           std::shared_ptr<tserver::TabletServerServiceProxy>* proxy);
 
   // Increment the accounting of the number of replicas recently created on this
   // server. This value will automatically decay over time.
@@ -148,6 +157,7 @@ class TSDescriptor {
 
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_service_proxy_;
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };

@@ -147,6 +147,20 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   }
   resp->set_leader_master(true);
 
+  consensus::ConsensusStatePB cpb;
+  s = server_->catalog_manager()->GetCurrentConfig(&cpb);
+  if (!s.ok()) {
+    // For now, we skip setting the config on errors (hopefully next heartbeat will work).
+    // We could enhance to fail rpc, if there are too many error, on a case by case error basis.
+    LOG(WARNING) << "Could not set master raft config : " << s.ToString();
+  } else if (cpb.has_config()) {
+    if (cpb.config().opid_index() > req->config_index()) {
+      *resp->mutable_master_config() = std::move(cpb.config());
+      LOG(INFO) << "Set config at index " << resp->master_config().opid_index() << " for ts uuid "
+                << req->common().ts_instance().permanent_uuid();
+    }
+  } // Do nothing if config not ready.
+
   shared_ptr<TSDescriptor> ts_desc;
   // If the TS is registering, register in the TS manager.
   if (req->has_registration()) {

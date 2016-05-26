@@ -107,8 +107,9 @@ class TabletServerTestBase : public YBTest {
     // Start server with an invalid master address, so it never successfully
     // heartbeats, even if there happens to be a master running on this machine.
     mini_server_.reset(new MiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0));
-    mini_server_->options()->master_addresses->clear();
-    mini_server_->options()->master_addresses->push_back(HostPort("255.255.255.255", 1));
+    auto addr = std::make_shared<vector<HostPort>>();
+    addr->push_back(HostPort("255.255.255.255", 1));
+    mini_server_->options()->SetMasterAddresses(addr);
     CHECK_OK(mini_server_->Start());
 
     // Set up a tablet inside the server.
@@ -346,8 +347,9 @@ class TabletServerTestBase : public YBTest {
 
     // Start server.
     mini_server_.reset(new MiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0));
-    mini_server_->options()->master_addresses->clear();
-    mini_server_->options()->master_addresses->push_back(HostPort("255.255.255.255", 1));
+    auto addr = std::make_shared<vector<HostPort>>();
+    addr->push_back(HostPort("255.255.255.255", 1));
+    mini_server_->options()->SetMasterAddresses(addr);
     // this should open the tablet created on StartTabletServer()
     RETURN_NOT_OK(mini_server_->Start());
     RETURN_NOT_OK(mini_server_->WaitStarted());

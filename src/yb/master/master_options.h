@@ -45,19 +45,9 @@ class MasterOptions : public server::ServerBaseOptions {
   bool IsShellMode() const { return is_shell_mode_.Load(); }
   void SetShellMode(bool mode) { is_shell_mode_.Store(mode); }
 
-  // This can crash the process if you pass in an invalid list of master addresses!
-  void SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses);
-
-  std::shared_ptr<std::vector<HostPort>> GetMasterAddresses() const { return master_addresses_; }
+  void ValidateMasterAddresses() const OVERRIDE;
 
  protected:
-  void ValidateMasterAddresses() const;
-
-  // List of peer masters. This will get recreated on a master config change. We should ensure that
-  // the vector elements are not individually updated. And the shared pointer will guarantee
-  // inconsistent in-transit views of the vector are never seen during/across config changes.
-  std::shared_ptr<std::vector<HostPort>> master_addresses_;
-
   // Set when its first setup of the cluster - master_addresses is non-empty and is_create is true.
   bool is_creating_;
 

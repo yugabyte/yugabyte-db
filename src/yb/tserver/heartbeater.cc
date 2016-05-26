@@ -97,6 +97,10 @@ class Heartbeater::Thread {
   Status Stop();
   void TriggerASAP();
 
+  void set_master_addresses(shared_ptr<vector<HostPort>> master_addresses) {
+    master_addressess_ = std::move(master_addresses);
+  }
+
  private:
   void RunThread();
   Status FindLeaderMaster(const MonoTime& deadline,
@@ -114,7 +118,7 @@ class Heartbeater::Thread {
   // We keep the HostPort around rather than a Sockaddr because the
   // masters may change IP addresses, and we'd like to re-resolve on
   // every new attempt at connecting.
-  std::shared_ptr<vector<HostPort>> master_addrs_;
+  std::shared_ptr<vector<HostPort>> master_addressess_;
 
   // Index of the master we last succesfully obtained the master
   // consensus configuration information from.
@@ -168,13 +172,16 @@ Heartbeater::~Heartbeater() {
 Status Heartbeater::Start() { return thread_->Start(); }
 Status Heartbeater::Stop() { return thread_->Stop(); }
 void Heartbeater::TriggerASAP() { thread_->TriggerASAP(); }
+void Heartbeater::set_master_addresses(std::shared_ptr<std::vector<HostPort>> master_addresses) {
+  thread_->set_master_addresses(master_addresses);
+}
 
 ////////////////////////////////////////////////////////////
 // Heartbeater::Thread
 ////////////////////////////////////////////////////////////
 
 Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
-  : master_addrs_(opts.master_addresses),
+  : master_addressess_(opts.GetMasterAddresses()),
     last_locate_master_idx_(0),
     server_(server),
     has_heartbeated_(false),
@@ -182,7 +189,7 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
     cond_(&mutex_),
     should_run_(false),
     heartbeat_asap_(false) {
-  CHECK(!master_addrs_->empty());
+  CHECK(!master_addressess_->empty());
 }
 
 namespace {
@@ -200,13 +207,13 @@ void LeaderMasterCallback(HostPort* dst_hostport,
 Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
                                              HostPort* leader_hostport) {
   Status s = Status::OK();
-  if (master_addrs_->size() == 1) {
+  if (master_addressess_->size() == 1) {
     // "Shortcut" the process when a single master is specified.
-    *leader_hostport = (*master_addrs_)[0];
+    *leader_hostport = (*master_addressess_)[0];
     return Status::OK();
   }
   vector<Sockaddr> master_sock_addrs;
-  for (const HostPort& master_addr : *master_addrs_) {
+  for (const HostPort& master_addr : *master_addressess_) {
     vector<Sockaddr> addrs;
     Status s = master_addr.ResolveAddresses(&addrs);
     if (!s.ok()) {
@@ -335,6 +342,8 @@ Status Heartbeater::Thread::DoHeartbeat() {
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(10));
 
+  req.set_config_index(server_->GetCurrentMasterIndex());
+
   VLOG(2) << "Sending heartbeat:\n" << req.DebugString();
   master::TSHeartbeatResponsePB resp;
   RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
@@ -353,6 +362,11 @@ Status Heartbeater::Thread::DoHeartbeat() {
   }
   last_hb_response_.Swap(&resp);
 
+  if (resp.has_master_config()) {
+    LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
+
+    server_->UpdateMasterAddresses(resp.master_config());
+  }
 
   // TODO: Handle TSHeartbeatResponsePB (e.g. deleted tablets and schema changes)
   server_->tablet_manager()->MarkTabletReportAcknowledged(req.tablet_report());
@@ -402,7 +416,7 @@ void Heartbeater::Thread::RunThread() {
       LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
                    << ": " << s.ToString();
       consecutive_failed_heartbeats_++;
-      if (master_addrs_->size() > 1) {
+      if (master_addressess_->size() > 1) {
         // If we encountered a network error (e.g., connection
         // refused) and there's more than one master available, try
         // determining the leader master again.

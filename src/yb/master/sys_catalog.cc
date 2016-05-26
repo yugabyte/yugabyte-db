@@ -405,7 +405,7 @@ void SysCatalogTable::SysCatalogStateChanged(
 
     Status s = master_->ResetMemoryState(context->change_record.new_config());
     if (!s.ok()) {
-      LOG(WARNING) << "Change Memory state failed " << s.message();
+      LOG(WARNING) << "Change Memory state failed " << s.ToString();
       DCHECK(false);
       return;
     }

@@ -253,6 +253,8 @@ message TSHeartbeatRequestPB {
   // The number of tablets that are BOOTSTRAPPING or RUNNING.
   // Used by the master to determine load when creating new tablet replicas.
   optional int32 num_live_tablets = 4;
+
+  optional int32 config_index = 5;
 }
 
 message TSHeartbeatResponsePB {
@@ -276,6 +278,9 @@ message TSHeartbeatResponsePB {
 
   // Specify whether or not the node is the leader master.
   optional bool leader_master = 6;
+
+  // Piggyback the current config as known to the master leader.
+  optional consensus.RaftConfigPB master_config = 7;
 }
 
 //////////////////////////////

@@ -17,15 +17,18 @@
 #ifndef YB_TSERVER_HEARTBEATER_H
 #define YB_TSERVER_HEARTBEATER_H
 
+#include <memory>
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 namespace tserver {
 
 class TabletServer;
-struct TabletServerOptions;
+class TabletServerOptions;
 
 // Component of the Tablet Server which is responsible for heartbeating to the
 // leader master.
@@ -40,6 +43,8 @@ class Heartbeater {
   // Trigger a heartbeat as soon as possible, even if the normal
   // heartbeat interval has not expired.
   void TriggerASAP();
+
+  void set_master_addresses(std::shared_ptr<std::vector<HostPort>> master_addresses);
 
   ~Heartbeater();
 

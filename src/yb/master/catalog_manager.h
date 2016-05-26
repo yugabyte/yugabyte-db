@@ -410,6 +410,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
 
+  // Set the current committed config.
   Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
 
   // Return OK if this CatalogManager is a leader in a consensus configuration and if
@@ -631,6 +632,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
+
+  // Can be used to create background_tasks_ field for this master.
+  // Used on normal master startup or when master comes out of the shell mode.
+  Status EnableBgTasks();
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it

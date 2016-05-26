@@ -172,6 +172,7 @@ using cfile::TypeEncodingInfo;
 using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
+using consensus::COMMITTED_OPID;
 using consensus::Consensus;
 using consensus::ConsensusMetadata;
 using consensus::ConsensusServiceProxy;
@@ -491,11 +492,7 @@ Status CatalogManager::Init(bool is_first_run) {
   if (!master_->opts().IsShellMode()) {
     RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
                           "Failed waiting for the catalog tablet to run");
-
-    boost::lock_guard<LockType> l(lock_);
-    background_tasks_.reset(new CatalogManagerBgTasks(this));
-    RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
-                          "Failed to initialize catalog manager background tasks");
+    RETURN_NOT_OK(EnableBgTasks());
   }
 
   {
@@ -1812,6 +1809,14 @@ Status CatalogManager::UpdateMastersListInMemoryAndDisk() {
   return Status::OK();
 }
 
+Status CatalogManager::EnableBgTasks() {
+  boost::lock_guard<LockType> l(lock_);
+  background_tasks_.reset(new CatalogManagerBgTasks(this));
+  RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
+                        "Failed to initialize catalog manager background tasks");
+  return Status::OK();
+}
+
 Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
   if (!master_->opts().IsShellMode()) {
     return Status::IllegalState("Cannot bootstrap a master which is not in shell mode.");
@@ -1898,6 +1903,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   master_->SetShellMode(false);
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
+
+  EnableBgTasks();
 
   {
     boost::lock_guard<rw_spinlock> lock(lock_);
@@ -3371,6 +3378,7 @@ Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const 
 
   Consensus* consensus = sys_catalog_->tablet_peer()->consensus();
   *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+
   return Status::OK();
 }
 

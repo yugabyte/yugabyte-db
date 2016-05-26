@@ -47,10 +47,11 @@ DEFINE_bool(create_cluster, false,
 MasterOptions::MasterOptions(
     std::shared_ptr<std::vector<HostPort>> master_addresses,
     bool is_creating)
-    : master_addresses_(std::move(master_addresses)),
-      is_creating_(is_creating),
+    : is_creating_(is_creating),
       is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
+
+  master_addresses_ = std::move(master_addresses);
 
   ValidateMasterAddresses();
 }
@@ -59,14 +60,14 @@ MasterOptions::MasterOptions()
     : is_creating_(FLAGS_create_cluster),
       is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
-
+  master_addresses_flag = FLAGS_master_addresses;
   master_addresses_ = std::make_shared<std::vector<HostPort>>();
   if (!FLAGS_master_addresses.empty()) {
     Status s = HostPort::ParseStrings(FLAGS_master_addresses, Master::kDefaultPort,
                                       master_addresses_);
     if (!s.ok()) {
       LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
-          << FLAGS_master_addresses << "'): " << s.ToString();
+                 << FLAGS_master_addresses << "'): " << s.ToString();
     }
   }
 
@@ -87,20 +88,12 @@ void MasterOptions::ValidateMasterAddresses() const {
   if (!master_addresses_->empty()) {
     if (master_addresses_->size() < 2) {
       LOG(FATAL) << "At least 2 masters are required for a distributed config, but "
-          "master addresses flag ('" << FLAGS_master_addresses << "') only specifies "
-          << master_addresses_->size() << " masters.";
-    }
-    if (master_addresses_->size() == 2) {
-      LOG(WARNING) << "Only 2 masters are specified by master_addresses__flag ('"
-          << FLAGS_master_addresses << "'), but minimum of 3 are required to tolerate failures"
-          " of any one master. It is recommended to use at least 3 masters.";
+                 << "master addresses flag " <<  FLAGS_master_addresses
+                 << " only specifies " << master_addresses_->size() << " masters.";
     }
   }
-}
 
-void MasterOptions::SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses) {
-  master_addresses_ = std::move(master_addresses);
-  ValidateMasterAddresses();
+  server::ServerBaseOptions::ValidateMasterAddresses();
 }
 
 } // namespace master
