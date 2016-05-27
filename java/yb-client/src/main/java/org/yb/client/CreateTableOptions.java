@@ -17,6 +17,8 @@
 package org.yb.client;
 
 import org.yb.Common;
+import org.yb.Common.TableType;
+
 import com.google.common.collect.Lists;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
@@ -120,6 +122,17 @@ public class CreateTableOptions {
    */
   public CreateTableOptions setNumReplicas(int numReplicas) {
     pb.setNumReplicas(numReplicas);
+    return this;
+  }
+
+  /**
+   * Set the table type.
+   *
+   * @param the table type to create
+   * @return this instance
+   */
+  public CreateTableOptions setTableType(TableType tableType) {
+    pb.setTableType(tableType);
     return this;
   }
 
