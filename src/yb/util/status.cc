@@ -45,7 +45,8 @@ std::string Status::CodeAsString() const {
   }
 
   const char* type;
-  switch (code()) {
+  const Code status_code = code();
+  switch (status_code) {
     case kOk:
       type = "OK";
       break;
@@ -103,6 +104,8 @@ std::string Status::CodeAsString() const {
     case kEndOfFile:
       type = "End of file";
       break;
+    default:
+      return "Incorrect status code " + std::to_string(status_code);
   }
   return std::string(type);
 }

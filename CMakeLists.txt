@@ -183,8 +183,9 @@ endif()
 # code built can run on many platforms. For example, support building on c4.xlarge in AWS (dev
 # servers) and running on c3.xlarge (flash-based cluster machines).
 set(CXX_GLOBAL_COMMON_FLAGS "-mno-avx2 -mno-bmi -mno-bmi2 -mno-abm -mno-fma -mno-movbe")
+
 if(APPLE)
-  # The above -mno-* flags will error out on OSX platforms.
+  # The above -mno-* flags will error out on Mac OS X platforms.
   set(CXX_GLOBAL_COMMON_FLAGS "")
 endif()
 

@@ -77,6 +77,7 @@
 #   Default: 0
 #     Controls whether test output needs to be compressed (gzipped).
 
+MAX_NUM_PARALLEL_TESTS=8
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
@@ -295,6 +296,13 @@ time $SOURCE_ROOT/build-support/enable_devtoolset.sh \
   "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $SOURCE_ROOT"
 log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
 
+# Cap the number of parallel tests to run at $MAX_NUM_PARALLEL_TESTS
+if [ "$NUM_PROCS" -gt "$MAX_NUM_PARALLEL_TESTS" ]; then
+  NUM_PARALLEL_TESTS=$MAX_NUM_PARALLEL_TESTS
+else
+  NUM_PARALLEL_TESTS=$NUM_PROCS
+fi
+
 if [ "$BUILD_CPP" == "1" ]; then
   echo
   echo Building C++ code.
@@ -335,7 +343,7 @@ if [ "$BUILD_CPP" == "1" ]; then
   set +e
   time (
     set -x
-    time $THIRDPARTY_BIN/ctest -j$NUM_PROCS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
+    time $THIRDPARTY_BIN/ctest -j$NUM_PARALLEL_TESTS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
       tee "$CTEST_OUTPUT_PATH"
   )
   if [ $? -ne 0 ]; then

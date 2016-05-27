@@ -229,6 +229,7 @@ Status ServerBase::GetRegistration(ServerRegistrationPB* reg) const {
   reg->set_placement_cloud(options_.placement_cloud);
   reg->set_placement_region(options_.placement_region);
   reg->set_placement_zone(options_.placement_zone);
+  return Status::OK();
 }
 
 Status ServerBase::DumpServerInfo(const string& path,
