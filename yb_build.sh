@@ -125,6 +125,9 @@ if $clean_thirdparty; then
   )
 fi
 
+# Add the installed/bin directory to PATH so that we run the cmake binary from there.
+export PATH="$thirdparty_dir/installed/bin:$PATH"
+
 if $force_run_cmake || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
     echo "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
