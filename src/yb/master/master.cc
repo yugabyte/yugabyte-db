@@ -49,9 +49,9 @@
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_int32(master_registration_rpc_timeout_ms, 1500,
+DEFINE_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
-TAG_FLAG(master_registration_rpc_timeout_ms, experimental);
+TAG_FLAG(master_rpc_timeout_ms, experimental);
 
 METRIC_DEFINE_entity(cluster);
 
@@ -229,7 +229,7 @@ Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;
   rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_registration_rpc_timeout_ms));
+  controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms));
   RETURN_NOT_OK(proxy.GetMasterRegistration(req, &resp, &controller));
   e->mutable_instance_id()->CopyFrom(resp.instance_id());
   if (resp.has_error()) {
@@ -304,6 +304,29 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     masters->push_back(peer_entry);
   }
 
+  return Status::OK();
+}
+
+Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
+  HostPort hp(hp_pb.host(), hp_pb.port());
+  Sockaddr master_addr;
+  RETURN_NOT_OK(SockaddrFromHostPort(hp, &master_addr));
+  MasterServiceProxy proxy(messenger_, master_addr);
+  RemovedMasterUpdateRequestPB req;
+  RemovedMasterUpdateResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms));
+  proxy.RemovedMasterUpdate(req, &resp, &controller);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
+Status Master::GoIntoShellMode() {
+  maintenance_manager_->Shutdown();
+  RETURN_NOT_OK(catalog_manager()->GoIntoShellMode());
   return Status::OK();
 }
 

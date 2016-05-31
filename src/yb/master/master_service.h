@@ -98,6 +98,10 @@ class MasterServiceImpl : public MasterServiceIf {
       const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
       rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
+                                   RemovedMasterUpdateResponsePB* resp,
+                                   rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   Master* server_;
 

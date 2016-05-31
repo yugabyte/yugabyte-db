@@ -105,6 +105,8 @@ class Master : public server::ServerBase {
   // masters from the Raft config
   Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
+  Status InformRemovedMaster(const HostPortPB& hp_pb);
+
   bool IsShutdown() const {
     return state_ == kStopped;
   }
@@ -121,6 +123,10 @@ class Master : public server::ServerBase {
   bool IsShellMode() const { return opts_.IsShellMode(); }
 
   void SetShellMode(bool mode) { opts_.SetShellMode(mode); }
+
+  // Not a full shutdown, but makes this master go into a dormant mode (state_ is still kRunning).
+  // Called currently by cluster master leader which is removing this master from the quorum.
+  Status GoIntoShellMode();
 
  private:
   friend class MasterTest;

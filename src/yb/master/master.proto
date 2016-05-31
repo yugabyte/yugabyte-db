@@ -592,6 +592,14 @@ message ChangeLoadBalancerStateResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// Update an ex-peer about its removal from the cluster.
+message RemovedMasterUpdateRequestPB {
+}
+
+message RemovedMasterUpdateResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   rpc Ping(PingRequestPB) returns (PingResponsePB);
 
@@ -625,4 +633,6 @@ service MasterService {
 
   rpc ChangeLoadBalancerState(ChangeLoadBalancerStateRequestPB)
       returns (ChangeLoadBalancerStateResponsePB);
+
+  rpc RemovedMasterUpdate(RemovedMasterUpdateRequestPB) returns (RemovedMasterUpdateResponsePB);
 }

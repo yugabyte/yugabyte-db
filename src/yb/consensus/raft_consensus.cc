@@ -1470,7 +1470,8 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
     auto context =
       std::make_shared<StateChangeContext>(StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE,
-                                           *cc_req);
+                                           *cc_req,
+                                           (type == REMOVE_SERVER) ? server_uuid : "");
 
     RETURN_NOT_OK(ReplicateConfigChangeUnlocked(
       make_scoped_refptr(new RefCountedReplicate(cc_replicate)),

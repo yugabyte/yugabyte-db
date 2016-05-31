@@ -328,9 +328,12 @@ struct StateChangeContext {
         new_leader_uuid(uuid) {
   }
 
-  StateChangeContext(StateChangeReason in_reason, ChangeConfigRecordPB change_rec)
+  StateChangeContext(StateChangeReason in_reason,
+                     ChangeConfigRecordPB change_rec,
+                     string remove = "")
       : reason(in_reason),
-        change_record(change_rec) {
+        change_record(change_rec),
+        remove_uuid(remove) {
   }
 
   bool is_config_locked() const {
@@ -363,10 +366,14 @@ struct StateChangeContext {
 
   // Auxiliary info for some of the reasons above.
   // Value is filled when the change reason is NEW_LEADER_ELECTED.
-  const std::string new_leader_uuid;
+  const string new_leader_uuid;
 
   // Value is filled when the change reason is LEADER/FOLLOWER_CONFIG_CHANGE_COMPLETE.
   const ChangeConfigRecordPB change_record;
+
+  // Value is filled when the change reason is LEADER_CONFIG_CHANGE_COMPLETE
+  // and it is a REMOVE_SERVER, then that server's uuid is saved here by the master leader.
+  const string remove_uuid;
 
   // If this is true, the call-stack above has taken the lock for the raft consensus state. Needed
   // in SysCatalogStateChanged for master to not re-get the lock. Not used for tserver callback.

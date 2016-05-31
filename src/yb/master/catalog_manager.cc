@@ -3495,6 +3495,25 @@ void CatalogManager::SetLoadBalancerEnabled(bool is_enabled) {
   load_balance_policy_->SetLoadBalancerEnabled(is_enabled);
 }
 
+Status CatalogManager::GoIntoShellMode() {
+  if (master_->opts().IsShellMode()) {
+    return Status::IllegalState("Master is already in shell mode.");
+  }
+
+  {
+    boost::lock_guard<LockType> l(lock_);
+    RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
+    background_tasks_->Shutdown();
+    background_tasks_.reset();
+  }
+
+  master_->SetShellMode(true);
+
+  LOG(INFO) << "Going into shell mode completed.";
+
+  return Status::OK();
+}
+
 ////////////////////////////////////////////////////////////
 // TabletInfo
 ////////////////////////////////////////////////////////////

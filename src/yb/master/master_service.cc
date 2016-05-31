@@ -414,7 +414,7 @@ void MasterServiceImpl::DumpState(
     if (!s.ok())
       return;
 
-    LOG(INFO) << "Sending dump command to " << masters_raft.size()-1 << " peers." << std::endl;
+    LOG(INFO) << "Sending dump command to " << masters_raft.size()-1 << " peers.";
 
     // Remove our entry before broadcasting to all peers
     std::vector<RaftPeerPB>::iterator it;
@@ -437,7 +437,18 @@ void MasterServiceImpl::DumpState(
     CheckRespErrorOrSetUnknown(s, resp);
   }
 
-  LOG(INFO) << std::endl;
+  rpc->RespondSuccess();
+}
+
+void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
+                                            RemovedMasterUpdateResponsePB* resp,
+                                            rpc::RpcContext* rpc) {
+  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+    return;
+  }
+
+  Status s = server_->GoIntoShellMode();
+  CheckRespErrorOrSetUnknown(s, resp);
 
   rpc->RespondSuccess();
 }

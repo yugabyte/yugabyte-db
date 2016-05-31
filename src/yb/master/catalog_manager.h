@@ -424,6 +424,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   Status PeerStateDump(vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
 
+  // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
+  // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
+  // nor consensus.
+  Status GoIntoShellMode();
+
  private:
   friend class TableLoader;
   friend class TabletLoader;
@@ -706,7 +711,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Use the Raft config that has been bootstrapped to update the in-memory state of master options
   // and also the on-disk state of the consensus meta object.
   Status UpdateMastersListInMemoryAndDisk();
-
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

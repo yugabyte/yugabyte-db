@@ -41,6 +41,7 @@
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/threadpool.h"
@@ -61,6 +62,11 @@ using strings::Substitute;
 using yb::consensus::StateChangeContext;
 using yb::consensus::ChangeConfigRequestPB;
 using yb::consensus::ChangeConfigRecordPB;
+
+DEFINE_bool(notify_peer_of_removal_from_cluster, true,
+            "Notify a peer after it has been removed from the cluster.");
+TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
+TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
 namespace yb {
 namespace master {
@@ -342,10 +348,37 @@ void SysCatalogTable::SysCatalogStateChanged(
       DCHECK(false);
       return;
     }
+
+    // Try to make the removed master, go back to shell mode so as not to ping this cluster.
+    // This is best effort and should not perform any fatals or checks.
+    if (FLAGS_notify_peer_of_removal_from_cluster &&
+        context->reason == StateChangeContext::LEADER_CONFIG_CHANGE_COMPLETE &&
+        context->remove_uuid != "") {
+      RaftPeerPB peer;
+      LOG(INFO) << "Asking " << context->remove_uuid << " to go into shell mode";
+      WARN_NOT_OK(GetRaftConfigMember(context->change_record.old_config(),
+                                      context->remove_uuid,
+                                      &peer),
+                  Substitute("Could not find uuid=$0 in config.", context->remove_uuid));
+      WARN_NOT_OK(apply_pool_->SubmitFunc(boost::bind(&Master::InformRemovedMaster,
+                                                      master_,
+                                                      peer.last_known_addr())),
+                  Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
+    }
   } else {
     VLOG(2) << "Reason '" << context->ToString() << "' provided in state change context, "
             << "no action needed.";
   }
+}
+
+Status SysCatalogTable::GoIntoShellMode() {
+  CHECK(tablet_peer_);
+  Shutdown();
+
+  tablet_peer_.reset();
+  apply_pool_.reset();
+
+  return Status::OK();
 }
 
 void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata>& metadata) {

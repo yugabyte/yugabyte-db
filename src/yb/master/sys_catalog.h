@@ -196,6 +196,9 @@ class SysCatalogTable {
                         RowOperationsPB* ops) const;
   Status VisitTabletFromRow(const RowBlockRow& row, TabletVisitor* visitor);
 
+  // Shutdown the tablet peer and apply pool which are not needed in shell mode for this master.
+  Status GoIntoShellMode();
+
   // Initializes the RaftPeerPB for the local peer.
   // Crashes due to an invariant check if the rpc server is not running.
   void InitLocalRaftPeerPB();
