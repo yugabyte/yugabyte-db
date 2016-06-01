@@ -22,6 +22,7 @@
 
 #include "yb/client/client.h"
 #include "yb/common/common.pb.h"
+#include "yb/master/master.pb.h"
 
 namespace yb {
 
@@ -45,6 +46,8 @@ class YBTableCreator::Data {
   PartitionSchemaPB partition_schema_;
 
   int num_replicas_;
+
+  std::vector<master::PlacementInfoPB> placement_info_;
 
   MonoDelta timeout_;
 

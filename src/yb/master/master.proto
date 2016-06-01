@@ -86,6 +86,17 @@ message TableIdentifierPB {
   optional string table_name = 2;
 }
 
+// For creating tables and keeping track of them in SysTablesEntryPB, we record
+// the cloud, region and zone information, as well as the minimum number of
+// replicas for each of those conditions.
+message PlacementInfoPB {
+  // The cloud, region and zone information for this placement block.
+  optional CloudInfoPB cloud_info = 1;
+
+  // The minimum number of replicas that should always be up in this placement.
+  optional int32 min_num_replicas = 2;
+}
+
 ////////////////////////////////////////////////////////////
 // Sys Tables Metadata
 ////////////////////////////////////////////////////////////
@@ -163,6 +174,8 @@ message SysTablesEntryPB {
   // Debug state for the table.
   optional State state = 6 [ default = UNKNOWN ];
   optional bytes state_msg = 7;
+
+  repeated PlacementInfoPB placement_info = 11;
 }
 
 ////////////////////////////////////////////////////////////
@@ -350,6 +363,7 @@ message CreateTableRequestPB {
   optional PartitionSchemaPB partition_schema = 7;
   optional int32 num_replicas = 4;
   optional TableType table_type = 8 [ default = DEFAULT_TABLE_TYPE ];
+  repeated PlacementInfoPB placement_info = 9;
 }
 
 message CreateTableResponsePB {

@@ -84,6 +84,11 @@ class TSDescriptor {
   // A safe copy is returned because the internal Registration object
   // may be mutated at any point if the tablet server re-registers.
   void GetRegistration(TSRegistrationPB* reg) const;
+
+  // Helper function to tell if this TS matches the cloud information provided. For now, we have
+  // no wildcard functionality, so it will have to explicitly match each individual component.
+  // Later, this might be extended to say if this TS is part of some wildcard expression for cloud
+  // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;

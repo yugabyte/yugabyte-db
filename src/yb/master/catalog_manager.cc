@@ -831,6 +831,28 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return s;
   }
 
+  // Verify that placement requests are reasonable and we can satisfy the minimums.
+  if (req.placement_info_size() > 0) {
+    int minimum_sum = 0;
+    for (const auto& pi : req.placement_info()) {
+      minimum_sum += pi.min_num_replicas();
+      if (!pi.has_cloud_info()) {
+        s = Status::InvalidArgument(
+            Substitute("Got placement info without cloud info set: $0", pi.ShortDebugString()));
+        SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+        return s;
+      }
+    }
+
+    if (minimum_sum > req.num_replicas()) {
+      s = Status::InvalidArgument(Substitute(
+          "Sum of required minimum replicas per placement ($0) is greater than num_replicas ($1)",
+          minimum_sum, req.num_replicas()));
+      SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+      return s;
+    }
+  }
+
   scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
   {
@@ -939,7 +961,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   TRACE("Verify if the table creation is in progress for $0", table->ToString());
   resp->set_done(!table->IsCreateInProgress());
 
-  return Status::OK();
+  // 3. Set any current errors, if we are experiencing issues creating the table. This will be
+  // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
+  // MasterErrorPB::UNKNOWN_ERROR.
+  return table->GetCreateTableErrorStatus();
 }
 
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
@@ -955,6 +980,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   metadata->set_num_replicas(req.num_replicas());
+  *metadata->mutable_placement_info() = req.placement_info();
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   CHECK_OK(SchemaToPB(schema, metadata->mutable_schema()));
@@ -3031,6 +3057,7 @@ Status CatalogManager::ProcessPendingAssignments(
       s = s.CloneAndPrepend(Substitute(
           "An error occured while selecting replicas for tablet $0: $1",
           tablet->tablet_id(), s.ToString()));
+      tablet->table()->SetCreateTableErrorStatus(s);
       break;
     }
   }
@@ -3112,7 +3139,78 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
     config->set_local(false);
   }
   config->set_opid_index(consensus::kInvalidOpIdIndex);
-  SelectReplicas(ts_descs, nreplicas, config);
+
+  // Keep track of servers we've already selected, so that we don't attempt to
+  // put two replicas on the same host.
+  set<shared_ptr<TSDescriptor>> already_selected_ts;
+  if (table_guard.data().pb.placement_info_size() == 0) {
+    // If we don't have placement info, just place the replicas as before, distributed across the
+    // whole cluster.
+    SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts);
+  } else {
+    // TODO(bogdan): move to separate function
+    //
+    // If we do have placement info, we'll try to use the same power of two algorithm, but also
+    // match the requested policies. We'll assign the minimum requested replicas in each combination
+    // of cloud.region.zone and then if we still have leftover replicas, we'll assign those
+    // in any of the allowed areas.
+    unordered_map<string, vector<shared_ptr<TSDescriptor>>> allowed_ts_by_pi;
+    vector<shared_ptr<TSDescriptor>> all_allowed_ts;
+
+    // Keep map from ID to PlacementInfoPB, as protos only have repeated, not maps.
+    unordered_map<string, PlacementInfoPB> pi_by_id;
+    for (const auto& pi : table_guard.data().pb.placement_info()) {
+      const auto& cloud_info = pi.cloud_info();
+      string placement_id = Substitute(
+          "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
+          cloud_info.placement_zone());
+      pi_by_id[placement_id] = pi;
+    }
+
+    // Build the sets of allowed TSs.
+    for (const auto& ts : ts_descs) {
+      bool added_to_all = false;
+      for (const auto& pi_entry : pi_by_id) {
+        if (ts->MatchesCloudInfo(pi_entry.second.cloud_info())) {
+          allowed_ts_by_pi[pi_entry.first].push_back(ts);
+
+          if (!added_to_all) {
+            added_to_all = true;
+            all_allowed_ts.push_back(ts);
+          }
+        }
+      }
+    }
+
+    // Fail early if we don't have enough tablet servers in the areas requested.
+    if (all_allowed_ts.size() < nreplicas) {
+      return Status::InvalidArgument(Substitute(
+          "Not enough tablet servers in the requested placements. Need at least $0, have $1",
+          nreplicas, all_allowed_ts.size()));
+    }
+
+    // Loop through placements and assign to respective available TSs.
+    for (const auto& entry : allowed_ts_by_pi) {
+      const auto& available_ts_descs = entry.second;
+      const auto& num_replicas = pi_by_id[entry.first].min_num_replicas();
+      if (available_ts_descs.size() < num_replicas) {
+        return Status::InvalidArgument(Substitute(
+            "Not enough tablet servers in $0. Need at least $1 but only have $2.", entry.first,
+            num_replicas, available_ts_descs.size()));
+      }
+      SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts);
+    }
+
+    int replicas_left = nreplicas - already_selected_ts.size();
+    DCHECK(replicas_left >= 0);
+    if (replicas_left > 0) {
+      // No need to do an extra check here, as we checked early if we have enough to cover all
+      // requested placements and checked individually per placement info, if we could cover the
+      // minimums.
+      SelectReplicas(all_allowed_ts, replicas_left, config, &already_selected_ts);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -3209,18 +3307,21 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
   return two_choices[0];
 }
 
-void CatalogManager::SelectReplicas(const TSDescriptorVector& ts_descs,
-                                    int nreplicas,
-                                    consensus::RaftConfigPB *config) {
+void CatalogManager::SelectReplicas(
+    const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
+    set<shared_ptr<TSDescriptor>>* already_selected_ts) {
   DCHECK_EQ(0, config->peers_size()) << "RaftConfig not empty: " << config->ShortDebugString();
   DCHECK_LE(nreplicas, ts_descs.size());
 
-  // Keep track of servers we've already selected, so that we don't attempt to
-  // put two replicas on the same host.
-  set<shared_ptr<TSDescriptor> > already_selected;
   for (int i = 0; i < nreplicas; ++i) {
-    shared_ptr<TSDescriptor> ts = SelectReplica(ts_descs, already_selected);
-    InsertOrDie(&already_selected, ts);
+    // We have to derefence already_selected_ts here, as the inner mechanics uses ReservoirSample,
+    // which in turn accepts only a reference to the set, not a pointer. Alternatively, we could
+    // have passed it in as a non-const reference, but that goes against our argument passing
+    // convention.
+    //
+    // TODO(bogdan): see if we indeed want to switch back to non-const reference.
+    shared_ptr<TSDescriptor> ts = SelectReplica(ts_descs, *already_selected_ts);
+    InsertOrDie(already_selected_ts, ts);
 
     // Increment the number of pending replicas so that we take this selection into
     // account when assigning replicas for other tablets of the same table. This
@@ -3677,6 +3778,16 @@ bool TableInfo::IsCreateInProgress() const {
     }
   }
   return false;
+}
+
+void TableInfo::SetCreateTableErrorStatus(const Status& status) {
+  boost::lock_guard<simple_spinlock> l(lock_);
+  create_table_error_ = status;
+}
+
+Status TableInfo::GetCreateTableErrorStatus() const {
+  boost::lock_guard<simple_spinlock> l(lock_);
+  return create_table_error_;
 }
 
 void TableInfo::AddTask(MonitoredTask* task) {

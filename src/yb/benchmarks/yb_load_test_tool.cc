@@ -10,9 +10,12 @@
 
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
+#include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -20,7 +23,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadpool.h"
-#include "yb/common/common.pb.h"
 
 #include "yb/integration-tests/load_generator.h"
 
@@ -71,6 +73,10 @@ DEFINE_int32(retries_on_empty_read,
              "We can retry up to this many times if we get an empty set of rows on a read "
              "operation");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
+
 using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
@@ -98,6 +104,7 @@ using yb::load_generator::MultiThreadedWriter;
 using yb::load_generator::SingleThreadedScanner;
 using yb::load_generator::FormatHexForLoadTestKey;
 
+using yb::master::PlacementInfoPB;
 // ------------------------------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
@@ -175,14 +182,23 @@ int main(int argc, char* argv[]) {
       }
 
       LOG(INFO) << "Creating table";
+      PlacementInfoPB pi;
+      pi.mutable_cloud_info()->set_placement_cloud(FLAGS_placement_cloud);
+      pi.mutable_cloud_info()->set_placement_region(FLAGS_placement_region);
+      pi.mutable_cloud_info()->set_placement_zone(FLAGS_placement_zone);
+      pi.set_min_num_replicas(FLAGS_num_replicas);
+
       gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
-      Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
-        .split_rows(splits)
-        .num_replicas(FLAGS_num_replicas)
-        .table_type(
-            FLAGS_use_kv_table ? YBTableType::KEY_VALUE_TABLE_TYPE :
-                                 YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
-        .Create();
+      Status table_creation_status =
+          table_creator->table_name(table_name)
+              .schema(&schema)
+              .split_rows(splits)
+              .num_replicas(FLAGS_num_replicas)
+              .table_type(
+                  FLAGS_use_kv_table ? YBTableType::KEY_VALUE_TABLE_TYPE
+                                     : YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
+              .add_placement_info(pi)
+              .Create();
       if (!table_creation_status.ok()) {
         LOG(INFO) << "Table creation status message: " <<
         table_creation_status.message().ToString();

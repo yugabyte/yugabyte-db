@@ -46,6 +46,11 @@ namespace yb {
 class LinkedListTester;
 class PartitionSchema;
 class Sockaddr;
+
+namespace master {
+class PlacementInfoPB;
+}
+
 namespace client {
 
 class YBLoggingCallback;
@@ -394,6 +399,8 @@ class YB_EXPORT YBTableCreator {
   //
   // If not provided, defaults to true.
   YBTableCreator& wait(bool wait);
+
+  YBTableCreator& add_placement_info(const master::PlacementInfoPB& pi);
 
   // Creates the table.
   //

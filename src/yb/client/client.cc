@@ -75,6 +75,7 @@ using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterServiceProxy;
+using yb::master::PlacementInfoPB;
 using yb::master::TabletLocationsPB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
@@ -588,6 +589,11 @@ YBTableCreator& YBTableCreator::num_replicas(int num_replicas) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::add_placement_info(const PlacementInfoPB& pi) {
+  data_->placement_info_.push_back(pi);
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::timeout(const MonoDelta& timeout) {
   data_->timeout_ = timeout;
   return *this;
@@ -628,6 +634,12 @@ Status YBTableCreator::Create() {
     deadline.AddDelta(data_->timeout_);
   } else {
     deadline.AddDelta(data_->client_->default_admin_operation_timeout());
+  }
+
+  if (!data_->placement_info_.empty()) {
+    for (const auto& pi : data_->placement_info_) {
+      *req.add_placement_info() = std::move(pi);
+    }
   }
 
   RETURN_NOT_OK_PREPEND(data_->client_->data_->CreateTable(data_->client_,

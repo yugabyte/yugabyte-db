@@ -242,6 +242,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo> {
   // Returns true if an "Alter" operation is in-progress
   bool IsAlterInProgress(uint32_t version) const;
 
+  // Set the Status related to errors on CreateTable.
+  void SetCreateTableErrorStatus(const Status& status);
+
+  // Get the Status of the last error from the current CreateTable.
+  Status GetCreateTableErrorStatus() const;
+
   void AddTask(MonitoredTask *task);
   void RemoveTask(MonitoredTask *task);
   void AbortTasks();
@@ -270,6 +276,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo> {
 
   // List of pending tasks (e.g. create/alter tablet requests)
   std::unordered_set<MonitoredTask*> pending_tasks_;
+
+  // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
+  // object, or if the CreateTable was successful.
+  Status create_table_error_;
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -550,13 +560,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // This method is called by "ProcessPendingAssignments()".
   Status SelectReplicasForTablet(const TSDescriptorVector& ts_descs, TabletInfo* tablet);
 
-  // Select N Replicas from the online tablet servers
-  // and populate the consensus configuration object.
+  // Select N Replicas from the online tablet servers that have been chosen to respect the
+  // placement information provided. Populate the consensus configuration object with choices and
+  // also update the set of selected tablet servers, to not place several replicas on the same TS.
   //
   // This method is called by "SelectReplicasForTablet".
-  void SelectReplicas(const TSDescriptorVector& ts_descs,
-                      int nreplicas,
-                      consensus::RaftConfigPB *config);
+  void SelectReplicas(
+      const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
+      std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts);
 
   void HandleAssignPreparingTablet(TabletInfo* tablet,
                                    DeferredAssignmentActions* deferred);

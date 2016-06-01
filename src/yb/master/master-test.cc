@@ -39,6 +39,7 @@
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
+using std::make_shared;
 using std::shared_ptr;
 using std::string;
 
@@ -51,6 +52,10 @@ class MasterTest : public YBTest {
  protected:
   virtual void SetUp() OVERRIDE {
     YBTest::SetUp();
+
+    // Set an RPC timeout for the controllers.
+    controller_ = make_shared<RpcController>();
+    controller_->set_timeout(MonoDelta::FromSeconds(10));
 
     // In this test, we create tables to test catalog manager behavior,
     // but we have no tablet servers. Typically this would be disallowed.
@@ -80,19 +85,25 @@ class MasterTest : public YBTest {
   Status CreateTable(const string& table_name,
                      const Schema& schema,
                      const vector<YBPartialRow>& split_rows);
+  Status CreateTable(const string& table_name, const Schema& schema, CreateTableRequestPB* request);
+
+  RpcController* ResetAndGetController() {
+    controller_->Reset();
+    return controller_.get();
+  }
 
   shared_ptr<Messenger> client_messenger_;
   gscoped_ptr<MiniMaster> mini_master_;
   Master* master_;
   gscoped_ptr<MasterServiceProxy> proxy_;
+  shared_ptr<RpcController> controller_;
 };
 
 TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
   PingRequestPB req;
   PingResponsePB resp;
-  RpcController controller;
-  ASSERT_OK(proxy_->Ping(req, &resp, &controller));
+  ASSERT_OK(proxy_->Ping(req, &resp, ResetAndGetController()));
 }
 
 static void MakeHostPortPB(const string& host, uint32_t port, HostPortPB* pb) {
@@ -117,11 +128,10 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   // Try a heartbeat. The server hasn't heard of us, so should ask us
   // to re-register.
   {
-    RpcController rpc;
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, &rpc));
+    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_TRUE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
@@ -142,10 +152,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
-    RpcController rpc;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, &rpc));
+    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
@@ -167,10 +176,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
-    RpcController rpc;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, &rpc));
+    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
@@ -180,12 +188,11 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
-    RpcController rpc;
     req.mutable_common()->CopyFrom(common);
     TabletReportPB* tr = req.mutable_tablet_report();
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);
-    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, &rpc));
+    ASSERT_OK(proxy_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_FALSE(resp.needs_full_tablet_report());
@@ -202,8 +209,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   {
     ListTabletServersRequestPB req;
     ListTabletServersResponsePB resp;
-    RpcController rpc;
-    ASSERT_OK(proxy_->ListTabletServers(req, &resp, &rpc));
+    ASSERT_OK(proxy_->ListTabletServers(req, &resp, ResetAndGetController()));
     LOG(INFO) << resp.DebugString();
     ASSERT_EQ(1, resp.servers_size());
     ASSERT_EQ("my-ts-uuid", resp.servers(0).instance_id().permanent_uuid());
@@ -227,17 +233,22 @@ Status MasterTest::CreateTable(const string& table_name,
                                const vector<YBPartialRow>& split_rows) {
 
   CreateTableRequestPB req;
-  CreateTableResponsePB resp;
-  RpcController controller;
-
-  req.set_name(table_name);
-  RETURN_NOT_OK(SchemaToPB(schema, req.mutable_schema()));
   RowOperationsPBEncoder encoder(req.mutable_split_rows());
   for (const YBPartialRow& row : split_rows) {
     encoder.Add(RowOperationsPB::SPLIT_ROW, row);
   }
+  return CreateTable(table_name, schema, &req);
+}
+Status MasterTest::CreateTable(
+    const string& table_name, const Schema& schema, CreateTableRequestPB* request) {
+  CreateTableResponsePB resp;
 
-  RETURN_NOT_OK(proxy_->CreateTable(req, &resp, &controller));
+  request->set_name(table_name);
+  RETURN_NOT_OK(SchemaToPB(schema, request->mutable_schema()));
+
+  // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
+  // though, as that helps with readability and standardization.
+  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
@@ -245,8 +256,7 @@ Status MasterTest::CreateTable(const string& table_name,
 }
 
 void MasterTest::DoListTables(const ListTablesRequestPB& req, ListTablesResponsePB* resp) {
-  RpcController controller;
-  ASSERT_OK(proxy_->ListTables(req, resp, &controller));
+  ASSERT_OK(proxy_->ListTables(req, resp, ResetAndGetController()));
   SCOPED_TRACE(resp->DebugString());
   ASSERT_FALSE(resp->has_error());
 }
@@ -275,9 +285,8 @@ TEST_F(MasterTest, TestCatalog) {
   {
     DeleteTableRequestPB req;
     DeleteTableResponsePB resp;
-    RpcController controller;
     req.mutable_table()->set_table_name(kTableName);
-    ASSERT_OK(proxy_->DeleteTable(req, &resp, &controller));
+    ASSERT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
@@ -412,7 +421,6 @@ TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
 TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
-  RpcController controller;
 
   req.set_name("table");
   for (int i = 0; i < 2; i++) {
@@ -422,7 +430,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
     col->set_is_key(true);
   }
 
-  ASSERT_OK(proxy_->CreateTable(req, &resp, &controller));
+  ASSERT_OK(proxy_->CreateTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ("code: INVALID_ARGUMENT message: \"Duplicate column name: col\"",
@@ -438,17 +446,61 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
   {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
-    RpcController controller;
     req.mutable_table()->set_table_name(kTableName);
     // Set the "start" key greater than the "end" key.
     req.set_partition_key_start("zzzz");
     req.set_partition_key_end("aaaa");
-    ASSERT_OK(proxy_->GetTableLocations(req, &resp, &controller));
+    ASSERT_OK(proxy_->GetTableLocations(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ("code: INVALID_ARGUMENT message: "
               "\"start partition key is greater than the end partition key\"",
               resp.error().status().ShortDebugString());
+  }
+}
+
+TEST_F(MasterTest, TestInvalidPlacementInfo) {
+  const string kTableName = "test";
+  Schema schema({ColumnSchema("key", INT32)}, 1);
+  CreateTableRequestPB req;
+  req.set_num_replicas(5);
+  auto* pi = req.add_placement_info();
+
+  // Fail due to not cloud_info.
+  Status s = CreateTable(kTableName, schema, &req);
+  ASSERT_TRUE(s.IsInvalidArgument());
+
+  auto* cloud_info = pi->mutable_cloud_info();
+  pi->set_min_num_replicas(req.num_replicas() + 1);
+
+  // Fail due to min_num_replicas being more than num_replicas.
+  s = CreateTable(kTableName, schema, &req);
+  ASSERT_TRUE(s.IsInvalidArgument());
+
+  // Succeed the CreateTable call, but expect to have errors on call.
+  pi->set_min_num_replicas(req.num_replicas());
+  cloud_info->set_placement_cloud("fail");
+  ASSERT_OK(CreateTable(kTableName, schema, &req));
+
+  IsCreateTableDoneRequestPB is_create_req;
+  IsCreateTableDoneResponsePB is_create_resp;
+
+  is_create_req.mutable_table()->set_table_name(kTableName);
+
+  // TODO(bogdan): once there are mechanics to cancel a create table, or for it to be cancelled
+  // automatically by the master, refactor this retry loop to an explicit wait and check the error.
+  int num_retries = 10;
+  while (num_retries > 0) {
+    s = proxy_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
+    LOG(INFO) << s.ToString();
+    // The RPC layer will respond OK, but the internal fields will be set to error.
+    ASSERT_TRUE(s.ok());
+    ASSERT_TRUE(is_create_resp.has_done());
+    ASSERT_FALSE(is_create_resp.done());
+    ASSERT_TRUE(is_create_resp.has_error());
+    ASSERT_TRUE(is_create_resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+
+    --num_retries;
   }
 }
 
