@@ -79,14 +79,18 @@ message NodeInstancePB {
   required int64 instance_seqno = 2;
 }
 
+message CloudInfoPB {
+  optional string placement_cloud = 1;
+  optional string placement_region = 2;
+  optional string placement_zone = 3;
+}
+
 // RPC and HTTP addresses for each server, as well as cloud related information.
 message ServerRegistrationPB {
   repeated HostPortPB rpc_addresses = 1;
   repeated HostPortPB http_addresses = 2;
 
-  optional string placement_cloud = 3;
-  optional string placement_region = 4;
-  optional string placement_zone = 5;
+  optional CloudInfoPB cloud_info = 3;
 }
 
 message ServerEntryPB {

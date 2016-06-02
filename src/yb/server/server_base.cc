@@ -226,9 +226,9 @@ Status ServerBase::GetRegistration(ServerRegistrationPB* reg) const {
       AddHostPortPBs(addrs, reg->mutable_http_addresses()),
       "Failed to add HTTP addresses to registration");
 
-  reg->set_placement_cloud(options_.placement_cloud);
-  reg->set_placement_region(options_.placement_region);
-  reg->set_placement_zone(options_.placement_zone);
+  reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud);
+  reg->mutable_cloud_info()->set_placement_region(options_.placement_region);
+  reg->mutable_cloud_info()->set_placement_zone(options_.placement_zone);
   return Status::OK();
 }
 

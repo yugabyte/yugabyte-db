@@ -146,6 +146,15 @@ void TSDescriptor::GetRegistration(TSRegistrationPB* reg) const {
   CHECK_NOTNULL(reg)->CopyFrom(*registration_);
 }
 
+bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
+  boost::lock_guard<simple_spinlock> l(lock_);
+  const auto& ci = registration_->common().cloud_info();
+
+  return cloud_info.placement_cloud() == ci.placement_cloud() &&
+         cloud_info.placement_region() == ci.placement_region() &&
+         cloud_info.placement_zone() == ci.placement_zone();
+}
+
 void TSDescriptor::GetNodeInstancePB(NodeInstancePB* instance_pb) const {
   boost::lock_guard<simple_spinlock> l(lock_);
   instance_pb->set_permanent_uuid(permanent_uuid_);

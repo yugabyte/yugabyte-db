@@ -79,6 +79,7 @@ class TSDescriptor {
   // A safe copy is returned because the internal Registration object
   // may be mutated at any point if the tablet server re-registers.
   void GetRegistration(TSRegistrationPB* reg) const;
+  bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
 
