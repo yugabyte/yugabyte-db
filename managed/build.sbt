@@ -11,3 +11,8 @@ libraryDependencies ++= Seq(
   cache,
   javaWs
 )
+
+resolvers += Resolver.mavenLocal
+libraryDependencies +=  "log4j" % "log4j" % "1.2.14"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
+libraryDependencies += "org.mockito" % "mockito-core" % "1.10.19"

@@ -13,66 +13,10 @@
   </tr>
   <tr class="success">
    <td>GET</td>
-   <td>/employees</td>
+   <td>/tablets</td>
    <td></td>
    <td>200</td>
-   <td>{"data":[{"id": 4,"name": "Josrom"},{"id": 4,"name": "Dantar"},...],"total":∞,"link-self": "/employees?page=2","link-prev": "/employees?page=1","link-next": "/employees?page=3"}</td>
-  </tr>
-  <tr>
-   <td>GET</td>
-   <td>/employees/1</td>
-   <td></td>
-   <td>200</td>
-   <td>{"id": 1,"name": "Josrom"}</td>
-  </tr>
-  <tr class="danger">
-   <td>GET</td>
-   <td>/employees/6</td>
-   <td></td>
-   <td>404</td>
-   <td>{"error":"Not found 6"}</td>
-  </tr>
-  <tr>
-   <td>POST</td>
-   <td>/employees</td>
-   <td>{"name": "new user"}</td>
-   <td>201</td>
-   <td>{"id": 6,"name": "new user"}</td>
-  </tr>
-  <tr>
-   <td>POST</td>
-   <td>/employees</td>
-   <td></td>
-   <td>400</td>
-   <td>{"name": ["This field is required"]}</td>
-  </tr>
-  <tr>
-   <td>PUT/PATCH</td>
-   <td>/employees</td>
-   <td>{"id": 1,"name": "new name"}</td>
-   <td>200</td>
-   <td>{"id": 1,"name": "new name"}</td>
-  </tr>
-  <tr>
-   <td>PUT/PATCH</td>
-   <td>/employees</td>
-   <td></td>
-   <td>400</td>
-   <td>{"name": ["This field is required"]}</td>
-  </tr>
-  <tr>
-   <td>DELETE</td>
-   <td>/employees/1</td>
-   <td></td>
-   <td>200</td>
-   <td>{"msg":"Deleted 1"}</td>
-  </tr>
-  <tr>
-   <td>DELETE</td>
-   <td>/employees/0</td>
-   <td></td>
-   <td>404</td>
-   <td>{"error":"Not found 0"}</td>
+   <td>{"count":3,"tablets":["uuid1","uuid2","uuid3"]}</td>
   </tr>
  </table>
 </div>
