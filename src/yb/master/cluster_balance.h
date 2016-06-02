@@ -78,7 +78,7 @@ class ClusterLoadBalancer {
   ThreadSafeRandom random_;
 
   // Controls whether to run the load balancing algorithm or not.
-  bool is_enabled_;
+  std::atomic<bool> is_enabled_;
 
   class Options {
    public:
