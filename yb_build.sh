@@ -73,6 +73,7 @@ cmake_opts=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
 project_dir=$( cd "$( dirname "$0" )" && pwd )
 build_dir="$project_dir/build/$cmake_build_type"
 . "$project_dir"/build-support/common-build-env.sh
+thirdparty_dir=$project_dir/thirdparty
 
 if $verbose; then 
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
@@ -119,7 +120,7 @@ if $clean_thirdparty; then
   echo "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
     set -x
-    cd "$project_dir/thirdparty"
+    cd "$thirdparty_dir"
     git clean -dxf
     rm -f "$thirdparty_built_flag_file"
   )
