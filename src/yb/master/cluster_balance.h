@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <atomic>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_descriptor.h"
