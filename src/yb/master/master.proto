@@ -101,6 +101,32 @@ message PlacementInfoPB {
 // Sys Tables Metadata
 ////////////////////////////////////////////////////////////
 
+// The actual on disk abstract representation of a row in the sys catalog.
+// This has to respect the fixed schema of the catalog. In case of changes to
+// the schema, this proto must reflect them.
+message SysRowEntry {
+  enum Type {
+    UNKNOWN = 0;
+    TABLE = 1;
+    TABLET = 2;
+    CLUSTER_CONFIG = 3;
+  }
+
+  // The type of entry we are storing. Since the data is serialized, we cannot
+  // just store it with
+  // the data, as we are not able to read into the appropriate type.
+  optional Type type = 1;
+
+  // The optional ID of the data that we are storing. This can be useful to only
+  // read information
+  // related to a single item, in the case of tables or tablets, for example.
+  // This is optional.
+  optional string id = 2;
+
+  // This is the serialized format of the proto we store.
+  optional string data = 3;
+}
+
 // The on-disk entry in the sys.catalog table ("metadata" column) for
 // tablets entries.
 message SysTabletsEntryPB {
@@ -176,6 +202,11 @@ message SysTablesEntryPB {
   optional bytes state_msg = 7;
 
   repeated PlacementInfoPB placement_info = 11;
+}
+
+// Dummy for now. Will house the placement info data.
+message SysClusterConfigEntryPB {
+  repeated PlacementInfoPB placement_info = 1;
 }
 
 ////////////////////////////////////////////////////////////

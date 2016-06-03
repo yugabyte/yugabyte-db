@@ -34,8 +34,10 @@
 #include "yb/util/test_util.h"
 #include "yb/rpc/messenger.h"
 
+using std::make_shared;
 using std::string;
 using std::shared_ptr;
+using std::unique_ptr;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -71,10 +73,10 @@ class SysCatalogTest : public YBTest {
   gscoped_ptr<MasterServiceProxy> proxy_;
 };
 
-class TableLoader : public TableVisitor {
+class TestTableLoader : public TableVisitor {
  public:
-  TableLoader() {}
-  ~TableLoader() { Reset(); }
+  TestTableLoader() {}
+  ~TestTableLoader() { Reset(); }
 
   void Reset() {
     for (TableInfo* ti : tables) {
@@ -83,8 +85,7 @@ class TableLoader : public TableVisitor {
     tables.clear();
   }
 
-  virtual Status VisitTable(const std::string& table_id,
-                            const SysTablesEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
     // Setup the table info
     TableInfo *table = new TableInfo(table_id);
     TableMetadataLock l(table, TableMetadataLock::WRITE);
@@ -112,9 +113,11 @@ static bool MetadatasEqual(C* ti_a, C* ti_b) {
 // Test the sys-catalog tables basic operations (add, update, delete,
 // visit)
 TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
-  TableLoader loader;
-  ASSERT_OK(master_->catalog_manager()->sys_catalog()->VisitTables(&loader));
-  ASSERT_EQ(0, loader.tables.size());
+  SysCatalogTable* sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestTableLoader> loader(new TestTableLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(0, loader->tables.size());
 
   // Create new table.
   scoped_refptr<TableInfo> table(new TableInfo("abc"));
@@ -126,35 +129,36 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
     l.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
     ASSERT_OK(SchemaToPB(Schema(), l.mutable_data()->pb.mutable_schema()));
     // Add the table
-    ASSERT_OK(master_->catalog_manager()->sys_catalog()->AddTable(table.get()));
+    ASSERT_OK(sys_catalog->AddTable(table.get()));
+
     l.Commit();
   }
 
   // Verify it showed up.
-  loader.Reset();
-  ASSERT_OK(master_->catalog_manager()->sys_catalog()->VisitTables(&loader));
-  ASSERT_EQ(1, loader.tables.size());
-  ASSERT_TRUE(MetadatasEqual(table.get(), loader.tables[0]));
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->tables.size());
+  ASSERT_TRUE(MetadatasEqual(table.get(), loader->tables[0]));
 
   // Update the table
   {
     TableMetadataLock l(table.get(), TableMetadataLock::WRITE);
     l.mutable_data()->pb.set_version(1);
     l.mutable_data()->pb.set_state(SysTablesEntryPB::REMOVED);
-    ASSERT_OK(master_->catalog_manager()->sys_catalog()->UpdateTable(table.get()));
+    ASSERT_OK(sys_catalog->UpdateTable(table.get()));
     l.Commit();
   }
 
-  loader.Reset();
-  ASSERT_OK(master_->catalog_manager()->sys_catalog()->VisitTables(&loader));
-  ASSERT_EQ(1, loader.tables.size());
-  ASSERT_TRUE(MetadatasEqual(table.get(), loader.tables[0]));
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->tables.size());
+  ASSERT_TRUE(MetadatasEqual(table.get(), loader->tables[0]));
 
   // Delete the table
-  loader.Reset();
-  ASSERT_OK(master_->catalog_manager()->sys_catalog()->DeleteTable(table.get()));
-  ASSERT_OK(master_->catalog_manager()->sys_catalog()->VisitTables(&loader));
-  ASSERT_EQ(0, loader.tables.size());
+  loader->Reset();
+  ASSERT_OK(sys_catalog->DeleteTable(table.get()));
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(0, loader->tables.size());
 }
 
 // Verify that data mutations are not available from metadata() until commit.
@@ -194,10 +198,10 @@ TEST_F(SysCatalogTest, TestTableInfoCommit) {
   }
 }
 
-class TabletLoader : public TabletVisitor {
+class TestTabletLoader : public TabletVisitor {
  public:
-  TabletLoader() {}
-  ~TabletLoader() { Reset(); }
+  TestTabletLoader() {}
+  ~TestTabletLoader() { Reset(); }
 
   void Reset() {
     for (TabletInfo* ti : tablets) {
@@ -206,9 +210,7 @@ class TabletLoader : public TabletVisitor {
     tablets.clear();
   }
 
-  virtual Status VisitTablet(const std::string& table_id,
-                             const std::string& tablet_id,
-                             const SysTabletsEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
     // Setup the tablet info
     TabletInfo *tablet = new TabletInfo(nullptr, tablet_id);
     TabletMetadataLock l(tablet, TabletMetadataLock::WRITE);
@@ -248,9 +250,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
   SysCatalogTable* sys_catalog = master_->catalog_manager()->sys_catalog();
 
-  TabletLoader loader;
-  ASSERT_OK(master_->catalog_manager()->sys_catalog()->VisitTablets(&loader));
-  ASSERT_EQ(0, loader.tablets.size());
+  unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(0, loader->tablets.size());
 
   // Add tablet1 and tablet2
   {
@@ -258,17 +260,17 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet1.get());
     tablets.push_back(tablet2.get());
 
-    loader.Reset();
+    loader->Reset();
     TabletMetadataLock l1(tablet1.get(), TabletMetadataLock::WRITE);
     TabletMetadataLock l2(tablet2.get(), TabletMetadataLock::WRITE);
     ASSERT_OK(sys_catalog->AddTablets(tablets));
     l1.Commit();
     l2.Commit();
 
-    ASSERT_OK(sys_catalog->VisitTablets(&loader));
-    ASSERT_EQ(2, loader.tablets.size());
-    ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader.tablets[0]));
-    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader.tablets[1]));
+    ASSERT_OK(sys_catalog->Visit(loader.get()));
+    ASSERT_EQ(2, loader->tablets.size());
+    ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader->tablets[0]));
+    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[1]));
   }
 
   // Update tablet1
@@ -281,11 +283,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     ASSERT_OK(sys_catalog->UpdateTablets(tablets));
     l1.Commit();
 
-    loader.Reset();
-    ASSERT_OK(sys_catalog->VisitTablets(&loader));
-    ASSERT_EQ(2, loader.tablets.size());
-    ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader.tablets[0]));
-    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader.tablets[1]));
+    loader->Reset();
+    ASSERT_OK(sys_catalog->Visit(loader.get()));
+    ASSERT_EQ(2, loader->tablets.size());
+    ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader->tablets[0]));
+    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[1]));
   }
 
   // Add tablet3 and Update tablet1 and tablet2
@@ -303,18 +305,18 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     TabletMetadataLock l2(tablet2.get(), TabletMetadataLock::WRITE);
     l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
-    loader.Reset();
+    loader->Reset();
     ASSERT_OK(sys_catalog->AddAndUpdateTablets(to_add, to_update));
 
     l1.Commit();
     l2.Commit();
     l3.Commit();
 
-    ASSERT_OK(sys_catalog->VisitTablets(&loader));
-    ASSERT_EQ(3, loader.tablets.size());
-    ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader.tablets[0]));
-    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader.tablets[1]));
-    ASSERT_TRUE(MetadatasEqual(tablet3.get(), loader.tablets[2]));
+    ASSERT_OK(sys_catalog->Visit(loader.get()));
+    ASSERT_EQ(3, loader->tablets.size());
+    ASSERT_TRUE(MetadatasEqual(tablet1.get(), loader->tablets[0]));
+    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[1]));
+    ASSERT_TRUE(MetadatasEqual(tablet3.get(), loader->tablets[2]));
   }
 
   // Delete tablet1 and tablet3 tablets
@@ -323,11 +325,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet1.get());
     tablets.push_back(tablet3.get());
 
-    loader.Reset();
-    ASSERT_OK(master_->catalog_manager()->sys_catalog()->DeleteTablets(tablets));
-    ASSERT_OK(master_->catalog_manager()->sys_catalog()->VisitTablets(&loader));
-    ASSERT_EQ(1, loader.tablets.size());
-    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader.tablets[0]));
+    loader->Reset();
+    ASSERT_OK(sys_catalog->DeleteTablets(tablets));
+    ASSERT_OK(sys_catalog->Visit(loader.get()));
+    ASSERT_EQ(1, loader->tablets.size());
+    ASSERT_TRUE(MetadatasEqual(tablet2.get(), loader->tablets[0]));
   }
 }
 
@@ -364,6 +366,81 @@ TEST_F(SysCatalogTest, TestTabletInfoCommit) {
     ASSERT_EQ(SysTabletsEntryPB::RUNNING,
               read_lock.data().pb.state());
   }
+}
+
+class TestClusterConfigLoader : public ClusterConfigVisitor {
+ public:
+  TestClusterConfigLoader() {}
+  ~TestClusterConfigLoader() { Reset(); }
+
+  virtual Status Visit(
+      const std::string& fake_id, const SysClusterConfigEntryPB& metadata) OVERRIDE {
+    CHECK(!config_info) << "We either got multiple config_info entries, or we didn't Reset()";
+    config_info = new ClusterConfigInfo();
+    ClusterConfigMetadataLock l(config_info, ClusterConfigMetadataLock::WRITE);
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    config_info->AddRef();
+    return Status::OK();
+  }
+
+  void Reset() {
+    if (config_info) {
+      config_info->Release();
+      config_info = nullptr;
+    }
+  }
+
+  ClusterConfigInfo* config_info = nullptr;
+};
+
+// Test the sys-catalog tables basic operations (add, update, delete, visit)
+TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
+  SysCatalogTable* sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestClusterConfigLoader> loader(new TestClusterConfigLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_TRUE(!loader->config_info);
+
+  // Create a config_info block.
+  scoped_refptr<ClusterConfigInfo> config_info(new ClusterConfigInfo());
+  {
+    ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
+    auto pi = l.mutable_data()->pb.add_placement_info();
+    auto cloud_info = pi->mutable_cloud_info();
+    cloud_info->set_placement_cloud("cloud");
+    cloud_info->set_placement_region("region");
+    cloud_info->set_placement_zone("zone");
+    pi->set_min_num_replicas(100);
+
+    // Set it in the sys_catalog.
+    ASSERT_OK(sys_catalog->AddClusterConfigInfo(config_info.get()));
+    l.Commit();
+  }
+
+  // Check data from sys_catalog.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_TRUE(loader->config_info);
+  ASSERT_TRUE(MetadatasEqual(config_info.get(), loader->config_info));
+
+  {
+    ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
+    auto pi = l.mutable_data()->pb.mutable_placement_info(0);
+    auto cloud_info = pi->mutable_cloud_info();
+    // Update some config_info info.
+    cloud_info->set_placement_cloud("cloud2");
+    pi->set_min_num_replicas(200);
+    // Update it in the sys_catalog.
+    ASSERT_OK(sys_catalog->UpdateClusterConfigInfo(config_info.get()));
+    l.Commit();
+  }
+
+  // Check data from sys_catalog.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_TRUE(loader->config_info);
+  ASSERT_TRUE(MetadatasEqual(config_info.get(), loader->config_info));
 }
 
 } // namespace master

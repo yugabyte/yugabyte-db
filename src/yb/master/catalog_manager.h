@@ -65,10 +65,66 @@ class TSDescriptor;
 
 struct DeferredAssignmentActions;
 
+static const char* const kDefaultSysEntryUnusedId = "";
+
+// This class is a base wrapper around the protos that get serialized in the data column of the
+// sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
+// protos and instances of these will be wrapped around CowObjects and locks for access and
+// modifications.
+template <class DataEntryPB>
+struct Persistent {
+  // Type declaration to be used in templated read/write methods. We are using typename
+  // Class::data_type in templated methods for figuring out the type we need.
+  typedef DataEntryPB data_type;
+
+  // Defaults to UNKNOWN. Subclasses of this need to define a static method like this, as C++ does
+  // not have static inheritance, but it does allow typename definitions in templated methods. We
+  // are using Class::type() to only have to define this in one set of classes.
+  static int type() { return SysRowEntry::UNKNOWN; }
+
+  // The proto that is persisted in the sys_catalog.
+  DataEntryPB pb;
+};
+
+// This class is a base wrapper around accessors for the persistent proto data, through CowObject.
+// The locks are taken on subclasses of this class, around the object returned from metadata().
+template <class PersistentDataEntryPB>
+class MemoryState {
+ public:
+  // Type declaration for use in the Lock classes.
+  typedef PersistentDataEntryPB cow_state;
+
+  // This method should return the id to be written into the sys_catalog id column.
+  virtual const std::string& id() const = 0;
+
+  // Access the persistent metadata. Typically you should use
+  // TabletMetadataLock to gain access to this data.
+  const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
+  CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
+
+ protected:
+  virtual ~MemoryState() = default;
+  CowObject<PersistentDataEntryPB> metadata_;
+};
+
+// This class is used to manage locking of the persistent metadata returned from the MemoryState
+// objects.
+template <class MetadataClass>
+class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
+ public:
+  typedef CowLock<typename MetadataClass::cow_state> super;
+  MetadataLock(MetadataClass* info, typename super::LockMode mode)
+      : super(DCHECK_NOTNULL(info)->mutable_metadata(), mode) {}
+  MetadataLock(const MetadataClass* info, typename super::LockMode mode)
+      : super(&(DCHECK_NOTNULL(info))->metadata(), mode) {}
+};
+
 // The data related to a tablet which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo {
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
+  static int type() { return SysRowEntry::TABLET; }
+
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -82,8 +138,6 @@ struct PersistentTabletInfo {
   // Requires that the caller has prepared this object for write.
   // The change will only be visible after Commit().
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
-
-  SysTabletsEntryPB pb;
 };
 
 // Information on a current replica of a tablet.
@@ -111,20 +165,16 @@ struct TabletReplica {
 // spin-lock.
 //
 // The object is owned/managed by the CatalogManager, and exposed for testing.
-class TabletInfo : public RefCountedThreadSafe<TabletInfo> {
+class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
+                   public MemoryState<PersistentTabletInfo> {
  public:
-  typedef PersistentTabletInfo cow_state;
   typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
 
   TabletInfo(const scoped_refptr<TableInfo>& table, std::string tablet_id);
+  virtual const std::string& id() const OVERRIDE { return tablet_id_; }
 
   const std::string& tablet_id() const { return tablet_id_; }
   const scoped_refptr<TableInfo>& table() const { return table_; }
-
-  // Access the persistent metadata. Typically you should use
-  // TabletMetadataLock to gain access to this data.
-  const CowObject<PersistentTabletInfo>& metadata() const { return metadata_; }
-  CowObject<PersistentTabletInfo>* mutable_metadata() { return &metadata_; }
 
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
@@ -154,8 +204,6 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo> {
   const std::string tablet_id_;
   const scoped_refptr<TableInfo> table_;
 
-  CowObject<PersistentTabletInfo> metadata_;
-
   // Lock protecting the below mutable fields.
   // This doesn't protect metadata_ (the on-disk portion).
   mutable simple_spinlock lock_;
@@ -177,7 +225,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo> {
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo {
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
+  static int type() { return SysRowEntry::TABLE; }
+
   bool is_deleted() const {
     return pb.state() == SysTablesEntryPB::REMOVED;
   }
@@ -194,8 +244,6 @@ struct PersistentTableInfo {
 
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
-
-  SysTablesEntryPB pb;
 };
 
 // The information about a table, including its state and tablets.
@@ -205,16 +253,14 @@ struct PersistentTableInfo {
 //
 // The non-persistent information about the table is protected by an internal
 // spin-lock.
-class TableInfo : public RefCountedThreadSafe<TableInfo> {
+class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<PersistentTableInfo> {
  public:
-  typedef PersistentTableInfo cow_state;
-
   explicit TableInfo(std::string table_id);
 
   std::string ToString() const;
 
   // Return the table's ID. Does not require synchronization.
-  const std::string& id() const { return table_id_; }
+  virtual const std::string& id() const OVERRIDE { return table_id_; }
 
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
@@ -230,11 +276,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo> {
                          std::vector<scoped_refptr<TabletInfo> > *ret) const;
 
   void GetAllTablets(std::vector<scoped_refptr<TabletInfo> > *ret) const;
-
-  // Access the persistent metadata. Typically you should use
-  // TableMetadataLock to gain access to this data.
-  const CowObject<PersistentTableInfo>& metadata() const { return metadata_; }
-  CowObject<PersistentTableInfo>* mutable_metadata() { return &metadata_; }
 
   // Returns true if the table creation is in-progress
   bool IsCreateInProgress() const;
@@ -272,8 +313,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo> {
   // Protects tablet_map_ and pending_tasks_
   mutable simple_spinlock lock_;
 
-  CowObject<PersistentTableInfo> metadata_;
-
   // List of pending tasks (e.g. create/alter tablet requests)
   std::unordered_set<MonitoredTask*> pending_tasks_;
 
@@ -284,21 +323,35 @@ class TableInfo : public RefCountedThreadSafe<TableInfo> {
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
 
-// Helper to manage locking on the persistent metadata of TabletInfo or TableInfo.
-template<class MetadataClass>
-class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
- public:
-  typedef CowLock<typename MetadataClass::cow_state> super;
-  MetadataLock(MetadataClass* info, typename super::LockMode mode)
-    : super(DCHECK_NOTNULL(info)->mutable_metadata(), mode) {
-  }
-  MetadataLock(const MetadataClass* info, typename super::LockMode mode)
-    : super(&(DCHECK_NOTNULL(info))->metadata(), mode) {
-  }
+// This wraps around the proto containing cluster level config information. It will be used for
+// CowObject managed access.
+struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {
+  static int type() { return SysRowEntry::CLUSTER_CONFIG; }
 };
 
+// This is the in memory representation of the cluster config information serialized proto data,
+// using metadata() for CowObject access.
+class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
+                          public MemoryState<PersistentClusterConfigInfo> {
+ public:
+  ClusterConfigInfo() {}
+
+  virtual const std::string& id() const OVERRIDE { return fake_id_; };
+
+ private:
+  friend class RefCountedThreadSafe<ClusterConfigInfo>;
+  ~ClusterConfigInfo() = default;
+
+  // We do not use the ID field in the sys_catalog table.
+  const std::string fake_id_ = kDefaultSysEntryUnusedId;
+
+  DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
+};
+
+// Convenience typedefs for the locks.
 typedef MetadataLock<TabletInfo> TabletMetadataLock;
 typedef MetadataLock<TableInfo> TableMetadataLock;
+typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -445,8 +498,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class TabletLoader;
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
-  // becomes the leader of a consensus configuration. Executes VisitTablesAndTabletsTask
-  // below.
+  // becomes the leader of a consensus configuration.
+  //
+  // Executes LoadSysCatalogDataTask below.
   Status ElectedAsLeaderCb();
 
   // Loops and sleeps until one of the following conditions occurs:
@@ -464,13 +518,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // This method is submitted to 'leader_initialization_pool_' by
   // ElectedAsLeaderCb above. It:
   // 1) Acquired 'lock_'
-  // 2) Resets 'tables_tablets_visited_status_'
-  // 3) Runs VisitTablesAndTabletsUnlocked below
-  // 4) Sets 'tables_tablets_visited_status_' to return value of
-  // the call to VisitTablesAndTabletsUnlocked.
-  // 5) Releases 'lock_' and if successful, updates 'leader_ready_term_'
+  // 2) Runs the various Visitors defined below
+  // 3) Releases 'lock_' and if successful, updates 'leader_ready_term_'
   // to true (under state_lock_).
-  void VisitTablesAndTabletsTask();
+  void LoadSysCatalogDataTask();
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful

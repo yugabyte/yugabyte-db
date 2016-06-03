@@ -20,9 +20,11 @@
 #include <string>
 #include <vector>
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -38,25 +40,63 @@ class WriteResponsePB;
 namespace master {
 class Master;
 class MasterOptions;
-class TableInfo;
-class TabletInfo;
 
 static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
 
-// The SysCatalogTable has two separate visitors because the tables
-// data must be loaded into memory before the tablets data.
-class TableVisitor {
+class VisitorBase {
  public:
-  virtual Status VisitTable(const std::string& table_id,
-                            const SysTablesEntryPB& metadata) = 0;
+  VisitorBase() {}
+  virtual ~VisitorBase() = default;
+
+  virtual int entry_type() const = 0;
+
+  virtual Status Visit(const Slice* id, const Slice* data) = 0;
+
+ protected:
 };
 
-class TabletVisitor {
+template <class PersistentDataEntryClass>
+class Visitor : public VisitorBase {
  public:
-  virtual Status VisitTablet(const std::string& table_id,
-                             const std::string& tablet_id,
-                             const SysTabletsEntryPB& metadata) = 0;
+  Visitor() {}
+  virtual ~Visitor() = default;
+
+  virtual Status Visit(const Slice* id, const Slice* data) {
+    typename PersistentDataEntryClass::data_type metadata;
+    RETURN_NOT_OK_PREPEND(
+        pb_util::ParseFromArray(&metadata, data->data(), data->size()),
+        "Unable to parse metadata field for item id: " + id->ToString());
+
+    return Visit(id->ToString(), metadata);
+  }
+
+  int entry_type() const { return PersistentDataEntryClass::type(); }
+
+ protected:
+  virtual Status Visit(
+      const std::string& id, const typename PersistentDataEntryClass::data_type& metadata) = 0;
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(Visitor);
 };
+
+class TableVisitor : public Visitor<PersistentTableInfo> {
+ public:
+  TableVisitor() : Visitor() {}
+};
+
+class TabletVisitor : public Visitor<PersistentTabletInfo> {
+ public:
+  TabletVisitor() : Visitor() {}
+};
+
+class ClusterConfigVisitor : public Visitor<PersistentClusterConfigInfo> {
+ public:
+  ClusterConfigVisitor() : Visitor() {}
+};
+
+// Forward declaration of internally used class.
+class SysCatalogWriter;
 
 // SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
@@ -66,11 +106,6 @@ class TabletVisitor {
 class SysCatalogTable {
  public:
   typedef Callback<Status()> ElectedLeaderCallback;
-
-  enum CatalogEntryType {
-    TABLES_ENTRY = 1,
-    TABLETS_ENTRY = 2
-  };
 
   // 'leader_cb_' is invoked whenever this node is elected as a leader
   // of the consensus configuration for this tablet, including for local standalone
@@ -102,9 +137,6 @@ class SysCatalogTable {
   Status UpdateTable(const TableInfo* table);
   Status DeleteTable(const TableInfo* table);
 
-  // Scan of the table-related entries.
-  Status VisitTables(TableVisitor* visitor);
-
   // ==================================================================
   // Tablets related methods
   // ==================================================================
@@ -113,9 +145,18 @@ class SysCatalogTable {
   Status AddAndUpdateTablets(const vector<TabletInfo*>& tablets_to_add,
                              const vector<TabletInfo*>& tablets_to_update);
   Status DeleteTablets(const vector<TabletInfo*>& tablets);
+  // ==================================================================
+  // ClusterConfig related methods
+  // ==================================================================
+  Status AddClusterConfigInfo(ClusterConfigInfo* config_info);
+  Status UpdateClusterConfigInfo(ClusterConfigInfo* config_info);
 
-  // Scan of the tablet-related entries.
-  Status VisitTablets(TabletVisitor* visitor);
+  // ==================================================================
+  // Static schema related methods.
+  // ==================================================================
+  static std::string schema_column_type();
+  static std::string schema_column_id();
+  static std::string schema_column_metadata();
 
   const scoped_refptr<tablet::TabletPeer>& tablet_peer() const {
     return tablet_peer_;
@@ -136,15 +177,14 @@ class SysCatalogTable {
       const yb::consensus::RaftConfigPB& config,
       int64_t current_term);
 
+  Status Visit(VisitorBase* visitor);
+
  private:
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 
   friend class CatalogManager;
-
-  class SysCatalogWriter;
   friend class SysCatalogWriter;
 
-  Status MutateTable(const TableInfo* table, const RowOperationsPB::Type& op_type);
   std::unique_ptr<SysCatalogWriter> NewWriter();
 
   const char *table_name() const { return "sys.catalog"; }
@@ -190,13 +230,6 @@ class SysCatalogTable {
   // that we've seen in tablet servers since the master only has to boot a few
   // tablets.
   Status WaitUntilRunning();
-
-  // Table related private methods.
-  Status VisitTableFromRow(const RowBlockRow& row, TableVisitor* visitor);
-
-  // Tablet related private methods.
-
-  Status VisitTabletFromRow(const RowBlockRow& row, TabletVisitor* visitor);
 
   // Shutdown the tablet peer and apply pool which are not needed in shell mode for this master.
   Status GoIntoShellMode();

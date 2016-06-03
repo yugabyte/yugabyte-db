@@ -205,12 +205,9 @@ using master::MasterServiceProxy;
 
 class TableLoader : public TableVisitor {
  public:
-  explicit TableLoader(CatalogManager *catalog_manager)
-    : catalog_manager_(catalog_manager) {
-  }
+  explicit TableLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status VisitTable(const std::string& table_id,
-                            const SysTablesEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
     CHECK(!ContainsKey(catalog_manager_->table_ids_map_, table_id))
           << "Table already exists: " << table_id;
 
@@ -243,14 +240,11 @@ class TableLoader : public TableVisitor {
 
 class TabletLoader : public TabletVisitor {
  public:
-  explicit TabletLoader(CatalogManager *catalog_manager)
-    : catalog_manager_(catalog_manager) {
-  }
+  explicit TabletLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status VisitTablet(const std::string& table_id,
-                             const std::string& tablet_id,
-                             const SysTabletsEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
     // Lookup the table
+    const string& table_id = metadata.table_id();
     scoped_refptr<TableInfo> table(FindPtrOrNull(
                                      catalog_manager_->table_ids_map_, table_id));
 
@@ -507,7 +501,7 @@ Status CatalogManager::Init(bool is_first_run) {
 Status CatalogManager::ElectedAsLeaderCb() {
   boost::lock_guard<simple_spinlock> l(state_lock_);
   return worker_pool_->SubmitClosure(
-      Bind(&CatalogManager::VisitTablesAndTabletsTask, Unretained(this)));
+      Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
 }
 
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
@@ -525,8 +519,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-void CatalogManager::VisitTablesAndTabletsTask() {
-
+void CatalogManager::LoadSysCatalogDataTask() {
   Consensus* consensus = tablet_peer()->consensus();
   int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
@@ -546,7 +539,7 @@ void CatalogManager::VisitTablesAndTabletsTask() {
     int64_t term_after_wait = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED).current_term();
     if (term_after_wait != term) {
       // If we got elected leader again while waiting to catch up then we will
-      // get another callback to visit the tables and tablets, so bail.
+      // get another callback to update state from sys_catalog, so bail now.
       LOG(INFO) << "Term change from " << term << " to " << term_after_wait
                 << " while waiting for master leader catchup. Not loading sys catalog metadata";
       return;
@@ -570,12 +563,12 @@ Status CatalogManager::VisitTablesAndTabletsUnlocked() {
   tablet_map_.clear();
 
   // Visit tables and tablets, load them into memory.
-  TableLoader table_loader(this);
-  RETURN_NOT_OK_PREPEND(sys_catalog_->VisitTables(&table_loader),
-                        "Failed while visiting tables in sys catalog");
-  TabletLoader tablet_loader(this);
-  RETURN_NOT_OK_PREPEND(sys_catalog_->VisitTablets(&tablet_loader),
-                        "Failed while visiting tablets in sys catalog");
+  unique_ptr<TableLoader> table_loader(new TableLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(table_loader.get()), "Failed while visiting tables in sys catalog");
+  unique_ptr<TabletLoader> tablet_loader(new TabletLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(tablet_loader.get()), "Failed while visiting tablets in sys catalog");
   return Status::OK();
 }
 

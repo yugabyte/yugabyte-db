@@ -46,6 +46,7 @@ using consensus::RaftPeerPB;
 using std::vector;
 using std::string;
 using std::stringstream;
+using std::unique_ptr;
 using strings::Substitute;
 
 namespace master {
@@ -314,13 +315,19 @@ namespace {
 //
 // This should be considered a "stable" protocol -- do not rename, remove, or restructure
 // without consulting with the CM team.
-class JsonDumper : public TableVisitor, public TabletVisitor {
+class JsonDumperBase {
  public:
-  explicit JsonDumper(JsonWriter* jw) : jw_(jw) {
-  }
+  JsonDumperBase(JsonWriter* jw) : jw_(jw) {}
 
-  Status VisitTable(const std::string& table_id,
-                    const SysTablesEntryPB& metadata) OVERRIDE {
+ protected:
+  JsonWriter* jw_;
+};
+
+class JsonTableDumper : public TableVisitor, public JsonDumperBase {
+ public:
+  JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
+
+  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
     if (metadata.state() != SysTablesEntryPB::RUNNING) {
       return Status::OK();
     }
@@ -338,10 +345,15 @@ class JsonDumper : public TableVisitor, public TabletVisitor {
     jw_->EndObject();
     return Status::OK();
   }
+};
 
-  Status VisitTablet(const std::string& table_id,
-                     const std::string& tablet_id,
-                     const SysTabletsEntryPB& metadata) OVERRIDE {
+class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
+ public:
+  JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
+
+ protected:
+  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
+    const std::string& table_id = metadata.table_id();
     if (metadata.state() != SysTabletsEntryPB::RUNNING) {
       return Status::OK();
     }
@@ -386,9 +398,6 @@ class JsonDumper : public TableVisitor, public TabletVisitor {
     jw_->EndObject();
     return Status::OK();
   }
-
- private:
-  JsonWriter* jw_;
 };
 
 void JsonError(const Status& s, stringstream* out) {
@@ -404,13 +413,13 @@ void JsonError(const Status& s, stringstream* out) {
 void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
                                             stringstream* output) {
   JsonWriter jw(output, JsonWriter::COMPACT);
-  JsonDumper d(&jw);
 
   jw.StartObject();
 
   jw.String("tables");
   jw.StartArray();
-  Status s = master_->catalog_manager()->sys_catalog()->VisitTables(&d);
+  unique_ptr<JsonTableDumper> json_table_dumper(new JsonTableDumper(&jw));
+  Status s = master_->catalog_manager()->sys_catalog()->Visit(json_table_dumper.get());
   if (!s.ok()) {
     JsonError(s, output);
     return;
@@ -419,7 +428,8 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
 
   jw.String("tablets");
   jw.StartArray();
-  s = master_->catalog_manager()->sys_catalog()->VisitTablets(&d);
+  unique_ptr<JsonTabletDumper> json_tablet_dumper(new JsonTabletDumper(&jw));
+  s = master_->catalog_manager()->sys_catalog()->Visit(json_tablet_dumper.get());
   if (!s.ok()) {
     JsonError(s, output);
     return;

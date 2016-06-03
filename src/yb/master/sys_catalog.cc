@@ -79,7 +79,13 @@ static const char* const kSysCatalogTableColType = "entry_type";
 static const char* const kSysCatalogTableColId = "entry_id";
 static const char* const kSysCatalogTableColMetadata = "metadata";
 
-class SysCatalogTable::SysCatalogWriter {
+std::string SysCatalogTable::schema_column_type() { return kSysCatalogTableColType; }
+
+std::string SysCatalogTable::schema_column_id() { return kSysCatalogTableColId; }
+
+std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableColMetadata; }
+
+class SysCatalogWriter {
  public:
   SysCatalogWriter(SysCatalogTable* sys_catalog)
       : sys_catalog_(sys_catalog),
@@ -91,12 +97,26 @@ class SysCatalogTable::SysCatalogWriter {
 
   ~SysCatalogWriter() = default;
 
-  Status MutateTable(const TableInfo* table, const RowOperationsPB::Type& op_type) {
-    return MutateItem(op_type, TABLES_ENTRY, table->id(), table->metadata());
-  }
+  template <class PersistentDataEntryClass>
+  Status MutateItem(
+      const MemoryState<PersistentDataEntryClass>* item, const RowOperationsPB::Type& op_type) {
+    bool is_write = op_type == RowOperationsPB::INSERT || op_type == RowOperationsPB::UPDATE;
 
-  Status MutateTablet(const TabletInfo* tablet, const RowOperationsPB::Type& op_type) {
-    return MutateItem(op_type, TABLETS_ENTRY, tablet->tablet_id(), tablet->metadata());
+    faststring metadata_buf;
+    if (is_write) {
+      if (!pb_util::SerializeToString(item->metadata().dirty().pb, &metadata_buf)) {
+        return Status::Corruption(Substitute(
+            "Unable to serialize SysCatalog entry of type $0 for id $1.",
+            PersistentDataEntryClass::type(), item->id()));
+      }
+
+      CHECK_OK(row_.SetString(SysCatalogTable::schema_column_metadata(), metadata_buf));
+    }
+    CHECK_OK(row_.SetInt8(SysCatalogTable::schema_column_type(), PersistentDataEntryClass::type()));
+    CHECK_OK(row_.SetString(SysCatalogTable::schema_column_id(), item->id()));
+    enc_.Add(op_type, row_);
+
+    return Status::OK();
   }
 
   Status Write() {
@@ -108,34 +128,12 @@ class SysCatalogTable::SysCatalogWriter {
   }
 
  private:
-  template <class CowBackedData>
-  Status MutateItem(
-      const RowOperationsPB::Type& op_type, const int8_t entry_type, const string& id,
-      const CowBackedData& obj) {
-    bool is_write = op_type == RowOperationsPB::INSERT || op_type == RowOperationsPB::UPDATE;
-
-    faststring metadata_buf;
-    if (is_write) {
-      if (!pb_util::SerializeToString(obj.dirty().pb, &metadata_buf)) {
-        return Status::Corruption(Substitute(
-            "Unable to serialize SysCatalog entry of type $0 for id $1.", entry_type, id));
-      }
-    }
-
-    CHECK_OK(row_.SetInt8(kSysCatalogTableColType, entry_type));
-    CHECK_OK(row_.SetString(kSysCatalogTableColId, id));
-    if (is_write) {
-      CHECK_OK(row_.SetString(kSysCatalogTableColMetadata, metadata_buf));
-    }
-    enc_.Add(op_type, row_);
-
-    return Status::OK();
-  }
-
   SysCatalogTable* sys_catalog_;
   WriteRequestPB req_;
   YBPartialRow row_;
   RowOperationsPBEncoder enc_;
+
+  DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);
 };
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
@@ -577,9 +575,9 @@ Status SysCatalogTable::SyncWrite(const WriteRequestPB *req, WriteResponsePB *re
 // protobuf itself.
 Schema SysCatalogTable::BuildTableSchema() {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColType, INT8));
-  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColId, STRING));
-  CHECK_OK(builder.AddColumn(kSysCatalogTableColMetadata, STRING));
+  CHECK_OK(builder.AddKeyColumn(SysCatalogTable::schema_column_type(), INT8));
+  CHECK_OK(builder.AddKeyColumn(SysCatalogTable::schema_column_id(), STRING));
+  CHECK_OK(builder.AddColumn(SysCatalogTable::schema_column_metadata(), STRING));
   return builder.Build();
 }
 
@@ -587,72 +585,28 @@ Schema SysCatalogTable::BuildTableSchema() {
 // Table related methods
 // ==================================================================
 
-Status SysCatalogTable::MutateTable(const TableInfo* table, const RowOperationsPB::Type& op_type) {
-  auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateTable(table, op_type));
-  return w->Write();
-}
-
 Status SysCatalogTable::AddTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::AddTable",
                "table", table->ToString());
-  return MutateTable(table, RowOperationsPB::INSERT);
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(table, RowOperationsPB::INSERT));
+  return w->Write();
 }
 
 Status SysCatalogTable::UpdateTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::UpdateTable",
                "table", table->ToString());
-  return MutateTable(table, RowOperationsPB::UPDATE);
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(table, RowOperationsPB::UPDATE));
+  return w->Write();
 }
 
 Status SysCatalogTable::DeleteTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::DeleteTable",
                "table", table->ToString());
-  return MutateTable(table, RowOperationsPB::DELETE);
-}
-
-Status SysCatalogTable::VisitTables(TableVisitor* visitor) {
-  TRACE_EVENT0("master", "SysCatalogTable::VisitTables");
-
-  const int8_t tables_entry = TABLES_ENTRY;
-  const int type_col_idx = schema_.find_column(kSysCatalogTableColType);
-  CHECK(type_col_idx != Schema::kColumnNotFound);
-
-  ColumnRangePredicate pred_tables(schema_.column(type_col_idx),
-                                   &tables_entry, &tables_entry);
-  ScanSpec spec;
-  spec.AddPredicate(pred_tables);
-
-  gscoped_ptr<RowwiseIterator> iter;
-  RETURN_NOT_OK(tablet_peer_->tablet()->NewRowIterator(schema_, &iter));
-  RETURN_NOT_OK(iter->Init(&spec));
-
-  Arena arena(32 * 1024, 256 * 1024);
-  RowBlock block(iter->schema(), 512, &arena);
-  while (iter->HasNext()) {
-    RETURN_NOT_OK(iter->NextBlock(&block));
-    for (size_t i = 0; i < block.nrows(); i++) {
-      if (!block.selection_vector()->IsRowSelected(i)) continue;
-
-      RETURN_NOT_OK(VisitTableFromRow(block.row(i), visitor));
-    }
-  }
-  return Status::OK();
-}
-
-Status SysCatalogTable::VisitTableFromRow(const RowBlockRow& row,
-                                          TableVisitor* visitor) {
-  const Slice* table_id =
-      schema_.ExtractColumnFromRow<STRING>(row, schema_.find_column(kSysCatalogTableColId));
-  const Slice* data =
-      schema_.ExtractColumnFromRow<STRING>(row, schema_.find_column(kSysCatalogTableColMetadata));
-
-  SysTablesEntryPB metadata;
-  RETURN_NOT_OK_PREPEND(pb_util::ParseFromArray(&metadata, data->data(), data->size()),
-                        "Unable to parse metadata field for table " + table_id->ToString());
-
-  RETURN_NOT_OK(visitor->VisitTable(table_id->ToString(), metadata));
-  return Status::OK();
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(table, RowOperationsPB::DELETE));
+  return w->Write();
 }
 
 // ==================================================================
@@ -667,10 +621,10 @@ Status SysCatalogTable::AddAndUpdateTablets(const vector<TabletInfo*>& tablets_t
 
   auto w = NewWriter();
   for (const auto tablet : tablets_to_add) {
-    RETURN_NOT_OK(w->MutateTablet(tablet, RowOperationsPB::INSERT));
+    RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::INSERT));
   }
   for (const auto tablet : tablets_to_update) {
-    RETURN_NOT_OK(w->MutateTablet(tablet, RowOperationsPB::UPDATE));
+    RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::UPDATE));
   }
   return w->Write();
 }
@@ -688,45 +642,44 @@ Status SysCatalogTable::DeleteTablets(const vector<TabletInfo*>& tablets) {
                "num_tablets", tablets.size());
   auto w = NewWriter();
   for (const auto tablet : tablets) {
-    RETURN_NOT_OK(w->MutateTablet(tablet, RowOperationsPB::DELETE));
+    RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::DELETE));
   }
   return w->Write();
 }
 
-Status SysCatalogTable::VisitTabletFromRow(const RowBlockRow& row, TabletVisitor *visitor) {
-  const Slice *tablet_id =
-    schema_.ExtractColumnFromRow<STRING>(row, schema_.find_column(kSysCatalogTableColId));
-  const Slice *data =
-    schema_.ExtractColumnFromRow<STRING>(row, schema_.find_column(kSysCatalogTableColMetadata));
-
-  SysTabletsEntryPB metadata;
-  RETURN_NOT_OK_PREPEND(pb_util::ParseFromArray(&metadata, data->data(), data->size()),
-                        "Unable to parse metadata field for tablet " + tablet_id->ToString());
-
-  // Upgrade from the deprecated start/end-key fields to the 'partition' field.
-  if (!metadata.has_partition()) {
-    metadata.mutable_partition()->set_partition_key_start(
-        metadata.deprecated_start_key());
-    metadata.mutable_partition()->set_partition_key_end(
-        metadata.deprecated_end_key());
-    metadata.clear_deprecated_start_key();
-    metadata.clear_deprecated_end_key();
-  }
-
-  RETURN_NOT_OK(visitor->VisitTablet(metadata.table_id(), tablet_id->ToString(), metadata));
-  return Status::OK();
+// ==================================================================
+// ClusterConfig related methods
+// ==================================================================
+Status SysCatalogTable::AddClusterConfigInfo(ClusterConfigInfo* config_info) {
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(config_info, RowOperationsPB::INSERT));
+  return w->Write();
 }
 
-Status SysCatalogTable::VisitTablets(TabletVisitor* visitor) {
-  TRACE_EVENT0("master", "SysCatalogTable::VisitTablets");
-  const int8_t tablets_entry = TABLETS_ENTRY;
-  const int type_col_idx = schema_.find_column(kSysCatalogTableColType);
+Status SysCatalogTable::UpdateClusterConfigInfo(ClusterConfigInfo* config_info) {
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(config_info, RowOperationsPB::UPDATE));
+  return w->Write();
+}
+
+void SysCatalogTable::InitLocalRaftPeerPB() {
+  local_peer_pb_.set_permanent_uuid(master_->fs_manager()->uuid());
+  Sockaddr addr = master_->first_rpc_address();
+  HostPort hp;
+  CHECK_OK(HostPortFromSockaddrReplaceWildcard(addr, &hp));
+  CHECK_OK(HostPortToPB(hp, local_peer_pb_.mutable_last_known_addr()));
+}
+
+Status SysCatalogTable::Visit(VisitorBase* visitor) {
+  TRACE_EVENT0("master", "Visitor::VisitAll");
+
+  const int8_t tables_entry = visitor->entry_type();
+  const int type_col_idx = schema_.find_column(SysCatalogTable::schema_column_type());
   CHECK(type_col_idx != Schema::kColumnNotFound);
 
-  ColumnRangePredicate pred_tablets(schema_.column(type_col_idx),
-                                   &tablets_entry, &tablets_entry);
+  ColumnRangePredicate pred_tables(schema_.column(type_col_idx), &tables_entry, &tables_entry);
   ScanSpec spec;
-  spec.AddPredicate(pred_tablets);
+  spec.AddPredicate(pred_tables);
 
   gscoped_ptr<RowwiseIterator> iter;
   RETURN_NOT_OK(tablet_peer_->tablet()->NewRowIterator(schema_, &iter));
@@ -739,22 +692,18 @@ Status SysCatalogTable::VisitTablets(TabletVisitor* visitor) {
     for (size_t i = 0; i < block.nrows(); i++) {
       if (!block.selection_vector()->IsRowSelected(i)) continue;
 
-      RETURN_NOT_OK(VisitTabletFromRow(block.row(i), visitor));
+      const Slice* id = schema_.ExtractColumnFromRow<STRING>(
+          block.row(i), schema_.find_column(SysCatalogTable::schema_column_id()));
+      const Slice* data = schema_.ExtractColumnFromRow<STRING>(
+          block.row(i), schema_.find_column(SysCatalogTable::schema_column_metadata()));
+      RETURN_NOT_OK(visitor->Visit(id, data));
     }
   }
   return Status::OK();
 }
 
-void SysCatalogTable::InitLocalRaftPeerPB() {
-  local_peer_pb_.set_permanent_uuid(master_->fs_manager()->uuid());
-  Sockaddr addr = master_->first_rpc_address();
-  HostPort hp;
-  CHECK_OK(HostPortFromSockaddrReplaceWildcard(addr, &hp));
-  CHECK_OK(HostPortToPB(hp, local_peer_pb_.mutable_last_known_addr()));
-}
-
-unique_ptr<SysCatalogTable::SysCatalogWriter> SysCatalogTable::NewWriter() {
-  return unique_ptr<SysCatalogTable::SysCatalogWriter>(new SysCatalogTable::SysCatalogWriter(this));
+unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter() {
+  return unique_ptr<SysCatalogWriter>(new SysCatalogWriter(this));
 }
 
 } // namespace master
