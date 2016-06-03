@@ -1,10 +1,8 @@
-/**
- * Copyright (c) YugaByte, Inc.
- *
- * Created by ram on 6/1/16.
- */
+package controllers;
+
+// Copyright (c) Yugabyte, Inc.
+
 import com.fasterxml.jackson.databind.JsonNode;
-import controllers.TabletController;
 import org.junit.*;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
@@ -19,9 +17,9 @@ import java.util.List;
 import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 
-public class TabletControllerTest {
+public class TabletServerControllerTest {
     private YBClientService mockService;
-    private TabletController tabletController;
+    private TabletServerController tabletController;
     private YBClient mockClient;
     private ListTabletServersResponse mockResponse;
 
@@ -33,22 +31,22 @@ public class TabletControllerTest {
         mockResponse = mock(ListTabletServersResponse.class);
         when(mockClient.listTabletServers()).thenReturn(mockResponse);
         when(mockService.getClient()).thenReturn(mockClient);
-        tabletController = new TabletController(mockService);
+        tabletController = new TabletServerController(mockService);
     }
 
     @Test
-    public void testListTabletsSuccess() throws Exception {
+    public void testListTabletServersSuccess() throws Exception {
         when(mockResponse.getTabletServersCount()).thenReturn(2);
         List<String> mockTabletUUIDs = Arrays.asList("UUID1", "UUID2");
         when(mockResponse.getTabletServersList()).thenReturn(mockTabletUUIDs);
         Result r = tabletController.list();
         JsonNode json = Json.parse(contentAsString(r));
         assertEquals(OK, r.status());
-        assertTrue(json.get("tablets").isArray());
+        assertTrue(json.get("servers").isArray());
    }
 
     @Test
-    public void testListTabletsFailure() throws Exception {
+    public void testListTabletServersFailure() throws Exception {
         when(mockResponse.getTabletServersCount()).thenThrow(new RuntimeException("Unknown Error"));
         Result r = tabletController.list();
         assertEquals(500, r.status());
