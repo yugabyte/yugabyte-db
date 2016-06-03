@@ -40,6 +40,7 @@ set(CLIENT_LIBS
   yb_common
   master_proto
   master_rpc
+  master_util
   tserver_proto
   tserver_service_proto
   yb_util

@@ -142,8 +142,7 @@ class ClusterAdminClient {
   Status ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
-    int16 peer_port,
-    const string& uuid);
+    int16 peer_port);
 
   Status DumpMasterState();
 
@@ -450,12 +449,14 @@ Status ClusterAdminClient::DumpMasterState() {
 Status ClusterAdminClient::ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
-    int16 peer_port,
-    const string& peer_uuid) {
+    int16 peer_port) {
   CHECK(initted_);
 
   consensus::ChangeConfigType cc_type;
   RETURN_NOT_OK(ParseChangeType(change_type, &cc_type));
+
+  string peer_uuid;
+  RETURN_NOT_OK(yb_client_->GetMasterUUID(peer_host, peer_port, &peer_uuid));
 
   string leader_uuid;
   GetMasterLeaderInfo(&leader_uuid);
@@ -881,7 +882,7 @@ static void SetUsage(const char* argv0) {
       << " 6. " << kListAllTabletServersOp << std::endl
       << " 7. " << kListAllMastersOp << std::endl
       << " 8. " << kChangeMasterConfigOp << " "
-                << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port> <uuid>" << std::endl
+                << "<ADD_SERVER|REMOVE_SERVER> <ip_addr> <port>" << std::endl
       << " 9. " << kDumpMastersStateOp << std::endl
       << " 10. " << kListTabletServersLogLocationsOp << std::endl
       << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
@@ -990,9 +991,8 @@ static int ClusterAdminCliMain(int argc, char** argv) {
   } else if (op == kChangeMasterConfigOp) {
     int16 new_port = 0;
     string new_host;
-    string new_uuid;
 
-    if (argc != 6) {
+    if (argc != 5) {
       UsageAndExit(argv[0]);
     }
 
@@ -1003,9 +1003,8 @@ static int ClusterAdminCliMain(int argc, char** argv) {
 
     new_host = argv[3];
     new_port = atoi(argv[4]);
-    new_uuid = argv[5];
 
-    Status s = client.ChangeMasterConfig(change_type, new_host, new_port, new_uuid);
+    Status s = client.ChangeMasterConfig(change_type, new_host, new_port);
     if (!s.ok()) {
       std::cerr << "Unable to change master config: " << s.ToString() << std::endl;
       return 1;

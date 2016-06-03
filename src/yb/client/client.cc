@@ -49,6 +49,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h" // TODO: remove this include - just needed for default port
+#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/messenger.h"
@@ -428,6 +429,26 @@ Status YBClient::RemoveMasterFromClient(const Sockaddr& remove) {
 
 Status YBClient::AddMasterToClient(const Sockaddr& add) {
   return data_->AddMasterAddress(add);
+}
+
+Status YBClient::GetMasterUUID(const string& host,
+                               int16_t port,
+                               string* uuid) {
+  HostPort hp(host, port);
+  ServerEntryPB server;
+  MonoDelta rpc_timeout = default_rpc_timeout();
+  int timeout_ms = static_cast<int>(rpc_timeout.ToMilliseconds());
+  RETURN_NOT_OK(MasterUtil::GetMasterEntryForHost(data_->messenger_, hp, timeout_ms, &server));
+
+  if (server.has_error()) {
+    return Status::RuntimeError(
+        strings::Substitute("Error $0 while getting uuid of $1:$2.",
+                            "", host, port));
+  }
+
+  *uuid = server.instance_id().permanent_uuid();
+
+  return Status::OK();
 }
 
 Status YBClient::ListTables(vector<string>* tables,

@@ -29,6 +29,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_rpc.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
@@ -215,33 +216,6 @@ Status Master::InitMasterRegistration() {
   return Status::OK();
 }
 
-namespace {
-
-// TODO this method should be moved to a separate class (along with
-// ListMasters), so that it can also be used in TS and client when
-// bootstrapping.
-Status GetMasterEntryForHost(const shared_ptr<rpc::Messenger>& messenger,
-                             const HostPort& hostport,
-                             ServerEntryPB* e) {
-  Sockaddr sockaddr;
-  RETURN_NOT_OK(SockaddrFromHostPort(hostport, &sockaddr));
-  MasterServiceProxy proxy(messenger, sockaddr);
-  GetMasterRegistrationRequestPB req;
-  GetMasterRegistrationResponsePB resp;
-  rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms));
-  RETURN_NOT_OK(proxy.GetMasterRegistration(req, &resp, &controller));
-  e->mutable_instance_id()->CopyFrom(resp.instance_id());
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
-  e->mutable_registration()->CopyFrom(resp.registration());
-  e->set_role(resp.role());
-  return Status::OK();
-}
-
-} // anonymous namespace
-
 Status Master::ResetMemoryState(const RaftConfigPB& config) {
   LOG(INFO) << "Memory state set to config: " << config.ShortDebugString();
 
@@ -293,7 +267,10 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 
   for (const HostPort& peer_addr : *opts_.GetMasterAddresses()) {
     ServerEntryPB peer_entry;
-    Status s = GetMasterEntryForHost(messenger_, peer_addr, &peer_entry);
+    Status s = MasterUtil::GetMasterEntryForHost(messenger_,
+                                                 peer_addr,
+                                                 FLAGS_master_rpc_timeout_ms,
+                                                 &peer_entry);
     if (!s.ok()) {
       s = s.CloneAndPrepend(
         Substitute("Unable to get registration information for peer ($0)",

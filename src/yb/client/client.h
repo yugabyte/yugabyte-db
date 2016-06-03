@@ -292,6 +292,9 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // client with this method.
   void SetLatestObservedTimestamp(uint64_t ht_timestamp);
 
+  // Given a host and port for a master, get the uuid of that process.
+  Status GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
+
  private:
   class YB_NO_EXPORT Data;
 

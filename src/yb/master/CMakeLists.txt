@@ -58,7 +58,8 @@ target_link_libraries(master
   tserver_service_proto
   master_proto
   rpc_header_proto
-  dl)
+  dl
+  master_util)
 
 set(MASTER_RPC_SRCS
   master_rpc.cc)
@@ -71,6 +72,12 @@ set(MASTER_RPC_LIBS
   rpc_header_proto)
 ADD_EXPORTABLE_LIBRARY(master_rpc
   SRCS ${MASTER_RPC_SRCS}
+  DEPS ${MASTER_RPC_LIBS})
+
+set(MASTER_UTIL_SRCS
+  master_util.cc)
+ADD_EXPORTABLE_LIBRARY(master_util
+  SRCS ${MASTER_UTIL_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 
 # Tests

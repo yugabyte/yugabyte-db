@@ -21,8 +21,8 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <yb/consensus/consensus.pb.h>
 
+#include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master_options.h"
