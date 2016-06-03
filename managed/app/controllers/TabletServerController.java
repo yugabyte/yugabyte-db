@@ -1,8 +1,5 @@
-/**
- * Copyright (c) YugaByte, Inc.
- *
- * Created by ram on 5/31/16.
- */
+// Copyright (c) Yugabyte, Inc.
+
 package controllers;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -13,11 +10,11 @@ import services.YBClientService;
 import play.libs.Json;
 import play.mvc.*;
 
-public class TabletController extends Controller {
+public class TabletServerController extends Controller {
     private final YBClientService ybService;
 
     @Inject
-    public TabletController(YBClientService service) { this.ybService = service; }
+    public TabletServerController(YBClientService service) { this.ybService = service; }
 
     /**
      *
@@ -29,7 +26,7 @@ public class TabletController extends Controller {
         try {
             ListTabletServersResponse response = ybService.getClient().listTabletServers();
             result.put("count", response.getTabletServersCount());
-            ArrayNode tabletServers = result.putArray("tablets");
+            ArrayNode tabletServers = result.putArray("servers");
             response.getTabletServersList().forEach(tabletServer->{
                 tabletServers.add(tabletServer);
             });

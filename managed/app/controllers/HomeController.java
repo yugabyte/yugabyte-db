@@ -1,11 +1,4 @@
-/**
- * Created by ram on 5/31/16.
- */
-/**
- * Copyright (c) YugaByte, Inc.
- *
- * Created by ram on 5/31/16.
- */
+// Copyright (c) Yugabyte, Inc.
 
 package controllers;
 
