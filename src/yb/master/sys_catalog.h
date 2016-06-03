@@ -141,6 +141,12 @@ class SysCatalogTable {
 
   friend class CatalogManager;
 
+  class SysCatalogWriter;
+  friend class SysCatalogWriter;
+
+  Status MutateTable(const TableInfo* table, const RowOperationsPB::Type& op_type);
+  std::unique_ptr<SysCatalogWriter> NewWriter();
+
   const char *table_name() const { return "sys.catalog"; }
 
   // Return the schema of the table.
@@ -190,10 +196,6 @@ class SysCatalogTable {
 
   // Tablet related private methods.
 
-  // Add dirty tablet data to the given row operations.
-  Status AddTabletsToPB(const std::vector<TabletInfo*>& tablets,
-                        RowOperationsPB::Type op_type,
-                        RowOperationsPB* ops) const;
   Status VisitTabletFromRow(const RowBlockRow& row, TabletVisitor* visitor);
 
   // Shutdown the tablet peer and apply pool which are not needed in shell mode for this master.

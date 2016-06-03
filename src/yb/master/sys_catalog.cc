@@ -46,6 +46,9 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/threadpool.h"
 
+using std::shared_ptr;
+using std::unique_ptr;
+
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadata;
 using yb::consensus::RaftConfigPB;
@@ -57,7 +60,6 @@ using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
-using std::shared_ptr;
 using strings::Substitute;
 using yb::consensus::StateChangeContext;
 using yb::consensus::ChangeConfigRequestPB;
@@ -74,6 +76,65 @@ namespace master {
 static const char* const kSysCatalogTableColType = "entry_type";
 static const char* const kSysCatalogTableColId = "entry_id";
 static const char* const kSysCatalogTableColMetadata = "metadata";
+
+class SysCatalogTable::SysCatalogWriter {
+ public:
+  SysCatalogWriter(SysCatalogTable* sys_catalog)
+      : sys_catalog_(sys_catalog),
+        req_(),
+        row_(&sys_catalog->schema_),
+        enc_(req_.mutable_row_operations()) {
+    req_.set_tablet_id(kSysCatalogTabletId);
+  }
+
+  ~SysCatalogWriter() = default;
+
+  Status MutateTable(const TableInfo* table, const RowOperationsPB::Type& op_type) {
+    return MutateItem(op_type, TABLES_ENTRY, table->id(), table->metadata());
+  }
+
+  Status MutateTablet(const TabletInfo* tablet, const RowOperationsPB::Type& op_type) {
+    return MutateItem(op_type, TABLETS_ENTRY, tablet->tablet_id(), tablet->metadata());
+  }
+
+  Status Write() {
+    RETURN_NOT_OK(SchemaToPB(sys_catalog_->schema_, req_.mutable_schema()));
+
+    WriteResponsePB resp;
+    RETURN_NOT_OK(sys_catalog_->SyncWrite(&req_, &resp));
+    return Status::OK();
+  }
+
+ private:
+  template <class CowBackedData>
+  Status MutateItem(
+      const RowOperationsPB::Type& op_type, const int8_t entry_type, const string& id,
+      const CowBackedData& obj) {
+    bool is_write = op_type == RowOperationsPB::INSERT || op_type == RowOperationsPB::UPDATE;
+
+    faststring metadata_buf;
+    if (is_write) {
+      if (!pb_util::SerializeToString(obj.dirty().pb, &metadata_buf)) {
+        return Status::Corruption(Substitute(
+            "Unable to serialize SysCatalog entry of type $0 for id $1.", entry_type, id));
+      }
+    }
+
+    CHECK_OK(row_.SetInt8(kSysCatalogTableColType, entry_type));
+    CHECK_OK(row_.SetString(kSysCatalogTableColId, id));
+    if (is_write) {
+      CHECK_OK(row_.SetString(kSysCatalogTableColMetadata, metadata_buf));
+    }
+    enc_.Add(op_type, row_);
+
+    return Status::OK();
+  }
+
+  SysCatalogTable* sys_catalog_;
+  WriteRequestPB req_;
+  YBPartialRow row_;
+  RowOperationsPBEncoder enc_;
+};
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
@@ -517,74 +578,28 @@ Schema SysCatalogTable::BuildTableSchema() {
 // Table related methods
 // ==================================================================
 
+Status SysCatalogTable::MutateTable(const TableInfo* table, const RowOperationsPB::Type& op_type) {
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateTable(table, op_type));
+  return w->Write();
+}
+
 Status SysCatalogTable::AddTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::AddTable",
                "table", table->ToString());
-  faststring metadata_buf;
-  if (!pb_util::SerializeToString(table->metadata().dirty().pb, &metadata_buf)) {
-    return Status::Corruption("Unable to serialize SysCatalogTablesEntryPB for tablet",
-                              table->metadata().dirty().name());
-  }
-
-  WriteRequestPB req;
-  WriteResponsePB resp;
-  req.set_tablet_id(kSysCatalogTabletId);
-  RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
-
-  YBPartialRow row(&schema_);
-  CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLES_ENTRY));
-  CHECK_OK(row.SetString(kSysCatalogTableColId, table->id()));
-  CHECK_OK(row.SetString(kSysCatalogTableColMetadata, metadata_buf));
-  RowOperationsPBEncoder enc(req.mutable_row_operations());
-  enc.Add(RowOperationsPB::INSERT, row);
-
-  RETURN_NOT_OK(SyncWrite(&req, &resp));
-  return Status::OK();
+  return MutateTable(table, RowOperationsPB::INSERT);
 }
 
 Status SysCatalogTable::UpdateTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::UpdateTable",
                "table", table->ToString());
-
-  faststring metadata_buf;
-  if (!pb_util::SerializeToString(table->metadata().dirty().pb, &metadata_buf)) {
-    return Status::Corruption("Unable to serialize SysCatalogTablesEntryPB for tablet",
-                              table->id());
-  }
-
-  WriteRequestPB req;
-  WriteResponsePB resp;
-  req.set_tablet_id(kSysCatalogTabletId);
-  RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
-
-  YBPartialRow row(&schema_);
-  CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLES_ENTRY));
-  CHECK_OK(row.SetString(kSysCatalogTableColId, table->id()));
-  CHECK_OK(row.SetString(kSysCatalogTableColMetadata, metadata_buf));
-  RowOperationsPBEncoder enc(req.mutable_row_operations());
-  enc.Add(RowOperationsPB::UPDATE, row);
-
-  RETURN_NOT_OK(SyncWrite(&req, &resp));
-  return Status::OK();
+  return MutateTable(table, RowOperationsPB::UPDATE);
 }
 
 Status SysCatalogTable::DeleteTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::DeleteTable",
                "table", table->ToString());
-  WriteRequestPB req;
-  WriteResponsePB resp;
-  req.set_tablet_id(kSysCatalogTableColMetadata);
-  RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
-
-  YBPartialRow row(&schema_);
-  CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLES_ENTRY));
-  CHECK_OK(row.SetString(kSysCatalogTableColId, table->id()));
-
-  RowOperationsPBEncoder enc(req.mutable_row_operations());
-  enc.Add(RowOperationsPB::DELETE, row);
-
-  RETURN_NOT_OK(SyncWrite(&req, &resp));
-  return Status::OK();
+  return MutateTable(table, RowOperationsPB::DELETE);
 }
 
 Status SysCatalogTable::VisitTables(TableVisitor* visitor) {
@@ -635,81 +650,38 @@ Status SysCatalogTable::VisitTableFromRow(const RowBlockRow& row,
 // Tablet related methods
 // ==================================================================
 
-Status SysCatalogTable::AddTabletsToPB(const vector<TabletInfo*>& tablets,
-                                       RowOperationsPB::Type op_type,
-                                       RowOperationsPB* ops) const {
-  faststring metadata_buf;
-  YBPartialRow row(&schema_);
-  RowOperationsPBEncoder enc(ops);
-  for (const TabletInfo *tablet : tablets) {
-    if (!pb_util::SerializeToString(tablet->metadata().dirty().pb, &metadata_buf)) {
-      return Status::Corruption("Unable to serialize SysCatalogTabletsEntryPB for tablet",
-                                tablet->tablet_id());
-    }
-
-    CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLETS_ENTRY));
-    CHECK_OK(row.SetString(kSysCatalogTableColId, tablet->tablet_id()));
-    CHECK_OK(row.SetString(kSysCatalogTableColMetadata, metadata_buf));
-    enc.Add(op_type, row);
-  }
-  return Status::OK();
-}
-
 Status SysCatalogTable::AddAndUpdateTablets(const vector<TabletInfo*>& tablets_to_add,
                                             const vector<TabletInfo*>& tablets_to_update) {
   TRACE_EVENT2("master", "AddAndUpdateTablets",
                "num_add", tablets_to_add.size(),
                "num_update", tablets_to_update.size());
 
-  WriteRequestPB req;
-  WriteResponsePB resp;
-  req.set_tablet_id(kSysCatalogTabletId);
-  RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
-
-  // Insert new Tablets
-  if (!tablets_to_add.empty()) {
-    RETURN_NOT_OK(AddTabletsToPB(tablets_to_add, RowOperationsPB::INSERT,
-                                 req.mutable_row_operations()));
+  auto w = NewWriter();
+  for (const auto tablet : tablets_to_add) {
+    RETURN_NOT_OK(w->MutateTablet(tablet, RowOperationsPB::INSERT));
   }
-
-  // Update already existing Tablets
-  if (!tablets_to_update.empty()) {
-    RETURN_NOT_OK(AddTabletsToPB(tablets_to_update, RowOperationsPB::UPDATE,
-                                 req.mutable_row_operations()));
+  for (const auto tablet : tablets_to_update) {
+    RETURN_NOT_OK(w->MutateTablet(tablet, RowOperationsPB::UPDATE));
   }
-
-  RETURN_NOT_OK(SyncWrite(&req, &resp));
-  return Status::OK();
+  return w->Write();
 }
 
 Status SysCatalogTable::AddTablets(const vector<TabletInfo*>& tablets) {
-  vector<TabletInfo*> empty_tablets;
-  return AddAndUpdateTablets(tablets, empty_tablets);
+  return AddAndUpdateTablets(tablets, {});
 }
 
 Status SysCatalogTable::UpdateTablets(const vector<TabletInfo*>& tablets) {
-  vector<TabletInfo*> empty_tablets;
-  return AddAndUpdateTablets(empty_tablets, tablets);
+  return AddAndUpdateTablets({}, tablets);
 }
 
 Status SysCatalogTable::DeleteTablets(const vector<TabletInfo*>& tablets) {
   TRACE_EVENT1("master", "DeleteTablets",
                "num_tablets", tablets.size());
-  WriteRequestPB req;
-  WriteResponsePB resp;
-  req.set_tablet_id(kSysCatalogTabletId);
-  RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
-
-  RowOperationsPBEncoder enc(req.mutable_row_operations());
-  YBPartialRow row(&schema_);
-  for (const TabletInfo* tablet : tablets) {
-    CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLETS_ENTRY));
-    CHECK_OK(row.SetString(kSysCatalogTableColId, tablet->tablet_id()));
-    enc.Add(RowOperationsPB::DELETE, row);
+  auto w = NewWriter();
+  for (const auto tablet : tablets) {
+    RETURN_NOT_OK(w->MutateTablet(tablet, RowOperationsPB::DELETE));
   }
-
-  RETURN_NOT_OK(SyncWrite(&req, &resp));
-  return Status::OK();
+  return w->Write();
 }
 
 Status SysCatalogTable::VisitTabletFromRow(const RowBlockRow& row, TabletVisitor *visitor) {
@@ -770,6 +742,10 @@ void SysCatalogTable::InitLocalRaftPeerPB() {
   HostPort hp;
   CHECK_OK(HostPortFromSockaddrReplaceWildcard(addr, &hp));
   CHECK_OK(HostPortToPB(hp, local_peer_pb_.mutable_last_known_addr()));
+}
+
+unique_ptr<SysCatalogTable::SysCatalogWriter> SysCatalogTable::NewWriter() {
+  return unique_ptr<SysCatalogTable::SysCatalogWriter>(new SysCatalogTable::SysCatalogWriter(this));
 }
 
 } // namespace master
