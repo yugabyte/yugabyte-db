@@ -1,8 +1,5 @@
-/**
- * Copyright (c) YugaByte, Inc.
- *
- * Created by ram on 6/1/16.
- */
+// Copyright (c) Yugabyte, Inc.
+
 package services;
 
 import com.google.inject.Inject;
