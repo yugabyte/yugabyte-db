@@ -189,6 +189,12 @@ if(APPLE)
   set(CXX_GLOBAL_COMMON_FLAGS "")
 endif()
 
+# We want access to the PRI* print format macros.
+set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -D__STDC_FORMAT_MACROS")
+
+# Do not warn about uses of deprecated declarations. RocksDB has a few instances of those.
+set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -Wno-deprecated-declarations")
+
 # CXX_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do not
 # apply to the 'src/rocksdb' part).
 # compiler flags that are common across debug/release builds
@@ -205,9 +211,6 @@ endif()
 #     This has a small perf hit but worth it to avoid hard to debug crashes.
 set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated ")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread ${CXX_GLOBAL_COMMON_FLAGS} -Wno-parentheses")
-
-# We want access to the PRI* print format macros.
-add_definitions(-D__STDC_FORMAT_MACROS)
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], YugaByte's
 # generated code (which always uses clang) must be built against the old ABI.
