@@ -278,6 +278,13 @@
                 </configuration>
             </plugin>
         </plugins>
+        <extensions>
+          <extension>
+            <groupId>org.kuali.maven.wagons</groupId>
+            <artifactId>maven-s3-wagon</artifactId>
+            <version>1.1.9</version>
+          </extension>
+        </extensions>
     </build>
 
     <pluginRepositories>
@@ -301,14 +308,12 @@
 
   <distributionManagement>
     <repository>
-      <id>cdh.releases.repo</id>
-      <url>${deploy.maven}</url>
-      <name>Releases Repository</name>
+      <id>s3.release</id>
+      <url>s3://releases.yugabyte.com</url>
     </repository>
     <snapshotRepository>
-      <id>cdh.snapshots.repo</id>
-      <url>http://maven.jenkins.cloudera.com:8081/artifactory/libs-snapshot-local</url>
-      <name>Snapshots Repository</name>
+      <id>s3.snapshot</id>
+      <url>s3://snapshots.yugabyte.com</url>
     </snapshotRepository>
   </distributionManagement>
 
