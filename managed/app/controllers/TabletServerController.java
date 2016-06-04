@@ -4,7 +4,7 @@ package controllers;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import javax.inject.*;
+import com.google.inject.Inject;
 import org.yb.client.ListTabletServersResponse;
 import services.YBClientService;
 import play.libs.Json;
