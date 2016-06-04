@@ -329,4 +329,4 @@ AUDIT: SESSION,36,1,DDL,ALTER TABLE,TABLE,public.test2,ALTER TABLE test RENAME T
 
 ## Authors
 
-The PostgreSQL Audit Extension is based on the pgaudit project at https://github.com/2ndQuadrant authored by Abhijit Menon-Sen and Ian Barwick.  Further development has been done by David Steele.
+The PostgreSQL Audit Extension is based on the [2ndQuadrant](http://www.2ndquadrant.com) [pgaudit project](https://github.com/2ndQuadrant/pgaudit) authored by Simon Riggs, Abhijit Menon-Sen, and Ian Barwick and submitted as an extension to PostgreSQL core.  Additional development has been done by David Steele of [Crunchy Data](http://www.crunchydata.com).
