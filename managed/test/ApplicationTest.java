@@ -1,4 +1,3 @@
-
 // Copyright (c) Yugabyte, Inc.
 
 import org.junit.*;
