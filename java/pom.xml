@@ -71,6 +71,7 @@
     <modules>
         <module>interface-annotations</module>
         <module>yb-client</module>
+        <module>yb-cli</module>
         <module>yb-client-tools</module>
         <module>yb-mapreduce</module>
         <module>yb-spark</module>

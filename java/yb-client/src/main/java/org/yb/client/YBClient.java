@@ -16,16 +16,17 @@
 // under the License.
 package org.yb.client;
 
-import com.stumbleupon.async.Deferred;
-import org.yb.Schema;
-import org.yb.annotations.InterfaceAudience;
-import org.yb.annotations.InterfaceStability;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.Schema;
+import org.yb.annotations.InterfaceAudience;
+import org.yb.annotations.InterfaceStability;
+
+import com.stumbleupon.async.Deferred;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -42,7 +43,7 @@ public class YBClient implements AutoCloseable {
 
   private final AsyncYBClient asyncClient;
 
-  YBClient(AsyncYBClient asyncClient) {
+  public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
 
