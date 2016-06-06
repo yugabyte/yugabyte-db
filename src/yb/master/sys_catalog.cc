@@ -17,6 +17,7 @@
 
 #include "yb/master/sys_catalog.h"
 
+#include <boost/optional.hpp>
 #include <cmath>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -38,6 +39,7 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
@@ -435,6 +437,13 @@ void SysCatalogTable::SysCatalogStateChanged(
 Status SysCatalogTable::GoIntoShellMode() {
   CHECK(tablet_peer_);
   Shutdown();
+
+  // Remove on-disk log, cmeta and tablet superblocks.
+  RETURN_NOT_OK(tserver::DeleteTabletData(tablet_peer_->tablet_metadata(),
+                                          tablet::TABLET_DATA_DELETED,
+                                          master_->fs_manager()->uuid(),
+                                          boost::none));
+  RETURN_NOT_OK(tablet_peer_->tablet_metadata()->DeleteSuperBlock());
 
   tablet_peer_.reset();
   apply_pool_.reset();
