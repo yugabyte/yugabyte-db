@@ -523,7 +523,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	{
 		elog(WARNING, "hypopg: hypothetical indexes on expression are"
 			 " not supported yet");
-		return false;
+		return NULL;
 	}
 
 	relid =
@@ -1288,10 +1288,13 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		else
 		{
 			entry = hypo_entry_store_parsetree((IndexStmt *) parsetree, sql);
-			values[0] = ObjectIdGetDatum(entry->oid);
-			values[1] = CStringGetTextDatum(strdup(entry->indexname));
+			if (entry != NULL)
+			{
+				values[0] = ObjectIdGetDatum(entry->oid);
+				values[1] = CStringGetTextDatum(strdup(entry->indexname));
 
-			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+				tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+			}
 		}
 		i++;
 	}
@@ -1604,7 +1607,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		entry->pages += data_size;
 	}
 #endif
-#if PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 90600
 	else if (entry->relam == BLOOM_AM_OID)
 	{
 		/* ----------------------------
@@ -1740,7 +1743,7 @@ hypo_discover_am(char *amname, Oid oid)
 #if PG_VERSION_NUM < 90600
 	/* no (reliable) external am before 9.6 */
 	return;
-#endif
+#else
 
 	/* don't try to handle builtin access method */
 	if (oid == BTREE_AM_OID ||
@@ -1754,4 +1757,5 @@ hypo_discover_am(char *amname, Oid oid)
 	/* Is it the bloom access method? */
 	if (strcmp(amname, "bloom") == 0)
 		BLOOM_AM_OID = oid;
+#endif
 }
