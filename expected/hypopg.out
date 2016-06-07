@@ -139,3 +139,10 @@ SELECT hypopg_reset();
  
 (1 row)
 
+-- indexes on expression are not handle
+SELECT hypopg_create_index('CREATE INDEX ON hypo (md5(val))');
+WARNING:  hypopg: hypothetical indexes on expression are not supported yet
+ hypopg_create_index 
+---------------------
+(0 rows)
+

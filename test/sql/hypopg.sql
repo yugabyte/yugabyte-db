@@ -89,3 +89,6 @@ SELECT hypopg_drop_index(indexrelid) FROM hypopg() ORDER BY indexrelid LIMIT 1;
 
 -- Remove all the hypothetical indexes
 SELECT hypopg_reset();
+
+-- indexes on expression are not handle
+SELECT hypopg_create_index('CREATE INDEX ON hypo (md5(val))');
