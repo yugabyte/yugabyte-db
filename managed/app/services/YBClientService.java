@@ -5,5 +5,5 @@ package services;
 import org.yb.client.YBClient;
 
 public interface YBClientService {
-    YBClient getClient();
+  YBClient getClient();
 }
