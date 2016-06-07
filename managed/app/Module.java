@@ -10,9 +10,9 @@ import services.YBClientService;
  * Play will automatically use any class caleld 'Module' in the root package
  */
 public class Module extends AbstractModule {
-    @Override
-    public void configure() {
-        // Set LocalClientService as the implementation for YBClientService
-        bind(YBClientService.class).to(LocalYBClientService.class);
-    }
+  @Override
+  public void configure() {
+    // Set LocalClientService as the implementation for YBClientService
+    bind(YBClientService.class).to(LocalYBClientService.class);
+  }
 }
