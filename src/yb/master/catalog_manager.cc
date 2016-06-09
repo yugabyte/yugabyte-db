@@ -297,6 +297,39 @@ class TabletLoader : public TabletVisitor {
 };
 
 ////////////////////////////////////////////////////////////
+// Config Loader
+////////////////////////////////////////////////////////////
+
+class ClusterConfigLoader : public ClusterConfigVisitor {
+ public:
+  explicit ClusterConfigLoader(CatalogManager* catalog_manager)
+      : catalog_manager_(catalog_manager) {}
+
+  virtual Status Visit(
+      const std::string& unused_id, const SysClusterConfigEntryPB& metadata) OVERRIDE {
+    // Debug confirm that there is no cluster_config_ set. This also ensures that this does not
+    // visit multiple rows. Should update this, if we decide to have multiple IDs set as well.
+    DCHECK(!catalog_manager_->cluster_config_) << "Already have config data!";
+
+    // Prepare the config object.
+    ClusterConfigInfo* config = new ClusterConfigInfo();
+    ClusterConfigMetadataLock l(config, ClusterConfigMetadataLock::WRITE);
+    l.mutable_data()->pb.CopyFrom(metadata);
+
+    // Update in memory state.
+    catalog_manager_->cluster_config_ = config;
+    l.Commit();
+
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager* catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(ClusterConfigLoader);
+};
+
+////////////////////////////////////////////////////////////
 // Background Tasks
 ////////////////////////////////////////////////////////////
 
@@ -547,17 +580,17 @@ void CatalogManager::LoadSysCatalogDataTask() {
 
     LOG(INFO) << "Loading table and tablet metadata into memory...";
     LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
-      CHECK_OK(VisitTablesAndTabletsUnlocked());
+      CHECK_OK(VisitSysCatalogUnlocked());
     }
   }
   boost::lock_guard<simple_spinlock> l(state_lock_);
   leader_ready_term_ = term;
 }
 
-Status CatalogManager::VisitTablesAndTabletsUnlocked() {
+Status CatalogManager::VisitSysCatalogUnlocked() {
   DCHECK(lock_.is_locked());
 
-  // Clear the existing state.
+  // Clear the table and tablet state.
   table_names_map_.clear();
   table_ids_map_.clear();
   tablet_map_.clear();
@@ -569,6 +602,40 @@ Status CatalogManager::VisitTablesAndTabletsUnlocked() {
   unique_ptr<TabletLoader> tablet_loader(new TabletLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(tablet_loader.get()), "Failed while visiting tablets in sys catalog");
+
+  // Clear current config.
+  cluster_config_.reset();
+
+  // Visit the cluster config section and load it into memory.
+  unique_ptr<ClusterConfigLoader> config_loader(new ClusterConfigLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(config_loader.get()), "Failed while visiting config in sys catalog");
+
+  // If this is the first time we start up, we have no config information as default. We write an
+  // empty version 0.
+  if (!cluster_config_) {
+    RETURN_NOT_OK(PrepareDefaultClusterConfig());
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareDefaultClusterConfig() {
+  // Create default.
+  SysClusterConfigEntryPB config;
+  config.set_version(0);
+
+  // Create in memory object.
+  cluster_config_ = new ClusterConfigInfo();
+
+  // Prepare write
+  ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::WRITE);
+  l.mutable_data()->pb = std::move(config);
+
+  // Write tot sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->AddClusterConfigInfo(cluster_config_.get()));
+  l.Commit();
+
   return Status::OK();
 }
 
@@ -3613,6 +3680,33 @@ Status CatalogManager::GoIntoShellMode() {
 
   LOG(INFO) << "Going into shell mode completed.";
 
+  return Status::OK();
+}
+
+Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
+  DCHECK(cluster_config_) << "Missing cluster config for master!";
+  ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
+  *config = l.data().pb;
+  return Status::OK();
+}
+
+Status CatalogManager::SetClusterConfig(const SysClusterConfigEntryPB& config) {
+  ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::WRITE);
+  // We should only set the config, if the caller provided us with a valid update to the previous
+  // config.
+  if (l.data().pb.version() != config.version()) {
+    return Status::IllegalState(Substitute(
+        "Config version does not match, got $0, but most recent one is $1. Should call Get again",
+        config.version(), l.data().pb.version()));
+  }
+
+  l.mutable_data()->pb.CopyFrom(config);
+  // Bump the config version, to indicate an update.
+  l.mutable_data()->pb.set_version(config.version() + 1);
+
+  RETURN_NOT_OK(sys_catalog_->UpdateClusterConfigInfo(cluster_config_.get()));
+
+  l.Commit();
   return Status::OK();
 }
 

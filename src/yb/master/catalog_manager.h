@@ -493,9 +493,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // nor consensus.
   Status GoIntoShellMode();
 
+  // Setters and getters for the cluster config item.
+  //
+  // To change the cluster config, a client would need to do a client-side read-modify-write by
+  // issuing a get for the latest config, obtaining the current valid config (together with its
+  // respective version number), modify the values it wants of said config and issuing a write
+  // afterwards, without changing the version number. In case the version number does not match
+  // on the server, the change will fail and the client will have to retry the get, as someone
+  // must have updated the config in the meantime.
+  Status GetClusterConfig(SysClusterConfigEntryPB* config);
+  Status SetClusterConfig(const SysClusterConfigEntryPB& config);
+
  private:
   friend class TableLoader;
   friend class TabletLoader;
+  friend class ClusterConfigLoader;
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -528,8 +540,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // loads the tablets metadata.
   //
   // NOTE: Must be called under external synchronization, see
-  // VisitTablesAndTabletsTask() above.
-  Status VisitTablesAndTabletsUnlocked();
+  // LoadSysCatalogDataTask() above.
+  Status VisitSysCatalogUnlocked();
+
+  Status PrepareDefaultClusterConfig();
 
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_
@@ -703,7 +717,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
 
-  // Lock protecting the various maps below.
+  // Lock protecting the various in memory storage structures.
   typedef rw_spinlock LockType;
   mutable LockType lock_;
 
@@ -715,6 +729,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Tablet maps: tablet-id -> TabletInfo
   typedef std::unordered_map<std::string, scoped_refptr<TabletInfo> > TabletInfoMap;
   TabletInfoMap tablet_map_;
+
+  // Config information
+  scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;
 
   Master *master_;
   Atomic32 closing_;

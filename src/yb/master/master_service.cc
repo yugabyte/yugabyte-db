@@ -482,5 +482,29 @@ void MasterServiceImpl::ChangeLoadBalancerState(
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::GetMasterClusterConfig(
+    const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+    return;
+  }
+  Status s = server_->catalog_manager()->GetClusterConfig(resp->mutable_cluster_config());
+  CheckRespErrorOrSetUnknown(s, resp);
+
+  rpc->RespondSuccess();
+}
+
+void MasterServiceImpl::ChangeMasterClusterConfig(
+    const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+    return;
+  }
+  Status s = server_->catalog_manager()->SetClusterConfig(req->cluster_config());
+  CheckRespErrorOrSetUnknown(s, resp);
+
+  rpc->RespondSuccess();
+}
+
 } // namespace master
 } // namespace yb

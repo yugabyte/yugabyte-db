@@ -151,7 +151,7 @@ TEST_F(MasterChangeConfigTest, TestAddMaster) {
 
   s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
-  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(2));
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(3));
   ++num_masters_;
 
   VerifyLeaderMasterPeerCount();
@@ -171,7 +171,7 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
 
   s = cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
-  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(2));
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(3));
 
   --num_masters_;
 
@@ -193,7 +193,7 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
 
   ++num_masters_;
 
-  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(2));
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(3));
 
   VerifyLeaderMasterPeerCount();
   VerifyNonLeaderMastersPeerCount();

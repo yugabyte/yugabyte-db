@@ -102,6 +102,14 @@ class MasterServiceImpl : public MasterServiceIf {
                                    RemovedMasterUpdateResponsePB* resp,
                                    rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void GetMasterClusterConfig(
+      const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
+      rpc::RpcContext* rpc) OVERRIDE;
+
+  virtual void ChangeMasterClusterConfig(
+      const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
+      rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   Master* server_;
 

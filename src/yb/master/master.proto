@@ -206,7 +206,8 @@ message SysTablesEntryPB {
 
 // Dummy for now. Will house the placement info data.
 message SysClusterConfigEntryPB {
-  repeated PlacementInfoPB placement_info = 1;
+  optional int32 version = 1;
+  repeated PlacementInfoPB placement_info = 2;
 }
 
 ////////////////////////////////////////////////////////////
@@ -650,6 +651,22 @@ message RemovedMasterUpdateResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetMasterClusterConfigRequestPB {
+}
+
+message GetMasterClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional SysClusterConfigEntryPB cluster_config = 2;
+}
+
+message ChangeMasterClusterConfigRequestPB {
+  optional SysClusterConfigEntryPB cluster_config = 1;
+}
+
+message ChangeMasterClusterConfigResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   rpc Ping(PingRequestPB) returns (PingResponsePB);
 
@@ -685,4 +702,9 @@ service MasterService {
       returns (ChangeLoadBalancerStateResponsePB);
 
   rpc RemovedMasterUpdate(RemovedMasterUpdateRequestPB) returns (RemovedMasterUpdateResponsePB);
+
+  rpc GetMasterClusterConfig(GetMasterClusterConfigRequestPB)
+      returns (GetMasterClusterConfigResponsePB);
+  rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
+      returns (ChangeMasterClusterConfigResponsePB);
 }

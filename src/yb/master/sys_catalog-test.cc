@@ -400,7 +400,14 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   unique_ptr<TestClusterConfigLoader> loader(new TestClusterConfigLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_TRUE(!loader->config_info);
+  ASSERT_TRUE(loader->config_info);
+  {
+    ClusterConfigMetadataLock l(loader->config_info, ClusterConfigMetadataLock::READ);
+    ASSERT_EQ(l.data().pb.version(), 0);
+    ASSERT_EQ(l.data().pb.placement_info_size(), 0);
+  }
+
+  // Test modifications directly through the Sys catalog API.
 
   // Create a config_info block.
   scoped_refptr<ClusterConfigInfo> config_info(new ClusterConfigInfo());
@@ -413,8 +420,8 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     cloud_info->set_placement_zone("zone");
     pi->set_min_num_replicas(100);
 
-    // Set it in the sys_catalog.
-    ASSERT_OK(sys_catalog->AddClusterConfigInfo(config_info.get()));
+    // Set it in the sys_catalog. It already has the default entry, so we use update.
+    ASSERT_OK(sys_catalog->UpdateClusterConfigInfo(config_info.get()));
     l.Commit();
   }
 
@@ -441,6 +448,46 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
   ASSERT_TRUE(MetadatasEqual(config_info.get(), loader->config_info));
+
+  // Test data through the CatalogManager API.
+
+  // Get the config from the CatalogManager and test it is the default, as we didn't use the
+  // CatalogManager to update it.
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
+  ASSERT_EQ(config.version(), 0);
+  ASSERT_EQ(config.placement_info_size(), 0);
+
+  // Update a field in the previously used in memory state and set through proper API.
+  {
+    ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
+    l.mutable_data()->pb.mutable_placement_info(0)->set_min_num_replicas(300);
+    ASSERT_OK(master_->catalog_manager()->SetClusterConfig(l.mutable_data()->pb));
+    l.Commit();
+  }
+
+  // Confirm the in memory state does not match the config we get from the CatalogManager API, due
+  // to version mismatch.
+  ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
+  {
+    ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::READ);
+    ASSERT_FALSE(PbEquals(l.data().pb, config));
+    ASSERT_EQ(l.data().pb.version(), 0);
+    ASSERT_EQ(config.version(), 1);
+    ASSERT_TRUE(PbEquals(l.data().pb.placement_info(0), config.placement_info(0)));
+  }
+
+  // Reload the data again and check that it matches expectationsa.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_TRUE(loader->config_info);
+  {
+    ClusterConfigMetadataLock l(loader->config_info, ClusterConfigMetadataLock::READ);
+    ASSERT_TRUE(PbEquals(l.data().pb, config));
+    ASSERT_TRUE(l.data().pb.has_version());
+    ASSERT_EQ(l.data().pb.version(), 1);
+    ASSERT_EQ(l.data().pb.placement_info_size(), 1);
+  }
 }
 
 } // namespace master

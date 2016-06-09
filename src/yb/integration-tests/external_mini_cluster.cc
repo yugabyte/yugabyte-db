@@ -542,7 +542,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
     if (s.ok()) {
       bool any_behind = false;
       for (const OpId& id : ids) {
-        if (id.index() != target_index) {
+        if (id.index() < target_index) {
           any_behind = true;
           break;
         }
