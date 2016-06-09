@@ -1,0 +1,57 @@
+// Copyright (c) Yugabyte, Inc.
+
+= Yugaware Developer Documentation
+
+== Building and running Yugaware
+
+First install sbt:
+[source,bash]
+----
+# On a mac, run the following:
+$ brew install sbt
+----
+
+To compile and run:
+[source,bash]
+----
+$ sbt run
+----
+
+To compile and not run:
+[source,bash]
+----
+$ sbt compile
+----
+
+To run the unit tests:
+[source,bash]
+----
+$ sbt test
+----
+
+== Developing Yugaware in Eclipse
+
+Eclipse can be used as an IDE for Yugaware. To generate Eclipse project files, do:
+
+[source,bash]
+----
+# Create the sbt plugins directory for your local machine.
+$ mkdir ~/.sbt/0.13/plugins/
+
+# Create a file ~/.sbt/0.13/plugins/build.sbt with the contents shown below.
+$ cat > ~/.sbt/0.13/plugins/build.sbt
+resolvers += Classpaths.typesafeResolver
+addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "4.0.0")
+
+# Install the plugin
+$ cd ~/.sbt/0.13/plugins
+$ sbt
+
+# Go to the yugaware directory and create the eclipse project files.
+$ cd yugaware
+$ sbt eclipse
+----
+
+Now there should be an Eclipse '.project' file generated. Go to Eclipse and import it using:
+File -> Import -> General -> Existing Projects into Workspace
+Hit next, and browse to the Yugaware source directory for the project to get imported.
