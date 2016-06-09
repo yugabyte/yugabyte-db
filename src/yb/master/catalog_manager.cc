@@ -695,7 +695,7 @@ const scoped_refptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
 
 RaftPeerPB::Role CatalogManager::Role() const {
   CHECK(IsInitialized());
-  if (!tablet_peer())
+  if (master_->opts().IsShellMode())
     return RaftPeerPB::NON_PARTICIPANT;
 
   return tablet_peer()->consensus()->role();
@@ -1472,7 +1472,6 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     table->set_id(entry.second->id());
     table->set_name(ltm.data().name());
   }
-
   return Status::OK();
 }
 

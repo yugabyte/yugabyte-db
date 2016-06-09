@@ -147,6 +147,16 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Change master server configuration.
+   * @return a list of tablet servers
+   */
+  public ChangeConfigResponse ChangeMasterConfig(
+      String host, int port, boolean isAdd) throws Exception {
+    Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(host, port, isAdd);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the list of all the tables.
    * @return a list of all the tables
    */

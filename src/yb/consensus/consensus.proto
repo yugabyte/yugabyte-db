@@ -150,17 +150,14 @@ message ChangeConfigRequestPB {
 }
 
 // The configuration change response. If any immediate error occurred
-// the 'error' field is set with it, otherwise 'new_configuration' is set.
+// the 'error' field is set with it.
 message ChangeConfigResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
-
-  // Updated configuration after changing the config.
-  optional RaftPeerPB new_config = 2;
 
   // The timestamp chosen by the server for this change config operation.
   // TODO: At the time of writing, this field is never set in the response.
   // TODO: Propagate signed timestamps. See KUDU-611.
-  optional fixed64 timestamp = 3;
+  optional fixed64 timestamp = 2;
 }
 
 // A Replicate message, sent to replicas by leader to indicate this operation must

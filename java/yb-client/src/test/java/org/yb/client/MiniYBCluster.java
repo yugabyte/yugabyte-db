@@ -135,6 +135,16 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Take into account any started processes and return the next possibly free port number. 
+   * The multiply by 2 is to account for one port each for rpc and web services per server.
+   * @param none
+   * @return Port number for a potentially free port.
+   */
+  private int getNextPotentiallyFreePort() {
+    return PORT_START + 2 * (masterProcesses.size() + tserverProcesses.size());
+  }
+
+  /**
    * Starts a YB cluster composed of the provided masters and tablet servers.
    * @param numMasters how many masters to start
    * @param numTservers how many tablet servers to start
@@ -149,7 +159,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     long now = System.currentTimeMillis();
     LOG.info("Starting {} masters...", numMasters);
-    int port = startMasters(PORT_START, numMasters, baseDirPath);
+    int port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
       port = TestUtils.findFreePort(port);
@@ -173,6 +183,48 @@ public class MiniYBCluster implements AutoCloseable {
       }
       pathsToDelete.add(dataDirPath);
     }
+  }
+
+  /**
+   * Start a new master server in 'shell' mode. Finds free web and RPC ports and then
+   * starts the master on those ports, finally populates the 'masters' map.
+   * @param none
+   * @return the host and port for a newly created master.
+   * @throws Exception if we are unable to start the master.
+   */
+  public HostAndPort startShellMaster() throws Exception {
+    String baseDirPath = TestUtils.getBaseDir();
+    String localhost = getUniqueLocalhost();
+    int startPort = getNextPotentiallyFreePort();
+    int rpcPort = TestUtils.findFreePort(startPort + 1);
+    int webPort = TestUtils.findFreePort(startPort + 2);
+    LOG.info("Starting shell master at rpc port {}.", rpcPort);
+    long now = System.currentTimeMillis();
+    String dataDirPath = baseDirPath + "/master-" + masterProcesses.size() + "-" + now;
+    String flagsPath = TestUtils.getFlagsPath();
+    List<String> masterCmdLine = Lists.newArrayList(
+        TestUtils.findBinary("yb-master"),
+            "--flagfile=" + flagsPath,
+            "--fs_wal_dir=" + dataDirPath,
+            "--fs_data_dirs=" + dataDirPath,
+            "--webserver_interface=" + localhost,
+            "--local_ip_for_outbound_sockets=" + localhost,
+            "--rpc_bind_addresses=" + localhost + ":" + rpcPort,
+            "--webserver_port=" + webPort);
+    masterProcesses.put(
+        rpcPort,
+        configureAndStartProcess(masterCmdLine.toArray(new String[masterCmdLine.size()])));
+
+    HostAndPort newHp = HostAndPort.fromParts(localhost, rpcPort);
+    masterHostPorts.add(newHp);
+
+    if (flagsPath.startsWith(baseDirPath)) {
+      // We made a temporary copy of the flags; delete them later.
+      pathsToDelete.add(flagsPath);
+    }
+    pathsToDelete.add(dataDirPath);
+    
+    return newHp;
   }
 
   /**
@@ -361,6 +413,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<HostAndPort> getMasterHostPorts() {
     return masterHostPorts;
+  }
+
+  /**
+   * Returns the current number of masters.
+   * @return count of masters
+   */
+  public int getNumMasters() {
+    return masterHostPorts.size();
   }
 
   /**

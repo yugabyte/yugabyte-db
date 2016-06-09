@@ -128,7 +128,7 @@ public class CreateTableOptions {
   /**
    * Set the table type.
    *
-   * @param the table type to create
+   * @param tableType the table type to create
    * @return this instance
    */
   public CreateTableOptions setTableType(TableType tableType) {

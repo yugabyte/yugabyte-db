@@ -60,6 +60,7 @@ public abstract class YRpc<R> {
   // Service names.
   protected static final String MASTER_SERVICE_NAME = "yb.master.MasterService";
   protected static final String TABLET_SERVER_SERVICE_NAME = "yb.tserver.TabletServerService";
+  protected static final String CONSENSUS_SERVICE_NAME = "yb.consensus.ConsensusService";
 
   public interface HasKey {
     /**
@@ -218,6 +219,8 @@ public abstract class YRpc<R> {
     final StringBuilder buf = new StringBuilder();
     buf.append("YRpc(method=");
     buf.append(method());
+    buf.append(", service=");
+    buf.append(serviceName());
     buf.append(", tablet=");
     if (tablet == null) {
       buf.append("null");

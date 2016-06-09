@@ -28,11 +28,17 @@ import java.util.concurrent.Executors;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.yb.Type;
 
+import com.google.common.net.HostAndPort;
+
 public class TestYBClient extends BaseYBTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
+
   private String tableName;
 
   @Before
@@ -64,6 +70,21 @@ public class TestYBClient extends BaseYBTest {
     columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.TIMESTAMP).key(true).build());
     columns.add(new ColumnSchema.ColumnSchemaBuilder("c1", Type.TIMESTAMP).nullable(true).build());
     return new Schema(columns);
+  }
+
+  /**
+   * Test for Master Configuration Change operations.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testChangeMasterConfig() throws Exception {
+    int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    HostAndPort newHp = BaseYBTest.miniCluster().startShellMaster();
+    ChangeConfigResponse resp = syncClient.ChangeMasterConfig(
+        newHp.getHostText(), newHp.getPort(), true);
+    assertFalse(resp.hasError());
+    int numAfter = BaseYBTest.miniCluster().getNumMasters();
+    assertEquals(numAfter, numBefore + 1);
   }
 
   /**

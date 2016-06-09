@@ -127,7 +127,7 @@ public class AsyncYBClient implements AutoCloseable {
   public static final long NO_TIMESTAMP = -1;
   public static final long DEFAULT_OPERATION_TIMEOUT_MS = 10000;
   public static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 5000;
-
+ 
   private final ClientSocketChannelFactory channelFactory;
 
   /**
@@ -346,6 +346,28 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<ListTabletServersResponse> listTabletServers() {
     checkIsClosed();
     ListTabletServersRequest rpc = new ListTabletServersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Change master servers config.
+   * @return a deferred object that yields a change config response.
+   */
+  public Deferred<ChangeConfigResponse> changeMasterConfig(String host, int port, boolean isAdd) {
+    checkIsClosed();
+    String change_uuid = getMasterUUID(host, port);
+    if (change_uuid == null) {
+      throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
+                                          port + " - could not get it's uuid.");
+    }
+    String leader_uuid = getLeaderMasterUUID();
+    if (leader_uuid == null) {
+      throw new IllegalArgumentException("Invalid setup - could not find the leader master.");
+    }
+
+    ChangeConfigRequest rpc = new ChangeConfigRequest(
+      leader_uuid, this.masterTable, host, port, change_uuid, isAdd);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1004,6 +1026,58 @@ public class AsyncYBClient implements AutoCloseable {
     return responseD;
   }
 
+  /**
+   * Find the uuid of a master using it's host/port.
+   * @return The uuid of the master, or an empty string if not found.
+   * @throws Nothing.
+   */
+  String getMasterUUID(String host, int port) {
+    HostAndPort hostAndPort = HostAndPort.fromParts(host, port);
+    Deferred<GetMasterRegistrationResponse> d;
+    TabletClient clientForHostAndPort = newMasterClient(hostAndPort);
+    if (clientForHostAndPort == null) {
+      String message = "Couldn't resolve master's address at " + hostAndPort.toString();
+      LOG.warn(message);
+    } else {
+      d = getMasterRegistration(clientForHostAndPort);
+      try {
+        GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
+        return resp.getInstanceId().getPermanentUuid().toStringUtf8(); 
+      } catch (Exception e) {
+        LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find the uuid of the leader master.
+   * @return The uuid of the leader master, or an empty string if no leader found.
+   * @throws Nothing.
+   */
+  String getLeaderMasterUUID() {
+    for (HostAndPort hostAndPort : masterAddresses) {
+      Deferred<GetMasterRegistrationResponse> d;
+      TabletClient clientForHostAndPort = newMasterClient(hostAndPort);
+      if (clientForHostAndPort == null) {
+        String message = "Couldn't resolve this master's address " + hostAndPort.toString();
+        LOG.warn(message);
+      } else {
+        d = getMasterRegistration(clientForHostAndPort);
+        try {
+          GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
+          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+            return resp.getInstanceId().getPermanentUuid().toStringUtf8(); 
+          }
+        } catch (Exception e) {
+          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+        }
+      }
+    }
+    
+    return null;
+  }
 
   /**
    * Get all or some tablets for a given table. This may query the master multiple times if there
