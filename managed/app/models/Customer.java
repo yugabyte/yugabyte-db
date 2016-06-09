@@ -105,7 +105,7 @@ public class Customer extends Model {
       // TODO: handle authToken expiry etc.
       return find.where().eq("authToken", authToken).findUnique();
     } catch (Exception e) {
-      return null;
+	    return null;
     }
   }
 

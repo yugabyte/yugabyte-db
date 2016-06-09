@@ -39,11 +39,10 @@ public class SessionController extends Controller {
 		authTokenJson.put(AUTH_TOKEN, authToken);
 		response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
 		return ok(authTokenJson);
-  }
+	}
 
   public Result register() {
 		Form<RegisterFormData> formData = formFactory.form(RegisterFormData.class).bindFromRequest();
-
 
 		if (formData.hasErrors()) {
 			return badRequest(formData.errorsAsJson());
@@ -56,11 +55,11 @@ public class SessionController extends Controller {
 			return internalServerError();
 		}
 
-		String authToken = cust.createAuthToken();
-		ObjectNode authTokenJson = Json.newObject();
-		authTokenJson.put(AUTH_TOKEN, authToken);
-		response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
-		return ok(authTokenJson);
+	  String authToken = cust.createAuthToken();
+	  ObjectNode authTokenJson = Json.newObject();
+	  authTokenJson.put(AUTH_TOKEN, authToken);
+	  response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
+	  return ok(authTokenJson);
   }
 
   @With(TokenAuthenticator.class)
@@ -70,7 +69,6 @@ public class SessionController extends Controller {
 		if (cust != null) {
 			cust.deleteAuthToken();
 		}
-		return redirect("/");
+		return ok();
   }
-
 }
