@@ -1,16 +1,22 @@
-@(title: String)(content: Html)
+@(showNav: Boolean)(body: Html)
 
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <title>@title</title>
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap-theme.min.css">
-        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css")">
-        <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png")">
-        <script src="@routes.Assets.versioned("javascripts/hello.js")" type="text/javascript"></script>
-    </head>
-    <body>
-        @content
-    </body>
+  <head>
+    <title>Yugabyte Customer Portal</title>
+    <link rel='stylesheet' href='@routes.Assets.versioned("lib/bootstrap/css/bootstrap.min.css")'>
+    <link rel='stylesheet' href='@routes.Assets.versioned("lib/font-awesome/css/font-awesome.css")'>
+    <script src="@routes.Assets.versioned("lib/jquery/jquery.js")" type="text/javascript"></script>
+    <script src="@routes.Assets.versioned("lib/bootstrap/js/bootstrap.min.js")" type="text/javascript"></script>
+    <script src="@routes.Assets.versioned("javascripts/app.js")"></script>
+
+    <link rel='stylesheet' href='@routes.Assets.versioned("stylesheets/app.css")'>
+  </head>
+
+  @if(showNav) {
+    @navbar()
+  }
+  <body id="content">
+    @body
+  </body>
 </html>
