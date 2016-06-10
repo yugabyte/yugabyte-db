@@ -694,8 +694,10 @@ while(!$bDone)
                            $$stryRow[LOG_FIELD_COMMAND_TAG], $$stryRow[LOG_FIELD_ERROR_SEVERITY]);
 
                 logWrite($strSessionId, $strDatabaseName, $$stryRow[LOG_FIELD_LOG_TIME], $lSessionLineNum,
-                         lc($$stryRow[LOG_FIELD_COMMAND_TAG]), lc($$stryRow[LOG_FIELD_ERROR_SEVERITY]),
-                         lc($$stryRow[LOG_FIELD_SQL_STATE_CODE]), $$stryRow[LOG_FIELD_VIRTUAL_TRANSACTION_ID],
+                         defined($$stryRow[LOG_FIELD_COMMAND_TAG]) ? lc($$stryRow[LOG_FIELD_COMMAND_TAG]) : undef,
+                         defined($$stryRow[LOG_FIELD_ERROR_SEVERITY]) ? lc($$stryRow[LOG_FIELD_ERROR_SEVERITY]) : undef,
+                         defined($$stryRow[LOG_FIELD_SQL_STATE_CODE]) ? lc($$stryRow[LOG_FIELD_SQL_STATE_CODE]) : undef,
+                         $$stryRow[LOG_FIELD_VIRTUAL_TRANSACTION_ID],
                          $$stryRow[LOG_FIELD_TRANSACTION_ID], $$stryRow[LOG_FIELD_MESSAGE], $$stryRow[LOG_FIELD_DETAIL],
                          $$stryRow[LOG_FIELD_HINT], $$stryRow[LOG_FIELD_QUERY], $$stryRow[LOG_FIELD_QUERY_POS],
                          $$stryRow[LOG_FIELD_INTERNAL_QUERY], $$stryRow[LOG_FIELD_INTERNAL_QUERY_POS], $$stryRow[LOG_FIELD_CONTEXT],
