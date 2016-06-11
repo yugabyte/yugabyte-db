@@ -2,20 +2,41 @@
 
 = Yugaware Developer Documentation
 
-== Building and running Yugaware
+== Building and running Yugaware locally
 
-First install sbt:
+Pre-requisites - install sbt and MySQL:
 [source,bash]
 ----
 # On a mac, run the following:
 $ brew install sbt
+$ brew install mysql
+
+# Make MySQL a daemon (restart on machine restart).
+$ ln -sfv /usr/local/opt/mysql/*.plist ~/Library/LaunchAgents
+$ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.mysql.plist
 ----
 
-To compile and run:
+Create the yugaware DB in MySQL:
+[source,bash]
+----
+mysql -u root
+mysql> create database yugaware
+----
+
+Needs AWS auth credentials to run.
+[source,bash]
+----
+cat > ~/.sbt/.s3credential
+accessKey = <user's access key>
+secretKey = <user's secret key>
+----
+
+To compile and run the code:
 [source,bash]
 ----
 $ sbt run
 ----
+Test that everything is running by going to http://localhost:9000 in a browser (or curl).
 
 To compile and not run:
 [source,bash]
@@ -50,6 +71,9 @@ $ sbt
 # Go to the yugaware directory and create the eclipse project files.
 $ cd yugaware
 $ sbt eclipse
+
+# Fix the classpath for eclipse.
+bin/activator eclipse
 ----
 
 Now there should be an Eclipse '.project' file generated. Go to Eclipse and import it using:
