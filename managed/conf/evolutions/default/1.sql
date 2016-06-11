@@ -53,6 +53,20 @@ create table region (
   constraint pk_region primary key (code)
 );
 
+create table task_info (
+  uuid                          uuid not null,
+  task_type                     varchar(15) not null,
+  task_state                    varchar(7) not null,
+  percent_done                  integer default 0,
+  details                       clob not null,
+  owner                         varchar(255) not null,
+  create_time                   timestamp not null,
+  update_time                   timestamp not null,
+  constraint ck_task_info_task_type check (task_type in ('DestroyInstance','CreateInstance')),
+  constraint ck_task_info_task_state check (task_state in ('Running','Success','Failure','Created')),
+  constraint pk_task_info primary key (uuid)
+);
+
 alter table availability_zone add constraint fk_availability_zone_region_code foreign key (region_code) references region (code) on delete restrict on update restrict;
 create index ix_availability_zone_region_code on availability_zone (region_code);
 
@@ -83,4 +97,6 @@ drop table if exists instance;
 drop table if exists provider;
 
 drop table if exists region;
+
+drop table if exists task_info;
 
