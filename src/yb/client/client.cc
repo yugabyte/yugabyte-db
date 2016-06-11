@@ -451,6 +451,12 @@ Status YBClient::GetMasterUUID(const string& host,
   return Status::OK();
 }
 
+Status YBClient::AddClusterPlacementInfo(const PlacementInfoPB& placement_info) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  return data_->AddClusterPlacementInfo(this, placement_info, deadline);
+}
+
 Status YBClient::ListTables(vector<string>* tables,
                               const string& filter) {
   ListTablesRequestPB req;

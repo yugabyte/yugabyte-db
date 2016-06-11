@@ -632,7 +632,7 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
   ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::WRITE);
   l.mutable_data()->pb = std::move(config);
 
-  // Write tot sys_catalog and in memory.
+  // Write to sys_catalog and in memory.
   RETURN_NOT_OK(sys_catalog_->AddClusterConfigInfo(cluster_config_.get()));
   l.Commit();
 
@@ -778,6 +778,19 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
       << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
 }
 
+Status CatalogManager::ValidateTablePlacementInfo(
+    const google::protobuf::RepeatedPtrField<PlacementInfoPB>& placement_info) {
+  // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
+  if (!placement_info.empty()) {
+    ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
+    if (l.data().pb.placement_info_size() > 0) {
+      return Status::InvalidArgument(
+          "Unsupported: cannot set both table and cluster level placement yet.");
+    }
+  }
+  return Status::OK();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -891,10 +904,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return s;
   }
 
+  // Validate the table placement rules are a subset of the cluster ones.
+  s = ValidateTablePlacementInfo(req.placement_info());
+  if (!s.ok()) {
+    SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
+    return s;
+  }
+
+  // If we don't have table level requirements, fallback to the cluster ones.
+  auto placement_info = req.placement_info();
+  if (placement_info.empty()) {
+    ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
+    placement_info = l.data().pb.placement_info();
+  }
+
   // Verify that placement requests are reasonable and we can satisfy the minimums.
-  if (req.placement_info_size() > 0) {
+  if (!placement_info.empty()) {
     int minimum_sum = 0;
-    for (const auto& pi : req.placement_info()) {
+    for (const auto& pi : placement_info) {
       minimum_sum += pi.min_num_replicas();
       if (!pi.has_cloud_info()) {
         s = Status::InvalidArgument(
@@ -3200,10 +3227,18 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   }
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
+  RETURN_NOT_OK(ValidateTablePlacementInfo(table_guard.data().pb.placement_info()));
+
+  auto placement_info = table_guard.data().pb.placement_info();
+  if (placement_info.empty()) {
+    ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
+    placement_info = l.data().pb.placement_info();
+  }
+
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
   set<shared_ptr<TSDescriptor>> already_selected_ts;
-  if (table_guard.data().pb.placement_info_size() == 0) {
+  if (placement_info.empty()) {
     // If we don't have placement info, just place the replicas as before, distributed across the
     // whole cluster.
     SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts);
@@ -3219,7 +3254,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
 
     // Keep map from ID to PlacementInfoPB, as protos only have repeated, not maps.
     unordered_map<string, PlacementInfoPB> pi_by_id;
-    for (const auto& pi : table_guard.data().pb.placement_info()) {
+    for (const auto& pi : placement_info) {
       const auto& cloud_info = pi.cloud_info();
       string placement_id = Substitute(
           "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
@@ -3690,14 +3725,18 @@ Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
   return Status::OK();
 }
 
-Status CatalogManager::SetClusterConfig(const SysClusterConfigEntryPB& config) {
+Status CatalogManager::SetClusterConfig(
+    const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) {
+  const auto& config = req->cluster_config();
   ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::WRITE);
   // We should only set the config, if the caller provided us with a valid update to the previous
   // config.
   if (l.data().pb.version() != config.version()) {
-    return Status::IllegalState(Substitute(
+    Status s = Status::IllegalState(Substitute(
         "Config version does not match, got $0, but most recent one is $1. Should call Get again",
         config.version(), l.data().pb.version()));
+    SetupError(resp->mutable_error(), MasterErrorPB::CONFIG_VERSION_MISMATCH, s);
+    return s;
   }
 
   l.mutable_data()->pb.CopyFrom(config);

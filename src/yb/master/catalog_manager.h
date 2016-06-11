@@ -502,7 +502,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // on the server, the change will fail and the client will have to retry the get, as someone
   // must have updated the config in the meantime.
   Status GetClusterConfig(SysClusterConfigEntryPB* config);
-  Status SetClusterConfig(const SysClusterConfigEntryPB& config);
+  Status SetClusterConfig(
+      const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
 
  private:
   friend class TableLoader;
@@ -543,6 +544,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // LoadSysCatalogDataTask() above.
   Status VisitSysCatalogUnlocked();
 
+  // Generated the default entry for the cluster config, that is written into sys_catalog on very
+  // first leader election of the cluster.
+  //
+  // Sets the version field of the SysClusterConfigEntryPB to 0.
   Status PrepareDefaultClusterConfig();
 
   // Helper for initializing 'sys_catalog_'. After calling this
@@ -702,6 +707,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   void AbortTableCreation(TableInfo* table, const std::vector<TabletInfo*>& tablets);
+
+  // Validates that the passed-in table placement information respects the overall cluster level
+  // configuration. This should essentially not be more broader reaching than the cluster. As an
+  // example, if the cluster is confined to AWS, you cannot have tables in GCE.
+  Status ValidateTablePlacementInfo(
+      const google::protobuf::RepeatedPtrField<PlacementInfoPB>& placement_info);
 
   // Report metrics.
   void ReportMetrics();

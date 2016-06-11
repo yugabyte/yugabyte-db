@@ -32,6 +32,7 @@ using std::multimap;
 using std::set;
 using std::string;
 using std::vector;
+using strings::Substitute;
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
@@ -42,7 +43,66 @@ namespace yb {
 const char* const kTableName = "test-table";
 
 class CreateTableITest : public ExternalMiniClusterITestBase {
+ public:
+  Status CreateTableWithPlacement(
+      const master::PlacementInfoPB& placement_info, const int num_replicas,
+      const string& table_suffix) {
+    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+    client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
+    return table_creator->table_name(Substitute("$0:$1", kTableName, table_suffix))
+        .schema(&client_schema)
+        .num_replicas(num_replicas)
+        .add_placement_info(placement_info)
+        .wait(true)
+        .Create();
+  }
 };
+
+TEST_F(CreateTableITest, TestCreateWithPlacement) {
+  const string cloud = "aws";
+  const string region = "us-west-1";
+  const string zone = "a";
+
+  const int kNumReplicas = 3;
+  vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
+                          Substitute("--placement_region=$0", region),
+                          Substitute("--placement_zone=$0", zone)};
+  NO_FATALS(StartCluster(flags, flags, kNumReplicas));
+
+  master::PlacementInfoPB placement_info;
+  auto* cloud_info = placement_info.mutable_cloud_info();
+  cloud_info->set_placement_cloud(cloud);
+  cloud_info->set_placement_region(region);
+  cloud_info->set_placement_zone(zone);
+  placement_info.set_min_num_replicas(kNumReplicas);
+
+  // Successful table create.
+  ASSERT_OK(CreateTableWithPlacement(placement_info, kNumReplicas, "success_base"));
+
+  // Cannot create table with 4 replicas when only 3 TS available.
+  {
+    auto new_placement = placement_info;
+    new_placement.set_min_num_replicas(kNumReplicas + 1);
+    Status s = CreateTableWithPlacement(new_placement, kNumReplicas, "fail_num_replicas");
+    ASSERT_TRUE(s.IsInvalidArgument());
+  }
+
+  // Cannot create table in locations we have no servers.
+  {
+    auto new_placement = placement_info;
+    new_placement.mutable_cloud_info()->set_placement_zone("b");
+    Status s = CreateTableWithPlacement(new_placement, kNumReplicas, "fail_zone");
+    ASSERT_TRUE(s.IsTimedOut());
+  }
+
+  // Set cluster config placement and test table placement interaction. Right now, this should fail
+  // instantly, as we do not support cluster and table level at the same time.
+  ASSERT_OK(client_->AddClusterPlacementInfo(placement_info));
+  {
+    Status s = CreateTableWithPlacement(placement_info, kNumReplicas, "fail_table_placement");
+    ASSERT_TRUE(s.IsInvalidArgument());
+  }
+}
 
 // Regression test for an issue seen when we fail to create a majority of the
 // replicas in a tablet. Previously, we'd still consider the tablet "RUNNING"

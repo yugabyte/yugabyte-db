@@ -462,7 +462,11 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   {
     ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
     l.mutable_data()->pb.mutable_placement_info(0)->set_min_num_replicas(300);
-    ASSERT_OK(master_->catalog_manager()->SetClusterConfig(l.mutable_data()->pb));
+
+    ChangeMasterClusterConfigRequestPB req;
+    *req.mutable_cluster_config() = l.mutable_data()->pb;
+    ChangeMasterClusterConfigResponsePB resp;
+    ASSERT_OK(master_->catalog_manager()->SetClusterConfig(&req, &resp));
     l.Commit();
   }
 
@@ -477,7 +481,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     ASSERT_TRUE(PbEquals(l.data().pb.placement_info(0), config.placement_info(0)));
   }
 
-  // Reload the data again and check that it matches expectationsa.
+  // Reload the data again and check that it matches expectations.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);

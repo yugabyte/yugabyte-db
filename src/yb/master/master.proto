@@ -60,6 +60,11 @@ message MasterErrorPB {
     // The number of replicas requested is greater than the number of live servers
     // in the cluster.
     REPLICATION_FACTOR_TOO_HIGH = 8;
+
+    // Change config should always be issued with the latest config version set.
+    // If the client fails to do so, or there is a concurrent change, we will
+    // set this error code.
+    CONFIG_VERSION_MISMATCH = 9;
   }
 
   // The error code.

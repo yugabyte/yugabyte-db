@@ -54,10 +54,14 @@ namespace yb {
 using consensus::RaftPeerPB;
 using master::AlterTableRequestPB;
 using master::AlterTableResponsePB;
+using master::ChangeMasterClusterConfigRequestPB;
+using master::ChangeMasterClusterConfigResponsePB;
 using master::CreateTableRequestPB;
 using master::CreateTableResponsePB;
 using master::DeleteTableRequestPB;
 using master::DeleteTableResponsePB;
+using master::GetMasterClusterConfigRequestPB;
+using master::GetMasterClusterConfigResponsePB;
 using master::GetLeaderMasterRpc;
 using master::GetTableSchemaRequestPB;
 using master::GetTableSchemaResponsePB;
@@ -903,6 +907,50 @@ Status YBClient::Data::RemoveMasterAddress(const Sockaddr& sockaddr) {
 
   RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));
 
+  return Status::OK();
+}
+
+Status YBClient::Data::AddClusterPlacementInfo(
+    YBClient* client, const master::PlacementInfoPB& placement_info, const MonoTime& deadline,
+    bool* retry) {
+  // If retry was not set, we'll wrap around in a retryable function.
+  if (!retry) {
+    return RetryFunc(
+        deadline, "Other clients changed the config. Retrying.",
+        "Timed out retrying the config change. Probably too many concurrent attempts.",
+        boost::bind(
+            &YBClient::Data::AddClusterPlacementInfo, this, client, placement_info, _1, _2));
+  }
+
+  // Get the current config.
+  GetMasterClusterConfigRequestPB get_req;
+  GetMasterClusterConfigResponsePB get_resp;
+  Status s = SyncLeaderMasterRpc<GetMasterClusterConfigRequestPB, GetMasterClusterConfigResponsePB>(
+      deadline, client, get_req, &get_resp, nullptr, "GetMasterClusterConfig",
+      &MasterServiceProxy::GetMasterClusterConfig);
+  RETURN_NOT_OK(s);
+  if (get_resp.has_error()) {
+    return StatusFromPB(get_resp.error().status());
+  }
+
+  ChangeMasterClusterConfigRequestPB change_req;
+  ChangeMasterClusterConfigResponsePB change_resp;
+
+  // Update the list with the new placement.
+  change_req.mutable_cluster_config()->CopyFrom(get_resp.cluster_config());
+  change_req.mutable_cluster_config()->add_placement_info()->CopyFrom(placement_info);
+
+  // Try to update it on the live cluster.
+  s = SyncLeaderMasterRpc<ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB>(
+      deadline, client, change_req, &change_resp, nullptr, "ChangeMasterClusterConfig",
+      &MasterServiceProxy::ChangeMasterClusterConfig);
+  RETURN_NOT_OK(s);
+  if (change_resp.has_error()) {
+    // Retry on config mismatch.
+    *retry = change_resp.error().code() == MasterErrorPB::CONFIG_VERSION_MISMATCH;
+    return StatusFromPB(change_resp.error().status());
+  }
+  *retry = false;
   return Status::OK();
 }
 

@@ -165,6 +165,13 @@ class YBClient::Data {
   Status RemoveMasterAddress(const Sockaddr& sockaddr);
   Status AddMasterAddress(const Sockaddr& sockaddr);
 
+  // Add placement info to the cluster config. Last argument defaults to nullptr to auto-wrap in a
+  // retry. It is otherwise used in a RetryFunc to indicate if to keep retrying or not, if we get a
+  // version mismatch on setting the config.
+  Status AddClusterPlacementInfo(
+      YBClient* client, const master::PlacementInfoPB& placement_info, const MonoTime& deadline,
+      bool* retry = nullptr);
+
   // Retry 'func' until either:
   //
   // 1) Methods succeeds on a leader master.

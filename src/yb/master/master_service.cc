@@ -500,7 +500,7 @@ void MasterServiceImpl::ChangeMasterClusterConfig(
   if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
     return;
   }
-  Status s = server_->catalog_manager()->SetClusterConfig(req->cluster_config());
+  Status s = server_->catalog_manager()->SetClusterConfig(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
 
   rpc->RespondSuccess();
