@@ -1,22 +1,24 @@
 // Copyright (c) Yugabyte, Inc.
 
-package models;
+package models.yb;
 
 import javax.persistence.*;
 import com.avaje.ebean.Model;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.joda.time.DateTime;
+import play.api.libs.json.Json;
 import play.data.validation.Constraints;
 import org.mindrot.jbcrypt.BCrypt;
 import java.util.Date;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
 public class Customer extends Model {
   @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  public long id;
+	public UUID uuid;
 
-  @Column(length = 256, unique = true, nullable = false)
+	@Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
   private String email;
@@ -38,7 +40,12 @@ public class Customer extends Model {
   @Column(nullable = true)
   public DateTime authTokenIssueDate;
 
-  public static Finder<Long, Customer> find = new Finder(Long.class, Customer.class);
+	@OneToMany(cascade = CascadeType.ALL)
+	private Set<Instance> instances;
+	public void setInstances(Set<Instance> instances) { this.instances = instances; }
+	public Set<Instance> getInstances() { return this.instances; }
+
+	public static final Find<Long, Customer> find = new Find<Long, Customer>(){};
 
   public Customer() {
       this.creationDate = new Date();
@@ -54,6 +61,7 @@ public class Customer extends Model {
    */
   public static Customer create(String name, String email, String password) {
     Customer cust = new Customer();
+	  cust.uuid = UUID.randomUUID();
     cust.email = email.toLowerCase();
     cust.passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
     cust.name = name;
@@ -117,4 +125,15 @@ public class Customer extends Model {
     authTokenIssueDate = null;
     save();
   }
+
+	/**
+	 * Create a new Yuga Instance for the customer
+	 * @param name
+	 * @param state
+	 * @param placementInfo
+	 * @return Yuga Instance
+	 */
+	public Instance createNewInstance(String name, Instance.State state, JsonNode placementInfo) {
+		return Instance.create(this, name, state, placementInfo);
+	}
 }

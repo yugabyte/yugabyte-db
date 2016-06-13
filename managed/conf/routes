@@ -13,5 +13,9 @@ GET     /api/logout                 controllers.SessionController.logout()
 POST    /api/register               controllers.SessionController.register()
 GET     /api/tablet-servers         controllers.TabletServerController.list()
 
+GET     /api/providers              controllers.ProviderController.list()
+POST    /api/providers              controllers.ProviderController.create()
+
+
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)
