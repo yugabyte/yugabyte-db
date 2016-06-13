@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import forms.LoginFormData;
 import forms.RegisterFormData;
-import models.Customer;
+import models.yb.Customer;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
