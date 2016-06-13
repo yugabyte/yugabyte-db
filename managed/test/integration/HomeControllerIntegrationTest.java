@@ -2,7 +2,7 @@ package integration;
 
 // Copyright (c) Yugabyte, Inc.
 
-import models.Customer;
+import models.yb.Customer;
 import org.junit.*;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;

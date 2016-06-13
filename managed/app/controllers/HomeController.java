@@ -2,7 +2,6 @@
 
 package controllers;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import forms.LoginFormData;
 import forms.RegisterFormData;
