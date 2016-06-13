@@ -20,6 +20,7 @@
 #include <glog/logging.h>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
@@ -88,6 +89,12 @@ class Subprocess {
   // in order to reap it. Only call after starting.
   Status Kill(int signal);
 
+  // Similar to Kill, but does not enforce that the process must be running.
+  Status KillNoCheckIfRunning(int signal);
+
+  // Returns true if the process is running.
+  bool IsRunning() const;
+
   // Helper method that creates a Subprocess, issues a Start() then a Wait().
   // Expects a blank-separated list of arguments, with the first being the
   // full path to the executable.
@@ -121,23 +128,27 @@ class Subprocess {
   pid_t pid() const;
 
  private:
+  enum State {
+    kNotStarted,
+    kRunning,
+    kExited
+  };
+
   void SetFdShared(int stdfd, bool share);
   int CheckAndOffer(int stdfd) const;
   int ReleaseChildFd(int stdfd);
   Status DoWait(int* ret, int options);
+  State state() const;
+  Status KillInternal(int signal, bool must_be_running);
 
   enum StreamMode {SHARED, DISABLED, PIPED};
 
   std::string program_;
   std::vector<std::string> argv_;
 
-  enum State {
-    kNotStarted,
-    kRunning,
-    kExited
-  };
+  mutable std::mutex state_lock_;
   State state_;
-  int child_pid_;
+  pid_t child_pid_;
   enum StreamMode fd_state_[3];
   int child_fds_[3];
 

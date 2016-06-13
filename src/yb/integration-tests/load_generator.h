@@ -102,7 +102,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
       int value_size,
       int max_num_write_errors);
 
-  virtual void Start() OVERRIDE;
+  virtual void Start() override;
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
   const KeyIndexSet* InsertedKeys() const { return &inserted_keys_; }
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
@@ -111,8 +111,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
   int num_write_errors() { return failed_keys_.NumElements(); }
 
  private:
-  virtual void RunActionThread(int writerIndex);
-  virtual void RunStatsThread();
+  virtual void RunActionThread(int writerIndex) override;
+  virtual void RunStatsThread() override;
   void RunInsertionTrackerThread();
 
   // Returns true if the calling writer thread should stop.
@@ -172,8 +172,8 @@ class MultiThreadedReader : public MultiThreadedAction {
   int64_t num_read_errors() { return num_read_errors_.load(); }
 
  protected:
-  virtual void RunActionThread(int reader_index) OVERRIDE;
-  virtual void RunStatsThread() OVERRIDE;
+  virtual void RunActionThread(int reader_index) override;
+  virtual void RunStatsThread() override;
 
  private:
 

@@ -93,9 +93,11 @@ ifeq ($(AUTO_DEBUG_LEVEL),)
 # Log the fact that we are not overriding the default value of DEBUG_LEVEL.
 # We expect this to be the case when make is being called from build-rocksdb.sh, because it will
 # usually specify multiple targets to build.
-$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the make target)")
+$(warning "DEBUG_LEVEL is $(DEBUG_LEVEL) (not overridden based on the make target(s), which are '$(MAKECMDGOALS)')")
 else
+ifneq ($(MAKECMDGOALS),clean)  # no debug messages for the "clean" target
 $(warning "Setting DEBUG_LEVEL to $(AUTO_DEBUG_LEVEL) because MAKECMDGOALS is $(MAKECMDGOALS)")
+endif
 DEBUG_LEVEL=$(AUTO_DEBUG_LEVEL)
 endif
 
@@ -210,11 +212,15 @@ default: all
 # util/instrumented_mutex.cc:19:114: error: equality comparison with extraneous parentheses [-Werror,-Wparentheses-equality]
 #   PerfStepTimer perf_step_timer_db_mutex_lock_nanos(&(perf_context.db_mutex_lock_nanos), true); if ((stats_code_ == DB_MUTEX_WAIT_MICROS)) { perf_step_timer_db_mutex_lock_nanos.Start(); };
 #                                                                                                    ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~
-# -Wunevaluated-expression is there to prevent the following error on Mac OS X:
+# -Wno-unevaluated-expression is there to prevent the following error on Mac OS X:
 # util/autovector_test.cc:55:120: error: expression with side effects has no effect in an unevaluated context [-Werror,-Wunevaluated-expression]
 #     switch (0) case 0: default: if (const ::testing::AssertionResult gtest_ar = (::testing::internal:: EqHelper<(sizeof(::testing::internal::IsNullLiteralHelper(--size)) == 1)>::Compare("--size", "vec.size()", --size, vec.size()))) ; else return ::testing::internal::AssertHelper(::testing::TestPartResult::kFatalFailure, "util/autovector_test.cc", 55, gtest_ar.failure_message()) = ::testing::Message();
 WARNING_FLAGS = -W -Wextra -Wall -Wsign-compare -Wshadow \
   -Wno-unused-parameter -Wno-unused-variable -Wno-parentheses-equality -Wno-unevaluated-expression
+
+ifneq ($(MAKECMDGOALS),clean)  # no debug messages for the "clean" target
+$(warning "DISABLE_WARNING_AS_ERROR=$(DISABLE_WARNING_AS_ERROR), DEBUG_LEVEL=$(DEBUG_LEVEL) in RocksDB")
+endif
 
 ifndef DISABLE_WARNING_AS_ERROR
 	WARNING_FLAGS += -Werror

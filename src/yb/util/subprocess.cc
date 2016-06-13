@@ -27,6 +27,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+#include <mutex>
 
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -45,6 +46,8 @@
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::mutex;
+using std::unique_lock;
 using strings::Split;
 using strings::Substitute;
 
@@ -149,7 +152,7 @@ Subprocess::Subprocess(string program, vector<string> argv)
     : program_(std::move(program)),
       argv_(std::move(argv)),
       state_(kNotStarted),
-      child_pid_(-1),
+      child_pid_(0),
       fd_state_(),
       child_fds_() {
   fd_state_[STDIN_FILENO]   = PIPED;
@@ -161,7 +164,7 @@ Subprocess::Subprocess(string program, vector<string> argv)
 }
 
 Subprocess::~Subprocess() {
-  if (state_ == kRunning) {
+  if (state() == kRunning) {
     LOG(WARNING) << "Child process " << child_pid_
                  << "(" << JoinStrings(argv_, " ") << ") "
                  << " was orphaned. Sending SIGKILL...";
@@ -178,17 +181,20 @@ Subprocess::~Subprocess() {
 }
 
 void Subprocess::SetFdShared(int stdfd, bool share) {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kNotStarted);
   CHECK_NE(fd_state_[stdfd], DISABLED);
   fd_state_[stdfd] = share? SHARED : PIPED;
 }
 
 void Subprocess::DisableStderr() {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kNotStarted);
   fd_state_[STDERR_FILENO] = DISABLED;
 }
 
 void Subprocess::DisableStdout() {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kNotStarted);
   fd_state_[STDOUT_FILENO] = DISABLED;
 }
@@ -210,7 +216,7 @@ static void RedirectToDevNull(int fd) {
 static int pipe2(int pipefd[2], int flags) {
   DCHECK_EQ(O_CLOEXEC, flags);
 
-  int new_fds[2];
+  int new_fds[2] = { 0, 0 };
   if (pipe(new_fds) == -1) {
     return -1;
   }
@@ -231,6 +237,7 @@ static int pipe2(int pipefd[2], int flags) {
 #endif
 
 Status Subprocess::Start() {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kNotStarted);
   EnsureSigPipeDisabled();
 
@@ -333,37 +340,74 @@ Status Subprocess::Start() {
 }
 
 Status Subprocess::DoWait(int* ret, int options) {
-  if (state_ == kExited) {
-    *ret = cached_rc_;
-    return Status::OK();
+  pid_t child_pid = 0;
+  {
+    unique_lock<mutex> l(state_lock_);
+    if (state_ == kExited) {
+      *ret = cached_rc_;
+      return Status::OK();
+    }
+    if (state_ != kRunning) {
+      return Status::IllegalState("DoWait called on a process that is not running");
+    }
+    child_pid = child_pid_;
   }
-  CHECK_EQ(state_, kRunning);
 
-  int rc = waitpid(child_pid_, ret, options);
-  if (rc == -1) {
+  CHECK_NE(child_pid, 0);
+
+  int waitpid_ret_val = waitpid(child_pid, ret, options);
+  if (waitpid_ret_val == -1) {
     return Status::RuntimeError("Unable to wait on child",
                                 ErrnoToString(errno),
                                 errno);
   }
-  if ((options & WNOHANG) && rc == 0) {
+  if ((options & WNOHANG) && waitpid_ret_val == 0) {
     return Status::TimedOut("");
   }
 
-  CHECK_EQ(rc, child_pid_);
-  child_pid_ = -1;
+  unique_lock<mutex> l(state_lock_);
+  CHECK_EQ(waitpid_ret_val, child_pid_);
+  child_pid_ = 0;
   cached_rc_ = *ret;
   state_ = kExited;
   return Status::OK();
 }
 
 Status Subprocess::Kill(int signal) {
-  CHECK_EQ(state_, kRunning);
+  return KillInternal(signal, /* must_be_running = */ true);
+}
+
+Status Subprocess::KillNoCheckIfRunning(int signal) {
+  return KillInternal(signal, /* must_be_running = */ false);
+}
+
+Status Subprocess::KillInternal(int signal, bool must_be_running) {
+  unique_lock<mutex> l(state_lock_);
+
+  if (must_be_running) {
+    CHECK_EQ(state_, kRunning);
+  } else if (state_ == kNotStarted) {
+    return Status::IllegalState("Child process has not been started, cannot send signal");
+  } else if (state_ == kExited) {
+    return Status::IllegalState("Child process has exited, cannot send signal");
+  }
+  CHECK_NE(child_pid_, 0);
+
   if (kill(child_pid_, signal) != 0) {
     return Status::RuntimeError("Unable to kill",
                                 ErrnoToString(errno),
                                 errno);
   }
   return Status::OK();
+}
+
+bool Subprocess::IsRunning() const {
+  unique_lock<mutex> l(state_lock_);
+  if (state_ == kRunning) {
+    CHECK_NE(child_pid_, 0);
+    return kill(child_pid_, 0) == 0;
+  }
+  return false;
 }
 
 Status Subprocess::Call(const string& arg_str) {
@@ -413,7 +457,7 @@ Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
     stdout_out->append(buf, n);
   }
 
-  int retcode;
+  int retcode = 0;
   RETURN_NOT_OK_PREPEND(p.Wait(&retcode), "Unable to wait() for " + argv[0]);
 
   if (PREDICT_FALSE(retcode != 0)) {
@@ -426,12 +470,14 @@ Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
 }
 
 int Subprocess::CheckAndOffer(int stdfd) const {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kRunning);
   CHECK_EQ(fd_state_[stdfd], PIPED);
   return child_fds_[stdfd];
 }
 
 int Subprocess::ReleaseChildFd(int stdfd) {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kRunning);
   CHECK_GE(child_fds_[stdfd], 0);
   CHECK_EQ(fd_state_[stdfd], PIPED);
@@ -441,8 +487,14 @@ int Subprocess::ReleaseChildFd(int stdfd) {
 }
 
 pid_t Subprocess::pid() const {
+  unique_lock<mutex> l(state_lock_);
   CHECK_EQ(state_, kRunning);
   return child_pid_;
+}
+
+Subprocess::State Subprocess::state() const {
+  unique_lock<mutex> l(state_lock_);
+  return state_;
 }
 
 } // namespace yb

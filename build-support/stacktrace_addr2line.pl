@@ -43,6 +43,8 @@
 use strict;
 use warnings;
 
+use File::Basename;
+
 if (!@ARGV) {
   die <<EOF
 Usage: $0 executable [stack-trace-file]
@@ -73,6 +75,10 @@ if (! -x $binary || ! -r $binary) {
   die "Error: Cannot access executable ($binary)";
 }
 
+my $main_bin_dir = dirname($binary) . "/../bin";
+my $master_binary = $main_bin_dir . "/yb-master";
+my $tserver_binary = $main_bin_dir . "/yb-tserver";
+
 # Cache lookups to speed processing of files with repeated trace addresses.
 my %addr2line_map = ();
 
@@ -81,11 +87,24 @@ $| = 1;
 
 # Reading from <ARGV> is magical in Perl.
 while (defined(my $input = <ARGV>)) {
-  if ($input =~ /^\s+\@\s+(0x[[:xdigit:]]{6,})(?:\s+(\S+))?/) {
-    my $addr = $1;
-    my $lookup_func_name = (!defined $2);
+  # ExternalMiniCluster tests can produce stack traces prefixed by [m-1], [m-2], [m-3], [ts-1],
+  # [ts-2], [ts-3], e.g.
+  if ($input =~ /^(?:\[([a-z]+)-\d+\])?\s+\@\s+(0x[[:xdigit:]]{6,})(?:\s+(\S+))?/) {
+    my $minicluster_daemon_prefix = $1;
+    my $addr = $2;
+    my $lookup_func_name = (!defined $3);
+
+    my $current_binary = $binary;
+    if (defined($minicluster_daemon_prefix)) {
+      if ($minicluster_daemon_prefix eq "m") {
+        $current_binary = $master_binary;
+      } elsif ($minicluster_daemon_prefix eq "ts") {
+        $current_binary = $tserver_binary;
+      }
+    }
+
     if (!exists($addr2line_map{$addr})) {
-      $addr2line_map{$addr} = `addr2line -ifC -e $binary $addr`;
+      $addr2line_map{$addr} = `addr2line -ifC -e "$current_binary" $addr`;
     }
     chomp $input;
     $input .= parse_addr2line_output($addr2line_map{$addr}, $lookup_func_name) . "\n";

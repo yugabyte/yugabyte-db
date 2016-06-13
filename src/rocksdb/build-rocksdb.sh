@@ -11,10 +11,6 @@ Links RocksDB sources into the build directory and builds it.
 Options:
   -h, --help
     Show help.
-  --build-type <build_type>
-    The build type (e.g. "debug" or "release"). This must match the build directory.
-    This is optional. If specified, this is expected to match the final component of the build
-    directory.
   --build-dir <build_dir>
     The base build directory, e.g. yugabyte/build/debug or yugabyte/build/release.
     This is required.
@@ -45,7 +41,6 @@ EOT
 }
 
 build_dir=""
-build_type=""
 c_compiler=""
 cxx_compiler=""
 cxx_flags=""
@@ -162,11 +157,11 @@ if [ -n "$c_compiler" ]; then
   make_opts+=( CC="$c_compiler" )
 fi
 
-if $verbose; then
+if "$verbose"; then
   make_opts+=( SH="bash -x" )
 fi
 
-if $use_ld_gold; then
+if "$use_ld_gold"; then
   # TODO: replace this with an append if we're accumulating linker flags in multiple places.
   extra_ldflags+=" -fuse-ld=gold"
 fi
@@ -233,20 +228,12 @@ unset IFS
 # Normalize the directory in case it contains relative components ("..").
 build_dir=$( cd "$build_dir" && pwd )
 
-if [ -z "$build_type" ]; then
-  build_type=${build_dir##*/}
-fi
-
 if [ -n "$make_parallelism" ]; then
   if [[ ! "$make_parallelism" =~ ^[0-9]+$ ]]; then
     echo "Invalid value for --make-parallelism: '$make_parallelism'" >&2
     exit 1
   fi
   make_opts+=( "-j$make_parallelism" )
-fi
-
-if [ "$build_type" == "release" ]; then
-  debug_level=0
 fi
 
 if [ -n "$debug_level" ]; then
@@ -257,20 +244,6 @@ if [ -n "$debug_level" ]; then
   make_opts+=( "DEBUG_LEVEL=$debug_level" )
 fi
 
-build_type_lowercase=$( echo "$build_type" | tr '[:upper:]' '[:lower:]' )
-build_dir_basename=$( echo "${build_dir##*/}" | tr '[:upper:]' '[:lower:]' )
-
-# If the build type is "debug", we check that the directory ends with "debug" or "debug0"
-# (case-insensitive). We need the "debug0" case because we sometimes get paths such as
-# /home/mbautin/.CLion12/system/cmake/generated/411cc071/411cc071/Debug0 in CLion builds.
-if [ "$build_dir_basename" != "$build_type_lowercase" ] && \
-   [ "$build_dir_basename" != "${build_type_lowercase}0" ]; then
-  echo "Build directory '$build_dir' does not end with build type ('$build_type') optionally " \
-       "followed by 0 as its final path component" >&2
-  exit 1
-fi
-
-echo "RocksDB build type: $build_type_lowercase"
 echo "Base build directory for RocksDB: $build_dir"
 
 rocksdb_dir=$( cd "`dirname $0`" && pwd )

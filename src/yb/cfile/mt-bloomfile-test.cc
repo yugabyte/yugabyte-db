@@ -29,7 +29,6 @@ namespace cfile {
 class MTBloomFileTest : public BloomFileTestBase {
 };
 
-#ifdef NDEBUG
 TEST_F(MTBloomFileTest, Benchmark) {
   ASSERT_NO_FATAL_FAILURE(WriteTestBloomFile());
   ASSERT_OK(OpenBloomFile());
@@ -47,7 +46,6 @@ TEST_F(MTBloomFileTest, Benchmark) {
     t->Join();
   }
 }
-#endif
 
 } // namespace cfile
 } // namespace yb

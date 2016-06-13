@@ -86,33 +86,8 @@ else()
 endif()
 message("Using shared library suffix '${YB_SHARED_LIBRARY_SUFFIX}'.")
 
-# Use CCache if it is available
-if(APPLE)
-  set(CCACHE_WRAPPER_DIR "/usr/local/opt/ccache/libexec")
-else()
-  set(CCACHE_WRAPPER_DIR "/usr/lib/ccache")
-endif()
-
-if(IS_DIRECTORY "${CCACHE_WRAPPER_DIR}")
-  set(DEFAULT_CMAKE_C_COMPILER "${CMAKE_C_COMPILER}")
-  get_filename_component(C_COMPILER_BASENAME "${CMAKE_C_COMPILER}" NAME)
-  set(CMAKE_C_COMPILER "${CCACHE_WRAPPER_DIR}/${C_COMPILER_BASENAME}")
-  # This is a warning to make sure it shows up even if regular messages are somehow disabled.
-  message(WARNING "Using CCache as C compiler: ${CMAKE_C_COMPILER} \
-(was ${DEFAULT_CMAKE_C_COMPILER} by default) -- not really a warning, just FYI")
-
-  set(DEFAULT_CMAKE_CXX_COMPILER "${CMAKE_CXX_COMPILER}")
-  get_filename_component(CXX_COMPILER_BASENAME "${CMAKE_CXX_COMPILER}" NAME)
-  set(CMAKE_CXX_COMPILER "${CCACHE_WRAPPER_DIR}/${CXX_COMPILER_BASENAME}")
-  message(WARNING "Using CCache as C++ compiler: ${CMAKE_CXX_COMPILER} \
-(was ${DEFAULT_CMAKE_CXX_COMPILER} by default) -- not really a warning, just FYI")
-
-else()
-  message(
-    WARNING "CCache's directory of compiler wrappers not found at '${CCACHE_WRAPPER_DIR}'. \
-CCache is disabled"
-   )
-endif()
+set(CMAKE_C_COMPILER "${CMAKE_SOURCE_DIR}/build-support/compiler-wrappers/cc")
+set(CMAKE_CXX_COMPILER "${CMAKE_SOURCE_DIR}/build-support/compiler-wrappers/c++")
 
 # Provide a 'latest' symlink to this build directory if the "blessed"
 # multi-build layout is detected:
@@ -371,6 +346,16 @@ add_definitions("-DYB_STATIC_DEFINE")
 # Clang does not support using ASAN and TSAN simultaneously.
 if ("${YB_USE_ASAN}" AND "${YB_USE_TSAN}")
   message(SEND_ERROR "Can only enable one of ASAN or TSAN at a time")
+endif()
+
+if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
+  if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
+      NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
+    message(SEND_ERROR "YB_COMPILER_TYPE is set to '$ENV{YB_COMPILER_TYPE}', but it must be 'clang'\
+ for ASAN/TSAN/UBSAN builds. YB_USE_ASAN=${YB_USE_ASAN}, YB_USE_TSAN=${YB_USE_TSAN},\
+ YB_USE_UBSAN=${YB_USE_UBSAN}")
+  endif()
+  set(ENV{YB_COMPILER_TYPE} "clang")
 endif()
 
 # Flag to enable clang address sanitizer

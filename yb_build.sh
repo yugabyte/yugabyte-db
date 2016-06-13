@@ -1,5 +1,9 @@
-#!/bin/bash 
+#!/usr/bin/env bash
 set -euo pipefail
+
+# Source the common-build-env.sh script in the build-support subdirectory of the directory of this
+# script.
+. "${0%/*}"/build-support/common-build-env.sh
 
 show_help() {
   cat >&2 <<-EOT
@@ -18,20 +22,27 @@ Options:
     Remove previously built third-party dependencies and rebuild them. Does not imply --clean.
   --rocksdb-only
     Only build RocksDB code (all targets).
+  --no-ccache
+    Do not use ccache. Useful when debugging build scripts or compiler/linker options.
+  --clang
+    Use the clang C/C++ compiler.
 
 Build types:
-  debug (default), fastdebug, release, profile_gen, profile_build
+  debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
 EOT
 }
 
-cmake_build_type="debug"
+build_type="debug"
+build_type_specified=false
 verbose=false
 force_run_cmake=false
 clean_before_build=false
 clean_thirdparty=false
 rocksdb_only=false
 rocksdb_targets=""
+no_ccache=false
 make_opts=()
+force=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -51,11 +62,24 @@ while [ $# -gt 0 ]; do
     --clean-thirdparty)
       clean_thirdparty=true
     ;;
+    -f|--force)
+      force=true
+    ;;
     --rocksdb-only)
       rocksdb_only=true
     ;;
-    debug|fastdebug|release|profile_gen|profile_build)
-      cmake_build_type="$1"
+    --no-ccache)
+      no_ccache=true
+    ;;
+    --gcc)
+      YB_COMPILER_TYPE="gcc"
+    ;;
+    --clang)
+      YB_COMPILER_TYPE="clang"
+    ;;
+    debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
+      build_type="$1"
+      build_type_specified=true
     ;;
     rocksdb_*)
       # Assume this is a CMake target we've created for RocksDB tests.
@@ -68,28 +92,53 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+cmake_opts=()
+case "$build_type" in
+  asan)
+    cmake_opts+=( -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 )
+    cmake_build_type=fastdebug
+    if [ -n "$YB_COMPILER_TYPE"] && [ "$YB_COMPILER_TYPE" != "clang" ]; then
+      echo "ASAN builds require clang"
+    fi
+    YB_COMPILER_TYPE="clang"
+  ;;
+  tsan)
+    echo "TSAN builds are not supported yet" >&2
+    exit 1
+  ;;
+  *)
+    cmake_build_type=$build_type
+esac
+
+set_build_root "$build_type"
+
+# We have set cmake_build_type and BUILD_ROOT based on build_type, so build_type is not needed
+# anymore. The difference between build_type and cmake_build_type is that the former can be set to
+# some special values, such as "tsan" and "asan".
+unset build_type
+
+validate_cmake_build_type "$cmake_build_type"
+
+export YB_COMPILER_TYPE
+
 cmake_opts=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
 
-project_dir=$( cd "$( dirname "$0" )" && pwd )
-build_dir="$project_dir/build/$cmake_build_type"
-. "$project_dir"/build-support/common-build-env.sh
-thirdparty_dir=$project_dir/thirdparty
-
-if $verbose; then 
+if "$verbose"; then 
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
-  cmake_opts+=( -Wdev --debug-output --trace )
-  make_opts+=( VERBOSE=1 )
+  cmake_opts+=( -Wdev --debug-output --trace -DYB_VERBOSE=1 )
+  make_opts+=( VERBOSE=1 SH="bash -x" )
+  export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
 
 # If we are running in an interactive session, check if a clean build was done less than an hour
 # ago. In that case, make sure this is what the user really wants.
 if tty -s && ( $clean_before_build || $clean_thirdparty ); then
-  last_clean_timestamp_path="$project_dir/build/last_clean_timestamp"
+  last_clean_timestamp_path="$YB_SRC_ROOT/build/last_clean_timestamp"
   current_timestamp_sec=$( date +%s )
   if [ -f "$last_clean_timestamp_path" ]; then
     last_clean_timestamp_sec=$( cat "$last_clean_timestamp_path" )
     last_build_time_sec_ago=$(( $current_timestamp_sec - $last_clean_timestamp_sec ))
-    if [[ "$last_build_time_sec_ago" -lt 3600 ]]; then
+    if [[ "$last_build_time_sec_ago" -lt 3600 ]] && ! "$force"; then
       echo "Last clean build was performed less than an hour ($last_build_time_sec_ago sec) ago" >&2
       echo "Do you still want to do a clean build? [y/N]" >&2
       read answer
@@ -99,23 +148,23 @@ if tty -s && ( $clean_before_build || $clean_thirdparty ); then
       fi
     fi
   fi
-  mkdir -p "$project_dir/build"
+  mkdir -p "$YB_SRC_ROOT/build"
   echo "$current_timestamp_sec" >"$last_clean_timestamp_path"
 fi
 
-if $clean_before_build; then
-  echo "Removing '$build_dir' (--clean specified)"
-  ( set -x; rm -rf "$build_dir" )
+if "$clean_before_build"; then
+  echo "Removing '$BUILD_ROOT' (--clean specified)"
+  ( set -x; rm -rf "$BUILD_ROOT" )
 fi
 
-mkdir -p "$build_dir"
-cd "$build_dir"
+mkdir -p "$BUILD_ROOT"
+cd "$BUILD_ROOT"
 
 # Even though thirdparty/build-if-necessary.sh has its own build stamp file,
 # the logic here is simplified: we only build third-party dependencies once and
 # never rebuild it.
 
-thirdparty_built_flag_file="$build_dir/built_thirdparty"
+thirdparty_built_flag_file="$BUILD_ROOT/built_thirdparty"
 if $clean_thirdparty; then
   echo "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
@@ -129,14 +178,18 @@ fi
 # Add the installed/bin directory to PATH so that we run the cmake binary from there.
 export PATH="$thirdparty_dir/installed/bin:$PATH"
 
-if $force_run_cmake || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
+if "$no_ccache"; then
+  cmake_opts+=( -DYB_NO_CCACHE=1 )
+fi
+
+if "$force_run_cmake" || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
     echo "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
       "before running cmake"
     export NO_REBUILD_THIRDPARTY=1
   fi
   echo "Running cmake in $PWD"
-  ( set -x; cmake -DYB_LINK=dynamic "${cmake_opts[@]}" "$project_dir" )
+  ( set -x; cmake -DYB_LINK=dynamic "${cmake_opts[@]}" "$YB_SRC_ROOT" )
 fi
 
 if "$rocksdb_only"; then
@@ -144,19 +197,24 @@ if "$rocksdb_only"; then
 fi
 
 echo Running make in $PWD
-set +u  # "set -u" may cause failures on empty lists
-( set -x; make -j8 "${make_opts[@]}" )
-set -u
+set +u +e  # "set -u" may cause failures on empty lists
+time ( set -x; make -j8 "${make_opts[@]}" )
+exit_code=$?
+set -u -e
+echo "Build finished with exit code $exit_code. Timing information is available above."
+if [ "$exit_code" -ne 0 ]; then
+  exit "$exit_code"
+fi
 
 touch "$thirdparty_built_flag_file"
 
 # Fix rpath's for various binaries on OSX so that the executables can be launched without having
 # to set the DYLD_FALLBACK_LIBRARY_PATH before running them.
-if [ "`uname`" == "Darwin" ]; then
+if [ "$( uname )" == "Darwin" ]; then
   echo "Fixing rpath for binaries on OSX"
-  for binary in $build_dir/bin/yb-* $build_dir/lib/*.dylib
+  for binary in $BUILD_ROOT/bin/yb-* $BUILD_ROOT/lib/*.dylib
   do
     install_name_tool -change librocksdb_debug.4.6.dylib \
-      "$build_dir"/rocksdb-build/librocksdb_debug.4.6.dylib "$binary"
+      "$BUILD_ROOT"/rocksdb-build/librocksdb_debug.4.6.dylib "$binary"
   done
 fi

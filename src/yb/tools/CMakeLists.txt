@@ -106,3 +106,5 @@ ADD_YB_TEST(yb-ts-cli-test)
 ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-test
   yb-ts-cli)
 
+add_executable(run-with-timeout run-with-timeout.cc)
+target_link_libraries(run-with-timeout yb_util)
