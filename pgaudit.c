@@ -1806,8 +1806,14 @@ assign_pgaudit_log_level(const char *newVal, void *extra)
 void
 _PG_init(void)
 {
+    /* Be sure we do initialization only once */
+    static bool inited = false;
+
+    if (inited)
+        return;
+
     /* Must be loaded with shared_preload_libaries */
-    if (IsUnderPostmaster)
+    if (!process_shared_preload_libraries_in_progress)
         ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
                 errmsg("pgaudit must be loaded via shared_preload_libraries")));
 
@@ -1948,4 +1954,6 @@ _PG_init(void)
 
     /* Log that the extension has completed initialization */
     ereport(LOG, (errmsg("pgaudit extension initialized")));
+
+    inited = true;
 }
