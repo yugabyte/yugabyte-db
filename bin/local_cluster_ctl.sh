@@ -499,8 +499,7 @@ if [ ! -d "$yugabyte_root/src" ] || \
   exit 1
 fi
 
-# TODO: allow testing of both debug and release builds.
-build_root="$yugabyte_root/build/debug"
+build_root="$yugabyte_root/build/latest"
 
 if [ -f "$build_root" ]; then
   echo "Could not find build directory: '$build_root'" >&2

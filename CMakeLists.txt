@@ -101,8 +101,13 @@ if ("${CMAKE_CURRENT_BINARY_DIR}" MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/build/[^
     message(FATAL_ERROR "Should not run cmake inside the build/latest symlink. "
             "First change directories into the destination of the symlink.")
   endif()
+
+  # This option is needed in addition to -sf, while linking, to force the link to
+  # occur on directories. Unfortunately, Linux & MacOS differ on the option name.
   if (NOT APPLE)
     set(MORE_ARGS "-T")
+  else()
+    set(MORE_ARGS "-h")
   endif()
   add_custom_target(latest_symlink ALL
     ln ${MORE_ARGS} -sf ${CMAKE_CURRENT_BINARY_DIR}
