@@ -4,6 +4,7 @@ package models.yb;
 
 import javax.persistence.*;
 import com.avaje.ebean.Model;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.joda.time.DateTime;
 import play.api.libs.json.Json;
@@ -41,6 +42,7 @@ public class Customer extends Model {
   public DateTime authTokenIssueDate;
 
 	@OneToMany(cascade = CascadeType.ALL)
+	@JsonBackReference
 	private Set<Instance> instances;
 	public void setInstances(Set<Instance> instances) { this.instances = instances; }
 	public Set<Instance> getInstances() { return this.instances; }

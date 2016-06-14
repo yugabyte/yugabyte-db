@@ -1,7 +1,9 @@
 // Copyright (c) Yugabyte, Inc.
-package controllers;
+package controllers.cloud;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import controllers.AuthenticatedController;
 import models.cloud.Provider;
 import play.data.Form;
 import play.data.FormFactory;
@@ -10,7 +12,7 @@ import play.mvc.Result;
 
 import java.util.List;
 
-public class ProviderController extends AuthenticatedController  {
+public class ProviderController extends AuthenticatedController {
 	@Inject
 	FormFactory formFactory;
 
@@ -29,9 +31,11 @@ public class ProviderController extends AuthenticatedController  {
 	 */
 	public Result create() {
 		Form<Provider> formData = formFactory.form(Provider.class).bindFromRequest();
+		ObjectNode responseJson = Json.newObject();
 
 		if (formData.hasErrors()) {
-			return badRequest(formData.errorsAsJson());
+			responseJson.set("error", formData.errorsAsJson());
+			return badRequest(responseJson);
 		}
 
 		try {
@@ -39,7 +43,8 @@ public class ProviderController extends AuthenticatedController  {
 			return ok(Json.toJson(p));
 		} catch (Exception e) {
 			// TODO: Handle exception and print user friendly message
-			return internalServerError(e.getMessage());
+			responseJson.put("error", e.getMessage());
+			return internalServerError(responseJson);
 		}
 	}
 }

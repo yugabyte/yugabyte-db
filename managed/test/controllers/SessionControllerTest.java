@@ -14,6 +14,8 @@ import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 import java.util.Map;
+
+import static org.hamcrest.CoreMatchers.*;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
@@ -52,8 +54,10 @@ public class SessionControllerTest extends WithApplication {
     loginJson.put("email", "foo@bar.com");
     loginJson.put("password", "password1");
     Result result = route(fakeRequest(controllers.routes.SessionController.login()).bodyJson(loginJson));
+	  JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
+	  assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("Invalid Customer Credentials")));
   }
 
   @Test
@@ -61,8 +65,10 @@ public class SessionControllerTest extends WithApplication {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "foo@bar.com");
     Result result = route(fakeRequest(controllers.routes.SessionController.login()).bodyJson(loginJson));
+	  JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
+	  assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
   }
 
   @Test
@@ -97,7 +103,8 @@ public class SessionControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
-  }
+	  assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
+	}
 
   @Test
   public void testLogout() {

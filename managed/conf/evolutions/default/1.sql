@@ -4,12 +4,13 @@
 # --- !Ups
 
 create table availability_zone (
+  uuid                          uuid not null,
   code                          varchar(25) not null,
   name                          varchar(100) not null,
-  region_code                   varchar(25),
+  region_uuid                   uuid,
   active                        boolean default true not null,
   subnet                        varchar(50) not null,
-  constraint pk_availability_zone primary key (code)
+  constraint pk_availability_zone primary key (uuid)
 );
 
 create table customer (
@@ -46,11 +47,12 @@ create table provider (
 );
 
 create table region (
+  uuid                          uuid not null,
   code                          varchar(25) not null,
   name                          varchar(100) not null,
   provider_uuid                 uuid,
   active                        boolean default true not null,
-  constraint pk_region primary key (code)
+  constraint pk_region primary key (uuid)
 );
 
 create table task_info (
@@ -67,8 +69,8 @@ create table task_info (
   constraint pk_task_info primary key (uuid)
 );
 
-alter table availability_zone add constraint fk_availability_zone_region_code foreign key (region_code) references region (code) on delete restrict on update restrict;
-create index ix_availability_zone_region_code on availability_zone (region_code);
+alter table availability_zone add constraint fk_availability_zone_region_uuid foreign key (region_uuid) references region (uuid) on delete restrict on update restrict;
+create index ix_availability_zone_region_uuid on availability_zone (region_uuid);
 
 alter table instance add constraint fk_instance_customer_uuid foreign key (customer_uuid) references customer (uuid) on delete restrict on update restrict;
 create index ix_instance_customer_uuid on instance (customer_uuid);
@@ -79,8 +81,8 @@ create index ix_region_provider_uuid on region (provider_uuid);
 
 # --- !Downs
 
-alter table availability_zone drop constraint if exists fk_availability_zone_region_code;
-drop index if exists ix_availability_zone_region_code;
+alter table availability_zone drop constraint if exists fk_availability_zone_region_uuid;
+drop index if exists ix_availability_zone_region_uuid;
 
 alter table instance drop constraint if exists fk_instance_customer_uuid;
 drop index if exists ix_instance_customer_uuid;

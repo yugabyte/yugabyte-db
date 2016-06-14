@@ -1,4 +1,4 @@
-package controllers;
+package controllers.yb;
 
 // Copyright (c) Yugabyte, Inc.
 
