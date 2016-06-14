@@ -17,20 +17,102 @@ namespace yb {
 namespace master {
 
 using std::make_shared;
-using std::make_pair;
+using std::shared_ptr;
 using strings::Substitute;
+
+using TabletId = string;
+using TabletServerId = string;
+using PlacementId = string;
 
 DEFINE_bool(enable_load_balancing,
             true,
             "Choose whether to enable the load balancing algorithm, to move tablets around.");
+
+class TabletMetadata {
+ public:
+  bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
+
+  bool has_wrong_placements() {
+    return !wrong_placement_tablet_servers.empty() || !blacklisted_tablet_servers.empty();
+  }
+
+  // Number of running replicas for this tablet.
+  int running = 0;
+
+  // TODO(bogdan): actually use this!
+  //
+  // Number of starting replicas for this tablet.
+  int starting = 0;
+
+  // If this tablet has fewer replicas than the configured number in the PlacementInfoPB.
+  bool is_under_replicated = false;
+
+  // Set of placement ids that have less replicas available than the configured minimums.
+  set<PlacementId> under_replicated_placements;
+
+  // If this tablet has more replicas than the configured number in the PlacementInfoPB.
+  bool is_over_replicated;
+
+  // Set of tablet server ids that can be candidates for removal, due to tablet being
+  // over-replicated. For tablets with placement information, this will be all tablet servers
+  // that are housing replicas of this tablet, in a placement with strictly more replicas than the
+  // configured minimum (as that means there is at least one of them we can remove, and still
+  // respect the minimum).
+  //
+  // For tablets with no placement information, this will be all the tablet servers currently
+  // serving this tablet, as we can downsize with no restrictions in this case.
+  set<TabletServerId> over_replicated_tablet_servers;
+
+  // Set of tablet server ids whose placement information does not match that listed in the
+  // table's PlacementInfoPB. This will happen when we change the configuration for the table or
+  // the cluster.
+  set<TabletServerId> wrong_placement_tablet_servers;
+
+  // Set of tablet server ids that have been blacklisted and as such, should not get any more load
+  // assigned to them and should be prioritized for removing load.
+  set<TabletServerId> blacklisted_tablet_servers;
+
+  // TODO(bogdan): remove the need for this.
+  //
+  // The tablet server id of the leader in this tablet's peer group. This is needed right now as we
+  // explicitly do not step down leaders, so we must avoid issuing a change config to do so on
+  // those.
+  TabletServerId leader_uuid;
+};
+
+class TabletServerMetadata {
+ public:
+  // Number of running tablets on this tablet server.
+  int running = 0;
+
+  // Number of starting tablets on this tablet server.
+  int starting = 0;
+
+  // The TSDescriptor for this tablet server.
+  shared_ptr<TSDescriptor> descriptor = nullptr;
+
+  // The set of tablet ids that this tablet server is currently running.
+  set<TabletId> tablets;
+};
 
 class ClusterLoadBalancer::ClusterLoadState {
  public:
   ClusterLoadState() {}
 
   // Comparators used for sorting by load.
-  bool CompareByUuid(const TabletServerId& a, const TabletServerId& b);
-  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b);
+  bool CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
+    int load_a = GetLoad(a);
+    int load_b = GetLoad(b);
+    if (load_a == load_b) {
+      return a < b;
+    } else {
+      return load_a < load_b;
+    }
+  }
+
+  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b) {
+    return CompareByUuid(a.ts_desc->permanent_uuid(), b.ts_desc->permanent_uuid());
+  }
 
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
@@ -48,183 +130,329 @@ class ClusterLoadBalancer::ClusterLoadState {
   };
 
   // Get the load for a certain TS.
-  int GetLoad(const TabletServerId& ts_uuid) const;
+  int GetLoad(const TabletServerId& ts_uuid) const {
+    const auto& ts_meta = per_ts_meta_.at(ts_uuid);
+    return ts_meta.starting + ts_meta.running;
+  }
 
-  // Map from tablet id to num_replicas expected for this tablet. This is used to check
-  // over-replication.
-  //
-  // Note: the number of replicas is set at the table level, but for ease of indirection, we keep
-  // this at the tablet level, so we don't keep either two maps (tablet->table, and
-  // table->num_replicas), or access into tablet_map_ for Tablet to do tablet->table()->id().
-  unordered_map<TabletId, int> tablets_configured_replicas_;
+  void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
 
-  // Map from ts_uuid -> set< tablet_id >. This is used to pick tablets from a certain TS.
-  unordered_map<TabletServerId, set<TabletId>> ts_to_tablets_;
+  // Update the per-tablet information for this tablet.
+  void UpdateTablet(TabletInfo* tablet) {
+    const auto& tablet_id = tablet->id();
+    // Set the per-tablet entry to empty default and get the reference for filling up information.
+    auto& tablet_meta = per_tablet_meta_[tablet_id];
 
-  // Map from tablet id to number of running replicas. This is used to ensure we do not remove
-  // replicas and leave a tablet in an under replicated state.
-  unordered_map<TabletId, int> tablets_running_;
+    // Get the placement for this tablet.
+    const auto& placement = placement_by_table_[tablet->table()->id()];
+
+    // Get replicas for this tablet.
+    TabletInfo::ReplicaMap replica_map;
+    tablet->GetReplicaLocations(&replica_map);
+
+    // Set state information for both the tablet and the tablet server replicas.
+    for (const auto& replica : replica_map) {
+      const auto& ts_uuid = replica.first;
+      // Set the per-ts entry to empty default, if first time looking at this tablet server, and/or
+      // get the reference from the map afterwards, for filling up information.
+      auto& ts_meta = per_ts_meta_[ts_uuid];
+
+      const tablet::TabletStatePB& tablet_state = replica.second.state;
+      if (tablet_state == tablet::RUNNING) {
+        ts_meta.tablets.insert(tablet_id);
+        ++ts_meta.running;
+        ++tablet_meta.running;
+        ++total_running_;
+      } else if (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED) {
+        // Keep track of transitioning state (not running, but not in a stopped or failed state).
+        ts_meta.tablets.insert(tablet_id);
+        ++ts_meta.starting;
+        ++tablet_meta.starting;
+        ++total_starting_;
+      }
+
+      // If this replica is blacklisted, we want to keep track of these specially, so we can
+      // prioritize accordingly.
+      if (blacklisted_servers_.count(ts_uuid)) {
+        tablet_meta.blacklisted_tablet_servers.insert(ts_uuid);
+      }
+    }
+
+    // Only set the over-replication section if we need to.
+    tablet_meta.is_over_replicated = placement.num_replicas() < replica_map.size();
+    tablet_meta.is_under_replicated = placement.num_replicas() > replica_map.size();
+
+    // If no placement information, we will have already set the over and under replication flags.
+    // For under-replication, we cannot use any placement_id, so we just leave the set empty and
+    // use that as a marker that we are in this situation.
+    //
+    // For over-replication, we just add all the ts_uuids as candidates.
+    if (placement.placement_blocks().empty()) {
+      if (tablet_meta.is_over_replicated) {
+        for (auto& replica_entry : replica_map) {
+          // Piggyback on this loop to fill leader info.
+          if (replica_entry.second.role == consensus::RaftPeerPB::LEADER) {
+            tablet_meta.leader_uuid = replica_entry.first;
+          }
+          tablet_meta.over_replicated_tablet_servers.insert(std::move(replica_entry.first));
+        }
+      }
+    } else {
+      // If we do have placement information, figure out how the load is distributed based on
+      // placement blocks, for this tablet.
+      unordered_map<PlacementId, vector<TabletReplica>> placement_to_replicas;
+      unordered_map<PlacementId, int> placement_to_min_replicas;
+      // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
+      for (const auto& pb : placement.placement_blocks()) {
+        const auto& placement_id = TSDescriptor::generate_placement_id(pb.cloud_info());
+        // Default empty vector.
+        placement_to_replicas[placement_id];
+        placement_to_min_replicas[placement_id] = pb.min_num_replicas();
+      }
+      // Now actually fill the structures with matching TSs.
+      for (auto& replica_entry : replica_map) {
+        // Piggyback on this loop to fill leader info.
+        if (replica_entry.second.role == consensus::RaftPeerPB::LEADER) {
+          tablet_meta.leader_uuid = replica_entry.first;
+        }
+
+        if (HasValidPlacement(replica_entry.first, &placement)) {
+          const auto& placement_id = per_ts_meta_[replica_entry.first].descriptor->placement_id();
+          placement_to_replicas[placement_id].push_back(std::move(replica_entry.second));
+        } else {
+          // If placement does not match, we likely changed the config or the schema and this
+          // tablet should no longer live on this tablet server.
+          tablet_meta.wrong_placement_tablet_servers.insert(std::move(replica_entry.first));
+        }
+      }
+
+      // Loop over the data and populate extra replica as well as missing replica information.
+      for (const auto& entry : placement_to_replicas) {
+        const auto& placement_id = entry.first;
+        const auto& replica_set = entry.second;
+        const auto min_num_replicas = placement_to_min_replicas[placement_id];
+        if (min_num_replicas > replica_set.size()) {
+          // Placements that are under-replicated should be handled ASAP.
+          tablet_meta.under_replicated_placements.insert(placement_id);
+        } else if (tablet_meta.is_over_replicated && min_num_replicas < replica_set.size()) {
+          // If this tablet is over-replicated, consider all the placements that have more than the
+          // minimum number of tablets, as candidates for removing a replica.
+          for (auto& replica : replica_set) {
+            tablet_meta.over_replicated_tablet_servers.insert(
+                std::move(replica.ts_desc->permanent_uuid()));
+          }
+        }
+      }
+    }
+
+    // Prepare placement related sets for tablets that have placement info.
+    if (tablet_meta.is_missing_replicas()) {
+      tablets_missing_replicas_.insert(tablet_id);
+    }
+    if (tablet_meta.is_over_replicated) {
+      tablets_over_replicated_.insert(tablet_id);
+    }
+    if (tablet_meta.has_wrong_placements()) {
+      tablets_wrong_placement_.insert(tablet_id);
+    }
+  }
+
+  void UpdateTabletServer(shared_ptr<TSDescriptor> ts_desc) {
+    const auto& ts_uuid = ts_desc->permanent_uuid();
+    // Set and get, so we can use this for both tablet servers we've added data to, as well as
+    // tablet servers that happen to not be serving any tablets, so were not in the map yet.
+    auto& ts_meta = per_ts_meta_[ts_uuid];
+    ts_meta.descriptor = ts_desc;
+
+    sorted_load_.push_back(ts_uuid);
+
+    // Mark as blacklisted if it matches.
+    for (const auto& hp : blacklist_.hosts()) {
+      if (ts_meta.descriptor->IsRunningOn(hp)) {
+        blacklisted_servers_.insert(ts_uuid);
+        break;
+      }
+    }
+  }
+
+  bool CanAddTabletToTabletServer(
+      const TabletId& tablet_id, const TabletServerId& to_ts,
+      const PlacementInfoPB* placement_info = nullptr) {
+    const auto& ts_meta = per_ts_meta_[to_ts];
+    // We do not add load to blacklisted servers.
+    if (blacklisted_servers_.count(to_ts)) {
+      return false;
+    }
+    // We cannot add a tablet to a tablet server if it is already serving it.
+    if (ts_meta.tablets.count(tablet_id)) {
+      return false;
+    }
+    // If we ask to use placement information, check against it.
+    if (placement_info && !HasValidPlacement(to_ts, placement_info)) {
+      return false;
+    }
+    // If all checks pass, return true.
+    return true;
+  }
+
+  bool HasValidPlacement(const TabletServerId& ts_uuid, const PlacementInfoPB* placement_info) {
+    if (!placement_info->placement_blocks().empty()) {
+      for (const auto& pb : placement_info->placement_blocks()) {
+        if (per_ts_meta_[ts_uuid].descriptor->MatchesCloudInfo(pb.cloud_info())) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  bool SelectWrongReplicaToMove(
+      const TabletId& tablet_id, const PlacementInfoPB& placement_info, TabletServerId* out_from_ts,
+      TabletServerId* out_to_ts) {
+    // We consider both invalid placements (potentially due to config or schema changes), as well
+    // as servers being blacklisted, as wrong placement.
+    const auto& tablet_meta = per_tablet_meta_[tablet_id];
+    // Prioritize taking away load from blacklisted servers, then from wrong placements.
+    bool found_match = false;
+    for (const auto& from_uuid : tablet_meta.blacklisted_tablet_servers) {
+      bool invalid_placement = tablet_meta.wrong_placement_tablet_servers.count(from_uuid);
+      for (const auto& to_uuid : sorted_load_) {
+        // TODO(bogdan): this could be made smarter if we kept track of per-placement numbers and
+        // allowed to remove one from one placement, as long as it is still above the minimum.
+        //
+        // If this is a blacklisted server, we should aim to still respect placement and for now,
+        // just try to move the load to the same placement. However, if the from_uuid was
+        // previously invalidly placed, then we should ignore its placement.
+        if (invalid_placement && CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info)) {
+          found_match = true;
+        } else {
+          const auto& from_placement_id = per_ts_meta_[from_uuid].descriptor->placement_id();
+          const auto& to_placement_id = per_ts_meta_[to_uuid].descriptor->placement_id();
+          if (from_placement_id == to_placement_id &&
+              CanAddTabletToTabletServer(tablet_id, to_uuid)) {
+            found_match = true;
+          }
+        }
+        if (found_match) {
+          *out_from_ts = from_uuid;
+          *out_to_ts = to_uuid;
+          return true;
+        }
+      }
+    }
+    // TODO(bogdan): sort and pick the highest load as source.
+    //
+    // If we didn't have or find any blacklisted server to move load from, move to the wrong
+    // placement tablet servers. We can pick any of them as the source for now.
+    for (const auto& to_uuid : sorted_load_) {
+      if (CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info)) {
+        *out_from_ts = *tablet_meta.wrong_placement_tablet_servers.begin();
+        *out_to_ts = to_uuid;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
+    ++per_tablet_meta_[tablet_id].starting;
+    ++per_ts_meta_[to_ts].starting;
+    ++total_starting_;
+    SortLoad();
+  }
+
+  void RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
+    --per_tablet_meta_[tablet_id].running;
+    --per_ts_meta_[from_ts].running;
+    --total_running_;
+    SortLoad();
+  }
+
+  void SortLoad() {
+    auto comparator = Comparator(this);
+    sort(sorted_load_.begin(), sorted_load_.end(), comparator);
+  }
+
+  // Map from tablet ids to the metadata we store for each.
+  unordered_map<TabletId, TabletMetadata> per_tablet_meta_;
+
+  // Map from tablet server ids to the metadata we store for each.
+  unordered_map<TabletServerId, TabletServerMetadata> per_ts_meta_;
+
+  // Map from table id to placement information for this table. This will be used for both
+  // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
+  // track of the placement block policies between cluster and table level.
+  unordered_map<TableId, PlacementInfoPB> placement_by_table_;
 
   // Total number of running tablets in the clusters (including replicas).
   int total_running_ = 0;
 
-  // TODO(bogdan): actually use this!
-  // Map from tablet id to number of starting replicas. This is used to ensure we do not add
-  // replicas to tablets that are already getting extra replicas added.
-  unordered_map<TabletId, int> tablets_starting_;
-
   // Total number of tablet replicas being started across the cluster.
   int total_starting_ = 0;
 
-  // Map from tablet server uuid to number of tablets it is starting up. This is used to ensure
-  // we do not start too many tablets at the same time on a certain TS, but also to compute load.
-  unordered_map<TabletServerId, int> ts_starting_;
-
-  // Map from tablet server uuid to number of tablets it is running. This is used in combination
-  // with ts_starting_ for generic load computation.
-  unordered_map<TabletServerId, int> ts_running_;
-
-  // Set of ts_uuid ordered by load. This is the actual raw data of TS load.
+  // Set of ts_uuid sorted ascending by load. This is the actual raw data of TS load.
   vector<TabletServerId> sorted_load_;
+
+  // Set ot tablet ids that have been determined to have missing replicas. This can mean they are
+  // generically under-replicated (2 replicas active, but 3 configured), or missing replicas in
+  // certain placements (3 replicas active out of 3 configured, but no replicas in one of the AZs
+  // listed in the placement blocks).
+  set<TabletId> tablets_missing_replicas_;
 
   // Set of tablet ids that have been temporarily over-replicated. This is used to pick tablets
   // to potentially bring back down to their proper configured size, if there are more running than
   // expected.
-  set<TabletId> over_replicated_tablet_ids_;
+  set<TabletId> tablets_over_replicated_;
 
-  // Total number of tablet replicas that have been added as extra load.
-  int total_over_replication_ = 0;
+  // Set of tablet ids that have been determined to have replicas in incorrect placements.
+  set<TabletId> tablets_wrong_placement_;
+
+  // The cached blacklist setting of the cluster. We store this upfront, as we add to the list of
+  // tablet servers one by one, so we compare against it once per tablet server.
+  BlacklistPB blacklist_;
+
+  // The list of tablet server ids that match the cached blacklist.
+  set<TabletServerId> blacklisted_servers_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
 };
 
-bool ClusterLoadBalancer::ClusterLoadState::CompareByUuid(
-    const TabletServerId& a, const TabletServerId& b) {
-  int load_a = GetLoad(a);
-  int load_b = GetLoad(b);
-  if (load_a == load_b) {
-    return a < b;
-  } else {
-    return load_a < load_b;
-  }
-}
-
-bool ClusterLoadBalancer::ClusterLoadState::CompareByReplica(
-    const TabletReplica& a, const TabletReplica& b) {
-  return CompareByUuid(a.ts_desc->permanent_uuid(), b.ts_desc->permanent_uuid());
-}
-
-int ClusterLoadBalancer::ClusterLoadState::GetLoad(const TabletServerId& ts_uuid) const {
-  int total_load = 0;
-  auto it_start = ts_starting_.find(ts_uuid);
-  if (it_start != ts_starting_.end()) {
-    total_load += it_start->second;
-  }
-  auto it_run = ts_running_.find(ts_uuid);
-  if (it_run != ts_running_.end()) {
-    total_load += it_run->second;
-  }
-  return total_load;
-}
-
-void ClusterLoadBalancer::UpdateTabletInfo(scoped_refptr<TabletInfo> tablet) {
-  const TabletId& tablet_id = tablet->tablet_id();
-
-  {
-    TableMetadataLock table_lock(tablet->table().get(), TableMetadataLock::READ);
-    state_->tablets_configured_replicas_[tablet_id] =
-        table_lock.data().pb.placement_info().num_replicas();
-  }
-
-  TabletInfo::ReplicaMap replica_map;
-  tablet->GetReplicaLocations(&replica_map);
-  // These are keyed by ts uuid.
-  for (const auto& replica : replica_map) {
-    const TabletServerId& ts_uuid = replica.second.ts_desc->permanent_uuid();
-
-    const tablet::TabletStatePB& tablet_state = replica.second.state;
-    if (tablet_state == tablet::RUNNING) {
-      state_->ts_to_tablets_[ts_uuid].insert(tablet_id);
-      ++state_->total_running_;
-      ++state_->ts_running_[ts_uuid];
-      ++state_->tablets_running_[tablet_id];
-    } else if (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED) {
-      // Keep track of transitioning state (not running, but not in a stopped or failed state).
-      ++state_->total_starting_;
-      ++state_->ts_starting_[ts_uuid];
-      ++state_->tablets_starting_[tablet_id];
+void ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
+  const auto& table_id = tablet->table()->id();
+  // Set the placement information on a per-table basis, only once.
+  if (!state_->placement_by_table_.count(table_id)) {
+    PlacementInfoPB pb;
+    {
+      TableMetadataLock l(tablet->table().get(), TableMetadataLock::READ);
+      // If we have a custom per-table placement policy, use that.
+      if (!l.data().pb.placement_info().placement_blocks().empty()) {
+        pb.CopyFrom(l.data().pb.placement_info());
+      } else {
+        // Otherwise, default to cluster policy.
+        pb.CopyFrom(GetClusterPlacementInfo());
+        pb.set_num_replicas(l.data().pb.placement_info().num_replicas());
+      }
     }
+    state_->placement_by_table_[table_id] = std::move(pb);
   }
 
-  int over_replication = GetOverReplication(tablet_id);
-  if (over_replication > 0) {
-    state_->over_replicated_tablet_ids_.insert(tablet_id);
-    state_->total_over_replication_ += over_replication;
-  }
+  state_->UpdateTablet(tablet);
 }
 
-int ClusterLoadBalancer::GetOverReplication(const TabletId& tablet_id) const {
-  auto it_exp = state_->tablets_configured_replicas_.find(tablet_id);
-  if (it_exp == state_->tablets_configured_replicas_.end()) {
-    return 0;
-  }
-
-  auto it_run = state_->tablets_running_.find(tablet_id);
-  if (it_run == state_->tablets_running_.end()) {
-    return 0;
-  }
-
-  return it_run->second - it_exp->second;
+const PlacementInfoPB& ClusterLoadBalancer::GetPlacementByTablet(const TabletId& tablet_id) const {
+  const auto& table_id = GetTabletMap().at(tablet_id)->table()->id();
+  return state_->placement_by_table_.at(table_id);
 }
 
 int ClusterLoadBalancer::get_total_over_replication() const {
-  return state_->total_over_replication_;
+  return state_->tablets_over_replicated_.size();
 }
 
 int ClusterLoadBalancer::get_total_starting_tablets() const { return state_->total_starting_; }
 
 int ClusterLoadBalancer::get_total_running_tablets() const { return state_->total_running_; }
-
-const set<ClusterLoadBalancer::TabletId>& ClusterLoadBalancer::GetTabletsByTS(
-    const TabletServerId& ts_uuid) const {
-  auto it = state_->ts_to_tablets_.find(ts_uuid);
-  if (it == state_->ts_to_tablets_.end()) {
-    const string error_msg =
-        Substitute("Cluster balancing trying to lookup invalid TS uuid: $0", ts_uuid);
-    // Fail in debug mode.
-    DCHECK(false) << error_msg;
-    // Simply log the error otherwise.
-    LOG(ERROR) << error_msg;
-    static set<ClusterLoadBalancer::TabletId> empty_set;
-    return empty_set;
-  } else {
-    return it->second;
-  }
-}
-const set<ClusterLoadBalancer::TabletId>& ClusterLoadBalancer::get_overreplicated_tablet_ids()
-    const {
-  return state_->over_replicated_tablet_ids_;
-}
-
-void ClusterLoadBalancer::ComputeAndSetLoad(const TabletServerId& ts_uuid) {
-  // Using operator[] to set the entry to an empty set, if we don't have this uuid. This is to be
-  // used only with TS that are alive, but may not have any load assigned to them. We still want to
-  // be able to have a safe GetTabletsByTS method, that will error on misuse, so we ensure proper
-  // usage by setting this here.
-  state_->ts_to_tablets_[ts_uuid];
-  // These are just setting the other per-TS maps to 0, for safety.
-  state_->ts_running_[ts_uuid];
-  state_->ts_starting_[ts_uuid];
-
-  // Add TS info to load set, which is automatically sorted by GetLoad, based on the load info.
-  state_->sorted_load_.push_back(ts_uuid);
-}
-
-void ClusterLoadBalancer::SortLoad() {
-  auto comparator = ClusterLoadState::Comparator(state_.get());
-  sort(state_->sorted_load_.begin(), state_->sorted_load_.end(), comparator);
-}
 
 // Load balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
@@ -247,16 +475,25 @@ void ClusterLoadBalancer::RunLoadBalancer() {
 
   // Lock the CatalogManager maps for the duration of the load balancer run.
   boost::shared_lock<CatalogManager::LockType> l(catalog_manager_->lock_);
+
+  // Prepare the in-memory structures.
   AnalyzeTablets();
 
+  // Outsput  parameters are unused in the load balancer, but useful in testing.
+  TabletId out_tablet_id;
+  TabletServerId out_from_ts;
+  TabletServerId out_to_ts;
+
+  // Handle adding and moving replicas.
   for (int i = 0; i < options_.kMaxConcurrentAdds; ++i) {
-    if (!HandleHighLoad()) {
+    if (!HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts)) {
       break;
     }
   }
 
+  // Handle cleanup after over-replication.
   for (int i = 0; i < options_.kMaxConcurrentRemovals; ++i) {
-    if (!HandleOverReplication()) {
+    if (!HandleRemoveReplicas(&out_tablet_id, &out_from_ts)) {
       break;
     }
   }
@@ -267,6 +504,17 @@ void ClusterLoadBalancer::ResetState() {
 }
 
 void ClusterLoadBalancer::AnalyzeTablets() {
+  // Loop over alive tablet servers to set empty defaults, so we can also have info on those
+  // servers that have yet to receive load (have heartbeated to the master, but have not been
+  // assigned any tablets yet).
+  TSDescriptorVector ts_descs;
+  GetAllLiveDescriptors(&ts_descs);
+  // Set the blacklist so we can also mark the tablet servers as we add them up.
+  state_->SetBlacklist(GetServerBlacklist());
+  for (const auto ts_desc : ts_descs) {
+    state_->UpdateTabletServer(ts_desc);
+  }
+
   // Loop over tablet map to register the load that is already live in the cluster.
   for (const auto& entry : GetTabletMap()) {
     scoped_refptr<TabletInfo> tablet = entry.second;
@@ -291,36 +539,83 @@ void ClusterLoadBalancer::AnalyzeTablets() {
     // concerned, but just be underreplicated, and have some TS currently bootstrapping instances
     // of the tablet.
     if (tablet_running) {
-      UpdateTabletInfo(tablet);
+      UpdateTabletInfo(tablet.get());
     }
   }
 
-  // Loop over alive TSs to also register potential load bearing TSs that might not have received
-  // any assignments yet. This is to be able to automatically pick up new TSs added to the cluster
-  // and registered with the Master, but that have not been issued any config changes yet and added
-  // as peers to any tablets. We will use those for load balancing!
-  TSDescriptorVector ts_descs;
-  GetAllLiveDescriptors(&ts_descs);
-  for (const auto ts_desc : ts_descs) {
-    ComputeAndSetLoad(ts_desc->permanent_uuid());
-  }
-
-  SortLoad();
+  // Once we've analyzed both the tablet server information as well as the tablets, we can sort the
+  // load and are ready to apply the load balancing rules.
+  state_->SortLoad();
 
   LOG(INFO) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2",
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets());
 }
 
-void ClusterLoadBalancer::GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const {
-  catalog_manager_->master_->ts_manager()->GetAllLiveDescriptors(ts_descs);
+bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
+    TabletId* out_tablet_id, TabletServerId* out_to_ts) {
+  for (const auto& tablet_id : state_->tablets_missing_replicas_) {
+    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+    const auto& placement_info = GetPlacementByTablet(tablet_id);
+    const auto& missing_placements = tablet_meta.under_replicated_placements;
+    // Loop through TSs by load to find a TS that matches the placement needed and does not already
+    // host this tablet.
+    for (const auto& ts_uuid : state_->sorted_load_) {
+      bool can_choose_ts = false;
+      // If we had no placement information, it means we are just under-replicated, so just check
+      // that we can use this tablet server.
+      if (placement_info.placement_blocks().empty()) {
+        // No need to check placement info, as there is none.
+        can_choose_ts = state_->CanAddTabletToTabletServer(tablet_id, ts_uuid);
+      } else {
+        // We add a tablet to the set with missing replicas both if it is under-replicated, or if
+        // it has placements with fewer replicas than the minimum. If no placement information, we
+        // just deem it under-replicated and handle it in the first branch of the if. Here we take
+        // care of actual placement problems.
+        DCHECK(!missing_placements.empty());
+
+        const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
+        // We have specific placement blocks that are under-replicated, so confirm that this TS
+        // matches.
+        if (missing_placements.count(ts_meta.descriptor->placement_id())) {
+          // Don't check placement information anymore.
+          can_choose_ts = state_->CanAddTabletToTabletServer(tablet_id, ts_uuid);
+        }
+      }
+      // If we've passed the checks, then we can choose this TS to add the replica to.
+      if (can_choose_ts) {
+        *out_tablet_id = tablet_id;
+        *out_to_ts = ts_uuid;
+        AddReplica(tablet_id, ts_uuid);
+        state_->tablets_missing_replicas_.erase(tablet_id);
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
-const unordered_map<string, scoped_refptr<TabletInfo>>& ClusterLoadBalancer::GetTabletMap() const {
-  return catalog_manager_->tablet_map_;
+bool ClusterLoadBalancer::HandleAddIfWrongPlacement(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  for (const auto& tablet_id : state_->tablets_wrong_placement_) {
+    // Skip this tablet, if it is already over-replicated, as it does not need another replica, it
+    // should just have one removed in the removal step.
+    if (state_->tablets_over_replicated_.count(tablet_id)) {
+      continue;
+    }
+    if (state_->SelectWrongReplicaToMove(
+            tablet_id, GetPlacementByTablet(tablet_id), out_from_ts, out_to_ts)) {
+      *out_tablet_id = tablet_id;
+      MoveReplica(tablet_id, *out_from_ts, *out_to_ts);
+      state_->tablets_wrong_placement_.erase(tablet_id);
+      return true;
+    }
+  }
+  return false;
 }
 
-bool ClusterLoadBalancer::HandleHighLoad() {
+bool ClusterLoadBalancer::HandleAddReplicas(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   if (options_.kAllowLimitStartingTablets &&
       get_total_starting_tablets() >= options_.kMaxStartingTablets) {
     LOG(INFO) << Substitute(
@@ -338,32 +633,29 @@ bool ClusterLoadBalancer::HandleHighLoad() {
     return false;
   }
 
-  // Actually do rebalancing.
-  TabletServerId from_ts;
-  TabletServerId to_ts;
-  TabletId tablet_id;
-  bool can_move = GetLoadToMove(&from_ts, &to_ts, &tablet_id);
-  if (!can_move) {
+  // Handle missing placements with highest priority, as it means we're potentially
+  // under-replicated.
+  if (HandleAddIfMissingPlacement(out_tablet_id, out_to_ts)) {
+    return true;
+  }
+
+  // Handle wrong placements as next priority, as these could be servers we're moving off of, so
+  // we can decommission ASAP.
+  if (HandleAddIfWrongPlacement(out_tablet_id, out_from_ts, out_to_ts)) {
+    return true;
+  }
+
+  // Finally, handle normal load balancing.
+  if (!GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts)) {
     LOG(INFO) << "Cannot find any more tablets to move, under current constraints!";
     return false;
   }
-
-  LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
-
-  auto tablet = GetTabletMap().at(tablet_id);
-  {
-    TabletMetadataLock tablet_lock(tablet.get(), TabletMetadataLock::READ);
-    catalog_manager_->SendAddServerRequest(
-        tablet, tablet_lock.data().pb.committed_consensus_state(), to_ts);
-  }
-
-  AddInMemory(from_ts, to_ts, tablet_id);
 
   return true;
 }
 
 bool ClusterLoadBalancer::GetLoadToMove(
-    TabletServerId* from_ts, TabletServerId* to_ts, TabletId* moving_tablet_id) {
+    TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts) {
   if (state_->sorted_load_.empty()) {
     return false;
   }
@@ -412,6 +704,7 @@ bool ClusterLoadBalancer::GetLoadToMove(
         // return. The tablet_id is filled in from GetTabletToMove.
         *from_ts = high_load_uuid;
         *to_ts = low_load_uuid;
+        MoveReplica(*moving_tablet_id, high_load_uuid, low_load_uuid);
         return true;
       }
     }
@@ -424,131 +717,151 @@ bool ClusterLoadBalancer::GetLoadToMove(
 
 bool ClusterLoadBalancer::GetTabletToMove(
     const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
+  const auto& from_ts_meta = state_->per_ts_meta_[from_ts];
   set<TabletId> non_over_replicated_tablets;
-  for (const TabletId& tablet_id : GetTabletsByTS(from_ts)) {
+  for (const TabletId& tablet_id : from_ts_meta.tablets) {
     // We don't want to add a new replica to an already over-replicated tablet.
-    if (!IsOverReplicated(tablet_id)) {
-      // TODO(bogdan): should make sure we pick tablets that this TS is not a leader of, so we
-      // can ensure HandleOverReplication removes them from this TS.
+    //
+    // TODO(bogdan): should make sure we pick tablets that this TS is not a leader of, so we
+    // can ensure HandleRemoveReplicas removes them from this TS.
+    if (state_->tablets_over_replicated_.count(tablet_id)) {
+      continue;
+    }
+
+    if (state_->CanAddTabletToTabletServer(tablet_id, to_ts, &GetPlacementByTablet(tablet_id))) {
       non_over_replicated_tablets.insert(tablet_id);
     }
   }
 
-  // Pick tablets from the max load server to move to the min load server (that it does not
-  // already have and that are also not already over-replicated).
-  vector<TabletId> add_candidates;
-  random_.ReservoirSample(non_over_replicated_tablets, 1, GetTabletsByTS(to_ts), &add_candidates);
-  if (add_candidates.empty()) {
-    // We could not find any tablets between these two TS. Advance the state normally.
-    return false;
+  bool same_placement = state_->per_ts_meta_[from_ts].descriptor->placement_id() ==
+                        state_->per_ts_meta_[to_ts].descriptor->placement_id();
+  for (const auto& tablet_id : non_over_replicated_tablets) {
+    const auto& placement_info = GetPlacementByTablet(tablet_id);
+    // TODO(bogdan): this should be augmented as well to allow dropping by one replica, if still
+    // leaving us with more than the minimum.
+    //
+    // If we have placement information, we want to only pick the tablet if it's moving to the same
+    // placement, so we guarantee we're keeping the same type of distribution.
+    if (!placement_info.placement_blocks().empty() && !same_placement) {
+      continue;
+    }
+    // If we got here, it means we either have no placement, in which case we can pick any TS, or
+    // we have placement and it's valid to move across these two tablet servers, so set the tablet
+    // and leave.
+    *moving_tablet_id = tablet_id;
+    return true;
   }
-
-  *moving_tablet_id = add_candidates[0];
-  return true;
+  // If we couldn't select a tablet above, we have to return failure.
+  return false;
 }
 
-bool ClusterLoadBalancer::HandleOverReplication() {
-  if (get_overreplicated_tablet_ids().empty()) {
-    // Nothing to do.
-    LOG(INFO) << "No over-replicated tablets to process.";
-    return false;
+bool ClusterLoadBalancer::HandleRemoveReplicas(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts) {
+  // Give high priority to removing tablets that are not respecting the placement policy.
+  if (HandleRemoveIfWrongPlacement(out_tablet_id, out_from_ts)) {
+    return true;
   }
 
-  // Pick random tablets from the set.
-  vector<TabletId> removal_candidates;
-  // Dummy set for ReservoirSample.
-  set<TabletId> avoid_candidates;
-  random_.ReservoirSample(
-      get_overreplicated_tablet_ids(), 1, avoid_candidates, &removal_candidates);
-
-  // This should never happen unless there's an internal ReservoirSample error?
-  if (removal_candidates.empty()) {
-    LOG(ERROR) << "Internal error on ReservoirSample picking an element from set of size "
-               << get_overreplicated_tablet_ids().size();
-    return false;
+  for (const auto& tablet_id : state_->tablets_over_replicated_) {
+    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+    const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
+    auto comparator = ClusterLoadState::Comparator(state_.get());
+    vector<TabletServerId> sorted_ts(tablet_servers.begin(), tablet_servers.end());
+    // Sort in reverse to first try to remove a replica from the highest loaded TS.
+    sort(sorted_ts.rbegin(), sorted_ts.rend(), comparator);
+    // TODO(bogdan): Hack around not wanting to step down leaders.
+    string remove_candidate = sorted_ts[0];
+    if (remove_candidate == tablet_meta.leader_uuid) {
+      if (sorted_ts.size() == 1) {
+        continue;
+      } else {
+        remove_candidate = sorted_ts[1];
+      }
+    }
+    *out_tablet_id = tablet_id;
+    *out_from_ts = remove_candidate;
+    RemoveReplica(tablet_id, remove_candidate);
+    state_->tablets_over_replicated_.erase(tablet_id);
+    return true;
   }
+  return false;
+}
 
-  const TabletId& tablet_id = removal_candidates[0];
-  auto tablet = GetTabletMap().at(tablet_id);
-
-  // We need a sorted data structure to go through in order of load.
-  vector<TabletReplica> sorted_tablet_replicas;
-  {
-    TabletInfo::ReplicaMap replica_map;
-    tablet->GetReplicaLocations(&replica_map);
-    sorted_tablet_replicas.reserve(replica_map.size());
-    for (auto& replica_entry : replica_map) {
-      sorted_tablet_replicas.push_back(std::move(replica_entry.second));
+bool ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts) {
+  for (const auto& tablet_id : state_->tablets_wrong_placement_) {
+    // Skip this tablet if it is not over-replicated.
+    if (!state_->tablets_over_replicated_.count(tablet_id)) {
+      continue;
+    }
+    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+    for (const auto& ts_uuid : tablet_meta.wrong_placement_tablet_servers) {
+      if (ts_uuid == tablet_meta.leader_uuid) {
+        continue;
+      }
+      *out_tablet_id = tablet_id;
+      *out_from_ts = ts_uuid;
+      RemoveReplica(tablet_id, ts_uuid);
+      state_->tablets_over_replicated_.erase(tablet_id);
+      state_->tablets_wrong_placement_.erase(tablet_id);
+      return true;
     }
   }
+  return false;
+}
 
-  CHECK(GetOverReplication(tablet_id) > 0)
-      << "Trying to remove replica from non over-replicated tablet: " << tablet_id;
+void ClusterLoadBalancer::MoveReplica(
+    const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
+  LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true);
+  state_->AddReplica(tablet_id, to_ts);
+  state_->RemoveReplica(tablet_id, from_ts);
+}
 
-  // Reverse iterator forces inverted sorting, so we keep only one comparator and we can go
-  // through the vector in forward fashion from most loaded.
-  auto comparator = ClusterLoadState::Comparator(state_.get());
-  sort(sorted_tablet_replicas.rbegin(), sorted_tablet_replicas.rend(), comparator);
+void ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
+  LOG(INFO) << Substitute("Adding tablet $0 to $1", tablet_id, to_ts);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true);
+  state_->AddReplica(tablet_id, to_ts);
+}
 
-  // Don't try to remove the leader.
-  // TODO(bogdan): maybe it's worth stepping down the leader instead of incurring potentially
-  // more movement in the cluster?
-  TabletId desired_ts_uuid;
-  for (const auto& replica : sorted_tablet_replicas) {
-    if (replica.role == consensus::RaftPeerPB::LEADER) {
-      LOG(INFO) << Substitute(
-          "Skipping over-replicated tablet replica $0 on TS $1 as it is the leader", tablet_id,
-          replica.ts_desc->permanent_uuid());
-    } else {
-      desired_ts_uuid = replica.ts_desc->permanent_uuid();
-      break;
-    }
-  }
+void ClusterLoadBalancer::RemoveReplica(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
+  LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false);
+  state_->RemoveReplica(tablet_id, ts_uuid);
+}
 
-  // We assume that this tablet must have been over-replicated, with minimal configured replication
-  // of one. Thus, there should have been at least two running tablets, only one of which could
-  // have been a leader. We also hold the lock in CatalogManager, so the numbers could not have
-  // changed in the meantime.
-  CHECK(!desired_ts_uuid.empty()) << Substitute(
-      "We could not get a replica for tablet $0 that is not the leader", tablet_id);
+// CatalogManager indirection methods that are set as virtual to be bypassed in testing.
+//
+void ClusterLoadBalancer::GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const {
+  catalog_manager_->master_->ts_manager()->GetAllLiveDescriptors(ts_descs);
+}
 
-  LOG(INFO) << Substitute("Removing replica $0 from tablet $1", desired_ts_uuid, tablet_id);
-  {
-    TabletMetadataLock tablet_lock(tablet.get(), TabletMetadataLock::READ);
+const unordered_map<string, scoped_refptr<TabletInfo>>& ClusterLoadBalancer::GetTabletMap() const {
+  return catalog_manager_->tablet_map_;
+}
+
+const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
+  ClusterConfigMetadataLock l(
+      catalog_manager_->cluster_config_.get(), ClusterConfigMetadataLock::READ);
+  return l.data().pb.placement_info();
+}
+
+const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
+  ClusterConfigMetadataLock l(
+      catalog_manager_->cluster_config_.get(), ClusterConfigMetadataLock::READ);
+  return l.data().pb.server_blacklist();
+}
+
+void ClusterLoadBalancer::SendReplicaChanges(
+    scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, bool is_add) {
+  TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
+  if (is_add) {
+    catalog_manager_->SendAddServerRequest(
+        tablet, l.data().pb.committed_consensus_state(), ts_uuid);
+  } else {
     catalog_manager_->SendRemoveServerRequest(
-        tablet, tablet_lock.data().pb.committed_consensus_state(), desired_ts_uuid);
+        tablet, l.data().pb.committed_consensus_state(), ts_uuid);
   }
-
-  RemoveFromMemory(desired_ts_uuid, tablet_id);
-
-  return true;
-}
-
-void ClusterLoadBalancer::RemoveFromMemory(
-    const TabletServerId& ts_uuid, const TabletServerId& tablet_id) {
-  --state_->tablets_running_[tablet_id];
-  --state_->ts_running_[tablet_id];
-  --state_->total_running_;
-  --state_->total_over_replication_;
-  if (!IsOverReplicated(tablet_id)) {
-    state_->over_replicated_tablet_ids_.erase(state_->over_replicated_tablet_ids_.find(tablet_id));
-  }
-}
-
-void ClusterLoadBalancer::AddInMemory(
-    const TabletServerId& from_ts, const TabletServerId& to_ts, const TabletId& tablet_id) {
-  // Add in memory to the destination.
-  ++state_->tablets_starting_[tablet_id];
-  ++state_->ts_starting_[to_ts];
-  ++state_->total_starting_;
-  // Remove in memory from the source. Note that decreasing tablets_running_ will affect the
-  // GetOverReplication call, but that should be ok, as we shouldn't have picked an already
-  // over-replicated tablet.
-  --state_->tablets_running_[tablet_id];
-  --state_->ts_running_[from_ts];
-  --state_->total_running_;
-  // Finally, re-sort the in memory load structure!
-  SortLoad();
 }
 
 } // namespace master

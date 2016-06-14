@@ -49,8 +49,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
 
   vector<string> ts_flags = { "--enable_leader_failure_detection=false",
                               "--enable_remote_bootstrap=false" };
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false",
-                                  "--catalog_manager_wait_for_new_tablets_to_elect_leader=false" };
+  vector<string> master_flags = {"--catalog_manager_wait_for_new_tablets_to_elect_leader=false"};
 
   // Start up with 4 tablet servers.
   NO_FATALS(StartCluster(ts_flags, master_flags, 4));

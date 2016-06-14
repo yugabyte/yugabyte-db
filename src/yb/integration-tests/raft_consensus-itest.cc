@@ -1535,7 +1535,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveServer) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
@@ -1617,7 +1617,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
@@ -1674,7 +1674,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
@@ -1873,7 +1873,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   BuildAndStart(ts_flags, master_flags);
 
@@ -1965,7 +1965,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_replicas = 2;
   vector<string> ts_flags;
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   LOG(INFO) << "Finding tablet leader and waiting for things to start...";
@@ -2347,7 +2347,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
 TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   vector<string> ts_flags;
   AddFlagsForLogRolls(&ts_flags); // For CauseFollowerToFallBehindLogGC().
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
@@ -2371,7 +2371,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
 TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   vector<string> extra_flags;
   AddFlagsForLogRolls(&extra_flags); // For CauseFollowerToFallBehindLogGC().
-  BuildAndStart(extra_flags);
+  BuildAndStart(extra_flags, {"--enable_load_balancing=true"});
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
 

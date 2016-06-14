@@ -697,7 +697,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // specified tablet is under-replicated.
   void SendAddServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid = "");
+      const string& change_config_ts_uuid);
 
   std::string GenerateId() { return oid_generator_.Next(); }
 

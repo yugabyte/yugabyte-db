@@ -52,7 +52,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   int num_tservers = 5;
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags, num_tservers));
 
@@ -122,7 +122,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
 TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
-  vector<string> master_flags = { "--master_add_server_when_underreplicated=false" };
+  vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags));
 
@@ -236,7 +236,6 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   vector<string> master_flags;
   // We will manage doing the AddServer() manually, in order to make this test
   // more deterministic.
-  master_flags.push_back("--master_add_server_when_underreplicated=false");
   master_flags.push_back("--master_tombstone_evicted_tablet_replicas=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags));

@@ -115,6 +115,12 @@ message PlacementInfoPB {
   repeated PlacementBlockPB placement_blocks = 2;
 }
 
+// This is used to mark servers in the load balancer that should be considered
+// for immediate removal of load and also prevented from being assigned any
+// new load.
+message BlacklistPB {
+  repeated HostPortPB hosts = 1;
+}
 ////////////////////////////////////////////////////////////
 // Sys Tables Metadata
 ////////////////////////////////////////////////////////////
@@ -227,6 +233,7 @@ message SysTablesEntryPB {
 message SysClusterConfigEntryPB {
   optional int32 version = 1;
   optional PlacementInfoPB placement_info = 2;
+  optional BlacklistPB server_blacklist = 3;
 }
 
 ////////////////////////////////////////////////////////////

@@ -141,11 +141,6 @@ DEFINE_bool(master_tombstone_evicted_tablet_replicas, true,
             "are no longer part of the latest reported raft config.");
 TAG_FLAG(master_tombstone_evicted_tablet_replicas, hidden);
 
-DEFINE_bool(master_add_server_when_underreplicated, true,
-            "Whether the master should attempt to add a new server to a tablet "
-            "config when it detects that the tablet is under-replicated.");
-TAG_FLAG(master_add_server_when_underreplicated, hidden);
-
 DEFINE_bool(catalog_manager_check_ts_count_for_create_table, true,
             "Whether the master should ensure that there are enough live tablet "
             "servers to satisfy the provided replication count before allowing "
@@ -1837,12 +1832,6 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
     }
   }
 
-  // If the config is under-replicated, add a server to the config.
-  if (FLAGS_master_add_server_when_underreplicated &&
-      CountVoters(cstate.config()) < table_lock->data().pb.placement_info().num_replicas()) {
-    SendAddServerRequest(tablet, cstate);
-  }
-
   return Status::OK();
 }
 
@@ -2576,29 +2565,6 @@ class AsyncAlterTable : public RetryingTSRpcTask {
   tserver::AlterSchemaResponsePB resp_;
 };
 
-namespace {
-
-// Select a random TS not in the 'exclude_uuids' list.
-// Will not select tablet servers that have not heartbeated recently.
-// Returns true iff it was possible to select a replica.
-bool SelectRandomTSForReplica(const TSDescriptorVector& ts_descs,
-                              const unordered_set<string>& exclude_uuids,
-                              shared_ptr<TSDescriptor>* selection) {
-  TSDescriptorVector tablet_servers;
-  for (const shared_ptr<TSDescriptor>& ts : ts_descs) {
-    if (!ContainsKey(exclude_uuids, ts->permanent_uuid())) {
-      tablet_servers.push_back(ts);
-    }
-  }
-  if (tablet_servers.empty()) {
-    return false;
-  }
-  *selection = tablet_servers[rand() % tablet_servers.size()];
-  return true;
-}
-
-} // anonymous namespace
-
 class AsyncChangeConfigTask : public RetryingTSRpcTask {
  public:
   AsyncChangeConfigTask(
@@ -2704,7 +2670,7 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
  public:
   AsyncAddServerTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid = "")
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
 
   virtual string type_name() const OVERRIDE { return "AddServer ChangeConfig"; }
@@ -2723,26 +2689,15 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   shared_ptr<TSDescriptor> replacement_replica;
-  if (!change_config_ts_uuid_.empty()) {
-    for (auto ts_desc : ts_descs) {
-      if (ts_desc->permanent_uuid() == change_config_ts_uuid_) {
-        // This is given by the client, so we assume it is a well chosen uuid.
-        replacement_replica = ts_desc;
-        break;
-      }
-    }
-    if (PREDICT_FALSE(!replacement_replica)) {
-      LOG(WARNING) << "Could not find desired replica " << change_config_ts_uuid_
-                   << " in live set!";
-      return false;
+  for (auto ts_desc : ts_descs) {
+    if (ts_desc->permanent_uuid() == change_config_ts_uuid_) {
+      // This is given by the client, so we assume it is a well chosen uuid.
+      replacement_replica = ts_desc;
+      break;
     }
   }
-
-  // TODO(bogdan): Refactor this so we can use the same code path both for rebalance as well as
-  // under replication.
-  if (PREDICT_FALSE(!SelectRandomTSForReplica(ts_descs, replica_uuids, &replacement_replica))) {
-    YB_LOG_EVERY_N(WARNING, 100) << LogPrefix() << "No candidate replacement replica found "
-                               << "for tablet " << tablet_->ToString();
+  if (PREDICT_FALSE(!replacement_replica)) {
+    LOG(WARNING) << "Could not find desired replica " << change_config_ts_uuid_ << " in live set!";
     return false;
   }
 
@@ -3252,17 +3207,17 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
     vector<shared_ptr<TSDescriptor>> all_allowed_ts;
 
     // Keep map from ID to PlacementBlockPB, as protos only have repeated, not maps.
-    unordered_map<string, PlacementBlockPB> pi_by_id;
+    unordered_map<string, PlacementBlockPB> pb_by_id;
     for (const auto& pb : placement_info.placement_blocks()) {
       const auto& cloud_info = pb.cloud_info();
       string placement_id = TSDescriptor::generate_placement_id(cloud_info);
-      pi_by_id[placement_id] = pb;
+      pb_by_id[placement_id] = pb;
     }
 
     // Build the sets of allowed TSs.
     for (const auto& ts : ts_descs) {
       bool added_to_all = false;
-      for (const auto& pi_entry : pi_by_id) {
+      for (const auto& pi_entry : pb_by_id) {
         if (ts->MatchesCloudInfo(pi_entry.second.cloud_info())) {
           allowed_ts_by_pi[pi_entry.first].push_back(ts);
 
@@ -3284,7 +3239,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
     // Loop through placements and assign to respective available TSs.
     for (const auto& entry : allowed_ts_by_pi) {
       const auto& available_ts_descs = entry.second;
-      const auto& num_replicas = pi_by_id[entry.first].min_num_replicas();
+      const auto& num_replicas = pb_by_id[entry.first].min_num_replicas();
       if (available_ts_descs.size() < num_replicas) {
         return Status::InvalidArgument(Substitute(
             "Not enough tablet servers in $0. Need at least $1 but only have $2.", entry.first,

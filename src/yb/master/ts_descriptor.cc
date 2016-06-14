@@ -80,6 +80,8 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
   has_tablet_report_ = false;
 
   registration_.reset(new TSRegistrationPB(registration));
+  placement_id_ = generate_placement_id(registration.common().cloud_info());
+
   ts_admin_proxy_.reset();
   ts_service_proxy_.reset();
   consensus_proxy_.reset();
@@ -160,6 +162,17 @@ bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
   return cloud_info.placement_cloud() == ci.placement_cloud() &&
          cloud_info.placement_region() == ci.placement_region() &&
          cloud_info.placement_zone() == ci.placement_zone();
+}
+
+bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
+  TSRegistrationPB reg;
+  GetRegistration(&reg);
+  for (const auto& rpc_hp : reg.common().rpc_addresses()) {
+    if (hp.host() == rpc_hp.host() && hp.port() == rpc_hp.port()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void TSDescriptor::GetNodeInstancePB(NodeInstancePB* instance_pb) const {

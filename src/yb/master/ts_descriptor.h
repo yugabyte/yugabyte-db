@@ -93,6 +93,11 @@ class TSDescriptor {
   // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
+  // Return the pre-computed placement_id, comprised of the cloud_info data.
+  std::string placement_id() const { return placement_id_; }
+
+  bool IsRunningOn(const HostPortPB& hp) const;
+
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
 
   // Return an RPC proxy to the tablet server admin service.
@@ -161,6 +166,7 @@ class TSDescriptor {
   int num_live_replicas_;
 
   gscoped_ptr<TSRegistrationPB> registration_;
+  std::string placement_id_;
 
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
