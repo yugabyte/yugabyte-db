@@ -1,10 +1,11 @@
 // Copyright (c) Yugabyte, Inc.
 
-package controllers;
+package controllers.yb;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import controllers.AuthenticatedController;
 import org.yb.client.ListTabletServersResponse;
 import services.YBClientService;
 import play.libs.Json;

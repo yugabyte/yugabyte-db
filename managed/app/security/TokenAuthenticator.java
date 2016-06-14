@@ -2,7 +2,9 @@
 
 package security;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import models.yb.Customer;
+import play.libs.Json;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -24,8 +26,9 @@ public class TokenAuthenticator extends Action.Simple {
             return delegate.call(ctx);
         }
     }
-    Result unauthorized = Results.unauthorized("Invalid AuthToken");
-    return CompletableFuture.completedFuture(unauthorized);
+	  ObjectNode responseJson = Json.newObject();
+	  responseJson.put("error", "Invalid AuthToken");
+    return CompletableFuture.completedFuture(Results.unauthorized(responseJson));
   }
 
   private String getTokenFromHeader(Http.Context ctx) {
