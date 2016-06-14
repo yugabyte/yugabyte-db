@@ -21,6 +21,12 @@ body {
     }
 }
 
+.form-error-alert {
+    margin-top: 15px;
+    margin-bottom: 0px;
+    min-height: 40px;
+}
+
 .navbar-top-links {
     margin-right: 0;
 }

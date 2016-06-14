@@ -2,14 +2,18 @@
 package models.cloud;
 
 import com.avaje.ebean.Model;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import play.data.validation.Constraints;
 
 import javax.persistence.*;
+import java.util.UUID;
 
 @Entity
 public class AvailabilityZone extends Model {
 
 	@Id
+	public UUID uuid;
+
 	@Column(length = 25, nullable = false)
 	public String code;
 
@@ -20,6 +24,7 @@ public class AvailabilityZone extends Model {
 	@Constraints.Required
 	@Column(nullable = false)
 	@ManyToOne
+	@JsonBackReference
 	public Region region;
 
 	@Column(nullable = false, columnDefinition = "boolean default true")
@@ -33,7 +38,7 @@ public class AvailabilityZone extends Model {
 	/**
 	 * Query Helper for Availability Zone with primary key
 	 */
-  public static final Find<String, AvailabilityZone> find = new Find<String,AvailabilityZone>(){};
+  public static final Find<UUID, AvailabilityZone> find = new Find<UUID,AvailabilityZone>(){};
 
 	public static AvailabilityZone create(Region region, String code, String name, String subnet) {
 		AvailabilityZone az = new AvailabilityZone();

@@ -2,14 +2,18 @@
 package models.cloud;
 
 import com.avaje.ebean.Model;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import play.data.validation.Constraints;
 
 import javax.persistence.*;
+import java.util.UUID;
 
 @Entity
 public class Region extends Model {
 
 	@Id
+	public UUID uuid;
+
 	@Column(length = 25, nullable = false)
 	public String code;
 
@@ -20,6 +24,7 @@ public class Region extends Model {
 	@Constraints.Required
 	@Column(nullable = false)
 	@ManyToOne
+	@JsonBackReference
 	public Provider provider;
 
 	@Column(nullable = false, columnDefinition = "boolean default true")
@@ -30,7 +35,7 @@ public class Region extends Model {
 	/**
 	 * Query Helper for Region with region code
 	 */
-	public static final Find<String, Region> find = new Find<String, Region>(){};
+	public static final Find<UUID, Region> find = new Find<UUID, Region>(){};
 
 	/**
 	 * Create new instance of Region

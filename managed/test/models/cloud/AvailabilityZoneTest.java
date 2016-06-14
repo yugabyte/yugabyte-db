@@ -52,16 +52,16 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 		az.setActiveFlag(false);
 		az.save();
 
-		AvailabilityZone fetch = AvailabilityZone.find.byId(az.code);
-		assertFalse(az.isActive());
+		AvailabilityZone fetch = AvailabilityZone.find.byId(az.uuid);
+		assertFalse(fetch.isActive());
 	}
 
 	@Test
 	public void testFindAZByRegion() {
-		AvailabilityZone az1 = AvailabilityZone.create(defaultRegion, "az-1", "A Zone 1", "subnet-1");
-		AvailabilityZone az2 = AvailabilityZone.create(defaultRegion, "az-2", "A Zone 2", "subnet-2");
+		AvailabilityZone.create(defaultRegion, "az-1", "A Zone 1", "subnet-1");
+		AvailabilityZone.create(defaultRegion, "az-2", "A Zone 2", "subnet-2");
 
-		Set<AvailabilityZone> zones = AvailabilityZone.find.where().eq("region_code", defaultRegion.code).findSet();
+		Set<AvailabilityZone> zones = AvailabilityZone.find.where().eq("region_uuid", defaultRegion.uuid).findSet();
 		assertEquals(zones.size(), 2);
 		for (AvailabilityZone zone : zones) {
 			assertThat(zone.code, containsString("az-"));
