@@ -20,12 +20,17 @@ public class DestroyInstance implements ITask {
   }
 
   @Override
+  public String getName() {
+    return "DestroyInstance(???)";
+  }
+
+  @Override
   public JsonNode getTaskDetails() {
     return null;
   }
 
   @Override
-  public void run() throws UnsupportedOperationException {
+  public void run() {
     throw new UnsupportedOperationException("Operation not implemented.");
   }
 
