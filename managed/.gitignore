@@ -1,3 +1,4 @@
+build
 logs
 target
 /.idea
@@ -6,3 +7,15 @@ target
 /.project
 /.settings
 /RUNNING_PID
+
+# VIM/emacs stuff
+*.swp
+*~
+core*
+
+perf.data
+perf.data.old
+oprofile_data
+.metadata/
+*.iml
+conf/*
