@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 = Yugaware Developer Documentation
 
@@ -9,18 +9,31 @@ Pre-requisites - install sbt and MySQL:
 ----
 # On a mac, run the following:
 $ brew install sbt
+# Note: do not set any password for mysql.
 $ brew install mysql
-
 # Make MySQL a daemon (restart on machine restart).
 $ ln -sfv /usr/local/opt/mysql/*.plist ~/Library/LaunchAgents
 $ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.mysql.plist
+
+# On Ubuntu, follow these steps:
+Based on http://www.scala-sbt.org/release/docs/Installing-sbt-on-Linux.html
+$ echo "deb https://dl.bintray.com/sbt/debian /" | sudo tee -a /etc/apt/sources.list.d/sbt.list
+$ sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 642AC823
+$ sudo apt-get update
+$ sudo apt-get install sbt
+# Note: do not set any password for mysql.
+$ sudo apt-get install mysql-server
+# Run the following to ensure 'green' status for the mysql deamon.
+$ service mysql status
+$ service mysql restart
 ----
 
 Create the yugaware DB in MySQL:
 [source,bash]
 ----
 mysql -u root
-mysql> create database yugaware
+mysql> create database yugaware;
+mysql> show databases;
 ----
 
 Needs AWS auth credentials to run.
@@ -50,6 +63,12 @@ To run the unit tests:
 $ sbt test
 ----
 
+If there are any unresolved symbols or compilation issues, try the following to create a clean slate and then retry running.
+[source,bash]
+----
+$ sbt clean
+----
+
 == Developing Yugaware in Eclipse
 
 Eclipse can be used as an IDE for Yugaware. To generate Eclipse project files, do:
@@ -66,6 +85,7 @@ addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "4.0.0")
 
 # Install the plugin
 $ cd ~/.sbt/0.13/plugins
+# Run the following to ensure that the sbt shell works.
 $ sbt
 
 # Go to the yugaware directory and create the eclipse project files.
