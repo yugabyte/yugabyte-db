@@ -6,12 +6,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import forms.commissioner.ITaskParams;
 
-public interface ITask {
+public interface ITask extends Runnable {
 
   /**
    * Initialize the task by reading various parameters.
    */
   public void initialize(ITaskParams taskParams);
+
+  /**
+   * A short name representing the task.
+   */
+  public String getName();
 
   /**
    * Return a string representation (usually JSON) of the task details. This is used to describe the
@@ -20,9 +25,10 @@ public interface ITask {
   public JsonNode getTaskDetails();
 
   /**
-   * Run the task. Can throw exception on errors.
+   * Run the task. Can throw runtime exception on errors.
    */
-  public void run() throws UnsupportedOperationException;
+  @Override
+  public void run();
 
   /**
    * A friendly string representation of the task used for logging.
