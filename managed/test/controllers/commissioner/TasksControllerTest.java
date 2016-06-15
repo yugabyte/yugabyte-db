@@ -12,6 +12,7 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import play.Application;
@@ -39,6 +40,12 @@ public class TasksControllerTest extends WithApplication {
     ObjectNode createInstanceJson = Json.newObject();
     createInstanceJson.put("instanceUUID", "11111111-2222-3333-4444-555555555555");
     createInstanceJson.put("instanceName", "TestInstance");
+    // Add an array of subnets.
+    ArrayNode arrayNode = createInstanceJson.putArray("subnets");
+    arrayNode.add("subnet1");
+    arrayNode.add("subnet2");
+    arrayNode.add("subnet3");
+    // Create the task.
     Result result = route(fakeRequest("POST", "/commissioner/tasks").bodyJson(createInstanceJson));
     assertEquals(OK, result.status());
     assertNotNull(contentAsString(result));
