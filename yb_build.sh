@@ -26,6 +26,10 @@ Options:
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
   --clang
     Use the clang C/C++ compiler.
+  --skip-java-build
+    Do not package and install java source code.
+  --run-java-tests
+    Run the java unit tests when build is enabled.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -43,6 +47,8 @@ rocksdb_targets=""
 no_ccache=false
 make_opts=()
 force=false
+build_java=true
+run_java_tests=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -76,6 +82,12 @@ while [ $# -gt 0 ]; do
     ;;
     --clang)
       YB_COMPILER_TYPE="clang"
+    ;;
+    --skip-java-build)
+      build_java=false
+    ;;
+    --run-java-tests)
+      run_java_tests=true
     ;;
     debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
       build_type="$1"
@@ -201,7 +213,7 @@ set +u +e  # "set -u" may cause failures on empty lists
 time ( set -x; make -j8 "${make_opts[@]}" )
 exit_code=$?
 set -u -e
-echo "Build finished with exit code $exit_code. Timing information is available above."
+echo "Non-java build finished with exit code $exit_code. Timing information is available above."
 if [ "$exit_code" -ne 0 ]; then
   exit "$exit_code"
 fi
@@ -217,4 +229,20 @@ if [ "$( uname )" == "Darwin" ]; then
     install_name_tool -change librocksdb_debug.4.6.dylib \
       "$BUILD_ROOT"/rocksdb-build/librocksdb_debug.4.6.dylib "$binary"
   done
+fi
+
+# Check if the java build is needed. And skip java unit test runs if specified - time taken
+# for tests is around two minutes currently.
+if $build_java; then
+  cd "$YB_SRC_ROOT"/java
+  if command -v mvn 2>/dev/null; then
+    if $run_java_tests; then
+      time ( mvn install )
+    else
+      time ( mvn install -DskipTests )
+    fi
+    echo "Java build finished, total time information above."
+  else
+    echo "NOTE: mvn binary not found, skipping java build."
+  fi
 fi
