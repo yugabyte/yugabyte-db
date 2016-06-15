@@ -15,6 +15,7 @@ thirdparty_install_dir=$YB_SRC_DIR/thirdparty/installed/bin
 cc_or_cxx=${0##*/}
 
 stderr_path=$( mktemp "/tmp/yb-$cc_or_cxx-stderr.XXXXXXXXXXXXXXXX" )
+trap 'rm -f "$stderr_path"' EXIT
 
 compiler_args=( "$@" )
 
