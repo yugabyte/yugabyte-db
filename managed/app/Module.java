@@ -12,6 +12,8 @@ import services.YBClientService;
 public class Module extends AbstractModule {
   @Override
   public void configure() {
+    // Bind Application Initializer
+    bind(AppInit.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
   }
