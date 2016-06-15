@@ -1,0 +1,66 @@
+# Provider
+- &provider_aws !!models.cloud.Provider
+    type: AmazonWebService
+- &provider_gce !!models.cloud.Provider
+    type: GoogleCloud
+- &provider_azure !!models.cloud.Provider
+    type: MicrosoftAzure
+
+# Region
+- &aws-us-west-1 !!models.cloud.Region
+    code: us-west-1
+    name: US West (N. California)
+    provider: *provider_aws
+- &aws-us-west-2 !!models.cloud.Region
+    code: us-east-2
+    name: US West (Oregon)
+    provider: *provider_aws
+- &aws-us-east-1 !!models.cloud.Region
+    code: us-east-1
+    name: US East (N. Virginia)
+    provider: *provider_aws
+- &aws-eu-west-1 !!models.cloud.Region
+    code: eu-west-1
+    name: EU (Ireland)
+    provider: *provider_aws
+- &aws-eu-central-1 !!models.cloud.Region
+    code: eu-central-1
+    name: EU (Frankfurt)
+    provider: *provider_aws
+- &aws-ap-southeast-1 !!models.cloud.Region
+    code: ap-southeast-1
+    name: Asia Pacific (Singapore)
+    provider: *provider_aws
+- &aws-ap-northeast-1 !!models.cloud.Region
+    code: ap-northeast-1
+    name: Asia Pacific (Tokyo)
+    provider: *provider_aws
+- &aws-ap-southeast-2 !!models.cloud.Region
+    code: ap-southeast-2
+    name: Asia Pacific (Sydney)
+    provider: *provider_aws
+- &aws-ap-northeast-2 !!models.cloud.Region
+    code: ap-northeast-2
+    name: Asia Pacific (Seoul)
+    provider: *provider_aws
+- &aws-sa-east-1 !!models.cloud.Region
+    code: sa-east-1
+    name: South America (São Paulo)
+    provider: *provider_aws
+
+# Availability Zones
+- &zone1 !!models.cloud.AvailabilityZone
+    code: us-west-2a
+    name: us-west-2a
+    region: *aws-us-west-2
+    subnet: subnet-6553f513
+- &zone2 !!models.cloud.AvailabilityZone
+    code: us-west-2b
+    name: us-west-2b
+    region: *aws-us-west-2
+    subnet: subnet-f840ce9c
+- &zone3 !!models.cloud.AvailabilityZone
+    code: us-west-2c
+    name: us-west-2c
+    region: *aws-us-west-2
+    subnet: subnet-01ac5b59
