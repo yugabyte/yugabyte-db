@@ -37,6 +37,12 @@ create table instance (
   constraint pk_instance primary key (instance_id,customer_id)
 );
 
+create table instance_info (
+  instance_uuid                 uuid not null,
+  instance_details              clob not null,
+  constraint pk_instance_info primary key (instance_uuid)
+);
+
 create table provider (
   uuid                          uuid not null,
   type                          varchar(3) not null,
@@ -95,6 +101,8 @@ drop table if exists availability_zone;
 drop table if exists customer;
 
 drop table if exists instance;
+
+drop table if exists instance_info;
 
 drop table if exists provider;
 

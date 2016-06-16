@@ -13,10 +13,12 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import controllers.commissioner.Common.CloudType;
 import controllers.commissioner.ITask;
 import controllers.commissioner.TaskList;
 import forms.commissioner.CreateInstanceTaskParams;
 import forms.commissioner.ITaskParams;
+import models.commissioner.InstanceInfo;
 import play.libs.Json;
 
 public class CreateInstance implements ITask {
@@ -26,9 +28,19 @@ public class CreateInstance implements ITask {
   // The task params.
   CreateInstanceTaskParams taskParams;
 
+  // The threadpool on which the tasks are executed.
+  ExecutorService executor;
+
   @Override
   public void initialize(ITaskParams taskParams) {
     this.taskParams = (CreateInstanceTaskParams)taskParams;
+
+    // Create the threadpool for the subtasks to use.
+    int numThreads = 10;
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
+    executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
+    LOG.info("Started TaskPool with " + numThreads + " threads.");
   }
 
   @Override
@@ -53,19 +65,17 @@ public class CreateInstance implements ITask {
       // Create the master task list.
       Vector<TaskList> masterTaskList = new Vector<TaskList>();
 
-      // Create the threadpool for the subtasks to use.
-      int numThreads = 10;
-      ThreadFactory namedThreadFactory =
-          new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-      ExecutorService executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
-      LOG.info("Started TaskPool with " + numThreads + " threads.");
-
-      // Persist information about the instance. such as the set of nodes we are going to provision,
-      // what services run on each of them (master, tserver, etc), placement information, etc.
+      // Persist information about the instance.
+      InstanceInfo.createIfNotExists(taskParams.instanceUUID,
+                                     taskParams.subnets,
+                                     taskParams.numNodes);
 
       // Create the required number of nodes in the appropriate locations.
-      TaskList createServersTaskList = createTaskSetupServers(executor);
-      masterTaskList.add(createServersTaskList);
+      masterTaskList.add(createTaskListToSetupServers());
+
+      // Get all information about the nodes of the cluster. This includes the public ip address,
+      // the private ip address (in the case of AWS), etc.
+      masterTaskList.add(createTaskListToGetServerInfo());
 
       // Deploy the software on all the nodes.
 
@@ -82,6 +92,9 @@ public class CreateInstance implements ITask {
         taskList.run();
         taskList.waitFor();
       }
+
+
+
     } catch (Throwable t) {
       LOG.error("Error executing task " + getName(), t);
       throw t;
@@ -96,12 +109,12 @@ public class CreateInstance implements ITask {
     return sb.toString();
   }
 
-  public TaskList createTaskSetupServers(ExecutorService executor) {
+  public TaskList createTaskListToSetupServers() {
     TaskList taskList = new TaskList(getName(), executor);
     for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the cloud name.
-      params.cloud = AnsibleSetupServer.CloudType.aws;
+      params.cloud = CloudType.aws;
       // Add the node name.
       params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
       // VPC is one of subnet-6553f513 subnet-f840ce9c subnet-01ac5b59
@@ -111,6 +124,27 @@ public class CreateInstance implements ITask {
       ansibleSetupServer.initialize(params);
       // Add it to the task list.
       taskList.addTask(ansibleSetupServer);
+    }
+    return taskList;
+  }
+
+  public TaskList createTaskListToGetServerInfo() {
+    TaskList taskList = new TaskList(getName(), executor);
+    for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
+      AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+      // Set the cloud name.
+      params.cloud = CloudType.aws;
+      // Add the node name.
+      params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
+      // Add the instance uuid.
+      params.instanceUUID = taskParams.instanceUUID;
+      // Create the Ansible task to get the server info.
+      AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
+      ansibleFindCloudHost.initialize(params);
+      // Add it to the task list.
+      taskList.addTask(ansibleFindCloudHost);
+      LOG.info("Created task: " + ansibleFindCloudHost.getName() +
+               ", details: " + ansibleFindCloudHost.getTaskDetails());
     }
     return taskList;
   }
