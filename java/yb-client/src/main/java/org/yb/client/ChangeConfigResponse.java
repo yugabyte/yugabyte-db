@@ -1,22 +1,28 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.annotations.InterfaceStability;
-
-import java.util.List;
+import org.yb.tserver.Tserver.TabletServerErrorPB;
 
 @InterfaceAudience.Public
 public class ChangeConfigResponse extends YRpcResponse {
-  private boolean hasError;
+  private TabletServerErrorPB serverError;
   
-  ChangeConfigResponse(long ellapsedMillis, String masterUUID, boolean hasErr) {
+  ChangeConfigResponse(long ellapsedMillis, String masterUUID, TabletServerErrorPB error) {
     super(ellapsedMillis, masterUUID);
-    hasError = hasErr;
+    serverError = error;
   }
 
   public boolean hasError() {
-    return hasError;
+    return serverError != null;
+  }
+
+  public String errorMessage() {
+    if (serverError == null) {
+      return "";
+    }
+
+    return serverError.getStatus().getMessage();
   }
 }

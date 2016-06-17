@@ -147,6 +147,15 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of all the masters.
+   * @return a list of masters
+   */
+  public ListMastersResponse listMasters() throws Exception {
+    Deferred<ListMastersResponse> d = asyncClient.listMasters();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Change master server configuration.
    * @return a list of tablet servers
    */

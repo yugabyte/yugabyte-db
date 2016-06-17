@@ -351,6 +351,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of all the masters.
+   * @return a deferred object that yields a list of masters
+   */
+  public Deferred<ListMastersResponse> listMasters() {
+    checkIsClosed();
+    ListMastersRequest rpc = new ListMastersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Change master servers config.
    * @return a deferred object that yields a change config response.
    */

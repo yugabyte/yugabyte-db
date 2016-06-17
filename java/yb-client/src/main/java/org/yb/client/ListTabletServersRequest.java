@@ -21,6 +21,7 @@ import static org.yb.master.Master.*;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
+import org.yb.util.ServerInfo;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import java.util.ArrayList;
@@ -35,8 +36,7 @@ public class ListTabletServersRequest extends YRpc<ListTabletServersResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final ListTabletServersRequestPB.Builder builder =
-        ListTabletServersRequestPB.newBuilder();
+    final ListTabletServersRequestPB.Builder builder = ListTabletServersRequestPB.newBuilder();
     return toChannelBuffer(header, builder.build());
   }
 
@@ -52,15 +52,20 @@ public class ListTabletServersRequest extends YRpc<ListTabletServersResponse> {
   Pair<ListTabletServersResponse, Object> deserialize(CallResponse callResponse,
                                                       String tsUUID) throws Exception {
     final ListTabletServersResponsePB.Builder respBuilder =
-        ListTabletServersResponsePB.newBuilder();
+      ListTabletServersResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     int serversCount = respBuilder.getServersCount();
-    List<String> servers = new ArrayList<String>(serversCount);
+    List<ServerInfo> servers = new ArrayList<ServerInfo>(serversCount);
+    ServerInfo server;
     for (ListTabletServersResponsePB.Entry entry : respBuilder.getServersList()) {
-      servers.add(entry.getRegistration().getCommon().getRpcAddresses(0).getHost());
+      server = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
+                              entry.getRegistration().getCommon().getRpcAddresses(0).getHost(),
+                              entry.getRegistration().getCommon().getRpcAddresses(0).getPort(),
+                              false); // Leader info is not present as its for all tservers.
+      servers.add(server);
     }
-    ListTabletServersResponse response = new ListTabletServersResponse(deadlineTracker
-        .getElapsedMillis(), tsUUID, serversCount, servers);
+    ListTabletServersResponse response = new ListTabletServersResponse(
+        deadlineTracker.getElapsedMillis(), tsUUID, serversCount, servers);
     return new Pair<ListTabletServersResponse, Object>(
         response, respBuilder.hasError() ? respBuilder.getError() : null);
   }

@@ -18,6 +18,7 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
+import org.yb.util.ServerInfo;
 
 import java.util.List;
 
@@ -26,7 +27,7 @@ import java.util.List;
 public class ListTabletServersResponse extends YRpcResponse {
 
   private final int tabletServersCount;
-  private final List<String> tabletServersList;
+  private final List<ServerInfo> tabletServersList;
 
   /**
    * @param ellapsedMillis Time in milliseconds since RPC creation to now.
@@ -34,7 +35,7 @@ public class ListTabletServersResponse extends YRpcResponse {
    * @param tabletServersList List of tablet servers.
    */
   ListTabletServersResponse(long ellapsedMillis, String tsUUID,
-                            int tabletServersCount, List<String> tabletServersList) {
+                            int tabletServersCount, List<ServerInfo> tabletServersList) {
     super(ellapsedMillis, tsUUID);
     this.tabletServersCount = tabletServersCount;
     this.tabletServersList = tabletServersList;
@@ -52,7 +53,7 @@ public class ListTabletServersResponse extends YRpcResponse {
    * Get the list of tablet servers, as represented by their hostname.
    * @return List of hostnames, one per TS.
    */
-  public List<String> getTabletServersList() {
+  public List<ServerInfo> getTabletServersList() {
     return tabletServersList;
   }
 }

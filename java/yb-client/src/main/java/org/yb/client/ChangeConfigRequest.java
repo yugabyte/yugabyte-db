@@ -1,17 +1,18 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
-import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
+
+import org.yb.annotations.InterfaceAudience;
+import org.yb.Common.HostPortPB;
 import org.yb.consensus.Consensus;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;
-import org.yb.Common.HostPortPB;
+import org.yb.master.Master;
+import org.yb.util.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -91,7 +92,9 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     ChangeConfigResponse response =
-      new ChangeConfigResponse(deadlineTracker.getElapsedMillis(), masterUUID, hasErr);
+      new ChangeConfigResponse(deadlineTracker.getElapsedMillis(),
+                               masterUUID,
+                               hasErr ? respBuilder.getErrorBuilder().build() : null);
     return new Pair<ChangeConfigResponse, Object>(response, hasErr ? respBuilder.getError() : null);
   }
 }
