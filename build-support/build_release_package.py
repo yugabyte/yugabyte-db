@@ -73,7 +73,7 @@ def create_tarball():
   #
   # The item can have an optional third entry which is the gnu tar's transform expression
   # that can be used to place a file at a path which is completely different than its current
-  # path. For example, rocksdb libraries are in rocksdb-build/ but we would like to them under lib/.
+  # path. For example, rocksdb libraries are in rocksdb-build/ but we would like them under lib/.
   #
   #
   manifest = [
