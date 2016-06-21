@@ -4,19 +4,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import controllers.commissioner.AbstractTaskBase;
-import controllers.commissioner.Common;
+import forms.commissioner.TaskParamsBase;
+import util.Util;
 
 public class AnsibleClusterServerCtl extends AbstractTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleClusterServerCtl.class);
 
-  public static class Params extends AbstractTaskBase.TaskParamsBase {
+  public static class Params extends TaskParamsBase {
     public String process;
     public String command;
-  }
-
-  public AnsibleClusterServerCtl(Params params) {
-    super(params);
+    public boolean isShell; // applies only to process==master. TODO: use it.
   }
 
   @Override
@@ -24,14 +22,14 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
     Params params = (Params)taskParams;
     String classname = this.getClass().getSimpleName();
     return classname + "(" + taskParams.nodeInstanceName + "." + taskParams.cloud + ".yb, " +
-           params.process + ", " + params.command + ")";
+           params.process + ", " + params.command + "," + params.isShell + ")";
   }
 
   @Override
   public void run() {
-    // Create the process to fetch information about the node from the cloud provider.
-    String ybDevopsHome = Common.getDevopsHome();
     Params params = (Params)taskParams;
+    // Create the process to fetch information about the node from the cloud provider.
+    String ybDevopsHome = Util.getDevopsHome();
     String command = ybDevopsHome + "/bin/yb_cluster_server_ctl.sh" +
                      " --instance-name " + params.nodeInstanceName +
                      " --process " + params.process +

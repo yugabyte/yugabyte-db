@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package models.commissioner;
 
@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import play.data.validation.Constraints;
 
 @Entity
-public class TaskInfo extends Model{
+public class TaskInfo extends Model {
 
   /**
    * These are the various types of user tasks.
@@ -32,6 +32,9 @@ public class TaskInfo extends Model{
 
     @EnumValue("DestroyInstance")
     DestroyInstance,
+
+    @EnumValue("EditInstance")
+    EditInstance,
   }
 
   /**

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.lang.String;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,7 +34,7 @@ public class TabletServerControllerTest {
     mockService = mock(YBClientService.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockClient.listTabletServers()).thenReturn(mockResponse);
-    when(mockService.getClient()).thenReturn(mockClient);
+    when(mockService.getClient(any(String.class))).thenReturn(mockClient);
     tabletController = new TabletServerController(mockService);
   }
 

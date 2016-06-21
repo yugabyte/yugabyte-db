@@ -27,7 +27,7 @@ public class TablesController extends AuthenticatedController {
     ObjectNode result = Json.newObject();
 
     try {
-      ListTablesResponse response = ybService.getClient().getTablesList();
+      ListTablesResponse response = ybService.getClient(null).getTablesList();
       ArrayNode tableNames = result.putArray("table_names");
       response.getTablesList().forEach(table->{
         tableNames.add(table);

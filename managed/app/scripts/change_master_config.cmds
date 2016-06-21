@@ -1,0 +1,11 @@
+mkdir ~/code/yugaware/target/testdata
+
+cd ~/code/yugaware/
+
+sbt compile
+
+sbt run -Dyb.devops.home=~/code/devops/ -Dyb.local.testing=true -DbinDir=~/code/yugabyte/build/latest/bin/
+
+curl -X POST -H "Content-Type: application/json" -d '{"instanceName":"yugatest","create":true,"subnets":["subnet-6553f5","subnet-f840ce","subnet-0ac5b5"]}' http://localhost:9000/commissioner/instances/11111111-2222-3333-4444-555555555555
+
+curl -X POST -H "Content-Type: application/json" -d '{"instanceName":"yugatest","create":false,"subnets":["subnet-6553f51","subnet-f840ce1","subnet-0ac5b51"]}' http://localhost:9000/commissioner/instances/11111111-2222-3333-4444-555555555555

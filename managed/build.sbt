@@ -25,4 +25,5 @@ libraryDependencies ++= Seq(
 
 resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT" % "compile,test" classifier "tests"
 publishTo := Some("yugabyteS3" at "s3://no-such-url/")
