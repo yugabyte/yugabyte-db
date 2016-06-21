@@ -3,7 +3,7 @@ package models.yb;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import models.cloud.Provider;
 import models.cloud.Region;
 import org.junit.Before;
@@ -22,25 +22,25 @@ public class InstanceTest extends FakeDBApplication {
 	@Before
 	public void setUp() {
 		defaultCustomer = Customer.create("Test", "test@test.com", "foo");
-		defaultProvider = Provider.create(Provider.Type.AmazonWebService);
-		defaultRegion = Region.create(defaultProvider, "us-west-2", "US West (Oregon)");
+		defaultProvider = Provider.create("Amazon");
+		defaultRegion = Region.create(defaultProvider, "us-west-2", "US West (Oregon)", true);
 	}
 
 	@Test
 	public void testCreate() {
 		JsonNode placementInfo = Json.newObject();
-		Instance inst = Instance.create(defaultCustomer, "instance 1", Instance.State.Created, placementInfo);
+		Instance inst = Instance.create(defaultCustomer, "instance 1", Instance.ProvisioningState.Processing, placementInfo);
 		inst.save();
 		assertNotNull(inst.getInstanceId());
 		assertEquals(inst.name, "instance 1");
-		assertEquals(Instance.State.Created, inst.state);
+		assertEquals(Instance.ProvisioningState.Processing, inst.provisioningState);
 		assertTrue(inst.getPlacementInfo() instanceof  JsonNode);
 	}
 
 	@Test(expected=javax.persistence.PersistenceException.class)
 	public void testInvalidCreate() {
 		JsonNode placementInfo = Json.newObject();
-		Instance inst = Instance.create(defaultCustomer, null, Instance.State.Created, placementInfo);
+		Instance inst = Instance.create(defaultCustomer, null, Instance.ProvisioningState.Failed, placementInfo);
 		inst.save();
 	}
 
@@ -51,7 +51,7 @@ public class InstanceTest extends FakeDBApplication {
 		placementInfo.put("single-az", true);
 		placementInfo.put("prefix", "test-");
 
-		Instance inst = Instance.create(defaultCustomer, "instance 1", Instance.State.Created, placementInfo);
+		Instance inst = Instance.create(defaultCustomer, "instance 1", Instance.ProvisioningState.Pending, placementInfo);
 		inst.save();
 
 		Instance fetchInstance = Instance.find.where().eq("instance_id", inst.getInstanceId()).findUnique();

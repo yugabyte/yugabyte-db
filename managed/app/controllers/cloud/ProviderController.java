@@ -39,7 +39,7 @@ public class ProviderController extends AuthenticatedController {
 		}
 
 		try {
-			Provider p = Provider.create(formData.get().type);
+			Provider p = Provider.create(formData.get().name);
 			return ok(Json.toJson(p));
 		} catch (Exception e) {
 			// TODO: Handle exception and print user friendly message

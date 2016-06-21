@@ -32,6 +32,11 @@ public class Region extends Model {
 	public Boolean isActive() { return active; }
 	public void setActiveFlag(Boolean active) { this.active = active; }
 
+	@Column(nullable = false, columnDefinition = "boolean default true")
+	public Boolean multi_az_capable = true;
+	public Boolean isMultiAZCapable() { return multi_az_capable; }
+	public void setMultiAZCapability(Boolean capable) { this.multi_az_capable = capable; }
+
 	/**
 	 * Query Helper for Region with region code
 	 */
@@ -44,11 +49,12 @@ public class Region extends Model {
 	 * @param name User Friendly Region Name
 	 * @return instance of Region
 	 */
-	public static Region create(Provider provider, String code, String name) {
+	public static Region create(Provider provider, String code, String name, boolean multiAZ) {
 		Region region = new Region();
 		region.provider = provider;
 		region.code = code;
 		region.name = name;
+		region.multi_az_capable = multiAZ;
 		region.save();
 		return region;
 	}

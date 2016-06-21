@@ -2,7 +2,7 @@
 
 package models.cloud;
 
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -19,24 +19,24 @@ public class RegionTest extends FakeDBApplication {
 
 	@Before
 	public void setUp() {
-		defaultProvider = Provider.create(Provider.Type.AmazonWebService);
+		defaultProvider = Provider.create("Amazon");
 	}
 
 	@Test
 	public void testCreate() {
-		Region region = Region.create(defaultProvider, "region-1", "Awesome Region");
+		Region region = Region.create(defaultProvider, "region-1", "Awesome Region", true);
 
 		assertEquals(region.code, "region-1");
 		assertEquals(region.name, "Awesome Region");
-		assertEquals(region.provider.type, Provider.Type.AmazonWebService);
+		assertEquals(region.provider.name, "Amazon");
 		assertTrue(region.isActive());
 	}
 
 	@Test
 	public void testCreateDuplicateRegion() {
-		Region.create(defaultProvider, "region-1", "region 1");
+		Region.create(defaultProvider, "region-1", "region 1", true);
 		try {
-			Region.create(defaultProvider, "region-1", "region 1");
+			Region.create(defaultProvider, "region-1", "region 1", true);
 		} catch (Exception e) {
 			assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
 		}
@@ -44,7 +44,7 @@ public class RegionTest extends FakeDBApplication {
 
 	@Test
 	public void testInactiveRegion() {
-		Region region = Region.create(defaultProvider, "region-1", "region 1");
+		Region region = Region.create(defaultProvider, "region-1", "region 1", true);
 
 		assertNotNull(region);
 		assertEquals(region.code, "region-1");
@@ -60,11 +60,11 @@ public class RegionTest extends FakeDBApplication {
 
 	@Test
 	public void testFindRegionByProvider() {
-		Region.create(defaultProvider, "region-1", "region 1");
-		Region.create(defaultProvider, "region-2", "region 2");
+		Region.create(defaultProvider, "region-1", "region 1", true);
+		Region.create(defaultProvider, "region-2", "region 2", true);
 
-		Provider provider2 = Provider.create(Provider.Type.GoogleCloud);
-		Region.create(provider2, "region-3", "region 3");
+		Provider provider2 = Provider.create("Google");
+		Region.create(provider2, "region-3", "region 3", true);
 
 		Set<Region> regions = Region.find.where().eq("provider_uuid", defaultProvider.uuid).findSet();
 		assertEquals(regions.size(), 2);

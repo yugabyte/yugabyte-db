@@ -2,7 +2,7 @@
 
 package models.cloud;
 
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import org.junit.Test;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
@@ -10,18 +10,18 @@ import static org.junit.Assert.*;
 public class ProviderTest extends FakeDBApplication {
 	@Test
 	public void testCreate() {
-		Provider provider = Provider.create(Provider.Type.AmazonWebService);
+		Provider provider = Provider.create("Amazon");
 
 		assertNotNull(provider.uuid);
-		assertEquals(provider.type, Provider.Type.AmazonWebService);
+		assertEquals(provider.name, "Amazon");
 		assertTrue(provider.isActive());
 	}
 
 	@Test
 	public void testCreateDuplicateProvider() {
-		Provider.create(Provider.Type.AmazonWebService);
+		Provider.create("Amazon");
 		try {
-			Provider.create(Provider.Type.AmazonWebService);
+			Provider.create("Amazon");
 		} catch (Exception e) {
 			assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
 		}
@@ -29,10 +29,10 @@ public class ProviderTest extends FakeDBApplication {
 
 	@Test
 	public void testInactiveProvider() {
-		Provider provider = Provider.create(Provider.Type.AmazonWebService);
+		Provider provider = Provider.create("Amazon");
 
 		assertNotNull(provider.uuid);
-		assertEquals(provider.type, Provider.Type.AmazonWebService);
+		assertEquals(provider.name, "Amazon");
 	  assertTrue(provider.isActive());
 
 		provider.setActiveFlag(false);
@@ -44,13 +44,13 @@ public class ProviderTest extends FakeDBApplication {
 
 	@Test
 	public void testFindProvider() {
-		Provider provider = Provider.create(Provider.Type.AmazonWebService);
+		Provider provider = Provider.create("Amazon");
 
 		assertNotNull(provider.uuid);
 		Provider fetch = Provider.find.byId(provider.uuid);
 		assertNotNull(fetch);
 		assertEquals(fetch.uuid, provider.uuid);
-		assertEquals(fetch.type, provider.type);
+		assertEquals(fetch.name, provider.name);
 		assertTrue(fetch.isActive());
   }
 }

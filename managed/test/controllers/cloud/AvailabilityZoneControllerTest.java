@@ -2,7 +2,7 @@ package controllers.cloud;// Copyright (c) Yugabyte, Inc.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import models.cloud.AvailabilityZone;
 import models.cloud.Provider;
 import models.cloud.Region;
@@ -29,8 +29,6 @@ import static play.test.Helpers.route;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.CoreMatchers.allOf;
 
-
-
 public class AvailabilityZoneControllerTest extends FakeDBApplication {
 	Customer customer;
 	Provider defaultProvider;
@@ -39,8 +37,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 	@Before
 	public void setUp() {
 		customer = Customer.create("Valid Customer", "foo@bar.com", "password");
-		defaultProvider = Provider.create(Provider.Type.AmazonWebService);
-		defaultRegion = Region.create(defaultProvider, "default-region", "Default Region");
+		defaultProvider = Provider.create("Amazon");
+		defaultRegion = Region.create(defaultProvider, "default-region", "Default Region", true);
 	}
 
 	@Test

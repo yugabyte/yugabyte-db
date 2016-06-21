@@ -1,16 +1,13 @@
 # Provider
 - &provider_aws !!models.cloud.Provider
-    type: AmazonWebService
-- &provider_gce !!models.cloud.Provider
-    type: GoogleCloud
-- &provider_azure !!models.cloud.Provider
-    type: MicrosoftAzure
+    name: Amazon
 
 # Region
 - &aws-us-west-1 !!models.cloud.Region
     code: us-west-1
     name: US West (N. California)
     provider: *provider_aws
+    multi_az_capable: false
 - &aws-us-west-2 !!models.cloud.Region
     code: us-east-2
     name: US West (Oregon)

@@ -1,0 +1,9 @@
+@(elements: helper.FieldElements)
+
+<div class="form-group">
+	@if(elements.label != "") {
+		<label for="@elements.id">@elements.label</label>
+	}
+  @elements.input
+  <small id="@elements.id" class="help-block"></small>
+</div>

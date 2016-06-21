@@ -1,6 +1,6 @@
 // Copyright (c) Yugabyte, Inc.
 
-package models;
+package helpers;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;

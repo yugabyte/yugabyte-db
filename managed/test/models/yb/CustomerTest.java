@@ -2,7 +2,7 @@
 
 package models.yb;
 
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -68,7 +68,7 @@ public class CustomerTest extends FakeDBApplication {
 
     String authToken = c.createAuthToken();
     assertNotNull(authToken);
-    assertNotNull(c.authTokenIssueDate);
+    assertNotNull(c.getAuthTokenIssueDate());
 
     Customer authCust = Customer.authWithToken(authToken);
     assertEquals(authCust.uuid, c.uuid);
@@ -83,13 +83,13 @@ public class CustomerTest extends FakeDBApplication {
 
     String authToken = c.createAuthToken();
     assertNotNull(authToken);
-    assertNotNull(c.authTokenIssueDate);
+    assertNotNull(c.getAuthTokenIssueDate());
 
     Customer fetchCust = Customer.find.where().eq("uuid", c.uuid).findUnique();
     fetchCust.deleteAuthToken();
 
     fetchCust = Customer.find.where().eq("uuid", c.uuid).findUnique();
-    assertNull(fetchCust.authTokenIssueDate);
+    assertNull(fetchCust.getAuthTokenIssueDate());
 
     Customer authCust = Customer.authWithToken(authToken);
     assertNull(authCust);
