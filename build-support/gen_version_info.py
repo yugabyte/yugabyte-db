@@ -30,7 +30,7 @@ import sys
 import time
 from time import strftime, localtime
 
-from kudu_util import check_output
+from yb_util import check_output
 
 def output_up_to_date(path, id_hash):
   """
