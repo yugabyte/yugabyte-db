@@ -1,3 +1,4 @@
+// Copyright (c) YugaByte, Inc.
 package controllers.commissioner;
 
 import static org.junit.Assert.assertEquals;
@@ -10,6 +11,7 @@ import static play.test.Helpers.route;
 import java.util.Map;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -35,7 +37,7 @@ public class TasksControllerTest extends WithApplication {
   public void setUp() {
   }
 
-  @Test
+  @Ignore("JIRA-196: Needs yb.devops.home simulated.")
   public void testCreateTask() {
     ObjectNode createInstanceJson = Json.newObject();
     createInstanceJson.put("instanceUUID", "11111111-2222-3333-4444-555555555555");

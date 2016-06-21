@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package controllers.commissioner;
 
@@ -20,7 +20,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 
-import forms.commissioner.CreateInstanceTaskParams;
+import forms.commissioner.InstanceTaskParams;
 import models.commissioner.TaskInfo;
 import play.data.Form;
 import play.data.FormFactory;
@@ -70,24 +70,30 @@ public class TasksController extends Controller {
 
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
-   *
+   * Currently used for create instance or edit instance tasks.
+   * 
    * @return Success if the task was successfully queued. Error otherwise.
    */
-  public Result create() {
+  public Result createOrEdit(UUID instanceUUID) {
     // TODO: Decide if we need to check auth token in the Commissioner. If so make that check common
     // across all controllers.
 
-    TaskInfo.Type taskType = TaskInfo.Type.CreateInstance;
     ObjectNode responseJson = Json.newObject();
 
     // Get the params for the task.
-    Form<CreateInstanceTaskParams> formData =
-        formFactory.form(CreateInstanceTaskParams.class).bindFromRequest();
+    Form<InstanceTaskParams> formData =
+        formFactory.form(InstanceTaskParams.class).bindFromRequest();
     if (formData.hasErrors()) {
       responseJson.set("error", formData.errorsAsJson());
       return badRequest(responseJson);
     }
-    CreateInstanceTaskParams taskParams = formData.get();
+    InstanceTaskParams taskParams = formData.get();
+
+    TaskInfo.Type taskType = (taskParams.create) ? TaskInfo.Type.CreateInstance
+                                                 : TaskInfo.Type.EditInstance;
+
+    // Initialize the non-form related fields.
+    taskParams.instanceUUID = instanceUUID;
 
     try {
       // Claim the task if we can - check if we will go above the max local concurrent task

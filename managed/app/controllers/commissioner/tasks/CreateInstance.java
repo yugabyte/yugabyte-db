@@ -1,75 +1,38 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package controllers.commissioner.tasks;
-
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import controllers.commissioner.Common.CloudType;
-import controllers.commissioner.ITask;
-import controllers.commissioner.TaskList;
 import controllers.commissioner.TaskListQueue;
-import forms.commissioner.CreateInstanceTaskParams;
-import forms.commissioner.ITaskParams;
 import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.NodeDetails;
-import play.libs.Json;
 
-public class CreateInstance implements ITask {
-
+public class CreateInstance extends InstanceTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateInstance.class);
 
-  // The task params.
-  CreateInstanceTaskParams taskParams;
-
-  // The threadpool on which the tasks are executed.
-  ExecutorService executor;
-
-  // The sequence of task lists that should be executed.
-  TaskListQueue taskListQueue;
-
   @Override
-  public void initialize(ITaskParams taskParams) {
-    this.taskParams = (CreateInstanceTaskParams)taskParams;
-
-    // Create the threadpool for the subtasks to use.
-    int numThreads = 10;
-    ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
-    LOG.info("Started TaskPool with " + numThreads + " threads.");
+  public String toString() {
+    return getName() + "(" + taskParams.instanceUUID + ")";
   }
 
   @Override
   public String getName() {
-    return "CreateInstance(" + taskParams.instanceName + ")";
-  }
-
-  @Override
-  public JsonNode getTaskDetails() {
-    return Json.toJson(taskParams);
+    return "CreateInstance";
   }
 
   @Override
   public void run() {
-    LOG.info("Started task.");
+    LOG.info("Started {} task.", getName());
     try {
       // Create the task list sequence.
       taskListQueue = new TaskListQueue();
 
       // Persist information about the instance.
-      InstanceInfo.upsertInstance(taskParams.instanceUUID,
-                                     taskParams.subnets,
-                                     taskParams.numNodes,
-                                     taskParams.ybServerPkg);
+      InstanceInfo.createInstance(taskParams.instanceUUID,
+                                  taskParams.subnets,
+                                  taskParams.numNodes,
+                                  taskParams.ybServerPkg);
 
       // Create the required number of nodes in the appropriate locations.
       taskListQueue.add(createTaskListToSetupServers());
@@ -97,135 +60,9 @@ public class CreateInstance implements ITask {
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task " + getName(), t);
+      LOG.error("Error executing task {}, error={}", getName(), t);
       throw t;
     }
-    LOG.info("Finished task.");
-  }
-
-  @Override
-  public int getPercentCompleted() {
-    return taskListQueue.getPercentCompleted();
-  }
-
-  @Override
-  public String toString() {
-    StringBuilder sb = new StringBuilder();
-    sb.append("name : " + this.getClass().getName());
-    return sb.toString();
-  }
-
-  public TaskList createTaskListToSetupServers() {
-    TaskList taskList = new TaskList("AnsibleSetupServer", executor);
-    for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
-      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      // Set the cloud name.
-      params.cloud = CloudType.aws;
-      // Add the node name.
-      params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
-      // Pick one of the VPCs in a round robin fashion.
-      params.vpcId = taskParams.subnets.get(nodeIdx % taskParams.subnets.size());
-      // Create the Ansible task to setup the server.
-      AnsibleSetupServer task = new AnsibleSetupServer(params);
-      // Add it to the task list.
-      taskList.addTask(task);
-    }
-    return taskList;
-  }
-
-  public TaskList createTaskListToGetServerInfo() {
-    TaskList taskList = new TaskList("AnsibleUpdateNodeInfo", executor);
-    for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
-      AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
-      // Set the cloud name.
-      params.cloud = CloudType.aws;
-      // Add the node name.
-      params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
-      // Create the Ansible task to get the server info.
-      AnsibleUpdateNodeInfo task = new AnsibleUpdateNodeInfo(params);
-      // Add it to the task list.
-      taskList.addTask(task);
-    }
-    return taskList;
-  }
-
-  public TaskList createTaskListToCreateClusterConf() {
-    TaskList taskList = new TaskList("CreateClusterConf", executor);
-    CreateClusterConf.Params params = new CreateClusterConf.Params();
-    // Set the cloud name.
-    params.cloud = CloudType.aws;
-    // Add the instance uuid.
-    params.instanceUUID = taskParams.instanceUUID;
-    // Create the task.
-    CreateClusterConf task = new CreateClusterConf(params);
-    // Add it to the task list.
-    taskList.addTask(task);
-    return taskList;
-  }
-
-  public TaskList createTaskListToConfigureServers() {
-    TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
-    for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      // Set the cloud name.
-      params.cloud = CloudType.aws;
-      // Add the node name.
-      params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
-      // The software package to install for this cluster.
-      params.ybServerPkg = taskParams.ybServerPkg;
-      // Create the Ansible task to get the server info.
-      AnsibleConfigureServers task = new AnsibleConfigureServers(params);
-      // Add it to the task list.
-      taskList.addTask(task);
-    }
-    return taskList;
-  }
-
-  public TaskList createTaskListToCreateCluster() {
-    TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
-    List<NodeDetails> masters = InstanceInfo.getMasters(taskParams.instanceUUID);
-    for (NodeDetails node : masters) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      // Set the cloud name.
-      params.cloud = CloudType.aws;
-      // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
-      // The service and the command we want to run.
-      params.process = "master";
-      params.command = "create";
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl(params);
-      // Add it to the task list.
-      taskList.addTask(task);
-    }
-    return taskList;
-  }
-
-  public TaskList createTaskListToStartTServers() {
-    TaskList taskList = new TaskList("createTaskListToStartTServers", executor);
-    List<NodeDetails> tservers = InstanceInfo.getTServers(taskParams.instanceUUID);
-    for (NodeDetails node : tservers) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      // Set the cloud name.
-      params.cloud = CloudType.aws;
-      // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
-      // The service and the command we want to run.
-      params.process = "tserver";
-      params.command = "start";
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl(params);
-      // Add it to the task list.
-      taskList.addTask(task);
-    }
-    return taskList;
+    LOG.info("Finished {} task.", getName());
   }
 }

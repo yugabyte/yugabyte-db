@@ -1,9 +1,9 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package services;
 
 import org.yb.client.YBClient;
 
 public interface YBClientService {
-  YBClient getClient();
+  YBClient getClient(String masterHostPorts);
 }
