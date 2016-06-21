@@ -31,6 +31,20 @@ body {
     margin-right: 0;
 }
 
+#page-wrapper .header-row {
+    padding-bottom: 9px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+#page-wrapper .create-instance-btn {
+    margin-top: 25px;
+}
+
+.edit-profile-panel {
+    margin-top: 10px;
+}
+
 .navbar-top-links li {
     display: inline-block;
 }

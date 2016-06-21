@@ -4,8 +4,8 @@ package controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import forms.LoginFormData;
-import forms.RegisterFormData;
+import forms.yb.CustomerLoginFormData;
+import forms.yb.CustomerRegisterFormData;
 import models.yb.Customer;
 import play.data.Form;
 import play.data.FormFactory;
@@ -21,7 +21,7 @@ public class SessionController extends Controller {
   public static final String AUTH_TOKEN = "authToken";
 
   public Result login() {
-		Form<LoginFormData> formData = formFactory.form(LoginFormData.class).bindFromRequest();
+		Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class).bindFromRequest();
 	  ObjectNode responseJson = Json.newObject();
 
 		if (formData.hasErrors()) {
@@ -29,7 +29,7 @@ public class SessionController extends Controller {
 			return badRequest(responseJson);
 		}
 
-		LoginFormData data = formData.get();
+	  CustomerLoginFormData data = formData.get();
 		Customer cust = Customer.authWithPassword(data.email.toLowerCase(), data.password);
 
 		if (cust == null) {
@@ -45,7 +45,7 @@ public class SessionController extends Controller {
 	}
 
   public Result register() {
-		Form<RegisterFormData> formData = formFactory.form(RegisterFormData.class).bindFromRequest();
+		Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class).bindFromRequest();
 	  ObjectNode responseJson = Json.newObject();
 
 		if (formData.hasErrors()) {
@@ -53,7 +53,7 @@ public class SessionController extends Controller {
 			return badRequest(responseJson);
 		}
 
-		RegisterFormData data = formData.get();
+	  CustomerRegisterFormData data = formData.get();
 		Customer cust = Customer.create(data.name, data.email, data.password);
 
 		if (cust == null) {

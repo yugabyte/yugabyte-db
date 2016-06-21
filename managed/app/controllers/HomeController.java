@@ -3,34 +3,31 @@
 package controllers;
 
 import com.google.inject.Inject;
-import forms.LoginFormData;
-import forms.RegisterFormData;
+import controllers.yb.CustomerController;
+import forms.yb.CustomerLoginFormData;
+import forms.yb.CustomerRegisterFormData;
 import play.data.Form;
 import play.data.FormFactory;
 import play.mvc.Controller;
 import play.mvc.Result;
+import play.mvc.With;
+import security.TokenAuthenticator;
 import views.html.*;
+
+import static security.TokenAuthenticator.COOKIE_AUTH_TOKEN;
 
 public class HomeController extends Controller {
 
 	@Inject
 	FormFactory formFactory;
 
-	public Result index() {
-		if (ctx().request().cookie(SessionController.AUTH_TOKEN) == null) {
-			Form<LoginFormData> formData = formFactory.form(LoginFormData.class);
-			return ok(loginForm.render(formData));
-		}
-		return ok(dashboard.render());
-	}
-
 	public Result login() {
-		Form<LoginFormData> formData = formFactory.form(LoginFormData.class);
+		Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class);
 		return ok(loginForm.render(formData));
 	}
 
 	public Result register() {
-		Form<RegisterFormData> formData = formFactory.form(RegisterFormData.class);
+		Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class);
 		return ok(registerForm.render(formData));
 	}
 }

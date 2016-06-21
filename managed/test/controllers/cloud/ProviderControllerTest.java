@@ -4,7 +4,7 @@ package controllers.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import models.cloud.Provider;
 import models.yb.Customer;
 import org.junit.Before;
@@ -45,8 +45,8 @@ public class ProviderControllerTest extends FakeDBApplication {
 	@Test
 	public void testListProviders() {
 		String authToken = customer.createAuthToken();
-		Provider p1 = Provider.create(Provider.Type.AmazonWebService);
-		Provider p2 = Provider.create(Provider.Type.GoogleCloud);
+		Provider p1 = Provider.create("Amazon");
+		Provider p2 = Provider.create("Google");
 
 		Http.RequestBuilder request = play.test.Helpers.fakeRequest(controllers.cloud.routes.ProviderController.list())
 				.header("X-AUTH-TOKEN", authToken);
@@ -56,16 +56,16 @@ public class ProviderControllerTest extends FakeDBApplication {
 		assertEquals(OK, result.status());
 		assertEquals(2, json.size());
 		assertEquals(json.get(0).path("uuid").asText(), p1.uuid.toString());
-		assertEquals(json.get(0).path("type").asText(), p1.type.toString());
+		assertEquals(json.get(0).path("name").asText(), p1.name.toString());
 		assertEquals(json.get(1).path("uuid").asText(), p2.uuid.toString());
-		assertEquals(json.get(1).path("type").asText(), p2.type.toString());
+		assertEquals(json.get(1).path("name").asText(), p2.name.toString());
 	}
 
 	@Test
 	public void testCreateProvider() {
 		String authToken = customer.createAuthToken();
 		ObjectNode bodyJson = Json.newObject();
-		bodyJson.put("type", Provider.Type.MicrosoftAzure.toString());
+		bodyJson.put("name", "Microsoft");
 
 		Http.RequestBuilder request = play.test.Helpers.fakeRequest(controllers.cloud.routes.ProviderController.create())
 				.header("X-AUTH-TOKEN", authToken)
@@ -73,18 +73,18 @@ public class ProviderControllerTest extends FakeDBApplication {
 		Result result = route(request);
 		JsonNode json = Json.parse(contentAsString(result));
 		assertEquals(OK, result.status());
-		assertEquals(1, json.findValues("type").size());
-		assertEquals(json.path("type").asText(), Provider.Type.MicrosoftAzure.toString());
+		assertEquals(1, json.findValues("name").size());
+		assertEquals(json.path("name").asText(), "Microsoft");
 	}
 
 	@Test
 	public void testCreateDuplicateProvider() {
 		String authToken = customer.createAuthToken();
 
-		Provider.create(Provider.Type.AmazonWebService);
+		Provider.create("Amazon");
 
 		ObjectNode bodyJson = Json.newObject();
-		bodyJson.put("type", Provider.Type.AmazonWebService.toString());
+		bodyJson.put("name", "Amazon");
 
 		Http.RequestBuilder request = play.test.Helpers.fakeRequest(controllers.cloud.routes.ProviderController.create())
 				.header("X-AUTH-TOKEN", authToken)

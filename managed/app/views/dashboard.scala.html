@@ -1,56 +1,25 @@
-@main(true) {
+@import common._
+
+@(instanceCount: Integer, tableCount: Integer)
+
+@main(true, "dashboard") {
 
 <div id="page-wrapper" style="min-height: 1191px;">
-  <div class="row">
-    <div class="col-lg-12">
-        <h1 class="page-header">Dashboard</h1>
+  <div class="row header-row">
+    <div class="col-lg-10">
+		      <h1>Dashboard</h1>
     </div>
+	  <div class="col-lg-2">
+		  <a href="/createInstance" class="btn btn-primary create-instance-btn">Create Instance</a>
+	  </div>
   </div>
   <div class="row">
     <div class="col-lg-3 col-md-6">
-      <div class="panel panel-primary">
-        <div class="panel-heading">
-          <div class="row">
-            <div class="col-xs-3">
-              <i class="fa  fa-database fa-5x"></i>
-            </div>
-            <div class="col-xs-9 text-right">
-              <div class="huge">1</div>
-              <div>Databases</div>
-            </div>
-          </div>
-        </div>
-        <a href="#">
-          <div class="panel-footer">
-            <span class="pull-left">View Details</span>
-            <span class="pull-right"><i class="fa fa-arrow-circle-right"></i></span>
-            <div class="clearfix"></div>
-          </div>
-        </a>
-      </div>
+	    @dashboardPanel("Instances", instanceCount, "panel-primary", "fa-database")
     </div>
     <div class="col-lg-3 col-md-6">
-      <div class="panel panel-green">
-        <div class="panel-heading">
-          <div class="row">
-            <div class="col-xs-3">
-              <i class="fa fa-table fa-5x"></i>
-            </div>
-            <div class="col-xs-9 text-right">
-              <div class="huge">2</div>
-              <div>Tables</div>
-            </div>
-          </div>
-          </div>
-          <a href="#">
-            <div class="panel-footer">
-              <span class="pull-left">View Details</span>
-              <span class="pull-right"><i class="fa fa-arrow-circle-right"></i></span>
-              <div class="clearfix"></div>
-            </div>
-          </a>
-        </div>
-      </div>
-	  </div>
+	    @dashboardPanel("Tables", tableCount, "panel-green", "fa-table")
+    </div>
+  </div>
 </div>
 }

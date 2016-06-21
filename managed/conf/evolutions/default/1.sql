@@ -31,9 +31,9 @@ create table instance (
   name                          varchar(255) not null,
   customer_uuid                 uuid,
   placement_info                clob not null,
-  state                         varchar(3) not null,
+  provisioning_state            varchar(10) not null,
   creation_date                 timestamp not null,
-  constraint ck_instance_state check (state in ('PRV','SHT','UNK','RUN','CRE','DRP')),
+  constraint ck_instance_provisioning_state check (provisioning_state in ('Failed','Completed','Pending','Processing')),
   constraint pk_instance primary key (instance_id,customer_id)
 );
 
@@ -45,10 +45,9 @@ create table instance_info (
 
 create table provider (
   uuid                          uuid not null,
-  type                          varchar(3) not null,
+  name                          varchar(255) not null,
   active                        boolean default true not null,
-  constraint ck_provider_type check (type in ('AZU','GCE','AWS')),
-  constraint uq_provider_type unique (type),
+  constraint uq_provider_name unique (name),
   constraint pk_provider primary key (uuid)
 );
 
@@ -58,6 +57,7 @@ create table region (
   name                          varchar(100) not null,
   provider_uuid                 uuid,
   active                        boolean default true not null,
+  multi_az_capable              boolean default true not null,
   constraint pk_region primary key (uuid)
 );
 

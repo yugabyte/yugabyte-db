@@ -5,33 +5,30 @@ package models.yb;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.annotation.DbJson;
 import com.avaje.ebean.annotation.EnumValue;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.joda.time.DateTime;
 import play.data.validation.Constraints;
 import javax.persistence.*;
+import java.util.Date;
 import java.util.UUID;
 
 @Entity
 public class Instance extends Model {
 
-	public enum State {
-		@EnumValue("CRE")
-		Created,
+	public enum ProvisioningState {
+		@EnumValue("Pending")
+		Pending,
 
-		@EnumValue("PRV")
-		Provision,
+		@EnumValue("Processing")
+		Processing,
 
-		@EnumValue("RUN")
-		Running,
+		@EnumValue("Completed")
+		Completed,
 
-		@EnumValue("DRP")
-		Drop,
-
-		@EnumValue("SHT")
-		Shutdown,
-
-		@EnumValue("UNK")
-		Unknown
+		@EnumValue("Failed")
+		Failed,
 	}
 
 	@EmbeddedId
@@ -45,6 +42,7 @@ public class Instance extends Model {
 
 	@Constraints.Required
 	@ManyToOne
+	@JsonBackReference
 	public Customer customer;
 
 	@Constraints.Required
@@ -55,11 +53,12 @@ public class Instance extends Model {
 
 	@Constraints.Required
 	@Column(nullable = false)
-	public State state;
+	public ProvisioningState provisioningState;
 
 	@Constraints.Required
 	@Column(nullable = false)
-	public DateTime creationDate;
+	@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+	public Date creationDate;
 
 	/**
 	 * Query Helper for Instance with primary key
@@ -75,14 +74,14 @@ public class Instance extends Model {
 	 * @param placementInfo
 	 * @return Yuga Instance
 	 */
-	public static Instance create(Customer customer, String name, State state, JsonNode placementInfo) {
+	public static Instance create(Customer customer, String name, ProvisioningState state, JsonNode placementInfo) {
 		Instance instance = new Instance();
 		instance.key = CustomerInstanceKey.create(UUID.randomUUID(), customer.uuid);
 		instance.customer = customer;
 		instance.name = name;
-		instance.state = state;
+		instance.provisioningState = state;
 		instance.placementInfo = placementInfo;
-		instance.creationDate = DateTime.now();
+		instance.creationDate = new Date();
 		instance.save();
 		return instance;
 	}

@@ -1,13 +1,13 @@
 // Copyright (c) Yugabyte, Inc.
 
-package forms;
+package forms.yb;
 
 import play.data.validation.Constraints;
 
 /**
  * This class will be used by the API and UI Form Elements to validate constraints are met
  */
-public class LoginFormData {
+public class CustomerLoginFormData {
   @Constraints.Required()
   @Constraints.Email
   @Constraints.MinLength(5)
