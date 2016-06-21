@@ -13,7 +13,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import play.libs.Json;
 
 public class TaskTest extends FakeDBApplication {

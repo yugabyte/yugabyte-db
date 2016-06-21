@@ -4,16 +4,12 @@ package controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import helpers.FakeDBApplication;
 import models.yb.Customer;
 import org.junit.Before;
 import org.junit.Test;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
-import java.util.Map;
 
 import static org.hamcrest.CoreMatchers.*;
 import static play.test.Helpers.*;
@@ -21,14 +17,7 @@ import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.fakeRequest;
 
-public class SessionControllerTest extends WithApplication {
-
-  @Override
-  protected Application provideApplication() {
-      return new GuiceApplicationBuilder()
-	        .configure((Map) Helpers.inMemoryDatabase())
-	        .build();
-  }
+public class SessionControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {

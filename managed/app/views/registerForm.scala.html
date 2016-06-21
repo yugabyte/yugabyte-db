@@ -1,9 +1,13 @@
-@import forms._
-@(registerForm: Form[RegisterFormData])
+@import forms.yb._
+@import helper._
+@import common._
 
-@main(false) {
-	<div class="row">
-	  <div class="col-sm-4 col-sm-offset-4">
+@(registerForm: Form[CustomerRegisterFormData])
+@implicitField = @{ FieldConstructor(formFieldTemplate.f) }
+
+@main(false, "register-form") {
+  <div class="row">
+    <div class="col-sm-4 col-sm-offset-4">
       <div class="panel panel-default login-panel">
         <div class="panel-heading">
           <h3 class="panel-title">Register Customer</h3>
@@ -12,22 +16,14 @@
           <form id="registerForm">
             <fieldset>
               <div class="form-group">
-                <input id="@registerForm("name").id" name="@registerForm("name").name" class="form-control" placeholder="Name" type="text">
-                <small id="@registerForm("name").id" class="help-block"></small>
-              </div>
-              <div class="form-group">
-                <input id="@registerForm("email").id" name="@registerForm("email").name" class="form-control" placeholder="E-mail" type="text">
-                <small id="@registerForm("email").id" class="help-block"></small>
-              </div>
-              <div class="form-group">
-                <input id="@registerForm("password").id" name="@registerForm("password").name" class="form-control" placeholder="Password" type="password">
-                <small id="@registerForm("password").id" class="help-block"></small>
-              </div>
-              <input class="btn btn-lg btn-success btn-block" type="submit" value="Register">
+                @inputText(registerForm("name"), 'class -> "form-control", 'placeholder -> "Name")
+                @inputText(registerForm("email"), 'class -> "form-control", 'placeholder -> "E-mail")
+                @inputText(registerForm("password"), 'class -> "form-control", 'placeholder -> "Password")
+                <input class="btn btn-lg btn-success btn-block" type="submit" value="Register">
             </fieldset>
             </form>
         </div>
       </div>
-	  </div>
-	</div>
+    </div>
+  </div>
 }

@@ -1,4 +1,4 @@
-@(showNav: Boolean)(body: Html)
+@(showNav: Boolean, pageId: String = "content")(body: Html)
 
 <!DOCTYPE html>
 <html lang="en">
@@ -9,14 +9,15 @@
     <script src="@routes.Assets.versioned("lib/jquery/jquery.js")" type="text/javascript"></script>
     <script src="@routes.Assets.versioned("lib/bootstrap/js/bootstrap.min.js")" type="text/javascript"></script>
     <script src="@routes.Assets.versioned("javascripts/app.js")"></script>
-
-    <link rel='stylesheet' href='@routes.Assets.versioned("stylesheets/app.css")'>
+    <script src="@routes.Assets.versioned("lib/metisMenu/metisMenu.min.js")"></script>
+	  <link rel='stylesheet' href='@routes.Assets.versioned("stylesheets/app.css")'>
   </head>
 
   @if(showNav) {
     @navbar()
   }
-  <body id="content">
+  <body id="@pageId">
     @body
+    <input id="customerUUID" value="@ctx().args.get("customer_uuid")" type="hidden">
   </body>
 </html>

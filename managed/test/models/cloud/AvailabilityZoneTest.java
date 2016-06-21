@@ -2,7 +2,7 @@
 
 package models.cloud;
 
-import models.FakeDBApplication;
+import helpers.FakeDBApplication;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -17,8 +17,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
 	@Before
 	public void setUp() {
-		Provider provider = Provider.create(Provider.Type.AmazonWebService);
-		defaultRegion = Region.create(provider, "region-1", "test region");
+		Provider provider = Provider.create("Amazon");
+		defaultRegion = Region.create(provider, "region-1", "test region", true);
 	}
 
 	@Test

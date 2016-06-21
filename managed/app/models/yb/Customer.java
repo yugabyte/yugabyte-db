@@ -5,9 +5,11 @@ package models.yb;
 import javax.persistence.*;
 import com.avaje.ebean.Model;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.joda.time.DateTime;
 import play.api.libs.json.Json;
+import play.data.format.Formats;
 import play.data.validation.Constraints;
 import org.mindrot.jbcrypt.BCrypt;
 import java.util.Date;
@@ -27,19 +29,24 @@ public class Customer extends Model {
 
   @Column(length = 256, nullable = false)
   public String passwordHash;
+	public void setPassword(String password) {
+		this.passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
+	}
 
   @Column(length = 256, nullable = false)
   @Constraints.Required
   @Constraints.MinLength(3)
   public String name;
 
-  @Column(nullable = false)
-  public Date creationDate;
+	@Column(nullable = false)
+	@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+	public Date creationDate;
 
   private String authToken;
 
-  @Column(nullable = true)
-  public DateTime authTokenIssueDate;
+	@Column(nullable = true)
+	private Date authTokenIssueDate;
+	public Date getAuthTokenIssueDate() { return this.authTokenIssueDate; };
 
 	@OneToMany(cascade = CascadeType.ALL)
 	@JsonBackReference
@@ -47,7 +54,7 @@ public class Customer extends Model {
 	public void setInstances(Set<Instance> instances) { this.instances = instances; }
 	public Set<Instance> getInstances() { return this.instances; }
 
-	public static final Find<Long, Customer> find = new Find<Long, Customer>(){};
+	public static final Find<UUID, Customer> find = new Find<UUID, Customer>(){};
 
   public Customer() {
       this.creationDate = new Date();
@@ -65,8 +72,8 @@ public class Customer extends Model {
     Customer cust = new Customer();
 	  cust.uuid = UUID.randomUUID();
     cust.email = email.toLowerCase();
-    cust.passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
-    cust.name = name;
+    cust.setPassword(password);
+	  cust.name = name;
     cust.creationDate = new Date();
 
     cust.save();
@@ -96,7 +103,7 @@ public class Customer extends Model {
    */
   public String createAuthToken() {
     authToken = UUID.randomUUID().toString();
-    authTokenIssueDate = DateTime.now();
+    authTokenIssueDate = new Date();
     save();
     return authToken;
   }
@@ -131,11 +138,11 @@ public class Customer extends Model {
 	/**
 	 * Create a new Yuga Instance for the customer
 	 * @param name
-	 * @param state
+	 * @param provisioningState
 	 * @param placementInfo
 	 * @return Yuga Instance
 	 */
-	public Instance createNewInstance(String name, Instance.State state, JsonNode placementInfo) {
-		return Instance.create(this, name, state, placementInfo);
+	public Instance createNewInstance(String name, Instance.ProvisioningState provisioningState, JsonNode placementInfo) {
+		return Instance.create(this, name, provisioningState, placementInfo);
 	}
 }

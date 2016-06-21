@@ -1,6 +1,10 @@
-@(loginForm: Form[forms.LoginFormData])
+@import helper._
+@import common._
 
-@main(false) {
+@(loginForm: Form[forms.yb.CustomerLoginFormData])
+@implicitField = @{ FieldConstructor(formFieldTemplate.f) }
+
+@main(false, "login-form") {
   <div class="row">
     <div class="col-sm-4 col-sm-offset-4">
       <div class="panel panel-default login-panel">
@@ -10,19 +14,12 @@
         <div class="panel-body">
           <form id="loginForm">
             <fieldset>
-              <div class="form-group">
-                <input id="@loginForm("email").id" name="@loginForm("email").name" class="form-control" placeholder="E-mail" type="text">
-                <small id="@loginForm("email").id" class="help-block"></small>
-              </div>
-              <div class="form-group">
-                <input id="@loginForm("password").id" name="@loginForm("password").name" class="form-control" placeholder="Password" type="password">
-                <small id="@loginForm("password").id" class="help-block"></small>
-              </div>
+              @inputText(loginForm("email"), 'class -> "form-control", 'placeholder -> "E-mail")
+              @inputPassword(loginForm("password"), 'class -> "form-control", 'placeholder -> "Password")
               <input class="btn btn-lg btn-success btn-block" type="submit" value="Login">
             </fieldset>
           </form>
-
-	        <div class = "alert alert-danger form-error-alert" id="loginFormAlert"></div>
+          <div class = "alert alert-danger form-error-alert" id="loginFormAlert"></div>
         </div>
       </div>
     </div>

@@ -17,7 +17,8 @@ libraryDependencies ++= Seq(
   // WebJars (i.e. client-side) dependencies
   "org.webjars" %  "jquery" % "2.1.1",
   "org.webjars" %  "bootstrap" % "3.3.1",
-  "org.webjars" %  "font-awesome" % "4.6.3"
+  "org.webjars" %  "font-awesome" % "4.6.3",
+  "org.webjars" %  "metisMenu" % "1.1.2"
 )
 
 resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"

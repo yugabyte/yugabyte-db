@@ -4,28 +4,18 @@ package models.cloud;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.annotation.EnumValue;
 import javax.persistence.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
 public class Provider extends Model {
-
-	public enum Type {
-		@EnumValue("AWS")
-		AmazonWebService,
-
-		@EnumValue("GCE")
-		GoogleCloud,
-
-		@EnumValue("AZU")
-		MicrosoftAzure,
-	}
-
 	@Id
 	public UUID uuid;
 
 	@Column(unique = true, nullable = false)
-	@Enumerated(EnumType.STRING)
-	public Type type;
+	public String name;
 
 	@Column(nullable = false, columnDefinition = "boolean default true")
 	public Boolean active = true;
@@ -39,14 +29,14 @@ public class Provider extends Model {
 
 	/**
 	 * Create a new Cloud Provider
-	 * @param type, type of cloud provider
+	 * @param name, name of cloud provider
 	 * @return instance of cloud provider
 	 */
-	public static Provider create(Type type)
+	public static Provider create(String name)
 	{
 		Provider provider = new Provider();
 		provider.uuid = UUID.randomUUID();
-		provider.type = type;
+		provider.name = name;
 		provider.save();
 		return provider;
 	}
