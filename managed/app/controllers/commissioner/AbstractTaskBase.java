@@ -3,6 +3,7 @@ package controllers.commissioner;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.List;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -12,30 +13,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import controllers.commissioner.Common.CloudType;
 import forms.commissioner.ITaskParams;
+import forms.commissioner.TaskParamsBase;
 import play.libs.Json;
+import org.yb.client.MiniYBCluster;
 
 public abstract class AbstractTaskBase implements ITask {
 
   public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
 
-  public static class TaskParamsBase implements ITaskParams {
-    // The cloud provider to get node details.
-    public CloudType cloud;
-    // The node about which we need to fetch details.
-    public String nodeInstanceName;
-    // The instance against which this node's details should be saved.
-    public UUID instanceUUID;
-  }
   protected TaskParamsBase taskParams;
 
-  public AbstractTaskBase(TaskParamsBase params) {
-    this.taskParams = params;
-    LOG.info("Created task: " + getName() + ", details: " + getTaskDetails());
-  }
-
   @Override
-  public void initialize(ITaskParams taskParams) {
-    // TODO(bharat): Unused, should be removed once all Tasks implement the above constructor.
+  public void initialize(ITaskParams params) {
+    this.taskParams = (TaskParamsBase)params;
   }
 
   @Override
@@ -47,6 +37,11 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public JsonNode getTaskDetails() {
     return Json.toJson(taskParams);
+  }
+
+  @Override
+  public String toString() {
+    return getName() + " : details=" + getTaskDetails();
   }
 
   @Override

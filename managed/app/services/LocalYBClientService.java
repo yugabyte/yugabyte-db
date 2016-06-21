@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package services;
 
@@ -11,16 +11,13 @@ import java.util.concurrent.CompletableFuture;
 
 @Singleton
 public class LocalYBClientService implements YBClientService {
-  // For now hardcode the values, we will eventually pull this from DB
-  String masterPorts = "127.0.0.1:7101,127.0.0.1:7102,127.0.0.1:7103";
-  private final YBClient client;
+  // For starters hardcode the value, we will be called with required hostports as needed.
+  String masterHostPorts = "127.0.0.1:7101,127.0.0.1:7102,127.0.0.1:7103";
+  private YBClient client = null;
 
   @Inject
   public LocalYBClientService(ApplicationLifecycle lifecycle) {
-    client = new YBClient.YBClientBuilder(masterPorts)
-            .defaultAdminOperationTimeoutMs(600)
-            .defaultOperationTimeoutMs(600)
-            .build();
+    client = getNewClient(masterHostPorts);
 
     lifecycle.addStopHook(() -> {
         client.close();
@@ -29,7 +26,24 @@ public class LocalYBClientService implements YBClientService {
   }
 
   @Override
-  public YBClient getClient() {
-      return client;
+  public synchronized YBClient getClient(String masterHPs) {
+    if (masterHPs != null && !masterHostPorts.equals(masterHPs)) {
+      try {
+        client.close();
+      } catch (Exception e) {
+        
+      }
+      client = getNewClient(masterHPs);
+
+      masterHostPorts = masterHPs;
+    }
+    return client;
+  }
+  
+  private YBClient getNewClient(String masterHPs) {
+    return new YBClient.YBClientBuilder(masterHPs)
+           .defaultAdminOperationTimeoutMs(600)
+           .defaultOperationTimeoutMs(600)
+           .build();
   }
 }

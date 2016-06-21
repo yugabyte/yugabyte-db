@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package controllers.commissioner.tasks;
 
@@ -10,14 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import controllers.commissioner.ITask;
 import forms.commissioner.ITaskParams;
 
-public class DestroyInstance implements ITask {
-
+public class DestroyInstance extends InstanceTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyInstance.class);
-
-  @Override
-  public void initialize(ITaskParams taskParams) {
-    LOG.info("Initializing task.");
-  }
 
   @Override
   public String getName() {

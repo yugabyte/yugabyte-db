@@ -18,4 +18,3 @@ perf.data.old
 oprofile_data
 .metadata/
 *.iml
-conf/*

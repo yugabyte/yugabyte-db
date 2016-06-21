@@ -29,7 +29,7 @@ public class TabletServerController extends AuthenticatedController {
     ObjectNode result = Json.newObject();
 
     try {
-        ListTabletServersResponse response = ybService.getClient().listTabletServers();
+        ListTabletServersResponse response = ybService.getClient(null).listTabletServers();
         result.put("count", response.getTabletServersCount());
         ArrayNode tabletServers = result.putArray("servers");
         response.getTabletServersList().forEach(tabletServer->{

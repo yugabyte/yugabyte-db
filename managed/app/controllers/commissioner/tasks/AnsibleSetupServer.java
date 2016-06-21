@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package controllers.commissioner.tasks;
 
@@ -6,21 +6,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import controllers.commissioner.AbstractTaskBase;
-import controllers.commissioner.Common;
 import controllers.commissioner.Common.CloudType;
+import forms.commissioner.TaskParamsBase;
+import util.Util;
 
 public class AnsibleSetupServer extends AbstractTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleSetupServer.class);
 
   // Additional parameters for this task.
-  public static class Params extends AbstractTaskBase.TaskParamsBase {
+  public static class Params extends TaskParamsBase {
     // The VPC into which the node is to be provisioned.
     public String vpcId;
-  }
-
-  public AnsibleSetupServer(TaskParamsBase params) {
-    super(params);
   }
 
   public Params getParams() {
@@ -29,7 +26,7 @@ public class AnsibleSetupServer extends AbstractTaskBase {
 
   @Override
   public void run() {
-    String ybDevopsHome = Common.getDevopsHome();
+    String ybDevopsHome = Util.getDevopsHome();
     String command = ybDevopsHome + "/bin/setup_server.sh" +
                      " --cloud " + getParams().cloud +
                      " --instance-name " + getParams().nodeInstanceName +

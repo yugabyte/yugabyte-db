@@ -12,6 +12,7 @@ import play.mvc.*;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
 import services.YBClientService;
+import java.lang.String;
 import java.util.Arrays;
 import java.util.List;
 import static org.mockito.Mockito.*;
@@ -30,7 +31,7 @@ public class TablesControllerTest {
     mockService = mock(YBClientService.class);
     mockResponse = mock(ListTablesResponse.class);
     when(mockClient.getTablesList()).thenReturn(mockResponse);
-    when(mockService.getClient()).thenReturn(mockClient);
+    when(mockService.getClient(any(String.class))).thenReturn(mockClient);
     tablesController = new TablesController(mockService);
   }
 
