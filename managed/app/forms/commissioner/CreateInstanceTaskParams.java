@@ -31,5 +31,11 @@ public class CreateInstanceTaskParams implements ITaskParams {
   @Size(max=3)
   public List<String> subnets;
 
+  // The number of nodes to provision.
   public int numNodes = 3;
+
+  // The software version of YB to install.
+  // TODO: replace with a nicer string as default.
+  public String ybServerPkg =
+      "yb-server-0.0.1-SNAPSHOT.3a3bc5896e8842bfba683394c2c863a33e3cc4c1.tar.gz";
 }

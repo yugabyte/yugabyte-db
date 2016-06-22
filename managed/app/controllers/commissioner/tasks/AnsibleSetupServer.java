@@ -2,7 +2,9 @@
 
 package controllers.commissioner.tasks;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +29,8 @@ public class AnsibleSetupServer implements ITask {
     public String nodeInstanceName;
     // The VPC into which the node is to be provisioned.
     public String vpcId;
+    // The software package that needs to be installed.
+    public String ybServerPkg;
   }
 
   Params taskParams;
@@ -54,7 +58,8 @@ public class AnsibleSetupServer implements ITask {
     String command = ybDevopsHome + "/bin/setup_server.sh" +
                      " --cloud " + taskParams.cloud +
                      " --instance-name " + taskParams.nodeInstanceName +
-                     " --type test-cluster-server";
+                     " --type test-cluster-server" +
+                     " --package " + taskParams.ybServerPkg;
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
     if (taskParams.cloud == CloudType.aws) {
@@ -64,6 +69,13 @@ public class AnsibleSetupServer implements ITask {
     LOG.info("Command to run: [" + command + "]");
     try {
       Process p = Runtime.getRuntime().exec(command);
+
+      // Log the stderr output of the process.
+      BufferedReader berr = new BufferedReader(new InputStreamReader(p.getErrorStream()));
+      String line = null;
+      while ( (line = berr.readLine()) != null) {
+        LOG.info("[" + getName() + "] STDERR: " + line);
+      }
       int exitValue = p.waitFor();
       LOG.info("Command [" + command + "] finished with exit code " + exitValue);
       // TODO: log output stream somewhere.
