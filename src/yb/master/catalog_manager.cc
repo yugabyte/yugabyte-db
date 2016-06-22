@@ -778,12 +778,11 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
       << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
 }
 
-Status CatalogManager::ValidateTablePlacementInfo(
-    const google::protobuf::RepeatedPtrField<PlacementInfoPB>& placement_info) {
+Status CatalogManager::ValidateTablePlacementInfo(const PlacementInfoPB& placement_info) {
   // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
-  if (!placement_info.empty()) {
+  if (!placement_info.placement_blocks().empty()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
-    if (l.data().pb.placement_info_size() > 0) {
+    if (!l.data().pb.placement_info().placement_blocks().empty()) {
       return Status::InvalidArgument(
           "Unsupported: cannot set both table and cluster level placement yet.");
     }
@@ -876,8 +875,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
 
   // If they didn't specify a num_replicas, set it based on the default.
-  if (!req.has_num_replicas()) {
-    req.set_num_replicas(FLAGS_default_num_replicas);
+  if (!req.has_placement_info() || !req.placement_info().has_num_replicas()) {
+    req.mutable_placement_info()->set_num_replicas(FLAGS_default_num_replicas);
   }
 
   // Verify that the total number of tablets is reasonable, relative to the number
@@ -886,7 +885,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   int num_live_tservers = ts_descs.size();
   int max_tablets = FLAGS_max_create_tablets_per_ts * num_live_tservers;
-  if (req.num_replicas() > 1 && max_tablets > 0 && partitions.size() > max_tablets) {
+  if (req.placement_info().num_replicas() > 1 && max_tablets > 0 &&
+      partitions.size() > max_tablets) {
     s = Status::InvalidArgument(Substitute("The requested number of tablets is over the "
                                            "permitted maximum ($0)", max_tablets));
     SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
@@ -896,10 +896,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Verify that the number of replicas isn't larger than the number of live tablet
   // servers.
   if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
-      req.num_replicas() > num_live_tservers) {
+      req.placement_info().num_replicas() > num_live_tservers) {
     s = Status::InvalidArgument(Substitute(
         "Not enough live tablet servers to create a table with the requested replication "
-        "factor $0. $1 tablet servers are alive.", req.num_replicas(), num_live_tservers));
+        "factor $0. $1 tablet servers are alive.",
+        req.placement_info().num_replicas(), num_live_tservers));
     SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
     return s;
   }
@@ -913,28 +914,28 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // If we don't have table level requirements, fallback to the cluster ones.
   auto placement_info = req.placement_info();
-  if (placement_info.empty()) {
+  if (placement_info.placement_blocks().empty()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
     placement_info = l.data().pb.placement_info();
   }
 
   // Verify that placement requests are reasonable and we can satisfy the minimums.
-  if (!placement_info.empty()) {
+  if (!placement_info.placement_blocks().empty()) {
     int minimum_sum = 0;
-    for (const auto& pi : placement_info) {
-      minimum_sum += pi.min_num_replicas();
-      if (!pi.has_cloud_info()) {
+    for (const auto& pb : placement_info.placement_blocks()) {
+      minimum_sum += pb.min_num_replicas();
+      if (!pb.has_cloud_info()) {
         s = Status::InvalidArgument(
-            Substitute("Got placement info without cloud info set: $0", pi.ShortDebugString()));
+            Substitute("Got placement info without cloud info set: $0", pb.ShortDebugString()));
         SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
         return s;
       }
     }
 
-    if (minimum_sum > req.num_replicas()) {
+    if (minimum_sum > req.placement_info().num_replicas()) {
       s = Status::InvalidArgument(Substitute(
           "Sum of required minimum replicas per placement ($0) is greater than num_replicas ($1)",
-          minimum_sum, req.num_replicas()));
+          minimum_sum, req.placement_info().num_replicas()));
       SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       return s;
     }
@@ -1066,7 +1067,6 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   metadata->set_table_type(req.table_type());
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
-  metadata->set_num_replicas(req.num_replicas());
   *metadata->mutable_placement_info() = req.placement_info();
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
@@ -1443,7 +1443,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     // There's no AlterTable, the regular schema is "fully applied".
     resp->mutable_schema()->CopyFrom(l.data().pb.schema());
   }
-  resp->set_num_replicas(l.data().pb.num_replicas());
+  resp->mutable_placement_info()->CopyFrom(l.data().pb.placement_info());
   resp->set_table_id(table->id());
   resp->mutable_partition_schema()->CopyFrom(l.data().pb.partition_schema());
   resp->set_create_table_done(!table->IsCreateInProgress());
@@ -1839,7 +1839,7 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
 
   // If the config is under-replicated, add a server to the config.
   if (FLAGS_master_add_server_when_underreplicated &&
-      CountVoters(cstate.config()) < table_lock->data().pb.num_replicas()) {
+      CountVoters(cstate.config()) < table_lock->data().pb.placement_info().num_replicas()) {
     SendAddServerRequest(tablet, cstate);
   }
 
@@ -3204,7 +3204,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
                    tablet->tablet_id()));
   }
 
-  int nreplicas = table_guard.data().pb.num_replicas();
+  int nreplicas = table_guard.data().pb.placement_info().num_replicas();
 
   if (ts_descs.size() < nreplicas) {
     return Status::InvalidArgument(
@@ -3229,7 +3229,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   RETURN_NOT_OK(ValidateTablePlacementInfo(table_guard.data().pb.placement_info()));
 
   auto placement_info = table_guard.data().pb.placement_info();
-  if (placement_info.empty()) {
+  if (placement_info.placement_blocks().empty()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
     placement_info = l.data().pb.placement_info();
   }
@@ -3237,7 +3237,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
   set<shared_ptr<TSDescriptor>> already_selected_ts;
-  if (placement_info.empty()) {
+  if (placement_info.placement_blocks().empty()) {
     // If we don't have placement info, just place the replicas as before, distributed across the
     // whole cluster.
     SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts);
@@ -3251,14 +3251,12 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
     unordered_map<string, vector<shared_ptr<TSDescriptor>>> allowed_ts_by_pi;
     vector<shared_ptr<TSDescriptor>> all_allowed_ts;
 
-    // Keep map from ID to PlacementInfoPB, as protos only have repeated, not maps.
-    unordered_map<string, PlacementInfoPB> pi_by_id;
-    for (const auto& pi : placement_info) {
-      const auto& cloud_info = pi.cloud_info();
-      string placement_id = Substitute(
-          "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
-          cloud_info.placement_zone());
-      pi_by_id[placement_id] = pi;
+    // Keep map from ID to PlacementBlockPB, as protos only have repeated, not maps.
+    unordered_map<string, PlacementBlockPB> pi_by_id;
+    for (const auto& pb : placement_info.placement_blocks()) {
+      const auto& cloud_info = pb.cloud_info();
+      string placement_id = TSDescriptor::generate_placement_id(cloud_info);
+      pi_by_id[placement_id] = pb;
     }
 
     // Build the sets of allowed TSs.

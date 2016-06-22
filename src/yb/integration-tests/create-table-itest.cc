@@ -45,14 +45,14 @@ const char* const kTableName = "test-table";
 class CreateTableITest : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
-      const master::PlacementInfoPB& placement_info, const int num_replicas,
+      const master::PlacementBlockPB& placement_block, const int num_replicas,
       const string& table_suffix) {
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
     return table_creator->table_name(Substitute("$0:$1", kTableName, table_suffix))
         .schema(&client_schema)
         .num_replicas(num_replicas)
-        .add_placement_info(placement_info)
+        .add_placement_block(placement_block)
         .wait(true)
         .Create();
   }
@@ -69,19 +69,19 @@ TEST_F(CreateTableITest, TestCreateWithPlacement) {
                           Substitute("--placement_zone=$0", zone)};
   NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
-  master::PlacementInfoPB placement_info;
-  auto* cloud_info = placement_info.mutable_cloud_info();
+  master::PlacementBlockPB placement_block;
+  auto* cloud_info = placement_block.mutable_cloud_info();
   cloud_info->set_placement_cloud(cloud);
   cloud_info->set_placement_region(region);
   cloud_info->set_placement_zone(zone);
-  placement_info.set_min_num_replicas(kNumReplicas);
+  placement_block.set_min_num_replicas(kNumReplicas);
 
   // Successful table create.
-  ASSERT_OK(CreateTableWithPlacement(placement_info, kNumReplicas, "success_base"));
+  ASSERT_OK(CreateTableWithPlacement(placement_block, kNumReplicas, "success_base"));
 
   // Cannot create table with 4 replicas when only 3 TS available.
   {
-    auto new_placement = placement_info;
+    auto new_placement = placement_block;
     new_placement.set_min_num_replicas(kNumReplicas + 1);
     Status s = CreateTableWithPlacement(new_placement, kNumReplicas, "fail_num_replicas");
     ASSERT_TRUE(s.IsInvalidArgument());
@@ -89,7 +89,7 @@ TEST_F(CreateTableITest, TestCreateWithPlacement) {
 
   // Cannot create table in locations we have no servers.
   {
-    auto new_placement = placement_info;
+    auto new_placement = placement_block;
     new_placement.mutable_cloud_info()->set_placement_zone("b");
     Status s = CreateTableWithPlacement(new_placement, kNumReplicas, "fail_zone");
     ASSERT_TRUE(s.IsTimedOut());
@@ -97,9 +97,12 @@ TEST_F(CreateTableITest, TestCreateWithPlacement) {
 
   // Set cluster config placement and test table placement interaction. Right now, this should fail
   // instantly, as we do not support cluster and table level at the same time.
-  ASSERT_OK(client_->AddClusterPlacementInfo(placement_info));
+  master::PlacementInfoPB placement_info;
+  placement_info.set_num_replicas(kNumReplicas);
+  placement_info.add_placement_blocks()->CopyFrom(placement_block);
+  ASSERT_OK(client_->AddClusterPlacementBlock(placement_block));
   {
-    Status s = CreateTableWithPlacement(placement_info, kNumReplicas, "fail_table_placement");
+    Status s = CreateTableWithPlacement(placement_block, kNumReplicas, "fail_table_placement");
     ASSERT_TRUE(s.IsInvalidArgument());
   }
 }

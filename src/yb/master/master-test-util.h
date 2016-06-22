@@ -79,7 +79,7 @@ void CreateTabletForTesting(MiniMaster* mini_master,
     CreateTableResponsePB resp;
 
     req.set_name(table_name);
-    req.set_num_replicas(1);
+    req.mutable_placement_info()->set_num_replicas(1);
     ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
     ASSERT_OK(mini_master->master()->catalog_manager()->CreateTable(&req, &resp, NULL));
   }

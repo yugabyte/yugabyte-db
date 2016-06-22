@@ -52,7 +52,7 @@ void CreateTable(
   }
 
   TableMetadataLock meta_lock(table, TableMetadataLock::WRITE);
-  meta_lock.mutable_data()->pb.set_num_replicas(num_replicas);
+  meta_lock.mutable_data()->pb.mutable_placement_info()->set_num_replicas(num_replicas);
   meta_lock.Commit();
 }
 
@@ -198,7 +198,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
 
   {
     TableMetadataLock meta_lock(table.get(), TableMetadataLock::READ);
-    ASSERT_EQ(meta_lock.data().pb.num_replicas(), kNumReplicas)
+    ASSERT_EQ(meta_lock.data().pb.placement_info().num_replicas(), kNumReplicas)
         << "Invalid replicas for created table.";
   }
 

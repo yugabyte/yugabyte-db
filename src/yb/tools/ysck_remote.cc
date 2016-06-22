@@ -334,7 +334,7 @@ Status RemoteYsckMaster::GetTableInfo(const string& table_name, Schema* schema, 
   RETURN_NOT_OK(proxy_->GetTableSchema(req, &resp, &rpc));
 
   RETURN_NOT_OK(SchemaFromPB(resp.schema(), schema));
-  *num_replicas = resp.num_replicas();
+  *num_replicas = resp.placement_info().num_replicas();
   return Status::OK();
 }
 

@@ -711,8 +711,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Validates that the passed-in table placement information respects the overall cluster level
   // configuration. This should essentially not be more broader reaching than the cluster. As an
   // example, if the cluster is confined to AWS, you cannot have tables in GCE.
-  Status ValidateTablePlacementInfo(
-      const google::protobuf::RepeatedPtrField<PlacementInfoPB>& placement_info);
+  Status ValidateTablePlacementInfo(const PlacementInfoPB& placement_info);
 
   // Report metrics.
   void ReportMetrics();

@@ -47,7 +47,7 @@ class YBTableCreator::Data {
 
   int num_replicas_;
 
-  std::vector<master::PlacementInfoPB> placement_info_;
+  std::vector<master::PlacementBlockPB> placement_blocks_;
 
   MonoDelta timeout_;
 

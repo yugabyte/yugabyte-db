@@ -91,15 +91,28 @@ message TableIdentifierPB {
   optional string table_name = 2;
 }
 
-// For creating tables and keeping track of them in SysTablesEntryPB, we record
-// the cloud, region and zone information, as well as the minimum number of
-// replicas for each of those conditions.
-message PlacementInfoPB {
+// This reprensents one instance of a placement constraint for a table. It is
+// used to dictate what is the minimum number of expected replicas in a certain
+// cloud/region/zone combo.
+message PlacementBlockPB {
   // The cloud, region and zone information for this placement block.
   optional CloudInfoPB cloud_info = 1;
 
   // The minimum number of replicas that should always be up in this placement.
   optional int32 min_num_replicas = 2;
+}
+
+// This keeps track of the set of PlacementBlockPBs defining the placement
+// requirements for a certain table. This is used both in the on-disk storage
+// in SysCatalog, as well as in the actual table creation calls and in the
+// schema returned to client queries.
+//
+// This is tightly coupled with the overall num_replicas for a certain table,
+// as we want to both be able to specify requirements, per placement block, but
+// also for the overall RF factor of the table.
+message PlacementInfoPB {
+  optional int32 num_replicas = 1;
+  repeated PlacementBlockPB placement_blocks = 2;
 }
 
 ////////////////////////////////////////////////////////////
@@ -199,20 +212,21 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Number of TS replicas
-  required int32 num_replicas = 5;
+  // Placement information regarding cloud info as well as overall number of TS
+  // replicas.
+  optional PlacementInfoPB placement_info = 5;
 
   // Debug state for the table.
   optional State state = 6 [ default = UNKNOWN ];
   optional bytes state_msg = 7;
-
-  repeated PlacementInfoPB placement_info = 11;
 }
 
-// Dummy for now. Will house the placement info data.
+// The on-disk entry in the sys.catalog table for configuration information
+// that are relevant to the entire cluster. This has a version entry that is
+// used for ensuring that client read-modify-writes are valid.
 message SysClusterConfigEntryPB {
   optional int32 version = 1;
-  repeated PlacementInfoPB placement_info = 2;
+  optional PlacementInfoPB placement_info = 2;
 }
 
 ////////////////////////////////////////////////////////////
@@ -398,9 +412,8 @@ message CreateTableRequestPB {
   // repeated PartialRowPB split_rows = 5;
   optional RowOperationsPB split_rows = 6;
   optional PartitionSchemaPB partition_schema = 7;
-  optional int32 num_replicas = 4;
+  optional PlacementInfoPB placement_info = 4;
   optional TableType table_type = 8 [ default = DEFAULT_TABLE_TYPE ];
-  repeated PlacementInfoPB placement_info = 9;
 }
 
 message CreateTableResponsePB {
@@ -547,7 +560,7 @@ message GetTableSchemaResponsePB {
   // The table's partition schema.
   optional PartitionSchemaPB partition_schema = 5;
 
-  optional int32 num_replicas = 3;
+  optional PlacementInfoPB placement_info = 3;
 
   // The ID of the table.
   optional bytes table_id = 4;

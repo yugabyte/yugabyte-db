@@ -133,7 +133,8 @@ void ClusterLoadBalancer::UpdateTabletInfo(scoped_refptr<TabletInfo> tablet) {
 
   {
     TableMetadataLock table_lock(tablet->table().get(), TableMetadataLock::READ);
-    state_->tablets_configured_replicas_[tablet_id] = table_lock.data().pb.num_replicas();
+    state_->tablets_configured_replicas_[tablet_id] =
+        table_lock.data().pb.placement_info().num_replicas();
   }
 
   TabletInfo::ReplicaMap replica_map;

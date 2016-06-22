@@ -87,6 +87,11 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
   return Status::OK();
 }
 
+std::string TSDescriptor::generate_placement_id(const CloudInfoPB& ci) {
+  return strings::Substitute(
+      "$0:$1:$2", ci.placement_cloud(), ci.placement_region(), ci.placement_zone());
+}
+
 void TSDescriptor::UpdateHeartbeatTime() {
   boost::lock_guard<simple_spinlock> l(lock_);
   last_heartbeat_ = MonoTime::Now(MonoTime::FINE);

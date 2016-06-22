@@ -910,8 +910,8 @@ Status YBClient::Data::RemoveMasterAddress(const Sockaddr& sockaddr) {
   return Status::OK();
 }
 
-Status YBClient::Data::AddClusterPlacementInfo(
-    YBClient* client, const master::PlacementInfoPB& placement_info, const MonoTime& deadline,
+Status YBClient::Data::AddClusterPlacementBlock(
+    YBClient* client, const master::PlacementBlockPB& placement_block, const MonoTime& deadline,
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {
@@ -919,7 +919,7 @@ Status YBClient::Data::AddClusterPlacementInfo(
         deadline, "Other clients changed the config. Retrying.",
         "Timed out retrying the config change. Probably too many concurrent attempts.",
         boost::bind(
-            &YBClient::Data::AddClusterPlacementInfo, this, client, placement_info, _1, _2));
+            &YBClient::Data::AddClusterPlacementBlock, this, client, placement_block, _1, _2));
   }
 
   // Get the current config.
@@ -938,7 +938,9 @@ Status YBClient::Data::AddClusterPlacementInfo(
 
   // Update the list with the new placement.
   change_req.mutable_cluster_config()->CopyFrom(get_resp.cluster_config());
-  change_req.mutable_cluster_config()->add_placement_info()->CopyFrom(placement_info);
+  auto new_pb =
+      change_req.mutable_cluster_config()->mutable_placement_info()->add_placement_blocks();
+  new_pb->CopyFrom(placement_block);
 
   // Try to update it on the live cluster.
   s = SyncLeaderMasterRpc<ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB>(

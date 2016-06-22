@@ -76,7 +76,7 @@ using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterServiceProxy;
-using yb::master::PlacementInfoPB;
+using yb::master::PlacementBlockPB;
 using yb::master::TabletLocationsPB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
@@ -451,10 +451,10 @@ Status YBClient::GetMasterUUID(const string& host,
   return Status::OK();
 }
 
-Status YBClient::AddClusterPlacementInfo(const PlacementInfoPB& placement_info) {
+Status YBClient::AddClusterPlacementBlock(const PlacementBlockPB& placement_block) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->AddClusterPlacementInfo(this, placement_info, deadline);
+  return data_->AddClusterPlacementBlock(this, placement_block, deadline);
 }
 
 Status YBClient::ListTables(vector<string>* tables,
@@ -616,8 +616,8 @@ YBTableCreator& YBTableCreator::num_replicas(int num_replicas) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::add_placement_info(const PlacementInfoPB& pi) {
-  data_->placement_info_.push_back(pi);
+YBTableCreator& YBTableCreator::add_placement_block(const PlacementBlockPB& pb) {
+  data_->placement_blocks_.push_back(pb);
   return *this;
 }
 
@@ -644,7 +644,7 @@ Status YBTableCreator::Create() {
   req.set_name(data_->table_name_);
   req.set_table_type(data_->table_type_);
   if (data_->num_replicas_ >= 1) {
-    req.set_num_replicas(data_->num_replicas_);
+    req.mutable_placement_info()->set_num_replicas(data_->num_replicas_);
   }
   RETURN_NOT_OK_PREPEND(SchemaToPB(*data_->schema_->schema_, req.mutable_schema()),
                         "Invalid schema");
@@ -663,9 +663,13 @@ Status YBTableCreator::Create() {
     deadline.AddDelta(data_->client_->default_admin_operation_timeout());
   }
 
-  if (!data_->placement_info_.empty()) {
-    for (const auto& pi : data_->placement_info_) {
-      *req.add_placement_info() = std::move(pi);
+  // Note that the check that the sum of min_num_replicas for each placement block being less or
+  // equal than the overall placement info num_replicas is done on the master side and an error is
+  // naturally returned if you try to create a table and the numbers mismatch. As such, it is the
+  // responsibility of the client to ensure that does not happen.
+  if (!data_->placement_blocks_.empty()) {
+    for (const auto& pb : data_->placement_blocks_) {
+      *req.mutable_placement_info()->add_placement_blocks() = std::move(pb);
     }
   }
 

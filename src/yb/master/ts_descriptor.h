@@ -61,6 +61,8 @@ class TSDescriptor {
                             const TSRegistrationPB& registration,
                             gscoped_ptr<TSDescriptor>* desc);
 
+  static std::string generate_placement_id(const CloudInfoPB& ci);
+
   virtual ~TSDescriptor();
 
   // Set the last-heartbeat time to now.

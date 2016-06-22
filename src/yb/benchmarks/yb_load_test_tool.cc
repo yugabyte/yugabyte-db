@@ -104,7 +104,7 @@ using yb::load_generator::MultiThreadedWriter;
 using yb::load_generator::SingleThreadedScanner;
 using yb::load_generator::FormatHexForLoadTestKey;
 
-using yb::master::PlacementInfoPB;
+using yb::master::PlacementBlockPB;
 // ------------------------------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
@@ -182,11 +182,11 @@ int main(int argc, char* argv[]) {
       }
 
       LOG(INFO) << "Creating table";
-      PlacementInfoPB pi;
-      pi.mutable_cloud_info()->set_placement_cloud(FLAGS_placement_cloud);
-      pi.mutable_cloud_info()->set_placement_region(FLAGS_placement_region);
-      pi.mutable_cloud_info()->set_placement_zone(FLAGS_placement_zone);
-      pi.set_min_num_replicas(FLAGS_num_replicas);
+      PlacementBlockPB pb;
+      pb.set_min_num_replicas(FLAGS_num_replicas);
+      pb.mutable_cloud_info()->set_placement_cloud(FLAGS_placement_cloud);
+      pb.mutable_cloud_info()->set_placement_region(FLAGS_placement_region);
+      pb.mutable_cloud_info()->set_placement_zone(FLAGS_placement_zone);
 
       gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
       Status table_creation_status =
@@ -197,7 +197,7 @@ int main(int argc, char* argv[]) {
               .table_type(
                   FLAGS_use_kv_table ? YBTableType::KEY_VALUE_TABLE_TYPE
                                      : YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
-              .add_placement_info(pi)
+              .add_placement_block(pb)
               .Create();
       if (!table_creation_status.ok()) {
         LOG(INFO) << "Table creation status message: " <<
