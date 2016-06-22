@@ -66,18 +66,18 @@ public class CreateInstance implements ITask {
       Vector<TaskList> masterTaskList = new Vector<TaskList>();
 
       // Persist information about the instance.
-      InstanceInfo.createIfNotExists(taskParams.instanceUUID,
+      InstanceInfo.upsertInstance(taskParams.instanceUUID,
                                      taskParams.subnets,
-                                     taskParams.numNodes);
+                                     taskParams.numNodes,
+                                     taskParams.ybServerPkg);
 
       // Create the required number of nodes in the appropriate locations.
+      // Deploy the software on all the nodes.
       masterTaskList.add(createTaskListToSetupServers());
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
       masterTaskList.add(createTaskListToGetServerInfo());
-
-      // Deploy the software on all the nodes.
 
       // Configure the instance by picking the masters appropriately.
 
@@ -117,8 +117,10 @@ public class CreateInstance implements ITask {
       params.cloud = CloudType.aws;
       // Add the node name.
       params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
-      // VPC is one of subnet-6553f513 subnet-f840ce9c subnet-01ac5b59
+      // Pick one of the VPCs in a round robin fashion.
       params.vpcId = taskParams.subnets.get(nodeIdx % taskParams.subnets.size());
+      // The software package to install for this cluster.
+      params.ybServerPkg = taskParams.ybServerPkg;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);

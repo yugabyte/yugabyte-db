@@ -33,11 +33,15 @@ public class InstanceInfo extends Model {
 
   public static final Find<UUID, InstanceInfo> find = new Find<UUID, InstanceInfo>(){};
 
-  public static void createIfNotExists(UUID instanceUUID, List<String> subnets, int numNodes) {
+  @Transactional
+  public static void upsertInstance(UUID instanceUUID,
+                                    List<String> subnets,
+                                    int numNodes,
+                                    String ybServerPkg) {
     // Find the instance. Update the instance if it exists.
     InstanceInfo instanceInfo = find.byId(instanceUUID);
     if (instanceInfo != null) {
-      updateInstanceDetails(instanceUUID, subnets, numNodes);
+      updateInstanceDetails(instanceUUID, subnets, numNodes, ybServerPkg);
       return;
     }
 
@@ -59,7 +63,9 @@ public class InstanceInfo extends Model {
 
   // Helper method to update the instance details.
   @Transactional
-  public static void updateInstanceDetails(UUID instanceUUID, List<String> subnets, int numNodes) {
+  public static void updateInstanceDetails(UUID instanceUUID,
+                                          List<String> subnets,
+                                          int numNodes) {
     // Find the instance.
     InstanceInfo instanceInfo = find.byId(instanceUUID);
 
@@ -67,6 +73,26 @@ public class InstanceInfo extends Model {
     InstanceDetails details = InstanceInfo.getDetails(instanceUUID);
     details.subnets = subnets;
     details.numNodes = numNodes;
+    instanceInfo.setDetails(details);
+
+    // Save the instance back.
+    instanceInfo.save();
+  }
+
+  // Helper method to update the instance details.
+  @Transactional
+  public static void updateInstanceDetails(UUID instanceUUID,
+                                          List<String> subnets,
+                                          int numNodes,
+                                          String ybServerPkg) {
+    // Find the instance.
+    InstanceInfo instanceInfo = find.byId(instanceUUID);
+
+    // Make the desired updates.
+    InstanceDetails details = InstanceInfo.getDetails(instanceUUID);
+    details.subnets = subnets;
+    details.numNodes = numNodes;
+    details.ybServerPkg = ybServerPkg;
     instanceInfo.setDetails(details);
 
     // Save the instance back.
@@ -108,6 +134,9 @@ public class InstanceInfo extends Model {
 
     // Number of nodes in the instance.
     public int numNodes;
+
+    // The software package to install.
+    public String ybServerPkg;
 
     // All the nodes in the cluster along with their properties.
     public Map<String, NodeDetails> nodeDetailsMap;
