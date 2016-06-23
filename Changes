@@ -3,6 +3,8 @@ Revision history for pgTAP
 
 0.96.1
 ---------------------------
+* Fixed the default description for `hasnt_opclass()` to say "should not
+  exist" instead of "should exist", thanks to Rodolphe Quiédeville (PR #99).
 
 0.96.0 2016-05-16T20:53:57Z
 ---------------------------
