@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package controllers.yb;
 
@@ -31,7 +31,7 @@ public class TabletServerController extends AuthenticatedController {
         result.put("count", response.getTabletServersCount());
         ArrayNode tabletServers = result.putArray("servers");
         response.getTabletServersList().forEach(tabletServer->{
-            tabletServers.add(tabletServer);
+            tabletServers.add(tabletServer.getHost());
         });
     } catch (Exception e) {
         return internalServerError("Error: " + e.getMessage());
