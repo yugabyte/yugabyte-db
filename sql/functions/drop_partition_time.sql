@@ -23,7 +23,7 @@ v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        interval;
-v_partition_timestamp       timestamp;
+v_partition_timestamp       timestamptz;
 v_retention                 interval;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
@@ -254,4 +254,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

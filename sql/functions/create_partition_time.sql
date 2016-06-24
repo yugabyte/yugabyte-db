@@ -1,7 +1,7 @@
 /*
  * Function to create a child table in a time-based partition set
  */
-CREATE FUNCTION create_partition_time(p_parent_table text, p_partition_times timestamp[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
+CREATE FUNCTION create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
 RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -34,18 +34,18 @@ v_partition_name                text;
 v_partition_suffix              text;
 v_parent_tablespace             text;
 v_partition_interval            interval;
-v_partition_timestamp_end       timestamp;
-v_partition_timestamp_start     timestamp;
+v_partition_timestamp_end       timestamptz;
+v_partition_timestamp_start     timestamptz;
 v_quarter                       text;
 v_revoke                        text;
 v_row                           record;
 v_sql                           text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
-v_sub_timestamp_max             timestamp;
-v_sub_timestamp_min             timestamp;
+v_sub_timestamp_max             timestamptz;
+v_sub_timestamp_min             timestamptz;
 v_trunc_value                   text;
-v_time                          timestamp;
+v_time                          timestamptz;
 v_type                          text;
 v_unlogged                      char;
 v_year                          text;
@@ -68,7 +68,7 @@ INTO v_type
     , v_datetime_string
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
-AND partition_type = 'time' OR partition_type = 'time-custom';
+AND (partition_type = 'time' OR partition_type = 'time-custom');
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
@@ -84,7 +84,7 @@ END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
-SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
+SELECT sub_min::timestamptz, sub_max::timestamptz INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
 
 SELECT tableowner, schemaname, tablename, tablespace 
 INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace 
@@ -178,6 +178,14 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                         , v_partition_timestamp_start
                         , v_control
                         , v_partition_timestamp_end);
+        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                        , v_parent_schema
+                        , v_partition_name
+                        , v_partition_name||'_partition_int_check'
+                        , v_control
+                        , EXTRACT('epoch' from v_partition_timestamp_start)
+                        , v_control
+                        , EXTRACT('epoch' from v_partition_timestamp_end) );
     END IF;
 
     EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
@@ -326,4 +334,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

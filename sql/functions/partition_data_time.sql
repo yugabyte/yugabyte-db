@@ -13,19 +13,19 @@ v_epoch                     boolean;
 v_last_partition            text;
 v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
-v_max_partition_timestamp   timestamp;
-v_min_partition_timestamp   timestamp;
+v_max_partition_timestamp   timestamptz;
+v_min_partition_timestamp   timestamptz;
 v_new_search_path           text := '@extschema@,pg_temp';
 v_old_search_path           text;
 v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        interval;
 v_partition_suffix          text;
-v_partition_timestamp       timestamp[];
+v_partition_timestamp       timestamptz[];
 v_quarter                   text;
 v_rowcount                  bigint;
 v_sql                       text;
-v_start_control             timestamp;
+v_start_control             timestamptz;
 v_time_position             int;
 v_total_rows                bigint := 0;
 v_type                      text;
@@ -242,4 +242,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

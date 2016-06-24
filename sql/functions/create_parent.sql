@@ -23,7 +23,7 @@ ex_context                      text;
 ex_detail                       text;
 ex_hint                         text;
 ex_message                      text;
-v_base_timestamp                timestamp;
+v_base_timestamp                timestamptz;
 v_count                         int := 1;
 v_datetime_string               text;
 v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
@@ -37,16 +37,16 @@ v_notnull                       boolean;
 v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_parent_partition_id           bigint;
-v_parent_partition_timestamp    timestamp;
+v_parent_partition_timestamp    timestamptz;
 v_parent_schema                 text;
 v_parent_tablename              text;
-v_partition_time                timestamp;
-v_partition_time_array          timestamp[];
+v_partition_time                timestamptz;
+v_partition_time_array          timestamptz[];
 v_partition_id_array            bigint[];
 v_row                           record;
 v_run_maint                     boolean;
 v_sql                           text;
-v_start_time                    timestamp;
+v_start_time                    timestamptz;
 v_starting_partition_id         bigint;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
@@ -224,7 +224,7 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
     END CASE;
 
     -- First partition is either the min premake or p_start_partition
-    v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP - (v_time_interval * p_premake));
+    v_start_time := COALESCE(p_start_partition::timestamptz, CURRENT_TIMESTAMP - (v_time_interval * p_premake));
 
     IF v_time_interval >= '1 year' THEN
         v_base_timestamp := date_trunc('year', v_start_time);
@@ -272,7 +272,7 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
         -- If current loop value is less than or equal to the value of the max premake, add time to array.
         IF (v_base_timestamp + (v_time_interval * v_count)) < (CURRENT_TIMESTAMP + (v_time_interval * p_premake)) THEN
             BEGIN
-                v_partition_time := (v_base_timestamp + (v_time_interval * v_count))::timestamp;
+                v_partition_time := (v_base_timestamp + (v_time_interval * v_count))::timestamptz;
                 v_partition_time_array := array_append(v_partition_time_array, v_partition_time);
             EXCEPTION WHEN datetime_field_overflow THEN
                 RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
@@ -529,5 +529,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

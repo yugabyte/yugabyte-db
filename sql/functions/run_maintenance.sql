@@ -20,7 +20,7 @@ v_check_subpart                 int;
 v_create_count                  int := 0;
 v_current_partition             text;
 v_current_partition_id          bigint;
-v_current_partition_timestamp   timestamp;
+v_current_partition_timestamp   timestamptz;
 v_datetime_string               text;
 v_drop_count                    int := 0;
 v_job_id                        bigint;
@@ -29,20 +29,20 @@ v_jobmon_schema                 text;
 v_last_partition                text;
 v_last_partition_created        boolean;
 v_last_partition_id             bigint;
-v_last_partition_timestamp      timestamp;
+v_last_partition_timestamp      timestamptz;
 v_max_id_parent                 bigint;
-v_max_time_parent               timestamp;
+v_max_time_parent               timestamptz;
 v_new_search_path               text := '@extschema@,pg_temp';
 v_next_partition_id             bigint;
-v_next_partition_timestamp      timestamp;
+v_next_partition_timestamp      timestamptz;
 v_old_search_path               text;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_premade_count                 int;
 v_premake_id_max                bigint;
 v_premake_id_min                bigint;
-v_premake_timestamp_min         timestamp;
-v_premake_timestamp_max         timestamp;
+v_premake_timestamp_min         timestamptz;
+v_premake_timestamp_max         timestamptz;
 v_row                           record;
 v_row_max_id                    record;
 v_row_max_time                  record;
@@ -54,9 +54,9 @@ v_sub_id_max                    bigint;
 v_sub_id_max_suffix             bigint;
 v_sub_id_min                    bigint;
 v_sub_parent                    text;
-v_sub_timestamp_max             timestamp;
-v_sub_timestamp_max_suffix      timestamp;
-v_sub_timestamp_min             timestamp;
+v_sub_timestamp_max             timestamptz;
+v_sub_timestamp_max_suffix      timestamptz;
+v_sub_timestamp_min             timestamptz;
 v_tablename                     text;
 v_tables_list_sql               text;
 
@@ -186,7 +186,7 @@ LOOP
         END IF;
 
         -- If this is a subpartition, determine if the last child table has been made. If so, mark it as full so future maintenance runs can skip it
-        SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(v_row.parent_table, 'time');
+        SELECT sub_min::timestamptz, sub_max::timestamptz INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(v_row.parent_table, 'time');
         IF v_sub_timestamp_max IS NOT NULL THEN
             SELECT suffix_timestamp INTO v_sub_timestamp_max_suffix FROM @extschema@.show_partition_name(v_row.parent_table, v_sub_timestamp_max::text);
             IF v_sub_timestamp_max_suffix = v_last_partition_timestamp THEN
@@ -365,4 +365,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 
