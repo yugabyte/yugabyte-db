@@ -52,6 +52,7 @@ public class InstanceInfo extends Model {
     InstanceDetails details = new InstanceDetails();
     details.subnets = subnets;
     details.numNodes = numNodes;
+    details.ybServerPkg = ybServerPkg;
 
     // Update the instance info object.
     instanceInfo.instanceUUID = instanceUUID;
@@ -109,7 +110,25 @@ public class InstanceInfo extends Model {
 
     // Make the desired updates.
     InstanceDetails details = InstanceInfo.getDetails(instanceUUID);
+    nodeDetails.instance_name = nodeName;
     details.nodeDetailsMap.put(nodeName, nodeDetails);
+    instanceInfo.setDetails(details);
+
+    // Save the instance back.
+    instanceInfo.save();
+  }
+
+  // Helper method to set/unset a node as a master.
+  @Transactional
+  public static void updateNodeDetails(UUID instanceUUID,
+                                       String nodeName,
+                                       boolean isMaster) {
+    // Find the instance.
+    InstanceInfo instanceInfo = find.byId(instanceUUID);
+
+    // Make the desired updates.
+    InstanceDetails details = InstanceInfo.getDetails(instanceUUID);
+    details.nodeDetailsMap.get(nodeName).isMaster = isMaster;
     instanceInfo.setDetails(details);
 
     // Save the instance back.
@@ -124,7 +143,61 @@ public class InstanceInfo extends Model {
     return Json.fromJson(instanceInfo.instanceDetails, InstanceInfo.InstanceDetails.class);
   }
 
-  public void setDetails(InstanceDetails details) {
+  /**
+   * Return the list of masters for this instance.
+   * @param instanceUUID
+   * @return
+   */
+  public static List<NodeDetails> getMasters(UUID instanceUUID) {
+    List<NodeDetails> masters = new LinkedList<NodeDetails>();
+    InstanceDetails details = InstanceInfo.getDetails(instanceUUID);
+    for (NodeDetails nodeDetails : details.nodeDetailsMap.values()) {
+      if (nodeDetails.isMaster) {
+        masters.add(nodeDetails);
+      }
+    }
+    return masters;
+  }
+
+  /**
+   * Return the list of tservers for this instance.
+   * @param instanceUUID
+   * @return
+   */
+  public static List<NodeDetails> getTServers(UUID instanceUUID) {
+    List<NodeDetails> tservers = new LinkedList<NodeDetails>();
+    InstanceDetails details = InstanceInfo.getDetails(instanceUUID);
+    for (NodeDetails nodeDetails : details.nodeDetailsMap.values()) {
+      if (nodeDetails.isTserver) {
+        tservers.add(nodeDetails);
+      }
+    }
+    return tservers;
+  }
+
+  /**
+   * Returns a comma separated list of <privateIp:masterRpcPort> for all nodes that have the
+   * isMaster flag set to true in this cluster.
+   * @param instanceUUID
+   * @return
+   */
+  public static String getMasterAddresses(UUID instanceUUID) {
+    List<NodeDetails> masters = getMasters(instanceUUID);
+    StringBuilder masterAddresses = new StringBuilder();
+    for (NodeDetails nodeDetails : masters) {
+      if (nodeDetails.isMaster) {
+        if (masterAddresses.length() != 0) {
+          masterAddresses.append(",");
+        }
+        masterAddresses.append(nodeDetails.private_ip);
+        masterAddresses.append(":");
+        masterAddresses.append(nodeDetails.masterRpcPort);
+      }
+    }
+    return masterAddresses.toString();
+  }
+
+  private void setDetails(InstanceDetails details) {
     this.instanceDetails = Json.toJson(details);
   }
 
@@ -154,6 +227,7 @@ public class InstanceInfo extends Model {
    * 'find_host.sh' which is in the 'devops' repository.
    */
   public static class NodeDetails {
+    public String instance_name;
     public String instance_type;
     public String private_ip;
     public String public_ip;
@@ -165,6 +239,11 @@ public class InstanceInfo extends Model {
     public String cloud;
 
     public boolean isMaster;
+    public int masterHttpPort = 7000;
+    public int masterRpcPort = 7100;
+
     public boolean isTserver;
+    public int tserverHttpPort = 9000;
+    public int tserverRpcPort = 9100;
   }
 }
