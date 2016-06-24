@@ -2,14 +2,16 @@
 
 package controllers.yb;
 
+import org.yb.client.ListTabletServersResponse;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+
 import controllers.AuthenticatedController;
-import org.yb.client.ListTabletServersResponse;
-import services.YBClientService;
 import play.libs.Json;
-import play.mvc.*;
+import play.mvc.Result;
+import services.YBClientService;
 
 public class TabletServerController extends AuthenticatedController {
   private final YBClientService ybService;
@@ -20,7 +22,7 @@ public class TabletServerController extends AuthenticatedController {
   /**
    * This API would query for all the tabletServers using YB Client and return a JSON
    * with tablet server UUIDs
-   * 
+   *
    * @return Result tablet server uuids
    */
   public Result list() {

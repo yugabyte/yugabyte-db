@@ -2,6 +2,7 @@
 
 package controllers.commissioner.tasks;
 
+import java.util.List;
 import java.util.Vector;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,6 +20,7 @@ import controllers.commissioner.TaskList;
 import forms.commissioner.CreateInstanceTaskParams;
 import forms.commissioner.ITaskParams;
 import models.commissioner.InstanceInfo;
+import models.commissioner.InstanceInfo.NodeDetails;
 import play.libs.Json;
 
 public class CreateInstance implements ITask {
@@ -72,29 +74,33 @@ public class CreateInstance implements ITask {
                                      taskParams.ybServerPkg);
 
       // Create the required number of nodes in the appropriate locations.
-      // Deploy the software on all the nodes.
       masterTaskList.add(createTaskListToSetupServers());
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
       masterTaskList.add(createTaskListToGetServerInfo());
 
-      // Configure the instance by picking the masters appropriately.
+      // Pick the masters and persist the plan in the middleware.
+      masterTaskList.add(createTaskListToCreateClusterConf());
 
-      // Start the YB cluster.
+      // Configures and deploys software on all the nodes (masters and tservers).
+      masterTaskList.add(createTaskListToConfigureServers());
 
-      // Persist the placement info into the YB master.
+      // Creates the YB cluster by starting the masters in the create mode.
+      masterTaskList.add(createTaskListToCreateCluster());
 
-      // Update the MetaMaster about the latest placement information.
+      // TODO: Persist the placement info into the YB master.
+
+      // Start the tservers in the clusters.
+      masterTaskList.add(createTaskListToStartTServers());
+
+      // TODO: Update the MetaMaster about the latest placement information.
 
       // Run all the tasks.
       for (TaskList taskList : masterTaskList) {
         taskList.run();
         taskList.waitFor();
       }
-
-
-
     } catch (Throwable t) {
       LOG.error("Error executing task " + getName(), t);
       throw t;
@@ -119,13 +125,10 @@ public class CreateInstance implements ITask {
       params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
       // Pick one of the VPCs in a round robin fashion.
       params.vpcId = taskParams.subnets.get(nodeIdx % taskParams.subnets.size());
-      // The software package to install for this cluster.
-      params.ybServerPkg = taskParams.ybServerPkg;
       // Create the Ansible task to setup the server.
-      AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
-      ansibleSetupServer.initialize(params);
+      AnsibleSetupServer task = new AnsibleSetupServer(params);
       // Add it to the task list.
-      taskList.addTask(ansibleSetupServer);
+      taskList.addTask(task);
     }
     return taskList;
   }
@@ -141,12 +144,87 @@ public class CreateInstance implements ITask {
       // Add the instance uuid.
       params.instanceUUID = taskParams.instanceUUID;
       // Create the Ansible task to get the server info.
-      AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
-      ansibleFindCloudHost.initialize(params);
+      AnsibleUpdateNodeInfo task = new AnsibleUpdateNodeInfo(params);
       // Add it to the task list.
-      taskList.addTask(ansibleFindCloudHost);
-      LOG.info("Created task: " + ansibleFindCloudHost.getName() +
-               ", details: " + ansibleFindCloudHost.getTaskDetails());
+      taskList.addTask(task);
+    }
+    return taskList;
+  }
+
+  public TaskList createTaskListToCreateClusterConf() {
+    TaskList taskList = new TaskList(getName(), executor);
+    CreateClusterConf.Params params = new CreateClusterConf.Params();
+    // Set the cloud name.
+    params.cloud = CloudType.aws;
+    // Add the instance uuid.
+    params.instanceUUID = taskParams.instanceUUID;
+    // Create the task.
+    CreateClusterConf task = new CreateClusterConf(params);
+    // Add it to the task list.
+    taskList.addTask(task);
+    return taskList;
+  }
+
+  public TaskList createTaskListToConfigureServers() {
+    TaskList taskList = new TaskList(getName(), executor);
+    for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      // Set the cloud name.
+      params.cloud = CloudType.aws;
+      // Add the node name.
+      params.nodeInstanceName = taskParams.instanceName + "-n" + nodeIdx;
+      // Add the instance uuid.
+      params.instanceUUID = taskParams.instanceUUID;
+      // The software package to install for this cluster.
+      params.ybServerPkg = taskParams.ybServerPkg;
+      // Create the Ansible task to get the server info.
+      AnsibleConfigureServers task = new AnsibleConfigureServers(params);
+      // Add it to the task list.
+      taskList.addTask(task);
+    }
+    return taskList;
+  }
+
+  public TaskList createTaskListToCreateCluster() {
+    TaskList taskList = new TaskList(getName(), executor);
+    List<NodeDetails> masters = InstanceInfo.getMasters(taskParams.instanceUUID);
+    for (NodeDetails node : masters) {
+      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      // Set the cloud name.
+      params.cloud = CloudType.aws;
+      // Add the node name.
+      params.nodeInstanceName = node.instance_name;
+      // Add the instance uuid.
+      params.instanceUUID = taskParams.instanceUUID;
+      // The service and the command we want to run.
+      params.process = "master";
+      params.command = "create";
+      // Create the Ansible task to get the server info.
+      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl(params);
+      // Add it to the task list.
+      taskList.addTask(task);
+    }
+    return taskList;
+  }
+
+  public TaskList createTaskListToStartTServers() {
+    TaskList taskList = new TaskList(getName(), executor);
+    List<NodeDetails> tservers = InstanceInfo.getTServers(taskParams.instanceUUID);
+    for (NodeDetails node : tservers) {
+      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      // Set the cloud name.
+      params.cloud = CloudType.aws;
+      // Add the node name.
+      params.nodeInstanceName = node.instance_name;
+      // Add the instance uuid.
+      params.instanceUUID = taskParams.instanceUUID;
+      // The service and the command we want to run.
+      params.process = "tserver";
+      params.command = "start";
+      // Create the Ansible task to get the server info.
+      AnsibleClusterServerCtl task = new AnsibleClusterServerCtl(params);
+      // Add it to the task list.
+      taskList.addTask(task);
     }
     return taskList;
   }

@@ -7,50 +7,28 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import controllers.commissioner.AbstractTaskBase;
 import controllers.commissioner.Common;
-import controllers.commissioner.Common.CloudType;
-import controllers.commissioner.ITask;
-import forms.commissioner.ITaskParams;
 import models.commissioner.InstanceInfo;
 import play.libs.Json;
 
-public class AnsibleUpdateNodeInfo implements ITask {
+public class AnsibleUpdateNodeInfo extends AbstractTaskBase {
+
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleUpdateNodeInfo.class);
 
-  // Parameters for this task.
-  public static class Params implements ITaskParams {
-    // The cloud provider to get node details.
-    public CloudType cloud;
-    // The node about which we need to fetch details.
-    public String nodeInstanceName;
-    // The instance against which this node's details should be saved.
-    public UUID instanceUUID;
-  }
-  Params taskParams;
+  public static class Params extends AbstractTaskBase.TaskParamsBase {}
 
   // Result of the task.
   Map<String, String> resultsMap = new HashMap<String, String>();
 
-  @Override
-  public void initialize(ITaskParams taskParams) {
-    this.taskParams = (Params) taskParams;
-  }
-
-  @Override
-  public String getName() {
-    return "AnsibleUpdateNodeInfo(" + taskParams.nodeInstanceName + "." + taskParams.cloud + ".yb)";
-  }
-
-  @Override
-  public JsonNode getTaskDetails() {
-    return Json.toJson(taskParams);
+  public AnsibleUpdateNodeInfo(Params params) {
+    super(params);
   }
 
   @Override
@@ -82,6 +60,9 @@ public class AnsibleUpdateNodeInfo implements ITask {
       int exitValue = p.waitFor();
       LOG.info("Command [" + command + "] finished with exit code " + exitValue);
       // TODO: log output stream somewhere.
+
+      // Make the node a tserver. The masters will be configured in a separate step.
+      nodeDetails.isTserver = true;
 
       // Save the updated node details.
       InstanceInfo.updateNodeDetails(taskParams.instanceUUID,

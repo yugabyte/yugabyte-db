@@ -2,87 +2,44 @@
 
 package controllers.commissioner.tasks;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
+import controllers.commissioner.AbstractTaskBase;
 import controllers.commissioner.Common;
 import controllers.commissioner.Common.CloudType;
-import controllers.commissioner.ITask;
-import forms.commissioner.ITaskParams;
-import play.libs.Json;
 
-public class AnsibleSetupServer implements ITask {
+public class AnsibleSetupServer extends AbstractTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleSetupServer.class);
 
-  // Parameters for this task.
-  public static class Params implements ITaskParams {
-    // Needed to run ansible appropriately.
-    public CloudType cloud;
-    // The node that needs to be provisioned if it already is not.
-    public String nodeInstanceName;
+  // Additional parameters for this task.
+  public static class Params extends AbstractTaskBase.TaskParamsBase {
     // The VPC into which the node is to be provisioned.
     public String vpcId;
-    // The software package that needs to be installed.
-    public String ybServerPkg;
   }
 
-  Params taskParams;
-
-  @Override
-  public void initialize(ITaskParams taskParams) {
-    this.taskParams = (Params) taskParams;
+  public AnsibleSetupServer(TaskParamsBase params) {
+    super(params);
   }
 
-  @Override
-  public String getName() {
-    return "AnsibleSetupServer(" + taskParams.nodeInstanceName + "." +
-                                   taskParams.vpcId + "." +
-                                   taskParams.cloud + ")";
-  }
-
-  @Override
-  public JsonNode getTaskDetails() {
-    return Json.toJson(taskParams);
+  public Params getParams() {
+    return (Params)taskParams;
   }
 
   @Override
   public void run() {
     String ybDevopsHome = Common.getDevopsHome();
     String command = ybDevopsHome + "/bin/setup_server.sh" +
-                     " --cloud " + taskParams.cloud +
-                     " --instance-name " + taskParams.nodeInstanceName +
-                     " --type test-cluster-server" +
-                     " --package " + taskParams.ybServerPkg;
+                     " --cloud " + getParams().cloud +
+                     " --instance-name " + getParams().nodeInstanceName +
+                     " --type test-cluster-server";
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
-    if (taskParams.cloud == CloudType.aws) {
-      command += " --extra-vars aws_vpc_subnet_id=" + taskParams.vpcId;
+    if (getParams().cloud == CloudType.aws) {
+      command += " --extra-vars aws_vpc_subnet_id=" + getParams().vpcId;
     }
-
-    LOG.info("Command to run: [" + command + "]");
-    try {
-      Process p = Runtime.getRuntime().exec(command);
-
-      // Log the stderr output of the process.
-      BufferedReader berr = new BufferedReader(new InputStreamReader(p.getErrorStream()));
-      String line = null;
-      while ( (line = berr.readLine()) != null) {
-        LOG.info("[" + getName() + "] STDERR: " + line);
-      }
-      int exitValue = p.waitFor();
-      LOG.info("Command [" + command + "] finished with exit code " + exitValue);
-      // TODO: log output stream somewhere.
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
+    // Execute the ansible command.
+    execCommand(command);
   }
 }
