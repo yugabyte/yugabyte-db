@@ -1,21 +1,24 @@
+// Copyright (c) YugaByte, Inc.
+
 package controllers.yb;
-
-// Copyright (c) Yugabyte, Inc.
-
-import com.fasterxml.jackson.databind.JsonNode;
-import org.junit.*;
-import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
-import play.libs.Json;
-import play.mvc.*;
 
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
-import services.YBClientService;
-import java.util.Arrays;
-import java.util.List;
 import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.*;
+import play.libs.Json;
+import play.mvc.*;
+import services.YBClientService;
+
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.YBClient;
+import org.yb.util.ServerInfo;
 
 public class TabletServerControllerTest {
   private YBClientService mockService;
@@ -37,8 +40,12 @@ public class TabletServerControllerTest {
   @Test
   public void testListTabletServersSuccess() throws Exception {
     when(mockResponse.getTabletServersCount()).thenReturn(2);
-    List<String> mockTabletUUIDs = Arrays.asList("UUID1", "UUID2");
-    when(mockResponse.getTabletServersList()).thenReturn(mockTabletUUIDs);
+    List<ServerInfo> mockTabletSIs = new ArrayList<ServerInfo>();
+    ServerInfo si = new ServerInfo("UUID1", "abc", 1001, false);
+    mockTabletSIs.add(si);
+    si = new ServerInfo("UUID2", "abc", 2001, true);
+    mockTabletSIs.add(si);
+    when(mockResponse.getTabletServersList()).thenReturn(mockTabletSIs);
     Result r = tabletController.list();
     JsonNode json = Json.parse(contentAsString(r));
     assertEquals(OK, r.status());
