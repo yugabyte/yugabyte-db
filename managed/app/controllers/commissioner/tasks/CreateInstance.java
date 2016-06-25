@@ -3,7 +3,6 @@
 package controllers.commissioner.tasks;
 
 import java.util.List;
-import java.util.Vector;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -17,6 +16,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import controllers.commissioner.Common.CloudType;
 import controllers.commissioner.ITask;
 import controllers.commissioner.TaskList;
+import controllers.commissioner.TaskListQueue;
 import forms.commissioner.CreateInstanceTaskParams;
 import forms.commissioner.ITaskParams;
 import models.commissioner.InstanceInfo;
@@ -33,6 +33,9 @@ public class CreateInstance implements ITask {
   // The threadpool on which the tasks are executed.
   ExecutorService executor;
 
+  // The sequence of task lists that should be executed.
+  TaskListQueue taskListQueue;
+
   @Override
   public void initialize(ITaskParams taskParams) {
     this.taskParams = (CreateInstanceTaskParams)taskParams;
@@ -47,11 +50,6 @@ public class CreateInstance implements ITask {
 
   @Override
   public String getName() {
-    // Debug log the subnets.
-    String subnets = "";
-    for (String subnet : taskParams.subnets) {
-      subnets += subnet + " ";
-    }
     return "CreateInstance(" + taskParams.instanceName + ")";
   }
 
@@ -64,8 +62,8 @@ public class CreateInstance implements ITask {
   public void run() {
     LOG.info("Started task.");
     try {
-      // Create the master task list.
-      Vector<TaskList> masterTaskList = new Vector<TaskList>();
+      // Create the task list sequence.
+      taskListQueue = new TaskListQueue();
 
       // Persist information about the instance.
       InstanceInfo.upsertInstance(taskParams.instanceUUID,
@@ -74,38 +72,40 @@ public class CreateInstance implements ITask {
                                      taskParams.ybServerPkg);
 
       // Create the required number of nodes in the appropriate locations.
-      masterTaskList.add(createTaskListToSetupServers());
+      taskListQueue.add(createTaskListToSetupServers());
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      masterTaskList.add(createTaskListToGetServerInfo());
+      taskListQueue.add(createTaskListToGetServerInfo());
 
       // Pick the masters and persist the plan in the middleware.
-      masterTaskList.add(createTaskListToCreateClusterConf());
+      taskListQueue.add(createTaskListToCreateClusterConf());
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      masterTaskList.add(createTaskListToConfigureServers());
+      taskListQueue.add(createTaskListToConfigureServers());
 
       // Creates the YB cluster by starting the masters in the create mode.
-      masterTaskList.add(createTaskListToCreateCluster());
+      taskListQueue.add(createTaskListToCreateCluster());
 
       // TODO: Persist the placement info into the YB master.
 
       // Start the tservers in the clusters.
-      masterTaskList.add(createTaskListToStartTServers());
+      taskListQueue.add(createTaskListToStartTServers());
 
       // TODO: Update the MetaMaster about the latest placement information.
 
       // Run all the tasks.
-      for (TaskList taskList : masterTaskList) {
-        taskList.run();
-        taskList.waitFor();
-      }
+      taskListQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task " + getName(), t);
       throw t;
     }
     LOG.info("Finished task.");
+  }
+
+  @Override
+  public int getPercentCompleted() {
+    return taskListQueue.getPercentCompleted();
   }
 
   @Override
@@ -116,7 +116,7 @@ public class CreateInstance implements ITask {
   }
 
   public TaskList createTaskListToSetupServers() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("AnsibleSetupServer", executor);
     for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the cloud name.
@@ -134,7 +134,7 @@ public class CreateInstance implements ITask {
   }
 
   public TaskList createTaskListToGetServerInfo() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("AnsibleUpdateNodeInfo", executor);
     for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       // Set the cloud name.
@@ -152,7 +152,7 @@ public class CreateInstance implements ITask {
   }
 
   public TaskList createTaskListToCreateClusterConf() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("CreateClusterConf", executor);
     CreateClusterConf.Params params = new CreateClusterConf.Params();
     // Set the cloud name.
     params.cloud = CloudType.aws;
@@ -166,7 +166,7 @@ public class CreateInstance implements ITask {
   }
 
   public TaskList createTaskListToConfigureServers() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
     for (int nodeIdx = 1; nodeIdx < taskParams.numNodes + 1; nodeIdx++) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the cloud name.
@@ -186,7 +186,7 @@ public class CreateInstance implements ITask {
   }
 
   public TaskList createTaskListToCreateCluster() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     List<NodeDetails> masters = InstanceInfo.getMasters(taskParams.instanceUUID);
     for (NodeDetails node : masters) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -208,7 +208,7 @@ public class CreateInstance implements ITask {
   }
 
   public TaskList createTaskListToStartTServers() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("createTaskListToStartTServers", executor);
     List<NodeDetails> tservers = InstanceInfo.getTServers(taskParams.instanceUUID);
     for (NodeDetails node : tservers) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
