@@ -3,8 +3,10 @@
 package controllers.commissioner;
 
 import java.util.Iterator;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -14,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 
@@ -44,8 +47,10 @@ public class TasksController extends Controller {
   // Threadpool to run user submitted tasks.
   static ExecutorService executor;
 
-  // The queue of all user tasks that are currently active.
-  static Queue<TaskRunner> runningTasks = new ConcurrentLinkedQueue<TaskRunner>();
+  // A map of all task UUID's to the task runner objects for all the user tasks that are currently
+  // active. Recently completed tasks are also in this list, their completion percentage should be
+  // persisted before removing the task from this map.
+  static Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<UUID, TaskRunner>();
 
   @Inject
   FormFactory formFactory;
@@ -97,7 +102,7 @@ public class TasksController extends Controller {
 
       if (claimTask) {
         // Add this task to our queue.
-        runningTasks.add(taskRunner);
+        runningTasks.put(taskRunner.getTaskUUID(), taskRunner);
 
         // If we had claimed ownership of the task, submit it to the task threadpool.
         executor.submit(taskRunner);
@@ -112,6 +117,42 @@ public class TasksController extends Controller {
     return internalServerError(responseJson);
   }
 
+  public Result show(UUID taskUUID) {
+    ObjectNode responseJson = Json.newObject();
+
+    // Find the task runner for the task.
+    TaskRunner taskRunner = runningTasks.get(taskUUID);
+    if (taskRunner != null) {
+      // Find out the state of the task.
+      responseJson.put("status", taskRunner.getState());
+      // Find out the percentage completion.
+      responseJson.put("percent", taskRunner.getPercentCompleted());
+      return ok(responseJson);
+    }
+
+    // Check if the task is in the DB as it completed and is no longer in 'runningTasks'.
+    TaskInfo taskInfo = TaskInfo.get(taskUUID);
+    if (taskInfo != null) {
+
+      // Find out the state of the task.
+      responseJson.put("status", taskInfo.getTaskState().toString());
+      // The job is assumed to be completed if its in the Tasks table and not in memory.
+      responseJson.put("percent", (taskInfo.getTaskState() == TaskInfo.State.Failure ? 0 : 100));
+      return ok(responseJson);
+    }
+
+    // We are not able to find the task. Report an error.
+    LOG.error("Not able to find task " + taskUUID);
+    responseJson.put("error", "Not able to find task " + taskUUID);
+    return internalServerError(responseJson);
+
+
+  }
+
+  /**
+   * A progress monitor to constantly write a last updated timestamp in the DB so that this
+   * process and all its subtasks are considered to be alive.
+   */
   private static class ProgressMonitor extends Thread {
 
     public ProgressMonitor() {
@@ -122,9 +163,10 @@ public class TasksController extends Controller {
     public void run() {
       while (!shuttingDown.get()) {
         // Loop through all the active tasks.
-        Iterator<TaskRunner> iter = runningTasks.iterator();
+        Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
         while (iter.hasNext()) {
-          TaskRunner taskRunner = iter.next();
+          Entry<UUID, TaskRunner> entry = iter.next();
+          TaskRunner taskRunner = entry.getValue();
 
           // If the task is still running, update its latest timestamp as a part of the heartbeat.
           if (taskRunner.isTaskRunning()) {

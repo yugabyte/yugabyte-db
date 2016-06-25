@@ -41,6 +41,7 @@ GET    /api/customers/:cUUID/tasks  controllers.yb.CustomerTaskController.list(c
 
 # Commissioner Specific Routes
 POST    /commissioner/tasks         controllers.commissioner.TasksController.create()
+GET     /commissioner/tasks/:tUUID  controllers.commissioner.TasksController.show(tUUID: java.util.UUID)
 
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)

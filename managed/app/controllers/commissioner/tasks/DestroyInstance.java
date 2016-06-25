@@ -35,6 +35,11 @@ public class DestroyInstance implements ITask {
   }
 
   @Override
+  public int getPercentCompleted() {
+    return 0;
+  }
+
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("name : " + this.getClass().getName());

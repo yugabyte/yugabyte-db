@@ -150,6 +150,23 @@ public class TaskRunner implements Runnable {
     }
   }
 
+  public String getState() {
+    return taskInfo.getTaskState().toString();
+  }
+
+  public int getPercentCompleted() {
+    // If the task was just created it is zero percent done.
+    if (taskInfo.getTaskState() == TaskInfo.State.Created) {
+      return 0;
+    } else if (taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      return 0;
+    }  else if (taskInfo.getTaskState() == TaskInfo.State.Success) {
+      return 100;
+    }  else {
+      return task.getPercentCompleted();
+    }
+  }
+
   /**
    * Updates the task state and saves it to the persistent queue.
    * @param newState
