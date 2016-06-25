@@ -115,6 +115,13 @@ public class TaskInfo extends Model{
 
   public void setOwner(String owner) { this.owner = owner; }
 
+  public static final Find<UUID, TaskInfo> find = new Find<UUID, TaskInfo>(){};
+
+  public static TaskInfo get(UUID taskUUID) {
+    // Return the instance details object.
+    return find.byId(taskUUID);
+  }
+
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();

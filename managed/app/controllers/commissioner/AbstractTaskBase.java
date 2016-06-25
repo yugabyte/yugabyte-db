@@ -52,6 +52,11 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public abstract void run();
 
+  @Override
+  public int getPercentCompleted() {
+    return 0;
+  }
+
   public void execCommand(String command) {
     LOG.info("Command to run: [" + command + "]");
     try {

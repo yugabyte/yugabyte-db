@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,8 @@ public class TaskList implements Runnable {
 
   // The list of futures to wait for.
   private List<Future<?>> futuresList;
+
+  private AtomicInteger numTasksCompleted;
 
   private boolean allTasksSucceeded = true;
 
@@ -46,11 +49,24 @@ public class TaskList implements Runnable {
     this.executor = executor;
     this.taskList = new LinkedList<ITask>();
     this.futuresList = new LinkedList<Future<?>>();
+    this.numTasksCompleted = new AtomicInteger(0);
+  }
+
+  public String getName() {
+    return name;
   }
 
   public void addTask(ITask task) {
     LOG.info("Adding task #" + taskList.size() + ": " + task.toString());
     taskList.add(task);
+  }
+
+  public int getNumTasks() {
+    return taskList.size();
+  }
+
+  public int getNumTasksDone() {
+    return numTasksCompleted.get();
   }
 
   /**
@@ -77,6 +93,7 @@ public class TaskList implements Runnable {
       try {
         if (future.get() == null) {
           // Task succeeded.
+          numTasksCompleted.incrementAndGet();
         } else {
           allTasksSucceeded = false;
         }

@@ -31,6 +31,12 @@ public interface ITask extends Runnable {
   public void run();
 
   /**
+   * Returns the percent completed of this task.
+   * @return a percentage value from 0 to 100.
+   */
+  public int getPercentCompleted();
+
+  /**
    * A friendly string representation of the task used for logging.
    * @return string representation of the task.
    */
