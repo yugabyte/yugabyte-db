@@ -10,6 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +21,7 @@ import forms.commissioner.CreateInstanceTaskParams;
 import models.commissioner.TaskInfo;
 import play.data.Form;
 import play.data.FormFactory;
+import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Result;
 
@@ -71,12 +73,14 @@ public class TasksController extends Controller {
     // across all controllers.
 
     TaskInfo.Type taskType = TaskInfo.Type.CreateInstance;
+    ObjectNode responseJson = Json.newObject();
 
     // Get the params for the task.
     Form<CreateInstanceTaskParams> formData =
         formFactory.form(CreateInstanceTaskParams.class).bindFromRequest();
     if (formData.hasErrors()) {
-      return badRequest(formData.errorsAsJson());
+      responseJson.set("error", formData.errorsAsJson());
+      return badRequest(responseJson);
     }
     CreateInstanceTaskParams taskParams = formData.get();
 
@@ -99,11 +103,13 @@ public class TasksController extends Controller {
         executor.submit(taskRunner);
       }
 
-      return ok(taskRunner.getTaskUUID().toString());
+      responseJson.put("taskUUID", taskRunner.getTaskUUID().toString());
+      return ok(responseJson);
     } catch (Throwable t) {
       LOG.error("Error processing task type " + taskType, t);
     }
-    return internalServerError("Error processing task type " + taskType);
+    responseJson.put("error", "Error processing task type " + taskType);
+    return internalServerError(responseJson);
   }
 
   private static class ProgressMonitor extends Thread {

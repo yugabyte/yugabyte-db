@@ -25,15 +25,27 @@ create table customer (
   constraint pk_customer primary key (uuid)
 );
 
+create table customer_task (
+  id                            bigint auto_increment not null,
+  customer_uuid                 varchar(40),
+  task_uuid                     varchar(40) not null,
+  target_type                   varchar(8) not null,
+  target_name                   varchar(255) not null,
+  type                          varchar(6) not null,
+  create_time                   datetime(6) not null,
+  completion_time               datetime(6),
+  constraint ck_customer_task_target_type check (target_type in ('Table','Instance')),
+  constraint ck_customer_task_type check (type in ('Delete','Create','Update')),
+  constraint pk_customer_task primary key (id)
+);
+
 create table instance (
   instance_id                   varchar(40) not null,
   customer_id                   varchar(40) not null,
   name                          varchar(255) not null,
   customer_uuid                 varchar(40),
   placement_info                longtext not null,
-  provisioning_state            varchar(10) not null,
   creation_date                 datetime(6) not null,
-  constraint ck_instance_provisioning_state check (provisioning_state in ('Failed','Completed','Pending','Processing')),
   constraint pk_instance primary key (instance_id,customer_id)
 );
 
@@ -59,7 +71,6 @@ create table region (
   latitude                      double,
   provider_uuid                 varchar(40),
   active                        boolean default true not null,
-  multi_az_capable              boolean default true not null,
   constraint pk_region primary key (uuid)
 );
 
@@ -80,6 +91,9 @@ create table task_info (
 alter table availability_zone add constraint fk_availability_zone_region_uuid foreign key (region_uuid) references region (uuid) on delete restrict on update restrict;
 create index ix_availability_zone_region_uuid on availability_zone (region_uuid);
 
+alter table customer_task add constraint fk_customer_task_customer_uuid foreign key (customer_uuid) references customer (uuid) on delete restrict on update restrict;
+create index ix_customer_task_customer_uuid on customer_task (customer_uuid);
+
 alter table instance add constraint fk_instance_customer_uuid foreign key (customer_uuid) references customer (uuid) on delete restrict on update restrict;
 create index ix_instance_customer_uuid on instance (customer_uuid);
 
@@ -92,6 +106,9 @@ create index ix_region_provider_uuid on region (provider_uuid);
 alter table availability_zone drop foreign key fk_availability_zone_region_uuid;
 drop index ix_availability_zone_region_uuid on availability_zone;
 
+alter table customer_task drop foreign key fk_customer_task_customer_uuid;
+drop index ix_customer_task_customer_uuid on customer_task;
+
 alter table instance drop foreign key fk_instance_customer_uuid;
 drop index ix_instance_customer_uuid on instance;
 
@@ -101,6 +118,8 @@ drop index ix_region_provider_uuid on region;
 drop table if exists availability_zone;
 
 drop table if exists customer;
+
+drop table if exists customer_task;
 
 drop table if exists instance;
 

@@ -134,15 +134,4 @@ public class Customer extends Model {
     authTokenIssueDate = null;
     save();
   }
-
-	/**
-	 * Create a new Yuga Instance for the customer
-	 * @param name
-	 * @param provisioningState
-	 * @param placementInfo
-	 * @return Yuga Instance
-	 */
-	public Instance createNewInstance(String name, Instance.ProvisioningState provisioningState, JsonNode placementInfo) {
-		return Instance.create(this, name, provisioningState, placementInfo);
-	}
 }

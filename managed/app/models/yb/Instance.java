@@ -16,21 +16,6 @@ import java.util.UUID;
 
 @Entity
 public class Instance extends Model {
-
-	public enum ProvisioningState {
-		@EnumValue("Pending")
-		Pending,
-
-		@EnumValue("Processing")
-		Processing,
-
-		@EnumValue("Completed")
-		Completed,
-
-		@EnumValue("Failed")
-		Failed,
-	}
-
 	@EmbeddedId
 	private CustomerInstanceKey key;
 	public UUID getInstanceId() { return this.key.instanceId; }
@@ -53,10 +38,6 @@ public class Instance extends Model {
 
 	@Constraints.Required
 	@Column(nullable = false)
-	public ProvisioningState provisioningState;
-
-	@Constraints.Required
-	@Column(nullable = false)
 	@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
 	public Date creationDate;
 
@@ -70,20 +51,28 @@ public class Instance extends Model {
 	 *
 	 * @param customer
 	 * @param name
-	 * @param state
 	 * @param placementInfo
 	 * @return Yuga Instance
 	 */
-	public static Instance create(Customer customer, String name, ProvisioningState state, JsonNode placementInfo) {
+	public static Instance create(Customer customer, String name, JsonNode placementInfo) {
 		Instance instance = new Instance();
 		instance.key = CustomerInstanceKey.create(UUID.randomUUID(), customer.uuid);
 		instance.customer = customer;
 		instance.name = name;
-		instance.provisioningState = state;
 		instance.placementInfo = placementInfo;
 		instance.creationDate = new Date();
 		instance.save();
 		return instance;
+	}
+
+	/**
+	 * Creates a Commissioner task related to the instance for the customer
+	 * @param taskUUID
+	 * @param taskType
+	 * @return CustomerTask instance
+	 */
+	public CustomerTask addTask(UUID taskUUID, CustomerTask.TaskType taskType) {
+		return CustomerTask.create(this.customer, taskUUID, CustomerTask.TargetType.Instance, taskType, this.name);
 	}
 }
 
