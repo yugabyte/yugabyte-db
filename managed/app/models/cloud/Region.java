@@ -1,11 +1,14 @@
 // Copyright (c) Yugabyte, Inc.
 package models.cloud;
 
-import com.avaje.ebean.Model;
+import com.avaje.ebean.*;
+import com.avaje.ebean.Query;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import play.data.validation.Constraints;
 
 import javax.persistence.*;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -46,15 +49,14 @@ public class Region extends Model {
   @JsonBackReference
   public Provider provider;
 
+  @JsonBackReference
+  @OneToMany
+  private Set<AvailabilityZone> zones;
+
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
   public Boolean isActive() { return active; }
   public void setActiveFlag(Boolean active) { this.active = active; }
-
-  @Column(nullable = false, columnDefinition = "boolean default true")
-  public Boolean multi_az_capable = true;
-  public Boolean isMultiAZCapable() { return multi_az_capable; }
-  public void setMultiAZCapability(Boolean capable) { this.multi_az_capable = capable; }
 
   /**
    * Query Helper for Region with region code
@@ -68,13 +70,34 @@ public class Region extends Model {
    * @param name User Friendly Region Name
    * @return instance of Region
    */
-  public static Region create(Provider provider, String code, String name, boolean multiAZ) {
+  public static Region create(Provider provider, String code, String name) {
     Region region = new Region();
     region.provider = provider;
     region.code = code;
     region.name = name;
-    region.multi_az_capable = multiAZ;
     region.save();
     return region;
+  }
+
+  /**
+   * Fetch Regions with Specific Zone Count
+   * @param providerUUID
+   * @param minZoneCount
+   * @return List of Region
+   */
+  public static List<Region> fetchRegionsWithZoneCount(UUID providerUUID, int minZoneCount) {
+    String regionQuery
+      = " select r.uuid, r.code, r.name"
+      + "   from region r left outer join availability_zone zone"
+      + "     on zone.region_uuid = r.uuid "
+      + "  where r.provider_uuid = :provider_uuid"
+      + "  group by r.uuid "
+      + " having count(zone.uuid) >= " + minZoneCount;
+
+    RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
+    Query<Region> query = Ebean.find(Region.class);
+    query.setRawSql(rawSql);
+    query.setParameter("provider_uuid", providerUUID);
+    return query.findList();
   }
 }

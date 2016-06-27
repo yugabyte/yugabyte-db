@@ -18,7 +18,7 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 	@Before
 	public void setUp() {
 		Provider provider = Provider.create("Amazon");
-		defaultRegion = Region.create(provider, "region-1", "test region", true);
+		defaultRegion = Region.create(provider, "region-1", "test region");
 	}
 
 	@Test

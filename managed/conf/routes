@@ -36,6 +36,9 @@ POST    /api/customers/:cUUID/instances controllers.yb.InstanceController.create
 PUT     /api/customers/:cUUID/instances controllers.yb.InstanceController.update(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/instances controllers.yb.InstanceController.list(cUUID: java.util.UUID)
 
+# Task History API
+GET    /api/customers/:cUUID/tasks  controllers.yb.CustomerTaskController.list(cUUID: java.util.UUID)
+
 # Commissioner Specific Routes
 POST    /commissioner/tasks         controllers.commissioner.TasksController.create()
 

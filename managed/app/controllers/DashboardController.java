@@ -26,7 +26,7 @@ public class DashboardController extends AuthenticatedController {
   }
 
   public Result createInstance() {
-    Form<CreateInstanceFormData> formData = formFactory.form(CreateInstanceFormData.class);
+		Form<CreateInstanceFormData> formData = formFactory.form(CreateInstanceFormData.class);
     return ok(createInstance.render(formData));
   }
 
