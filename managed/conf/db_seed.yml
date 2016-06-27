@@ -7,43 +7,63 @@
     code: us-west-1
     name: US West (N. California)
     provider: *provider_aws
+    latitude: 36.778261
+    longitude: -119.417932
     multi_az_capable: false
 - &aws-us-west-2 !!models.cloud.Region
     code: us-east-2
     name: US West (Oregon)
     provider: *provider_aws
+    latitude: 43.804133
+    longitude: -120.554201
 - &aws-us-east-1 !!models.cloud.Region
     code: us-east-1
     name: US East (N. Virginia)
     provider: *provider_aws
+    latitude: 37.478397
+    longitude: -76.453077
 - &aws-eu-west-1 !!models.cloud.Region
     code: eu-west-1
     name: EU (Ireland)
     provider: *provider_aws
+    latitude: 53.412910
+    longitude: -8.243890
 - &aws-eu-central-1 !!models.cloud.Region
     code: eu-central-1
     name: EU (Frankfurt)
     provider: *provider_aws
+    latitude: 50.110922
+    longitude: 8.682127
 - &aws-ap-southeast-1 !!models.cloud.Region
     code: ap-southeast-1
     name: Asia Pacific (Singapore)
     provider: *provider_aws
+    latitude: 1.352083
+    longitude: 103.819836
 - &aws-ap-northeast-1 !!models.cloud.Region
     code: ap-northeast-1
     name: Asia Pacific (Tokyo)
     provider: *provider_aws
+    latitude: 35.689487
+    longitude: 139.691706
 - &aws-ap-southeast-2 !!models.cloud.Region
     code: ap-southeast-2
     name: Asia Pacific (Sydney)
     provider: *provider_aws
+    latitude: -33.868820
+    longitude: 151.209296
 - &aws-ap-northeast-2 !!models.cloud.Region
     code: ap-northeast-2
     name: Asia Pacific (Seoul)
     provider: *provider_aws
+    latitude: 37.566535
+    longitude: 126.977969
 - &aws-sa-east-1 !!models.cloud.Region
     code: sa-east-1
     name: South America (São Paulo)
     provider: *provider_aws
+    latitude: -23.550520
+    longitude: -46.633309
 
 # Availability Zones
 - &zone1 !!models.cloud.AvailabilityZone
