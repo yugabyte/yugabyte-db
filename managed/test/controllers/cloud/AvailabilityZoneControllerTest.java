@@ -1,4 +1,6 @@
-package controllers.cloud;// Copyright (c) Yugabyte, Inc.
+// Copyright (c) Yugabyte, Inc.
+
+package controllers.cloud;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -38,7 +40,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 	public void setUp() {
 		customer = Customer.create("Valid Customer", "foo@bar.com", "password");
 		defaultProvider = Provider.create("Amazon");
-		defaultRegion = Region.create(defaultProvider, "default-region", "Default Region", true);
+		defaultRegion = Region.create(defaultProvider, "default-region", "Default Region");
 	}
 
 	@Test

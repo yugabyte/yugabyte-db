@@ -20,6 +20,7 @@ $(document).ready(function() {
   });
 
   fetchInstances();
+  registerTaskDropdownEvent();
 });
 
 function fetchInstances() {
@@ -30,6 +31,19 @@ function fetchInstances() {
     ulParentNode.empty();
     $.each(results, function(idx, instance) {
       ulParentNode.append($("<li><a href='/instances/"+ instance.instanceId + "'>" + instance.name + "</a></li>"));
+    });
+  });
+}
+
+function registerTaskDropdownEvent() {
+  var customerUUID = $("#customerUUID").val();
+
+  $('#taskHistoryDropdown').on("show.bs.dropdown", function () {
+    var ulParentNode = $(this).children(".dropdown-tasks");
+
+    $.get("/api/customers/" + customerUUID + "/tasks", function (resultHtml) {
+      ulParentNode.empty();
+      ulParentNode.append(resultHtml);
     });
   });
 }
@@ -125,21 +139,4 @@ $(document).on("click", "#logoutLink", function(event) {
     }
   });
   return false;
-});
-
-$(document).on("submit", '#createInstanceForm', function() {
-  var customerUUID = $("#customerUUID").val();
-
-  $.ajax( {
-    url: "/api/customers/" + customerUUID + "/instances",
-    type: 'POST',
-    data: $('#createInstanceForm').serialize(),
-    success: function(response) {
-        window.location.href = "/";
-    },
-    error: function(response) {
-      parseFormErrorResponse(response);
-    }
-  });
-return false;
 });
