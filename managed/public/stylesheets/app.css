@@ -6,6 +6,8 @@ body {
     width: 100%;
 }
 
+#map { height: 500px; }
+
 #page-wrapper {
     padding: 0 15px;
     min-height: 568px;
