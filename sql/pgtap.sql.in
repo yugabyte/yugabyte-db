@@ -2832,7 +2832,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- has_index( table, index, columns[], description )
+-- has_index( table, index, columns[] )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
    SELECT has_index( $1, $2, $3, 'Index ' || quote_ident($2) || ' should exist' );
