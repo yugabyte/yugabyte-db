@@ -1,5 +1,5 @@
 \unset ECHO
-1..234
+1..258
 ok 1 - has_index() single column should pass
 ok 2 - has_index() single column should have the proper description
 ok 3 - has_index() single column should have the proper diagnostics
@@ -234,3 +234,27 @@ ok 231 - index_is_type() no table fail should have the proper diagnostics
 ok 232 - index_is_type() hash should pass
 ok 233 - index_is_type() hash should have the proper description
 ok 234 - index_is_type() hash should have the proper diagnostics
+ok 235 - is_indexed( schema, table, columns[], description ) should pass
+ok 236 - is_indexed( schema, table, columns[], description ) should have the proper description
+ok 237 - is_indexed( schema, table, columns[], description ) should have the proper diagnostics
+ok 238 - is_indexed( schema, table, columns[] ) should pass
+ok 239 - is_indexed( schema, table, columns[] ) should have the proper description
+ok 240 - is_indexed( schema, table, columns[] ) should have the proper diagnostics
+ok 241 - is_indexed( table, columns[], description ) should pass
+ok 242 - is_indexed( table, columns[], description ) should have the proper description
+ok 243 - is_indexed( table, columns[], description ) should have the proper diagnostics
+ok 244 - is_indexed( table, columns[] ) should pass
+ok 245 - is_indexed( table, columns[] ) should have the proper description
+ok 246 - is_indexed( table, columns[] ) should have the proper diagnostics
+ok 247 - is_indexed( schema, table, column, description ) should pass
+ok 248 - is_indexed( schema, table, column, description ) should have the proper description
+ok 249 - is_indexed( schema, table, column, description ) should have the proper diagnostics
+ok 250 - is_indexed( schema, table, column ) should pass
+ok 251 - is_indexed( schema, table, column ) should have the proper description
+ok 252 - is_indexed( schema, table, column ) should have the proper diagnostics
+ok 253 - is_indexed( schema, table, column ) fail should fail
+ok 254 - is_indexed( schema, table, column ) fail should have the proper description
+ok 255 - is_indexed( schema, table, column ) fail should have the proper diagnostics
+ok 256 - is_indexed( schema, table, columns[] ) fail, column order matters should fail
+ok 257 - is_indexed( schema, table, columns[] ) fail, column order matters should have the proper description
+ok 258 - is_indexed( schema, table, columns[] ) fail, column order matters should have the proper diagnostics

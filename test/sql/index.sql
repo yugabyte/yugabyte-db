@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(234);
+SELECT plan(258);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -20,6 +20,7 @@ CREATE INDEX idx_bar ON public.sometab(numb, name);
 CREATE UNIQUE INDEX idx_baz ON public.sometab(LOWER(name));
 CREATE INDEX idx_mul ON public.sometab(numb, LOWER(name));
 CREATE INDEX idx_expr ON public.sometab(UPPER(name), numb, LOWER(name));
+CREATE INDEX idx_double ON public.sometab(numb, myint);
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -671,6 +672,72 @@ SELECT * FROM check_test(
     true,
     'index_is_type() hash',
     'Index idx_foo should be a hash index',
+    ''
+);
+
+/****************************************************************************/
+-- Test is_indexed().
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab', ARRAY['numb','name']::name[], 'desc' ),
+    true,
+    'is_indexed( schema, table, columns[], description )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab', ARRAY['numb','name']::name[] ),
+    true,
+    'is_indexed( schema, table, columns[] )',
+    'An index on public.sometab with {numb,name} should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'sometab', ARRAY['numb','name']::name[], 'desc' ),
+    true,
+    'is_indexed( table, columns[], description )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'sometab', ARRAY['numb','name']::name[] ),
+    true,
+    'is_indexed( table, columns[] )',
+    'An index on sometab with {numb,name} should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab', 'numb', 'desc' ),
+    true,
+    'is_indexed( schema, table, column, description )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab'::name, 'numb'::name ),
+    true,
+    'is_indexed( schema, table, column )',
+    'An index on public.sometab on column numb should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab'::name, 'myint'::name ),
+    false,
+    'is_indexed( schema, table, column ) fail',
+    'An index on public.sometab on column myint should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab', ARRAY['name','numb']::name[] ),
+    false,
+    'is_indexed( schema, table, columns[] ) fail, column order matters',
+    'An index on public.sometab with {name,numb} should exist',
     ''
 );
 

@@ -4644,6 +4644,36 @@ an index when the SQL command `CLUSTER TABLE INDEXNAME` has been executed.
 Clustering reorganizes the table tuples so that they are stored on disk in the
 order defined by the index.
 
+### `is_indexed()` ###
+
+    SELECT is_indexed( :schema, :table, :columns, :description );
+    SELECT is_indexed( :schema, :table, :columns );
+    SELECT is_indexed( :table, :columns, :description );
+    SELECT is_indexed( :table, :columns );
+    SELECT is_indexed( :schema, :table, :column, :description );
+    SELECT is_indexed( :schema, :table, :column );
+    SELECT is_indexed( :table, :column, :description );
+    SELECT is_indexed( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the index.
+
+`:column`
+: Name of the column.
+
+`:columns`
+: Array of columns name.
+
+`:description`
+: A short description of the test.
+
+Tests an index exists on table for a set of columns. Order of column matters.
+
 ### `index_is_type()` ###
 
     SELECT index_is_type( :schema, :table, :index, :type, :description );
