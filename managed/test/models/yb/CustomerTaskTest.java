@@ -23,10 +23,11 @@ public class CustomerTaskTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateInstance() {
+  public void testCreateInstance() throws InterruptedException {
     UUID taskUUID = UUID.randomUUID();
     CustomerTask th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
     assertEquals(th.getTarget(), CustomerTask.TargetType.Instance);
+    Thread.sleep(5000);
     Date currentDate  = new Date();
     assertTrue(currentDate.after(th.getCreateTime()));
     assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating Instance : Foo"))));
@@ -40,9 +41,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     Date currentDate  = new Date();
     assertTrue(currentDate.after(th.getCreateTime()));
     assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating Instance : Foo"))));
-
-		Thread.sleep(1000);
-
+    Thread.sleep(5000);
     th.markAsCompleted();
     assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Created Instance : Foo"))));
     assertTrue(th.getCreateTime().before(th.getCompletionTime()));
