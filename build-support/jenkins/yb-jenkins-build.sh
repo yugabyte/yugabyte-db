@@ -42,7 +42,24 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# TODO: determine BUILD_TYPE automatically based on JOB_NAME if not specified.
+#
+# If BUILD_TYPE has not been passed in, or is set to auto, then infer
+# the build type automatically from the job name.
+#
+JOB_NAME=${JOB_NAME:-}
+if [ -z "${BUILD_TYPE:-}"  -o "${BUILD_TYPE:-}" = "auto" ]; then
+  if [[ "$JOB_NAME" == *"-release"* ]]; then
+    export BUILD_TYPE=release
+  elif [[ "$JOB_NAME" == *"-debug"* ]]; then
+    export BUILD_TYPE=debug
+  elif [[ "$JOB_NAME" == *"-tsan"* ]]; then
+    export BUILD_TYPE=tsan
+  else
+    export BUILD_TYPE=debug
+  fi
+fi
+
+echo "Build type: ${BUILD_TYPE}";
 
 if "$delete_arc_patch_branches"; then
   echo "Deleting branches starting with 'arcpatch-D'"
