@@ -1,5 +1,6 @@
 package org.yb.ybcli.commands;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.shell.core.CommandMarker;
@@ -7,13 +8,16 @@ import org.springframework.shell.core.annotation.CliAvailabilityIndicator;
 import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
+import org.yb.Common.HostPortPB;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ListTabletServersResponse;
+import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;
+import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
 
 @Component
@@ -96,7 +100,7 @@ public class YBCliCommands implements CommandMarker {
     sb.append("Time taken: " + elapsed + " ms.");
     return sb.toString();
   }
-  
+
   @CliCommand(value = "list tablet-servers", help = "List all the tablet servers in this database")
   public String listTabletServers() {
     try {
@@ -168,6 +172,26 @@ public class YBCliCommands implements CommandMarker {
       return sb.toString();
     } catch (Exception e) {
       return "Failed to fetch masters info for database at " + masterAddresses + ", error: " + e;
+    }
+  }
+
+  @CliCommand(value = "change_blacklist",
+      help = "Change the set of blacklisted nodes for the universe")
+  public String changeBlacklist(
+      @CliOption(key = { "servers", },
+                 mandatory = true,
+                 help = "CSV of host:port pairs for target servers") final String servers,
+      @CliOption(key = { "isAdd" },
+                 mandatory = true,
+                 help = "True implies adding to blacklist, else removing.") final boolean isAdd) {
+    try {
+      List<HostPortPB> modifyHosts = NetUtil.parseStringsAsPB(servers);
+
+      ModifyMasterClusterConfigBlacklist operation = new ModifyMasterClusterConfigBlacklist(ybClient, modifyHosts, isAdd);
+
+      return operation.doCall();
+    } catch (Exception e) {
+      return e.toString();
     }
   }
 }

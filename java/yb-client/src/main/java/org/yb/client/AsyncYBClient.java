@@ -127,7 +127,7 @@ public class AsyncYBClient implements AutoCloseable {
   public static final long NO_TIMESTAMP = -1;
   public static final long DEFAULT_OPERATION_TIMEOUT_MS = 10000;
   public static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 5000;
- 
+
   private final ClientSocketChannelFactory channelFactory;
 
   /**
@@ -357,6 +357,29 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<ListMastersResponse> listMasters() {
     checkIsClosed();
     ListMastersRequest rpc = new ListMastersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get the current cluster configuration.
+   * @return a deferred object that yields the cluster configuration.
+   */
+  public Deferred<GetMasterClusterConfigResponse> getMasterClusterConfig() {
+    checkIsClosed();
+    GetMasterClusterConfigRequest rpc = new GetMasterClusterConfigRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Change the current cluster configuration.
+   * @return a deferred object that yields the response to the config change.
+   */
+  public Deferred<ChangeMasterClusterConfigResponse> changeMasterClusterConfig(Master.SysClusterConfigEntryPB config) {
+    checkIsClosed();
+    ChangeMasterClusterConfigRequest rpc = new ChangeMasterClusterConfigRequest(
+        this.masterTable, config);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1070,7 +1093,7 @@ public class AsyncYBClient implements AutoCloseable {
       d = getMasterRegistration(clientForHostAndPort);
       try {
         GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
-        return resp.getInstanceId().getPermanentUuid().toStringUtf8(); 
+        return resp.getInstanceId().getPermanentUuid().toStringUtf8();
       } catch (Exception e) {
         LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
       }
@@ -1096,14 +1119,14 @@ public class AsyncYBClient implements AutoCloseable {
         try {
           GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
           if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
-            return resp.getInstanceId().getPermanentUuid().toStringUtf8(); 
+            return resp.getInstanceId().getPermanentUuid().toStringUtf8();
           }
         } catch (Exception e) {
           LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
         }
       }
     }
-    
+
     return null;
   }
 

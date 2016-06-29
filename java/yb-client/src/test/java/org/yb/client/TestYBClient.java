@@ -22,6 +22,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.yb.Common.HostPortPB;
 import static org.yb.client.RowResult.timestampToString;
 
 import java.util.ArrayList;
@@ -108,6 +109,49 @@ public class TestYBClient extends BaseYBTest {
     // NOTE: This assert could intermittently fail. We will use this test for creating a
     // reproducible test case for JIRA ENG-49.
     assertNotEquals(new_leader_uuid, leader_uuid);
+  }
+
+  /**
+   * Test for changing the universe config.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testChangeMasterClusterConfig() throws Exception {
+    GetMasterClusterConfigResponse resp = syncClient.getMasterClusterConfig();
+    assertFalse(resp.hasError());
+    // Config starts at 0 and gets bumped with every write.
+    assertEquals(0, resp.getConfig().getVersion());
+    assertEquals(0, resp.getConfig().getServerBlacklist().getHostsList().size());
+
+    // Prepare some hosts.
+    HostPortPB host1 = HostPortPB.newBuilder().setHost("host1").setPort(0).build();
+    HostPortPB host2 = HostPortPB.newBuilder().setHost("host2").setPort(0).build();
+    List<HostPortPB> hosts = new ArrayList<HostPortPB>();
+    hosts.add(host1);
+    hosts.add(host2);
+    // Add the hosts to the config.
+    ModifyMasterClusterConfigBlacklist operation =
+        new ModifyMasterClusterConfigBlacklist(syncClient, hosts, true);
+    operation.doCall();
+    // Check the new config info.
+    resp = syncClient.getMasterClusterConfig();
+    assertFalse(resp.hasError());
+    assertEquals(1, resp.getConfig().getVersion());
+    assertEquals(2, resp.getConfig().getServerBlacklist().getHostsList().size());
+    // Modify the blacklist again and remove host2 by issuing a remove with a list of just one
+    // element: host2.
+    hosts.remove(host1);
+    operation = new ModifyMasterClusterConfigBlacklist(syncClient, hosts, false);
+    operation.doCall();
+    // Check the config one last time.
+    resp = syncClient.getMasterClusterConfig();
+    assertFalse(resp.hasError());
+    assertEquals(2, resp.getConfig().getVersion());
+    List<HostPortPB> responseHosts = resp.getConfig().getServerBlacklist().getHostsList();
+    assertEquals(1, responseHosts.size());
+    HostPortPB responseHost = responseHosts.get(0);
+    assertEquals(host1.getHost(), responseHost.getHost());
+    assertEquals(host1.getPort(), responseHost.getPort());
   }
 
   /**

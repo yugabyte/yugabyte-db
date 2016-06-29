@@ -462,7 +462,8 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
   void SendReplicaChanges(
-      scoped_refptr<TabletInfo> tablet, const string& ts_uuid, bool is_add) OVERRIDE {
+      scoped_refptr<TabletInfo> tablet, const string& ts_uuid, const bool is_add,
+      const bool stepdown_if_leader) OVERRIDE {
     // Do nothing.
   }
 

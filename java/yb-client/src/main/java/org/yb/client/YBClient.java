@@ -22,6 +22,7 @@ import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.master.Master;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
@@ -155,6 +156,26 @@ public class YBClient implements AutoCloseable {
    */
   public ListMastersResponse listMasters() throws Exception {
     Deferred<ListMastersResponse> d = asyncClient.listMasters();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the current cluster configuration.
+   * @return the configuration
+   */
+  public GetMasterClusterConfigResponse getMasterClusterConfig() throws Exception {
+    Deferred<GetMasterClusterConfigResponse> d = asyncClient.getMasterClusterConfig();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Change the current cluster configuration.
+   * @param config the new config to set on the cluster.
+   * @return the configuration
+   */
+  public ChangeMasterClusterConfigResponse changeMasterClusterConfig(
+      Master.SysClusterConfigEntryPB config) throws Exception {
+    Deferred<ChangeMasterClusterConfigResponse> d = asyncClient.changeMasterClusterConfig(config);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

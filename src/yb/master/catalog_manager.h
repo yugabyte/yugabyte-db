@@ -691,7 +691,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // over-replicated.
   void SendRemoveServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid);
+      const string& change_config_ts_uuid, const bool stepdown_leader);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.

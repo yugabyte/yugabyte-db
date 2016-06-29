@@ -23,6 +23,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.yb.annotations.InterfaceAudience;
+import org.yb.Common.HostPortPB;
 
 import java.util.List;
 
@@ -74,5 +75,27 @@ public class NetUtil {
       hostsAndPorts.add(hostAndPort);
     }
     return hostsAndPorts;
+  }
+
+  public static List<HostPortPB> parseStringsAsPB(final String commaSepAddrs)
+      throws Exception {
+    String[] addrStrings = commaSepAddrs.split(",");
+    List<HostPortPB> hostPorts = Lists.newArrayListWithCapacity(addrStrings.length);
+    for (String addrString : addrStrings) {
+      String [] hostPortPiece = addrString.split(":");
+      // Check for host:port format.
+      if (hostPortPiece.length != 2) {
+        throw new Exception("Invalid format for host:port : " + addrString);
+      }
+      String host = hostPortPiece[0];
+      Integer port;
+      try {
+        port = Integer.parseInt(hostPortPiece[1]);
+      } catch (Exception e) {
+        throw new Exception("Invalid format for host:port : " + addrString);
+      }
+      hostPorts.add(HostPortPB.newBuilder().setHost(host).setPort(port).build());
+    }
+    return hostPorts;
   }
 }

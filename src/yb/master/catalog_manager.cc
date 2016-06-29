@@ -2727,13 +2727,21 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
  public:
   AsyncRemoveServerTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
-      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid,
+      const bool stepdown_if_leader)
+      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
+        stepdown_if_leader_(stepdown_if_leader) {}
 
   string type_name() const OVERRIDE { return "RemoveServer ChangeConfig"; }
 
  protected:
   virtual bool PrepareRequest(int attempt) OVERRIDE;
+
+  void HandleLeaderStepDownResponse();
+
+  const bool stepdown_if_leader_;
+  consensus::LeaderStepDownRequestPB stepdown_req_;
+  consensus::LeaderStepDownResponsePB stepdown_resp_;
 };
 
 bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
@@ -2750,6 +2758,26 @@ bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
     return false;
   }
 
+  // If we were asked to remove the server even if it is the leader, we have to call StepDown, but
+  // only if our current leader is the server we are asked to remove.
+  if (stepdown_if_leader_ && permanent_uuid() == change_config_ts_uuid_) {
+    stepdown_req_.Clear();
+    stepdown_req_.set_dest_uuid(change_config_ts_uuid_);
+    stepdown_req_.set_tablet_id(tablet_->tablet_id());
+    stepdown_resp_.Clear();
+
+    LOG(INFO) << Substitute(
+        "Stepping down leader $0 for tablet $1", change_config_ts_uuid_, tablet_->tablet_id());
+    consensus_proxy_->LeaderStepDownAsync(
+        stepdown_req_, &stepdown_resp_, &rpc_,
+        boost::bind(&AsyncRemoveServerTask::HandleLeaderStepDownResponse, this));
+
+    // Return false so we can retry this task. If the same tablet server got elected leader, we
+    // will retry the stepdown. If it did not, we will not go into this if and will just execute
+    // the change config below.
+    return false;
+  }
+
   req_.set_dest_uuid(permanent_uuid());
   req_.set_tablet_id(tablet_->tablet_id());
   req_.set_type(consensus::REMOVE_SERVER);
@@ -2758,6 +2786,16 @@ bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
   peer->set_permanent_uuid(change_config_ts_uuid_);
 
   return true;
+}
+
+void AsyncRemoveServerTask::HandleLeaderStepDownResponse() {
+  if (!rpc_.status().ok()) {
+    LOG(WARNING) << Substitute(
+        "Got error on stepdown for tablet $0 with leader $1 and error $2", tablet_->tablet_id(),
+        permanent_uuid(), rpc_.status().ToString());
+  }
+  // No need to clear rpc_, as it is cleared on every run of the task and we also explicitly
+  // return false from PrepareRequest() so that it reschedules execution.
 }
 
 void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table) {
@@ -2833,9 +2871,9 @@ void CatalogManager::SendDeleteTabletRequest(
 // TODO: refactor this into a joint method with the add one.
 void CatalogManager::SendRemoveServerRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid) {
-  auto task =
-      new AsyncRemoveServerTask(master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+    const string& change_config_ts_uuid, const bool stepdown_if_leader) {
+  auto task = new AsyncRemoveServerTask(
+      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, stepdown_if_leader);
   tablet->table()->AddTask(task);
   Status status = task->Run();
   WARN_NOT_OK(status, "Failed to send new RemoveServer request");
