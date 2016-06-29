@@ -103,7 +103,7 @@ def get_partition_list(conn, parent_table, vacuum_freeze_min_age):
             max_id = cur.fetchone()[0]
             upper_boundary = max_id - int(args.interval)
         elif args.type == "time":
-            sql = "SELECT LOCALTIMESTAMP - %s::interval"  # Use LOCALTIMESTAMP so python result is timezone naive
+            sql = "SELECT CURRENT_TIMESTAMP - %s::interval"  # Use CURRENT_TIMESTAMP since all variables in pg_partman are timestamptz
             cur.execute(sql, [args.interval])
             upper_boundary = cur.fetchone()[0]
 

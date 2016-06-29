@@ -44,7 +44,7 @@ Functions must either be run as a superuser or you can set the ownership of the 
 
 I've received many requests for being able to install this extension on Amazon RDS. RDS does not support third-party extension management outside of the ones it has approved and provides itself. If you'd like to see this extension available there, please send an email to rds-postgres-extensions-request@amazon.com requesting that they include it. The more people that do so, the more likely it will happen!
 
-Version 1.8.8 of pg_partman is still available on github if you're running a version of PostgreSQL older than 9.4. Note however that as of version 2.4.0 of pg_partman, no further updates (bug fixes, features, etc) are being released for the 1.x series. If you encounter any issues, please plan for upgrading your database to 9.4+ so that you can use the 2.x series of pg_partman.  
+Version 1.8.8 of pg_partman is still available on github if you're running a version of PostgreSQL older than 9.4. Note however that no further updates (bug fixes, features, etc) are being released for the 1.x series. If you encounter any issues, please plan for upgrading your database to 9.4+ so that you can use the 2.x series of pg_partman.  
 
 UPGRADE
 -------
@@ -71,7 +71,7 @@ Then just run the create_parent() function with the appropriate parameters
     or
     SELECT partman.create_parent('test.part_test', 'col1', 'id', '100000');
 
-This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data. Serial based partitioning does not always require run_maintenance() (see doc file below).
+This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, schedule the run_maintenance() function to run periodically or use the background worker settings in postgresql.conf (the latter is recommended). Serial based partitioning does not always require run_maintenance() (see doc file below).
 
 This should be enough to get you started. Please see the [pg_partman.md file](doc/pg_partman.md) in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
 

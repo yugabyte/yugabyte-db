@@ -1,3 +1,17 @@
+-- Fixed partition_data_id() function to allow intervals larger than a 32-bit integer (bigint) (Github Pull Request #125).
+-- Fixed vacuum_maintenance.py to work with timestamptz now that all extension time data types were fixed in v2.4.0
+-- Fixed pgtap failure in postgres 9.5 for id subpartitioning test (Github Issue #82).
+
+CREATE TEMP TABLE partman_preserve_privs_temp (statement text);
+
+INSERT INTO partman_preserve_privs_temp 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.partition_data_id(text, int, bigint, numeric, text) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+FROM information_schema.routine_privileges
+WHERE routine_schema = '@extschema@'
+AND routine_name = 'partition_data_id'; 
+
+DROP FUNCTION partition_data_id(text, int, int, numeric, text);
+
 /*
  * Populate the child table(s) of an id-based partition set with old data from the original parent
  */
@@ -141,3 +155,17 @@ END
 $$;
 
 
+-- Restore dropped object privileges
+DO $$
+DECLARE
+v_row   record;
+BEGIN
+    FOR v_row IN SELECT statement FROM partman_preserve_privs_temp LOOP
+        IF v_row.statement IS NOT NULL THEN
+            EXECUTE v_row.statement;
+        END IF;
+    END LOOP;
+END
+$$;
+
+DROP TABLE IF EXISTS partman_preserve_privs_temp;

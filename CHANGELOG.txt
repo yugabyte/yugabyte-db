@@ -1,3 +1,9 @@
+2.4.1
+-- Fixed partition_data_id() function to allow intervals larger than a 32-bit integer (bigint) (Github Pull Request #125).
+-- Fixed vacuum_maintenance.py to work with timestamptz now that all extension time data types were fixed in v2.4.0
+-- Fixed pgtap failure in postgres 9.5 for id subpartitioning test (Github Issue #82).
+
+
 2.4.0
 -- IMPORTANT NOTICE: As of this version (2.4.0) support for the 1.x series has been dropped. No further fixes (bugs, features, etc) will be backported and 1.8.8 will be the last version in the 1.x series. If you encounter a bug, the only supported method of fixing it will be to upgrade to the 2.x series where it may already have been fixed or you can submit an Issue on Github.
 -- Change data type of time-based variables in many functions from "timestamp without time zone (timestamp)" to "timestamp with timezone (timestamptz)". Previously there was a mix of both being used and was causing inconsistencies on timezone edge cases. This was also affecting the data type used when creating the constraints on child tables (they may have had improper timezone info). This should allow constraints on child tables to work more consistently whether the partition column is either timestamp or timestamptz (Github Issue #118). Note this will not recreate the constraints on existing child tables, but if you weren't having any issues before, it shouldn't cause any problems. If you need to have the constraints fixed, you can either do it manually for all existing child tables or unpartition and repartition the set again.

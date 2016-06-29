@@ -173,8 +173,9 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM')||' exists');
+-- This test may fail if the next month's subpartition was already made and +3 days is after the 1st of the month, which may have been made by the condition that guarantees there is always at least 1 child table in a subpartition.
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD')||' exists. This test may fail depending on the day of the month it is run.');
 -- Check that future year had the minimal partition made
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_01', 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_01 exists');
@@ -227,6 +228,6 @@ DETAIL:
 HINT: ',
     'Check that undoing partitions is prevented if subpartitions still exist');
 
-*/
+
 SELECT * FROM finish();
 ROLLBACK;

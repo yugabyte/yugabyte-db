@@ -1845,18 +1845,13 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p1000
 SELECT run_maintenance();
 
 -- UNDO ALL THE THINGS!!
-
-SELECT throws_ok('SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false)',
-'P0001',
-'Child table for this parent has child table(s) itself (partman_test.id_taptest_table_p0). Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent
-CONTEXT: SQL statement "SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false)"
-PL/pgSQL function throws_ok(text,character,text,text) line 16 at EXECUTE statement
-DETAIL: 
-HINT: ',
+SELECT throws_matching('SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false)',
+'Child table for this parent has child table\(s\) itself \(partman_test\.id_taptest_table_p0\)\. Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent.*',
 'Check that undoing partitions is prevented if subpartitions still exist');
 
 -- First the sub-sub parents
 SELECT results_eq('SELECT undo_partition_id(''partman_test.id_taptest_table_p0_p0'', 20, p_keep_table := false)::int', ARRAY[999], 'Undo partitioning for parent table partman_test.id_taptest_table_p0_p0');
+
 SELECT results_eq('SELECT undo_partition_id(''partman_test.id_taptest_table_p0_p1000'', 20, p_keep_table := false)::int', ARRAY[1000], 'Undo partitioning for parent table partman_test.id_taptest_table_p0_p1000');
 SELECT results_eq('SELECT undo_partition_id(''partman_test.id_taptest_table_p0_p2000'', 20, p_keep_table := false)::int', ARRAY[1000], 'Undo partitioning for parent table partman_test.id_taptest_table_p0_p2000');
 SELECT results_eq('SELECT undo_partition_id(''partman_test.id_taptest_table_p0_p3000'', 20, p_keep_table := false)::int', ARRAY[1000], 'Undo partitioning for parent table partman_test.id_taptest_table_p0_p3000');
