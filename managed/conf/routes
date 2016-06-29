@@ -10,7 +10,7 @@ GET     /createInstance             controllers.DashboardController.createInstan
 GET     /instances                  controllers.DashboardController.instances()
 GET     /tables                     controllers.DashboardController.tables()
 GET     /profile                    controllers.DashboardController.profile()
-GET     /instances/:iUUID           controllers.DashboardController.showInstance(iUUID: java.util.UUID)
+GET     /instances/:iUUID           controllers.yb.InstanceController.index(iUUID: java.util.UUID)
 
 # API Specific Routes
 POST    /api/login                  controllers.SessionController.login()
@@ -35,6 +35,7 @@ PUT     /api/customers/:cUUID       controllers.yb.CustomerController.update(cUU
 POST    /api/customers/:cUUID/instances controllers.yb.InstanceController.create(cUUID: java.util.UUID)
 PUT     /api/customers/:cUUID/instances controllers.yb.InstanceController.update(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/instances controllers.yb.InstanceController.list(cUUID: java.util.UUID)
+
 
 # Task History API
 GET    /api/customers/:cUUID/tasks  controllers.yb.CustomerTaskController.list(cUUID: java.util.UUID)
