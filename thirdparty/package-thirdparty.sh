@@ -77,7 +77,7 @@ fi
 
 # Apart from the build directories, we also need to package the gflags directory separately
 # (we use it to build RocksDB).
-installed_dirs=( 
+installed_dirs=(
   "$PREFIX_COMMON"
   "$PREFIX_DEPS"
   "$PREFIX_DEPS_TSAN"
@@ -118,7 +118,7 @@ for d in "${installed_dirs[@]}"; do
   installed_dir_rel_paths+=( "$rel_archived_dir" )
   # Keep track of top-level directories we're adding to the archive,
   # e.g. glog-2.1.2/lib becomes glog-2.1.2:
-  archived_top_level_dirs+=( "${rel_archived_dir%%/*}" )  
+  archived_top_level_dirs+=( "${rel_archived_dir%%/*}" )
 done
 
 ( set -x; tar czf $tar_append_option "$dest_tarball_path" "${installed_dir_rel_paths[@]}" )

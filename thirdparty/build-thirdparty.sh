@@ -39,6 +39,16 @@
 
 set -eo pipefail
 
+wrap_build_output() {
+  local args=( "$@" )
+  local build_func=${args[0]}
+  # output_line does not need to be declared as local because it only exists in
+  # a subshell.
+  "${args[@]}" 2>&1 | while read output_line; do
+    echo "[$build_func] $output_line"
+  done
+}
+
 TP_DIR=$(cd "$(dirname "$BASH_SOURCE")"; pwd)
 
 source $TP_DIR/vars.sh
@@ -160,11 +170,11 @@ PREFIX=$PREFIX_COMMON
 export PATH=$PREFIX/bin:$PATH
 
 if [ -n "$F_ALL" -o -n "$F_CMAKE" ]; then
-  build_cmake
+  wrap_build_output build_cmake
 fi
 
 if [ -n "$F_ALL" -o -n "$F_LLVM" ]; then
-  build_llvm
+  wrap_build_output build_llvm
 fi
 
 # Enable debug symbols so that stacktraces and linenumbers are available at
@@ -175,53 +185,53 @@ EXTRA_CFLAGS="-g $EXTRA_CFLAGS"
 EXTRA_CXXFLAGS="-g $EXTRA_CXXFLAGS"
 
 if [ -n "$OS_LINUX" ] && [ -n "$F_ALL" -o -n "$F_LIBUNWIND" ]; then
-  build_libunwind
+  wrap_build_output build_libunwind
 fi
 
 if [ -n "$F_ALL" -o -n "$F_ZLIB" ]; then
-  build_zlib
+  wrap_build_output build_zlib
 fi
 
 if [ -n "$F_ALL" -o -n "$F_LZ4" ]; then
-  build_lz4
+  wrap_build_output build_lz4
 fi
 
 if [ -n "$F_ALL" -o -n "$F_BITSHUFFLE" ]; then
-  build_bitshuffle
+  wrap_build_output build_bitshuffle
 fi
 
 if [ -n "$F_ALL" -o -n "$F_LIBEV" ]; then
-  build_libev
+  wrap_build_output build_libev
 fi
 
 if [ -n "$F_ALL" -o -n "$F_RAPIDJSON" ]; then
-  build_rapidjson
+  wrap_build_output build_rapidjson
 fi
 
 if [ -n "$F_ALL" -o -n "$F_SQUEASEL" ]; then
-  build_squeasel
+  wrap_build_output build_squeasel
 fi
 
 if [ -n "$F_ALL" -o -n "$F_CURL" ]; then
-  build_curl
+  wrap_build_output build_curl
 fi
 
 build_boost_uuid
 
 if [ -n "$F_ALL" -o -n "$F_GSG" ]; then
-  build_cpplint
+  wrap_build_output build_cpplint
 fi
 
 if [ -n "$F_ALL" -o -n "$F_GCOVR" ]; then
-  build_gcovr
+  wrap_build_output build_gcovr
 fi
 
 if [ -n "$F_ALL" -o -n "$F_TRACE_VIEWER" ]; then
-  build_trace_viewer
+  wrap_build_output build_trace_viewer
 fi
 
 if [ -n "$OS_LINUX" ] && [ -n "$F_ALL" -o -n "$F_NVML" ]; then
-  build_nvml
+  wrap_build_output build_nvml
 fi
 
 ### Build C++ dependencies
@@ -229,27 +239,27 @@ fi
 PREFIX=$PREFIX_DEPS
 
 if [ -n "$F_ALL" -o -n "$F_GFLAGS" ]; then
-  build_gflags
+  wrap_build_output build_gflags
 fi
 
 if [ -n "$F_ALL" -o -n "$F_GLOG" ]; then
-  build_glog
+  wrap_build_output build_glog
 fi
 
 if [ -n "$F_ALL" -o -n "$F_GPERFTOOLS" ]; then
-  build_gperftools
+  wrap_build_output build_gperftools
 fi
 
 if [ -n "$F_ALL" -o -n "$F_GMOCK" ]; then
-  build_gmock
+  wrap_build_output build_gmock
 fi
 
 if [ -n "$F_ALL" -o -n "$F_PROTOBUF" ]; then
-  build_protobuf
+  wrap_build_output build_protobuf
 fi
 
 if [ -n "$F_ALL" -o -n "$F_SNAPPY" ]; then
-  build_snappy
+  wrap_build_output build_snappy
 fi
 
 if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
@@ -258,7 +268,7 @@ if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
     EXTRA_CFLAGS+=" -mcrc32"
     EXTRA_CXXFLAGS+=" -mcrc32"
   fi
-  build_crcutil
+  wrap_build_output build_crcutil
   restore_env
 fi
 

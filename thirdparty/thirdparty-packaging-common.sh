@@ -59,10 +59,21 @@ get_prebuilt_thirdparty_name_prefix() {
 }
 
 download_prebuilt_thirdparty_deps() {
+  # In this function, "exit 1" is an error condition that terminates the entire build, but
+  # "return 1" simply means we're skipping pre-built third-party dependency download and will build
+  # those dependencies from scratch.
+
   if [ -z "${TP_DIR:-}" ]; then
     echo "The 'thirdparty' directory path TP_DIR is not set in ${FUNCNAME[0]}" >&2
     exit 1
   fi
+
+  if [ -n "${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-}" ]; then
+    echo "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
+         "third-party dependencies" >&2
+    return 1
+  fi
+
   local skipped_msg_suffix="not attempting to download prebuilt third-party dependencies"
   if [ ! -f "$PREBUILT_THIRDPARTY_S3_CONFIG_PATH" ]; then
     echo "S3 configuration file $PREBUILT_THIRDPARTY_S3_CONFIG_PATH not found, $skipped_msg_suffix"
