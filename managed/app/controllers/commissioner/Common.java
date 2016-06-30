@@ -4,6 +4,8 @@ package controllers.commissioner;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 public class Common {
 
@@ -18,7 +20,8 @@ public class Common {
 
   // The devops home.
   public static String getDevopsHome() {
-    String ybDevopsHome = System.getProperty("yb.devops.home");
+    Config conf = ConfigFactory.load();
+    String ybDevopsHome = conf.getString("yb.devops.home");
     if (ybDevopsHome == null) {
       LOG.error("Devops repo path not found. Please specify yb.devops.home property: " +
                 "'sbt run -Dyb.devops.home=<path to devops repo>'");
