@@ -19,7 +19,8 @@ libraryDependencies ++= Seq(
   "org.webjars" %  "bootstrap" % "3.3.1",
   "org.webjars" %  "font-awesome" % "4.6.3",
   "org.webjars" %  "metisMenu" % "1.1.2",
-  "org.webjars" %  "leaflet" % "0.7.7"
+  "org.webjars" %  "leaflet" % "0.7.7",
+  "org.webjars" %  "mousetrap" % "1.5.3-1"
 )
 
 resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
