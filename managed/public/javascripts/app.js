@@ -21,6 +21,7 @@ $(document).ready(function() {
 
   fetchInstances();
   registerTaskDropdownEvent();
+  bindKeyboardEvents();
 });
 
 function fetchInstances() {
@@ -57,6 +58,13 @@ function fetchAndUpdateTasks(ulParentNode) {
     ulParentNode.empty();
     ulParentNode.append(resultHtml);
   });
+}
+
+function bindKeyboardEvents() {
+    Mousetrap.bind("?", function() {$("#keyboard-shortcut-dialog-dialog").modal(); });
+    Mousetrap.bind("c", function() {window.location.href = "/createInstance"; })
+    Mousetrap.bind("p", function() {window.location.href = "/profile"; })
+    Mousetrap.bind("d", function() {window.location.href = "/"; })
 }
 
 function parseFormErrorResponse(response) {
