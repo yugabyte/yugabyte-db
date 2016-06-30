@@ -10,6 +10,7 @@ import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -30,6 +31,10 @@ public class ApiHelper {
       .thenApply(WSResponse::asJson);
 
     return handleJSONPromise(jsonPromise);
+  }
+
+  public JsonNode getRequest(String url) {
+    return getRequest(url, new HashMap<>());
   }
 
   public JsonNode getRequest(String url, Map<String, String> headers) {
