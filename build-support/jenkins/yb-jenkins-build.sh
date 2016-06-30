@@ -47,7 +47,7 @@ done
 # the build type automatically from the job name.
 #
 JOB_NAME=${JOB_NAME:-}
-if [ -z "${BUILD_TYPE:-}"  -o "${BUILD_TYPE:-}" = "auto" ]; then
+if [[ -z "${BUILD_TYPE:-}" || "${BUILD_TYPE:-}" = "auto" ]]; then
   if [[ "$JOB_NAME" == *"-release"* ]]; then
     export BUILD_TYPE=release
   elif [[ "$JOB_NAME" == *"-debug"* ]]; then
