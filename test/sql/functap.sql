@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(520);
+SELECT plan(628);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -691,11 +691,19 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test is_definer().
+-- Test is_definer() isnt_definer().
 SELECT * FROM check_test(
     is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
     'is_definer(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_definer(schema, func, 0 args, desc)',
     'whatever',
     ''
 );
@@ -709,9 +717,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay', '{}'::name[] ),
+    false,
+    'isnt_definer(schema, func, 0 args)',
+    'Function public.yay() should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_definer(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_definer(schema, func, args, desc)',
     'whatever',
     ''
 );
@@ -725,9 +749,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_definer(schema, func, args)',
+    'Function public.oww(integer, text) should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'public', 'yay', 'whatever' ),
     true,
     'is_definer(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay', 'whatever' ),
+    false,
+    'isnt_definer(schema, func, desc)',
     'whatever',
     ''
 );
@@ -741,9 +781,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay'::name ),
+    false,
+    'isnt_definer(schema, func)',
+    'Function public.yay() should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
     'is_definer(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_definer(schema, func, 0 args, desc)',
     'whatever',
     ''
 );
@@ -757,9 +813,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay', '{}'::name[] ),
+    false,
+    'isnt_definer(schema, func, 0 args)',
+    'Function public.yay() should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_definer(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_definer(schema, func, args, desc)',
     'whatever',
     ''
 );
@@ -773,9 +845,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_definer(schema, func, args)',
+    'Function public.oww(integer, text) should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'public', 'yay', 'whatever' ),
     true,
     'is_definer(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay', 'whatever' ),
+    false,
+    'isnt_definer(schema, func, desc)',
     'whatever',
     ''
 );
@@ -785,6 +873,14 @@ SELECT * FROM check_test(
     true,
     'is_definer(schema, func)',
     'Function public.yay() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'public', 'yay'::name ),
+    false,
+    'isnt_definer(schema, func)',
+    'Function public.yay() should not be security definer',
     ''
 );
 
@@ -792,6 +888,14 @@ SELECT * FROM check_test(
     is_definer( 'yay', '{}'::name[], 'whatever' ),
     true,
     'is_definer(func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_definer(func, 0 args, desc)',
     'whatever',
     ''
 );
@@ -805,9 +909,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'yay', '{}'::name[] ),
+    false,
+    'isnt_definer(func, 0 args)',
+    'Function yay() should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_definer(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_definer(func, args, desc)',
     'whatever',
     ''
 );
@@ -821,9 +941,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_definer( 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_definer(func, args)',
+    'Function oww(integer, text) should not be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
     is_definer( 'yay', 'whatever' ),
     true,
     'is_definer(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_definer( 'yay', 'whatever' ),
+    false,
+    'isnt_definer(func, desc)',
     'whatever',
     ''
 );
@@ -836,12 +972,28 @@ SELECT * FROM check_test(
     ''
 );
 
+SELECT * FROM check_test(
+    isnt_definer( 'yay'::name ),
+    false,
+    'isnt_definer(func)',
+    'Function yay() should not be security definer',
+    ''
+);
+
 /****************************************************************************/
--- Test is_aggregate().
+-- Test is_aggregate() and isnt_aggregate().
 SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
     true,
     'is_aggregate(schema, func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    false,
+    'isnt_aggregate(schema, func, arg, desc)',
     'whatever',
     ''
 );
@@ -855,9 +1007,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    false,
+    'isnt_aggregate(schema, func, arg)',
+    'Function public.tap_accum(anyelement) should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_aggregate(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_aggregate(schema, func, args, desc)',
     'whatever',
     ''
 );
@@ -871,9 +1039,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_aggregate(schema, func, args)',
+    'Function public.oww(integer, text) should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', 'whatever' ),
     true,
     'is_aggregate(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum', 'whatever' ),
+    false,
+    'isnt_aggregate(schema, func, desc)',
     'whatever',
     ''
 );
@@ -887,9 +1071,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum'::name ),
+    false,
+    'isnt_aggregate(schema, func)',
+    'Function public.tap_accum() should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
     true,
     'is_aggregate(schema, func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    false,
+    'isnt_aggregate(schema, func, arg, desc)',
     'whatever',
     ''
 );
@@ -903,9 +1103,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    false,
+    'isnt_aggregate(schema, func, arg)',
+    'Function public.tap_accum(anyelement) should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_aggregate(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_aggregate(schema, func, args, desc)',
     'whatever',
     ''
 );
@@ -919,9 +1135,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_aggregate(schema, func, args)',
+    'Function public.oww(integer, text) should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', 'whatever' ),
     true,
     'is_aggregate(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum', 'whatever' ),
+    false,
+    'isnt_aggregate(schema, func, desc)',
     'whatever',
     ''
 );
@@ -931,6 +1163,14 @@ SELECT * FROM check_test(
     true,
     'is_aggregate(schema, func)',
     'Function public.tap_accum() should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'tap_accum'::name ),
+    false,
+    'isnt_aggregate(schema, func)',
+    'Function public.tap_accum() should not be an aggregate function',
     ''
 );
 
@@ -938,6 +1178,14 @@ SELECT * FROM check_test(
     is_aggregate( 'tap_accum', ARRAY['anyelement'], 'whatever' ),
     true,
     'is_aggregate(func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    false,
+    'isnt_aggregate(func, arg, desc)',
     'whatever',
     ''
 );
@@ -951,9 +1199,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'tap_accum', ARRAY['anyelement'] ),
+    false,
+    'isnt_aggregate(func, arg)',
+    'Function tap_accum(anyelement) should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_aggregate(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_aggregate(func, args, desc)',
     'whatever',
     ''
 );
@@ -967,9 +1231,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_aggregate( 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_aggregate(func, args)',
+    'Function oww(integer, text) should not be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
     is_aggregate( 'tap_accum', 'whatever' ),
     true,
     'is_aggregate(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'tap_accum', 'whatever' ),
+    false,
+    'isnt_aggregate(func, desc)',
     'whatever',
     ''
 );
@@ -979,6 +1259,14 @@ SELECT * FROM check_test(
     true,
     'is_aggregate(func)',
     'Function tap_accum() should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'tap_accum'::name ),
+    false,
+    'isnt_aggregate(func)',
+    'Function tap_accum() should not be an aggregate function',
     ''
 );
 
