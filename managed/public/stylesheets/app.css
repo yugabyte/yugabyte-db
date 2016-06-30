@@ -43,6 +43,49 @@ body {
     margin-top: 25px;
 }
 
+.modal-body .table>thead>tr>th, .table>tbody>tr>th, .table>tfoot>tr>th, .table>thead>tr>td, .table>tbody>tr>td, .table>tfoot>tr>td {
+  border: none;
+}
+
+.modal-header {
+  padding: 10px;
+}
+.modal-body .table {
+  margin-bottom: 0px;
+  width: auto;
+}
+.spacer {
+    margin-top: 40px; /* define margin as you see fit */
+}
+
+.shortcut {
+  padding-bottom: 1em;
+}
+
+.shortcut-key {
+    display: inline-block;
+    min-width: 10px;
+    height: 18px;
+    padding: 0 4px;
+    font-size: 11px;
+    line-height: 18px;
+    color: #66757f;
+    text-align: center;
+    background-color: #e1e8ed;
+    background-repeat: repeat-x;
+    background-image: linear-gradient(#f5f8fa,#eee);
+    -ms-filter: "progid:DXImageTransform.Microsoft.gradient(startColorstr=#f5f8fa, endColorstr=#eeeeee, GradientType=0)";
+    border: 1px solid #ccd6dd;
+    border-radius: 3px;
+    box-shadow: inset 0 1px 0 #fff,0 1px 0 #ccd6dd;
+}
+
+.shortcut-label {
+    line-height: 20px;
+    padding-left: 8px;
+    color: #66757f;
+}
+
 .edit-profile-panel {
     margin-top: 10px;
 }

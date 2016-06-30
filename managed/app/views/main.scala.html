@@ -1,3 +1,4 @@
+@import common._
 @(showNav: Boolean, pageId: String = "content")(body: Html)
 
 <!DOCTYPE html>
@@ -10,9 +11,11 @@
     <script src="@routes.Assets.versioned("lib/bootstrap/js/bootstrap.min.js")" type="text/javascript"></script>
     <script src="@routes.Assets.versioned("javascripts/app.js")"></script>
     <script src="@routes.Assets.versioned("lib/metisMenu/metisMenu.min.js")"></script>
+	  <script src="@routes.Assets.versioned("lib/mousetrap/mousetrap.min.js")"></script>
 	  <link rel='stylesheet' href='@routes.Assets.versioned("stylesheets/app.css")'>
   </head>
 
+  @shortcutDialog()
   @if(showNav) {
     @navbar()
   }
