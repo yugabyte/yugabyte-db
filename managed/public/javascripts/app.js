@@ -36,15 +36,26 @@ function fetchInstances() {
 }
 
 function registerTaskDropdownEvent() {
-  var customerUUID = $("#customerUUID").val();
+  var task = null;
 
-  $('#taskHistoryDropdown').on("show.bs.dropdown", function () {
+  $("#taskHistoryDropdown").on("show.bs.dropdown", function () {
     var ulParentNode = $(this).children(".dropdown-tasks");
+    fetchAndUpdateTasks(ulParentNode);
+    timerId = setInterval(function() {
+      fetchAndUpdateTasks(ulParentNode);
+    }, 5000);
+  });
 
-    $.get("/api/customers/" + customerUUID + "/tasks", function (resultHtml) {
-      ulParentNode.empty();
-      ulParentNode.append(resultHtml);
-    });
+  $("#taskHistoryDropdown").on("hide.bs.dropdown", function() {
+    clearInterval(timerId);
+  });
+}
+
+function fetchAndUpdateTasks(ulParentNode) {
+  var customerUUID = $("#customerUUID").val();
+  $.get("/api/customers/" + customerUUID + "/tasks", function (resultHtml) {
+    ulParentNode.empty();
+    ulParentNode.append(resultHtml);
   });
 }
 
