@@ -104,12 +104,17 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+if [[ "$OSTYPE" =~ ^darwin && "$YB_COMPILER_TYPE" != "clang" ]]; then
+  echo "Can only build with clang on Mac OS X, but found YB_COMPILER_TYPE=$YB_COMPILER_TYPE" >&2
+  exit 1
+fi
+
 cmake_opts=()
 case "$build_type" in
   asan)
     cmake_opts+=( -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 )
     cmake_build_type=fastdebug
-    if [ -n "$YB_COMPILER_TYPE"] && [ "$YB_COMPILER_TYPE" != "clang" ]; then
+    if [ -n "$YB_COMPILER_TYPE" ] && [ "$YB_COMPILER_TYPE" != "clang" ]; then
       echo "ASAN builds require clang"
     fi
     YB_COMPILER_TYPE="clang"

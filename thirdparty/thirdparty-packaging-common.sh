@@ -120,6 +120,7 @@ download_prebuilt_thirdparty_deps() {
     else
       echo "Local file $dest_path MD5 sum: $local_md5_sum, remote MD5 sum: $remote_md5_sum," \
         "re-downloading from '$package_s3_url'"
+      rm -f "$dest_path"
     fi
   else
     echo "Local file $dest_path not found, downloading from $package_s3_url"

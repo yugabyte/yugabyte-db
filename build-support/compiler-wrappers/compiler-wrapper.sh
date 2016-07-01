@@ -8,6 +8,7 @@ SCRIPT_NAME="compiler-wrapper.sh"
 YB_SRC_DIR=$( cd "$( dirname "$0" )"/../.. && pwd )
 
 . "$YB_SRC_DIR"/build-support/common-build-env.sh
+# The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type.
 
 thirdparty_install_dir=$YB_SRC_DIR/thirdparty/installed/bin
 
@@ -40,8 +41,13 @@ case "$YB_COMPILER_TYPE" in
       unset arg
     fi
 
-    cc_executable=$thirdparty_install_dir/clang
-    cxx_executable=$thirdparty_install_dir/clang++
+    if [[ "$OSTYPE" =~ ^darwin ]]; then
+      cc_executable=/usr/bin/clang
+      cxx_executable=/usr/bin/clang++
+    else
+      cc_executable=$thirdparty_install_dir/clang
+      cxx_executable=$thirdparty_install_dir/clang++
+    fi
   ;;
   *)
     echo "Invalid value for YB_COMPILER_TYPE: '$YB_COMPILER_TYPE' (must be gcc or clang)" >&2

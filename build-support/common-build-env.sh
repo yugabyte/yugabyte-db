@@ -152,12 +152,19 @@ thirdparty_dir=$YB_SRC_ROOT/thirdparty
 
 # Ensure the YB_COMPILER_TYPE environment variable is set. It is used by our compiler-wrapper.sh
 # script to invoke the appropriate C/C++ compiler.
-if [ -z "${YB_COMPILER_TYPE:-}" ]; then
+if [[ "$OSTYPE" =~ ^darwin ]]; then
+  if [[ -z "${YB_COMPILER_TYPE:-}" ]]; then
+    YB_COMPILER_TYPE=clang
+  elif [[ "$YB_COMPILER_TYPE" != "clang" ]]; then
+    echo "YB_COMPILER_TYPE can only be clang on Mac OS X," \
+         "found YB_COMPILER_TYPE=$YB_COMPILER_TYPE" >&2
+    exit 1
+  fi
+elif [[ -z "${YB_COMPILER_TYPE:-}" ]]; then
   YB_COMPILER_TYPE=gcc
 fi
-export YB_COMPILER_TYPE
-
 if [[ ! "$YB_COMPILER_TYPE" =~ ^(gcc|clang)$ ]]; then
   echo "Invalid compiler type: '$YB_COMPILER_TYPE' (gcc or clang expected)"
   exit 1
 fi
+export YB_COMPILER_TYPE
