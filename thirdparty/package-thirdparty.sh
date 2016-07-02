@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
       dest_dir="$2"
       shift
     ;;
-    --upload)
+    -u|--upload)
       upload=true
     ;;
     *)
@@ -86,6 +86,8 @@ installed_dirs=(
 )
 
 check_build_output_dirs_exist "${installed_dirs[@]}"
+
+"$TP_DIR"/../build-support/fix_rpath.py
 
 thirdparty_dir_sha1=$( git log -n 1 --pretty=format:%H . )
 if [[ ! "$thirdparty_dir_sha1" =~ ^[0-9a-f]{40}$ ]]; then

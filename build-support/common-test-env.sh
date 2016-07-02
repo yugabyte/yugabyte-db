@@ -619,21 +619,11 @@ if [ ! -d "$YB_SRC_ROOT/build-support" ]; then
   exit 1
 fi
 
-# Additional dynamic library paths.
-# TODO: get rid of this and set proper rpaths on binaries and dynamic libraries instead.
-common_dynamic_lib_dirs="$YB_SRC_ROOT/thirdparty/installed-deps/lib"
-common_dynamic_lib_dirs+=":$YB_SRC_ROOT/thirdparty/installed/lib"
-if [ "$(uname)" == "Darwin" ]; then
+if [[ "$OSTYPE" =~ ^darwin ]]; then
   IS_MAC=1
-  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build:$common_dynamic_lib_dirs"
-  STACK_TRACE_FILTER=cat
 else
   IS_MAC=0
-  export LD_LIBRARY_PATH="$common_dynamic_lib_dirs"
 fi
-
-unset common_dynamic_lib_dirs
-# End of common dynamic library path settings.
 
 if [ "$IS_MAC" == "1" ]; then
   # Stack trace address to line number conversion is disabled on Mac OS X as of Apr 2016.
@@ -645,4 +635,3 @@ fi
 
 # Set a ten-minute timeout for tests. This keeps our Jenkins builds from hanging.
 YB_TEST_TIMEOUT=${YB_TEST_TIMEOUT:-600}
-

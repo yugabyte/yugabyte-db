@@ -233,6 +233,8 @@ if [ "$BUILD_CPP" == "1" ]; then
     unlink "$LATEST_BUILD_LINK"
   fi
 
+  "$YB_SRC_ROOT"/build-support/fix_rpath.py --build-root "$BUILD_ROOT"
+
   # If compilation succeeds, try to run all remaining steps despite any failures.
   set +e
 

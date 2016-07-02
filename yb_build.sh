@@ -225,16 +225,7 @@ fi
 
 touch "$thirdparty_built_flag_file"
 
-# Fix rpath's for various binaries on OSX so that the executables can be launched without having
-# to set the DYLD_FALLBACK_LIBRARY_PATH before running them.
-if [ "$( uname )" == "Darwin" ]; then
-  echo "Fixing rpath for binaries on OSX"
-  for binary in $BUILD_ROOT/bin/yb-* $BUILD_ROOT/lib/*.dylib
-  do
-    install_name_tool -change librocksdb_debug.4.6.dylib \
-      "$BUILD_ROOT"/rocksdb-build/librocksdb_debug.4.6.dylib "$binary"
-  done
-fi
+"$YB_SRC_ROOT"/build-support/fix_rpath.py --build-root "$BUILD_ROOT"
 
 # Check if the java build is needed. And skip java unit test runs if specified - time taken
 # for tests is around two minutes currently.

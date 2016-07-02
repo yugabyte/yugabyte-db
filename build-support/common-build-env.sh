@@ -66,27 +66,6 @@ expect_num_args() {
   fi
 }
 
-# Set the OS-specific dynamically linked library path. We should make it unnecessary to do this by
-# setting rpath properly in all generated executables and libraries.
-set_dll_path() {
-  local thirdparty_library_path="$project_dir/thirdparty/installed/lib"
-  local thirdparty_library_path+=":$project_dir/thirdparty/installed-deps/lib"
-  echo "Adding $thirdparty_library_path to library path before the build"
-  case "$OSTYPE" in
-    linux*)
-      LD_LIBRARY_PATH+=:$thirdparty_library_path
-      export LD_LIBRARY_PATH
-    ;;
-    darwin*)
-      DYLD_FALLBACK_LIBRARY_PATH+=:$thirdparty_library_path
-      export DYLD_FALLBACK_LIBRARY_PATH
-    ;;
-    *)
-      echo "Unknown OSTYPE: $OSTYPE" >&2
-      exit 1
-  esac
-}
-
 # Make a regular expression from a list.
 regex_from_list() {
   expect_some_args "$@"
