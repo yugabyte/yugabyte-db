@@ -33,13 +33,10 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
   private final String uuid;
   private final ServerType serverType;
 
-  // TODO(Bharat) - get tablet id from master leader
-  private static final String MASTER_TABLET_ID = "00000000000000000000000000000000";
-
   public ChangeConfigRequest(
       String leader_uuid, YBTable masterTable, String host, int port, String uuid, boolean isAdd) {
     super(masterTable);
-    this.tablet_id = MASTER_TABLET_ID;
+    this.tablet_id = YBClient.getMasterTabletId();
     this.uuid = uuid;
     this.host = host;
     this.port = port;

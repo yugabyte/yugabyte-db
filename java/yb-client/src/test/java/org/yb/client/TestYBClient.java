@@ -18,6 +18,8 @@ package org.yb.client;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.yb.client.RowResult.timestampToString;
@@ -27,12 +29,14 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.yb.Type;
+import org.yb.util.ServerInfo;
 
 import com.google.common.net.HostAndPort;
 
@@ -85,6 +89,25 @@ public class TestYBClient extends BaseYBTest {
     assertFalse(resp.hasError());
     int numAfter = BaseYBTest.miniCluster().getNumMasters();
     assertEquals(numAfter, numBefore + 1);
+  }
+
+  /**
+   * Test for Master leader step down operation.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testLeaderStepDown() throws Exception {
+    String leader_uuid = syncClient.getLeaderMasterUUID();
+    assertNotNull(leader_uuid);
+    LeaderStepDownResponse resp = syncClient.masterLeaderStepDown();
+    assertFalse(resp.hasError());
+    // Sleep to give time for re-election completion. TODO: Add api for election completion.
+    Thread.sleep(3000);
+    String new_leader_uuid = syncClient.getLeaderMasterUUID();
+    assertNotNull(new_leader_uuid);
+    // NOTE: This assert could intermittently fail. We will use this test for creating a
+    // reproducible test case for JIRA ENG-49.
+    assertNotEquals(new_leader_uuid, leader_uuid);
   }
 
   /**

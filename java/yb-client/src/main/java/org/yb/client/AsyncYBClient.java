@@ -383,6 +383,23 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(rpc);
   }
 
+  /**
+   * Leader step down request handler.
+   * @return a deferred object that yields a leader step down response.
+   */
+  public Deferred<LeaderStepDownResponse> masterLeaderStepDown(
+	  String leader_uuid, String tablet_id) throws Exception {
+    checkIsClosed();
+    if (leader_uuid == null || tablet_id == null) {
+      throw new IllegalArgumentException("Invalid leader/tablet argument during step down " +
+                                         "request. Leader = " + leader_uuid);
+    }
+
+    LeaderStepDownRequest rpc = new LeaderStepDownRequest(this.masterTable, leader_uuid, tablet_id);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
   Deferred<GetTableSchemaResponse> getTableSchema(String name) {
     GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);

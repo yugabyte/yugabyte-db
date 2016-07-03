@@ -9,6 +9,7 @@ import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ChangeConfigResponse;
+import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ListTabletServersResponse;
@@ -132,6 +133,19 @@ public class YBCliCommands implements CommandMarker {
       return printServerInfo(resp.getMasters(), true, resp.getElapsedMillis());
     } catch (Exception e) {
       return "Failed to fetch masters info for database at " + masterAddresses + ", error: " + e;
+    }
+  }
+
+  @CliCommand(value = "leader_step_down", help = "Try to force the current master leader to step down.")
+  public String leaderStepDown() {
+    try {
+      LeaderStepDownResponse resp = ybClient.masterLeaderStepDown();
+      StringBuilder sb = new StringBuilder();
+      sb.append(resp.hasError() ? "Hit Error " + resp.errorMessage() + ".\n" : "Success.\n");
+      sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
+      return sb.toString();
+    } catch (Exception e) {
+      return "Failed to step down leader from " + masterAddresses + ", error: " + e;
     }
   }
 

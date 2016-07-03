@@ -47,7 +47,7 @@ public class BaseYBTest {
 
   private static final String NUM_MASTERS_PROP = "NUM_MASTERS";
   private static final int NUM_TABLET_SERVERS = 3;
-  private static final int DEFAULT_NUM_MASTERS = 2;
+  private static final int DEFAULT_NUM_MASTERS = 3;
 
   // Number of masters that will be started for this test if we're starting
   // a cluster.

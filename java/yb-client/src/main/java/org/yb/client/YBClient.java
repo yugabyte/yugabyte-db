@@ -47,6 +47,9 @@ public class YBClient implements AutoCloseable {
     this.asyncClient = asyncClient;
   }
 
+  // TODO(Bharat) - get tablet id from master leader.
+  private static final String MASTER_TABLET_ID = "00000000000000000000000000000000";
+
   /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.
@@ -162,6 +165,33 @@ public class YBClient implements AutoCloseable {
   public ChangeConfigResponse ChangeMasterConfig(
       String host, int port, boolean isAdd) throws Exception {
     Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(host, port, isAdd);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the master's tablet id.
+   * @return master tablet id.
+   */
+  public static String getMasterTabletId() {
+    return MASTER_TABLET_ID;
+  }
+
+  /**
+  * Get the master leader's uuid.
+  * @return current leader master's uuid.
+  */
+  public String getLeaderMasterUUID() {
+    return asyncClient.getLeaderMasterUUID();
+  }
+
+  /**
+   * Change master server configuration.
+   * @return status of the step down via a response.
+   */
+  public LeaderStepDownResponse masterLeaderStepDown() throws Exception {
+    String leader_uuid = getLeaderMasterUUID();
+    String tablet_id = getMasterTabletId();
+    Deferred<LeaderStepDownResponse> d = asyncClient.masterLeaderStepDown(leader_uuid, tablet_id);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
