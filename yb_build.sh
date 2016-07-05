@@ -10,9 +10,9 @@ show_help() {
 Usage: ${0##*/} [<options>] [<build_type>]
 Options:
   -h, --help
-    Show help
+    Show help.
   --verbose
-    Show debug output from CMake
+    Show debug output from CMake.
   --force-run-cmake
     Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
