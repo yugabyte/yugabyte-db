@@ -29,7 +29,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 
+import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -46,10 +49,29 @@ public class TestYBClient extends BaseYBTest {
 
   private String tableName;
 
+  @BeforeClass
+  public static void setUpBeforeClass() throws Exception {
+  }
+
+  @AfterClass
+  public static void tearDownAfterClass() throws Exception {
+  }
+
   @Before
   public void setTableName() {
     tableName = TestYBClient.class.getName() + "-" + System.currentTimeMillis();
   }
+
+  @Before
+  public void setUpBefore() throws Exception {
+    BaseYBTest.setUpBeforeClass();
+  }
+
+  @After
+  public void tearDownAfter() throws Exception {
+    BaseYBTest.tearDownAfterClass();
+  }
+
 
   private Schema createManyStringsSchema() {
     ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(4);

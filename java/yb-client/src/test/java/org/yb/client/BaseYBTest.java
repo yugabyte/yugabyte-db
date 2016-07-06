@@ -26,7 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.collect.ImmutableList;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.yb.Type;
@@ -70,8 +72,8 @@ public class BaseYBTest {
 
   private static List<String> tableNames = new ArrayList<>();
 
-  @Before
-  public void setUpBefore() throws Exception {
+  @BeforeClass
+  public static void setUpBeforeClass() throws Exception {
     LOG.info("Setting up before class...");
 
     miniCluster = new MiniYBCluster.MiniYBClusterBuilder()
@@ -91,8 +93,8 @@ public class BaseYBTest {
     }
   }
 
-  @After
-  public void tearDownAfter() throws Exception {
+  @AfterClass
+  public static void tearDownAfterClass() throws Exception {
     try {
       if (client != null) {
         Deferred<ArrayList<Void>> d = client.shutdown();
