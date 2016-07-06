@@ -562,6 +562,20 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   ASSERT_OK(cluster_->tablet_server(1)->Restart());
   ASSERT_OK(cluster_->tablet_server(2)->Restart());
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_READY));
+
+  // Because the object deleter (whose destructor will unset the variable transition_in_progress_)
+  // is created before rb_client in TsTabletManager::StartRemoteBootstrap, rb_client will be
+  // destroyed before deleter. Before rb_client is destroyed, the remote bootstrap session has to be
+  // destroyed too. With the new LEARNER role, a remote bootstrap session won't finish until we have
+  // successfully started a ChangeConfig. This will delay the destruction of rb_client. Thus we need
+  // to wait until we know that tablet_server(0) has been promoted to a VOTER role before we
+  // continue. Otherwise, we might send the DeleteTablet request before transition_in_progress_
+  // has been cleared and we'll get the error
+  // "State transition of tablet XXX already in progress: remote bootstrapping tablet".
+  leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
+  leader = ts_map_[leader_uuid];
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader, tablet_id, timeout));
+
   ClusterVerifier v(cluster_.get());
   NO_FATALS(v.CheckCluster());
   NO_FATALS(v.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,

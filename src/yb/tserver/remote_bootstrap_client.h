@@ -190,6 +190,10 @@ class RemoteBootstrapClient {
   // Session-specific data items.
   bool replace_tombstoned_tablet_;
 
+  // We track whether this session succeeded and send this information as part of the
+  // EndRemoteBootstrapSessionRequestPB request.
+  bool succeeded_;
+
   // Local tablet metadata file.
   scoped_refptr<tablet::TabletMetadata> meta_;
 

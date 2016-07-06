@@ -163,7 +163,12 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
       decision_callback_(std::move(decision_callback)) {
   for (const RaftPeerPB& peer : config.peers()) {
     if (request.candidate_uuid() == peer.permanent_uuid()) continue;
-    follower_uuids_.push_back(peer.permanent_uuid());
+    if (peer.member_type() == RaftPeerPB::NON_VOTER) {
+      LOG(INFO) << "Skipping peer " << peer.permanent_uuid() << " because it is in LEARNER mode";
+      continue;
+    }
+
+    voting_follower_uuids_.push_back(peer.permanent_uuid());
 
     gscoped_ptr<VoterState> state(new VoterState());
     state->proxy_status = proxy_factory->NewProxy(peer, &state->proxy);
@@ -174,10 +179,10 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
   CHECK_EQ(1, vote_counter_->GetTotalVotesCounted()) << "Candidate must vote for itself first";
 
   // Ensure that existing votes + future votes add up to the expected total.
-  CHECK_EQ(vote_counter_->GetTotalVotesCounted() + follower_uuids_.size(),
+  CHECK_EQ(vote_counter_->GetTotalVotesCounted() + voting_follower_uuids_.size(),
            vote_counter_->GetTotalExpectedVotes())
       << "Expected different number of followers. Follower UUIDs: ["
-      << JoinStringsIterator(follower_uuids_.begin(), follower_uuids_.end(), ", ")
+      << JoinStringsIterator(voting_follower_uuids_.begin(), voting_follower_uuids_.end(), ", ")
       << "]; RaftConfig: {" << config.ShortDebugString() << "}";
 }
 
@@ -195,7 +200,7 @@ void LeaderElection::Run() {
   CheckForDecision();
 
   // The rest of the code below is for a typical multi-node configuration.
-  for (const std::string& voter_uuid : follower_uuids_) {
+  for (const std::string& voter_uuid : voting_follower_uuids_) {
     VoterState* state = nullptr;
     {
       lock_guard<Lock> guard(&lock_);

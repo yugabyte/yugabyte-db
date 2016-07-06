@@ -110,7 +110,6 @@ static const char* g_progname = nullptr;
 // Maximum number of elements to dump on unexpected errors.
 #define MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR 10
 
-
 enum PeerMode {
   LEADER = 1,
   FOLLOWER
@@ -354,7 +353,6 @@ Status ClusterAdminClient::ChangeConfig(
     if (!RaftPeerPB::MemberType_Parse(uppercase_member_type, &member_type_val)) {
       return Status::InvalidArgument("Unrecognized member_type", *member_type);
     }
-    peer_pb.set_member_type(member_type_val);
   }
 
   // Validate the existence of the optional fields.
@@ -496,7 +494,6 @@ Status ClusterAdminClient::ChangeMasterConfig(
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(peer_uuid);
-  peer_pb.set_member_type(RaftPeerPB::VOTER);
   HostPortPB *peer_host_port = peer_pb.mutable_last_known_addr();
   peer_host_port->set_port(peer_port);
   peer_host_port->set_host(peer_host);

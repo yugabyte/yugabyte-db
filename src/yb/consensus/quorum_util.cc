@@ -57,6 +57,20 @@ Status GetRaftConfigMember(const RaftConfigPB& config,
       return Status::OK();
     }
   }
+  return Status::NotFound(Substitute("Peer with uuid $0 not found in consensus config { $1 }",
+                                     uuid, config.ShortDebugString()));
+}
+
+Status GetMutableRaftConfigMember(RaftConfigPB& config,
+                                  const std::string& uuid,
+                                  RaftPeerPB** peer_pb) {
+  for (int i = 0; i < config.peers_size(); ++i) {
+    auto peer = config.mutable_peers(i);
+    if (peer->permanent_uuid() == uuid) {
+      *peer_pb = peer;
+      return Status::OK();
+    }
+  }
   return Status::NotFound(Substitute("Peer with uuid $0 not found in consensus config", uuid));
 }
 
@@ -187,12 +201,6 @@ Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type) {
       return Status::IllegalState(
           Substitute("Peer: $0 has no member type set. RaftConfig: $1", peer.permanent_uuid(),
                      config.ShortDebugString()));
-    }
-    if (peer.member_type() == RaftPeerPB::NON_VOTER) {
-      return Status::IllegalState(
-          Substitute(
-              "Peer: $0 is a NON_VOTER, but this isn't supported yet. RaftConfig: $1",
-              peer.permanent_uuid(), config.ShortDebugString()));
     }
   }
 

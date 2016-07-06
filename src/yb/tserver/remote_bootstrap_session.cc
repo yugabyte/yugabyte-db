@@ -17,6 +17,7 @@
 #include "yb/tserver/remote_bootstrap_session.h"
 
 #include <algorithm>
+#include <boost/optional.hpp>
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -55,11 +56,64 @@ RemoteBootstrapSession::RemoteBootstrapSession(
       requestor_uuid_(std::move(requestor_uuid)),
       fs_manager_(fs_manager),
       blocks_deleter_(&blocks_),
-      logs_deleter_(&logs_) {}
+      logs_deleter_(&logs_),
+      succeeded_(false) {}
 
 RemoteBootstrapSession::~RemoteBootstrapSession() {
   // No lock taken in the destructor, should only be 1 thread with access now.
   CHECK_OK(UnregisterAnchorIfNeededUnlocked());
+}
+
+Status RemoteBootstrapSession::ChangeRole() {
+  CHECK(succeeded_);
+
+  scoped_refptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
+  // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
+  // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
+  // null.
+  if (!consensus) {
+    tablet::TabletStatePB tablet_state = tablet_peer_->state();
+    return Status::IllegalState(Substitute("Unable to change role for server $0 for tablet $1."
+                                           "Consensus is not available. Tablet state: $2 ($3)",
+                                           requestor_uuid_, tablet_peer_->tablet_id(),
+                                           tablet::TabletStatePB_Name(tablet_state), tablet_state));
+  }
+
+  // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
+  // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
+  // the leader starts bootstrapping it.
+  const consensus::RaftConfigPB config = tablet_peer_->RaftConfig();
+  for (const consensus::RaftPeerPB& peer_pb : config.peers()) {
+    if (peer_pb.permanent_uuid() != requestor_uuid_) {
+      continue;
+    }
+
+    if (peer_pb.member_type() != consensus::RaftPeerPB::NON_VOTER) {
+      LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is not a NON_VOTER. "
+                   << "Not changing its role.";
+      // Nothing to do.
+      return Status::OK();
+    }
+  }
+
+  consensus::ChangeConfigRequestPB req;
+  consensus::ChangeConfigResponsePB resp;
+
+  req.set_tablet_id(tablet_peer_->tablet_id());
+  req.set_type(consensus::CHANGE_ROLE);
+  consensus::RaftPeerPB* peer = req.mutable_server();
+  peer->set_permanent_uuid(requestor_uuid_);
+
+  boost::optional<TabletServerErrorPB::Code> error_code;
+
+  LOG(INFO) << "Changing config with request: { " << req.ShortDebugString() << " } "
+            << "in bootstrap session " << session_id_;
+
+  // If another ChangeConfig is being processed, our request will be rejected.
+  // TODO(hector): Even if this ChangeConfig is accepted, something could go wrong before it is
+  // committed and the new peer will never become a VOTER. We need to add code to detect this
+  // situation and promote the NON_VOTER peer.
+  return consensus->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
 }
 
 Status RemoteBootstrapSession::Init() {
@@ -365,6 +419,15 @@ Status RemoteBootstrapSession::FindLogSegment(uint64_t segment_seqno,
 
 Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
   return tablet_peer_->log_anchor_registry()->UnregisterIfAnchored(&log_anchor_);
+}
+
+void RemoteBootstrapSession::SetSuccess() {
+  boost::lock_guard<simple_spinlock> l(session_lock_);
+  succeeded_ = true;
+}
+
+bool RemoteBootstrapSession::Succeeded() {
+  return succeeded_;
 }
 
 } // namespace tserver

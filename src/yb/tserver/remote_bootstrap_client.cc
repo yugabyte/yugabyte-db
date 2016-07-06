@@ -98,7 +98,8 @@ RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
       replace_tombstoned_tablet_(false),
       status_listener_(nullptr),
       session_idle_timeout_millis_(0),
-      start_time_micros_(0) {}
+      start_time_micros_(0),
+      succeeded_(false) {}
 
 RemoteBootstrapClient::~RemoteBootstrapClient() {
   // Note: Ending the remote bootstrap session releases anchors on the remote.
@@ -183,6 +184,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   }
 
   session_id_ = resp.session_id();
+  LOG(INFO) << "Began remote bootstrap session " << session_id_;
+
   session_idle_timeout_millis_ = resp.session_idle_timeout_millis();
   superblock_.reset(resp.release_superblock());
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
@@ -276,6 +279,7 @@ Status RemoteBootstrapClient::Finish() {
                           "Unable to make copy of tablet metadata");
   }
 
+  succeeded_ = true;
   return Status::OK();
 }
 
@@ -319,8 +323,10 @@ Status RemoteBootstrapClient::EndRemoteSession() {
 
   EndRemoteBootstrapSessionRequestPB req;
   req.set_session_id(session_id_);
-  req.set_is_success(true);
+  req.set_is_success(succeeded_);
   EndRemoteBootstrapSessionResponsePB resp;
+
+  LOG(INFO) << "Ending remote bootstrap session " << session_id_;
   RETURN_NOT_OK_UNWIND_PREPEND(proxy_->EndRemoteBootstrapSession(req, &resp, &controller),
                                controller,
                                "Failure ending remote bootstrap session");

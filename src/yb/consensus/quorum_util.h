@@ -42,6 +42,10 @@ Status GetRaftConfigMember(const RaftConfigPB& config,
                            const std::string& uuid,
                            RaftPeerPB* peer_pb);
 
+Status GetMutableRaftConfigMember(RaftConfigPB& config,
+                                  const std::string& uuid,
+                                  RaftPeerPB** peer_pb);
+
 // Get the leader of the consensus configuration.
 // Returns Status::NotFound() if the leader RaftPeerPB could not be found in
 // the config, or if there is no leader defined.

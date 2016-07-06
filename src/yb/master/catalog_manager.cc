@@ -1634,7 +1634,6 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
     tablet_needs_alter = true;
   }
 
-
   if (report.has_error()) {
     Status s = StatusFromPB(report.error());
     DCHECK(!s.ok());
@@ -2715,7 +2714,6 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
     return false;
   }
   *peer->mutable_last_known_addr() = peer_reg.common().rpc_addresses(0);
-  peer->set_member_type(RaftPeerPB::VOTER);
 
   return true;
 }
@@ -3415,7 +3413,6 @@ void CatalogManager::SelectReplicas(
     ts->GetRegistration(&reg);
 
     RaftPeerPB *peer = config->add_peers();
-    peer->set_member_type(RaftPeerPB::VOTER);
     peer->set_permanent_uuid(ts->permanent_uuid());
 
     // TODO: This is temporary, we will use only UUIDs

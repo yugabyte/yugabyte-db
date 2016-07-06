@@ -458,7 +458,6 @@ class ScanResultChecksummer : public ScanResultCollector {
     return static_cast<uint32_t>(row_crc); // CRC32 only uses the lower 32 bits.
   }
 
-
   faststring tmp_buf_;
   crc::Crc* const crc_;
   uint64_t agg_checksum_;
@@ -981,7 +980,6 @@ void TabletServiceImpl::ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
   scanner->UpdateAccessTime();
   context->RespondSuccess();
 }
-
 
 void TabletServiceImpl::Scan(const ScanRequestPB* req,
                              ScanResponsePB* resp,

@@ -232,7 +232,7 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
   // List of all potential followers to request votes from.
   // The candidate's own UUID must not be included.
-  std::vector<std::string> follower_uuids_;
+  std::vector<std::string> voting_follower_uuids_;
 
   // Map of UUID -> VoterState.
   VoterStateMap voter_state_;

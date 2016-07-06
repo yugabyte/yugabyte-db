@@ -397,7 +397,19 @@ void SysCatalogTable::SysCatalogStateChanged(
     LOG(INFO) << "Processing context '" << context->ToString()
               << "' - new count " << new_count << ", old count " << old_count;
 
-    if (std::abs(new_count - old_count) != 1) {
+    // If new_config and old_config have the same number of peers, then the change config must have
+    // been a ROLE_CHANGE, thus new_config must have exactly one more voter than old config.
+    if (new_count == old_count) {
+      int new_voter_count = CountVoters(context->change_record.new_config());
+      int old_voter_count = CountVoters(context->change_record.old_config());
+
+      if (new_voter_count - old_voter_count != 1) {
+        LOG(FATAL) << "Expected new config to have one more voter than new config, found "
+                   << new_voter_count << " voters in new config and "
+                   << old_voter_count << " voters in old config.";
+      }
+    } else if (std::abs(new_count - old_count) != 1) {
+
       LOG(FATAL) << "Expected exactly one server addition or deletion, found " << new_count
                  << " servers in new config and " << old_count << " servers in old config.";
       return;

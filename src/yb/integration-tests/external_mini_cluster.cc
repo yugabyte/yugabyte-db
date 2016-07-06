@@ -106,7 +106,6 @@ ExternalMiniClusterOptions::ExternalMiniClusterOptions()
 ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
 }
 
-
 ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
   : opts_(opts) {
 }
@@ -408,7 +407,6 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(master->uuid());
-  peer_pb.set_member_type(RaftPeerPB::VOTER);
   RETURN_NOT_OK(HostPortToPB(master->bound_rpc_hostport(), peer_pb.mutable_last_known_addr()));
   req.set_dest_uuid(GetLeaderMaster()->uuid());
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -907,7 +905,6 @@ ExternalDaemon::ExternalDaemon(
 ExternalDaemon::~ExternalDaemon() {
 }
 
-
 Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   CHECK(!process_);
 
@@ -1254,7 +1251,6 @@ Status ExternalMaster::Restart() {
   return Status::OK();
 }
 
-
 //------------------------------------------------------------
 // ExternalTabletServer
 //------------------------------------------------------------
@@ -1305,6 +1301,5 @@ Status ExternalTabletServer::Restart() {
   RETURN_NOT_OK(StartProcess(flags));
   return Status::OK();
 }
-
 
 } // namespace yb

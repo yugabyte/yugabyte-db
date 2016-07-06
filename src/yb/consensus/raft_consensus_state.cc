@@ -717,4 +717,3 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
 
 }  // namespace consensus
 }  // namespace yb
-

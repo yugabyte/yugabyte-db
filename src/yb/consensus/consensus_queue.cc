@@ -579,7 +579,8 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
         }
         case ConsensusErrorPB::INVALID_TERM: {
           CHECK(response.has_responder_term());
-          LOG_WITH_PREFIX_UNLOCKED(INFO) << "Peer responded invalid term: " << peer->ToString();
+          LOG_WITH_PREFIX_UNLOCKED(INFO) << "Peer responded invalid term: " << peer->ToString()
+                                         << ". Peer's new term: " << response.responder_term();
           NotifyObserversOfTermChange(response.responder_term());
           *more_pending = false;
           return;
@@ -665,7 +666,6 @@ OpId PeerMessageQueue::GetMajorityReplicatedOpIdForTests() const {
   boost::lock_guard<simple_spinlock> lock(queue_lock_);
   return queue_state_.majority_replicated_opid;
 }
-
 
 void PeerMessageQueue::UpdateMetrics() {
   // Since operations have consecutive indices we can update the metrics based

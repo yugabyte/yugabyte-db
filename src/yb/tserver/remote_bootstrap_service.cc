@@ -68,6 +68,11 @@ DEFINE_double(fault_crash_on_handle_rb_fetch_data, 0.0,
               "(For testing only!)");
 TAG_FLAG(fault_crash_on_handle_rb_fetch_data, unsafe);
 
+DEFINE_uint64(inject_latency_before_change_role_secs, 0,
+              "Number of seconds to sleep before we call ChangeRole. "
+              "(For testing only!)");
+TAG_FLAG(inject_latency_before_change_role_secs, unsafe);
+
 namespace yb {
 namespace tserver {
 
@@ -111,7 +116,8 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
 
   // For now, we use the requestor_uuid with the tablet id as the session id,
   // but there is no guarantee this will not change in the future.
-  const string session_id = Substitute("$0-$1", requestor_uuid, tablet_id);
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
 
   scoped_refptr<TabletPeer> tablet_peer;
   RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
@@ -245,7 +251,8 @@ void RemoteBootstrapServiceImpl::EndRemoteBootstrapSession(
     RemoteBootstrapErrorPB::Code app_error;
     LOG(INFO) << "Request end of remote bootstrap session " << req->session_id()
       << " received from " << context->requestor_string();
-    RPC_RETURN_NOT_OK(DoEndRemoteBootstrapSessionUnlocked(req->session_id(), &app_error),
+    RPC_RETURN_NOT_OK(DoEndRemoteBootstrapSessionUnlocked(req->session_id(), req->is_success(),
+                                                          &app_error),
                       app_error, "No such session");
   }
   context->RespondSuccess();
@@ -263,7 +270,7 @@ void RemoteBootstrapServiceImpl::Shutdown() {
   for (const string& session_id : session_ids) {
     LOG(INFO) << "Destroying remote bootstrap session " << session_id << " due to service shutdown";
     RemoteBootstrapErrorPB::Code app_error;
-    CHECK_OK(DoEndRemoteBootstrapSessionUnlocked(session_id, &app_error));
+    CHECK_OK(DoEndRemoteBootstrapSessionUnlocked(session_id, false, &app_error));
   }
 }
 
@@ -319,9 +326,33 @@ void RemoteBootstrapServiceImpl::ResetSessionExpirationUnlocked(const std::strin
 
 Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
         const std::string& session_id,
+        bool session_succeeded,
         RemoteBootstrapErrorPB::Code* app_error) {
   scoped_refptr<RemoteBootstrapSession> session;
   RETURN_NOT_OK(FindSessionUnlocked(session_id, app_error, &session));
+
+  if (session_succeeded || session->Succeeded()) {
+    session->SetSuccess();
+
+    if (PREDICT_FALSE(FLAGS_inject_latency_before_change_role_secs)) {
+      LOG(INFO) << "Injecting latency for test";
+      SleepFor(MonoDelta::FromSeconds(FLAGS_inject_latency_before_change_role_secs));
+    }
+    Status s = session->ChangeRole();
+    if (!s.ok()) {
+      LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id;
+      // Reset the timer for this session, and don't remove it from sessions_ so it doesn't get
+      // destroyed. EndExpiredSessions will call this function again and we will retry ChangeRole.
+      ResetSessionExpirationUnlocked(session_id);
+      return Status::OK();
+    } else {
+      LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
+    }
+  } else {
+    LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
+      << " with peer " << session->requestor_uuid() << " failed";
+  }
+
   // Remove the session from the map.
   // It will get destroyed once there are no outstanding refs.
   LOG(INFO) << "Ending remote bootstrap session " << session_id << " on tablet "
@@ -349,7 +380,7 @@ void RemoteBootstrapServiceImpl::EndExpiredSessions() {
       LOG(INFO) << "Remote bootstrap session " << session_id
                 << " has expired. Terminating session.";
       RemoteBootstrapErrorPB::Code app_error;
-      CHECK_OK(DoEndRemoteBootstrapSessionUnlocked(session_id, &app_error));
+      CHECK_OK(DoEndRemoteBootstrapSessionUnlocked(session_id, false, &app_error));
     }
   } while (!shutdown_latch_.WaitFor(MonoDelta::FromMilliseconds(
                                     FLAGS_remote_bootstrap_timeout_poll_period_ms)));

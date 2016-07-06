@@ -132,7 +132,14 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Check if a block is currently open.
   bool IsBlockOpenForTests(const BlockId& block_id) const;
 
- private:
+  void SetSuccess();
+
+  bool Succeeded();
+
+  // Change the peer's role to VOTER.
+  Status ChangeRole();
+
+private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
 
   typedef std::unordered_map<BlockId, ImmutableReadableBlockInfo*, BlockIdHash> BlockMap;
@@ -180,6 +187,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   log::SegmentSequence log_segments_;
 
   log::LogAnchor log_anchor_;
+
+  // We need to know whether this ended succesfully before changing the peer's member type from
+  // NON_VOTER to VOTER.
+  bool succeeded_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };

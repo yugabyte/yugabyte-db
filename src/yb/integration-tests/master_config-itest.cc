@@ -56,6 +56,11 @@ class MasterChangeConfigTest : public YBTest {
     if (!s.ok()) {
       LOG(FATAL) << "Unable to build messenger : " << s.ToString();
     }
+
+    OpId op_id;
+    ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
+    cur_log_index_ = op_id.index();
+    LOG(INFO) << "cur_log_index_ " << cur_log_index_;
   }
 
   virtual void TearDown() OVERRIDE {
@@ -101,6 +106,7 @@ class MasterChangeConfigTest : public YBTest {
   void VerifyNonLeaderMastersPeerCount();
 
   int num_masters_;
+  int cur_log_index_;
   std::unique_ptr<ExternalMiniCluster> cluster_;
   std::shared_ptr<rpc::Messenger> messenger_;
 };
@@ -151,7 +157,11 @@ TEST_F(MasterChangeConfigTest, TestAddMaster) {
 
   s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
-  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(3));
+
+  // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and one
+  // to promote this server to a voter once bootstrapping is finished.
+  cur_log_index_ += 2;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
   ++num_masters_;
 
   VerifyLeaderMasterPeerCount();
@@ -171,7 +181,9 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
 
   s = cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
-  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(3));
+
+  // REMOVE_SERVER causes the op index to increase by one.
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(++cur_log_index_));
 
   --num_masters_;
 
@@ -193,7 +205,10 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
 
   ++num_masters_;
 
-  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(3));
+  // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and one
+  // to promote this server to a voter once bootstrapping is finished.
+  cur_log_index_ += 2;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
 
   VerifyLeaderMasterPeerCount();
   VerifyNonLeaderMastersPeerCount();

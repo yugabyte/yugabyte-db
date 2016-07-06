@@ -253,6 +253,15 @@ Status TSTabletManager::CreateNewTablet(
     scoped_refptr<TabletPeer> *tablet_peer) {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
+  for (int i = 0; i < config.peers_size(); ++i) {
+    auto config_peer = config.mutable_peers(i);
+    if (config_peer->has_member_type()) {
+      return Status::IllegalState(Substitute("member_type shouldn't be set for config: { $0 }",
+                                             config.ShortDebugString()));
+    }
+    config_peer->set_member_type(RaftPeerPB::VOTER);
+  }
+
   // If the consensus configuration is specified to use local consensus, verify that the peer
   // matches up with our local info.
   if (config.local()) {

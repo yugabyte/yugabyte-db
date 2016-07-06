@@ -351,6 +351,9 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
     if (active_role == RaftPeerPB::LEADER) {
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- already leader";
       return Status::OK();
+    } else if (active_role == RaftPeerPB::LEARNER) {
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- role is LEARNER";
+      return Status::OK();
     } else if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
       SnoozeFailureDetectorUnlocked(); // Avoid excessive election noise while in this state.
       return Status::IllegalState("Not starting election: Node is currently "
@@ -837,7 +840,6 @@ Status RaftConsensus::EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequ
     req.preceding_opid->ShortDebugString(),
     term_mismatch ? "term" : "index");
 
-
   FillConsensusResponseError(response,
                              ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH,
                              Status::IllegalState(error_msg));
@@ -952,7 +954,6 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
   Synchronizer log_synchronizer;
   StatusCallback sync_status_cb = log_synchronizer.AsStatusCallback();
 
-
   // The ordering of the following operations is crucial, read on for details.
   //
   // The main requirements explained in more detail below are:
@@ -1064,7 +1065,6 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     // Also prohibit voting for anyone for the minimum election timeout.
     withhold_votes_until_ = MonoTime::Now(MonoTime::FINE);
     withhold_votes_until_.AddDelta(MinimumElectionTimeout());
-
 
     // 1 - Early commit pending (and committed) transactions
 
@@ -1382,12 +1382,14 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                                    req.ShortDebugString());
   }
   ChangeConfigType type = req.type();
+  RaftPeerPB* new_peer = nullptr;
   const RaftPeerPB& server = req.server();
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
     RETURN_NOT_OK(state_->CheckActiveLeaderUnlocked());
     RETURN_NOT_OK(state_->CheckNoConfigChangePendingUnlocked());
+
     // We are required by Raft to reject config change operations until we have
     // committed at least one operation in our current term as leader.
     // See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
@@ -1421,15 +1423,17 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
               Substitute("Server with UUID $0 is already a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
-        if (!server.has_member_type()) {
-          return Status::InvalidArgument("server must have member_type specified",
+        if (server.has_member_type()) {
+          return Status::InvalidArgument("server must not have member_type specified",
                                          req.ShortDebugString());
         }
         if (!server.has_last_known_addr()) {
           return Status::InvalidArgument("server must have last_known_addr specified",
                                          req.ShortDebugString());
         }
-        *new_config.add_peers() = server;
+        new_peer = new_config.add_peers();
+        *new_peer = server;
+        new_peer->set_member_type(RaftPeerPB::NON_VOTER);
         break;
 
       case REMOVE_SERVER:
@@ -1449,10 +1453,29 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         }
         break;
 
-      // TODO: Support role change.
       case CHANGE_ROLE:
+        if (server_uuid == peer_uuid()) {
+          return Status::InvalidArgument(
+              Substitute("Cannot change role of  peer $0 from the config because it is the leader. "
+                         "Force another leader to be elected to change the role of this server. "
+                         "Active consensus state: $1",
+                         server_uuid,
+                         state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
+                            .ShortDebugString()));
+        }
+        VLOG(3) << "config before CHANGE_ROLE: " << new_config.DebugString();
+
+        if(!GetMutableRaftConfigMember(new_config, server_uuid, &new_peer).ok()) {
+          return Status::NotFound(
+            Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
+                       server_uuid, new_config.ShortDebugString()));
+        }
+        new_peer->set_member_type(RaftPeerPB::VOTER);
+        VLOG(3) << "config after CHANGE_ROLE: " << new_config.DebugString();
+        break;
       default:
-        return Status::NotSupported("Role change is not yet implemented.");
+        return Status::InvalidArgument(Substitute("Unsupported type $0",
+                                                  ChangeConfigType_Name(type)));
     }
 
     auto cc_replicate = new ReplicateMsg();

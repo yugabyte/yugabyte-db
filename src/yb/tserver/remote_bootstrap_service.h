@@ -85,6 +85,7 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
   // Destroy the specified remote bootstrap session.
   Status DoEndRemoteBootstrapSessionUnlocked(const std::string& session_id,
+                                             bool session_suceeded,
                                              RemoteBootstrapErrorPB::Code* app_error);
 
   // The timeout thread periodically checks whether sessions are expired and
