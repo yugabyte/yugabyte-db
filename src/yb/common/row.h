@@ -436,6 +436,15 @@ class ContiguousRowHelper {
                                           size_t col_idx) {
     return is_null(schema, row_data, col_idx) ? NULL : cell_ptr(schema, row_data, col_idx);
   }
+
+  static Slice CellSlice(const Schema& schema, const uint8_t *row_data, size_t col_idx) {
+    const uint8_t* cell_data_ptr = cell_ptr(schema, row_data, col_idx);
+    if (schema.column(col_idx).type_info()->physical_type() == BINARY) {
+      return *(reinterpret_cast<const Slice*>(cell_data_ptr));
+    } else {
+      return Slice(cell_data_ptr, schema.column(col_idx).type_info()->size());
+    }
+  }
 };
 
 template<class ContiguousRowType>
@@ -489,6 +498,10 @@ class ContiguousRow {
 
   const uint8_t *cell_ptr(size_t col_idx) const {
     return ContiguousRowHelper::cell_ptr(*schema_, row_data_, col_idx);
+  }
+
+  Slice CellSlice(size_t col_idx) const {
+    return ContiguousRowHelper::CellSlice(*schema_, row_data_, col_idx);
   }
 
   uint8_t *mutable_cell_ptr(size_t col_idx) const {
@@ -547,6 +560,10 @@ class ConstContiguousRow {
 
   const uint8_t *cell_ptr(size_t col_idx) const {
     return ContiguousRowHelper::cell_ptr(*schema_, row_data_, col_idx);
+  }
+
+  Slice CellSlice(size_t col_idx) const {
+    return ContiguousRowHelper::CellSlice(*schema_, row_data_, col_idx);
   }
 
   const uint8_t *nullable_cell_ptr(size_t col_idx) const {

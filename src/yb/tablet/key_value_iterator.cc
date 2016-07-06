@@ -2,6 +2,7 @@
 
 #include "yb/tablet/key_value_iterator.h"
 #include "yb/common/scan_spec.h"
+#include "yb/util/string_packer.h"
 
 namespace yb {
 namespace tablet {
@@ -24,8 +25,12 @@ KeyValueIterator::~KeyValueIterator() {
 Status KeyValueIterator::Init(ScanSpec* spec) {
   rocksdb::ReadOptions read_options;
   db_iter_.reset(db_->NewIterator(read_options));
+
   if (spec->lower_bound_key() != nullptr) {
-    const Slice& encoded_key(spec->lower_bound_key()->encoded_key());
+    string lower_bound = yb::util::PackZeroEncoded(
+        {spec->lower_bound_key()->encoded_key().ToString()}
+    );
+    const Slice encoded_key(lower_bound);
     db_iter_->Seek(rocksdb::Slice(
       reinterpret_cast<const char* const>(encoded_key.data()), encoded_key.size()
     ));
@@ -33,13 +38,12 @@ Status KeyValueIterator::Init(ScanSpec* spec) {
     db_iter_->SeekToFirst();
   }
   if (spec->exclusive_upper_bound_key() != nullptr) {
-    const Slice& encoded_exclusive_upper_bound_key(
-      spec->exclusive_upper_bound_key()->encoded_key());
     has_upper_bound_key_ = true;
-    exclusive_upper_bound_key_ = encoded_exclusive_upper_bound_key.ToString();
+    exclusive_upper_bound_key_ = yb::util::PackZeroEncoded(
+        {spec->exclusive_upper_bound_key()->encoded_key().ToString()}
+    );
   } else {
     has_upper_bound_key_ = false;
-
   }
   return Status::OK();
 }
@@ -82,28 +86,41 @@ Status KeyValueIterator::NextBlock(RowBlock *dst) {
     return Status::OK();
   }
 
-  rocksdb::Slice rocksdb_key(db_iter_->key());
-  rocksdb::Slice rocksdb_value(db_iter_->value());
-  Slice key(rocksdb_key.data(), rocksdb_key.size());
-  Slice value(rocksdb_value.data(), rocksdb_value.size());
-
-  Slice key_copy;
-  if (PREDICT_FALSE(!dst->arena()->RelocateSlice(key, &key_copy))) {
-    return Status::IOError("out of memory");
-  }
-  Slice value_copy;
-  if (PREDICT_FALSE(!dst->arena()->RelocateSlice(value, &value_copy))) {
-    return Status::IOError("out of memory");
-  }
+  const string primary_key = yb::util::UnpackZeroEncoded(db_iter_->key().ToString())[0];
 
   dst->Resize(1);
   dst->selection_vector()->SetAllTrue();
-
   RowBlockRow dst_row(dst->row(0));
-  *((Slice*) dst_row.cell(0).mutable_ptr()) = key_copy;
-  *((Slice*) dst_row.cell(1).mutable_ptr()) = value_copy;
 
-  db_iter_->Next();
+  for (int i = 0; i < projection_->num_columns(); i++) {
+    const string column_key = projection_->column_id(i).ToString();
+    const string key = yb::util::PackZeroEncoded({primary_key, column_key});
+    db_iter_->Seek(rocksdb::Slice(key));
+
+    if (PREDICT_FALSE(!db_iter_->Valid())) {
+      return Status::OK();
+    }
+
+    rocksdb::Slice rocksdb_key(db_iter_->key());
+    if (key == rocksdb_key.ToString()) {
+      rocksdb::Slice rocksdb_cell_value(db_iter_->value());
+      Slice cell_value(rocksdb_cell_value.data(), rocksdb_cell_value.size());
+      if (projection_->column(i).type_info()->physical_type() == BINARY) {
+        Slice cell_copy;
+        if (PREDICT_FALSE(!dst->arena()->RelocateSlice(cell_value, &cell_copy))) {
+          return Status::IOError("out of memory");
+        }
+        *(reinterpret_cast<Slice*>(dst_row.cell(i).mutable_ptr())) = cell_copy;
+      } else {
+        assert(cell_value.size() == projection_->column(i).type_info()->size());
+        memcpy(dst_row.cell(i).mutable_ptr(), cell_value.data(), cell_value.size());
+      }
+    }
+  }
+
+  string next_key = yb::util::PackZeroEncoded({primary_key});
+  next_key[next_key.size() - 1] = '\x01';
+  db_iter_->Seek(rocksdb::Slice(next_key));
 
   return Status::OK();
 }

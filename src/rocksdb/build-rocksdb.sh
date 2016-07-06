@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright (c) YugaByte, Inc.
 
@@ -315,17 +315,15 @@ set -u
 # The RocksDB library and test binaries are expected to exist in __default__/rocksdb-build instead
 # of e.g. Debug/rocksdb-build, so we just symlink them there.
 
-if [[ "$build_dir" =~ /[.]CLion.*/ ]]; then
-  if [ -d "$build_dir/../__default__" ]; then
-    ( set -x; mkdir -p "$build_dir/../__default__/rocksdb-build" )
-    for symlink_target in "$rocksdb_build_dir"/librocksdb* "$rocksdb_build_dir"/*_test; do
-      if [ -f "$symlink_target" ]; then
-        dest_path="$build_dir/../__default__/rocksdb-build/${symlink_target##*/}"
-        if [ ! -f "$dest_path" ]; then
-          echo "Creating a symlink '$dest_path' to '${symlink_target}' for CLion"
-          ( set -x; ln -s "$symlink_target" "$dest_path" )
-        fi
+if [ -d "$build_dir/../__default__" ]; then
+  ( set -x; mkdir -p "$build_dir/../__default__/rocksdb-build" )
+  for symlink_target in "$rocksdb_build_dir"/librocksdb* "$rocksdb_build_dir"/*_test; do
+    if [ -f "$symlink_target" ]; then
+      dest_path="$build_dir/../__default__/rocksdb-build/${symlink_target##*/}"
+      if [ ! -f "$dest_path" ]; then
+        echo "Creating a symlink '$dest_path' to '${symlink_target}' for CLion"
+        ( set -x; ln -s "$symlink_target" "$dest_path" )
       fi
-    done
-  fi
+    fi
+  done
 fi

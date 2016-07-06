@@ -88,6 +88,7 @@ using client::YBSession;
 using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableType;
 using strings::Split;
 using strings::Substitute;
 
@@ -132,6 +133,7 @@ class FullStackInsertScanTest : public YBTest {
     NO_FATALS(InitCluster());
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
+             .table_type(YBTableType::KEY_VALUE_TABLE_TYPE)
              .schema(&schema_)
              .num_replicas(1)
              .Create());

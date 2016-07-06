@@ -69,6 +69,11 @@ struct ColumnId {
   friend std::ostream& operator<<(std::ostream& os, ColumnId column_id) {
     return os << column_id.t;
   }
+  std::string ToString() {
+    std::ostringstream s;
+    s << t;
+    return s.str();
+  }
  private:
   int32_t t;
 };

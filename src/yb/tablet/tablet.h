@@ -188,8 +188,12 @@ class Tablet {
 
   // Apply a single row operation, which must already be prepared.
   // The result is set back into row_op->result
-  void ApplyRowOperation(WriteTransactionState* tx_state,
-                         RowOp* row_op);
+  void ApplyKuduRowOperation(WriteTransactionState* tx_state,
+                             RowOp* row_op);
+
+  //Apply a set of rocksdb row operations
+  void ApplyKeyValueRowOperations(const std::vector<RowOp*>& row_ops,
+                                  const rocksdb::SequenceNumber seq_num);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.

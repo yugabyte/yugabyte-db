@@ -389,8 +389,10 @@ void MemTable::Add(SequenceNumber s, ValueType type,
       prefix_bloom_->Add(prefix_extractor_->Transform(key));
     }
 
-    // The first sequence number inserted into the memtable
-    assert(first_seqno_ == 0 || s > first_seqno_);
+    // The first sequence number inserted into the memtable.
+    // Multiple occurences of the same sequence number in the write batch are allowed
+    // as long as they touch different keys.
+    assert(first_seqno_ == 0 || s >= first_seqno_);
     if (first_seqno_ == 0) {
       first_seqno_.store(s, std::memory_order_relaxed);
 

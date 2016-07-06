@@ -821,17 +821,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   Schema schema = client_schema.CopyWithColumnIds();
 
-  // RocksDB-backed key-value tables are limited to a particular schema.
-  if (req.table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
-    if (client_schema.num_columns() != 2 ||
-        client_schema.num_key_columns() != 1 ||
-        client_schema.column(0).type_info()->type() != DataType::BINARY ||
-        client_schema.column(0).is_nullable() ||
-        client_schema.column(1).type_info()->type() != DataType::BINARY ||
-        client_schema.column(1).is_nullable()) {
+  // RocksDB-backed key-value tables must have only one key column and no nullable columns.
+  // TODO: check for nullable value columns
+  // Nullable columns are currently not being tested for.
+  // Support and checks for nullable columns will be added later.
+
+   if (req.table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+    if (client_schema.num_key_columns() != 1) {
       Status s = Status::InvalidArgument(
-        "A key-value table should have exactly one key and one value column, both of BINARY type"
-        "and non-nullable");
+        "A key-value table should have exactly one key column");
       SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       return s;
     }
