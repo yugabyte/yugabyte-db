@@ -16,6 +16,7 @@
 // under the License.
 package org.yb.client;
 
+import com.google.common.net.HostAndPort;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -47,9 +48,6 @@ public class YBClient implements AutoCloseable {
   public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
-
-  // TODO(Bharat) - get tablet id from master leader.
-  private static final String MASTER_TABLET_ID = "00000000000000000000000000000000";
 
   /**
    * Create a table on the cluster with the specified name and schema. Default table
@@ -183,10 +181,14 @@ public class YBClient implements AutoCloseable {
    * Change master server configuration.
    * @return a list of tablet servers
    */
-  public ChangeConfigResponse ChangeMasterConfig(
+  public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd) throws Exception {
     Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(host, port, isAdd);
-    return d.join(getDefaultAdminOperationTimeoutMs());
+    ChangeConfigResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+    if (!resp.hasError()) {
+       asyncClient.updateMasterAdresses(host, port, isAdd);
+    }
+    return resp;
   }
 
   /**
@@ -194,7 +196,7 @@ public class YBClient implements AutoCloseable {
    * @return master tablet id.
    */
   public static String getMasterTabletId() {
-    return MASTER_TABLET_ID;
+    return AsyncYBClient.getMasterTabletId();
   }
 
   /**
@@ -203,6 +205,14 @@ public class YBClient implements AutoCloseable {
   */
   public String getLeaderMasterUUID() {
     return asyncClient.getLeaderMasterUUID();
+  }
+
+  /**
+  * Get the master leader's host/port.
+  * @return current leader master's host and rpc port.
+  */
+  public HostAndPort getLeaderMasterHostAndPort() {
+    return asyncClient.getLeaderMasterHostAndPort();
   }
 
   /**

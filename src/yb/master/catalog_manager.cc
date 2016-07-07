@@ -3731,6 +3731,8 @@ Status CatalogManager::SetClusterConfig(
   // Bump the config version, to indicate an update.
   l.mutable_data()->pb.set_version(config.version() + 1);
 
+  LOG(INFO) << "Updated cluster config to " << config.version() + 1;
+
   RETURN_NOT_OK(sys_catalog_->UpdateClusterConfigInfo(cluster_config_.get()));
 
   l.Commit();

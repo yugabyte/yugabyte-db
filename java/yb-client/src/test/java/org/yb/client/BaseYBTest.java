@@ -25,10 +25,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.net.HostAndPort;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.yb.Common.HostPortPB;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.yb.Type;
@@ -317,6 +319,15 @@ public class BaseYBTest {
 
     Integer port = leader.getRpcPort();
     miniCluster.killTabletServerOnPort(port);
+  }
+
+  /**
+   * Find the host/port of the leader master.
+   * @return The host/port of the leader master.
+   * @throws Exception If we are unable to find the leader master.
+   */
+  public static HostAndPort findLeaderMasterHostPort() throws Exception {
+    return client.getLeaderMasterHostAndPort();
   }
 
   /**

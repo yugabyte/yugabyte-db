@@ -105,13 +105,37 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testChangeMasterConfig() throws Exception {
+    // TODO: See if TestName @Rule can be made to work instead of explicit test names.
+    LOG.info("Starting testChangeMasterConfig");
     int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    ListMastersResponse listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore);
     HostAndPort newHp = BaseYBTest.miniCluster().startShellMaster();
-    ChangeConfigResponse resp = syncClient.ChangeMasterConfig(
+    ChangeConfigResponse resp = syncClient.changeMasterConfig(
         newHp.getHostText(), newHp.getPort(), true);
     assertFalse(resp.hasError());
     int numAfter = BaseYBTest.miniCluster().getNumMasters();
     assertEquals(numAfter, numBefore + 1);
+    listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numAfter);
+  }
+
+  /**
+   * Test for Master Configuration Change which triggers a leader step down operation.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testChangeMasterConfigOfLeader() throws Exception {
+    LOG.info("Starting testChangeMasterConfigOfLeader");
+    int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    ListMastersResponse listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore);
+    HostAndPort leaderHp = BaseYBTest.findLeaderMasterHostPort();
+    ChangeConfigResponse resp = syncClient.changeMasterConfig(
+        leaderHp.getHostText(), leaderHp.getPort(), false);
+    assertFalse(resp.hasError());
+    listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore - 1);
   }
 
   /**
@@ -120,17 +144,23 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testLeaderStepDown() throws Exception {
-    String leader_uuid = syncClient.getLeaderMasterUUID();
-    assertNotNull(leader_uuid);
+    LOG.info("Starting testLeaderStepDown");
+    String leaderUuid = syncClient.getLeaderMasterUUID();
+    assertNotNull(leaderUuid);
+    ListMastersResponse listResp = syncClient.listMasters();
+    int numBefore = listResp.getMasters().size();
     LeaderStepDownResponse resp = syncClient.masterLeaderStepDown();
     assertFalse(resp.hasError());
     // Sleep to give time for re-election completion. TODO: Add api for election completion.
     Thread.sleep(3000);
-    String new_leader_uuid = syncClient.getLeaderMasterUUID();
-    assertNotNull(new_leader_uuid);
+    String newLeaderUuid = syncClient.getLeaderMasterUUID();
+    assertNotNull(newLeaderUuid);
+    listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore);
     // NOTE: This assert could intermittently fail. We will use this test for creating a
     // reproducible test case for JIRA ENG-49.
-    assertNotEquals(new_leader_uuid, leader_uuid);
+    LOG.info("New leader uuid " + newLeaderUuid + ", old leader uuid " + leaderUuid);
+    assertNotEquals(newLeaderUuid, leaderUuid);
   }
 
   /**
@@ -139,6 +169,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testChangeMasterClusterConfig() throws Exception {
+    LOG.info("Starting testChangeMasterClusterConfig");
     GetMasterClusterConfigResponse resp = syncClient.getMasterClusterConfig();
     assertFalse(resp.hasError());
     // Config starts at 0 and gets bumped with every write.
@@ -189,6 +220,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testCreateDeleteTable() throws Exception {
+    LOG.info("Starting testCreateDeleteTable");
     // Check that we can create a table.
     syncClient.createTable(tableName, basicSchema);
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
@@ -222,6 +254,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testStrings() throws Exception {
+    LOG.info("Starting testStrings");
     Schema schema = createManyStringsSchema();
     syncClient.createTable(tableName, schema);
 
@@ -262,6 +295,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testUTF8() throws Exception {
+    LOG.info("Starting testUTF8");
     Schema schema = createManyStringsSchema();
     syncClient.createTable(tableName, schema);
 
@@ -289,6 +323,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testBinaryColumns() throws Exception {
+    LOG.info("Starting testBinaryColumns");
     Schema schema = createSchemaWithBinaryColumns();
     syncClient.createTable(tableName, schema);
 
@@ -332,6 +367,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testTimestampColumns() throws Exception {
+    LOG.info("Starting testTimestampColumns");
     Schema schema = createSchemaWithTimestampColumns();
     syncClient.createTable(tableName, schema);
 
@@ -381,6 +417,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testAutoClose() throws Exception {
+    LOG.info("Starting testAutoClose");
     try (YBClient localClient = new YBClient.YBClientBuilder(masterAddresses).build()) {
       localClient.createTable(tableName, basicSchema);
       YBTable table = localClient.openTable(tableName);
@@ -398,6 +435,7 @@ public class TestYBClient extends BaseYBTest {
 
   @Test(timeout = 100000)
   public void testCustomNioExecutor() throws Exception {
+    LOG.info("Starting testCustomNioExecutor");
     long startTime = System.nanoTime();
     final YBClient localClient = new YBClient.YBClientBuilder(masterAddresses)
         .nioExecutors(Executors.newFixedThreadPool(1), Executors.newFixedThreadPool(2))

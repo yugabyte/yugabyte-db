@@ -3,6 +3,8 @@ package org.yb.ybcli.commands;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.shell.core.CommandMarker;
 import org.springframework.shell.core.annotation.CliAvailabilityIndicator;
 import org.springframework.shell.core.annotation.CliCommand;
@@ -23,6 +25,7 @@ import org.yb.util.ServerInfo;
 
 @Component
 public class YBCliCommands implements CommandMarker {
+  public static final Logger LOG = LoggerFactory.getLogger(YBCliCommands.class);
 
   // State for current database connection.
   private boolean connectedToDatabase = false;
@@ -42,7 +45,8 @@ public class YBCliCommands implements CommandMarker {
   }
 
   @CliAvailabilityIndicator({"list tablet-servers", "list tablets", "list tables", "list masters",
-                             "change config"})
+                             "change_config", "change_blacklist", "leader_step_down",
+                             "get_universe_config"})
   public boolean isDatabaseOperationAvailable() {
     // We can perform operations on the database once we are connected to one.
     if (connectedToDatabase) {
@@ -116,7 +120,6 @@ public class YBCliCommands implements CommandMarker {
   public String listTables() {
     try {
       ListTablesResponse resp = ybClient.getTablesList();
-
       StringBuilder sb = new StringBuilder();
       sb.append("Got " + resp.getTablesList().size() + " tables:\n");
       int idx = 1;
@@ -135,7 +138,9 @@ public class YBCliCommands implements CommandMarker {
   public String listMasters() {
     try {
       ListMastersResponse resp = ybClient.listMasters();
-      // TODO: Add checks for resp.hasError here and in all cases where it is not performed.
+      if (resp.hasError()) {
+        return "List Masters response failed.";
+      }
       return printServerInfo(resp.getMasters(), true, resp.getElapsedMillis());
     } catch (Exception e) {
       return "Failed to fetch masters info for database at " + masterAddresses + ", error: " + e;
@@ -146,6 +151,10 @@ public class YBCliCommands implements CommandMarker {
   public String leaderStepDown() {
     try {
       LeaderStepDownResponse resp = ybClient.masterLeaderStepDown();
+      if (resp.hasError()) {
+        return "Leader step down response failed, error = " + resp.errorMessage();
+      }
+
       StringBuilder sb = new StringBuilder();
       sb.append(resp.hasError() ? "Hit Error " + resp.errorMessage() + ".\n" : "Success.\n");
       sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
@@ -167,7 +176,10 @@ public class YBCliCommands implements CommandMarker {
                  mandatory = true,
                  help = "True implies master add case, else master removal.") final boolean isAdd) {
     try {
-      ChangeConfigResponse resp = ybClient.ChangeMasterConfig(host, port, isAdd);
+      ChangeConfigResponse resp = ybClient.changeMasterConfig(host, port, isAdd);
+      if (resp.hasError()) {
+        return "Change Config response failed, error = " + resp.errorMessage();
+      }
       StringBuilder sb = new StringBuilder();
       sb.append(resp.hasError() ? "Hit Error: " + resp.errorMessage() + "\n" : "Success.\n");
       sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
@@ -195,7 +207,7 @@ public class YBCliCommands implements CommandMarker {
 
       return "Success.\n";
     } catch (Exception e) {
-      // TODO: Log the error call stack.
+      LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";
     }
   }
@@ -212,6 +224,7 @@ public class YBCliCommands implements CommandMarker {
 
       return "Config: \n" + resp.getConfig();
     } catch (Exception e) {
+      LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";
     }
   }

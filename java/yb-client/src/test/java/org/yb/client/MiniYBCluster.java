@@ -239,7 +239,6 @@ public class MiniYBCluster implements AutoCloseable {
    */
   private int startMasters(int masterStartPort, int numMasters,
                           String baseDirPath) throws Exception {
-    LOG.info("Starting {} masters...", numMasters);
     // Get the list of web and RPC ports to use for the master consensus configuration:
     // request NUM_MASTERS * 2 free ports as we want to also reserve the web
     // ports for the consensus configuration.

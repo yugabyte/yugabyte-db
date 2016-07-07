@@ -5,3 +5,4 @@
 
 # Maven build artifacts
 target/
+bin/

@@ -807,8 +807,13 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
 void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
                                         ChangeConfigResponsePB* resp,
                                         RpcContext* context) {
-  DVLOG(3) << "Received ChangeConfig RPC: " << req->DebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "ChangeConfig", req, resp, context)) {
+  LOG(INFO) << "Received ChangeConfig RPC: " << req->DebugString();
+  // If the destination uuid is empty string, it means the client was retrying after a leader
+  // stepdown and did not have a chance to update the uuid inside the request.
+  // TODO: Note that this can be removed once Java YBClient will reset change config's uuid
+  // correctly after leader step down.
+  if (req->dest_uuid() != "" &&
+      !CheckUuidMatchOrRespond(tablet_manager_, "ChangeConfig", req, resp, context)) {
     return;
   }
   scoped_refptr<TabletPeer> tablet_peer;

@@ -130,6 +130,9 @@ public class AsyncYBClient implements AutoCloseable {
 
   private final ClientSocketChannelFactory channelFactory;
 
+  // TODO(Bharat) - get tablet id from master leader.
+  private static final String MASTER_TABLET_ID = "00000000000000000000000000000000";
+
   /**
    * This map and the next 2 maps contain the same data, but indexed
    * differently. There is no consistency guarantee across the maps.
@@ -385,23 +388,98 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the master tablet id.
+   * @return the constant master tablet uuid.
+   */
+  public static String getMasterTabletId() {
+    return MASTER_TABLET_ID;
+  }
+
+  /**
+   * Update the master addresses list.
+   */
+  protected void updateMasterAdresses(String host, int port, boolean isAdd) {
+    checkIsClosed();
+    if (isAdd) {
+      masterAddresses.add(HostAndPort.fromParts(host, port));
+    } else {
+      int idx = masterAddresses.indexOf(HostAndPort.fromParts(host, port));
+      if (idx != -1) {
+        masterAddresses.remove(idx);
+      }
+    }
+  }
+
+  /**
    * Change master servers config.
    * @return a deferred object that yields a change config response.
    */
   public Deferred<ChangeConfigResponse> changeMasterConfig(String host, int port, boolean isAdd) {
     checkIsClosed();
-    String change_uuid = getMasterUUID(host, port);
-    if (change_uuid == null) {
+    String changeUuid = getMasterUUID(host, port);
+    if (changeUuid == null) {
       throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
                                           port + " - could not get it's uuid.");
     }
-    String leader_uuid = getLeaderMasterUUID();
-    if (leader_uuid == null) {
-      throw new IllegalArgumentException("Invalid setup - could not find the leader master.");
+    String leaderUuid = getLeaderMasterUUID();
+    if (leaderUuid == null) {
+      throw new IllegalStateException("Invalid setup - could not find the leader master in " +
+        masterAddresses);
     }
 
+    HostAndPort hp = getLeaderMasterHostAndPort();
+    boolean didStepDown = false;
+
+    // If caller is trying to remove the leader, then step it down first and wait for a new one to
+    // be elected.
+    if (!isAdd && hp.getHostText().equals(host) && hp.getPort() == port) {
+      String tabletId = getMasterTabletId();
+      String newLeader = leaderUuid;
+
+      int numIters = 0;
+      int maxNumIters = 10;
+      try {
+        // TODO: This while loop will not be needed once JIRA ENG-49 is fixed.
+        while (newLeader == leaderUuid) {
+          Deferred<LeaderStepDownResponse> d = masterLeaderStepDown(leaderUuid, tabletId);
+          LeaderStepDownResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+          if (resp.hasError()) {
+            String errMsg = "Master leader step down hit error " + resp.errorMessage();
+            LOG.error(errMsg);
+            throw new RuntimeException(errMsg);
+          }
+          Thread.sleep(2000); // TODO: Add API to check if election is done.
+          newLeader = getLeaderMasterUUID();
+          numIters++;
+          LOG.info("Try step down {}, new master {}, iter {}.", leaderUuid, newLeader, numIters);
+          if (numIters >= maxNumIters) {
+            throw new IllegalStateException("Maximum iterations exceeded trying to step down the "
+            		+ "leader master with uuid " + leaderUuid);
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("Error trying to step down {}, message={}.", leaderUuid, e.getMessage());
+        throw new IllegalStateException("Hit exception " + e.getMessage() +
+            ": could not step down leader master " + leaderUuid);
+      }
+
+      HostAndPort newHp = getLeaderMasterHostAndPort();
+      LOG.info("Step down {} done, new master {} at {}.", leaderUuid, newLeader, newHp.toString());
+
+      // We just set the leader in this case for tracing purposes, but change config call will
+      // not use it.
+      leaderUuid = newLeader;
+      didStepDown = true;
+    }
+
+    LOG.info("Sending changeConfig to leader {}: host {}, port {}, uuid {}, add {}, stepdown {}.",
+    		 leaderUuid, host, port, changeUuid, isAdd, didStepDown);
+
+    // For the new leader, the sendRpcToTablet will retry to get the correct leader.
+    // Seemed very intrusive to change request's uuid contents during rpc retry.
+    // didStepDown can be removed once a "proxy" like concept is added to java client.
     ChangeConfigRequest rpc = new ChangeConfigRequest(
-      leader_uuid, this.masterTable, host, port, change_uuid, isAdd);
+    		didStepDown ? "" : leaderUuid , this.masterTable, host, port, changeUuid, isAdd);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -411,14 +489,14 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a leader step down response.
    */
   public Deferred<LeaderStepDownResponse> masterLeaderStepDown(
-	  String leader_uuid, String tablet_id) throws Exception {
+	  String leaderUuid, String tabletId) throws Exception {
     checkIsClosed();
-    if (leader_uuid == null || tablet_id == null) {
+    if (leaderUuid == null || tabletId == null) {
       throw new IllegalArgumentException("Invalid leader/tablet argument during step down " +
-                                         "request. Leader = " + leader_uuid);
+                                         "request. Leader = " + leaderUuid);
     }
 
-    LeaderStepDownRequest rpc = new LeaderStepDownRequest(this.masterTable, leader_uuid, tablet_id);
+    LeaderStepDownRequest rpc = new LeaderStepDownRequest(this.masterTable, leaderUuid, tabletId);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1079,7 +1157,7 @@ public class AsyncYBClient implements AutoCloseable {
 
   /**
    * Find the uuid of a master using it's host/port.
-   * @return The uuid of the master, or an empty string if not found.
+   * @return The uuid of the master, or null if not found.
    * @throws Nothing.
    */
   String getMasterUUID(String host, int port) {
@@ -1120,6 +1198,34 @@ public class AsyncYBClient implements AutoCloseable {
           GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
           if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
             return resp.getInstanceId().getPermanentUuid().toStringUtf8();
+          }
+        } catch (Exception e) {
+          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find the host/port of the leader master.
+   * @return The host and port of the leader master, or null if no leader found.
+   * @throws Nothing.
+   */
+  protected HostAndPort getLeaderMasterHostAndPort() {
+    for (HostAndPort hostAndPort : masterAddresses) {
+      Deferred<GetMasterRegistrationResponse> d;
+      TabletClient clientForHostAndPort = newMasterClient(hostAndPort);
+      if (clientForHostAndPort == null) {
+        String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
+        LOG.warn(message);
+      } else {
+        d = getMasterRegistration(clientForHostAndPort);
+        try {
+          GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
+          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+            return hostAndPort; 
           }
         } catch (Exception e) {
           LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
