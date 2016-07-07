@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package controllers.commissioner;
 
 import java.util.Vector;
@@ -23,9 +25,16 @@ public class TaskListQueue {
    * Execute the sequence of task lists in a sequential manner.
    */
   public void run() {
+    boolean status = true;
     for (TaskList taskList : taskLists) {
       taskList.run();
-      taskList.waitFor();
+      status = taskList.waitFor();
+
+      if (!status) {
+        LOG.error("TaskList '{}' waitFor() returned failed status.", taskList.toString());
+
+        throw new RuntimeException(taskList.toString() + " failed.");
+      }
     }
   }
 

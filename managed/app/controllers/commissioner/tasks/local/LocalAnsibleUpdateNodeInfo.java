@@ -33,6 +33,9 @@ public class LocalAnsibleUpdateNodeInfo extends AnsibleUpdateNodeInfo {
       InstanceInfo.NodeDetails nodeDetails = new InstanceInfo.NodeDetails();
       nodeDetails.public_ip = hp.getHostText();
       nodeDetails.masterRpcPort = hp.getPort();
+      nodeDetails.az = idx + "a";
+      nodeDetails.cloud = "aws";
+      nodeDetails.region = "oregon-west";
       nodeDetails.subnet_id = taskParams._local_test_subnets.get(idx);
       nodeDetails.isBeingAdded = !params.isCreateInstance;
       nodeDetails.instance_name = taskParams.nodeInstanceName;
