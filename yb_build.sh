@@ -30,6 +30,8 @@ Options:
     Do not package and install java source code.
   --run-java-tests
     Run the java unit tests when build is enabled.
+  --static
+    Force a static build.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -88,6 +90,9 @@ while [ $# -gt 0 ]; do
     ;;
     --run-java-tests)
       run_java_tests=true
+    ;;
+    --static)
+      YB_LINK=static
     ;;
     debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
       build_type="$1"
@@ -206,7 +211,7 @@ if "$force_run_cmake" || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_fil
     export NO_REBUILD_THIRDPARTY=1
   fi
   echo "Running cmake in $PWD"
-  ( set -x; cmake -DYB_LINK=dynamic "${cmake_opts[@]}" "$YB_SRC_ROOT" )
+  ( set -x; cmake "${cmake_opts[@]}" "$YB_SRC_ROOT" )
 fi
 
 if "$rocksdb_only"; then

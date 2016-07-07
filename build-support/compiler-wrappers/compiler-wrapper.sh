@@ -77,6 +77,18 @@ if [ -n "${YB_SHOW_COMPILER_COMMAND_LINE:-}" ]; then
   echo "Using compiler: $compiler_executable"
 fi
 
+exit_handler() {
+  local exit_code=$?
+  if [[ "$exit_code" -ne 0 ]]; then
+    echo "Compiler command failed with exit code $exit_code: ${cmd[@]} ;" \
+         "compiler executable: $compiler_executable ;" \
+         "current directory: $PWD" >&2
+  fi
+  exit "$exit_code"
+}
+
+trap 'exit_handler' EXIT
+
 # Swap stdout and stderr, capture stderr to a file, and swap them again.
 (
   (

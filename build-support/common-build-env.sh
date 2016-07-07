@@ -22,6 +22,10 @@ log() {
   echo "[$( date +%Y-%m-%dT%H:%M:%S )] $*"
 }
 
+to_lowercase() {
+  tr A-Z a-z
+}
+
 expect_vars_to_be_set() {
   local calling_func_name=${FUNCNAME[1]}
   local var_name
@@ -89,14 +93,26 @@ set_build_root() {
   expect_num_args 1 "$@"
   local build_type=$1
   validate_build_type "$build_type"
-  build_type=$( echo "$build_type" | tr A-Z a-z )
-  BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE
+  build_type=$( echo "$build_type" | to_lowercase )
+  determine_linking_type
+  BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE-$YB_LINK
+}
+
+determine_linking_type() {
+  if [[ -z "${YB_LINK:-}" ]]; then
+    YB_LINK=dynamic
+  fi
+  if [[ ! "${YB_LINK:-}" =~ ^(static|dynamic)$ ]]; then
+    echo "Expected YB_LINK to be set to \"static\" or \"dynamic\", got \"${YB_LINK:-}\"" >&2
+    exit 1
+  fi
+  export YB_LINK
 }
 
 validate_build_type() {
   expect_num_args 1 "$@"
   local build_type=$1
-  build_type=$( echo "$build_type" | tr A-Z a-z )
+  build_type=$( echo "$build_type" | to_lowercase )
   if [[ ! "$build_type" =~ \
         ^(debug|fastdebug|release|profile_gen|profile_build|tsan|asan)$ ]]; then
     echo "Invalid CMake build type: '$build_type'" >&2

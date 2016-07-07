@@ -330,14 +330,28 @@ elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
   endif()
 endif()
 
+if (NOT "$ENV{YB_LINK}" STREQUAL "" AND NOT "$ENV{YB_LINK}" STREQUAL "${YB_LINK}")
+  if (YB_LINK)
+    message(FATAL_ERROR "Conflicting values of YB_LINK CMake variable (\"${YB_LINK}\") and "
+      "environment variable (\"$ENV{YB_LINK}\").")
+  endif()
+  message("YB_LINK is not set as a CMake variable, using the YB_LINK environment variable: "
+          "\"$ENV{YB_LINK}\".")
+  set(YB_LINK "$ENV{YB_LINK}")
+endif()
+
 # Sanity check linking option.
 if (NOT YB_LINK)
+  message("YB_LINK not specified, determining linking type automatically")
   set(YB_LINK "a")
-elseif(NOT ("auto" MATCHES "^${YB_LINK}" OR
-            "dynamic" MATCHES "^${YB_LINK}" OR
-            "static" MATCHES "^${YB_LINK}"))
-  message(FATAL_ERROR "Unknown value for YB_LINK, must be auto|dynamic|static")
+elseif(NOT ("${YB_LINK}" MATCHES "^[a-z]+$" AND (
+                "auto" MATCHES "^${YB_LINK}" OR
+                "dynamic" MATCHES "^${YB_LINK}" OR
+                "static" MATCHES "^${YB_LINK}"
+            )))
+  message(FATAL_ERROR "Unknown value \"${YB_LINK}\" for YB_LINK, must be auto|dynamic|static")
 else()
+  message("YB_LINK explicitly specified as \"${YB_LINK}\".")
   # Remove all but the first letter.
   string(SUBSTRING "${YB_LINK}" 0 1 YB_LINK)
 endif()
@@ -483,7 +497,9 @@ endif()
 # build type (developers like fast builds).
 if ("${YB_LINK}" STREQUAL "a")
   if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG" OR
-      "${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
+      "${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG" OR
+      "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+    # We use dynamic builds by default even in the release mode.
     message("Using dynamic linking for ${CMAKE_BUILD_TYPE} builds")
     set(YB_LINK "d")
   else()
@@ -530,6 +546,7 @@ else()
   message("Using ld linker")
 endif()
 
+message("Linking type: ${YB_LINK} (d=dynamic, s=static)")
 # Having set YB_LINK due to build type and/or sanitizer, it's now safe to
 # act on its value.
 if ("${YB_LINK}" STREQUAL "d")
