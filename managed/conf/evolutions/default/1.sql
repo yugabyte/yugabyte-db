@@ -52,6 +52,7 @@ create table instance (
 create table instance_info (
   instance_uuid                 varchar(40) not null,
   instance_details              longtext not null,
+  edit_instance_details         longtext,
   constraint pk_instance_info primary key (instance_uuid)
 );
 
@@ -83,7 +84,7 @@ create table task_info (
   owner                         varchar(255) not null,
   create_time                   datetime(6) not null,
   update_time                   datetime(6) not null,
-  constraint ck_task_info_task_type check (task_type in ('DestroyInstance','CreateInstance')),
+  constraint ck_task_info_task_type check (task_type in ('DestroyInstance','EditInstance','CreateInstance')),
   constraint ck_task_info_task_state check (task_state in ('Running','Success','Failure','Created')),
   constraint pk_task_info primary key (uuid)
 );

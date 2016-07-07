@@ -49,11 +49,14 @@ $(document).on("submit", '#createInstanceForm', function() {
       window.location.href = "/";
     },
     error: function(response) {
+
       if (response.status == 400)
         parseFormErrorResponse(response);
       else
+      {
         // TODO: parse the error and show it
-        $(".alert").append(errorResponse.responseText).show();
+        $(".alert").append(response.responseText).show();
+      }
     }
   });
   return false;
