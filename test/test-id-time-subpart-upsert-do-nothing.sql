@@ -63,10 +63,6 @@ SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMEST
 SELECT col_is_pk('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in d_dynamic_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
 
--- Check that upsert doesn't throw conflict
-INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
-SELECT pass('Upsert DO NOTHING passed test'); 
-
 -- Move data to new subpartitions
 SELECT results_eq('SELECT partition_data_time(''partman_test.id_taptest_table_p0'', p_batch_count := 5)::int', ARRAY[9], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
@@ -76,7 +72,11 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p0_p'
     ARRAY[9], 'Check count from id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
     'Check count from id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD')||' (should be empty)');
-/*
+
+-- Check that upsert doesn't throw conflict
+INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
+SELECT pass('Upsert DO NOTHING passed test'); 
+
 -- p10
 SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
@@ -214,6 +214,9 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20',
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
     ARRAY[1], 'Check count from id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
 
+-- Check that upsert doesn't throw conflict
+INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,20));
+SELECT pass('Upsert DO NOTHING passed test (1-20)'); 
 
 -- p50
 SELECT has_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 exists');
@@ -293,7 +296,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p10_p
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20', ARRAY[1], 'Check count from subparent table id_taptest_table_p20');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
     ARRAY[1], 'Check count from id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
-
+/*
 -- Ensure time partitioning works for all sub partitions
 UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table ~ 'partman_test.id_taptest_table_p' AND partition_type = 'time';
 SELECT run_maintenance();
