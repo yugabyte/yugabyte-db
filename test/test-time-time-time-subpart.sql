@@ -227,7 +227,7 @@ PL/pgSQL function throws_ok(text,character,text,text) line 16 at EXECUTE stateme
 DETAIL: 
 HINT: ',
     'Check that undoing partitions is prevented if subpartitions still exist');
-
+*/
 
 SELECT * FROM finish();
 ROLLBACK;
