@@ -39,7 +39,7 @@ mysql> show databases;
 Needs AWS auth credentials to run.
 [source,bash]
 ----
-cat > ~/.sbt/.s3credential
+cat > ~/.sbt/.s3credentials
 accessKey = <user's access key>
 secretKey = <user's secret key>
 ----
