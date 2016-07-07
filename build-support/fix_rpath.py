@@ -21,7 +21,6 @@ import sys
 
 # We treat RPATH and RUNPATH uniformly, but set RUNPATH in the end.
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
-
 def run_ldd(elf_file_path, report_missing_libs=False):
   """
   Run ldd on the given ELF file to check if all libraries are found.
@@ -52,6 +51,22 @@ def run_ldd(elf_file_path, report_missing_libs=False):
 def add_if_absent(items, new_item):
   if new_item not in items:
     items.append(new_item)
+
+def get_rpath_on_mac(executable_path):
+  otool_subprocess= subprocess.Popen(
+    ['/usr/bin/otool', '-l', executable_path],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE)
+  otool_stdout, otool_stderr = otool_subprocess.communicate()
+  if otool_subprocess.returncode != 0:
+    raise RuntimeError("Failed to retrieve RPATH of '{}'".format(executable_path))
+  lines = [l.strip() for l in otool_stdout.strip().split('\n')]
+  rpaths = []
+  for i in xrange(len(lines) - 2):
+    if lines[i] == 'cmd LC_RPATH' and lines[i + 2].startswith('path'):
+      rpath = lines[i + 2].split()[1]
+      rpaths.append(rpath)
+  return rpaths
 
 def main():
   """
@@ -94,9 +109,9 @@ def main():
     # We need to add this third-party dependencies directory containing libgflags to some binaries'
     # runpaths.
     if 'tsan' in os.path.basename(build_root).lower():
-      default_deps_dir_name = 'installed-deps'
-    else:
       default_deps_dir_name = 'installed-deps-tsan'
+    else:
+      default_deps_dir_name = 'installed-deps'
     default_deps_lib_dir = os.path.join(thirdparty_dir, default_deps_dir_name, 'lib')
 
     is_main_build = True
@@ -113,7 +128,8 @@ def main():
 
   if is_mac and is_thirdparty:
     logging.info("Nothing to do for third-party build rpath fix-up on Mac OS X because we never " +
-                 "package/move the thirdparty directory on this platform.")
+                 "package/move the thirdparty directory on this platform. If you want to " +
+                 "fix rpath for YugaByte binaries/libraries, please specify --build-root.")
     return True
 
   if is_mac:
@@ -123,6 +139,8 @@ def main():
   for prefix_dir in prefix_dirs:
     for file_dir, dirs, file_names in os.walk(prefix_dir):
       for file_name in file_names:
+        # TODO: rename this to something that does not contain ELF (Mac OS X binary format is
+        # different).
         elf_file_path = os.path.join(file_dir, file_name)
         if (os.access(elf_file_path, os.X_OK) or
             file_name.endswith('.so') or
@@ -131,6 +149,10 @@ def main():
             and not file_name.endswith('.sh') \
             and not file_name.endswith('.py') \
             and not file_name.endswith('.la'):
+
+          # ---------------------------------------------------------------------------------------
+          # Mac OS X
+          # ---------------------------------------------------------------------------------------
 
           if is_mac:
             # For Mac OS X builds we only do a minimal fix for the librocksdb path.
@@ -144,10 +166,22 @@ def main():
               logging.error("Failed to update librocksdb path for '%s' using install_name_tool" %
                             elf_flie_path)
               return False
+
+            rpath_entries = get_rpath_on_mac(elf_file_path)
+            if default_deps_lib_dir not in rpath_entries:
+              logging.info("Adding {} to {}'s rpath".format(default_deps_lib_dir, elf_file_path))
+              if os.system(
+                'install_name_tool -add_rpath {} {}'.format(
+                  pipes.quote(default_deps_lib_dir),
+                  pipes.quote(elf_file_path)
+                )
+              ) >> 8 != 0:
+                raise RuntimeError("Failed to add rpath to '{}'".format(elf_file_path))
+
             continue
 
           # ---------------------------------------------------------------------------------------
-          # Linux-only case
+          # Linux
           # ---------------------------------------------------------------------------------------
 
           # Invoke readelf to read the current rpath.
@@ -238,18 +272,18 @@ def main():
                 "Could not set rpath on '%s': exit code %d" % (elf_file_path, set_rpath_exit_code))
               is_success = False
 
-  logging.info("Checking if all libraries can be resolved")
-
   could_resolve_all = True
-  for elf_file_path in elf_files:
-    all_libs_found, missing_libs = run_ldd(elf_file_path, report_missing_libs=True)
-    if not all_libs_found:
-      could_resolve_all = False
+  if not is_mac:
+    logging.info("Checking if all libraries can be resolved")
+    for elf_file_path in elf_files:
+      all_libs_found, missing_libs = run_ldd(elf_file_path, report_missing_libs=True)
+      if not all_libs_found:
+        could_resolve_all = False
 
-  if could_resolve_all:
-    logging.info("All libraries resolved successfully!")
-  else:
-    logging.error("Some libraries could not be resolved.")
+    if could_resolve_all:
+      logging.info("All libraries resolved successfully!")
+    else:
+      logging.error("Some libraries could not be resolved.")
 
   return is_success and could_resolve_all
 

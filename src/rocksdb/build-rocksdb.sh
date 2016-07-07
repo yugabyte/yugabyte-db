@@ -40,6 +40,14 @@ Options:
 EOT
 }
 
+script_dir=$( cd "$( dirname "$0" )" && pwd )
+YB_SRC_ROOT=$( cd "$script_dir"/../.. && pwd )
+if [[ ! -d "$YB_SRC_ROOT/thirdparty" ]]; then
+  echo "Could not determine yugabyte source root: no 'thirdparty' subdirectory found in" \
+       "'$YB_SRC_ROOT'" >&2
+  exit 1
+fi
+
 build_dir=""
 c_compiler=""
 cxx_compiler=""
@@ -272,6 +280,9 @@ if [ -n "$extra_cxxflags" ]; then
   make_opts+=( EXTRA_CXXFLAGS="$extra_cxxflags" )
 fi
 
+# TODO: this should probably be installed-deps-tsan in some cases.
+make_opts+=( EXEC_LDFLAGS="-Wl,-rpath,$YB_SRC_ROOT/thirdparty/installed-deps/lib" )
+
 if ! $skip_link_dir_creation; then
   (
     set -x
@@ -294,7 +305,7 @@ fi
 ( set -x; mkdir -p "$rocksdb_build_dir" )
 cd "$rocksdb_build_dir"
 
-set +u  # make_opts may be empty and that we don't want that to be treated as an undefined variable
+set +u  # make_opts may be empty and we don't want that to be treated as an undefined variable.
 
 ( set -x; make "${make_opts[@]}" "${make_targets[@]}" )
 
