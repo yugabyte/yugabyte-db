@@ -6,7 +6,6 @@ import com.google.common.net.HostAndPort;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,19 +98,21 @@ public class EditInstance extends InstanceTaskBase {
       // Creates the YB cluster by starting the masters in the shell mode.
       taskListQueue.add(createTaskListToCreateCluster(true));
 
-      // TODO: Persist the placement info into the YB master.
-
-      // Start the tservers in the clusters. TODO: start difference of 'total-masters'.
+      // Start the tservers in the clusters.
       taskListQueue.add(createTaskListToStartTServers(true));
-
-      // TODO: Update the MetaMaster about the latest placement information.
-      // Mark old nodes for decommission + set the new placement in one call to master leader.
 
       // Now finalize the cluster configuration change tasks. This adds directly to the global
       // list as only one change config job can be done in one step.
       setClusterConfigChangeTasks();
 
+      // Persist the placement info and blacklisted node info into the YB master.
+      // This is done after master config change jobs, so that the new master leader can perform
+      // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
+      taskListQueue.add(createPlacementInfoTask(true));
+
       // Wait for %age completion of the tablet move from master.
+
+      // TODO: Update the MetaMaster about the latest placement information.
 
       // Finally send destroy old set of nodes to ansible.
 
@@ -128,7 +129,7 @@ public class EditInstance extends InstanceTaskBase {
   }
 
   private TaskList createTaskListToSwitchInstanceInfo() {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("UpdateInstanceInfo", executor);
     UpdateInstanceInfo uii = new UpdateInstanceInfo();
     UpdateInstanceInfo.Params params = new UpdateInstanceInfo.Params();   
     params.instanceUUID = taskParams.instanceUUID;
@@ -168,7 +169,7 @@ public class EditInstance extends InstanceTaskBase {
     LOG.info("Remove {} from existing nodes {} for a final size of {}.",
              toBeDeleted, existingNodes, numToBeAdded);
 
-    // TODO.: Find the master leader (step it down) and remove it last.
+    // TODO: Find the master leader and remove it last. The step down will happen in client code.
     for (int i = 0; i < numIters; i++) {
       taskListQueue.add(createChangeConfigTask(i, true, null));
       taskListQueue.add(createChangeConfigTask(i, false, toBeDeleted));
@@ -183,7 +184,7 @@ public class EditInstance extends InstanceTaskBase {
   }
 
   private TaskList createChangeConfigTask(int index, boolean isAdd, List<HostAndPort> toBeDeleted) {
-    TaskList taskList = new TaskList(getName(), executor);
+    TaskList taskList = new TaskList("ChangeMasterConfig:" + index + "-" + isAdd, executor);
     HostAndPort hp = isAdd ? null : toBeDeleted.get(index);
     ChangeMasterConfig.Params params = ChangeMasterConfig.getParams(hp, isAdd);
     params.instanceUUID = taskParams.instanceUUID;
