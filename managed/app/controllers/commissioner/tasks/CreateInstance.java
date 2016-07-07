@@ -35,25 +35,26 @@ public class CreateInstance extends InstanceTaskBase {
                                   taskParams.ybServerPkg);
 
       // Create the required number of nodes in the appropriate locations.
-      taskListQueue.add(createTaskListToSetupServers());
+      taskListQueue.add(createTaskListToSetupServers(1 /* startIndex */));
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      taskListQueue.add(createTaskListToGetServerInfo());
+      taskListQueue.add(createTaskListToGetServerInfo(1 /* startIndex */));
 
       // Pick the masters and persist the plan in the middleware.
-      taskListQueue.add(createTaskListToCreateClusterConf());
+      taskListQueue.add(createTaskListToCreateClusterConf(0 /* mastersToChoose */));
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      taskListQueue.add(createTaskListToConfigureServers());
+      taskListQueue.add(createTaskListToConfigureServers(1 /* startIndex */));
 
       // Creates the YB cluster by starting the masters in the create mode.
-      taskListQueue.add(createTaskListToCreateCluster());
+      taskListQueue.add(createTaskListToCreateCluster(false /* isShell */));
 
-      // TODO: Persist the placement info into the YB master.
+      // Persist the placement info into the YB master.
+      taskListQueue.add(createPlacementInfoTask(false /* isShell */));
 
       // Start the tservers in the clusters.
-      taskListQueue.add(createTaskListToStartTServers());
+      taskListQueue.add(createTaskListToStartTServers(false /* isEdit */));
 
       // TODO: Update the MetaMaster about the latest placement information.
 

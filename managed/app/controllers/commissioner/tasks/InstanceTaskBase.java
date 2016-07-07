@@ -83,10 +83,6 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     }
   }
 
-  public TaskList createTaskListToSetupServers() {
-    return createTaskListToSetupServers(1);
-  }
-
   public TaskList createTaskListToSetupServers(int startIndex) {
     TaskList taskList = new TaskList("AnsibleSetupServer", executor);
     for (int nodeIdx = startIndex; nodeIdx < startIndex + taskParams.numNodes; nodeIdx++) {
@@ -104,10 +100,6 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       taskList.addTask(ansibleSetupServer);
     }
     return taskList;
-  }
-
-  public TaskList createTaskListToGetServerInfo() {
-    return createTaskListToGetServerInfo(1);
   }
 
   public TaskList createTaskListToGetServerInfo(int startIndex) {
@@ -131,10 +123,6 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     return taskList;
   }
 
-  public TaskList createTaskListToCreateClusterConf() {
-    return createTaskListToCreateClusterConf(0);
-  }
-
   public TaskList createTaskListToCreateClusterConf(int numMasters) {
     TaskList taskList = new TaskList("CreateClusterConf", executor);
     CreateClusterConf.Params params = new CreateClusterConf.Params();
@@ -154,10 +142,6 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     // Add it to the task list.
     taskList.addTask(task);
     return taskList;
-  }
-
-  public TaskList createTaskListToConfigureServers() {
-    return createTaskListToConfigureServers(1);
   }
 
   public TaskList createTaskListToConfigureServers(int startIndex) {
@@ -181,9 +165,6 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     return taskList;
   }
 
-  public TaskList createTaskListToCreateCluster() {
-    return createTaskListToCreateCluster(false);
-  }
   public TaskList createTaskListToCreateCluster(boolean isShell) {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     List<NodeDetails> masters = isShell ? InstanceInfo.getNewMasters(taskParams.instanceUUID)
@@ -209,12 +190,9 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     return taskList;
   }
 
-  public TaskList createTaskListToStartTServers() {
-    return createTaskListToStartTServers(false);
-  }
   public TaskList createTaskListToStartTServers(boolean isShell) {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
-    List<NodeDetails> tservers = isShell ? InstanceInfo.getNewMasters(taskParams.instanceUUID)
+    List<NodeDetails> tservers = isShell ? InstanceInfo.getNewTServers(taskParams.instanceUUID)
                                          : InstanceInfo.getTServers(taskParams.instanceUUID);
     for (NodeDetails node : tservers) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -233,6 +211,16 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       // Add it to the task list.
       taskList.addTask(task);
     }
+    return taskList;
+  }
+
+  public TaskList createPlacementInfoTask(boolean isEdit) {
+    TaskList taskList = new TaskList("UpdatePlacementInfo", executor);
+    UpdatePlacementInfo upi = new UpdatePlacementInfo();
+    UpdatePlacementInfo.Params params = UpdatePlacementInfo.getParams(isEdit);
+    params.instanceUUID = taskParams.instanceUUID;
+    upi.initialize(params);
+    taskList.addTask(upi);
     return taskList;
   }
 }

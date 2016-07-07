@@ -69,7 +69,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     try {
       String hostPorts = TaskUtil.getMasterHostPorts(taskParams.instanceUUID);
 
-      LOG.info("Running Change Config isAdd={} uuid={} ports={}", taskParams.isAdd,
+      LOG.info("Running {}: instance = {}, hostPorts = {}", getName(),
                taskParams.instanceUUID, hostPorts);
 
       if (hostPorts == null || hostPorts.isEmpty()) {
@@ -93,7 +93,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
 
       ChangeConfigResponse response = taskParams.ybService
           .getClient(hostPorts)
-          .ChangeMasterConfig(
+          .changeMasterConfig(
                taskParams.hostPort.getHostText(),
                taskParams.hostPort.getPort(),
                taskParams.isAdd);

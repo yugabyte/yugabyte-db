@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package controllers.commissioner;
 
@@ -27,8 +27,6 @@ public class TaskList implements Runnable {
 
   private AtomicInteger numTasksCompleted;
 
-  private boolean allTasksSucceeded = true;
-
   // The number of threads to run in parallel.
   int numThreads;
 
@@ -56,6 +54,11 @@ public class TaskList implements Runnable {
     return name;
   }
 
+  @Override
+  public String toString() {
+    return getName() + " : completed " + getNumTasksDone() + " out of " + getNumTasks() + " tasks.";
+  }
+
   public void addTask(ITask task) {
     LOG.info("Adding task #" + taskList.size() + ": " + task.toString());
     taskList.add(task);
@@ -76,18 +79,18 @@ public class TaskList implements Runnable {
   @Override
   public void run() {
     if (taskList.isEmpty()) {
-      LOG.error("No tasks in task list " + name);
+      LOG.error("No tasks in task list {}.", getName());
       tasksDone = true;
       return;
     }
-    LOG.info("Running task list " + name);
+    LOG.info("Running task list {}.", getName());
     for (ITask task : taskList) {
       Future<?> future = executor.submit(task);
       futuresList.add(future);
     }
   }
 
-  public void waitFor() {
+  public boolean waitFor() {
     for (Future<?> future : futuresList) {
       // Wait for each future to finish.
       try {
@@ -95,15 +98,18 @@ public class TaskList implements Runnable {
           // Task succeeded.
           numTasksCompleted.incrementAndGet();
         } else {
-          allTasksSucceeded = false;
+          LOG.error("ERROR: task {} get() returned null.", future.toString());
+          return false;
         }
       } catch (InterruptedException e) {
-        allTasksSucceeded = false;
-        LOG.error("Failed to execute task", e);
+        LOG.error("Failed to execute task {}, hit error {}.", future.toString(), e.getMessage());
+        return false;
       } catch (ExecutionException e) {
-        allTasksSucceeded = false;
-        LOG.error("Failed to execute task", e);
+        LOG.error("Failed to execute task {}, hit error {}.", future.toString(), e.getMessage());
+        return false;
       }
     }
+
+    return true;
   }
 }

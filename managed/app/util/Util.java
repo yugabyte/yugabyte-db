@@ -85,8 +85,10 @@ public class Util {
                .build();
       LOG.info("Created new mini cluster with {} masters.", numMasters);
     } catch (Exception e) {
-      LOG.warn("Could not start mini cluster with {} masters : {}",
-          numMasters, e.getMessage());
+      String errMsg = "Could not start mini cluster with " + numMasters + " masters. " +
+                      "Error: " + e.getMessage();
+      LOG.error(errMsg);
+      throw new RuntimeException(errMsg);
     }
 
     return ret;
