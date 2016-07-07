@@ -1,7 +1,14 @@
 Changelog
 =========
 
-WIP version 0.0.5:
+2016-07-07 version 0.0.5:
+
+  - add support for PostgreSQL 9.6, thanks to Konstantin Mosolov for fixing some
+    issues
+  - add support from new bloom access method (9.6+)
+  - fix issue with hypothetical indexes on expression (thanks to Konstantin
+    Mosolov)
+  - fix possible crash in hypothetical index size estimation
 
 2015-11-06 version 0.0.4:
 
