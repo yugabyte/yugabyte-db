@@ -2,6 +2,12 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
+###################################################################################################
+#
+# UI endpoints.
+#
+###################################################################################################
+
 # Web Specific Routes
 GET     /                           controllers.DashboardController.index()
 GET     /login                      controllers.HomeController.login()
@@ -11,6 +17,13 @@ GET     /instances                  controllers.DashboardController.instances()
 GET     /tables                     controllers.DashboardController.tables()
 GET     /profile                    controllers.DashboardController.profile()
 GET     /instances/:iUUID           controllers.yb.InstanceController.index(iUUID: java.util.UUID)
+
+
+###################################################################################################
+#
+# API endpoints.
+#
+###################################################################################################
 
 # API Specific Routes
 POST    /api/login                  controllers.SessionController.login()
@@ -40,9 +53,40 @@ GET     /api/customers/:cUUID/instances controllers.yb.InstanceController.list(c
 # Task History API
 GET    /api/customers/:cUUID/tasks  controllers.yb.CustomerTaskController.list(cUUID: java.util.UUID)
 
-# Commissioner Specific Routes
+
+###################################################################################################
+#
+# Commissioner endpoints.
+#
+###################################################################################################
+
+# Create or edit an instance.
 POST    /commissioner/instances/:iUUID  controllers.commissioner.TasksController.createOrEdit(iUUID: java.util.UUID)
+
+# Get details of a task. Currently returns its status and percentage completion.
 GET     /commissioner/tasks/:tUUID      controllers.commissioner.TasksController.show(tUUID: java.util.UUID)
+
+###################################################################################################
+#
+# MetaMaster endpoints.
+#
+###################################################################################################
+
+# Returns the list of masters for a given instance.
+GET     /metamaster/instance/:iUUID  controllers.metamaster.MetaMasterController.get(iUUID: java.util.UUID)
+
+# Creates or updates the list of masters for a given instance.
+POST    /metamaster/instance/:iUUID  controllers.metamaster.MetaMasterController.upsert(iUUID: java.util.UUID)
+
+# Remove the entry for the instance.
+DELETE  /metamaster/instance/:iUUID  controllers.metamaster.MetaMasterController.delete(iUUID: java.util.UUID)
+
+
+###################################################################################################
+#
+# Static resources.
+#
+###################################################################################################
 
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)
