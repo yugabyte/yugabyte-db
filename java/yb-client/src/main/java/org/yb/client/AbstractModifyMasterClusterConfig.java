@@ -19,19 +19,16 @@ public abstract class AbstractModifyMasterClusterConfig {
     ybClient = client;
   }
 
-  public String doCall() throws Exception {
+  public void doCall() throws Exception {
     GetMasterClusterConfigResponse getResponse = ybClient.getMasterClusterConfig();
     if (getResponse.hasError()) {
-      return "Hit error: " + getResponse.errorMessage();
+      throw new RuntimeException("Get config hit error: " + getResponse.errorMessage());
     }
     Master.SysClusterConfigEntryPB newConfig = modifyConfig(getResponse.getConfig());
     ChangeMasterClusterConfigResponse changeResp = ybClient.changeMasterClusterConfig(newConfig);
     if (changeResp.hasError()) {
-      return "Hit error: " + changeResp.errorMessage();
+      throw new RuntimeException("ChangeConfig hit error: " + changeResp.errorMessage());
     }
-
-    // Get the current cluster config.
-    return "Updated config: " + newConfig;
   }
 
   abstract protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config);

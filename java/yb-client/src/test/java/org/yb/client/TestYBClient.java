@@ -154,7 +154,11 @@ public class TestYBClient extends BaseYBTest {
     // Add the hosts to the config.
     ModifyMasterClusterConfigBlacklist operation =
         new ModifyMasterClusterConfigBlacklist(syncClient, hosts, true);
-    operation.doCall();
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      assertTrue(false);
+    }
     // Check the new config info.
     resp = syncClient.getMasterClusterConfig();
     assertFalse(resp.hasError());
@@ -164,7 +168,11 @@ public class TestYBClient extends BaseYBTest {
     // element: host2.
     hosts.remove(host1);
     operation = new ModifyMasterClusterConfigBlacklist(syncClient, hosts, false);
-    operation.doCall();
+    try {
+      operation.doCall();
+    } catch (Exception e) {
+      assertTrue(false);
+    }
     // Check the config one last time.
     resp = syncClient.getMasterClusterConfig();
     assertFalse(resp.hasError());

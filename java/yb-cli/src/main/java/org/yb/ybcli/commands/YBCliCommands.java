@@ -16,6 +16,7 @@ import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
@@ -134,6 +135,7 @@ public class YBCliCommands implements CommandMarker {
   public String listMasters() {
     try {
       ListMastersResponse resp = ybClient.listMasters();
+      // TODO: Add checks for resp.hasError here and in all cases where it is not performed.
       return printServerInfo(resp.getMasters(), true, resp.getElapsedMillis());
     } catch (Exception e) {
       return "Failed to fetch masters info for database at " + masterAddresses + ", error: " + e;
@@ -155,7 +157,7 @@ public class YBCliCommands implements CommandMarker {
 
   @CliCommand(value = "change_config", help = "Change the master's configuration in this database")
   public String changeConfig(
-      @CliOption(key = { "master_host","h", "host" },
+      @CliOption(key = { "master_host", "h", "host" },
                  mandatory = true,
                  help = "IP address of the master") final String host,
       @CliOption(key = { "master_port", "p", "port" },
@@ -178,7 +180,7 @@ public class YBCliCommands implements CommandMarker {
   @CliCommand(value = "change_blacklist",
       help = "Change the set of blacklisted nodes for the universe")
   public String changeBlacklist(
-      @CliOption(key = { "servers", },
+      @CliOption(key = { "servers", "s"},
                  mandatory = true,
                  help = "CSV of host:port pairs for target servers") final String servers,
       @CliOption(key = { "isAdd" },
@@ -189,9 +191,28 @@ public class YBCliCommands implements CommandMarker {
 
       ModifyMasterClusterConfigBlacklist operation = new ModifyMasterClusterConfigBlacklist(ybClient, modifyHosts, isAdd);
 
-      return operation.doCall();
+      operation.doCall();
+
+      return "Success.\n";
     } catch (Exception e) {
-      return e.toString();
+      // TODO: Log the error call stack.
+      return "Failed: " + e.toString() + "\n";
+    }
+  }
+
+  @CliCommand(value = "get_universe_config",
+              help = "Get the placement info and blacklist info of the universe")
+  public String getUniverseConfig() {
+    try {
+      GetMasterClusterConfigResponse resp = ybClient.getMasterClusterConfig();
+
+      if (resp.hasError()) {
+        return "Failed: " + resp.errorMessage();
+      }
+
+      return "Config: \n" + resp.getConfig();
+    } catch (Exception e) {
+      return "Failed: " + e.toString() + "\n";
     }
   }
 }
