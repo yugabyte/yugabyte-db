@@ -2,44 +2,45 @@
 
 package controllers.commissioner.tasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.net.HostAndPort;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.util.List;
-import java.util.Vector;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
-import play.libs.Json;
+import org.yb.client.MiniYBCluster;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import controllers.commissioner.AbstractTaskBase;
 import controllers.commissioner.Common.CloudType;
-import controllers.commissioner.ITask;
 import controllers.commissioner.TaskList;
 import controllers.commissioner.TaskListQueue;
-import forms.commissioner.InstanceTaskParams;
 import forms.commissioner.ITaskParams;
+import forms.commissioner.InstanceTaskParams;
 import models.commissioner.InstanceInfo;
 import models.commissioner.InstanceInfo.NodeDetails;
-import org.yb.client.MiniYBCluster;
+import play.api.Play;
+import play.libs.Json;
 import services.YBMiniClusterService;
 import util.Util;
 
 public abstract class InstanceTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceTaskBase.class);
 
+  // Variable to determine if this is a local node provisioning.
   public static final boolean isLocalTesting = Util.isLocalTesting();
+
   // Only used for local testing, maintained here to control creation and deletion.
   public static MiniYBCluster miniCluster = null;
 
-  @Override 
+  @Override
   public void initialize(ITaskParams params) {
     this.taskParams = (InstanceTaskParams)params;
     if (isLocalTesting) {
-      this.miniCluster = Play.current().injector().instanceOf(YBMiniClusterService.class)
+      miniCluster = Play.current().injector().instanceOf(YBMiniClusterService.class)
           .getMiniCluster(this.taskParams.numNodes);
     }
     // Create the threadpool for the subtasks to use.

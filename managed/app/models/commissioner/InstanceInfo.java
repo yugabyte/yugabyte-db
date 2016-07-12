@@ -290,7 +290,7 @@ public class InstanceInfo extends Model {
     // Find a node being added and set to be not being added, as caller of this api will
     // add it to the instance.
     for (NodeDetails node : nodes) {
-      if (node.isBeingAdded) {
+      if (node.isBeingSetup) {
         newNode = node;
         break;
       }
@@ -298,7 +298,7 @@ public class InstanceInfo extends Model {
 
     if (newNode != null) {
       LOG.info("Updating {} node {}.", newNode.instance_name, newNode.masterRpcPort);
-      newNode.isBeingAdded = false;
+      newNode.isBeingSetup = false;
       updateEditNodeDetails(instanceUUID, newNode.instance_name, newNode);
     }
 
@@ -540,12 +540,12 @@ public class InstanceInfo extends Model {
     public int tserverHttpPort = 9000;
     public int tserverRpcPort = 9100;
     
-    public boolean isBeingAdded = false;
+    public boolean isBeingSetup = false;
     
     public String toString() {
       StringBuilder sb = new StringBuilder();
       sb.append("Server : " + subnet_id + " "+ public_ip + "/" + private_ip + ":" + masterRpcPort +
-                " " + isMaster + " " + isBeingAdded);
+                " " + isMaster + " " + isBeingSetup);
       return sb.toString();
     }
   }
