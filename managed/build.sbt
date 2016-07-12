@@ -13,6 +13,7 @@ libraryDependencies ++= Seq(
   "org.mockito" % "mockito-core" % "1.10.19",
   "org.mindrot" % "jbcrypt" % "0.3m",
   "mysql" % "mysql-connector-java" % "5.1.27",
+  "org.postgresql" % "postgresql" % "9.2-1003-jdbc4",
 
   // WebJars (i.e. client-side) dependencies
   "org.webjars" %  "jquery" % "2.1.1",
