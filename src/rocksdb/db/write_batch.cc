@@ -46,6 +46,8 @@
 #include "util/perf_context_imp.h"
 #include "util/statistics.h"
 
+#include <yb/gutil/macros.h>
+
 namespace rocksdb {
 
 // anon namespace for file-local types
@@ -215,7 +217,7 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
       if (!GetVarint32(input, column_family)) {
         return Status::Corruption("bad WriteBatch Put");
       }
-    // intentional fallthrough
+      FALLTHROUGH_INTENDED;
     case kTypeValue:
       if (!GetLengthPrefixedSlice(input, key) ||
           !GetLengthPrefixedSlice(input, value)) {
@@ -227,7 +229,7 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
       if (!GetVarint32(input, column_family)) {
         return Status::Corruption("bad WriteBatch Delete");
       }
-    // intentional fallthrough
+      FALLTHROUGH_INTENDED;
     case kTypeDeletion:
     case kTypeSingleDeletion:
       if (!GetLengthPrefixedSlice(input, key)) {
@@ -238,7 +240,7 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
       if (!GetVarint32(input, column_family)) {
         return Status::Corruption("bad WriteBatch Merge");
       }
-    // intentional fallthrough
+      FALLTHROUGH_INTENDED;
     case kTypeMerge:
       if (!GetLengthPrefixedSlice(input, key) ||
           !GetLengthPrefixedSlice(input, value)) {

@@ -14,6 +14,7 @@
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/hash/jenkins.h"
 #include "yb/gutil/hash/jenkins_lookup2.h"
+#include "yb/gutil/macros.h"
 
 // For components that ship code externally (notably the Google Search
 // Appliance) we want to change the fingerprint function so that
@@ -86,9 +87,11 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
         case 3 :
           a += char2unsigned(s[2]) << 16;
           d += char2unsigned(s[2]) << 16;
+          FALLTHROUGH_INTENDED;
         case 2 :
           a += char2unsigned(s[1]) << 8;
           d += char2unsigned(s[1]) << 8;
+          FALLTHROUGH_INTENDED;
         case 1 :
           a += char2unsigned(s[0]);
           d += char2unsigned(s[0]);
@@ -101,12 +104,15 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
         case 11:
           c += char2unsigned(s[10]) << 24;
           f += char2unsigned(s[10]) << 24;
+          FALLTHROUGH_INTENDED;
         case 10:
           c += char2unsigned(s[9]) << 16;
           f += char2unsigned(s[9]) << 16;
+          FALLTHROUGH_INTENDED;
         case 9 :
           c += char2unsigned(s[8]) << 8;
           f += char2unsigned(s[8]) << 8;
+          FALLTHROUGH_INTENDED;
         case 8 :
           b += Google1At(s+4);  a += word32AtOffset0;
           e += Google1At(s+4);  d += word32AtOffset0;
@@ -114,12 +120,15 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
         case 7 :
           b += char2unsigned(s[6]) << 16;
           e += char2unsigned(s[6]) << 16;
+          FALLTHROUGH_INTENDED;
         case 6 :
           b += char2unsigned(s[5]) << 8;
           e += char2unsigned(s[5]) << 8;
+          FALLTHROUGH_INTENDED;
         case 5 :
           b += char2unsigned(s[4]);
           e += char2unsigned(s[4]);
+          FALLTHROUGH_INTENDED;
         case 4 :
           a += word32AtOffset0;
           d += word32AtOffset0;
@@ -144,12 +153,15 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
       case 11:
         c += char2unsigned(s[10]) << 24;
         f += char2unsigned(s[10]) << 24;
+        FALLTHROUGH_INTENDED;
       case 10:
         c += char2unsigned(s[9]) << 16;
         f += char2unsigned(s[9]) << 16;
+        FALLTHROUGH_INTENDED;
       case 9 :
         c += char2unsigned(s[8]) << 8;
         f += char2unsigned(s[8]) << 8;
+        FALLTHROUGH_INTENDED;
       case 8 :
         b += Google1At(s+4);  a += Google1At(s);
         e += Google1At(s+4);  d += Google1At(s);
@@ -157,12 +169,15 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
       case 7 :
         b += char2unsigned(s[6]) << 16;
         e += char2unsigned(s[6]) << 16;
+        FALLTHROUGH_INTENDED;
       case 6 :
         b += char2unsigned(s[5]) << 8;
         e += char2unsigned(s[5]) << 8;
+        FALLTHROUGH_INTENDED;
       case 5 :
         b += char2unsigned(s[4]);
         e += char2unsigned(s[4]);
+        FALLTHROUGH_INTENDED;
       case 4 :
         a += Google1At(s);
         d += Google1At(s);
@@ -170,9 +185,11 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
       case 3 :
         a += char2unsigned(s[2]) << 16;
         d += char2unsigned(s[2]) << 16;
+        FALLTHROUGH_INTENDED;
       case 2 :
         a += char2unsigned(s[1]) << 8;
         d += char2unsigned(s[1]) << 8;
+        FALLTHROUGH_INTENDED;
       case 1 :
         a += char2unsigned(s[0]);
         d += char2unsigned(s[0]);

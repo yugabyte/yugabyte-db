@@ -161,8 +161,10 @@ endif()
 # CXX_GLOBAL_COMMON_FLAGS are flags that are common to the YB and RocksDB parts of the codebase.
 # The following flags are required to not assume the presence of too many CPU features so that the
 # code built can run on many platforms. For example, support building on c4.xlarge in AWS (dev
-# servers) and running on c3.xlarge (flash-based cluster machines).
-set(CXX_GLOBAL_COMMON_FLAGS "-mno-avx2 -mno-bmi -mno-bmi2 -mno-abm -mno-fma -mno-movbe")
+# servers) and running on c3.xlarge (flash-based cluster machines). There are a couple more flags
+# (-mno-abm and -mno-movbe) that are not recognized by some clang versions we are using, so they are
+# being added in the gcc-specific section below.
+set(CXX_GLOBAL_COMMON_FLAGS "-mno-avx2 -mno-bmi -mno-bmi2 -mno-fma")
 
 if(APPLE)
   # The above -mno-* flags will error out on Mac OS X platforms.
@@ -175,9 +177,14 @@ set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -D__STDC_FORMAT_MACROS")
 # Do not warn about uses of deprecated declarations. RocksDB has a few instances of those.
 set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -Wno-deprecated-declarations")
 
+set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -DGFLAGS=gflags")
+
 # CXX_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do not
 # apply to the 'src/rocksdb' part).
-# compiler flags that are common across debug/release builds
+# TODO: rename this to something like CXX_SRC_YB_COMMON_FLAGS.
+# TODO: what does "COMMON" mean in this name? Does it refer to the fact that these flags are common
+#       between different build types?
+# Compiler flags that are common across debug/release builds:
 #  - msse4.2: Enable sse4.2 compiler intrinsics.
 #  - Wall: Enable all warnings.
 #  - Wno-sign-compare: suppress warnings for comparison between signed and unsigned
@@ -189,8 +196,8 @@ set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -Wno-deprecated-declarat
 #     GCC cannot always verify whether strict aliasing rules are indeed followed due to
 #     fundamental limitations in escape analysis, which can result in subtle bad code generation.
 #     This has a small perf hit but worth it to avoid hard to debug crashes.
-set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated ")
-set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread ${CXX_GLOBAL_COMMON_FLAGS} -Wno-parentheses")
+set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread -Wno-parentheses")
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], YugaByte's
 # generated code (which always uses clang) must be built against the old ABI.
@@ -290,12 +297,10 @@ else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
 
-# Add common flags
-set(CMAKE_CXX_FLAGS "${CXX_COMMON_FLAGS} ${CMAKE_CXX_FLAGS}")
-
-# Determine compiler version
+# Determine compiler version. This will set COMPILER_FAMILY.
 include(CompilerInfo)
 
+message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 if ("${COMPILER_FAMILY}" STREQUAL "clang")
   # Using Clang with ccache causes a bunch of spurious warnings that are
   # purportedly fixed in the next version of ccache. See the following for details:
@@ -306,6 +311,10 @@ if ("${COMPILER_FAMILY}" STREQUAL "clang")
 
   # Clang generates ambiguous member template warnings when calling the ev++ api.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-ambiguous-member-template")
+
+  # Emit warnings (that we then treat as errors in compiler-wrapper.sh) on unannotated fallthrough
+  # in switch statements. This applies to both YB and RocksDB parts of the code.
+  set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -Wimplicit-fallthrough")
 
   # Only hardcode -fcolor-diagnostics if stderr is opened on a terminal. Otherwise
   # the color codes show up as noisy artifacts.
@@ -328,7 +337,19 @@ elseif("${COMPILER_FAMILY}" STREQUAL "gcc")
       "forbidden as it is known to produce broken code in release mode. "
       "Upgrade gcc, or build with clang from the thirdparty directory.")
   endif()
+
+  # These flags are not understood by some versions of clang we are using.
+  set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -mno-abm -mno-movbe")
+else()
+  message(SEND_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
+
+# Add "global" flags (those shared between YB and RocksDB parts of the code) to YB's flags.
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} ${CXX_GLOBAL_COMMON_FLAGS}")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_COMMON_FLAGS}")
+
+# After this point, modifying CXX_GLOBAL_COMMON_FLAGS and CXX_COMMON_FLAGS will have no effect!
 
 if (NOT "$ENV{YB_LINK}" STREQUAL "" AND NOT "$ENV{YB_LINK}" STREQUAL "${YB_LINK}")
   if (YB_LINK)
@@ -400,7 +421,7 @@ if (${YB_USE_ASAN})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -DADDRESS_SANITIZER")
 endif()
 
-# For any C code, use the same flags.
+# For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 

@@ -31,6 +31,8 @@
 #include "util/statistics.h"
 #include "util/stop_watch.h"
 
+#include "yb/gutil/macros.h"
+
 namespace rocksdb {
 
 MemTableOptions::MemTableOptions(
@@ -661,6 +663,9 @@ void MemTable::Update(SequenceNumber seq,
                               VarintLength(value.size()) + value.size()));
             return;
           }
+          // TODO (YugaByte): verify this is not a bug. The behavior for kTypeValue in case there
+          // is not enough room for an in-place update, .
+          FALLTHROUGH_INTENDED;
         }
         default:
           // If the latest value is kTypeDeletion, kTypeMerge or kTypeLogData
@@ -742,6 +747,7 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
             UpdateFlushState();
             return true;
           }
+          FALLTHROUGH_INTENDED;
         }
         default:
           break;

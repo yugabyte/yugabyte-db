@@ -48,14 +48,14 @@ bool HumanReadableNumBytes::ToInt64(const string &str, int64 *num_bytes) {
   int64 scale = 1;
   switch (*end) {
     // NB: an int64 can only go up to <8 EB.
-    case 'E':  scale <<= 10;   // Fall through...
-    case 'P':  scale <<= 10;
-    case 'T':  scale <<= 10;
-    case 'G':  scale <<= 10;
-    case 'M':  scale <<= 10;
-    case 'K':
-    case 'k':  scale <<= 10;
-    case 'B':
+    case 'E':  scale <<= 10; FALLTHROUGH_INTENDED;  // Fall through...
+    case 'P':  scale <<= 10; FALLTHROUGH_INTENDED;
+    case 'T':  scale <<= 10; FALLTHROUGH_INTENDED;
+    case 'G':  scale <<= 10; FALLTHROUGH_INTENDED;
+    case 'M':  scale <<= 10; FALLTHROUGH_INTENDED;
+    case 'K':  FALLTHROUGH_INTENDED;
+    case 'k':  scale <<= 10; FALLTHROUGH_INTENDED;
+    case 'B':  FALLTHROUGH_INTENDED;
     case '\0': break;          // To here.
     default:
       return false;
@@ -78,16 +78,16 @@ bool HumanReadableNumBytes::ToDouble(const string &str, double *num_bytes) {
     return false;
   const char scale = *end;
   switch (scale) {
-    case 'Y':  d *= 1024.0;   // That's a yotta bytes!
-    case 'Z':  d *= 1024.0;
-    case 'E':  d *= 1024.0;
-    case 'P':  d *= 1024.0;
-    case 'T':  d *= 1024.0;
-    case 'G':  d *= 1024.0;
-    case 'M':  d *= 1024.0;
-    case 'K':
-    case 'k':  d *= 1024.0;
-    case 'B':
+    case 'Y':  d *= 1024.0; FALLTHROUGH_INTENDED;  // That's a yotta bytes!
+    case 'Z':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'E':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'P':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'T':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'G':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'M':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'K':  FALLTHROUGH_INTENDED;
+    case 'k':  d *= 1024.0; FALLTHROUGH_INTENDED;
+    case 'B':  FALLTHROUGH_INTENDED;
     case '\0': break;         // to here.
     default:
       return false;

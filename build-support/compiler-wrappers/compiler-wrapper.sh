@@ -2,10 +2,18 @@
 
 # Copyright (c) YugaByte, Inc.
 
+# A wrapper script that pretends to be a C/C++ compiler and does some pre-processing of arguments
+# and error checking on the output. Invokes GCC or Clang internally.
+
 set -euo pipefail
 
 SCRIPT_NAME="compiler-wrapper.sh"
 YB_SRC_DIR=$( cd "$( dirname "$0" )"/../.. && pwd )
+
+# We currently assume a specific location of the precompiled header file (used in the RocksDB
+# codebase). If we add more precompiled header files, we will need to change related error handling
+# here.
+PCH_NAME=precompiled_header.h.gch
 
 . "$YB_SRC_DIR"/build-support/common-build-env.sh
 # The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type.
@@ -26,21 +34,6 @@ case "$YB_COMPILER_TYPE" in
     cxx_executable=g++
   ;;
   clang)
-    # Remove some gcc arguments that clang does not understand.
-    compiler_args=()
-    if [ $# -gt 0 ]; then
-      for arg in "$@"; do
-        case "$arg" in
-          -mno-abm|-mno-movbe)
-            # skip
-          ;;
-          *)
-            compiler_args+=( "$arg" )
-        esac
-      done
-      unset arg
-    fi
-
     if [[ "$OSTYPE" =~ ^darwin ]]; then
       cc_executable=/usr/bin/clang
       cxx_executable=/usr/bin/clang++
@@ -83,12 +76,21 @@ exit_handler() {
     echo "Compiler command failed with exit code $exit_code: ${cmd[@]} ;" \
          "compiler executable: $compiler_executable ;" \
          "current directory: $PWD" >&2
+    if [[ -n "${YB_SHOW_COMPILER_STDERR:-}" && -f "$stderr_path" ]]; then
+      # Useful to see what exactly is included in compiler stderr (as opposed to stdout) when
+      # debugging the build.
+      echo "Compiler standard error:" >&2
+      echo "-------------------------------------------------------------------------------------" >&2
+      cat "$stderr_path" >&2
+      echo "-------------------------------------------------------------------------------------" >&2
+    fi
   fi
   exit "$exit_code"
 }
 
 trap 'exit_handler' EXIT
 
+set +e
 # Swap stdout and stderr, capture stderr to a file, and swap them again.
 (
   (
@@ -98,10 +100,29 @@ trap 'exit_handler' EXIT
     "${cmd[@]}" 3>&2 2>&1 1>&3 
   ) | tee "$stderr_path"
 ) 3>&2 2>&1 1>&3
+compiler_exit_code=$?
+set -e
+
+if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/null || \
+   grep "$PCH_NAME: not used because " "$stderr_path" >/dev/null || \
+   egrep "definition of macro '.*' differs between the precompiled header .* and the command line" \
+         "$stderr_path" >/dev/null
+then
+  PCH_PATH=$PWD/$PCH_NAME
+  echo "Removing '$PCH_PATH' so that further builds have a chance to" \
+       "succeed." >&2
+  ( rm -f "$PCH_PATH" )
+fi
+
+if [[ "$compiler_exit_code" -ne 0 ]]; then
+  exit "$compiler_exit_code"
+fi
 
 # Selectively treat some warnings as errors. This is not very easily done using compiler options,
 # because even though there is a -Wno-error that prevents a warning from being an error even if
 # -Werror is in effect, the opposite does not seem to exist.
+
+# TODO: look into enabling -Werror for the YB part of the codebase, then we won't need this.
 
 # We are redirecting grep output to /dev/null, because it has already been shown in stderr.
 
@@ -114,3 +135,13 @@ then
   echo "[FATAL] $SCRIPT_NAME: treating missing return value as an error." >&2
   exit 1
 fi
+
+for pattern in "warning: reference to local variable .* returned" \
+               "warning: enumeration value .* not handled in switch" \
+               "warning: unannotated fall-through between switch labels" \
+               "warning: fallthrough annotation does not directly precede switch label"; do
+  if egrep "$pattern" "$stderr_path" >/dev/null; then
+    echo "[FATAL] $SCRIPT_NAME: treating warning pattern as an error: '$pattern'." >&2
+    exit 1
+  fi
+done

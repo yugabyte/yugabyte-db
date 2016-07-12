@@ -11,6 +11,8 @@
 #include "util/coding.h"
 #include "util/hash.h"
 
+#include "yb/gutil/macros.h"
+
 namespace rocksdb {
 
 uint32_t Hash(const char* data, size_t n, uint32_t seed) {
@@ -45,10 +47,10 @@ uint32_t Hash(const char* data, size_t n, uint32_t seed) {
     // unsigned char 11111010 -> int 00000000000000000000000011111010
     case 3:
       h += static_cast<uint32_t>(static_cast<signed char>(data[2]) << 16);
-    // fall through
+      FALLTHROUGH_INTENDED;
     case 2:
       h += static_cast<uint32_t>(static_cast<signed char>(data[1]) << 8);
-    // fall through
+      FALLTHROUGH_INTENDED;
     case 1:
       h += static_cast<uint32_t>(static_cast<signed char>(data[0]));
       h *= m;

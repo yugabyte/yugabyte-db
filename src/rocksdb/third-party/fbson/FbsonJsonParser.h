@@ -60,6 +60,8 @@
 #include "FbsonDocument.h"
 #include "FbsonWriter.h"
 
+#include "yb/gutil/macros.h"
+
 namespace fbson {
 
 const char* const kJsonDelim = " ,]}\t\r\n";
@@ -461,7 +463,7 @@ class FbsonJsonParserT {
     }
     case '+':
       in.ignore();
-    // fall through
+      FALLTHROUGH_INTENDED;
     default:
       ret = parseDecimal(in, 1);
       break;

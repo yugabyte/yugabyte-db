@@ -53,13 +53,28 @@ set(BUILD_ROCKSDB_ARGS
   --cxx-compiler "${CMAKE_CXX_COMPILER}"
   --c-compiler "${CMAKE_C_COMPILER}"
   --extra-include-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/include"
+  --extra-include-dir "${YB_SRC_DIR}/src"
   --extra-lib-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/lib"
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
   ${ROCKSDB_BUILD_VERBOSE_ARG}
 )
-if (NOT "${CXX_GLOBAL_COMMON_FLAGS}" STREQUAL "")
-  list(APPEND BUILD_ROCKSDB_ARGS --cxx-flags "${CXX_GLOBAL_COMMON_FLAGS}")
+
+set(ROCKSDB_CXX_FLAGS "${CXX_GLOBAL_COMMON_FLAGS}")
+
+if ("${COMPILER_FAMILY}" STREQUAL "clang")
+  # -Wno-parentheses-equality is there because otherwise there is this error on Mac OS X:
+  # util/instrumented_mutex.cc:19:114: error: equality comparison with extraneous parentheses [-Werror,-Wparentheses-equality]
+  #   PerfStepTimer perf_step_timer_db_mutex_lock_nanos(&(perf_context.db_mutex_lock_nanos), true); if ((stats_code_ == DB_MUTEX_WAIT_MICROS)) { perf_step_timer_db_mutex_lock_nanos.Start(); };
+  #                                                                                                    ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~
+  # -Wno-unevaluated-expression is there to prevent the following error on Mac OS X:
+  # util/autovector_test.cc:55:120: error: expression with side effects has no effect in an unevaluated context [-Werror,-Wunevaluated-expression]
+  #     switch (0) case 0: default: if (const ::testing::AssertionResult gtest_ar = (::testing::internal:: EqHelper<(sizeof(::testing::internal::IsNullLiteralHelper(--size)) == 1)>::Compare("--size", "vec.size()", --size, vec.size()))) ; else return ::testing::internal::AssertHelper(::testing::TestPartResult::kFatalFailure, "util/autovector_test.cc", 55, gtest_ar.failure_message()) = ::testing::Message();
+
+  set(ROCKSDB_CXX_FLAGS "${ROCKSDB_CXX_FLAGS} -Wno-parentheses-equality")
+  set(ROCKSDB_CXX_FLAGS "${ROCKSDB_CXX_FLAGS} -Wno-unevaluated-expression")
 endif()
+
+list(APPEND BUILD_ROCKSDB_ARGS --cxx-flags "${ROCKSDB_CXX_FLAGS}")
 
 add_custom_target(build_rocksdb_library ALL
   COMMAND ${BUILD_ROCKSDB_ARGS}

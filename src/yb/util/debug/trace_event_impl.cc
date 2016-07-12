@@ -658,6 +658,8 @@ void JsonEscape(StringPiece s, string* out) {
         break;
       case '\n':
         out->append("\\n");
+        // The following break statement was missing in the original Kudu code, most likely a bug.
+        break;
       case '\r':
         out->append("\\r");
         break;

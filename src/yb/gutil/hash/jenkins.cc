@@ -22,6 +22,7 @@
 #include <glog/logging.h>
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/hash/jenkins_lookup2.h"
+#include "yb/gutil/macros.h"
 
 static inline uint32 char2unsigned(char c) {
   return static_cast<uint32>(static_cast<unsigned char>(c));
@@ -48,17 +49,17 @@ uint32 Hash32StringWithSeedReferenceImplementation(const char *s, uint32 len,
 
   c += len;
   switch ( keylen ) {           // deal with rest.  Cases fall through
-    case 11: c += char2unsigned(s[10]) << 24;
-    case 10: c += char2unsigned(s[9]) << 16;
-    case 9 : c += char2unsigned(s[8]) << 8;
+    case 11: c += char2unsigned(s[10]) << 24; FALLTHROUGH_INTENDED;
+    case 10: c += char2unsigned(s[9]) << 16; FALLTHROUGH_INTENDED;
+    case 9 : c += char2unsigned(s[8]) << 8; FALLTHROUGH_INTENDED;
       // the first byte of c is reserved for the length
     case 8 : b += Google1At(s+4);  a += Google1At(s);  break;
-    case 7 : b += char2unsigned(s[6]) << 16;
-    case 6 : b += char2unsigned(s[5]) << 8;
-    case 5 : b += char2unsigned(s[4]);
+    case 7 : b += char2unsigned(s[6]) << 16; FALLTHROUGH_INTENDED;
+    case 6 : b += char2unsigned(s[5]) << 8; FALLTHROUGH_INTENDED;
+    case 5 : b += char2unsigned(s[4]); FALLTHROUGH_INTENDED;
     case 4 : a += Google1At(s);  break;
-    case 3 : a += char2unsigned(s[2]) << 16;
-    case 2 : a += char2unsigned(s[1]) << 8;
+    case 3 : a += char2unsigned(s[2]) << 16; FALLTHROUGH_INTENDED;
+    case 2 : a += char2unsigned(s[1]) << 8; FALLTHROUGH_INTENDED;
     case 1 : a += char2unsigned(s[0]);
       // case 0 : nothing left to add
   }
@@ -95,21 +96,21 @@ uint32 Hash32StringWithSeed(const char *s, uint32 len, uint32 c) {
       DCHECK_LT(keylen, sizeof(a));
       c += len;
       switch ( keylen ) {           // deal with rest.  Cases fall through
-        case 3 : a += char2unsigned(s[2]) << 16;
-        case 2 : a += char2unsigned(s[1]) << 8;
+        case 3 : a += char2unsigned(s[2]) << 16; FALLTHROUGH_INTENDED;
+        case 2 : a += char2unsigned(s[1]) << 8; FALLTHROUGH_INTENDED;
         case 1 : a += char2unsigned(s[0]);
       }
     } else {
       DCHECK(sizeof(a) <= keylen && keylen < 3 * sizeof(a));
       c += len;
       switch ( keylen ) {           // deal with rest.  Cases fall through
-        case 11: c += char2unsigned(s[10]) << 24;
-        case 10: c += char2unsigned(s[9]) << 16;
-        case 9 : c += char2unsigned(s[8]) << 8;
+        case 11: c += char2unsigned(s[10]) << 24; FALLTHROUGH_INTENDED;
+        case 10: c += char2unsigned(s[9]) << 16; FALLTHROUGH_INTENDED;
+        case 9 : c += char2unsigned(s[8]) << 8; FALLTHROUGH_INTENDED;
         case 8 : b += Google1At(s+4);  a += word32AtOffset0;  break;
-        case 7 : b += char2unsigned(s[6]) << 16;
-        case 6 : b += char2unsigned(s[5]) << 8;
-        case 5 : b += char2unsigned(s[4]);
+        case 7 : b += char2unsigned(s[6]) << 16; FALLTHROUGH_INTENDED;
+        case 6 : b += char2unsigned(s[5]) << 8; FALLTHROUGH_INTENDED;
+        case 5 : b += char2unsigned(s[4]); FALLTHROUGH_INTENDED;
         case 4 : a += word32AtOffset0;  break;
       }
     }
@@ -124,16 +125,16 @@ uint32 Hash32StringWithSeed(const char *s, uint32 len, uint32 c) {
     }
     c += len;
     switch ( keylen ) {           // deal with rest.  Cases fall through
-      case 11: c += char2unsigned(s[10]) << 24;
-      case 10: c += char2unsigned(s[9]) << 16;
-      case 9 : c += char2unsigned(s[8]) << 8;
+      case 11: c += char2unsigned(s[10]) << 24; FALLTHROUGH_INTENDED;
+      case 10: c += char2unsigned(s[9]) << 16; FALLTHROUGH_INTENDED;
+      case 9 : c += char2unsigned(s[8]) << 8; FALLTHROUGH_INTENDED;
       case 8 : b += Google1At(s+4);  a += Google1At(s);  break;
-      case 7 : b += char2unsigned(s[6]) << 16;
-      case 6 : b += char2unsigned(s[5]) << 8;
-      case 5 : b += char2unsigned(s[4]);
+      case 7 : b += char2unsigned(s[6]) << 16; FALLTHROUGH_INTENDED;
+      case 6 : b += char2unsigned(s[5]) << 8; FALLTHROUGH_INTENDED;
+      case 5 : b += char2unsigned(s[4]); FALLTHROUGH_INTENDED;
       case 4 : a += Google1At(s);  break;
-      case 3 : a += char2unsigned(s[2]) << 16;
-      case 2 : a += char2unsigned(s[1]) << 8;
+      case 3 : a += char2unsigned(s[2]) << 16; FALLTHROUGH_INTENDED;
+      case 2 : a += char2unsigned(s[1]) << 8; FALLTHROUGH_INTENDED;
       case 1 : a += char2unsigned(s[0]);
     }
   }
@@ -157,29 +158,29 @@ uint64 Hash64StringWithSeed(const char *s, uint32 len, uint64 c) {
 
   c += len;
   switch ( keylen ) {           // deal with rest.  Cases fall through
-    case 23: c += char2unsigned64(s[22]) << 56;
-    case 22: c += char2unsigned64(s[21]) << 48;
-    case 21: c += char2unsigned64(s[20]) << 40;
-    case 20: c += char2unsigned64(s[19]) << 32;
-    case 19: c += char2unsigned64(s[18]) << 24;
-    case 18: c += char2unsigned64(s[17]) << 16;
-    case 17: c += char2unsigned64(s[16]) << 8;
+    case 23: c += char2unsigned64(s[22]) << 56; FALLTHROUGH_INTENDED;
+    case 22: c += char2unsigned64(s[21]) << 48; FALLTHROUGH_INTENDED;
+    case 21: c += char2unsigned64(s[20]) << 40; FALLTHROUGH_INTENDED;
+    case 20: c += char2unsigned64(s[19]) << 32; FALLTHROUGH_INTENDED;
+    case 19: c += char2unsigned64(s[18]) << 24; FALLTHROUGH_INTENDED;
+    case 18: c += char2unsigned64(s[17]) << 16; FALLTHROUGH_INTENDED;
+    case 17: c += char2unsigned64(s[16]) << 8; FALLTHROUGH_INTENDED;
       // the first byte of c is reserved for the length
     case 16: b += Word64At(s+8);  a += Word64At(s);  break;
-    case 15: b += char2unsigned64(s[14]) << 48;
-    case 14: b += char2unsigned64(s[13]) << 40;
-    case 13: b += char2unsigned64(s[12]) << 32;
-    case 12: b += char2unsigned64(s[11]) << 24;
-    case 11: b += char2unsigned64(s[10]) << 16;
-    case 10: b += char2unsigned64(s[ 9]) << 8;
-    case  9: b += char2unsigned64(s[ 8]) ;
+    case 15: b += char2unsigned64(s[14]) << 48; FALLTHROUGH_INTENDED;
+    case 14: b += char2unsigned64(s[13]) << 40; FALLTHROUGH_INTENDED;
+    case 13: b += char2unsigned64(s[12]) << 32; FALLTHROUGH_INTENDED;
+    case 12: b += char2unsigned64(s[11]) << 24; FALLTHROUGH_INTENDED;
+    case 11: b += char2unsigned64(s[10]) << 16; FALLTHROUGH_INTENDED;
+    case 10: b += char2unsigned64(s[ 9]) << 8; FALLTHROUGH_INTENDED;
+    case  9: b += char2unsigned64(s[ 8]) ; FALLTHROUGH_INTENDED;
     case  8: a += Word64At(s);  break;
-    case  7: a += char2unsigned64(s[ 6]) << 48;
-    case  6: a += char2unsigned64(s[ 5]) << 40;
-    case  5: a += char2unsigned64(s[ 4]) << 32;
-    case  4: a += char2unsigned64(s[ 3]) << 24;
-    case  3: a += char2unsigned64(s[ 2]) << 16;
-    case  2: a += char2unsigned64(s[ 1]) << 8;
+    case  7: a += char2unsigned64(s[ 6]) << 48; FALLTHROUGH_INTENDED;
+    case  6: a += char2unsigned64(s[ 5]) << 40; FALLTHROUGH_INTENDED;
+    case  5: a += char2unsigned64(s[ 4]) << 32; FALLTHROUGH_INTENDED;
+    case  4: a += char2unsigned64(s[ 3]) << 24; FALLTHROUGH_INTENDED;
+    case  3: a += char2unsigned64(s[ 2]) << 16; FALLTHROUGH_INTENDED;
+    case  2: a += char2unsigned64(s[ 1]) << 8; FALLTHROUGH_INTENDED;
     case  1: a += char2unsigned64(s[ 0]) ;
       // case 0: nothing left to add
    }

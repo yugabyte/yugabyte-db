@@ -887,6 +887,9 @@ void LogTest::AppendTestSequence(const vector<TestLogSequenceElem>& seq) {
         Synchronizer s;
         ASSERT_OK(log_->AsyncAppendCommit(commit.Pass(), s.AsStatusCallback()));
         ASSERT_OK(s.Wait());
+        // There was a missing break here in Kudu, most likely a bug. We found this after we made
+        // implicit fallthrough in case statements an error.
+        break;
       }
       case TestLogSequenceElem::ROLL:
       {

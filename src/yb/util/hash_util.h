@@ -47,12 +47,12 @@ class HashUtil {
 
     const uint8_t* data2 = reinterpret_cast<const uint8_t*>(data);
     switch (len & 7) {
-      case 7: h ^= static_cast<uint64_t>(data2[6]) << 48;
-      case 6: h ^= static_cast<uint64_t>(data2[5]) << 40;
-      case 5: h ^= static_cast<uint64_t>(data2[4]) << 32;
-      case 4: h ^= static_cast<uint64_t>(data2[3]) << 24;
-      case 3: h ^= static_cast<uint64_t>(data2[2]) << 16;
-      case 2: h ^= static_cast<uint64_t>(data2[1]) << 8;
+      case 7: h ^= static_cast<uint64_t>(data2[6]) << 48; FALLTHROUGH_INTENDED;
+      case 6: h ^= static_cast<uint64_t>(data2[5]) << 40; FALLTHROUGH_INTENDED;
+      case 5: h ^= static_cast<uint64_t>(data2[4]) << 32; FALLTHROUGH_INTENDED;
+      case 4: h ^= static_cast<uint64_t>(data2[3]) << 24; FALLTHROUGH_INTENDED;
+      case 3: h ^= static_cast<uint64_t>(data2[2]) << 16; FALLTHROUGH_INTENDED;
+      case 2: h ^= static_cast<uint64_t>(data2[1]) << 8; FALLTHROUGH_INTENDED;
       case 1: h ^= static_cast<uint64_t>(data2[0]);
               h *= MURMUR_PRIME;
     }
