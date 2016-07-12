@@ -2,6 +2,11 @@
 
 package controllers.yb;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -9,6 +14,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+
 import controllers.AuthenticatedController;
 import forms.yb.CreateInstanceFormData;
 import forms.yb.GrafanaPanelData;
@@ -16,15 +22,13 @@ import helpers.ApiHelper;
 import helpers.ApiResponse;
 import models.cloud.AvailabilityZone;
 import models.yb.Customer;
-import models.yb.Instance;
 import models.yb.CustomerTask;
+import models.yb.Instance;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import views.html.*;
-
-import java.util.*;
 
 public class InstanceController extends AuthenticatedController {
 
@@ -104,12 +108,12 @@ public class InstanceController extends AuthenticatedController {
   private JsonNode submitCommissionerTask(Instance instanceInfo) {
     ObjectNode postData = Json.newObject();
     postData.put("instanceName", instanceInfo.name);
-    postData.put("instanceUUID", instanceInfo.getInstanceId().toString());
     postData.put("create", true);
     postData.put("cloudProvider", "aws");
     postData.set("subnets", instanceInfo.getPlacementInfo().get("subnets"));
 
-    String commissionerRESTUrl = "http://" + ctx().request().host() + "/commissioner/tasks";
+    String commissionerRESTUrl = "http://" + ctx().request().host() + "/commissioner/instances/" +
+                                 instanceInfo.getInstanceId().toString();
     return apiHelper.postRequest(commissionerRESTUrl, postData);
   }
   public Result index(UUID instanceUUID) {
