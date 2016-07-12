@@ -65,7 +65,7 @@ public class AnsibleUpdateNodeInfo extends AbstractTaskBase {
 
       // Make the node a tserver. The masters will be configured in a separate step.
       nodeDetails.isTserver = true;
-      nodeDetails.isBeingAdded = !params.isCreateInstance;
+      nodeDetails.isBeingSetup = !params.isCreateInstance;
 
       LOG.info("Updating details isCreateInstance={}, uuid={}, name={}.",
           params.isCreateInstance, taskParams.instanceUUID, taskParams.nodeInstanceName);

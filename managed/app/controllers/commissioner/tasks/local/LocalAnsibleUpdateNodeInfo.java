@@ -37,7 +37,7 @@ public class LocalAnsibleUpdateNodeInfo extends AnsibleUpdateNodeInfo {
       nodeDetails.cloud = "aws";
       nodeDetails.region = "oregon-west";
       nodeDetails.subnet_id = taskParams._local_test_subnets.get(idx);
-      nodeDetails.isBeingAdded = !params.isCreateInstance;
+      nodeDetails.isBeingSetup = !params.isCreateInstance;
       nodeDetails.instance_name = taskParams.nodeInstanceName;
       // Save the node details, either as a created node or a being added one to new details.
       if (params.isCreateInstance) {
