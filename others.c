@@ -169,6 +169,7 @@ _nls_run_strxfrm(text *string, text *locale)
 	{
 		locale_len = VARSIZE_ANY_EXHDR(locale);
 	}
+
 	/*
 	 * If different than default locale is requested, call setlocale.
 	 */
@@ -325,9 +326,7 @@ ora_decode(PG_FUNCTION_ARGS)
 	else
 	{
 		FmgrInfo   *eq;
-#if PG_VERSION_NUM >= 90100
 		Oid		collation = PG_GET_COLLATION();
-#endif
 
 		/*
 		 * On first call, get the input type's operator '=' and save at
@@ -357,11 +356,8 @@ ora_decode(PG_FUNCTION_ARGS)
 			if (PG_ARGISNULL(i))
 				continue;
 
-#if PG_VERSION_NUM >= 90100
 			InitFunctionCallInfoData(func, eq, 2, collation, NULL, NULL);
-#else
-			InitFunctionCallInfoData(func, eq, 2, NULL, NULL);
-#endif
+
 			func.arg[0] = PG_GETARG_DATUM(0);
 			func.arg[1] = PG_GETARG_DATUM(i);
 			func.argnull[0] = false;
@@ -382,7 +378,6 @@ ora_decode(PG_FUNCTION_ARGS)
 		PG_RETURN_DATUM(PG_GETARG_DATUM(retarg));
 }
 
-#if PG_VERSION_NUM >= 90100
 Oid
 equality_oper_funcid(Oid argtype)
 {
@@ -390,15 +385,6 @@ equality_oper_funcid(Oid argtype)
 	get_sort_group_operators(argtype, false, true, false, NULL, &eq, NULL, NULL);
 	return get_opcode(eq);
 }
-#elif PG_VERSION_NUM >= 80400
-Oid
-equality_oper_funcid(Oid argtype)
-{
-	Oid	eq;
-	get_sort_group_operators(argtype, false, true, false, NULL, &eq, NULL);
-	return get_opcode(eq);
-}
-#endif
 
 /*
  * dump(anyexpr [,format])

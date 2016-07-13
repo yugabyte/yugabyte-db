@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.0.2.  */
+/* A Bison parser, made by GNU Bison 3.0.4.  */
 
 /* Bison implementation for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2013 Free Software Foundation, Inc.
+   Copyright (C) 1984, 1989-1990, 2000-2015 Free Software Foundation, Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@
 #define YYBISON 1
 
 /* Bison version.  */
-#define YYBISON_VERSION "3.0.2"
+#define YYBISON_VERSION "3.0.4"
 
 /* Skeleton name.  */
 #define YYSKELETON_NAME "yacc.c"
@@ -176,7 +176,7 @@ extern int orafce_sql_yydebug;
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-typedef union YYSTYPE YYSTYPE;
+
 union YYSTYPE
 {
 #line 60 "sqlparse.y" /* yacc.c:355  */
@@ -197,6 +197,8 @@ union YYSTYPE
 
 #line 199 "sqlparse.c" /* yacc.c:355  */
 };
+
+typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
 #endif
@@ -224,7 +226,7 @@ int orafce_sql_yyparse (List **result);
 
 /* Copy the second part of user declarations.  */
 
-#line 228 "sqlparse.c" /* yacc.c:358  */
+#line 230 "sqlparse.c" /* yacc.c:358  */
 
 #ifdef short
 # undef short
@@ -1397,77 +1399,77 @@ yyreduce:
         case 2:
 #line 90 "sqlparse.y" /* yacc.c:1646  */
     { *((void**)result) = (yyvsp[0].list); }
-#line 1401 "sqlparse.c" /* yacc.c:1646  */
+#line 1403 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 3:
 #line 94 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.list) = list_make1((yyvsp[0].node));}
-#line 1407 "sqlparse.c" /* yacc.c:1646  */
+#line 1409 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 4:
 #line 95 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.list) = lappend((yyvsp[-1].list), (yyvsp[0].node));}
-#line 1413 "sqlparse.c" /* yacc.c:1646  */
+#line 1415 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 5:
 #line 99 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), IDENT);  }
-#line 1419 "sqlparse.c" /* yacc.c:1646  */
+#line 1421 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 6:
 #line 100 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), NCONST); }
-#line 1425 "sqlparse.c" /* yacc.c:1646  */
+#line 1427 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 7:
 #line 101 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), SCONST); }
-#line 1431 "sqlparse.c" /* yacc.c:1646  */
+#line 1433 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 8:
 #line 102 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), OP);    }
-#line 1437 "sqlparse.c" /* yacc.c:1646  */
+#line 1439 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 9:
 #line 103 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), PARAM); }
-#line 1443 "sqlparse.c" /* yacc.c:1646  */
+#line 1445 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 10:
 #line 104 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), COMMENT);    }
-#line 1449 "sqlparse.c" /* yacc.c:1646  */
+#line 1451 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 11:
 #line 105 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), WHITESPACE); }
-#line 1455 "sqlparse.c" /* yacc.c:1646  */
+#line 1457 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 12:
 #line 106 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), KEYWORD); }
-#line 1461 "sqlparse.c" /* yacc.c:1646  */
+#line 1463 "sqlparse.c" /* yacc.c:1646  */
     break;
 
   case 13:
 #line 107 "sqlparse.y" /* yacc.c:1646  */
     { (yyval.node) = (orafce_lexnode*) CREATE_NODE((yyvsp[0].val), OTHERS);  }
-#line 1467 "sqlparse.c" /* yacc.c:1646  */
+#line 1469 "sqlparse.c" /* yacc.c:1646  */
     break;
 
 
-#line 1471 "sqlparse.c" /* yacc.c:1646  */
+#line 1473 "sqlparse.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires

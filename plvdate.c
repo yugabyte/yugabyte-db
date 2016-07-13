@@ -6,15 +6,12 @@
   with n days (n > 10000), can be slow (on my P4 31ms).
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006
+  PostgreSQL implementation author: Pavel Stehule, 2006-2016
 
   This module is under BSD Licence
-
-  History:
-    1.0. first public version 13. March 2006
 */
 
-#define PLVDATE_VERSION  "PostgreSQL PLVdate, version 1.0, March 2006"
+#define PLVDATE_VERSION  "PostgreSQL PLVdate, version 1.1, April 2016"
 
 #include "postgres.h"
 #include "utils/date.h"
@@ -24,20 +21,6 @@
 #include <stdlib.h>
 #include "orafce.h"
 #include "builtins.h"
-
-
-/*
- * External (defined in PgSQL datetime.c (timestamp utils))
- */
-#if PG_VERSION_NUM >= 90400
-#define STRING_PTR_FIELD_TYPE const char *const
-#else
-#define STRING_PTR_FIELD_TYPE char *
-#endif
-
-extern PGDLLIMPORT STRING_PTR_FIELD_TYPE days[];
-
-extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);
@@ -53,6 +36,8 @@ PG_FUNCTION_INFO_V1(plvdate_unset_nonbizday_day);
 
 PG_FUNCTION_INFO_V1(plvdate_use_easter);
 PG_FUNCTION_INFO_V1(plvdate_using_easter);
+PG_FUNCTION_INFO_V1(plvdate_use_great_friday);
+PG_FUNCTION_INFO_V1(plvdate_using_great_friday);
 PG_FUNCTION_INFO_V1(plvdate_include_start);
 PG_FUNCTION_INFO_V1(plvdate_including_start);
 
@@ -79,7 +64,9 @@ do { \
 
 static unsigned char nonbizdays = SUNDAY | SATURDAY;
 static bool use_easter = true;
+static bool use_great_friday = true;
 static bool include_start = true;
+static int country_id = -1;			/* unknown */
 
 #define MAX_holidays   30
 #define MAX_EXCEPTIONS 50
@@ -92,6 +79,7 @@ typedef struct {
 typedef struct {
 	unsigned char nonbizdays;
 	bool use_easter;
+	bool use_great_friday;
 	holiday_desc *holidays;
 	int holidays_c;
 } cultural_info;
@@ -156,14 +144,14 @@ static holiday_desc usa_holidays[] = {
 };
 
 cultural_info defaults_ci[] = {
-	{SUNDAY | SATURDAY, true, czech_holidays, 11},
-	{SUNDAY | SATURDAY, true, germany_holidays, 9},
-	{SUNDAY | SATURDAY, true, poland_holidays, 9},
-	{SUNDAY | SATURDAY, true, austria_holidays, 13},
-	{SUNDAY | SATURDAY, true, slovakia_holidays, 13},
-	{SUNDAY | SATURDAY, false, russian_holidays, 12},
-	{SUNDAY | SATURDAY, true, england_holidays, 7},
-	{SUNDAY | SATURDAY, false, usa_holidays, 10}
+	{SUNDAY | SATURDAY, true, true, czech_holidays, 11},
+	{SUNDAY | SATURDAY, true, true, germany_holidays, 9},
+	{SUNDAY | SATURDAY, true, false, poland_holidays, 9},
+	{SUNDAY | SATURDAY, true, false, austria_holidays, 13},
+	{SUNDAY | SATURDAY, true, true, slovakia_holidays, 13},
+	{SUNDAY | SATURDAY, false, false, russian_holidays, 12},
+	{SUNDAY | SATURDAY, true, true, england_holidays, 7},
+	{SUNDAY | SATURDAY, false, false, usa_holidays, 10}
 };
 
 STRING_PTR_FIELD_TYPE states[] = {
@@ -194,7 +182,7 @@ holiday_desc_comp(const void* a, const void* b)
 
 
 static void
-easter_sunday(int year, int* dd, int* mm)
+calc_easter_sunday(int year, int* dd, int* mm)
 {
 	int b, d, e, q;
 
@@ -219,7 +207,45 @@ easter_sunday(int year, int* dd, int* mm)
 	}
 }
 
-static Datum
+/*
+ * returns true, when day d is any easter holiday.
+ *
+ */
+static bool
+easter_holidays(DateADT day, int y, int m)
+{
+	if (use_great_friday || use_easter)
+	{
+		if (m == 3 || m == 4)
+		{
+			int easter_sunday_day;
+			int easter_sunday_month;
+			int easter_sunday;
+
+			calc_easter_sunday(y, &easter_sunday_day, &easter_sunday_month);
+			easter_sunday = date2j(y, easter_sunday_month, easter_sunday_day) - POSTGRES_EPOCH_JDATE;
+
+			if (use_easter && (day == easter_sunday || day == easter_sunday + 1))
+				return true;
+
+			if (use_great_friday && day == easter_sunday - 2)
+			{
+				/* Great Friday is introduced in Czech Republic in 2016 */
+				if (country_id == 0)
+				{
+					if (y >= 2016)
+						return true;
+				}
+				else
+					return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+static DateADT
 ora_add_bizdays(DateADT day, int days)
 {
 	int d, dx;
@@ -245,12 +271,9 @@ ora_add_bizdays(DateADT day, int days)
 		hd.day = (char) auxd;
 		hd.month = (char) m;
 
-		if (use_easter && (m == 3 || m == 4))
-		{
-			easter_sunday(y, &auxd, &m);
-			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
-				continue;
-		}
+		if (easter_holidays(day, y, m))
+			continue;
+
 		if (NULL != bsearch(&hd, holidays, holidays_c,
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
@@ -269,7 +292,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 	int y, m, auxd;
 	holiday_desc hd;
 
-	int cycle_c = 0;
+	int loops = 0;
 	bool start_is_bizday = false;
 
 	DateADT aux_day;
@@ -279,16 +302,16 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 		day1 = day2; day2 = aux_day;
 	}
 
-
-	d = j2day(day1+POSTGRES_EPOCH_JDATE);
+	/* d is incremented on start of cycle, so now I have to decrease one */
+	d = j2day(day1+POSTGRES_EPOCH_JDATE-1);
 	days = 0;
 
 	while (day1 <= day2)
 	{
-		++ cycle_c;
-		d = (d+1) % 7;
-		d = (d < 0) ? 6:d;
+		loops++;
 		day1 += 1;
+		d = (d+1) % 7;
+
 		if ((1 << d) & nonbizdays)
 			continue;
 
@@ -300,21 +323,25 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 		hd.day = (char) auxd;
 		hd.month = (char) m;
 
-		if (use_easter && (m == 3 || m == 4))
-		{
-			easter_sunday(y, &auxd, &m);
-			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
-				continue;
-		}
+		if (easter_holidays(day1, y, m))
+			continue;
+
 		if (NULL != bsearch(&hd, holidays, holidays_c,
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
-		days += 1;
-		if (cycle_c == 1)
+		/* now the day have to be bizday, remember if first day was bizday */
+		if (loops == 1)
 			start_is_bizday = true;
+
+		days += 1;
 	}
-	if (include_start && start_is_bizday && days >= 1)
+
+	/*
+	 * decrease result when first day was bizday, but we don't want
+	 * calculate first day.
+	 */
+	if ( start_is_bizday && !include_start && days > 0)
 		days -= 1;
 
 	return days;
@@ -463,12 +490,8 @@ plvdate_isbizday (PG_FUNCTION_ARGS)
 	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 	hd.month = m; hd.day = d;
 
- 	if (use_easter && (m == 3 || m == 4))
-	{
-		easter_sunday(y, &d, &m);
-		if (m == hd.month && (d == hd.day || d+1 == hd.day))
-			return false;
-	}
+	if (easter_holidays(day, y, m))
+		return false;
 
 	PG_RETURN_BOOL (NULL == bsearch(&hd, holidays, holidays_c,
 									sizeof(holiday_desc), holiday_desc_comp));
@@ -493,16 +516,16 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 
 	text *day_txt = PG_GETARG_TEXT_PP(0);
 
-	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
+	int d = ora_seq_search(VARDATA_ANY(day_txt), ora_days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
 	check = nonbizdays | (1 << d);
 	if (check == 0x7f)
-                ereport(ERROR,
-                        (errcode(ERRCODE_DATA_EXCEPTION),
-                         errmsg("nonbizday registeration error"),
-                         errdetail("Constraint violation."),
-                         errhint("One day in week have to be bizday.")));
+		ereport(ERROR,
+			    (errcode(ERRCODE_DATA_EXCEPTION),
+			     errmsg("nonbizday registeration error"),
+			     errdetail("Constraint violation."),
+			     errhint("One day in week have to be bizday.")));
 
 	nonbizdays = nonbizdays | (1 << d);
 
@@ -525,7 +548,7 @@ plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS)
 {
 	text *day_txt = PG_GETARG_TEXT_PP(0);
 
-	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
+	int d = ora_seq_search(VARDATA_ANY(day_txt), ora_days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
 	nonbizdays = (nonbizdays | (1 << d)) ^ (1 << d);
@@ -557,20 +580,20 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 	if (arg2)
 	{
 		if (holidays_c == MAX_holidays)
-                        ereport(ERROR,
-                                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-                                 errmsg("nonbizday registeration error"),
-                                 errdetail("Too much registered nonbizdays."),
-                                 errhint("Increase MAX_holidays in 'plvdate.c'.")));
+			ereport(ERROR,
+				    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				     errmsg("nonbizday registeration error"),
+				     errdetail("Too much registered nonbizdays."),
+				     errhint("Increase MAX_holidays in 'plvdate.c'.")));
 
 		j2date(arg1 + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 		hd.month = m; hd.day = d;
 
 		if (NULL != bsearch(&hd, holidays, holidays_c, sizeof(holiday_desc), holiday_desc_comp))
-                        ereport(ERROR,
-                                (errcode(ERRCODE_DUPLICATE_OBJECT),
-                                 errmsg("nonbizday registeration error"),
-                                 errdetail("Date is registered.")));
+			ereport(ERROR,
+				    (errcode(ERRCODE_DUPLICATE_OBJECT),
+				     errmsg("nonbizday registeration error"),
+				     errdetail("Date is registered.")));
 
 		holidays[holidays_c].month = m;
 		holidays[holidays_c].day = d;
@@ -581,17 +604,17 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 	else
 	{
 		if (exceptions_c == MAX_EXCEPTIONS)
-                        ereport(ERROR,
-                                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-                                 errmsg("nonbizday registeration error"),
-                                 errdetail("Too much registered nonrepeated nonbizdays."),
-                                 errhint("Increase MAX_EXCEPTIONS in 'plvdate.c'.")));
+			ereport(ERROR,
+				    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				     errmsg("nonbizday registeration error"),
+				     errdetail("Too much registered nonrepeated nonbizdays."),
+				     errhint("Increase MAX_EXCEPTIONS in 'plvdate.c'.")));
 
 		if (NULL != bsearch(&arg1, exceptions, exceptions_c, sizeof(DateADT), dateadt_comp))
-                        ereport(ERROR,
-                                (errcode(ERRCODE_DUPLICATE_OBJECT),
-                                 errmsg("nonbizday registeration error"),
-                                 errdetail("Date is registered.")));
+			ereport(ERROR,
+				    (errcode(ERRCODE_DUPLICATE_OBJECT),
+				     errmsg("nonbizday registeration error"),
+				     errdetail("Date is registered.")));
 
 		exceptions[exceptions_c++] = arg1;
 		qsort(exceptions, exceptions_c, sizeof(DateADT), dateadt_comp);
@@ -649,10 +672,10 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 			exceptions_c -= 1;
 	}
 	if (!found)
-                ereport(ERROR,
-                        (errcode(ERRCODE_UNDEFINED_OBJECT),
-                         errmsg("nonbizday unregisteration error"),
-                         errdetail("Nonbizday not found.")));
+		ereport(ERROR,
+			    (errcode(ERRCODE_UNDEFINED_OBJECT),
+			     errmsg("nonbizday unregisteration error"),
+			     errdetail("Nonbizday not found.")));
 
 	PG_RETURN_VOID();
 }
@@ -695,6 +718,46 @@ Datum
 plvdate_using_easter (PG_FUNCTION_ARGS)
 {
 	PG_RETURN_BOOL(use_easter);
+}
+
+
+/****************************************************************
+ * PLVdate.use_great_friday
+ *
+ * Syntax:
+ *   FUNCTION unuse_great_friday() RETURNS void;
+ *   FUNCTION use_great_friday() RETURNS void;
+ *   FUNCTION use_great_friday(IN bool) RETURNS void
+ *
+ * Purpouse:
+ *   Have to use great_friday as nonbizday?
+ *
+ ****************************************************************/
+
+Datum
+plvdate_use_great_friday (PG_FUNCTION_ARGS)
+{
+	use_great_friday = PG_GETARG_BOOL(0);
+
+	PG_RETURN_VOID();
+}
+
+
+/****************************************************************
+ * PLVdate.using_great_friday
+ *
+ * Syntax:
+ *   FUNCTION using_great_friday() RETURNS bool
+ *
+ * Purpouse:
+ *   Use it great friday as nonbizday?
+ *
+ ****************************************************************/
+
+Datum
+plvdate_using_great_friday (PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(use_great_friday);
 }
 
 
@@ -748,15 +811,16 @@ plvdate_default_holidays (PG_FUNCTION_ARGS)
 {
 	text *country = PG_GETARG_TEXT_PP(0);
 
-	int c = ora_seq_search(VARDATA_ANY(country), states, VARSIZE_ANY_EXHDR(country));
-	CHECK_SEQ_SEARCH(c, "STATE/State/state");
+	country_id = ora_seq_search(VARDATA_ANY(country), states, VARSIZE_ANY_EXHDR(country));
+	CHECK_SEQ_SEARCH(country_id, "STATE/State/state");
 
-	nonbizdays = defaults_ci[c].nonbizdays;
-	use_easter = defaults_ci[c].use_easter;
+	nonbizdays = defaults_ci[country_id].nonbizdays;
+	use_easter = defaults_ci[country_id].use_easter;
+	use_great_friday = defaults_ci[country_id].use_great_friday;
 	exceptions_c = 0;
 
-	holidays_c = defaults_ci[c].holidays_c;
-	memcpy(holidays, defaults_ci[c].holidays, holidays_c*sizeof(holiday_desc));
+	holidays_c = defaults_ci[country_id].holidays_c;
+	memcpy(holidays, defaults_ci[country_id].holidays, holidays_c*sizeof(holiday_desc));
 
 	PG_RETURN_VOID();
 }

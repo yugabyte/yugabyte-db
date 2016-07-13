@@ -4,26 +4,28 @@
 */
 
 #include "postgres.h"
+
+#if PG_VERSION_NUM >= 90600
+
+#include "common/keywords.h"
+
+#else
+
 #include "parser/keywords.h"
 
-
+#endif
 
 #undef yyparse  /* don't need it now and solve problems with 8.1 */
 
-#include "parser/gramparse.h"                                                                                               
-#include "parser/keywords.h"                                                                                                
-/* Not needed now that this file is compiled as part of gram.y */                                                           
-/* #include "parser/parse.h" */                                                                                             
-#include "parser/scansup.h"      
+#include "parser/gramparse.h"
+/* Not needed now that this file is compiled as part of gram.y */
+/* #include "parser/parse.h" */
+#include "parser/scansup.h"
 #include "mb/pg_wchar.h"
 
-#if PG_VERSION_NUM >= 80500
 extern PGDLLIMPORT const ScanKeyword ScanKeywords[];
 extern PGDLLIMPORT const int	NumScanKeywords;
 #define ScanKeywordLookupArgs	, ScanKeywords, NumScanKeywords
-#else
-#define ScanKeywordLookupArgs
-#endif
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf

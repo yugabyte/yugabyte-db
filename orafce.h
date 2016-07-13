@@ -26,27 +26,33 @@ typedef union vardata
 	void   *p;
 } vardata;
 
-int ora_instr(text *txt, text *pattern, int start, int nth);
-int ora_mb_strlen(text *str, char **sizes, int **positions);
-int ora_mb_strlen1(text *str);
+extern int ora_instr(text *txt, text *pattern, int start, int nth);
+extern int ora_mb_strlen(text *str, char **sizes, int **positions);
+extern int ora_mb_strlen1(text *str);
+
+extern char *nls_date_format;
+extern char *orafce_timezone;
+
+extern char *nls_date_format;
+extern char *orafce_timezone;
 
 /*
  * Version compatibility
  */
 
-#if PG_VERSION_NUM >= 80400
 extern Oid	equality_oper_funcid(Oid argtype);
+
+/*
+ * Date utils
+ */
+#if PG_VERSION_NUM >= 90400
+#define STRING_PTR_FIELD_TYPE const char *const
+#else
+#define STRING_PTR_FIELD_TYPE char *
 #endif
 
-#if PG_VERSION_NUM < 80400
-#define CStringGetTextDatum(c) \
-        DirectFunctionCall1(textin, CStringGetDatum(c))
-#define text_to_cstring(t) \
-        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
-#define cstring_to_text(c) \
-        DatumGetTextP(CStringGetTextDatum(c))
-text *cstring_to_text_with_len(const char *c, int n);
-#define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
-#endif
+extern STRING_PTR_FIELD_TYPE ora_days[];
+
+extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 #endif

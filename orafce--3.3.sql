@@ -1,4 +1,4 @@
-/* contrib/orafce--3.0.sql */
+/* contrib/orafce--3.2.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit
@@ -237,12 +237,12 @@ RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION dump("any") 
+CREATE FUNCTION dump("any")
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE FUNCTION dump("any", integer) 
+CREATE FUNCTION dump("any", integer)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
@@ -453,6 +453,24 @@ AS 'MODULE_PATHNAME','orafce_to_char_timestamp'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION oracle.to_char(timestamp) IS 'Convert timestamp to string';
 
+CREATE FUNCTION oracle.sysdate()
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','orafce_sysdate'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.sysdate() IS 'Ruturns statement timestamp at server time zone';
+
+CREATE FUNCTION oracle.sessiontimezone()
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_sessiontimezone'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns session time zone';
+
+CREATE FUNCTION oracle.dbtimezone()
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_dbtimezone'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns server time zone (orafce.timezone)';
+
 -- emulation of dual table
 CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;
@@ -523,7 +541,6 @@ CREATE FUNCTION nvl(anyelement, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION nvl(anyelement, anyelement) IS '';
 
 CREATE FUNCTION nvl2(anyelement, anyelement, anyelement)
 RETURNS anyelement
@@ -1076,6 +1093,30 @@ RETURNS bool
 AS 'MODULE_PATHNAME','plvdate_using_easter'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.using_easter() IS 'Use easter?';
+
+CREATE FUNCTION plvdate.use_great_friday(bool)
+RETURNS void
+AS 'MODULE_PATHNAME','plvdate_use_great_friday'
+LANGUAGE C VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.use_great_friday(bool) IS 'Great Friday will be holiday';
+
+CREATE FUNCTION plvdate.use_great_friday()
+RETURNS bool
+AS $$SELECT plvdate.use_great_friday(true); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.use_great_friday() IS 'Great Friday will be holiday';
+
+CREATE FUNCTION plvdate.unuse_great_friday()
+RETURNS bool
+AS $$SELECT plvdate.use_great_friday(false); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.unuse_great_friday() IS 'Great Friday will not be holiday';
+
+CREATE FUNCTION plvdate.using_great_friday()
+RETURNS bool
+AS 'MODULE_PATHNAME','plvdate_using_great_friday'
+LANGUAGE C VOLATILE STRICT;
+COMMENT ON FUNCTION plvdate.using_great_friday() IS 'Use Great Friday?';
 
 CREATE FUNCTION plvdate.include_start(bool)
 RETURNS void
@@ -1761,19 +1802,19 @@ COMMENT ON FUNCTION dbms_assert.enquote_literal(varchar) IS 'Add leading and tra
 CREATE FUNCTION dbms_assert.enquote_name(str varchar, loweralize boolean)
 RETURNS varchar
 AS 'MODULE_PATHNAME','dbms_assert_enquote_name'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_assert.enquote_name(varchar, boolean) IS 'Enclose name in double quotes';
 
 CREATE FUNCTION dbms_assert.enquote_name(str varchar)
 RETURNS varchar
 AS 'SELECT dbms_assert.enquote_name($1, true)'
-LANGUAGE SQL IMMUTABLE;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_assert.enquote_name(varchar) IS 'Enclose name in double quotes';
 
 CREATE FUNCTION dbms_assert.noop(str varchar)
 RETURNS varchar
 AS 'MODULE_PATHNAME','dbms_assert_noop'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_assert.noop(varchar) IS 'Returns value without any checking.';
 
 CREATE FUNCTION dbms_assert.schema_name(str varchar)
@@ -1914,7 +1955,7 @@ COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
 CREATE SCHEMA dbms_random;
 
 CREATE FUNCTION dbms_random.initialize(int)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_initialize'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.initialize(int) IS 'Initialize package with a seed value';
@@ -1932,13 +1973,13 @@ LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.random() IS 'Generate Random Numeric Values';
 
 CREATE FUNCTION dbms_random.seed(integer)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_seed_int'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.seed(int) IS 'Reset the seed value';
 
 CREATE FUNCTION dbms_random.seed(text)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_seed_varchar'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.seed(text) IS 'Reset the seed value';
@@ -1950,7 +1991,7 @@ LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_random.string(text,int) IS 'Create Random Strings';
 
 CREATE FUNCTION dbms_random.terminate()
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_terminate'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_random.terminate() IS 'Terminate use of the Package';
@@ -1962,17 +2003,17 @@ LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION dbms_random.value(double precision, double precision) IS 'Generate Random number x, where x is greather or equal to low and less then high';
 
 CREATE FUNCTION dbms_random.value()
-RETURNS double precision 
+RETURNS double precision
 AS 'MODULE_PATHNAME','dbms_random_value'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greather or equal to 0 and less then 1';
 
-CREATE FUNCTION dump(text) 
+CREATE FUNCTION dump(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE FUNCTION dump(text, integer) 
+CREATE FUNCTION dump(text, integer)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
@@ -1990,12 +2031,12 @@ LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, anyelement, bool) IS 'Puts data to specified file and append newline character';
 
 CREATE FUNCTION pg_catalog.listagg1_transfn(internal, text)
-RETURNS internal 
+RETURNS internal
 AS 'MODULE_PATHNAME','orafce_listagg1_transfn'
 LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION pg_catalog.listagg2_transfn(internal, text, text)
-RETURNS internal 
+RETURNS internal
 AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
 LANGUAGE C IMMUTABLE;
 
@@ -2005,14 +2046,14 @@ AS 'MODULE_PATHNAME','orafce_listagg_finalfn'
 LANGUAGE C IMMUTABLE;
 
 CREATE AGGREGATE pg_catalog.listagg(text) (
-  SFUNC=pg_catalog.listagg1_transfn, 
-  STYPE=internal, 
+  SFUNC=pg_catalog.listagg1_transfn,
+  STYPE=internal,
   FINALFUNC=pg_catalog.listagg_finalfn
 );
 
 CREATE AGGREGATE pg_catalog.listagg(text, text) (
-  SFUNC=pg_catalog.listagg2_transfn, 
-  STYPE=internal, 
+  SFUNC=pg_catalog.listagg2_transfn,
+  STYPE=internal,
   FINALFUNC=pg_catalog.listagg_finalfn
 );
 
@@ -2037,14 +2078,14 @@ AS 'MODULE_PATHNAME','orafce_median8_finalfn'
 LANGUAGE C IMMUTABLE;
 
 CREATE AGGREGATE pg_catalog.median(real) (
-  SFUNC=pg_catalog.median4_transfn, 
-  STYPE=internal, 
+  SFUNC=pg_catalog.median4_transfn,
+  STYPE=internal,
   FINALFUNC=pg_catalog.median4_finalfn
 );
 
 CREATE AGGREGATE pg_catalog.median(double precision) (
-  SFUNC=pg_catalog.median8_transfn, 
-  STYPE=internal, 
+  SFUNC=pg_catalog.median8_transfn,
+  STYPE=internal,
   FINALFUNC=pg_catalog.median8_finalfn
 );
 
@@ -3185,3 +3226,52 @@ GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
 GRANT USAGE ON SCHEMA utl_file TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_assert TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_random TO PUBLIC;
+
+/* orafce 3.3. related changes */
+ALTER FUNCTION dbms_assert.enquote_name ( character varying ) STRICT;
+ALTER FUNCTION dbms_assert.enquote_name ( character varying, boolean ) STRICT;
+ALTER FUNCTION dbms_assert.noop ( character varying ) STRICT;
+
+CREATE FUNCTION pg_catalog.trunc(value timestamp without time zone, fmt text)
+RETURNS timestamp without time zone
+AS 'MODULE_PATHNAME', 'ora_timestamp_trunc'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.trunc(timestamp without time zone, text) IS 'truncate date according to the specified format';
+
+CREATE FUNCTION pg_catalog.round(value timestamp without time zone, fmt text)
+RETURNS timestamp without time zone
+AS 'MODULE_PATHNAME','ora_timestamp_round'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone, text) IS 'round dates according to the specified format';
+
+CREATE FUNCTION pg_catalog.round(value timestamp without time zone)
+RETURNS timestamp without time zone
+AS $$ SELECT pg_catalog.round($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.round(timestamp without time zone) IS 'will round dates according to the specified format';
+
+CREATE FUNCTION pg_catalog.trunc(value timestamp without time zone)
+RETURNS timestamp without time zone
+AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
+
+CREATE OR REPLACE FUNCTION oracle.round(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(double precision, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION oracle.round(float, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.round($1::numeric, $2)$$
+LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION oracle.trunc(float, int)
+RETURNS numeric
+AS $$SELECT pg_catalog.trunc($1::numeric, $2)$$
+LANGUAGE sql;

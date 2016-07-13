@@ -43,11 +43,7 @@ dbms_utility_format_call_stack(char mode)
 	ErrorContextCallback *econtext;
 	StringInfo   sinfo;
 
-#if PG_VERSION_NUM >= 80400
 	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN);
-#else
-	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO);
-#endif
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -175,7 +171,7 @@ Datum
 dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(cstring_to_text(dbms_utility_format_call_stack('o')));
-};
+}
 
 Datum
 dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)

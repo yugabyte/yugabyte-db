@@ -195,9 +195,7 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	Datum		r;
 	ArrayType  *array;
 	FunctionCallInfoData locfcinfo;
-#if PG_VERSION_NUM >= 90100
 	Oid		collation = PG_GET_COLLATION();
-#endif
 
 	init_c_subst();
 
@@ -208,11 +206,7 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	 * I can't use DirectFunctionCall2
 	 */
 
-#if PG_VERSION_NUM >= 90100
 	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, collation, NULL, NULL);
-#else
-	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);
-#endif
 
 	locfcinfo.arg[0] = PG_GETARG_DATUM(1);
 	locfcinfo.arg[1] = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));

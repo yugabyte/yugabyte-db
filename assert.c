@@ -159,19 +159,12 @@ dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 {
 	Datum name  = PG_GETARG_DATUM(0);
 	bool loweralize = PG_GETARG_BOOL(1);
-#if PG_VERSION_NUM >= 90100
 	Oid collation = PG_GET_COLLATION();
-#endif
 
 	name = DirectFunctionCall1(quote_ident, name);
 
-#if PG_VERSION_NUM >= 90100
 	if (loweralize)
 		name = DirectFunctionCall1Coll(lower, collation, name);
-#else
-	if (loweralize)
-		name = DirectFunctionCall1(lower, name);
-#endif
 
 	PG_RETURN_DATUM(name);
 }
@@ -294,7 +287,7 @@ static bool
 check_sql_name(char *cp, int len)
 {
 	if (*cp == '"')
-    	{
+	{
 		for (cp++, len -= 2; len-- > 0; cp++)
 		{
 			/* all double quotes have to be paired */
@@ -378,11 +371,7 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	names = stringToQualifiedNameList(object_name);
 
-#if PG_VERSION_NUM >= 90200
 	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, true);
-#else
-	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), true);
-#endif
 	if (!OidIsValid(classId))
 		INVALID_OBJECT_NAME_EXCEPTION();
 

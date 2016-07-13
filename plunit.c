@@ -229,7 +229,7 @@ assert_equals_base(FunctionCallInfo fcinfo)
 		Oid eqopfcid;
 
 		if (!OidIsValid(valtype))
-	    		elog(ERROR, "could not determine data type of input");
+			elog(ERROR, "could not determine data type of input");
 
 		eqopfcid = equality_oper_funcid(valtype);
 
@@ -238,12 +238,12 @@ assert_equals_base(FunctionCallInfo fcinfo)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("unknown equal operand for datatype")));
 
-    		/* First time calling for current query: allocate storage */
-        	fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
-            						                    sizeof(Oid));
-                ptr = (Oid *) fcinfo->flinfo->fn_extra;
-                *ptr = eqopfcid;
-        }
+		/* First time calling for current query: allocate storage */
+		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+										    sizeof(Oid));
+		ptr = (Oid *) fcinfo->flinfo->fn_extra;
+		*ptr = eqopfcid;
+	}
 
 	return DatumGetBool(OidFunctionCall2(*ptr, value1, value2));
 }

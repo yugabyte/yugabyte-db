@@ -1,4 +1,6 @@
 #include "postgres.h"
+#include "access/xact.h"
+#include "commands/variable.h"
 #include "mb/pg_wchar.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
@@ -28,10 +30,8 @@ static const WeekDays WEEKDAYS[] =
 	{ PG_UTF8, { "\346\227\245", "\346\234\210", "\347\201\253", "\346\260\264", "\346\234\250", "\351\207\221", "\345\234\237" } },
 	/* Japanese, EUC_JP */
 	{ PG_EUC_JP, { "\306\374", "\267\356", "\262\320", "\277\345", "\314\332", "\266\342", "\305\332" } },
-#if PG_VERSION_NUM >= 80300
 	/* Japanese, EUC_JIS_2004 (same as EUC_JP) */
 	{ PG_EUC_JIS_2004, { "\306\374", "\267\356", "\262\320", "\277\345", "\314\332", "\266\342", "\305\332" } },
-#endif
 };
 
 static const WeekDays *mru_weekdays = NULL;
@@ -54,19 +54,6 @@ weekday_search(const WeekDays *weekdays, const char *str, int len)
 
 #endif	/* ENABLE_INTERNATIONALIZED_WEEKDAY */
 
-/*
- * External (defined in PgSQL datetime.c (timestamp utils))
- */
-
-#if PG_VERSION_NUM >= 90400
-#define STRING_PTR_FIELD_TYPE const char *const
-#else
-#define STRING_PTR_FIELD_TYPE char *
-#endif
-
-extern PGDLLIMPORT STRING_PTR_FIELD_TYPE days[];
-extern PGDLLIMPORT pg_tz *session_timezone;
-
 #define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:
 #define CASE_fmt_IYYY	case 7: case 8: case 9: case 10:
 #define	CASE_fmt_Q	case 11:
@@ -79,8 +66,6 @@ extern PGDLLIMPORT pg_tz *session_timezone;
 #define CASE_fmt_DDD	case 24: case 25: case 26:
 #define CASE_fmt_HH	case 27: case 28: case 29:
 #define CASE_fmt_MI	case 30:
-
-
 
 STRING_PTR_FIELD_TYPE date_fmt[] =
 {
@@ -95,6 +80,9 @@ STRING_PTR_FIELD_TYPE date_fmt[] =
 	"Mi",
 	NULL
 };
+
+STRING_PTR_FIELD_TYPE ora_days[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+"Thursday", "Friday", "Saturday", NULL};
 
 #define CHECK_SEQ_SEARCH(_l, _s) \
 do { \
@@ -115,13 +103,13 @@ PG_FUNCTION_INFO_V1(ora_date_trunc);
 PG_FUNCTION_INFO_V1(ora_date_round);
 PG_FUNCTION_INFO_V1(ora_timestamptz_trunc);
 PG_FUNCTION_INFO_V1(ora_timestamptz_round);
+PG_FUNCTION_INFO_V1(ora_timestamp_trunc);
+PG_FUNCTION_INFO_V1(ora_timestamp_round);
 
 /*
  * Search const value in char array
  *
  */
-
-extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 int
 ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max)
@@ -196,7 +184,7 @@ next_day(PG_FUNCTION_ARGS)
 	 * Oracle uses only 3 heading characters of the input.
 	 * Ignore all trailing characters.
 	 */
-	if (len >= 3 && (d = ora_seq_prefix_search(str, days, 3)) >= 0)
+	if (len >= 3 && (d = ora_seq_prefix_search(str, ora_days, 3)) >= 0)
 		goto found;
 
 #ifdef ENABLE_INTERNATIONALIZED_WEEKDAY
@@ -587,9 +575,10 @@ _ora_date_round(DateADT day, int f)
  *
  ********************************************************************/
 
-Datum ora_to_date(PG_FUNCTION_ARGS)
+Datum
+ora_to_date(PG_FUNCTION_ARGS)
 {
-	text *date_txt = PG_GETARG_TEXT_P(0);
+	text *date_txt = PG_GETARG_TEXT_PP(0);
 	Timestamp result;
 
 	if(nls_date_format && strlen(nls_date_format))
@@ -628,7 +617,8 @@ Datum ora_to_date(PG_FUNCTION_ARGS)
  *
  ********************************************************************/
 
-Datum ora_date_trunc(PG_FUNCTION_ARGS)
+Datum
+ora_date_trunc(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	text *fmt = PG_GETARG_TEXT_PP(1);
@@ -642,37 +632,64 @@ Datum ora_date_trunc(PG_FUNCTION_ARGS)
 	PG_RETURN_DATEADT(result);
 }
 
-Datum
-ora_timestamptz_trunc(PG_FUNCTION_ARGS)
+/*
+ * Workaround for access to session_timezone on WIN32,
+ * 
+ * session timezone isn't accessed directly, but taken by show_timezone,
+ * and reparsed. For better performance, the result is cached in fn_extra.
+ *
+ */
+static pg_tz *
+get_session_timezone(FunctionCallInfo fcinfo)
 {
-	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
-	TimestampTz result;
-	text *fmt = PG_GETARG_TEXT_PP(1);
-	int tz;
-	fsec_t fsec;
-	struct pg_tm tt, *tm = &tt;
+#if defined(WIN32)
 
-#if PG_VERSION_NUM >= 90200
-	const char *tzn;
+	pg_tz *result = (pg_tz *) fcinfo->flinfo->fn_extra;
+
+	if (result == NULL)
+	{
+		const char *tzn = show_timezone();
+		void *extra;
+
+		if (!check_timezone(((char **) &tzn), &extra, PGC_S_CLIENT))
+			elog(ERROR, "cannot to parse timezone \"%s\"", tzn);
+
+		result = *((pg_tz **) extra);
+		fcinfo->flinfo->fn_extra = result;
+
+		/*
+		 * check_timezone allocates small block of pg_tz * size. This block
+		 * should be released by free(extra), but I cannot release memory
+		 * allocated by application in library on MS platform. So I have to
+		 * accept small memory leak - elsewhere exception - broken heap :(
+		 *
+		 *
+		 * cannot be called
+		free( extra );
+		 */
+	}
+
+	return result;
+
 #else
-	char *tzn;
-#endif
-	bool redotz = false;
-	int f;
 
-	if (TIMESTAMP_NOT_FINITE(timestamp))
-		PG_RETURN_TIMESTAMPTZ(timestamp);
+	return session_timezone;
+
+#endif
+}
+
+/*
+ * redotz is used only for timestamp with time zone
+ */
+static void
+tm_trunc(struct pg_tm *tm, text *fmt, bool *redotz)
+{
+	int f;
 
 	f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
 	CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
-	if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
-	ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			 errmsg("timestamp out of range")));
-
 	tm->tm_sec = 0;
-	fsec = 0;
 
 	switch (f)
 	{
@@ -687,7 +704,7 @@ ora_timestamptz_trunc(PG_FUNCTION_ARGS)
 		&tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 		tm->tm_hour = 0;
 		tm->tm_min = 0;
-		redotz = true;
+		*redotz = true;
 		break;
 	CASE_fmt_YYYY
 		tm->tm_mon = 1;
@@ -697,18 +714,42 @@ ora_timestamptz_trunc(PG_FUNCTION_ARGS)
 		tm->tm_mday = 1;
 	CASE_fmt_DDD
 		tm->tm_hour = 0;
-		redotz = true; /* for all cases >= DAY */
+		*redotz = true; /* for all cases >= DAY */
 	CASE_fmt_HH
 		tm->tm_min = 0;
 	}
+}
+
+Datum
+ora_timestamptz_trunc(PG_FUNCTION_ARGS)
+{
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz result;
+	text *fmt = PG_GETARG_TEXT_PP(1);
+	int tz;
+	fsec_t fsec;
+	struct pg_tm tt, *tm = &tt;
+	const char *tzn;
+	bool redotz = false;
+
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		PG_RETURN_TIMESTAMPTZ(timestamp);
+
+	if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+		ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
+	tm_trunc(tm, fmt, &redotz);
+	fsec = 0;
 
 	if (redotz)
-		tz = DetermineTimeZoneOffset(tm, session_timezone);
+		tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
 
-	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+	if (tm2timestamp(tm, fsec	, &tz, &result) != 0)
 		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMPTZ(result);
 }
@@ -729,7 +770,8 @@ ora_timestamptz_trunc(PG_FUNCTION_ARGS)
  ********************************************************************/
 
 
-Datum ora_date_round(PG_FUNCTION_ARGS)
+Datum
+ora_date_round(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	text *fmt = PG_GETARG_TEXT_PP(1);
@@ -748,40 +790,14 @@ Datum ora_date_round(PG_FUNCTION_ARGS)
 #define ROUND_MDAY(_tm_) \
 	do { if (rounded) _tm_->tm_mday += _tm_->tm_hour >= 12?1:0; } while(0)
 
-
-Datum
-ora_timestamptz_round(PG_FUNCTION_ARGS)
+static void
+tm_round(struct pg_tm *tm, text *fmt, bool *redotz)
 {
-	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
-	TimestampTz result;
-	text *fmt = PG_GETARG_TEXT_PP(1);
-	int tz;
-	fsec_t fsec;
-	struct pg_tm tt, *tm = &tt;
-
-#if PG_VERSION_NUM >= 90200
-	const char *tzn;
-#else
-	char *tzn;
-#endif
-
-	bool redotz = false;
-	bool rounded = true;
-	int f;
-
-	if (TIMESTAMP_NOT_FINITE(timestamp))
-		PG_RETURN_TIMESTAMPTZ(timestamp);
+	int 	f;
+	bool	rounded = true;
 
 	f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
 	CHECK_SEQ_SEARCH(f, "round/trunc format string");
-
-	if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
-	ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			 errmsg("timestamp out of range")));
-
-	/* tm->tm_sec = 0; */
-	fsec = 0;
 
 	/* set rounding rule */
 	switch (f)
@@ -841,13 +857,13 @@ ora_timestamptz_round(PG_FUNCTION_ARGS)
 		&tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 		tm->tm_hour = 0;
 		tm->tm_min = 0;
-		redotz = true;
+		*redotz = true;
 		break;
 	CASE_fmt_DDD
 		tm->tm_mday += (tm->tm_hour >= 12)?1:0;
 		tm->tm_hour = 0;
 		tm->tm_min = 0;
-		redotz = true;
+		*redotz = true;
 		break;
 	CASE_fmt_MI
 		tm->tm_min += (tm->tm_sec >= 30)?1:0;
@@ -859,14 +875,169 @@ ora_timestamptz_round(PG_FUNCTION_ARGS)
 	}
 
 	tm->tm_sec = 0;
+}
+
+Datum
+ora_timestamptz_round(PG_FUNCTION_ARGS)
+{
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz result;
+	text *fmt = PG_GETARG_TEXT_PP(1);
+	int tz;
+	fsec_t fsec;
+	struct pg_tm tt, *tm = &tt;
+	const char *tzn;
+	bool redotz = false;
+
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		PG_RETURN_TIMESTAMPTZ(timestamp);
+
+	if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+		ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
+	tm_round(tm, fmt, &redotz);
 
 	if (redotz)
-	tz = DetermineTimeZoneOffset(tm, session_timezone);
+		tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
 
 	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
-	ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			 errmsg("timestamp out of range")));
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMPTZ(result);
+}
+
+Datum
+ora_timestamp_trunc(PG_FUNCTION_ARGS)
+{
+	Timestamp timestamp = PG_GETARG_TIMESTAMP(0);
+	Timestamp result;
+	text *fmt = PG_GETARG_TEXT_PP(1);
+	fsec_t fsec;
+	struct pg_tm tt, *tm = &tt;
+	bool redotz = false;
+
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		PG_RETURN_TIMESTAMP(timestamp);
+
+	if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+		ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
+	tm_trunc(tm, fmt, &redotz);
+	fsec = 0;
+
+	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
+}
+
+Datum
+ora_timestamp_round(PG_FUNCTION_ARGS)
+{
+	Timestamp timestamp = PG_GETARG_TIMESTAMP(0);
+	Timestamp result;
+	text *fmt = PG_GETARG_TEXT_PP(1);
+	fsec_t fsec;
+	struct pg_tm tt, *tm = &tt;
+	bool	redotz = false;
+
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		PG_RETURN_TIMESTAMPTZ(timestamp);
+
+	if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+		ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
+	tm_round(tm, fmt, &redotz);
+
+	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMP(result);
+}
+
+/********************************************************************
+ *
+ * ora_sysdate - sysdate
+ *
+ * Syntax:
+ *
+ * timestamp sysdate()
+ *
+ * Purpose:
+ *
+ * Returns statement_timestamp in server time zone 
+ *   Note - server time zone doesn't exists on PostgreSQL - emulated
+ *   by orafce_timezone
+ *
+ ********************************************************************/
+
+Datum
+orafce_sysdate(PG_FUNCTION_ARGS)
+{
+	Datum sysdate;
+	Datum sysdate_scaled;
+
+
+	sysdate = DirectFunctionCall2(timestamptz_zone,
+					CStringGetTextDatum(orafce_timezone),
+					TimestampTzGetDatum(GetCurrentStatementStartTimestamp()));
+
+	/* necessary to cast to timestamp(0) to emulate Oracle's date */
+	sysdate_scaled = DirectFunctionCall2(timestamp_scale,
+						sysdate,
+						Int32GetDatum(0));
+
+	PG_RETURN_DATUM(sysdate_scaled);
+}
+
+/********************************************************************
+ *
+ * ora_systemtimezone
+ *
+ * Syntax:
+ *
+ * text sessiontimezone()
+ *
+ * Purpose:
+ *
+ * Returns session time zone
+ *
+ ********************************************************************/
+
+Datum
+orafce_sessiontimezone(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(show_timezone()));
+}
+
+/********************************************************************
+ *
+ * ora_dbtimezone
+ *
+ * Syntax:
+ *
+ * text dbtimezone()
+ *
+ * Purpose:
+ *
+ * Returns server time zone - emulated by orafce_timezone
+ *
+ ********************************************************************/
+
+Datum
+orafce_dbtimezone(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(orafce_timezone));
 }

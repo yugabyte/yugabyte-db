@@ -1,15 +1,11 @@
 #include "postgres.h"
 #include "funcapi.h"
-#include "orafce.h"
+#include "builtins.h"
 
-#if PG_VERSION_NUM >= 80400
-
+#include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#endif
-
-#include "builtins.h"
-#include "lib/stringinfo.h"
+#include "orafce.h"
 
 PG_FUNCTION_INFO_V1(orafce_listagg1_transfn);
 PG_FUNCTION_INFO_V1(orafce_listagg2_transfn);
@@ -25,7 +21,7 @@ typedef struct
 	int	alen;		/* allocated length */
 	int	nextlen;	/* next allocated length */
 	int	nelems;		/* number of valid entries */
-	union 
+	union
 	{
 		float4	*float4_values;
 		float8  *float8_values;
@@ -35,33 +31,9 @@ typedef struct
 int orafce_float4_cmp(const void *a, const void *b);
 int orafce_float8_cmp(const void *a, const void *b);
 
-#if PG_VERSION_NUM >= 80400 && PG_VERSION_NUM < 90000
-static int
-AggCheckCallContext(FunctionCallInfo fcinfo, MemoryContext *aggcontext)
-{
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
-	{
-		if (aggcontext)
-			*aggcontext = ((AggState *) fcinfo->context)->aggcontext;
-		return 1;
-	}
-	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
-	{
-		if (aggcontext)
-			*aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
-		return 2;
-	}
-
-	/* this is just to prevent "uninitialized variable" warnings */
-	if (aggcontext)
-		*aggcontext = NULL;
-	return 0;
-}
-#endif
-
 /****************************************************************
  * listagg
- *  
+ *
  * Concates values and returns string.
  *
  * Syntax:
@@ -71,7 +43,6 @@ AggCheckCallContext(FunctionCallInfo fcinfo, MemoryContext *aggcontext)
  * Note: any NULL value is ignored.
  *
  ****************************************************************/
-#if PG_VERSION_NUM >= 80400
 /* subroutine to initialize state */
 static StringInfo
 makeStringAggState(FunctionCallInfo fcinfo)
@@ -102,12 +73,10 @@ appendStringInfoText(StringInfo str, const text *t)
 {
 	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
 }
-#endif
 
 Datum
 orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
 	StringInfo	state;
 
 	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
@@ -125,81 +94,19 @@ orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 	 * which is a pass-by-value type the same size as a pointer.
 	 */
 	PG_RETURN_POINTER(state);
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-
-	PG_RETURN_NULL();
-#endif
 }
 
-Datum 
+Datum
 orafce_listagg2_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 90000
 	return string_agg_transfn(fcinfo);
-#elif PG_VERSION_NUM >= 80400
-	StringInfo	state;
-
-	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
-
-	/* Append the value unless null. */
-	if (!PG_ARGISNULL(1))
-	{
-		/* On the first time through, we ignore the delimiter. */
-		if (state == NULL)
-			state = makeStringAggState(fcinfo);
-		else if (!PG_ARGISNULL(2))
-			appendStringInfoText(state, PG_GETARG_TEXT_PP(2));	/* delimiter */
-
-		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
-	}
-
-	/*
-	 * The transition type for string_agg() is declared to be "internal",
-	 * which is a pass-by-value type the same size as a pointer.
-	 */
-	PG_RETURN_POINTER(state);
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-
-	PG_RETURN_NULL();
-#endif
 }
 
 Datum
 orafce_listagg_finalfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 90000
 	return string_agg_finalfn(fcinfo);
-#elif PG_VERSION_NUM >= 80400
-	StringInfo	state;
-
-	/* cannot be called directly because of internal-type argument */
-	Assert(AggCheckCallContext(fcinfo, NULL));
-
-	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
-
-	if (state != NULL)
-		PG_RETURN_TEXT_P(cstring_to_text(state->data));
-	else
-		PG_RETURN_NULL();
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-
-	PG_RETURN_NULL();
-#endif
 }
-
-#if PG_VERSION_NUM >= 80400
 
 static MedianState *
 accumFloat4(MedianState *mstate, float4 value, MemoryContext aggcontext)
@@ -223,19 +130,19 @@ accumFloat4(MedianState *mstate, float4 value, MemoryContext aggcontext)
 		if (mstate->nelems >= mstate->alen)
 		{
 			int	newlen = mstate->nextlen;
-			
+
 			oldcontext = MemoryContextSwitchTo(aggcontext);
 			mstate->nextlen += mstate->alen;
 			mstate->alen = newlen;
-			mstate->d.float4_values = repalloc(mstate->d.float4_values, 
+			mstate->d.float4_values = repalloc(mstate->d.float4_values,
 									    mstate->alen * sizeof(float4));
-			MemoryContextSwitchTo(oldcontext); 
+			MemoryContextSwitchTo(oldcontext);
 		}
-	}	
-	
+	}
+
 	mstate->d.float4_values[mstate->nelems++] = value;
-	
-	return mstate;    
+
+	return mstate;
 }
 
 static MedianState *
@@ -260,28 +167,24 @@ accumFloat8(MedianState *mstate, float8 value, MemoryContext aggcontext)
 		if (mstate->nelems >= mstate->alen)
 		{
 			int	newlen = mstate->nextlen;
-			
+
 			oldcontext = MemoryContextSwitchTo(aggcontext);
 			mstate->nextlen += mstate->alen;
 			mstate->alen = newlen;
-			mstate->d.float8_values = repalloc(mstate->d.float8_values, 
+			mstate->d.float8_values = repalloc(mstate->d.float8_values,
 									    mstate->alen * sizeof(float8));
-			MemoryContextSwitchTo(oldcontext); 
+			MemoryContextSwitchTo(oldcontext);
 		}
-	}	
+	}
 
 	mstate->d.float8_values[mstate->nelems++] = value;
-	
-	return mstate;    
-}
 
-#endif
+	return mstate;
+}
 
 Datum
 orafce_median4_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
-
 	MemoryContext	aggcontext;
 	MedianState *state = NULL;
 	float4 elem;
@@ -291,37 +194,48 @@ orafce_median4_transfn(PG_FUNCTION_ARGS)
 		/* cannot be called directly because of internal-type argument */
 		elog(ERROR, "median4_transfn called in non-aggregate context");
 	}
-	
+
 	state = PG_ARGISNULL(0) ? NULL : (MedianState *) PG_GETARG_POINTER(0);
 	if (PG_ARGISNULL(1))
 		PG_RETURN_POINTER(state);
-	
+
 	elem = PG_GETARG_FLOAT4(1);
 	state = accumFloat4(state, elem, aggcontext);
-	
-	PG_RETURN_POINTER(state);
-	
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-		
-	PG_RETURN_NULL();
 
-#endif
+	PG_RETURN_POINTER(state);
 }
 
-int 
-orafce_float4_cmp(const void *a, const void *b)
+int
+orafce_float4_cmp(const void *_a, const void *_b)
 {
-	return (int) (*((float4 *) a) - *((float4*) b));
+	float4 a = *((float4 *) _a);
+	float4 b = *((float4 *) _b);
+
+	if (isnan(a))
+	{
+		if (isnan(b))
+			return 0;
+		else
+			return 1;
+	}
+	else if (isnan(b))
+	{
+		return -1;
+	}
+	else
+	{
+		if (a > b)
+			return 1;
+		else if (a < b)
+			return -1;
+		else
+			return 0;
+	}
 }
 
 Datum
 orafce_median4_finalfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
 	MedianState *state = NULL;
 	int	lidx;
 	int	hidx;
@@ -329,7 +243,7 @@ orafce_median4_finalfn(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
-		
+
 	state = (MedianState *) PG_GETARG_POINTER(0);
 
 	if (state == NULL)
@@ -339,29 +253,18 @@ orafce_median4_finalfn(PG_FUNCTION_ARGS)
 
 	lidx = state->nelems / 2 + 1 - 1;
 	hidx = (state->nelems + 1) / 2 - 1;
-	
+
 	if (lidx == hidx)
 		result = state->d.float4_values[lidx];
 	else
 		result = (state->d.float4_values[lidx] + state->d.float4_values[hidx]) / 2.0f;
 
 	PG_RETURN_FLOAT4(result);
-
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-		
-	PG_RETURN_NULL();
-#endif
 }
 
 Datum
 orafce_median8_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
-
 	MemoryContext	aggcontext;
 	MedianState *state = NULL;
 	float8 elem;
@@ -371,37 +274,49 @@ orafce_median8_transfn(PG_FUNCTION_ARGS)
 		/* cannot be called directly because of internal-type argument */
 		elog(ERROR, "median4_transfn called in non-aggregate context");
 	}
-	
+
 	state = PG_ARGISNULL(0) ? NULL : (MedianState *) PG_GETARG_POINTER(0);
 	if (PG_ARGISNULL(1))
 		PG_RETURN_POINTER(state);
-		
+
 	elem = PG_GETARG_FLOAT8(1);
 	state = accumFloat8(state, elem, aggcontext);
-	
-	PG_RETURN_POINTER(state);
 
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-		
-	PG_RETURN_NULL();
-#endif
+	PG_RETURN_POINTER(state);
 }
 
-int 
-orafce_float8_cmp(const void *a, const void *b)
+int
+orafce_float8_cmp(const void *_a, const void *_b)
 {
-	return (int) (*((float8 *) a) - *((float8*) b));
+	float8 a = *((float8 *) _a);
+	float8 b = *((float8 *) _b);
+
+	if (isnan(a))
+	{
+		if (isnan(b))
+			return 0;
+		else
+			return 1;
+	}
+	else if (isnan(b))
+	{
+		return -1;
+	}
+	else
+	{
+		if (a > b)
+			return 1;
+		else if (a < b)
+			return -1;
+		else
+			return 0;
+	}
 }
 
 
 Datum
 orafce_median8_finalfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
 	MedianState *state = NULL;
 	int	lidx;
 	int	hidx;
@@ -419,20 +334,11 @@ orafce_median8_finalfn(PG_FUNCTION_ARGS)
 
 	lidx = state->nelems / 2 + 1 - 1;
 	hidx = (state->nelems + 1) / 2 - 1;
-	
+
 	if (lidx == hidx)
 		result = state->d.float8_values[lidx];
 	else
 		result = (state->d.float8_values[lidx] + state->d.float8_values[hidx]) / 2.0;
 
 	PG_RETURN_FLOAT8(result);
-		
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-
-	PG_RETURN_NULL();		
-#endif
 }

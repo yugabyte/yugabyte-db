@@ -235,7 +235,7 @@ ora_salloc(size_t size)
 		/* list[select].context = context; */
 		ptr = list[select].first_byte_ptr;
 		*list_c += 1;
- 		break;
+		break;
 	}
 
 	return ptr;

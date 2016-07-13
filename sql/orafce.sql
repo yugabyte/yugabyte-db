@@ -190,7 +190,7 @@ select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DDD')  =  to_date ('22-AUG-03',
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DAY')  =  to_date ('24-AUG-03', 'DD-MON-YY');
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
-select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');                                                                       
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
 
@@ -202,7 +202,7 @@ select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','DAY') = '2004-10
 select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','HH') = '2004-10-19 01:00:00-07';
 select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','MI') = '2004-10-19 01:23:00-07';
 
-select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');                                                                 
+select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
 
@@ -481,6 +481,11 @@ select decode('2012-01-01', '2012-01-01', 23, '2012-01-02', 24);
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 9) = 'hsalF kcaJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';
+select PLVstr.rvrs (NULL, 10, 20);
+select PLVstr.rvrs ('alphabet', -2, -5);
+select PLVstr.rvrs ('alphabet', -2);
+select PLVstr.rvrs ('alphabet', 2, 200);
+select PLVstr.rvrs ('alphabet', 20, 200);
 select PLVstr.lstrip ('*val1|val2|val3|*', '*') = 'val1|val2|val3|*';
 select PLVstr.lstrip (',,,val1,val2,val3,', ',', 3)= 'val1,val2,val3,';
 select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'WHITE = ''FRONT'' AND COMP# = 1500';
@@ -543,6 +548,19 @@ select dbms_assert.simple_sql_name('"Aaa dghh shsh"');
 select dbms_assert.simple_sql_name('ajajaj -- ajaj');
 select dbms_assert.object_name('pg_catalog.pg_class');
 select dbms_assert.object_name('dbms_assert.fooo');
+
+select dbms_assert.enquote_literal(NULL);
+select dbms_assert.enquote_name(NULL);
+select dbms_assert.enquote_name(NULL, false);
+select dbms_assert.noop(NULL);
+select dbms_assert.qualified_sql_name(NULL);
+select dbms_assert.qualified_sql_name(NULL);
+select dbms_assert.schema_name(NULL);
+select dbms_assert.schema_name(NULL);
+select dbms_assert.simple_sql_name(NULL);
+select dbms_assert.simple_sql_name(NULL);
+select dbms_assert.object_name(NULL);
+select dbms_assert.object_name(NULL);
 
 select plunit.assert_true(NULL);
 select plunit.assert_true(1 = 2);
@@ -740,6 +758,8 @@ SET search_path TO default;
 
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
 SET search_path TO oracle,"$user", public, pg_catalog;
+SET orafce.nls_date_format to default;
+select oracle.to_char(to_date('19-APR-16 21:41:48'));
 set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(to_date('14-Jan08 11:44:49+05:30'));
 set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
@@ -793,6 +813,10 @@ SELECT (to_date('20140717111211', 'yyyymmddhh12miss') - to_date('20140315111212'
 SELECT (to_date('January 15, 1990, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.') - to_date('January 15, 1989, 10:00 A.M.','Month dd, YYYY, HH:MI A.M.'))::numeric(10,4);
 SELECT (to_date('14-Jul14 11:44:49' ,'YY-MonDD HH24:MI:SS') - to_date('14-Jan14 12:44:49' ,'YY-MonDD HH24:MI:SS'))::numeric(10,4);
 SELECT (to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:44','DDMMYY HH24:MI:SS'))::numeric(10,4);
+SELECT trunc(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
+SELECT round(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
+
+
 SET search_path TO default;
 
 --
@@ -946,3 +970,17 @@ SELECT '|' || oracle.btrim(' abcd  '::nvarchar2(10),'d'::char(3)) || '|' as LTRI
 /* test that trailing blanks are not ignored */
 SELECT oracle.length('あbb'::char(6));
 SELECT oracle.length(''::char(6));
+
+
+--
+-- test plvdate.bizdays_between
+--
+SELECT plvdate.including_start();
+SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
+SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
+SELECT plvdate.include_start(false);
+SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
+SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
+
+SELECT oracle.round(1.234::double precision, 2), oracle.trunc(1.234::double precision, 2);
+SELECT oracle.round(1.234::float, 2), oracle.trunc(1.234::float, 2);
