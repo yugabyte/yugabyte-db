@@ -98,22 +98,6 @@ $(document).on("submit", '#editProfileForm', function() {
   return false;
 });
 
-$(document).on("submit", '#registerForm', function() {
-  $.ajax( {
-    url: "/api/register",
-    type: 'POST',
-    data: $('#registerForm').serialize(),
-    success: function(response) {
-        sessionStorage.setItem("authToken", response.authToken);
-        window.location.href = "/";
-    },
-    error: function(response) {
-        parseFormErrorResponse(response);
-    }
-  });
-return false;
-});
-
 $(document).on("click", "#logoutLink", function(event) {
   event.preventDefault();
 
