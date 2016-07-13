@@ -5,23 +5,7 @@
 @implicitField = @{ FieldConstructor(formFieldTemplate.f) }
 
 @main(false, "login-form") {
-  <div class="row">
-    <div class="col-sm-4 col-sm-offset-4">
-      <div class="panel panel-default login-panel">
-        <div class="panel-heading">
-          <h3 class="panel-title">Please log in</h3>
-        </div>
-        <div class="panel-body">
-          <form id="loginForm">
-            <fieldset>
-              @inputText(loginForm("email"), 'class -> "form-control", 'placeholder -> "E-mail")
-              @inputPassword(loginForm("password"), 'class -> "form-control", 'placeholder -> "Password")
-              <input class="btn btn-lg btn-success btn-block" type="submit" value="Login">
-            </fieldset>
-          </form>
-          <div class = "alert alert-danger form-error-alert" id="loginFormAlert"></div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <div id="content"></div>
+  <script type="text/javascript" src="@routes.Assets.versioned("javascripts/formElements.js")"></script>
+  <script type="text/javascript" src="@routes.Assets.versioned("javascripts/loginForm.js")"></script>
 }

@@ -78,29 +78,6 @@ function parseFormErrorResponse(response) {
   });
 }
 
-$(document).on("submit", '#loginForm', function() {
-  $.ajax( {
-    url: "/api/login",
-    type: 'POST',
-    data: $('#loginForm').serialize(),
-    success: function(response) {
-      sessionStorage.setItem("authToken", response.authToken);
-      window.location.href = "/";
-    },
-    error: function(response) {
-      if(response.status == 401) {
-        var errorJson = $.parseJSON(response.responseText);
-        $("#loginFormAlert").text(errorJson.error);
-        $("#loginFormAlert").show();
-      } else {
-        $("#loginFormAlert").hide();
-        parseFormErrorResponse(response);
-      }
-    }
-  });
-  return false;
-});
-
 $(document).on("submit", '#editProfileForm', function() {
   $.ajax( {
     url: "/api/customers/" + $("#customerUUID").val(),
