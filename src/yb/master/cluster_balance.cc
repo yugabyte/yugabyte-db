@@ -547,7 +547,7 @@ void ClusterLoadBalancer::AnalyzeTablets() {
   // load and are ready to apply the load balancing rules.
   state_->SortLoad();
 
-  LOG(INFO) << Substitute(
+  VLOG(1) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2",
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets());
 }
@@ -646,7 +646,7 @@ bool ClusterLoadBalancer::HandleAddReplicas(
 
   // Finally, handle normal load balancing.
   if (!GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts)) {
-    LOG(INFO) << "Cannot find any more tablets to move, under current constraints!";
+    VLOG(1) << "Cannot find any more tablets to move, under current constraints!";
     return false;
   }
 

@@ -284,7 +284,7 @@ if [ "$BUILD_JAVA" == "1" ]; then
   if [ "$VALIDATE_CSD" == "1" ]; then
     VALIDATE_CSD_FLAG="-PvalidateCSD"
   fi
-  if ! mvn $MVN_FLAGS -PbuildCSD \
+  if ! mvn -DskipTests $MVN_FLAGS -PbuildCSD \
       $VALIDATE_CSD_FLAG \
       -Dsurefire.rerunFailingTestsCount=3 \
       -Dfailsafe.rerunFailingTestsCount=3 \

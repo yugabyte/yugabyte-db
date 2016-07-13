@@ -30,7 +30,7 @@
     <name>YugaByte</name>
 
     <description>
-        YugaByte client, tools, mapreduce bindings, etc.
+        YugaByte client, YBCli, tools, mapreduce bindings, etc.
     </description>
 
     <!-- Properties Management -->
