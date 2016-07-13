@@ -181,6 +181,224 @@ AS $function$
     END $function$
 ```
 
+### Simple Serial ID: 1 Partition Per 10 ID Values Starting With Empty Table and using upsert to drop conflicting rows
+
+```
+    Uses same example table as above
+
+    keith=# SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10', p_upsert := 'ON CONFLICT (col1) DO NOTHING');
+     create_parent 
+    ---------------
+     t
+    (1 row)
+
+
+    keith=# \d+ partman_test.id_taptest_table
+                                       Table "partman_test.id_taptest_table"
+     Column |           Type           |           Modifiers            | Storage  | Stats target | Description 
+    --------+--------------------------+--------------------------------+----------+--------------+-------------
+     col1   | integer                  | not null                       | plain    |              | 
+     col2   | text                     | not null default 'stuff'::text | extended |              | 
+     col3   | timestamp with time zone | default now()                  | plain    |              | 
+    Indexes:
+        "id_taptest_table_pkey" PRIMARY KEY, btree (col1)
+    Triggers:
+        id_taptest_table_part_trig BEFORE INSERT ON partman_test.id_taptest_table FOR EACH ROW EXECUTE PROCEDURE partman_test.id_taptest_table_part_trig_func()
+    Child tables: partman_test.id_taptest_table_p0,
+                  partman_test.id_taptest_table_p10,
+                  partman_test.id_taptest_table_p20,
+                  partman_test.id_taptest_table_p30,
+                  partman_test.id_taptest_table_p40
+```
+Other than the new ON CONFLICT clause, this trigger function works exactly the same as the previous ID example.
+```
+CREATE OR REPLACE FUNCTION partman_test.id_taptest_table_part_trig_func()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$ 
+    DECLARE
+        v_count                     int;
+        v_current_partition_id      bigint;
+        v_current_partition_name    text;
+        v_id_position               int;
+        v_last_partition            text := 'partman_test.id_taptest_table_p40';
+        v_next_partition_id         bigint;
+        v_next_partition_name       text;
+        v_partition_created         boolean;
+    BEGIN
+    IF TG_OP = 'INSERT' THEN 
+        IF NEW.col1 >= 0 AND NEW.col1 < 10 THEN  
+            INSERT INTO partman_test.id_taptest_table_p0 VALUES (NEW.*) ON CONFLICT (col1) DO NOTHING; 
+        ELSIF NEW.col1 >= 10 AND NEW.col1 < 20 THEN 
+            INSERT INTO partman_test.id_taptest_table_p10 VALUES (NEW.*) ON CONFLICT (col1) DO NOTHING;
+        ELSIF NEW.col1 >= 20 AND NEW.col1 < 30 THEN 
+            INSERT INTO partman_test.id_taptest_table_p20 VALUES (NEW.*) ON CONFLICT (col1) DO NOTHING;
+        ELSIF NEW.col1 >= 30 AND NEW.col1 < 40 THEN 
+            INSERT INTO partman_test.id_taptest_table_p30 VALUES (NEW.*) ON CONFLICT (col1) DO NOTHING;
+        ELSIF NEW.col1 >= 40 AND NEW.col1 < 50 THEN 
+            INSERT INTO partman_test.id_taptest_table_p40 VALUES (NEW.*) ON CONFLICT (col1) DO NOTHING;
+        ELSE
+            v_current_partition_id := NEW.col1 - (NEW.col1 % 10);
+            v_current_partition_name := partman.check_name_length('id_taptest_table', 'partman_test', v_current_partition_id::text, TRUE);
+            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname ||'.'|| tablename = v_current_partition_name;
+            IF v_count > 0 THEN 
+                EXECUTE 'INSERT INTO '||v_current_partition_name||' VALUES($1.*) ON CONFLICT (col1) DO NOTHING' USING NEW;
+            ELSE
+                RETURN NEW;
+            END IF;
+        END IF;
+        v_current_partition_id := NEW.col1 - (NEW.col1 % 10);
+        IF (NEW.col1 % 10) > (10 / 2) THEN
+            v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
+            v_next_partition_id := (substring(v_last_partition from v_id_position)::bigint) + 10;
+            WHILE ((v_next_partition_id - v_current_partition_id) / 10) <= 4 LOOP 
+                v_partition_created := partman.create_partition_id('partman_test.id_taptest_table', ARRAY[v_next_partition_id]);
+                IF v_partition_created THEN
+                    PERFORM partman.create_function_id('partman_test.id_taptest_table');
+                    PERFORM partman.apply_constraints('partman_test.id_taptest_table');
+                END IF;
+                v_next_partition_id := v_next_partition_id + 10;
+            END LOOP;
+        END IF;
+    END IF; 
+    RETURN NULL; 
+    END $function$
+```
+Running the following query will insert a row in the table
+```
+keith@keith=# INSERT INTO partman_test.id_taptest_table(col1,col2) VALUES(1,'insert1');
+INSERT 0 0
+Time: 1.668 ms
+keith@keith=# select * from partman_test.id_taptest_table;
+ col1 |  col2   |             col3              
+------+---------+-------------------------------
+    1 | insert1 | 2016-07-12 15:03:47.396159-04
+(1 row)
+
+Time: 1.708 ms
+```
+Running the following query will not fail but the row in the table will not change and col2 will still be 'insert1'
+```
+keith@keith=# INSERT INTO partman_test.id_taptest_table(col1,col2) VALUES(1,'insert2');
+INSERT 0 0
+Time: 1.995 ms
+keith@keith=# select * from partman_test.id_taptest_table;
+ col1 |  col2   |             col3              
+------+---------+-------------------------------
+    1 | insert1 | 2016-07-12 15:03:47.396159-04
+(1 row)
+
+Time: 1.721 ms
+```
+
+
+### Simple Serial ID: 1 Partition Per 10 ID Values Starting With Empty Table and using upsert to update conflicting rows
+```
+    Uses same example table as above
+
+
+    keith@keith=# SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10', p_upsert := 'ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3');
+     create_parent 
+    ---------------
+     t
+    (1 row)
+
+    keith=# \d+ partman_test.id_taptest_table
+                                       Table "partman_test.id_taptest_table"
+     Column |           Type           |           Modifiers            | Storage  | Stats target | Description 
+    --------+--------------------------+--------------------------------+----------+--------------+-------------
+     col1   | integer                  | not null                       | plain    |              | 
+     col2   | text                     | not null default 'stuff'::text | extended |              | 
+     col3   | timestamp with time zone | default now()                  | plain    |              | 
+    Indexes:
+        "id_taptest_table_pkey" PRIMARY KEY, btree (col1)
+    Triggers:
+        id_taptest_table_part_trig BEFORE INSERT ON partman_test.id_taptest_table FOR EACH ROW EXECUTE PROCEDURE partman_test.id_taptest_table_part_trig_func()
+    Child tables: partman_test.id_taptest_table_p0,
+                  partman_test.id_taptest_table_p10,
+                  partman_test.id_taptest_table_p20,
+                  partman_test.id_taptest_table_p30,
+                  partman_test.id_taptest_table_p40
+```
+Other than the new ON CONFLICT clause, this trigger function works exactly the same as the previous ID example.
+```
+keith@keith=# \sf partman_test.id_taptest_table_part_trig_func 
+CREATE OR REPLACE FUNCTION partman_test.id_taptest_table_part_trig_func()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$ 
+    DECLARE
+        v_count                     int;
+        v_current_partition_id      bigint;
+        v_current_partition_name    text;
+        v_id_position               int;
+        v_last_partition            text := 'id_taptest_table_p40';
+        v_next_partition_id         bigint;
+        v_next_partition_name       text;
+        v_partition_created         boolean;
+    BEGIN
+    IF TG_OP = 'INSERT' THEN 
+        IF NEW.col1 >= 0 AND NEW.col1 < 10 THEN  
+            INSERT INTO partman_test.id_taptest_table_p0 VALUES (NEW.*) ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3; 
+        ELSIF NEW.col1 >= 10 AND NEW.col1 < 20 THEN 
+            INSERT INTO partman_test.id_taptest_table_p10 VALUES (NEW.*) ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3;
+        ELSIF NEW.col1 >= 20 AND NEW.col1 < 30 THEN 
+            INSERT INTO partman_test.id_taptest_table_p20 VALUES (NEW.*) ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3;
+        ELSIF NEW.col1 >= 30 AND NEW.col1 < 40 THEN 
+            INSERT INTO partman_test.id_taptest_table_p30 VALUES (NEW.*) ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3;
+        ELSIF NEW.col1 >= 40 AND NEW.col1 < 50 THEN 
+            INSERT INTO partman_test.id_taptest_table_p40 VALUES (NEW.*) ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3;
+        ELSE
+            v_current_partition_id := NEW.col1 - (NEW.col1 % 10);
+            v_current_partition_name := partman.check_name_length('id_taptest_table', v_current_partition_id::text, TRUE);
+            SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = 'partman_test'::name AND tablename = v_current_partition_name::name;
+            IF v_count > 0 THEN 
+                EXECUTE format('INSERT INTO %I.%I VALUES($1.*) ON CONFLICT (col1) DO UPDATE SET col2=EXCLUDED.col2, col3=EXCLUDED.col3', 'partman_test', v_current_partition_name) USING NEW;
+            ELSE
+                RETURN NEW;
+            END IF;
+        END IF;
+        v_current_partition_id := NEW.col1 - (NEW.col1 % 10);
+        IF (NEW.col1 % 10) > (10 / 2) THEN
+            v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
+            v_next_partition_id := (substring(v_last_partition from v_id_position)::bigint) + 10;
+            WHILE ((v_next_partition_id - v_current_partition_id) / 10) <= 4 LOOP 
+                v_partition_created := partman.create_partition_id('partman_test.id_taptest_table', ARRAY[v_next_partition_id]);
+                IF v_partition_created THEN
+                    PERFORM partman.create_function_id('partman_test.id_taptest_table');
+                    PERFORM partman.apply_constraints('partman_test.id_taptest_table');
+                END IF;
+                v_next_partition_id := v_next_partition_id + 10;
+            END LOOP;
+        END IF;
+    END IF; 
+    RETURN NULL;
+    END $function$
+```
+Runnign the following query will insert a row in the table
+```
+keith@keith=# INSERT INTO partman_test.id_taptest_table(col1,col2) VALUES(1,'insert1');
+INSERT 0 0
+Time: 5.440 ms
+keith@keith=# select * from partman_test.id_taptest_table;
+ col1 |  col2   |             col3              
+------+---------+-------------------------------
+    1 | insert1 | 2016-07-12 15:09:25.138428-04
+(1 row)
+
+```
+Running the following query will not fail and the row in the table will change and col2 will now be 'insert2' and the timestamp in col3 will update to the default value now()
+```
+keith@keith=# INSERT INTO partman_test.id_taptest_table(col1,col2) VALUES(1,'insert2');
+INSERT 0 0
+Time: 6.334 ms
+keith@keith=# select * from partman_test.id_taptest_table;
+ col1 |  col2   |             col3             
+------+---------+------------------------------
+    1 | insert2 | 2016-07-12 15:10:04.50675-04
+(1 row)
+```
+
 ### Sub-partition Time->Time->Time: Yearly -> Monthly -> Daily
 ```
     keith=# \d partman_test.time_taptest_table

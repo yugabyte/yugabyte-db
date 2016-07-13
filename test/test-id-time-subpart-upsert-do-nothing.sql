@@ -1,12 +1,13 @@
--- ########## ID PARENT / TIME SUBPARENT DYNAMIC TESTS ##########
+-- ########## ID PARENT / TIME SUBPARENT TESTS ##########
+-- Additional test: UPSERT DO NOTHING
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
---BEGIN;
+BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(258);
+SELECT plan(261);
 CREATE SCHEMA partman_test;
 
 CREATE TABLE partman_test.id_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
@@ -215,8 +216,8 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p
     ARRAY[1], 'Check count from id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
 
 -- Check that upsert doesn't throw conflict
-INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,20));
-SELECT pass('Upsert DO NOTHING passed test (1-20)'); 
+INSERT INTO partman_test.id_taptest_table (col1, col3) VALUES (generate_series(10,20), CURRENT_TIMESTAMP+'1 day'::interval);
+SELECT pass('Upsert DO NOTHING passed test (10-20)'); 
 
 -- p50
 SELECT has_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 exists');
@@ -296,7 +297,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p10_p
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20', ARRAY[1], 'Check count from subparent table id_taptest_table_p20');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
     ARRAY[1], 'Check count from id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
-/*
+
 -- Ensure time partitioning works for all sub partitions
 UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table ~ 'partman_test.id_taptest_table_p' AND partition_type = 'time';
 SELECT run_maintenance();
@@ -563,7 +564,7 @@ SELECT is_empty('SELECT parent_table from part_config where parent_table = ''par
     'Check that partman_test.id_taptest_table was removed from part_config');
 
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[11], 'Check count from final unpartitioned table');
-*/
+
 SELECT * FROM finish();
---ROLLBACK;
+ROLLBACK;
 

@@ -29,6 +29,7 @@ v_next_partition_id             bigint;
 v_next_partition_name           text;
 v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
+v_optimize_trigger              int;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_partition_interval            bigint;
@@ -41,7 +42,7 @@ v_step_id                       bigint;
 v_top_parent                    text := p_parent_table;
 v_trig_func                     text;
 v_trigger_exception_handling    boolean;
-v_optimize_trigger              int;
+v_upsert                        text;
 
 BEGIN
 
@@ -52,6 +53,7 @@ SELECT partition_interval::bigint
     , use_run_maintenance
     , jobmon
     , trigger_exception_handling
+    , upsert
 INTO v_partition_interval
     , v_control
     , v_premake
@@ -59,6 +61,7 @@ INTO v_partition_interval
     , v_run_maint
     , v_jobmon
     , v_trigger_exception_handling
+    , v_upsert
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND partition_type = 'id';
@@ -158,7 +161,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_current_partition_name::name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func || format(' 
-            INSERT INTO %I.%I VALUES (NEW.*); ', v_parent_schema, v_current_partition_name);
+            INSERT INTO %I.%I VALUES (NEW.*) %s; ', v_parent_schema, v_current_partition_name, v_upsert);
         ELSE
             v_trig_func := v_trig_func || '
             -- Child table for current values does not exist in this partition set, so write to parent
@@ -180,13 +183,14 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             IF v_prev_partition_id >= 0 THEN
                 v_trig_func := v_trig_func ||format('
         ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
-            INSERT INTO %I.%I VALUES (NEW.*); '
+            INSERT INTO %I.%I VALUES (NEW.*) %s; '
                 , v_control
                 , v_prev_partition_id
                 , v_control
                 , v_prev_partition_id + v_partition_interval
                 , v_parent_schema
                 , v_prev_partition_name
+                , v_upsert
             );
             END IF;
         END IF;
@@ -195,13 +199,14 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
         IF v_count > 0 THEN
             v_trig_func := v_trig_func ||format('
         ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
-            INSERT INTO %I.%I VALUES (NEW.*);'
+            INSERT INTO %I.%I VALUES (NEW.*) %s;'
                 , v_control
                 , v_next_partition_id
                 , v_control
                 , v_final_partition_id
                 , v_parent_schema
                 , v_next_partition_name
+                , v_upsert
             );
         END IF;
     END LOOP;
@@ -211,7 +216,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             v_current_partition_name := @extschema@.check_name_length(%L, v_current_partition_id::text, TRUE);
             SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = %L::name AND tablename = v_current_partition_name::name;
             IF v_count > 0 THEN 
-                EXECUTE format(''INSERT INTO %%I.%%I VALUES($1.*)'', %L, v_current_partition_name) USING NEW;
+                EXECUTE format(''INSERT INTO %%I.%%I VALUES($1.*) %s'', %L, v_current_partition_name) USING NEW;
             ELSE
                 RETURN NEW;
             END IF;
@@ -221,6 +226,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             , v_partition_interval
             , v_parent_tablename
             , v_parent_schema
+            , v_upsert
             , v_parent_schema
         );
 
@@ -302,4 +308,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

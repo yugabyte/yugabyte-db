@@ -42,9 +42,11 @@ Keep in mind that for intervals equal to or greater than 100 years, the extensio
 
 PostgreSQL has an object naming length limit of 63 characters. If you try and create an object with a longer name, it truncates off any characters at the end to fit that limit. This can cause obvious issues with partition names that rely on having a specifically named suffix. PG Partman automatically handles this for all child tables, trigger functions and triggers. It will truncate off the existing parent table name to fit the required suffix. Be aware that if you have tables with very long, similar names, you may run into naming conflicts if they are part of separate partition sets. With serial based partitioning, be aware that over time the table name will be truncated more and more to fit a longer partition suffix. So while the extention will try and handle this edge case for you, it is recommended to keep table names that will be partitioned as short as possible.
 
-### Unique Constraints
+### Unique Constraints & Upsert
 
 Table inheritance in PostgreSQL does not allow a primary key or unique index/constraint on the parent to apply to all child tables. The constraint is applied to each individual table, but not on the entire partition set as a whole. For example, this means a careless application can cause a primary key value to be duplicated in a partition set. This is one of the "big issues" that causes performance issues with partitoning on other database systems and one of the reasons for the delay in getting partitioning built in to PostgreSQL. In the mean time, a python script is included with `pg_partman` that can provide monitoring to help ensure the lack of this feature doesn't cause long term harm. See **`check_unique_constraint.py`** in the **Scripts** section.
+
+INSERT ... ON CONFLICT (upsert) is supported in the partitioning trigger, but is very limited. The major limitations are that the constraint violations that would trigger the ON CONFLICT clause only occur on individual child tables that actually contain data due to reasons explained above. Of a larger concern than data suplication is an ON CONFLICT DO UPDATE clause which may not fire and cause wildly inconsistent data if not accounted for. It is unclear whether this limitation will be able to be overcome while partitioning is based around inheritance and triggers. For situations where only new data is being inserted, upsert can provide significant performance improvements. However, if you're relying on data in older partitions to cause a constraint violation that upsert would handle, it likely will not work. Upsert is optional, turned off by default and is recommended you test it out extensively before implementing in production and monitor it carefully. See https://www.postgresql.org/docs/9.5/static/sql-insert.html
 
 ### Logging/Monitoring
 
@@ -78,7 +80,7 @@ As a note for people that were not aware, you can name arguments in function cal
 
 ### Creation Functions
 
-*`create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT false, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
+*`create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT false, p_upsert text DEFAULT '', p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
 
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
@@ -118,6 +120,12 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_start_partition` - allows the first partition of a set to be specified instead of it being automatically determined. Must be a valid timestamp (for time-based) or positive integer (for id-based) value. Be aware, though, the actual paramater data type is text. For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus `premake`) will be created. For id-based partitioning, only the partition starting at the given value (plus `premake`) will be made. 
  * `p_inherit_fk` - allows `pg_partman` to automatically manage inheriting any foreign keys that exist on the parent table to all its children. Defaults to TRUE.
  * `p_epoch` - tells `pg_partman` that the control column is an integer type, but actually represents and epoch time value. All triggers, constraints & table names will be time-based. Be sure you create a functional, time-based index on the control column (to_timestamp(controlcolumn)) so this works efficiently.
+ * `p_upsert` - adds upsert to insert queries in the partition trigger to allow handeling of conflicts  Defaults to '' (empty string) which means it's inactive.
+    + the value entered here is the entire ON CONFLICT clause which will then be appended to the INSERT statement(s) in the trigger
+    + Ex: to ignore conflicting rows on a table with primary key "id" set p_upsert to `'ON CONFLICT (id) DO NOTHING'`
+	+ Ex: to update a conflicting row on a table with columns id(pk), val set p_upsert to `'ON CONFLICT (id) DO UPDATE SET val=EXCLUDED.val'`
+	+ Requires postgresql 9.5
+	+ See *About* section above for more info.
  * `p_jobmon` - allow `pg_partman` to use the `pg_jobmon` extension to monitor that partitioning is working correctly. Defaults to TRUE.
  * `p_debug` - turns on additional debugging information.
 
@@ -385,6 +393,8 @@ The rest are managed by the extension itself and should not be changed unless ab
     - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation and retention management by the `run_maintenance()` function to stop. Default is false.
 - `trigger_exception_handling`
     - Boolean value that can be set to allow the partitioning trigger function to handle any exceptions encountered while writing to this table. Handling it in this case means putting the data into the parent table to try and ensure no data loss in case of errors. Be aware that catching the exception here will override any other exception handling that may be done when writing to this partitioned set (Ex. handling a unique constraint violation to ignore it). This option is set to false by default to avoid causing unexpected behavior in other exception handling situations.
+- `p_upsert` 
+    - text value of the ON CONFLICT clause to include in the partition trigger  Defaults to '' (empty string) which means it's inactive. See *create_parent()* function definition & *About* section for more info.
 
 **`part_config_sub`**
 

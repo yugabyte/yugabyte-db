@@ -1,15 +1,28 @@
--- Implement upsert pull request. Thanks to MikaelUlvesjo for putting most of the work into adding this feature! (Github Issue #105 & Pull Request #122)
-    -- TODO Add version check to stop immediately if not PG >=9.5
-    -- Handle subpartitioning
-    -- Example in submitted patch are missing the DO UPDATE part of the ON CONFLICT clause
+-- Added very limited support for INSERT ... ON CONFLICT (upsert) in the partitioning trigger. For situations where only new data is being inserted, this can provide significant performance improvements. However, major limitations are that the constraint violations that would trigger the ON CONFLICT clause only occur on a per child table basis. This is a known limitation for inheritance in general. Constraints DO NOT apply across all tables in an inheritance set (Ex. Primary keys are only enforced for each individual child table and not for all tables in the partition set. Data duplication is possible). The included python script "check_unique_constraint.py" can help mitigate duplication, but cannot prevent it. Of a larger concern is an ON CONFLICT DO UPDATE clause which may not fire and cause wildly inconsistent data if not accounted for. These limitations will likely never be overcome in this extension until global indexes or constraints for inheritance sets are supported in PostgreSQL. It is recommended you test this feature out extensively before implementing in production and monitor it carefully. Many thanks to MikaelUlvesjo for contributing work on this issue (Github Issue #105 & Pull Request #122).
+-- Added check to part_config_sub to ensure premake > 0. Makes it consistent with part_config table.
+
 
 ALTER TABLE @extschema@.part_config ADD COLUMN upsert TEXT NOT NULL DEFAULT '';
 ALTER TABLE @extschema@.part_config_sub ADD COLUMN sub_upsert TEXT NOT NULL DEFAULT '';
 
---TODO Preserve dropped privileges
+ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT positive_premake_check CHECK (sub_premake > 0);
+
+CREATE TEMP TABLE partman_preserve_privs_temp (statement text);
+
+INSERT INTO partman_preserve_privs_temp 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_parent(text, text, text, text, text[], int, boolean, text, boolean, boolean, text, boolean, boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+FROM information_schema.routine_privileges
+WHERE routine_schema = '@extschema@'
+AND routine_name = 'create_parent'; 
+
+INSERT INTO partman_preserve_privs_temp 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_sub_parent(text, text, text, text, text[], int, text, boolean, boolean, text, boolean, boolean)  TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+FROM information_schema.routine_privileges
+WHERE routine_schema = '@extschema@'
+AND routine_name = 'create_sub_parent'; 
+
 DROP FUNCTION create_parent(text, text, text, text, text[], int, boolean, text, boolean, boolean, boolean, boolean); 
 DROP FUNCTION create_sub_parent(text, text, text, text, text[], int, text, boolean, boolean, boolean, boolean); 
-
 
 /*
  * Create the trigger function for the parent table of an id-based partition set
@@ -173,10 +186,6 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
         );
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_current_partition_name::name;
         IF v_count > 0 THEN
-/* TODO REMOVE
-            v_trig_func := v_trig_func || format(' 
-            INSERT INTO %I.%I VALUES (NEW.*); ', v_parent_schema, v_current_partition_name);
-*/
             v_trig_func := v_trig_func || format(' 
             INSERT INTO %I.%I VALUES (NEW.*) %s; ', v_parent_schema, v_current_partition_name, v_upsert);
         ELSE
@@ -197,20 +206,6 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_prev_partition_name::name;
         IF v_count > 0 THEN
             -- Only handle previous partitions if they're starting above zero
-/* TODO REMOVE
-            IF v_prev_partition_id >= 0 THEN
-                v_trig_func := v_trig_func ||format('
-        ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
-            INSERT INTO %I.%I VALUES (NEW.*); '
-                , v_control
-                , v_prev_partition_id
-                , v_control
-                , v_prev_partition_id + v_partition_interval
-                , v_parent_schema
-                , v_prev_partition_name
-            );
-            END IF;
-*/
             IF v_prev_partition_id >= 0 THEN
                 v_trig_func := v_trig_func ||format('
         ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
@@ -228,18 +223,6 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
 
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_next_partition_name::name;
         IF v_count > 0 THEN
-            /* TODO REMOVE
-            v_trig_func := v_trig_func ||format('
-        ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
-            INSERT INTO %I.%I VALUES (NEW.*);'
-                , v_control
-                , v_next_partition_id
-                , v_control
-                , v_final_partition_id
-                , v_parent_schema
-                , v_next_partition_name
-            );
-            */
             v_trig_func := v_trig_func ||format('
         ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
             INSERT INTO %I.%I VALUES (NEW.*) %s;'
@@ -253,26 +236,6 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             );
         END IF;
     END LOOP;
-    /* TODO REMOVE
-    v_trig_func := v_trig_func ||format('
-        ELSE
-            v_current_partition_id := NEW.%I - (NEW.%I %% %s);
-            v_current_partition_name := @extschema@.check_name_length(%L, v_current_partition_id::text, TRUE);
-            SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = %L::name AND tablename = v_current_partition_name::name;
-            IF v_count > 0 THEN 
-                EXECUTE format(''INSERT INTO %%I.%%I VALUES($1.*)'', %L, v_current_partition_name) USING NEW;
-            ELSE
-                RETURN NEW;
-            END IF;
-        END IF;'
-            , v_control
-            , v_control
-            , v_partition_interval
-            , v_parent_tablename
-            , v_parent_schema
-            , v_parent_schema
-        );
-    */
     v_trig_func := v_trig_func ||format('
         ELSE
             v_current_partition_id := NEW.%I - (NEW.%I %% %s);
@@ -676,6 +639,7 @@ ELSIF v_type = 'time-custom' THEN
             v_child_schemaname  text;
             v_child_table       text;
             v_child_tablename   text;
+            v_upsert            text;
         BEGIN
             '
         , v_parent_schema
@@ -684,20 +648,22 @@ ELSIF v_type = 'time-custom' THEN
     IF v_epoch = false THEN
         v_trig_func := v_trig_func || format(' 
 
-        SELECT child_table INTO v_child_table
-        FROM @extschema@.custom_time_partitions 
-        WHERE partition_range @> NEW.%I 
-        AND parent_table = %L;'
+        SELECT c.child_table, p.upsert INTO v_child_table, v_upsert
+        FROM @extschema@.custom_time_partitions c
+        JOIN @extschema@.part_config p ON c.parent_table = p.parent_table
+        WHERE c.partition_range @> NEW.%I 
+        AND c.parent_table = %L;'
         , v_control
         , v_parent_schema||'.'||v_parent_tablename);
 
     ELSE -- epoch true
         v_trig_func := v_trig_func || format(' 
 
-        SELECT child_table INTO v_child_table
-        FROM @extschema@.custom_time_partitions 
-        WHERE partition_range @> to_timestamp(NEW.%I)
-        AND parent_table = %L;'
+        SELECT c.child_table, p.upsert INTO v_child_table, v_upsert
+        FROM @extschema@.custom_time_partitions c
+        JOIN @extschema@.part_config p ON c.parent_table = p.parent_table
+        WHERE c.partition_range @> to_timestamp(NEW.%I)
+        AND c.parent_table = %L;'
         , v_control
         , v_parent_schema||'.'||v_parent_tablename);
 
@@ -829,6 +795,10 @@ BEGIN
 
 IF position('.' in p_parent_table) = 0  THEN
     RAISE EXCEPTION 'Parent table must be schema qualified';
+END IF;
+
+IF p_upsert IS NOT NULL AND @extschema@.check_version('9.5.0') = 'false' THEN
+    RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
 END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
@@ -1315,7 +1285,7 @@ $$;
  * To avoid logical complications and contention issues, ALL subpartitions must be maintained using run_maintenance().
  * This means the automatic, trigger based partition creation for serial partitioning will not work if it is a subpartition.
  */
-CREATE OR REPLACE FUNCTION create_sub_parent(
+CREATE FUNCTION create_sub_parent(
     p_top_parent text
     , p_control text
     , p_type text
@@ -1352,6 +1322,10 @@ IF v_run_maint IS NULL THEN
     RAISE EXCEPTION 'Cannot subpartition a table that is not managed by pg_partman already. Given top parent table not found in @extschema@.part_config: %', p_top_parent;
 ELSIF v_run_maint = false THEN
     RAISE EXCEPTION 'Any parent table that will be part of a sub-partitioned set (on any level) must have use_run_maintenance set to true in part_config table, even for serial partitioning. See documentation for more info.';
+END IF;
+
+IF p_upsert IS NOT NULL AND @extschema@.check_version('9.5.0') = 'false' THEN
+    RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -1452,3 +1426,17 @@ RETURN v_success;
 END
 $$;
 
+-- Restore dropped object privileges
+DO $$
+DECLARE
+v_row   record;
+BEGIN
+    FOR v_row IN SELECT statement FROM partman_preserve_privs_temp LOOP
+        IF v_row.statement IS NOT NULL THEN
+            EXECUTE v_row.statement;
+        END IF;
+    END LOOP;
+END
+$$;
+
+DROP TABLE IF EXISTS partman_preserve_privs_temp;

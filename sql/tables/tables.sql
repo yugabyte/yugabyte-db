@@ -20,6 +20,7 @@ CREATE TABLE part_config (
     , sub_partition_set_full boolean NOT NULL DEFAULT false
     , undo_in_progress boolean NOT NULL DEFAULT false
     , trigger_exception_handling BOOLEAN DEFAULT false
+    , upsert text NOT NULL DEFAULT ''
     , CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
     , CONSTRAINT positive_premake_check CHECK (premake > 0)
 );
@@ -29,7 +30,7 @@ SELECT pg_catalog.pg_extension_config_dump('part_config', '');
 
 -- FK set deferrable because create_parent() inserts to this table before part_config
 CREATE TABLE part_config_sub (
-    sub_parent text PRIMARY KEY REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED
+    sub_parent text 
     , sub_partition_type text NOT NULL
     , sub_control text NOT NULL
     , sub_partition_interval text NOT NULL
@@ -47,6 +48,10 @@ CREATE TABLE part_config_sub (
     , sub_use_run_maintenance BOOLEAN NOT NULL DEFAULT true
     , sub_jobmon boolean NOT NULL DEFAULT true
     , sub_trigger_exception_handling BOOLEAN DEFAULT false
+    , sub_upsert TEXT NOT NULL DEFAULT ''
+    , CONSTRAINT part_config_sub_pkey PRIMARY KEY (sub_parent)
+    , CONSTRAINT part_config_sub_sub_parent_fkey FOREIGN KEY (sub_parent) REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED
+    , CONSTRAINT positive_premake_check CHECK (sub_premake > 0)
 );
 SELECT pg_catalog.pg_extension_config_dump('part_config_sub', '');
 

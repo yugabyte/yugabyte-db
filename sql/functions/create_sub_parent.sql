@@ -16,6 +16,7 @@ CREATE FUNCTION create_sub_parent(
     , p_start_partition text DEFAULT NULL
     , p_inherit_fk boolean DEFAULT true
     , p_epoch boolean DEFAULT false
+    , p_upsert text DEFAULT ''
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean
@@ -42,6 +43,10 @@ IF v_run_maint IS NULL THEN
     RAISE EXCEPTION 'Cannot subpartition a table that is not managed by pg_partman already. Given top parent table not found in @extschema@.part_config: %', p_top_parent;
 ELSIF v_run_maint = false THEN
     RAISE EXCEPTION 'Any parent table that will be part of a sub-partitioned set (on any level) must have use_run_maintenance set to true in part_config table, even for serial partitioning. See documentation for more info.';
+END IF;
+
+IF p_upsert IS NOT NULL AND @extschema@.check_version('9.5.0') = 'false' THEN
+    RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -88,6 +93,7 @@ LOOP
             , p_start_partition := %L
             , p_inherit_fk := %L
             , p_epoch := %L
+            , p_upsert := %L
             , p_jobmon := %L
             , p_debug := %L )'
         , v_row.child_table
@@ -100,6 +106,7 @@ LOOP
         , p_start_partition
         , p_inherit_fk
         , p_epoch
+        , p_upsert
         , p_jobmon
         , p_debug);
     EXECUTE v_sql;
@@ -116,6 +123,7 @@ INSERT INTO @extschema@.part_config_sub (
     , sub_inherit_fk
     , sub_use_run_maintenance
     , sub_epoch
+    , sub_upsert
     , sub_jobmon)
 VALUES (
     p_top_parent
@@ -127,6 +135,7 @@ VALUES (
     , p_inherit_fk
     , true
     , p_epoch
+    , p_upsert
     , p_jobmon);
 
 v_success := true;
