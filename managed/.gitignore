@@ -18,3 +18,7 @@ perf.data.old
 oprofile_data
 .metadata/
 *.iml
+
+app/.DS_STORE
+.DS_Store
+app/views/.DS_Store
