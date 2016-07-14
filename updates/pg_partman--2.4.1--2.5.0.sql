@@ -1,5 +1,6 @@
 -- Added very limited support for INSERT ... ON CONFLICT (upsert) in the partitioning trigger. For situations where only new data is being inserted, this can provide significant performance improvements. However, major limitations are that the constraint violations that would trigger the ON CONFLICT clause only occur on a per child table basis. This is a known limitation for inheritance in general. Constraints DO NOT apply across all tables in an inheritance set (Ex. Primary keys are only enforced for each individual child table and not for all tables in the partition set. Data duplication is possible). The included python script "check_unique_constraint.py" can help mitigate duplication, but cannot prevent it. Of a larger concern is an ON CONFLICT DO UPDATE clause which may not fire and cause wildly inconsistent data if not accounted for. These limitations will likely never be overcome in this extension until global indexes or constraints for inheritance sets are supported in PostgreSQL. It is recommended you test this feature out extensively before implementing in production and monitor it carefully. Many thanks to MikaelUlvesjo for contributing work on this issue (Github Issue #105 & Pull Request #122).
 -- Added check to part_config_sub to ensure premake > 0. Makes it consistent with part_config table.
+-- Allow internal check_version() function to work with test releases of postgres. If it's an alpha, beta or rc release it ignores the current version, so you're on your own if things fail due to version feature mismatches.
 
 
 ALTER TABLE @extschema@.part_config ADD COLUMN upsert TEXT NOT NULL DEFAULT '';
@@ -1422,6 +1423,49 @@ v_success := true;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
 RETURN v_success;
+
+END
+$$;
+
+
+/*
+ * Check PostgreSQL version number. Parameter must be full 3 point version.
+ * Returns true if current version is greater than or equal to the parameter given.
+ */
+CREATE OR REPLACE FUNCTION check_version(p_check_version text) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+
+v_check_version     text[];
+v_current_version   text[] := string_to_array(current_setting('server_version'), '.');
+ 
+BEGIN
+
+v_check_version := string_to_array(p_check_version, '.');
+
+IF v_current_version[1]::int > v_check_version[1]::int THEN
+    RETURN true;
+END IF;
+IF v_current_version[1]::int = v_check_version[1]::int THEN
+    IF substring(v_current_version[2] from 'beta') IS NOT NULL 
+        OR substring(v_current_version[2] from 'alpha') IS NOT NULL 
+        OR substring(v_current_version[2] from 'rc') IS NOT NULL 
+    THEN
+        -- You're running a test version. You're on your own if things fail.
+        RETURN true;
+    END IF;
+    IF v_current_version[2]::int > v_check_version[2]::int THEN
+        RETURN true;
+    END IF;
+    IF v_current_version[2]::int = v_check_version[2]::int THEN
+        IF v_current_version[3]::int >= v_check_version[3]::int THEN
+            RETURN true;
+        END IF; -- 0.0.x
+    END IF; -- 0.x.0
+END IF; -- x.0.0
+
+RETURN false;
 
 END
 $$;

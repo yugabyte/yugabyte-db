@@ -18,6 +18,13 @@ IF v_current_version[1]::int > v_check_version[1]::int THEN
     RETURN true;
 END IF;
 IF v_current_version[1]::int = v_check_version[1]::int THEN
+    IF substring(v_current_version[2] from 'beta') IS NOT NULL 
+        OR substring(v_current_version[2] from 'alpha') IS NOT NULL 
+        OR substring(v_current_version[2] from 'rc') IS NOT NULL 
+    THEN
+        -- You're running a test version. You're on your own if things fail.
+        RETURN true;
+    END IF;
     IF v_current_version[2]::int > v_check_version[2]::int THEN
         RETURN true;
     END IF;
@@ -32,3 +39,5 @@ RETURN false;
 
 END
 $$;
+
+
