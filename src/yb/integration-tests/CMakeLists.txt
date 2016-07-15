@@ -49,7 +49,10 @@ ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test
   RESOURCE_LOCK "master-rpc-ports"
   RUN_SERIAL true)
-ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports")
+
+# Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
+ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports" RUN_SERIAL true)
+
 ADD_YB_TEST(master_failover-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_config-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(raft_consensus-itest RUN_SERIAL true)
@@ -63,8 +66,8 @@ ADD_YB_TEST(all_types-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(remote_bootstrap-itest)
 ADD_YB_TEST(tablet_replacement-itest)
 ADD_YB_TEST(create-table-itest)
-ADD_YB_TEST(kv_table-test)
-ADD_YB_TEST(kv_table_ts_failover-test)
+ADD_YB_TEST(kv_table-test RUN_SERIAL true)
+ADD_YB_TEST(kv_table_ts_failover-test RUN_SERIAL true)
 
 # Some tests have additional dependencies
 set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})
