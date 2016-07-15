@@ -17,7 +17,7 @@ public class AnsibleSetupServer extends AbstractTaskBase {
   // Additional parameters for this task.
   public static class Params extends TaskParamsBase {
     // The VPC into which the node is to be provisioned.
-    public String vpcId;
+    public String subnetId;
   }
 
   public Params getParams() {
@@ -30,11 +30,11 @@ public class AnsibleSetupServer extends AbstractTaskBase {
     String command = ybDevopsHome + "/bin/setup_server.sh" +
                      " --cloud " + getParams().cloud +
                      " --instance-name " + getParams().nodeInstanceName +
-                     " --type test-cluster-server";
+                     " --type cluster-server";
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
     if (getParams().cloud == CloudType.aws) {
-      command += " --extra-vars aws_vpc_subnet_id=" + getParams().vpcId;
+      command += " --extra-vars aws_vpc_subnet_id=" + getParams().subnetId;
     }
     // Execute the ansible command.
     execCommand(command);

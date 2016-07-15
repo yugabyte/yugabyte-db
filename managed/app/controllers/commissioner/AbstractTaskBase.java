@@ -3,19 +3,15 @@ package controllers.commissioner;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.List;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-import controllers.commissioner.Common.CloudType;
 import forms.commissioner.ITaskParams;
 import forms.commissioner.TaskParamsBase;
 import play.libs.Json;
-import org.yb.client.MiniYBCluster;
 
 public abstract class AbstractTaskBase implements ITask {
 
@@ -31,7 +27,18 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public String getName() {
     String classname = this.getClass().getSimpleName();
-    return classname + "(" + taskParams.nodeInstanceName + "." + taskParams.cloud + ".yb)";
+    StringBuilder sb = new StringBuilder();
+    sb.append(classname);
+    sb.append("(");
+    if (taskParams != null && taskParams.nodeInstanceName != null) {
+      sb.append(taskParams.nodeInstanceName);
+      sb.append(".");
+      sb.append(taskParams.cloud);
+      sb.append(".yb");
+    }
+    sb.append(")");
+
+    return sb.toString();
   }
 
   @Override

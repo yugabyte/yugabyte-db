@@ -14,7 +14,6 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
   public static class Params extends TaskParamsBase {
     public String process;
     public String command;
-    public boolean isShell; // applies only to process==master. TODO: use it.
   }
 
   @Override
@@ -22,7 +21,7 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
     Params params = (Params)taskParams;
     String classname = this.getClass().getSimpleName();
     return classname + "(" + taskParams.nodeInstanceName + "." + taskParams.cloud + ".yb, " +
-           params.process + ", " + params.command + "," + params.isShell + ")";
+           params.process + ": " + params.command + ")";
   }
 
   @Override
