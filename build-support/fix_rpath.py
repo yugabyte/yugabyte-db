@@ -139,6 +139,8 @@ def main():
   for prefix_dir in prefix_dirs:
     for file_dir, dirs, file_names in os.walk(prefix_dir):
       for file_name in file_names:
+        if file_name.endswith('_patchelf_tmp'):
+          continue
         # TODO: rename this to something that does not contain ELF (Mac OS X binary format is
         # different).
         elf_file_path = os.path.join(file_dir, file_name)

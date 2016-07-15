@@ -159,6 +159,7 @@ set(UTIL_SRCS
   url-coding.cc
   version_info.cc
   string_packer.cc
+  bytes_formatter.cc
 )
 
 if(NOT APPLE)
@@ -311,6 +312,8 @@ ADD_YB_TEST(trace-test)
 ADD_YB_TEST(url-coding-test)
 ADD_YB_TEST(user-test)
 ADD_YB_TEST(string_packer-test)
+ADD_YB_TEST(bytes_formatter-test)
+ADD_YB_TEST(string_trim-test)
 
 #######################################
 # jsonwriter_test_proto
