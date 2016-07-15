@@ -24,7 +24,8 @@ public class AnsibleConfigureServers extends AbstractTaskBase {
     String command = ybDevopsHome + "/bin/yb_cluster_server_configure.sh" +
                      " --instance-name " + params.nodeInstanceName +
                      " --package " + params.ybServerPkg +
-                     " --master_addresses " + InstanceInfo.getMasterAddresses(params.instanceUUID);
+                     " --master_addresses " +
+                     InstanceInfo.get(params.instanceUUID).getMasterAddresses();
     // Execute the ansible command.
     execCommand(command);
   }
