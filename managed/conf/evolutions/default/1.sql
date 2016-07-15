@@ -51,8 +51,8 @@ create table instance (
 
 create table instance_info (
   instance_uuid                 varchar(40) not null,
-  instance_details              longtext not null,
-  edit_instance_details         longtext,
+  version                       integer not null,
+  universe_details_json         LONGTEXT not null,
   constraint pk_instance_info primary key (instance_uuid)
 );
 
