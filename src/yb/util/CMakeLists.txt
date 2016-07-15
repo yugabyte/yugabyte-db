@@ -160,6 +160,7 @@ set(UTIL_SRCS
   version_info.cc
   string_packer.cc
   bytes_formatter.cc
+  shared_lock_manager.cc
 )
 
 if(NOT APPLE)
@@ -314,6 +315,7 @@ ADD_YB_TEST(user-test)
 ADD_YB_TEST(string_packer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
+ADD_YB_TEST(shared_lock_manager-test)
 
 #######################################
 # jsonwriter_test_proto
