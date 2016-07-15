@@ -19,13 +19,13 @@ CREATE FUNCTION pg_catalog.next_day(value date, weekday text)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greather than a date value';
+COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greater than a date value';
 
 CREATE FUNCTION pg_catalog.next_day(value date, weekday integer)
 RETURNS date
 AS 'MODULE_PATHNAME', 'next_day_by_index'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.next_day (date, integer) IS 'returns the first weekday that is greather than a date value';
+COMMENT ON FUNCTION pg_catalog.next_day (date, integer) IS 'returns the first weekday that is greater than a date value';
 
 CREATE FUNCTION pg_catalog.last_day(value date)
 RETURNS date
@@ -2000,13 +2000,13 @@ CREATE FUNCTION dbms_random.value(low double precision, high double precision)
 RETURNS double precision
 AS 'MODULE_PATHNAME','dbms_random_value_range'
 LANGUAGE C STRICT VOLATILE;
-COMMENT ON FUNCTION dbms_random.value(double precision, double precision) IS 'Generate Random number x, where x is greather or equal to low and less then high';
+COMMENT ON FUNCTION dbms_random.value(double precision, double precision) IS 'Generate Random number x, where x is greater or equal to low and less then high';
 
 CREATE FUNCTION dbms_random.value()
 RETURNS double precision
 AS 'MODULE_PATHNAME','dbms_random_value'
 LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greather or equal to 0 and less then 1';
+COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greater or equal to 0 and less then 1';
 
 CREATE FUNCTION dump(text)
 RETURNS varchar
