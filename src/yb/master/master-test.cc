@@ -384,7 +384,7 @@ TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(),
                         "Invalid argument: Split rows may only contain values "
-                        "for range partitioned columns: val")
+                        "for range partitioned columns: val");
   }
 }
 

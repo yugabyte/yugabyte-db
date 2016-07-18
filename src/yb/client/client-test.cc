@@ -214,7 +214,7 @@ class ClientTest : public YBTest {
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
       gscoped_ptr<YBDelete> del(DeleteTestRow(table, i));
-      ASSERT_OK(session->Apply(del.release()))
+      ASSERT_OK(session->Apply(del.release()));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());

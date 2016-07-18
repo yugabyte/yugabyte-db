@@ -347,7 +347,7 @@ TEST_F(AlterTableTest, TestAlterOnTSRestart) {
   bool alter_in_progress = false;
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema));
   ASSERT_TRUE(schema_.Equals(schema));
-  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress))
+  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress));
   ASSERT_TRUE(alter_in_progress);
 
   // Restart the TS and wait for the new schema
@@ -996,7 +996,7 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   ASSERT_OK(AddNewI32Column(kTableName, "c1", 0xdeadbeef));
 
   bool alter_in_progress;
-  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress))
+  ASSERT_OK(client_->IsAlterTableInProgress(kTableName, &alter_in_progress));
   ASSERT_FALSE(alter_in_progress);
 
   LOG(INFO) << "Verifying that the new default shows up";

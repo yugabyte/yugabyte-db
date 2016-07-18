@@ -480,11 +480,11 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   ASSERT_EQ(anchors.size(), 4);
 
   // Anchors should prevent GC.
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size()) << DumpSegmentsToString(segments);
 
   // Freeing the first 2 anchors should allow GC of them.
@@ -506,7 +506,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   // Try again without the modified flag.
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments) << DumpSegmentsToString(segments);
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(2, segments.size()) << DumpSegmentsToString(segments);
 
   // Release the remaining "rolled segment" anchor. GC will not delete the
@@ -515,7 +515,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(0, num_gced_segments) << DumpSegmentsToString(segments);
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(2, segments.size()) << DumpSegmentsToString(segments);
 
   // Check that we get a NotFound if we try to read before the GCed point.
@@ -621,11 +621,11 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   ASSERT_OK(AppendMultiSegmentSequence(kNumTotalSegments, kNumOpsPerSegment,
                                               &op_id, &anchors));
   // Anchors should prevent GC.
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
   ASSERT_OK(log_anchor_registry_->GetEarliestRegisteredLogIndex(&anchored_index));
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
 
   ASSERT_OK(log_->Close());
@@ -635,7 +635,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   BuildLog();
 
   // The "old" data consists of 3 segments. We still hold anchors.
-  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments))
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size());
 
   // Write to a new log segment, as if we had taken new requests and the
