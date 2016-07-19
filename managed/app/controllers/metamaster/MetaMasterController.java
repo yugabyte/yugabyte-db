@@ -2,22 +2,19 @@
 
 package controllers.metamaster;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 
-import forms.metamaster.MetaMasterFormData;
 import helpers.ApiResponse;
-import models.metamaster.MetaMasterEntry;
-import models.metamaster.MetaMasterEntry.MasterInfo;
-import play.data.Form;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
 import play.data.FormFactory;
-import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Result;
 
@@ -28,55 +25,66 @@ public class MetaMasterController extends Controller {
   @Inject
   FormFactory formFactory;
 
-  public Result get(UUID instanceUUID) {
-    // Lookup the entry for the instanceUUID.
-    List<MasterInfo> masters = MetaMasterEntry.get(instanceUUID);
-    // If the entry was not found, return an error.
-    if (masters == null) {
-      return ApiResponse.error(BAD_REQUEST, "Could not find instanceUUID " + instanceUUID);
-    }
-    // Return the result.
-    return ok(getMasterAddresses(masters));
-  }
-
-  public Result upsert(UUID instanceUUID) {
-    // Get the params for the request.
-    Form<MetaMasterFormData> formData =
-        formFactory.form(MetaMasterFormData.class).bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-    MetaMasterFormData params = formData.get();
-
-    // Insert/update the entry.
-    MetaMasterEntry.upsert(instanceUUID, params.masters);
-    return ok(getMasterAddresses(params.masters));
-  }
-
-  public Result delete(UUID instanceUUID) {
-    // Delete the entry for the instanceUUID.
-    boolean result = MetaMasterEntry.delete(instanceUUID);
-    if (!result) {
-      return ApiResponse.error(BAD_REQUEST, "Could not find instanceUUID " + instanceUUID);
-    }
-    ObjectNode responseJson = Json.newObject();
-    responseJson.put("instance", instanceUUID.toString());
-    return ok(responseJson);
-  }
-
-  private ObjectNode getMasterAddresses(List<MetaMasterEntry.MasterInfo> masters) {
-    // Compose a comma separated list of host:port's.
-    StringBuilder sb = new StringBuilder();
-    for (MasterInfo master : masters) {
-      if (sb.length() != 0) {
-        sb.append(",");
+  public Result get(UUID universeUUID) {
+    try {
+      // Lookup the entry for the instanceUUID.
+      Universe universe = Universe.get(universeUUID);
+      // Return the result.
+      MastersList masters = new MastersList();
+      for (NodeDetails node : universe.getMasters()) {
+        masters.add(MasterNode.fromUniverseNode(node));
       }
-      sb.append(master.host);
-      sb.append(":");
-      sb.append(master.port);
+      return ApiResponse.success(masters);
+    } catch (IllegalStateException e) {
+      // If the entry was not found, return an error.
+      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
     }
-    ObjectNode responseJson = Json.newObject();
-    responseJson.put("masters", sb.toString());
-    return responseJson;
+  }
+
+  public static class MastersList {
+    public List<MasterNode> masters = new ArrayList<MasterNode>();
+
+    public void add(MasterNode masterNode) {
+      masters.add(masterNode);
+    }
+  }
+
+  public static class MasterNode {
+    // Type of the node (example: c3.xlarge).
+    public String instance_type;
+    // The private ip address
+    public String private_ip;
+    // The public ip address.
+    public String public_ip;
+    // The public dns name of the node.
+    public String public_dns;
+    // The private dns name of the node.
+    public String private_dns;
+    // AWS only. The id of the subnet into which this node is deployed.
+    public String subnet_id;
+    // The az into which the node is deployed.
+    public String az;
+    // The region into which the node is deployed.
+    public String region;
+    // The cloud provider where the node is located.
+    public String cloud;
+    // The master rpc port.
+    public int masterRpcPort;
+
+    public static MasterNode fromUniverseNode(NodeDetails uNode) {
+      MasterNode mNode = new MasterNode();
+      mNode.instance_type = uNode.instance_type;
+      mNode.private_ip = uNode.private_ip;
+      mNode.public_ip = uNode.public_ip;
+      mNode.public_dns = uNode.public_dns;
+      mNode.private_dns = uNode.private_dns;
+      mNode.subnet_id = uNode.subnet_id;
+      mNode.az = uNode.az;
+      mNode.region = uNode.region;
+      mNode.cloud = uNode.cloud;
+      mNode.masterRpcPort = uNode.masterRpcPort;
+
+      return mNode;
+    }
   }
 }

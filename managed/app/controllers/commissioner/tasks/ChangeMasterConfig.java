@@ -9,9 +9,9 @@ import org.yb.client.ChangeConfigResponse;
 import controllers.commissioner.AbstractTaskBase;
 import controllers.commissioner.tasks.ChangeMasterConfig.OpType;
 import forms.commissioner.ITaskParams;
-import forms.commissioner.InstanceTaskParams;
-import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.NodeDetails;
+import forms.commissioner.UniverseTaskParams;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
 import play.api.Play;
 import services.YBClientService;
 
@@ -28,7 +28,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
   }
 
   // Parameters for change master config task.
-  public static class Params extends InstanceTaskParams {
+  public static class Params extends UniverseTaskParams {
     // When true, the master hostPort is added to the current universe's quorum, otherwise it is
     // deleted.
     public OpType opType;
@@ -44,7 +44,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
 
   @Override
   public String getName() {
-    return "ChangeMasterConfig(" + taskParams.nodeInstanceName + ", " +
+    return "ChangeMasterConfig(" + taskParams.nodeName + ", " +
            taskParams.opType.toString() + ")";
   }
 
@@ -52,16 +52,16 @@ public class ChangeMasterConfig extends AbstractTaskBase {
   public void run() {
     try {
       // Get the master addresses.
-      String masterAddresses = InstanceInfo.get(taskParams.instanceUUID).getMasterAddresses();
-      LOG.info("Running {}: instance = {}, masterAddress = {}", getName(),
-               taskParams.instanceUUID, masterAddresses);
+      String masterAddresses = Universe.get(taskParams.universeUUID).getMasterAddresses();
+      LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
+               taskParams.universeUUID, masterAddresses);
       if (masterAddresses == null || masterAddresses.isEmpty()) {
         throw new IllegalStateException("No master host/ports for a change config op in " +
-            taskParams.instanceUUID);
+            taskParams.universeUUID);
       }
 
       // Get the node details.
-      NodeDetails node = InstanceInfo.get(taskParams.instanceUUID).getNode(taskParams.instanceName);
+      NodeDetails node = Universe.get(taskParams.universeUUID).getNode(taskParams.nodeName);
       // Perform the change config operation.
       boolean isAddMasterOp = (taskParams.opType == OpType.AddMaster);
       ChangeConfigResponse response =

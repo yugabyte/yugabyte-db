@@ -14,7 +14,7 @@ import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import models.commissioner.InstanceInfo;
+import models.commissioner.Universe;
 import org.yb.client.MiniYBCluster;
 
 public class Util {
@@ -113,9 +113,9 @@ public class Util {
   }
 
   // Convert node details to list of host/ports.
-  public static List<HostAndPort> getHostPortList(Collection<InstanceInfo.NodeDetails> nodes) {
+  public static List<HostAndPort> getHostPortList(Collection<Universe.NodeDetails> nodes) {
      List<HostAndPort> curServers = new ArrayList<HostAndPort>();
-     for (InstanceInfo.NodeDetails node : nodes) {
+     for (Universe.NodeDetails node : nodes) {
        curServers.add(HostAndPort.fromParts(node.public_ip, node.masterRpcPort));
      }
      return curServers;

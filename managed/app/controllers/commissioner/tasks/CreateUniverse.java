@@ -11,11 +11,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import controllers.commissioner.TaskListQueue;
-import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.NodeDetails;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
 
-public class CreateInstance extends InstanceTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CreateInstance.class);
+public class CreateUniverse extends UniverseTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
 
   // The set of new nodes that need to be created.
   protected Map<String, NodeDetails> newNodesMap = new HashMap<String, NodeDetails>();
@@ -25,7 +25,7 @@ public class CreateInstance extends InstanceTaskBase {
 
   @Override
   public String toString() {
-    return getName() + "(" + taskParams.instanceUUID + ")";
+    return getName() + "(" + taskParams.universeUUID + ")";
   }
 
   @Override
@@ -41,14 +41,18 @@ public class CreateInstance extends InstanceTaskBase {
       taskListQueue = new TaskListQueue();
 
       // First create the universe.
-      InstanceInfo.create(taskParams.instanceUUID);
+      Universe.create(taskParams.universeUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverseForUpdate();
+      Universe universe = lockUniverseForUpdate();
 
       // Configure the cluster nodes.
-      configureNewNodes(1 /* nodeStartIndex */, defaultNumMastersToChoose, newNodesMap, newMasters);
+      configureNewNodes(universe.universeDetails.nodePrefix,
+                        1 /* nodeStartIndex */,
+                        defaultNumMastersToChoose,
+                        newNodesMap,
+                        newMasters);
 
       // Add the newly configured nodes into the universe.
       addNodesToUniverse(newNodesMap.values());

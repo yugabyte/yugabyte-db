@@ -27,14 +27,14 @@ public class TaskInfo extends Model {
    * These are the various types of user tasks.
    */
   public enum Type {
-    @EnumValue("CreateInstance")
-    CreateInstance,
+    @EnumValue("CreateUniverse")
+    CreateUniverse,
 
-    @EnumValue("DestroyInstance")
-    DestroyInstance,
+    @EnumValue("DestroyUniverse")
+    DestroyUniverse,
 
-    @EnumValue("EditInstance")
-    EditInstance,
+    @EnumValue("EditUniverse")
+    EditUniverse,
   }
 
   /**
