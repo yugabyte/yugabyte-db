@@ -16,13 +16,13 @@ import org.slf4j.LoggerFactory;
 import controllers.commissioner.Common.CloudType;
 import controllers.commissioner.TaskList;
 import controllers.commissioner.TaskListQueue;
-import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.NodeDetails;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
-// this instance to go from the current set of master/tserver nodes to the final configuration.
-public class EditInstance extends InstanceTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(EditInstance.class);
+// this universe to go from the current set of master/tserver nodes to the final configuration.
+public class EditUniverse extends UniverseTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(EditUniverse.class);
 
   // The set of new nodes that need to be created.
   Map<String, NodeDetails> newNodesMap = new HashMap<String, NodeDetails>();
@@ -38,7 +38,7 @@ public class EditInstance extends InstanceTaskBase {
 
   @Override
   public String toString() {
-    return getName() + "(" + taskParams.instanceUUID + ")";
+    return getName() + "(" + taskParams.universeUUID + ")";
   }
 
   @Override
@@ -48,7 +48,7 @@ public class EditInstance extends InstanceTaskBase {
 
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), taskParams.instanceUUID);
+    LOG.info("Started {} task for uuid={}", getName(), taskParams.universeUUID);
 
     try {
       // Create the task list sequence.
@@ -56,7 +56,7 @@ public class EditInstance extends InstanceTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      InstanceInfo universe = lockUniverseForUpdate();
+      Universe universe = lockUniverseForUpdate();
 
       // Get the existing nodes.
       existingNodes = universe.getNodes();
@@ -79,7 +79,11 @@ public class EditInstance extends InstanceTaskBase {
                existingNodes.size(), taskParams.subnets.size(), numMasters, startNodeIndex);
 
       // Configure the new cluster nodes.
-      configureNewNodes(startNodeIndex, numMasters, newNodesMap, newMasters);
+      configureNewNodes(universe.universeDetails.nodePrefix,
+                        startNodeIndex,
+                        numMasters,
+                        newNodesMap,
+                        newMasters);
 
       // Add the newly configured nodes into the universe.
       addNodesToUniverse(newNodesMap.values());
@@ -174,9 +178,9 @@ public class EditInstance extends InstanceTaskBase {
     // Set the cloud name.
     params.cloud = CloudType.aws;
     // Add the node name.
-    params.nodeInstanceName = nodeName;
-    // Add the instance uuid.
-    params.instanceUUID = taskParams.instanceUUID;
+    params.nodeName = nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams.universeUUID;
     // This is an add master.
     params.opType = isAdd ? ChangeMasterConfig.OpType.AddMaster :
                             ChangeMasterConfig.OpType.RemoveMaster;

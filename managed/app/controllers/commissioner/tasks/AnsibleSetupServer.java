@@ -29,7 +29,7 @@ public class AnsibleSetupServer extends AbstractTaskBase {
     String ybDevopsHome = Util.getDevopsHome();
     String command = ybDevopsHome + "/bin/setup_server.sh" +
                      " --cloud " + getParams().cloud +
-                     " --instance-name " + getParams().nodeInstanceName +
+                     " --instance-name " + getParams().nodeName +
                      " --type cluster-server";
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.

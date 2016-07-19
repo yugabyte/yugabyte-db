@@ -12,7 +12,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +19,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 
-import forms.commissioner.InstanceTaskParams;
+import forms.commissioner.UniverseTaskParams;
 import models.commissioner.TaskInfo;
 import play.data.Form;
 import play.data.FormFactory;
@@ -70,30 +69,30 @@ public class TasksController extends Controller {
 
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
-   * Currently used for create instance or edit instance tasks.
-   * 
+   * Currently used for create universe or edit universe tasks.
+   *
    * @return Success if the task was successfully queued. Error otherwise.
    */
-  public Result createOrEdit(UUID instanceUUID) {
+  public Result createOrEdit(UUID universeUUID) {
     // TODO: Decide if we need to check auth token in the Commissioner. If so make that check common
     // across all controllers.
 
     ObjectNode responseJson = Json.newObject();
 
     // Get the params for the task.
-    Form<InstanceTaskParams> formData =
-        formFactory.form(InstanceTaskParams.class).bindFromRequest();
+    Form<UniverseTaskParams> formData =
+        formFactory.form(UniverseTaskParams.class).bindFromRequest();
     if (formData.hasErrors()) {
       responseJson.set("error", formData.errorsAsJson());
       return badRequest(responseJson);
     }
-    InstanceTaskParams taskParams = formData.get();
+    UniverseTaskParams taskParams = formData.get();
 
-    TaskInfo.Type taskType = (taskParams.create) ? TaskInfo.Type.CreateInstance
-                                                 : TaskInfo.Type.EditInstance;
+    TaskInfo.Type taskType = (taskParams.create) ? TaskInfo.Type.CreateUniverse
+                                                 : TaskInfo.Type.EditUniverse;
 
     // Initialize the non-form related fields.
-    taskParams.instanceUUID = instanceUUID;
+    taskParams.universeUUID = universeUUID;
 
     try {
       // Claim the task if we can - check if we will go above the max local concurrent task

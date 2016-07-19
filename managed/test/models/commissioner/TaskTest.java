@@ -23,7 +23,7 @@ public class TaskTest extends FakeDBApplication {
   @Test
   public void testCreateAndUpdate() {
     // Create the task and save it.
-    TaskInfo taskInfo = new TaskInfo(TaskInfo.Type.CreateInstance);
+    TaskInfo taskInfo = new TaskInfo(TaskInfo.Type.CreateUniverse);
     // Set the task details.
     Map<String, String> details = new HashMap<String, String>();
     details.put("description", "Test task");
@@ -43,7 +43,7 @@ public class TaskTest extends FakeDBApplication {
 
     // Check the various fields.
     assertNotNull(taskInfo.getTaskUUID());
-    assertEquals(taskInfo.getTaskType(), TaskInfo.Type.CreateInstance);
+    assertEquals(taskInfo.getTaskType(), TaskInfo.Type.CreateUniverse);
     assertNotNull(taskInfo.getCreationTime());
     assertNotNull(taskInfo.getLastUpdateTime());
     assertEquals(taskInfo.getLastUpdateTime(), taskInfo.getCreationTime());

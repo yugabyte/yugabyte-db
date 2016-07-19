@@ -26,15 +26,15 @@ import controllers.commissioner.Common.CloudType;
 import controllers.commissioner.TaskList;
 import controllers.commissioner.TaskListQueue;
 import forms.commissioner.ITaskParams;
-import forms.commissioner.InstanceTaskParams;
-import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.InstanceDetails;
-import models.commissioner.InstanceInfo.NodeDetails;
-import models.commissioner.InstanceInfo.UniverseUpdater;
+import forms.commissioner.UniverseTaskParams;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
+import models.commissioner.Universe.UniverseDetails;
+import models.commissioner.Universe.UniverseUpdater;
 import play.libs.Json;
 
-public abstract class InstanceTaskBase extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(InstanceTaskBase.class);
+public abstract class UniverseTaskBase extends AbstractTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
 
   // The default number of masters in the cluster.
   public static final int defaultNumMastersToChoose = 3;
@@ -45,7 +45,7 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
-    this.taskParams = (InstanceTaskParams)params;
+    this.taskParams = (UniverseTaskParams)params;
     // Create the threadpool for the subtasks to use.
     int numThreads = 10;
     ThreadFactory namedThreadFactory =
@@ -54,7 +54,7 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
   }
 
   // The task params.
-  InstanceTaskParams taskParams;
+  UniverseTaskParams taskParams;
 
   // The threadpool on which the tasks are executed.
   ExecutorService executor;
@@ -82,12 +82,14 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
   /**
    * Configures the set of nodes to be created and saves it to the universe info table.
    *
+   * @param nodePrefix : the node name prefix to use
    * @param nodeStartIndex : id from which the new nodes should be numbered
    * @param numMasters : the number of masters desired in the edited universe
-   * @param newNodesMap : the set of nodes being created which will be present in the new universe
-   * @param newMasters : the subset of 'nodes' which are masters
+   * @param newNodesMap : out parameter, set of new nodes being created in the new universe
+   * @param newMasters : out parameter, the subset of 'nodes' which are masters
    */
-  public void configureNewNodes(int nodeStartIndex,
+  public void configureNewNodes(String nodePrefix,
+                                int nodeStartIndex,
                                 int numMasters,
                                 Map<String, NodeDetails> newNodesMap,
                                 Set<NodeDetails> newMasters) {
@@ -95,8 +97,8 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     // Create the names and known properties of all the cluster nodes.
     for (int nodeIdx = nodeStartIndex; nodeIdx <= taskParams.numNodes; nodeIdx++) {
       NodeDetails nodeDetails = new NodeDetails();
-      // Create the node instance name.
-      nodeDetails.instance_name = taskParams.instanceName + "-n" + nodeIdx;
+      // Create the node name.
+      nodeDetails.instance_name = nodePrefix + "-n" + nodeIdx;
       // Set the cloud name.
       nodeDetails.cloud = taskParams.cloudProvider;
       // Pick one of the VPCs in a round robin fashion.
@@ -174,30 +176,31 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
    * Saves the new values the universe should be modified to, as well as the 'updateInProgress'
    * flag. If the universe is already being modified, then throws an exception.
    */
-  public InstanceInfo lockUniverseForUpdate() {
+  public Universe lockUniverseForUpdate() {
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
-      public void run(InstanceInfo universe) {
-        InstanceDetails instanceDetails = universe.universeDetails;
+      public void run(Universe universe) {
+        UniverseDetails universeDetails = universe.universeDetails;
         // If this universe is already being edited, fail the request.
-        if (instanceDetails.updateInProgress) {
-          String msg = "Universe " + taskParams.instanceUUID + " is already being updated.";
+        if (universeDetails.updateInProgress) {
+          String msg = "Universe " + taskParams.universeUUID + " is already being updated.";
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
 
-        // Persist the updated information about the instance. Mark it as being edited.
-        instanceDetails.updateInProgress = true;
-        instanceDetails.updateSucceeded = false;
-        instanceDetails.numNodes = taskParams.numNodes;
-        instanceDetails.subnets = taskParams.subnets;
-        instanceDetails.ybServerPkg = taskParams.ybServerPkg;
+        // Persist the updated information about the universe. Mark it as being edited.
+        universeDetails.updateInProgress = true;
+        universeDetails.updateSucceeded = false;
+        universeDetails.nodePrefix = taskParams.nodePrefix;
+        universeDetails.numNodes = taskParams.numNodes;
+        universeDetails.subnets = taskParams.subnets;
+        universeDetails.ybServerPkg = taskParams.ybServerPkg;
       }
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
-    InstanceInfo universe = InstanceInfo.save(taskParams.instanceUUID, updater);
+    Universe universe = Universe.save(taskParams.universeUUID, updater);
     // Return the universe object that we have already updated.
     return universe;
   }
@@ -206,38 +209,38 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
-      public void run(InstanceInfo universe) {
-        InstanceDetails instanceDetails = universe.universeDetails;
+      public void run(Universe universe) {
+        UniverseDetails universeDetails = universe.universeDetails;
         // If this universe is not being edited, fail the request.
-        if (!instanceDetails.updateInProgress) {
-          String msg = "Universe " + taskParams.instanceUUID + " is not being edited.";
+        if (!universeDetails.updateInProgress) {
+          String msg = "Universe " + taskParams.universeUUID + " is not being edited.";
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-        // Persist the updated information about the instance. Mark it as being edited.
-        instanceDetails.updateInProgress = false;
+        // Persist the updated information about the universe. Mark it as being edited.
+        universeDetails.updateInProgress = false;
       }
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
-    InstanceInfo.save(taskParams.instanceUUID, updater);
+    Universe.save(taskParams.universeUUID, updater);
   }
 
   public void addNodesToUniverse(Collection<NodeDetails> nodes) {
     // Persist the desired node information into the DB.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
-      public void run(InstanceInfo universe) {
-        InstanceDetails instanceDetails = universe.universeDetails;
+      public void run(Universe universe) {
+        UniverseDetails universeDetails = universe.universeDetails;
         for (NodeDetails node : nodes) {
           // Since we have already set the 'updateInProgress' flag on this universe in the DB and
           // this step is single threaded, we are guaranteed no one else will be modifying it.
           // Replace the entire node value.
-          instanceDetails.nodeDetailsMap.put(node.instance_name, node);
+          universeDetails.nodeDetailsMap.put(node.instance_name, node);
         }
       }
     };
-    InstanceInfo.save(taskParams.instanceUUID, updater);
+    Universe.save(taskParams.universeUUID, updater);
   }
 
   /**
@@ -252,9 +255,9 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
+      params.nodeName = node.instance_name;
+      // Add the universe uuid.
+      params.universeUUID = taskParams.universeUUID;
       // Pick one of the subnets in a round robin fashion.
       params.subnetId = node.subnet_id;
       // Create the Ansible task to setup the server.
@@ -279,9 +282,9 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
+      params.nodeName = node.instance_name;
+      // Add the universe uuid.
+      params.universeUUID = taskParams.universeUUID;
       // Create the Ansible task to get the server info.
       AnsibleUpdateNodeInfo ansibleFindCloudHost = new AnsibleUpdateNodeInfo();
       ansibleFindCloudHost.initialize(params);
@@ -305,9 +308,9 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
+      params.nodeName = node.instance_name;
+      // Add the universe uuid.
+      params.universeUUID = taskParams.universeUUID;
       // The software package to install for this cluster.
       params.ybServerPkg = taskParams.ybServerPkg;
       // Create the Ansible task to get the server info.
@@ -334,9 +337,9 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
+      params.nodeName = node.instance_name;
+      // Add the universe uuid.
+      params.universeUUID = taskParams.universeUUID;
       // The service and the command we want to run.
       params.process = "master";
       params.command = isShell? "start" : "create";
@@ -362,9 +365,9 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeInstanceName = node.instance_name;
-      // Add the instance uuid.
-      params.instanceUUID = taskParams.instanceUUID;
+      params.nodeName = node.instance_name;
+      // Add the universe uuid.
+      params.universeUUID = taskParams.universeUUID;
       // The service and the command we want to run.
       params.process = "tserver";
       params.command = "start";
@@ -386,8 +389,8 @@ public abstract class InstanceTaskBase extends AbstractTaskBase {
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
     params.cloud = CloudType.aws;
-    // Add the instance uuid.
-    params.instanceUUID = taskParams.instanceUUID;
+    // Add the universe uuid.
+    params.universeUUID = taskParams.universeUUID;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<String>();

@@ -25,69 +25,66 @@ import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Entity
-public class InstanceInfo extends Model {
-  public static final Logger LOG = LoggerFactory.getLogger(InstanceInfo.class);
+public class Universe extends Model {
+  public static final Logger LOG = LoggerFactory.getLogger(Universe.class);
 
-  // The instance UUID.
+  // The universe UUID.
   @Id
-  private UUID instanceUUID;
+  private UUID universeUUID;
 
   // The version number of the object. This is used to synchronize updates from multiple clients.
   @Constraints.Required
   @Column(nullable = false)
   public int version;
 
-  // The Json serialized version of instanceDetails. This is used only in read from and writing to
+  // The Json serialized version of universeDetails. This is used only in read from and writing to
   // the DB.
   @Constraints.Required
   @Column(columnDefinition = "LONGTEXT", nullable = false)
   private String universeDetailsJson;
 
   // Once deserialized, the object version of the serialized value is stored in this variable.
-  public InstanceDetails universeDetails;
+  public UniverseDetails universeDetails;
 
-  public static final Find<UUID, InstanceInfo> find = new Find<UUID, InstanceInfo>(){};
+  public static final Find<UUID, Universe> find = new Find<UUID, Universe>(){};
 
   /**
    * Creates an empty universe.
    *
-   * @param instanceUUID
-   * @param universeDetails
-   * @return the version of the object
+   * @param universeUUID
    */
-  public static void create(UUID instanceUUID) {
-    // Create the instance info object.
-    InstanceInfo instanceInfo = new InstanceInfo();
+  public static void create(UUID universeUUID) {
+    // Create the universe object.
+    Universe universe = new Universe();
 
-    // Create the basic instance info object.
-    instanceInfo.instanceUUID = instanceUUID;
-    instanceInfo.version = 1;
-    instanceInfo.universeDetails = new InstanceDetails();
-    instanceInfo.universeDetailsJson = Json.stringify(Json.toJson(instanceInfo.universeDetails));
-    LOG.debug("Created universe " + instanceUUID + " with details [" +
-              instanceInfo.universeDetailsJson + "]");
+    // Create the basic universe object.
+    universe.universeUUID = universeUUID;
+    universe.version = 1;
+    universe.universeDetails = new UniverseDetails();
+    universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
+    LOG.debug("Created universe " + universeUUID + " with details [" +
+              universe.universeDetailsJson + "]");
     // Save the object.
-    instanceInfo.save();
+    universe.save();
   }
 
   /**
-   * Returns the InstanceInfo object given the UUID of the universe.
-   * @param instanceUUID
-   * @return
+   * Returns the Universe object given its uuid.
+   * @param universeUUID
+   * @return the universe object
    */
-  public static InstanceInfo get(UUID instanceUUID) {
-    // Find the instance.
-    InstanceInfo instanceInfo = find.byId(instanceUUID);
-    // Make sure we find the instance.
-    if (instanceInfo == null) {
-      throw new IllegalStateException("Cannot find instance " + instanceUUID);
+  public static Universe get(UUID universeUUID) {
+    // Find the universe.
+    Universe universe = find.byId(universeUUID);
+    if (universe == null) {
+      throw new IllegalStateException("Cannot find universe " + universeUUID);
     }
-    // Set the instance details object.
-    instanceInfo.universeDetails = Json.fromJson(Json.parse(instanceInfo.universeDetailsJson),
-                                                 InstanceInfo.InstanceDetails.class);
+    // Set the universe details object.
+    universe.universeDetails = Json.fromJson(Json.parse(universe.universeDetailsJson),
+                                             Universe.UniverseDetails.class);
 
-    // Return the instance info object.
-    return instanceInfo;
+    // Return the universe object.
+    return universe;
   }
 
 
@@ -96,7 +93,7 @@ public class InstanceInfo extends Model {
    * the save method.
    */
   public static interface UniverseUpdater {
-    void run(InstanceInfo universe);
+    void run(Universe universe);
   }
 
   /**
@@ -106,15 +103,15 @@ public class InstanceInfo extends Model {
    * @param updater : lambda which updated the details of this universe when invoked.
    * @return the updated version of the object if successful, or throws an exception.
    */
-  public static InstanceInfo save(UUID universeUUID, UniverseUpdater updater) {
+  public static Universe save(UUID universeUUID, UniverseUpdater updater) {
     int numRetriesLeft = 10;
     long sleepTimeMillis = 100;
     // Try the read and update for a few times till it succeeds.
-    InstanceInfo universe = null;
+    Universe universe = null;
     while (numRetriesLeft > 0) {
       // Get the universe info.
-      universe = InstanceInfo.get(universeUUID);
-      // Update the instance info object which is supplied as a lambda function.
+      universe = Universe.get(universeUUID);
+      // Update the universe object which is supplied as a lambda function.
       updater.run(universe);
       // Save the universe object by doing a compare and swap.
       try {
@@ -144,7 +141,7 @@ public class InstanceInfo extends Model {
    * @return a collection of nodes in this universe
    */
   public Collection<NodeDetails> getNodes() {
-    InstanceDetails details = InstanceInfo.get(instanceUUID).universeDetails;
+    UniverseDetails details = Universe.get(universeUUID).universeDetails;
     if (details == null) {
       return null;
     }
@@ -158,7 +155,7 @@ public class InstanceInfo extends Model {
    * @return details about a node
    */
   public NodeDetails getNode(String nodeName) {
-    InstanceDetails details = InstanceInfo.get(instanceUUID).universeDetails;
+    UniverseDetails details = Universe.get(universeUUID).universeDetails;
     if (details == null) {
       return null;
     }
@@ -166,13 +163,12 @@ public class InstanceInfo extends Model {
   }
 
   /**
-   * Returns the list of masters for this instance.
-   * @param instanceUUID
+   * Returns the list of masters for this universe.
    * @return a list of master nodes
    */
   public List<NodeDetails> getMasters() {
     List<NodeDetails> masters = new LinkedList<NodeDetails>();
-    InstanceDetails details = InstanceInfo.get(instanceUUID).universeDetails;
+    UniverseDetails details = Universe.get(universeUUID).universeDetails;
     for (NodeDetails nodeDetails : details.nodeDetailsMap.values()) {
       if (nodeDetails.isMaster) {
         masters.add(nodeDetails);
@@ -182,14 +178,12 @@ public class InstanceInfo extends Model {
   }
 
   /**
-   * Return the list of tservers for this instance.
-   * @param instanceUUID
-   * @param isEdit
+   * Return the list of tservers for this universe.
    * @return a list of tserver nodes
    */
   public List<NodeDetails> getTServers() {
     List<NodeDetails> tservers = new LinkedList<NodeDetails>();
-    InstanceDetails details = InstanceInfo.get(instanceUUID).universeDetails;
+    UniverseDetails details = Universe.get(universeUUID).universeDetails;
     for (NodeDetails nodeDetails : details.nodeDetailsMap.values()) {
       if (nodeDetails.isTserver) {
         tservers.add(nodeDetails);
@@ -201,7 +195,6 @@ public class InstanceInfo extends Model {
   /**
    * Returns a comma separated list of <privateIp:masterRpcPort> for all nodes that have the
    * isMaster flag set to true in this cluster.
-   * @param instanceUUID
    * @return a comma separated string of master 'host:port'
    */
   public String getMasterAddresses() {
@@ -231,15 +224,15 @@ public class InstanceInfo extends Model {
     int newVersion = this.version + 1;
 
     // Save the object if the version is the same.
-    String updateQuery = "UPDATE instance_info " +
+    String updateQuery = "UPDATE universe " +
                          "SET universe_details_json = :universeDetails, version = :newVersion " +
-                         "WHERE instance_uuid = :instanceUUID AND version = :curVersion";
+                         "WHERE universe_uuid = :universeUUID AND version = :curVersion";
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
     update.setParameter("universeDetails", universeDetailsJson);
-    update.setParameter("instanceUUID", instanceUUID);
+    update.setParameter("universeUUID", universeUUID);
     update.setParameter("curVersion", this.version);
     update.setParameter("newVersion", newVersion);
-    LOG.debug("Updating universe " + instanceUUID + " details to [" + universeDetailsJson + "]");
+    LOG.debug("Updating universe " + universeUUID + " details to [" + universeDetailsJson + "]");
     int modifiedCount = Ebean.execute(update);
 
     // Check if the save was not successful.
@@ -260,11 +253,14 @@ public class InstanceInfo extends Model {
   /**
    * Details of a universe.
    */
-  public static class InstanceDetails {
-    // Subnets the instance nodes should be deployed into.
+  public static class UniverseDetails {
+    // Subnets the universe nodes should be deployed into.
     public List<String> subnets;
 
-    // Number of nodes in the instance.
+    // The prefix to be used to generate node names.
+    public String nodePrefix;
+
+    // Number of nodes in the universe.
     public int numNodes;
 
     // The software package to install.
@@ -273,7 +269,7 @@ public class InstanceInfo extends Model {
     // All the nodes in the cluster along with their properties.
     public Map<String, NodeDetails> nodeDetailsMap;
 
-    // Set to true when an edit intent on the instance is started.
+    // Set to true when an edit intent on the universe is started.
     public boolean updateInProgress = false;
 
     // This tracks the if latest edit on this universe has successfully completed. This flag is
@@ -281,7 +277,7 @@ public class InstanceInfo extends Model {
     // update operation.
     public boolean updateSucceeded = true;
 
-    public InstanceDetails() {
+    public UniverseDetails() {
       subnets = new LinkedList<String>();
       nodeDetailsMap = new HashMap<String, NodeDetails>();
     }

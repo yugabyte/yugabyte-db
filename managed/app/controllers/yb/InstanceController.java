@@ -107,15 +107,17 @@ public class InstanceController extends AuthenticatedController {
 
   private JsonNode submitCommissionerTask(Instance instanceInfo) {
     ObjectNode postData = Json.newObject();
-    postData.put("instanceName", instanceInfo.name);
+    // TODO: make this unique across all the customers by adding a customer id.
+    postData.put("nodePrefix", instanceInfo.name);
     postData.put("create", true);
     postData.put("cloudProvider", "aws");
     postData.set("subnets", instanceInfo.getPlacementInfo().get("subnets"));
 
-    String commissionerRESTUrl = "http://" + ctx().request().host() + "/commissioner/instances/" +
+    String commissionerRESTUrl = "http://" + ctx().request().host() + "/commissioner/universes/" +
                                  instanceInfo.getInstanceId().toString();
     return apiHelper.postRequest(commissionerRESTUrl, postData);
   }
+
   public Result index(UUID instanceUUID) {
     long toTime = System.currentTimeMillis();
     long fromTime = toTime - 60 * 60 * 1000;

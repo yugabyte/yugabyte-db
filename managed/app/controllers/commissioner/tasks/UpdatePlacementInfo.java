@@ -21,8 +21,8 @@ import controllers.commissioner.AbstractTaskBase;
 import controllers.commissioner.tasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import forms.commissioner.ITaskParams;
 import forms.commissioner.TaskParamsBase;
-import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.NodeDetails;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
 import play.api.Play;
 import play.libs.Json;
 import services.YBClientService;
@@ -55,12 +55,12 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
   @Override
   public void run() {
-    String hostPorts = InstanceInfo.get(params.instanceUUID).getMasterAddresses();
+    String hostPorts = Universe.get(params.universeUUID).getMasterAddresses();
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
 
       ModifyUniverseConfig modifyConfig = new ModifyUniverseConfig(ybService.getClient(hostPorts),
-                                                                   params.instanceUUID,
+                                                                   params.universeUUID,
                                                                    params.blacklistNodes);
       modifyConfig.doCall();
     } catch (Exception e) {
@@ -70,21 +70,21 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
   }
 
   public static class ModifyUniverseConfig extends AbstractModifyMasterClusterConfig {
-    UUID instanceUUID;
+    UUID universeUUID;
     Set<String> blacklistNodes;
 
     public ModifyUniverseConfig(YBClient client,
-                                UUID instanceUUID,
+                                UUID universeUUID,
                                 Set<String> blacklistNodes) {
       super(client);
-      this.instanceUUID = instanceUUID;
+      this.universeUUID = universeUUID;
       this.blacklistNodes = blacklistNodes;
     }
 
     @Override
     protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
       // Get the masters in the universe.
-      Collection<InstanceInfo.NodeDetails> masters = InstanceInfo.get(instanceUUID).getMasters();
+      Collection<Universe.NodeDetails> masters = Universe.get(universeUUID).getMasters();
 
       Master.SysClusterConfigEntryPB.Builder configBuilder =
           Master.SysClusterConfigEntryPB.newBuilder();

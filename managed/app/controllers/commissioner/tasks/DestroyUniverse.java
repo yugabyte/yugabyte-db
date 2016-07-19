@@ -10,8 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import controllers.commissioner.ITask;
 import forms.commissioner.ITaskParams;
 
-public class DestroyInstance extends InstanceTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(DestroyInstance.class);
+public class DestroyUniverse extends UniverseTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
 
   @Override
   public String getName() {

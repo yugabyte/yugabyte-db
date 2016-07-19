@@ -61,7 +61,7 @@ GET    /api/customers/:cUUID/tasks  controllers.yb.CustomerTaskController.list(c
 ###################################################################################################
 
 # Create or edit an instance.
-POST    /commissioner/instances/:iUUID  controllers.commissioner.TasksController.createOrEdit(iUUID: java.util.UUID)
+POST    /commissioner/universes/:iUUID  controllers.commissioner.TasksController.createOrEdit(iUUID: java.util.UUID)
 
 # Get details of a task. Currently returns its status and percentage completion.
 GET     /commissioner/tasks/:tUUID      controllers.commissioner.TasksController.show(tUUID: java.util.UUID)
@@ -73,13 +73,7 @@ GET     /commissioner/tasks/:tUUID      controllers.commissioner.TasksController
 ###################################################################################################
 
 # Returns the list of masters for a given instance.
-GET     /metamaster/instance/:iUUID  controllers.metamaster.MetaMasterController.get(iUUID: java.util.UUID)
-
-# Creates or updates the list of masters for a given instance.
-POST    /metamaster/instance/:iUUID  controllers.metamaster.MetaMasterController.upsert(iUUID: java.util.UUID)
-
-# Remove the entry for the instance.
-DELETE  /metamaster/instance/:iUUID  controllers.metamaster.MetaMasterController.delete(iUUID: java.util.UUID)
+GET     /metamaster/universe/:iUUID  controllers.metamaster.MetaMasterController.get(iUUID: java.util.UUID)
 
 
 ###################################################################################################
