@@ -589,14 +589,22 @@ handle_test_failure() {
     process_core_file
     unset core_dir
     global_exit_code=1
-  else
-    # Mac OS X slaves are having trouble uploading artifacts, so we delete logs and temporary
-    # files for successful tests.
-    if [ "$IS_MAC" == "1" ]; then
-      rm -rf "$test_log_path" "$TEST_TMPDIR"
-    fi
   fi
 
+}
+
+delete_successful_output_if_needed() {
+  expect_vars_to_be_set \
+    TEST_TMPDIR \
+    test_log_path
+  # Mac OS X slaves are having trouble uploading artifacts, so we delete logs and temporary
+  # files for successful tests.
+  if [[ "$IS_MAC" == "1" ]] && ! "$test_failed"; then
+    # This will be shown on console output if the test fails for whatever reason after this point
+    # (that would indicate a bug in test scripts).
+    echo "Deleting '$test_log_path' after a successful test on Mac OS X" >&2
+    rm -rf "$test_log_path" "$TEST_TMPDIR"
+  fi
 }
 
 run_test_and_process_results() {
@@ -604,6 +612,7 @@ run_test_and_process_results() {
   postprocess_test_log
   handle_test_failure
   handle_xml_output
+  delete_successful_output_if_needed
 }
 
 # -------------------------------------------------------------------------------------------------
