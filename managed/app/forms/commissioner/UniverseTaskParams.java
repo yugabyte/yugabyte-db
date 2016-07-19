@@ -9,11 +9,11 @@ import javax.validation.constraints.Size;
 
 import play.data.validation.Constraints;
 
-public class InstanceTaskParams extends TaskParamsBase {
-  // This should be a globally unique name - it is assumed to be namespaced with customer id. This
-  // is used to name nodes in the instance.
+public class UniverseTaskParams extends TaskParamsBase {
+  // This should be a globally unique name - it is a combination of the customer id and the universe
+  // id. This is used as the prefix of name nodes in the universe.
   @Constraints.Required()
-  public String instanceName;
+  public String nodePrefix;
 
   // If true, create the instance. Otherwise, edit it to match the intent.
   @Constraints.Required()
@@ -35,7 +35,6 @@ public class InstanceTaskParams extends TaskParamsBase {
   public String ybServerPkg =
       "yb-server-0.0.1-SNAPSHOT.3a3bc5896e8842bfba683394c2c863a33e3cc4c1.tar.gz";
 
-  // The instance UUID which is filled in from the URL path. 
-  // TODO: this is not needed in the REST api.
-  public UUID instanceUUID;
+  // The instance UUID which is filled in from the URL path.
+  public UUID universeUUID;
 }

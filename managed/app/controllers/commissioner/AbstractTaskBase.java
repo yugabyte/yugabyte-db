@@ -30,8 +30,8 @@ public abstract class AbstractTaskBase implements ITask {
     StringBuilder sb = new StringBuilder();
     sb.append(classname);
     sb.append("(");
-    if (taskParams != null && taskParams.nodeInstanceName != null) {
-      sb.append(taskParams.nodeInstanceName);
+    if (taskParams != null && taskParams.nodeName != null) {
+      sb.append(taskParams.nodeName);
       sb.append(".");
       sb.append(taskParams.cloud);
       sb.append(".yb");

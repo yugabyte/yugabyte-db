@@ -16,10 +16,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import controllers.commissioner.AbstractTaskBase;
 import forms.commissioner.TaskParamsBase;
-import models.commissioner.InstanceInfo;
-import models.commissioner.InstanceInfo.InstanceDetails;
-import models.commissioner.InstanceInfo.NodeDetails;
-import models.commissioner.InstanceInfo.UniverseUpdater;
+import models.commissioner.Universe;
+import models.commissioner.Universe.NodeDetails;
+import models.commissioner.Universe.UniverseDetails;
+import models.commissioner.Universe.UniverseUpdater;
 import play.libs.Json;
 import util.Util;
 
@@ -36,7 +36,7 @@ public class AnsibleUpdateNodeInfo extends AbstractTaskBase {
       String ybDevopsHome = Util.getDevopsHome();
       String command = ybDevopsHome + "/bin/find_cloud_host.sh" +
                        " " + taskParams.cloud +
-                       " " + taskParams.nodeInstanceName +
+                       " " + taskParams.nodeName +
                        " --json";
       LOG.info("Command to run: [{}]", command);
 
@@ -52,28 +52,28 @@ public class AnsibleUpdateNodeInfo extends AbstractTaskBase {
       // TODO: log output stream somewhere.
 
       LOG.info("Updating details uuid={}, name={}.",
-               taskParams.instanceUUID, taskParams.nodeInstanceName);
+               taskParams.universeUUID, taskParams.nodeName);
 
       // Parse into a json object.
       final JsonNode jsonNode = Json.parse(line);
       // Update the node details and persist into the DB.
       UniverseUpdater updater = new UniverseUpdater() {
         @Override
-        public void run(InstanceInfo universe) {
+        public void run(Universe universe) {
           // Get the details of the node to be updated.
-          InstanceDetails instanceDetails = universe.universeDetails;
-          NodeDetails node = instanceDetails.nodeDetailsMap.get(taskParams.nodeInstanceName);
+          UniverseDetails universeDetails = universe.universeDetails;
+          NodeDetails node = universeDetails.nodeDetailsMap.get(taskParams.nodeName);
           // Update each field of the node details based on the JSON output.
           Iterator<Entry<String, JsonNode>> iter = jsonNode.fields();
           while (iter.hasNext()) {
             Entry<String, JsonNode> entry = iter.next();
             Field field;
             try {
-              LOG.info("Node " + taskParams.nodeInstanceName + ", setting field " + entry.getKey() +
+              LOG.info("Node " + taskParams.nodeName + ", setting field " + entry.getKey() +
                        " to value " + entry.getValue());
               // Error out if the host was not found.
               if (entry.getKey().equals("host_found") && entry.getValue().equals("false")) {
-                throw new RuntimeException("Host " + taskParams.nodeInstanceName + " not found.");
+                throw new RuntimeException("Host " + taskParams.nodeName + " not found.");
               }
               field = NodeDetails.class.getField(entry.getKey());
               field.set(node, entry.getValue().asText());
@@ -89,11 +89,11 @@ public class AnsibleUpdateNodeInfo extends AbstractTaskBase {
             }
           }
           // Update the node details.
-          instanceDetails.nodeDetailsMap.put(taskParams.nodeInstanceName, node);
+          universeDetails.nodeDetailsMap.put(taskParams.nodeName, node);
         }
       };
-      // Save the updated instance object.
-      InstanceInfo.save(taskParams.instanceUUID, updater);
+      // Save the updated universe object.
+      Universe.save(taskParams.universeUUID, updater);
     } catch (IOException e) {
       throw new RuntimeException(e);
     } catch (InterruptedException e) {

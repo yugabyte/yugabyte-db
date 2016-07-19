@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import controllers.commissioner.AbstractTaskBase;
 import forms.commissioner.TaskParamsBase;
-import models.commissioner.InstanceInfo;
+import models.commissioner.Universe;
 import util.Util;
 
 public class AnsibleConfigureServers extends AbstractTaskBase {
@@ -22,10 +22,10 @@ public class AnsibleConfigureServers extends AbstractTaskBase {
     String ybDevopsHome = Util.getDevopsHome();
     Params params = (Params)taskParams;
     String command = ybDevopsHome + "/bin/yb_cluster_server_configure.sh" +
-                     " --instance-name " + params.nodeInstanceName +
+                     " --instance-name " + params.nodeName +
                      " --package " + params.ybServerPkg +
                      " --master_addresses " +
-                     InstanceInfo.get(params.instanceUUID).getMasterAddresses();
+                     Universe.get(params.universeUUID).getMasterAddresses();
     // Execute the ansible command.
     execCommand(command);
   }
