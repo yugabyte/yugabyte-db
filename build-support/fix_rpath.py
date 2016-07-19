@@ -135,6 +135,12 @@ def main():
   if is_mac:
     librocksdb_dylib_name = 'librocksdb_debug.4.6.dylib'
     librocksdb_dylib_abs_path = os.path.join(build_root, 'rocksdb-build', librocksdb_dylib_name)
+  else:
+    if os.path.isfile('/usr/bin/patchelf'):
+      linux_change_rpath_cmd = 'patchelf --set-rpath'
+    else:
+      linux_change_rpath_cmd = 'chrpath -r'
+
 
   for prefix_dir in prefix_dirs:
     for file_dir, dirs, file_names in os.walk(prefix_dir):
@@ -226,8 +232,7 @@ def main():
 
           # A special case: the glog build ends up missing the rpath entry for gflags.
           if not is_main_build and file_name.startswith('libglog.'):
-            add_if_absent(rpath_entries, os.path.join(thirdparty_dir,
-              os.path.basename(thirdparty_dir), 'lib'))
+            add_if_absent(rpath_entries, os.path.dirname(elf_file_path))
 
           # A number of executables are also not being able to find libgflags.
           if is_main_build:
@@ -267,7 +272,10 @@ def main():
             # being that RUNPATH can be overwritten by LD_LIBRARY_PATH, but we're OK with it.
             # Note: pipes.quote is a way to escape strings for inclusion in shell commands.
             set_rpath_exit_code = os.system(
-              "patchelf --set-rpath %s %s" % (pipes.quote(new_rpath_str), elf_file_path)) >> 8
+              "%s %s %s" % (linux_change_rpath_cmd,
+                            pipes.quote(new_rpath_str),
+                            elf_file_path)
+            ) >> 8
             logging.info("Setting rpath on '%s' to '%s'" % (elf_file_path, new_rpath_str))
             if set_rpath_exit_code != 0:
               logging.warn(
