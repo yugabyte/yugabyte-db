@@ -274,12 +274,6 @@ string MiniCluster::GetTabletServerFsRoot(int idx) {
 }
 
 Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
-                                        int expected_count) {
-  TabletLocationsPB locations;
-  return WaitForReplicaCount(tablet_id, expected_count, &locations);
-}
-
-Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
                                         int expected_count,
                                         TabletLocationsPB* locations) {
   Stopwatch sw;

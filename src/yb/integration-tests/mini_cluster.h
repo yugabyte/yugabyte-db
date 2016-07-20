@@ -133,13 +133,6 @@ class MiniCluster {
   std::string GetTabletServerFsRoot(int idx);
 
   // Wait for the given tablet to have 'expected_count' replicas
-  // reported on the master.
-  // Requires that the master has started.
-  // Returns a bad Status if the tablet does not reach the required count
-  // within kTabletReportWaitTimeSeconds.
-  Status WaitForReplicaCount(const std::string& tablet_id, int expected_count);
-
-  // Wait for the given tablet to have 'expected_count' replicas
   // reported on the master. Returns the locations in '*locations'.
   // Requires that the master has started;
   // Returns a bad Status if the tablet does not reach the required count
@@ -167,7 +160,7 @@ class MiniCluster {
  private:
   enum {
     kTabletReportWaitTimeSeconds = 5,
-    kRegistrationWaitTimeSeconds = 5,
+    kRegistrationWaitTimeSeconds = 30,
     kMasterLeaderElectionWaitTimeSeconds = 10
   };
 
