@@ -22,11 +22,15 @@ get_system_conf_str() {
   case "$( uname )" in
     Linux)
       os_name="Linux"
-      # os_version will be something like "Ubuntu_15.10"
-      os_version=$( cat /etc/issue | sed 's/\\[nl]/ /g' )
-      if [[ "$os_version" != Ubuntu* ]]; then
-        echo "Only Ubuntu is currently supported, found /etc/issue: '$os_version'" >&2
-        exit 1
+      if [[ -f "/etc/centos-release" ]]; then
+        os_version=$( cat /etc/centos-release | sed 's/[()]/ /g' )
+      else
+        # os_version will be something like "Ubuntu_15.10"
+        os_version=$( cat /etc/issue | sed 's/\\[nl]/ /g' )
+        if [[ "$os_version" != Ubuntu* ]]; then
+          echo "Unexpected contents of /etc/issue: '$os_version', should start with Ubuntu" >&2
+          exit 1
+        fi
       fi
       os_version=$( echo $os_version )  # normalize spaces
     ;;
