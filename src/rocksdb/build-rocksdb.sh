@@ -189,7 +189,7 @@ for extra_lib_dir in "${extra_lib_dirs[@]}"; do
     echo "Extra library directory '$extra_lib_dir' does not exist" >&2
     exit 1
   fi
-  extra_ldflags+=" -L'$extra_lib_dir'"
+  extra_ldflags+=" -L'$extra_lib_dir' -Wl,-rpath,'$extra_lib_dir'"
 done
 
 set -u
