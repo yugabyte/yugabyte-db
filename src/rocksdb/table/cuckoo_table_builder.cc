@@ -181,15 +181,20 @@ Slice CuckooTableBuilder::GetValue(uint64_t idx) const {
 }
 
 Status CuckooTableBuilder::MakeHashTable(std::vector<CuckooBucket>* buckets) {
+  fprintf(stderr, "hash_table_size: %" PRIu64 "\n", hash_table_size_);
+  fprintf(stderr, "cuckoo_block_size_: %d\n", cuckoo_block_size_);
   buckets->resize(hash_table_size_ + cuckoo_block_size_ - 1);
   uint32_t make_space_for_key_call_id = 0;
+  fprintf(stderr, "### 0....\n");
   for (uint32_t vector_idx = 0; vector_idx < num_entries_; vector_idx++) {
     uint64_t bucket_id;
     bool bucket_found = false;
     autovector<uint64_t> hash_vals;
     Slice user_key = GetUserKey(vector_idx);
+    fprintf(stderr, "### 0.0....\n");
     for (uint32_t hash_cnt = 0; hash_cnt < num_hash_func_ && !bucket_found;
         ++hash_cnt) {
+      fprintf(stderr, "### 0.1....\n");
       uint64_t hash_val = CuckooHash(user_key, hash_cnt, use_module_hash_,
           hash_table_size_, identity_as_first_hash_, get_slice_hash_);
       // If there is a collision, check next cuckoo_block_size_ locations for
@@ -197,13 +202,19 @@ Status CuckooTableBuilder::MakeHashTable(std::vector<CuckooBucket>* buckets) {
       // stop searching and proceed for next hash function.
       for (uint32_t block_idx = 0; block_idx < cuckoo_block_size_;
           ++block_idx, ++hash_val) {
+       fprintf(stderr, "### 1.0...\n");
+       fprintf(stderr, "hash_val: %" PRIu64 "\n", hash_val);
+       fprintf(stderr, "vector_idx: %d\n", (*buckets)[hash_val].vector_idx);
         if ((*buckets)[hash_val].vector_idx == kMaxVectorIdx) {
           bucket_id = hash_val;
           bucket_found = true;
+         fprintf(stderr, "### 1.1...\n");
           break;
         } else {
+         fprintf(stderr, "### 1.2...\n");
           if (ucomp_->Compare(user_key,
                 GetUserKey((*buckets)[hash_val].vector_idx)) == 0) {
+           fprintf(stderr, "### 1.2.1....\n");
             return Status::NotSupported("Same key is being inserted again.");
           }
           hash_vals.push_back(hash_val);
@@ -212,6 +223,7 @@ Status CuckooTableBuilder::MakeHashTable(std::vector<CuckooBucket>* buckets) {
     }
     while (!bucket_found && !MakeSpaceForKey(hash_vals,
           ++make_space_for_key_call_id, buckets, &bucket_id)) {
+      fprintf(stderr, "### 1.3 in while...\n");
       // Rehash by increashing number of hash tables.
       if (num_hash_func_ >= max_num_hash_func_) {
         return Status::NotSupported("Too many collisions. Unable to hash.");
