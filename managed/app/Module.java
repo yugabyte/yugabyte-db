@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.AbstractModule;
-import services.LocalYBClientService;
-import services.YBClientService;
-import services.LocalYBMiniClusterService;
-import services.YBMiniClusterService;
+import com.yugabyte.yw.common.services.LocalYBClientService;
+import com.yugabyte.yw.common.services.LocalYBMiniClusterService;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.services.YBMiniClusterService;
 
 /**
  * This class is a Guice module that tells Guice to bind different types

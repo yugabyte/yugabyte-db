@@ -1,0 +1,44 @@
+@import com.yugabyte.yw.api.forms._
+@import helper._
+@import common._
+
+@(instanceForm: Form[CreateInstanceFormData])
+
+@implicitField = @{ FieldConstructor(formFieldTemplate.f) }
+
+@main(true, "create-instance") {
+<!--TODO: Need to check if this is correct way to add page specific JS.-->
+<script src="@routes.Assets.versioned("javascripts/createInstance.js")"></script>
+
+<div class="row">
+  <div class="col-sm-4 col-sm-offset-3">
+    <div class="panel panel-default create-instance-panel">
+      <div class="panel-heading">
+        <h3 class="panel-title">Create Instance</h3>
+      </div>
+      <div class="alert alert-danger">
+        <strong>Error:</strong>
+      </div>
+      <div class="panel-body">
+        <form id="createInstanceForm">
+          <fieldset>
+            @inputText(instanceForm("name"), 'class -> "form-control", '_label -> "Instance Name")
+            <div class="form-group">
+              <label>AZ Preference</label>
+              <label class="radio-inline">
+                <input type="radio" name="multiAZ" id="multiAZ_1" value=false checked>Single
+              </label>
+              <label class="radio-inline">
+                <input type="radio" name="multiAZ" id="multiAZ_2" value=true>Multi
+              </label>
+            </div>
+            @select(instanceForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )
+            @select(instanceForm("regionUUID"), options(Seq("")), 'class -> "form-control", '_label -> "Region" )
+            <input class="btn btn-lg btn-success btn-block" type="submit" value="Create">
+          </fieldset>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+}

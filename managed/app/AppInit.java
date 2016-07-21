@@ -3,7 +3,8 @@
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import models.cloud.Provider;
+import com.yugabyte.yw.api.models.Provider;
+
 import play.Application;
 import play.Environment;
 import play.Logger;
