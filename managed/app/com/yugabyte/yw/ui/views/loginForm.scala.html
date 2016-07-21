@@ -1,0 +1,12 @@
+@import com.yugabyte.yw.api.forms._
+@import helper._
+@import common._
+
+@(loginForm: Form[CustomerLoginFormData])
+@implicitField = @{ FieldConstructor(formFieldTemplate.f) }
+
+@main(false, "login-form") {
+  <div id="content"></div>
+  <script type="text/javascript" src="@routes.Assets.versioned("javascripts/formElements.js")"></script>
+  <script type="text/javascript" src="@routes.Assets.versioned("javascripts/loginForm.js")"></script>
+}
