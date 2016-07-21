@@ -232,6 +232,16 @@ touch "$thirdparty_built_flag_file"
 
 "$YB_SRC_ROOT"/build-support/fix_rpath.py --build-root "$BUILD_ROOT"
 
+(
+  cd "$BUILD_ROOT"
+  set +e
+  YB_CHECK_TEST_EXISTENCE_ONLY=1 ctest -j8 2>&1 | grep Failed
+  if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+    echo "Some test binaries referenced in CMakeLists.txt files do not exist" >&2
+    exit 1
+  fi
+)
+
 # Check if the java build is needed. And skip java unit test runs if specified - time taken
 # for tests is around two minutes currently.
 if $build_java; then

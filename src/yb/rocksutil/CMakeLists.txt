@@ -22,4 +22,3 @@ ADD_EXPORTABLE_LIBRARY(yb_rocksutil
 add_dependencies(yb_rocksutil gen_version_info)
 
 set(YB_TEST_LINK_LIBS yb_rocksutil ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(yb_rocksdb-test)

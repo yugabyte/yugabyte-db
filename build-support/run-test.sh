@@ -38,6 +38,10 @@ if [ ! -f "$TEST_PATH" ]; then
   exit 1
 fi
 
+if [ -n "${YB_CHECK_TEST_EXISTENCE_ONLY:-}" ]; then
+  exit 0
+fi
+
 if [ ! -x "$TEST_PATH" ]; then
   echo "Test binary '$TEST_PATH' is not executable" >&2
   exit 1
