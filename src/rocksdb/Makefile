@@ -308,8 +308,6 @@ TESTS = \
 	options_test \
 	options_util_test \
 	event_logger_test \
-	cuckoo_table_builder_test \
-	cuckoo_table_reader_test \
 	flush_job_test \
 	wal_manager_test \
 	compaction_iterator_test \
@@ -334,7 +332,9 @@ TESTS += \
 	compact_files_test \
 	compaction_job_stats_test \
 	corruption_test \
+	cuckoo_table_builder_test \
 	cuckoo_table_db_test \
+	cuckoo_table_reader_test \
 	db_block_cache_test \
 	db_compaction_filter_test \
 	db_compaction_test \
