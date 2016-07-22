@@ -82,7 +82,7 @@ namespace yb {
 
 static const char* const kMasterBinaryName = "yb-master";
 static const char* const kTabletServerBinaryName = "yb-tserver";
-static double kProcessStartTimeoutSeconds = 30.0;
+static double kProcessStartTimeoutSeconds = 60.0;
 static double kTabletServerRegistrationTimeoutSeconds = 10.0;
 
 #if defined(__APPLE__)

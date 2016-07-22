@@ -51,7 +51,7 @@
 #   EXTRA_MAKE_ARGS
 #     Extra arguments to pass to Make
 
-MAX_NUM_PARALLEL_TESTS=8
+MAX_NUM_PARALLEL_TESTS=3
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
