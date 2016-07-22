@@ -395,7 +395,8 @@ yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_us
   } else {
 #if defined(__APPLE__)
     *now_usec = GetCurrentTimeMicros();
-    *error_usec = 0;
+    // We use a fixed small clock error for Mac OS X builds.
+    *error_usec = 1000;
   }
 #else
     // Read the time. This will return an error if the clock is not synchronized.
