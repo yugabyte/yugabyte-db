@@ -19,6 +19,7 @@
 
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/thread/mutex.hpp>
+#include <list>
 #include <map>
 #include <set>
 #include <string>
@@ -37,6 +38,7 @@
 #include "yb/util/cow_object.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
@@ -353,6 +355,16 @@ typedef MetadataLock<TabletInfo> TabletMetadataLock;
 typedef MetadataLock<TableInfo> TableMetadataLock;
 typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
 
+
+// Info per black listed tablet server.
+struct BlackListInfo {
+  HostPortPB hp;
+  TabletServerId uuid;
+
+  // Once this value goes to 0, we will skip checking this server's load.
+  int64_t last_reported_load;
+};
+
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
 //
@@ -504,6 +516,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Status GetClusterConfig(SysClusterConfigEntryPB* config);
   Status SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
+
+  // Set's the percentage of tablets that have been moved off of the initial list of load on the
+  // black-listed tablet servers, if there are no errors and not in transit. If in-transit when
+  // using a new leader master, then the in_transit error code is set and percent is not set.
+  Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
  private:
   friend class TableLoader;
@@ -687,11 +704,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                TSDescriptor* ts_desc,
                                const std::string& reason);
 
+  void SendLeaderStepDownAndRemoveRequest(
+      const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
+      const string& change_config_ts_uuid);
+
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
   void SendRemoveServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid, const bool stepdown_leader);
+      const string& change_config_ts_uuid);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
@@ -722,6 +743,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Can be used to create background_tasks_ field for this master.
   // Used on normal master startup or when master comes out of the shell mode.
   Status EnableBgTasks();
+
+  // Set the current list of black listed nodes, which is used to track the load movement off of
+  // these blacklist nodes. Also sets the initial tablet load on these. If bootup is true, then we
+  // skip setting the uuid part of BlackListInfo, they are filled on first call to get percent
+  // completion to avoid having to persist this.
+  Status SetBlackList(const BlacklistPB& blacklist, bool bootup = false);
+
+  // Given a tablet, find the leader uuid among its peers. If false is returned,
+  // caller should not use the 'leader_uuid'.
+  bool getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
+                     TabletServerId* leader_uuid);
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
@@ -759,6 +791,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // like the assignment and cleaner
   friend class CatalogManagerBgTasks;
   gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
+
+  // List of blacklisted servers which can be checked for load info.
+  std::list<BlackListInfo> blacklist_tservers_;
+  // Initial load on all these black listed servers.
+  int64_t initial_blacklist_load_;
+  // This bool is used to check in a new leader takeover case, if we can trust initial load value.
+  bool is_initial_blacklist_load_set_;
 
   enum State {
     kConstructed,

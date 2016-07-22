@@ -506,5 +506,16 @@ void MasterServiceImpl::ChangeMasterClusterConfig(
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::GetLoadMoveCompletion(
+    const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+    return;
+  }
+  Status s = server_->catalog_manager()->GetLoadMoveCompletionPercent(resp);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
 } // namespace master
 } // namespace yb

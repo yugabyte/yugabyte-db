@@ -65,6 +65,10 @@ message MasterErrorPB {
     // If the client fails to do so, or there is a concurrent change, we will
     // set this error code.
     CONFIG_VERSION_MISMATCH = 9;
+
+    // If there is an operation in progress causing the current rpc to be in an indeterminate state,
+    // we return this error code. Client can retry on a case by case basis as needed.
+    IN_TRANSITION_CAN_RETRY = 10;
   }
 
   // The error code.
@@ -121,6 +125,7 @@ message PlacementInfoPB {
 message BlacklistPB {
   repeated HostPortPB hosts = 1;
 }
+
 ////////////////////////////////////////////////////////////
 // Sys Tables Metadata
 ////////////////////////////////////////////////////////////
@@ -692,6 +697,17 @@ message ChangeMasterClusterConfigResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// Get the percentage of tablet data that got moved as part of a blacklist config change.
+// Handled by the master leader and picked up by new leader on failover.
+message GetLoadMovePercentRequestPB {
+}
+
+// When no errors, the percent reflects the progress of load removal from the blacklisted tservers.
+message GetLoadMovePercentResponsePB {
+  optional MasterErrorPB error = 1;
+  optional double percent = 2;
+}
+
 service MasterService {
   rpc Ping(PingRequestPB) returns (PingResponsePB);
 
@@ -732,4 +748,6 @@ service MasterService {
       returns (GetMasterClusterConfigResponsePB);
   rpc ChangeMasterClusterConfig(ChangeMasterClusterConfigRequestPB)
       returns (ChangeMasterClusterConfigResponsePB);
+  rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
+      returns (GetLoadMovePercentResponsePB);
 }

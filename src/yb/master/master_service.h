@@ -110,6 +110,10 @@ class MasterServiceImpl : public MasterServiceIf {
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
       rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void GetLoadMoveCompletion(
+      const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
+      rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   Master* server_;
 

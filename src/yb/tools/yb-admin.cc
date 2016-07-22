@@ -105,6 +105,7 @@ const char* const kDumpMastersStateOp = "dump_masters_state";
 const char* const kListTabletServersLogLocationsOp = "list_tablet_server_log_locations";
 const char* const kListTabletsForTabletServerOp = "list_tablets_for_tablet_server";
 const char* const kSetLoadBalancerEnabled = "set_load_balancer_enabled";
+const char* const kGetLoadMoveCompletion = "get_load_move_completion";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -170,6 +171,8 @@ class ClusterAdminClient {
   Status ListTabletsForTabletServer(const std::string& ts_uuid);
 
   Status SetLoadBalancerEnabled(const bool is_enabled);
+
+  Status GetLoadMoveCompletion();
 
  private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -441,6 +444,22 @@ Status ClusterAdminClient::DumpMasterState() {
     return StatusFromPB(resp.error().status());
   }
 
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetLoadMoveCompletion() {
+  CHECK(initted_);
+  master::GetLoadMovePercentRequestPB req;
+  master::GetLoadMovePercentResponsePB resp;
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->GetLoadMoveCompletion(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  std::cout << "Percent complete = " << resp.percent() << std::endl;
   return Status::OK();
 }
 
@@ -883,7 +902,8 @@ static void SetUsage(const char* argv0) {
       << " 9. " << kDumpMastersStateOp << std::endl
       << " 10. " << kListTabletServersLogLocationsOp << std::endl
       << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
-      << " 12. " << kSetLoadBalancerEnabled << " <0|1>";
+      << " 12. " << kSetLoadBalancerEnabled << " <0|1>"
+      << " 13. " << kGetLoadMoveCompletion;
 
   google::SetUsageMessage(str.str());
 }
@@ -1037,6 +1057,12 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     Status s = client.SetLoadBalancerEnabled(is_enabled);
     if (!s.ok()) {
       std::cerr << "Unable to change load balancer state: " << s.ToString() << std::endl;
+      return 1;
+    }
+  } else if (op == kGetLoadMoveCompletion) {
+    Status s = client.GetLoadMoveCompletion();
+    if (!s.ok()) {
+      std::cerr << "Unable to get load completion: " << s.ToString() << std::endl;
       return 1;
     }
   } else {

@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/common.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -37,6 +38,7 @@ class TSDescriptor;
 class TSRegistrationPB;
 
 typedef std::vector<std::shared_ptr<TSDescriptor> > TSDescriptorVector;
+typedef std::string TabletServerId;
 
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
@@ -84,7 +86,12 @@ class TSManager {
   // Get the TS count.
   int GetCount() const;
 
+  // Return the tablet server descriptor running on the given port.
+  const std::shared_ptr<TSDescriptor> GetTSDescriptor(const HostPortPB& host_port) const;
+
  private:
+  bool IsTSLive(const std::shared_ptr<TSDescriptor>& ts) const;
+
   mutable rw_spinlock lock_;
 
   typedef std::unordered_map<

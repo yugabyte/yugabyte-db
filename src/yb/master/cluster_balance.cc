@@ -848,7 +848,7 @@ void ClusterLoadBalancer::MoveReplica(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
   // This is an add operation, so the flag for stepping down leaders is irrelevant.
-  SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true, false);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true);
   state_->AddReplica(tablet_id, to_ts);
   state_->RemoveReplica(tablet_id, from_ts);
 }
@@ -856,14 +856,14 @@ void ClusterLoadBalancer::MoveReplica(
 void ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Adding tablet $0 to $1", tablet_id, to_ts);
   // This is an add operation, so the flag for stepping down leaders is irrelevant.
-  SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true, false);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true);
   state_->AddReplica(tablet_id, to_ts);
 }
 
 void ClusterLoadBalancer::RemoveReplica(
     const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader) {
   LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
-  SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false, stepdown_if_leader);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false);
   state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
@@ -890,15 +890,20 @@ const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
 }
 
 void ClusterLoadBalancer::SendReplicaChanges(
-    scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
-    const bool stepdown_if_leader) {
+    scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add) {
   TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
   if (is_add) {
     catalog_manager_->SendAddServerRequest(
         tablet, l.data().pb.committed_consensus_state(), ts_uuid);
   } else {
-    catalog_manager_->SendRemoveServerRequest(
-        tablet, l.data().pb.committed_consensus_state(), ts_uuid, stepdown_if_leader);
+    // If the replica is also the leader, first step it down and then remove.
+    if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
+      catalog_manager_->SendLeaderStepDownAndRemoveRequest(
+        tablet, l.data().pb.committed_consensus_state(), ts_uuid);
+    } else {
+      catalog_manager_->SendRemoveServerRequest(
+        tablet, l.data().pb.committed_consensus_state(), ts_uuid);
+    }
   }
 }
 

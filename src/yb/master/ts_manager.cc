@@ -97,6 +97,10 @@ void TSManager::GetAllDescriptors(vector<shared_ptr<TSDescriptor> > *descs) cons
   AppendValuesFromMap(servers_by_id_, descs);
 }
 
+bool TSManager::IsTSLive(const shared_ptr<TSDescriptor>& ts) const {
+  return ts->TimeSinceHeartbeat().ToMilliseconds() < FLAGS_tserver_unresponsive_timeout_ms;
+}
+
 void TSManager::GetAllLiveDescriptors(vector<shared_ptr<TSDescriptor> > *descs) const {
   descs->clear();
 
@@ -104,10 +108,22 @@ void TSManager::GetAllLiveDescriptors(vector<shared_ptr<TSDescriptor> > *descs) 
   descs->reserve(servers_by_id_.size());
   for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
     const shared_ptr<TSDescriptor>& ts = entry.second;
-    if (ts->TimeSinceHeartbeat().ToMilliseconds() < FLAGS_tserver_unresponsive_timeout_ms) {
+    if (IsTSLive(ts)) {
       descs->push_back(ts);
     }
   }
+}
+
+const std::shared_ptr<TSDescriptor> TSManager::GetTSDescriptor(const HostPortPB& host_port) const {
+  boost::shared_lock<rw_spinlock> l(lock_);
+  for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
+    const shared_ptr<TSDescriptor>& ts = entry.second;
+    if (IsTSLive(ts) && ts->IsRunningOn(host_port)) {
+      return ts;
+    }
+  }
+
+  return nullptr;
 }
 
 int TSManager::GetCount() const {

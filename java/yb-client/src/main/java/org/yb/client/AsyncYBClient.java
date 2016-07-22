@@ -388,6 +388,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the tablet load move completion percentage for blacklisted nodes.
+   * @return a deferred object that yields the move completion info.
+   */
+  public Deferred<GetLoadMovePercentResponse> getLoadMoveCompletion() {
+    checkIsClosed();
+    GetLoadMovePercentRequest rpc = new GetLoadMovePercentRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    * @return the constant master tablet uuid.
    */

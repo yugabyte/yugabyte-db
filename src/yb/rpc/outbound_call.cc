@@ -288,7 +288,8 @@ bool OutboundCall::IsFinished() const {
 }
 
 string OutboundCall::ToString() const {
-  return Substitute("RPC call $0 -> $1", remote_method_.ToString(), conn_id_.ToString());
+  return Substitute("RPC call $0 -> $1 , state=$2.",
+                    remote_method_.ToString(), conn_id_.ToString(), StateName(state_));
 }
 
 void OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,

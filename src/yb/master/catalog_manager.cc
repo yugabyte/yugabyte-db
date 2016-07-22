@@ -311,6 +311,11 @@ class ClusterConfigLoader : public ClusterConfigVisitor {
     ClusterConfigMetadataLock l(config, ClusterConfigMetadataLock::WRITE);
     l.mutable_data()->pb.CopyFrom(metadata);
 
+    if (metadata.has_server_blacklist()){
+      // Rebuild the blacklist state for load movement completion tracking.
+      RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist(), true /* bootup */));
+    }
+
     // Update in memory state.
     catalog_manager_->cluster_config_ = config;
     l.Commit();
@@ -480,6 +485,7 @@ CatalogManager::CatalogManager(Master* master)
     : master_(master),
       rng_(GetRandomSeed32()),
       remote_bootstrap_in_progress_(false),
+      is_initial_blacklist_load_set_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
       load_balance_policy_(new ClusterLoadBalancer(this)) {
@@ -2562,32 +2568,21 @@ class AsyncAlterTable : public RetryingTSRpcTask {
   tserver::AlterSchemaResponsePB resp_;
 };
 
-class AsyncChangeConfigTask : public RetryingTSRpcTask {
+class CommonInfoForRaftTask : public RetryingTSRpcTask {
  public:
-  AsyncChangeConfigTask(
-      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+  CommonInfoForRaftTask(Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+                    const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : RetryingTSRpcTask(
-            master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-            tablet->table()),
+          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+          tablet->table()),
         tablet_(tablet),
         cstate_(cstate),
         change_config_ts_uuid_(change_config_ts_uuid) {
     deadline_ = MonoTime::Max(); // Never time out.
   }
 
-  virtual string type_name() const OVERRIDE { return "AddServer ChangeConfig"; }
-
-  virtual string description() const OVERRIDE {
-    return Substitute(
-        "$0 RPC for tablet $1 on peer $2 with cas_config_opid_index $3", type_name(),
-        tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
-  }
-
  protected:
-  void HandleResponse(int attempt) OVERRIDE;
-  bool SendRequest(int attempt) OVERRIDE;
-
+  // Used by SendRequest. Return's false if RPC should not be sent.
   virtual bool PrepareRequest(int attempt) = 0;
 
   virtual string tablet_id() const OVERRIDE { return tablet_->tablet_id(); }
@@ -2603,6 +2598,27 @@ class AsyncChangeConfigTask : public RetryingTSRpcTask {
   // issue the ChangeConfig RPC call, which is the Leader in the case of this class, due to the
   // PickLeaderReplica set in the constructor.
   const string change_config_ts_uuid_;
+};
+
+class AsyncChangeConfigTask : public CommonInfoForRaftTask {
+ public:
+  AsyncChangeConfigTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+      : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {
+  }
+
+  virtual string type_name() const OVERRIDE { return "ChangeConfig"; }
+
+  virtual string description() const OVERRIDE {
+    return Substitute(
+        "$0 RPC for tablet $1 on peer $2 with cas_config_opid_index $3", type_name(),
+        tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
+  }
+
+ protected:
+  void HandleResponse(int attempt) OVERRIDE;
+  bool SendRequest(int attempt) OVERRIDE;
 
   consensus::ChangeConfigRequestPB req_;
   consensus::ChangeConfigResponsePB resp_;
@@ -2723,21 +2739,13 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
  public:
   AsyncRemoveServerTask(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid,
-      const bool stepdown_if_leader)
-      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
-        stepdown_if_leader_(stepdown_if_leader) {}
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+      : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
 
   string type_name() const OVERRIDE { return "RemoveServer ChangeConfig"; }
 
  protected:
   virtual bool PrepareRequest(int attempt) OVERRIDE;
-
-  void HandleLeaderStepDownResponse();
-
-  const bool stepdown_if_leader_;
-  consensus::LeaderStepDownRequestPB stepdown_req_;
-  consensus::LeaderStepDownResponsePB stepdown_resp_;
 };
 
 bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
@@ -2754,26 +2762,6 @@ bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
     return false;
   }
 
-  // If we were asked to remove the server even if it is the leader, we have to call StepDown, but
-  // only if our current leader is the server we are asked to remove.
-  if (stepdown_if_leader_ && permanent_uuid() == change_config_ts_uuid_) {
-    stepdown_req_.Clear();
-    stepdown_req_.set_dest_uuid(change_config_ts_uuid_);
-    stepdown_req_.set_tablet_id(tablet_->tablet_id());
-    stepdown_resp_.Clear();
-
-    LOG(INFO) << Substitute(
-        "Stepping down leader $0 for tablet $1", change_config_ts_uuid_, tablet_->tablet_id());
-    consensus_proxy_->LeaderStepDownAsync(
-        stepdown_req_, &stepdown_resp_, &rpc_,
-        boost::bind(&AsyncRemoveServerTask::HandleLeaderStepDownResponse, this));
-
-    // Return false so we can retry this task. If the same tablet server got elected leader, we
-    // will retry the stepdown. If it did not, we will not go into this if and will just execute
-    // the change config below.
-    return false;
-  }
-
   req_.set_dest_uuid(permanent_uuid());
   req_.set_tablet_id(tablet_->tablet_id());
   req_.set_type(consensus::REMOVE_SERVER);
@@ -2784,14 +2772,84 @@ bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
   return true;
 }
 
-void AsyncRemoveServerTask::HandleLeaderStepDownResponse() {
-  if (!rpc_.status().ok()) {
-    LOG(WARNING) << Substitute(
-        "Got error on stepdown for tablet $0 with leader $1 and error $2", tablet_->tablet_id(),
-        permanent_uuid(), rpc_.status().ToString());
+// Task to step down tablet server leader from an overly-replicated tablet config.
+class AsyncTryStepDownAndRemove : public CommonInfoForRaftTask {
+ public:
+  AsyncTryStepDownAndRemove(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+      : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
+
+  string type_name() const OVERRIDE { return "Stepdown Leader"; }
+
+  string description() const OVERRIDE {
+    return "Async Leader Stepdown";
   }
-  // No need to clear rpc_, as it is cleared on every run of the task and we also explicitly
-  // return false from PrepareRequest() so that it reschedules execution.
+
+ protected:
+  virtual bool PrepareRequest(int attempt) OVERRIDE;
+  virtual bool SendRequest(int attempt) OVERRIDE;
+  virtual void HandleResponse(int attempt) OVERRIDE;
+
+  consensus::LeaderStepDownRequestPB stepdown_req_;
+  consensus::LeaderStepDownResponsePB stepdown_resp_;
+};
+
+bool AsyncTryStepDownAndRemove::PrepareRequest(int attempt) {
+  LOG(INFO) << Substitute("Prep Leader step down $0, $1 $2",
+                          attempt, permanent_uuid(), change_config_ts_uuid_);
+  if (attempt > 1) {
+    return false;
+  }
+
+  // If we were asked to remove the server even if it is the leader, we have to call StepDown, but
+  // only if our current leader is the server we are asked to remove.
+  if (permanent_uuid() != change_config_ts_uuid_) {
+    LOG(WARNING) << "Incorrect state - config leader " << permanent_uuid() << " does not match "
+                 << "target uuid " << change_config_ts_uuid_ << " for a leader step down op.";
+    return false;
+  }
+
+  stepdown_req_.set_dest_uuid(change_config_ts_uuid_);
+  stepdown_req_.set_tablet_id(tablet_->tablet_id());
+
+  return true;
+}
+
+bool AsyncTryStepDownAndRemove::SendRequest(int attempt) {
+  if (!PrepareRequest(attempt)) {
+    MarkAborted();
+    return false;
+  }
+
+  LOG(INFO) << Substitute("Stepping down leader $0 for tablet $1",
+                          change_config_ts_uuid_, tablet_->tablet_id());
+  consensus_proxy_->LeaderStepDownAsync(stepdown_req_, &stepdown_resp_, &rpc_,
+                                        boost::bind(&AsyncTryStepDownAndRemove::RpcCallback, this));
+
+  return true;
+}
+
+void AsyncTryStepDownAndRemove::HandleResponse(int attempt) {
+  if (!rpc_.status().ok()) {
+    MarkAborted();
+    LOG(WARNING) << Substitute(
+        "Got error on stepdown for tablet $0 with leader $1, attempt $2 and error $3",
+        tablet_->tablet_id(), permanent_uuid(), attempt, rpc_.status().ToString());
+
+    return;
+  }
+
+  MarkComplete();
+  LOG(INFO) << Substitute("Leader step down done $0, $1 $2",
+                          attempt, permanent_uuid(), change_config_ts_uuid_);
+
+  auto task = new AsyncRemoveServerTask(
+      master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_);
+
+  tablet_->table()->AddTask(task);
+  Status status = task->Run();
+  WARN_NOT_OK(status, "Failed to send new RemoveServer request");
 }
 
 void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table) {
@@ -2864,19 +2922,40 @@ void CatalogManager::SendDeleteTabletRequest(
   WARN_NOT_OK(call->Run(), "Failed to send delete tablet request");
 }
 
+bool CatalogManager::getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
+                                   TabletServerId* leader_uuid) {
+  shared_ptr<TSPicker> replica_picker = std::make_shared<PickLeaderReplica>(tablet);
+  TSDescriptor* target_ts_desc;
+  Status s = replica_picker->PickReplica(&target_ts_desc);
+  if (!s.ok()) {
+    return false;
+  }
+  *leader_uuid = target_ts_desc->permanent_uuid();
+  return true;
+}
+
+void CatalogManager::SendLeaderStepDownAndRemoveRequest(
+    const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
+    const string& change_config_ts_uuid) {
+  AsyncTryStepDownAndRemove* task = new AsyncTryStepDownAndRemove(
+      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+
+  tablet->table()->AddTask(task);
+  Status status = task->Run();
+  WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
+}
+
 // TODO: refactor this into a joint method with the add one.
 void CatalogManager::SendRemoveServerRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid, const bool stepdown_if_leader) {
-  auto task = new AsyncRemoveServerTask(
-      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, stepdown_if_leader);
+    const string& change_config_ts_uuid) {
+  // Check if the user wants the leader to be stepped down.
+  AsyncRemoveServerTask* task = new AsyncRemoveServerTask(
+      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+
   tablet->table()->AddTask(task);
   Status status = task->Run();
-  WARN_NOT_OK(status, "Failed to send new RemoveServer request");
-
-  // Need to print this after Run() because that's where it picks the TS which description()
-  // needs.
-  if (status.ok()) LOG(INFO) << "Started RemoveServer task: " << task->description();
+  WARN_NOT_OK(status, Substitute("Failed to send new $0 request", task->type_name()));
 }
 
 void CatalogManager::SendAddServerRequest(
@@ -3710,6 +3789,46 @@ Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
   return Status::OK();
 }
 
+Status CatalogManager::SetBlackList(const BlacklistPB& blacklist, bool bootup) {
+  int64_t total_load = 0;
+  if (!blacklist_tservers_.empty()) {
+    // Just warn if we are overwriting.
+    LOG(WARNING) << Substitute("Overwriting $0 blacklisted servers with load $1.",
+                               blacklist_tservers_.size(), initial_blacklist_load_);
+    initial_blacklist_load_ = 0;
+  }
+  LOG(INFO) << "Set blacklist size=" << blacklist.hosts_size() << ", isBootup=" << bootup;
+  for (const auto &hp : blacklist.hosts()) {
+    // We always set the host port info here, the load might not be available, especially after
+    // new leader bootup.
+    BlackListInfo bli;
+    bli.hp = hp;
+    blacklist_tservers_.push_back(bli);
+
+    std::shared_ptr<TSDescriptor> ts_desc = master_->ts_manager()->GetTSDescriptor(hp);
+    if (ts_desc == nullptr) {
+      continue;
+    }
+    bli.uuid = ts_desc->permanent_uuid();
+    int64_t load = ts_desc->num_live_replicas();
+    LOG(INFO) << "Blacklist node : " << hp.ShortDebugString() << " uuid='" << bli.uuid
+              << "', load=" << load;
+    bli.last_reported_load = load;
+    total_load += load;
+  }
+  initial_blacklist_load_ = total_load;
+
+  // If it is the new leader bootup case or there are no blacklist nodes, we do not
+  // have the initial load on the blacklist.
+  if (bootup || blacklist.hosts_size() == 0) {
+    is_initial_blacklist_load_set_ = false;
+  } else {
+    is_initial_blacklist_load_set_ = true;
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) {
   const auto& config = req->cluster_config();
@@ -3730,9 +3849,78 @@ Status CatalogManager::SetClusterConfig(
 
   LOG(INFO) << "Updated cluster config to " << config.version() + 1;
 
+  // Save the list of blacklisted servers to be used for completion checking.
+  if (config.has_server_blacklist()) {
+    RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
+  }
+
   RETURN_NOT_OK(sys_catalog_->UpdateClusterConfigInfo(cluster_config_.get()));
 
   l.Commit();
+
+  return Status::OK();
+}
+
+Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
+  LOG(WARNING) << "Blacklist completion check start " << blacklist_tservers_.empty()
+               << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
+  int64_t total_pending = 0;
+  for (auto entry : blacklist_tservers_) {
+    // If it is a valid uuid and there was no last reported load, then we stop getting its load.
+    if (entry.uuid != "" && entry.last_reported_load == 0) {
+      continue;
+    }
+
+    // For the case where new leader set up the blacklist, the uuid might not have been filled in.
+    // Try to get it from ts desc, or skip it if no ts has registered at this host/port yet.
+    shared_ptr<TSDescriptor> ts_desc = master_->ts_manager()->GetTSDescriptor(entry.hp);
+    if (ts_desc == nullptr) {
+      continue;
+    }
+    if (entry.uuid == "") {
+      entry.uuid = ts_desc->permanent_uuid();
+    }
+
+    int load = ts_desc->num_live_replicas();
+    entry.last_reported_load = load;
+    total_pending += load;
+  }
+
+  // Set the initial load after a reboot/new leader case only when we have some blacklisted nodes.
+  if (!is_initial_blacklist_load_set_ && !blacklist_tservers_.empty()) {
+    initial_blacklist_load_ = total_pending;
+    is_initial_blacklist_load_set_ = true;
+  }
+
+  // We do not expect the load to increase, bail out for now if it does, with some logging.
+  // This could happen if new ones are being added while we were taking init load snapshot,
+  // not an error case. The in-transit ones that were being added will also get removed soon.
+  if (initial_blacklist_load_ < total_pending) {
+    LOG(WARNING) << "Blacklist load has increased from " << initial_blacklist_load_
+                 << " to " << total_pending;
+    resp->set_percent(0);
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Load went from " << initial_blacklist_load_ << " to " << total_pending;
+
+  if (initial_blacklist_load_ == 0) {
+    // For case where there are known blacklisted servers but load unknown, ask client to retry.
+    if (!is_initial_blacklist_load_set_ && !blacklist_tservers_.empty()) {
+      Status s = Status::ServiceUnavailable(
+        "In transition: the load could not be set on a newly elected leader.");
+      // For the case where tserver load could not be set, return a retriable state.
+      SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
+      return s;
+    } else {
+      // Nothing else to do if no initial load.
+      resp->set_percent(0);
+      return Status::OK();
+    }
+  }
+
+  resp->set_percent(100 - (static_cast<double>(total_pending) * 100 / initial_blacklist_load_));
+
   return Status::OK();
 }
 

@@ -19,6 +19,7 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.YBClient;
 import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
@@ -46,7 +47,7 @@ public class YBCliCommands implements CommandMarker {
 
   @CliAvailabilityIndicator({"list tablet-servers", "list tablets", "list tables", "list masters",
                              "change_config", "change_blacklist", "leader_step_down",
-                             "get_universe_config"})
+                             "get_universe_config", "get_load_move_completion"})
   public boolean isDatabaseOperationAvailable() {
     // We can perform operations on the database once we are connected to one.
     if (connectedToDatabase) {
@@ -223,6 +224,23 @@ public class YBCliCommands implements CommandMarker {
       }
 
       return "Config: \n" + resp.getConfig();
+    } catch (Exception e) {
+      LOG.error("Caught exception ", e);
+      return "Failed: " + e.toString() + "\n";
+    }
+  }
+
+  @CliCommand(value = "get_load_move_completion",
+              help = "Get the completion percentage of tablet load move from blacklisted servers.")
+  public String getLoadMoveCompletion() {
+    try {
+      GetLoadMovePercentResponse resp = ybClient.getLoadMoveCompletion();
+
+      if (resp.hasError()) {
+        return "Failed: " + resp.errorMessage();
+      }
+
+      return "Percent completed = " + resp.getPercentCompleted();
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";

@@ -122,8 +122,7 @@ class ClusterLoadBalancer {
   // Issue the call to CatalogManager to change the config for this particular tablet, either
   // adding or removing the peer at ts_uuid, based on the is_add argument.
   virtual void SendReplicaChanges(
-      scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
-      const bool stepdown_if_leader);
+      scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add);
 
   //
   // Higher level methods and members.

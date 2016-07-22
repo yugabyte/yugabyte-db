@@ -45,6 +45,9 @@ public class YBClient implements AutoCloseable {
 
   private final AsyncYBClient asyncClient;
 
+  // Number of retries on retriable errors, could make it time based as needed.
+  private static final int MAX_NUM_RETRIES = 25;
+
   public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
@@ -178,6 +181,22 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the tablet load move completion percentage for blacklisted nodes, if any.
+   * @return the response with percent load completed.
+   */
+  public GetLoadMovePercentResponse getLoadMoveCompletion() throws Exception {
+    Deferred<GetLoadMovePercentResponse> d;
+    GetLoadMovePercentResponse resp;
+    int numTries = 0;
+    do {
+      d = asyncClient.getLoadMoveCompletion();
+      resp = d.join(getDefaultAdminOperationTimeoutMs());
+    } while (resp.hasRetriableError() && numTries++ < MAX_NUM_RETRIES);
+
+    return resp;
+  }
+
+  /**
    * Change master server configuration.
    * @return a list of tablet servers
    */
@@ -186,7 +205,7 @@ public class YBClient implements AutoCloseable {
     Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(host, port, isAdd);
     ChangeConfigResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
     if (!resp.hasError()) {
-       asyncClient.updateMasterAdresses(host, port, isAdd);
+      asyncClient.updateMasterAdresses(host, port, isAdd);
     }
     return resp;
   }
