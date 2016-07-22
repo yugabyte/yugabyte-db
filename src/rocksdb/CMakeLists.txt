@@ -60,6 +60,9 @@ set(BUILD_ROCKSDB_ARGS
 )
 
 set(ROCKSDB_CXX_FLAGS "${CXX_GLOBAL_COMMON_FLAGS}")
+# Use the same flags for the C compiler as for the C++ compiler, with some optional customizations
+# later.
+set(ROCKSDB_C_FLAGS "${ROCKSDB_CXX_FLAGS}")
 
 if ("${COMPILER_FAMILY}" STREQUAL "clang")
   # -Wno-parentheses-equality is there because otherwise there is this error on Mac OS X:
@@ -72,9 +75,25 @@ if ("${COMPILER_FAMILY}" STREQUAL "clang")
 
   set(ROCKSDB_CXX_FLAGS "${ROCKSDB_CXX_FLAGS} -Wno-parentheses-equality")
   set(ROCKSDB_CXX_FLAGS "${ROCKSDB_CXX_FLAGS} -Wno-unevaluated-expression")
+
+  if(EXISTS "/etc/centos-release")
+    # Silence an error thrown by the clang C compiler on CentOS.
+    # CC       db/c_test.o
+    # clang-3.7: error: argument unused during compilation: '-I .'
+    # clang-3.7: error: argument unused during compilation: '-I ./include'
+    # clang-3.7: error: argument unused during compilation: '-isystem ./third-party/gtest-1.7.0/fused-src'
+    # Compiler command failed with exit code 1: ccache compiler -g -W -Wextra -Wall -Wsign-compare -Wshadow -Wno-unused-parameter -Wno-unused-variable -Werror -I. -I./include -DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DOS_LINUX -fno-builtin-memcmp -DROCKSDB_FALLOCATE_PRESENT -DZLIB -DROCKSDB_MALLOC_USABLE_SIZE -march=native -isystem ./third-party/gtest-1.7.0/fused-src -c db/c_test.c -o db/c_test.o ; compiler executable: /var/lib/jenkins/workspace/yugabyte-centos-phabricator-clang-debug/thirdparty/installed/bin/clang ; current directory: /var/lib/jenkins/workspace/yugabyte-centos-phabricator-clang-debug/build/debug-clang-dynamic/rocksdb-build
+    set(ROCKSDB_C_FLAGS "${ROCKSDB_C_FLAGS} -Qunused-arguments")
+  endif()
 endif()
 
-list(APPEND BUILD_ROCKSDB_ARGS --cxx-flags "${ROCKSDB_CXX_FLAGS}")
+if(NOT "${ROCKSDB_CXX_FLAGS}" STREQUAL "")
+  list(APPEND BUILD_ROCKSDB_ARGS --cxx-flags "${ROCKSDB_CXX_FLAGS}")
+endif()
+
+if(NOT "${ROCKSDB_C_FLAGS}" STREQUAL "")
+  list(APPEND BUILD_ROCKSDB_ARGS --c-flags "${ROCKSDB_C_FLAGS}")
+endif()
 
 add_custom_target(build_rocksdb_library ALL
   COMMAND ${BUILD_ROCKSDB_ARGS}
@@ -159,7 +178,7 @@ foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
         # This is a debug-only RocksDB test.
         set(ROCKSDB_SHOULD_INCLUDE_TEST false)
       endif()
-    
+
     endif()
 
     if (ROCKSDB_SHOULD_INCLUDE_TEST)

@@ -24,8 +24,10 @@ Options:
   --cxx-compiler <c++_compiler_path>
   --c-compiler <c_compiler_path>
     These options specify C++ and C compilers to use.
+  --c-flags <flags>
+    A list of additional C compiler flags to use when building.
   --cxx-flags <flags>
-    A list of additional CXX flags to use when building.
+    A list of additional C++ compiler flags to use when building.
   --use-ld-gold
     Specify to use the ld.gold linker.
   --targets <targets>
@@ -51,6 +53,7 @@ fi
 build_dir=""
 c_compiler=""
 cxx_compiler=""
+c_flags=""
 cxx_flags=""
 debug_level=""
 extra_include_dirs=()
@@ -98,6 +101,10 @@ while [ $# -ne 0 ]; do
       c_compiler=$2
       shift
     ;;
+    --c-flags)
+      c_flags=$2
+      shift
+    ;;
     --cxx-flags)
       cxx_flags=$2
       shift
@@ -136,6 +143,7 @@ while [ $# -ne 0 ]; do
 done
 
 extra_cxxflags=""
+extra_cflags=""
 extra_ldflags=""
 
 if [ -z "$build_dir" ]; then
@@ -182,6 +190,7 @@ for extra_include_dir in "${extra_include_dirs[@]}"; do
   fi
   extra_cxxflags+=" -I'$extra_include_dir'"
 done
+
 # Add the common CXX flags to the extra flags variable.
 extra_cxxflags+=" $cxx_flags"
 for extra_lib_dir in "${extra_lib_dirs[@]}"; do
@@ -191,6 +200,8 @@ for extra_lib_dir in "${extra_lib_dirs[@]}"; do
   fi
   extra_ldflags+=" -L'$extra_lib_dir' -Wl,-rpath,'$extra_lib_dir'"
 done
+
+extra_cflags+=" $c_flags"
 
 set -u
 
@@ -278,6 +289,10 @@ fi
 
 if [ -n "$extra_cxxflags" ]; then
   make_opts+=( EXTRA_CXXFLAGS="$extra_cxxflags" )
+fi
+
+if [ -n "$extra_cflags" ]; then
+  make_opts+=( EXTRA_CFLAGS="$extra_cflags" )
 fi
 
 # TODO: this should probably be installed-deps-tsan in some cases.

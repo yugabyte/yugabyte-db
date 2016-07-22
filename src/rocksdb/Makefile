@@ -630,7 +630,7 @@ ldb_tests: ldb
 crash_test: whitebox_crash_test blackbox_crash_test
 
 blackbox_crash_test: db_stress
-	python -u tools/db_crashtest.py --simple blackbox 
+	python -u tools/db_crashtest.py --simple blackbox
 	python -u tools/db_crashtest.py blackbox
 
 whitebox_crash_test: db_stress
