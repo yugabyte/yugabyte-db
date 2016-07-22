@@ -26,7 +26,6 @@ namespace yb {
 
 using std::string;
 
-
 EncodedKey::EncodedKey(faststring* data,
                        vector<const void *> *raw_keys,
                        size_t num_key_cols)
@@ -165,15 +164,6 @@ EncodedKey *EncodedKeyBuilder::BuildEncodedKey() {
   auto ret = new EncodedKey(&encoded_key_, &raw_keys_, num_key_cols_);
   idx_ = 0;
   return ret;
-}
-
-void EncodedKeyBuilder::AssignCopy(const EncodedKeyBuilder &other) {
-  DCHECK_SCHEMA_EQ(*schema_, *other.schema_);
-
-  encoded_key_.assign_copy(other.encoded_key_.data(),
-                           other.encoded_key_.length());
-  idx_ = other.idx_;
-  raw_keys_.assign(other.raw_keys_.begin(), other.raw_keys_.end());
 }
 
 string EncodedKey::RangeToString(const EncodedKey* lower, const EncodedKey* upper) {

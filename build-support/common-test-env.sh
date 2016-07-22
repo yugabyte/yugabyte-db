@@ -280,7 +280,7 @@ collect_gtest_tests() {
         let num_test_cases+=1
       fi
     fi
-  done  
+  done
 }
 
 # Set a number of variables in preparation to running a test.
@@ -449,23 +449,30 @@ process_core_file() {
 
 # Checks if the there is no XML file at path "$xml_output_file". This may happen if a gtest test
 # suite fails before it has a chance to generate an XML output file. In that case, this function
-# generates a substitute XML output file using parse_test_failure.py.
+# generates a substitute XML output file using parse_test_failure.py, but only if the log file
+# exists at its expected location.
 handle_xml_output() {
   expect_vars_to_be_set \
     rel_test_binary \
     test_log_path \
     xml_output_file
 
-  if [ ! -f "$xml_output_file" ]; then
+  if [[ ! -f "$xml_output_file" ]]; then
     if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
       echo "$rel_test_binary is a known non-gtest executable, OK that it did not produce XML" \
-           "output"
+           "output" >&2
     else
       echo "$rel_test_binary failed to produce an XML output file at $xml_output_file" >&2
       test_failed=true
     fi
-    echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
-    "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
+    if [ -f "$test_log_path" ]; then
+      echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
+      "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
+    else
+      echo "Test log path '$test_log_path' does not exist, cannot generate missing XML output" \
+           "file '$xml_output_file'" >&2
+      test_failed=true
+    fi
   fi
 
   if [ -n "${BUILD_URL:-}" ]; then

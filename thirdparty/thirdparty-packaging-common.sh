@@ -74,7 +74,7 @@ download_prebuilt_thirdparty_deps() {
 
   if [ -n "${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-}" ]; then
     echo "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
-         "third-party dependencies" >&2
+         "third-party dependencies." >&2
     return 1
   fi
 
@@ -138,12 +138,6 @@ download_prebuilt_thirdparty_deps() {
   pushd "$TP_DIR" >/dev/null
   echo "Extracting '$dest_path' into '$PWD'"
   tar xzf "$dest_path"
-
-  if [[ ! "$OSTYPE" =~ ^darwin ]]; then
-    # TODO: make this also work on Mac OS X.
-    echo "Fixing rpath / runpath on Linux" >&2
-    ./fix_thirdparty_rpath.py
-  fi
 
   popd >/dev/null
 }

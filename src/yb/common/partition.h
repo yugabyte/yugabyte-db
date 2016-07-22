@@ -207,11 +207,6 @@ class PartitionSchema {
                               const std::vector<ColumnId>& column_ids,
                               std::string* buf);
 
-  // Returns the hash bucket of the encoded hash column. The encoded columns must match the
-  // columns of the hash bucket schema.
-  static int32_t BucketForEncodedColumns(const std::string& encoded_hash_columns,
-                                         const HashBucketSchema& hash_bucket_schema);
-
   // Assigns the row to a hash bucket according to the hash schema.
   template<typename Row>
   static Status BucketForRow(const Row& row,
@@ -223,10 +218,6 @@ class PartitionSchema {
   Status PartitionContainsRowImpl(const Partition& partition,
                                   const Row& row,
                                   bool* contains) const;
-
-  // Private templated helper for EncodeKey.
-  template<typename Row>
-  Status EncodeKeyImpl(const Row& row, string* buf) const;
 
   // Appends the stringified range partition components of a partial row to a
   // vector.

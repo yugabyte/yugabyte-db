@@ -701,14 +701,6 @@ Status PartitionSchema::EncodeColumns(const YBPartialRow& row,
   return Status::OK();
 }
 
-int32_t PartitionSchema::BucketForEncodedColumns(const string& encoded_key,
-                                                 const HashBucketSchema& hash_bucket_schema) {
-  uint64_t hash = HashUtil::MurmurHash2_64(encoded_key.data(),
-                                           encoded_key.length(),
-                                           hash_bucket_schema.seed);
-  return hash % static_cast<uint64_t>(hash_bucket_schema.num_buckets);
-}
-
 template<typename Row>
 Status PartitionSchema::BucketForRow(const Row& row,
                                      const HashBucketSchema& hash_bucket_schema,

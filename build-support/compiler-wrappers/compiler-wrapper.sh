@@ -97,7 +97,7 @@ set +e
     if [ -n "${YB_SHOW_COMPILER_COMMAND_LINE:-}" ]; then
       set -x
     fi
-    "${cmd[@]}" 3>&2 2>&1 1>&3 
+    "${cmd[@]}" 3>&2 2>&1 1>&3
   ) | tee "$stderr_path"
 ) 3>&2 2>&1 1>&3
 compiler_exit_code=$?
@@ -105,6 +105,7 @@ set -e
 
 if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/null || \
    grep "$PCH_NAME: not used because " "$stderr_path" >/dev/null || \
+   grep "fatal error: malformed or corrupted AST file:" "$stderr_path" >/dev/null || \
    egrep "definition of macro '.*' differs between the precompiled header .* and the command line" \
          "$stderr_path" >/dev/null
 then
