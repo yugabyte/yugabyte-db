@@ -49,14 +49,16 @@ wrap_build_output() {
   done
 }
 
-TP_DIR=$(cd "$(dirname "$BASH_SOURCE")"; pwd)
+TP_DIR=$(cd "$( dirname "$BASH_SOURCE" )" && pwd)
+YB_SRC_ROOT=$( cd "$TP_DIR"/.. && pwd )
 
-source $TP_DIR/vars.sh
-source $TP_DIR/build-definitions.sh
-source $TP_DIR/thirdparty-packaging-common.sh
+source "$TP_DIR/vars.sh"
+source "$TP_DIR/build-definitions.sh"
+source "$TP_DIR/thirdparty-packaging-common.sh"
 
 if download_prebuilt_thirdparty_deps; then
   echo "Using prebuilt third-party code, skipping the build"
+  "$YB_SRC_ROOT"/build-support/fix_rpath.py
   exit 0
 fi
 
@@ -376,3 +378,5 @@ fi
 
 echo "---------------------"
 echo "Thirdparty dependencies built and installed into $PREFIX successfully"
+
+"$YB_SRC_ROOT"/build-support/fix_rpath.py
