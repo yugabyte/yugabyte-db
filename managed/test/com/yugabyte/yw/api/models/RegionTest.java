@@ -6,9 +6,9 @@ import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.yugabyte.yw.api.models.Provider;
-import com.yugabyte.yw.api.models.Region;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 
 import java.util.List;
 import java.util.Set;
@@ -31,10 +31,10 @@ public class RegionTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Region region = Region.create(defaultProvider, "region-1", "Awesome Region");
+    Region region = Region.create(defaultProvider, "region-1", "Awesome PlacementRegion");
 
     assertEquals(region.code, "region-1");
-    assertEquals(region.name, "Awesome Region");
+    assertEquals(region.name, "Awesome PlacementRegion");
     assertEquals(region.provider.name, "Amazon");
     assertTrue(region.isActive());
   }

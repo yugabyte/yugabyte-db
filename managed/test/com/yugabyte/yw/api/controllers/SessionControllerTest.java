@@ -20,8 +20,8 @@ import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.api.models.Customer;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.Customer;
 
 import play.libs.Json;
 import play.mvc.Result;

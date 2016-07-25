@@ -1,8 +1,8 @@
-@import com.yugabyte.yw.api.forms._
+@import com.yugabyte.yw.forms._
 @import helper._
 @import common._
 
-@(instanceForm: Form[CreateInstanceFormData])
+@(instanceForm: Form[CreateUniverseFormData])
 
 @implicitField = @{ FieldConstructor(formFieldTemplate.f) }
 
@@ -14,7 +14,7 @@
   <div class="col-sm-4 col-sm-offset-3">
     <div class="panel panel-default create-instance-panel">
       <div class="panel-heading">
-        <h3 class="panel-title">Create Instance</h3>
+        <h3 class="panel-title">Create Universe</h3>
       </div>
       <div class="alert alert-danger">
         <strong>Error:</strong>
@@ -22,14 +22,14 @@
       <div class="panel-body">
         <form id="createInstanceForm">
           <fieldset>
-            @inputText(instanceForm("name"), 'class -> "form-control", '_label -> "Instance Name")
+            @inputText(instanceForm("universeName"), 'class -> "form-control", '_label -> "Universe Name")
             <div class="form-group">
               <label>AZ Preference</label>
               <label class="radio-inline">
-                <input type="radio" name="multiAZ" id="multiAZ_1" value=false checked>Single
+                <input type="radio" name="isMultiAZ" id="multiAZ_1" value=false checked>Single
               </label>
               <label class="radio-inline">
-                <input type="radio" name="multiAZ" id="multiAZ_2" value=true>Multi
+                <input type="radio" name="isMultiAZ" id="multiAZ_2" value=true>Multi
               </label>
             </div>
             @select(instanceForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )

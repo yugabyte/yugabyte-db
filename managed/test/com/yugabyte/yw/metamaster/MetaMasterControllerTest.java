@@ -22,12 +22,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.models.Universe;
-import com.yugabyte.yw.commissioner.models.Universe.NodeDetails;
-import com.yugabyte.yw.commissioner.models.Universe.UniverseDetails;
-import com.yugabyte.yw.commissioner.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.metamaster.MetaMasterController;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.Universe.UniverseDetails;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
 import play.libs.Json;
 import play.mvc.Result;

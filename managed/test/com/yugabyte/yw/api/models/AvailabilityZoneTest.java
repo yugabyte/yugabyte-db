@@ -5,10 +5,10 @@ package com.yugabyte.yw.api.models;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.yugabyte.yw.api.models.AvailabilityZone;
-import com.yugabyte.yw.api.models.Provider;
-import com.yugabyte.yw.api.models.Region;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 
 import java.util.Set;
 

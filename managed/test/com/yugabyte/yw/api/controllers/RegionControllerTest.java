@@ -22,11 +22,11 @@ import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.api.models.AvailabilityZone;
-import com.yugabyte.yw.api.models.Customer;
-import com.yugabyte.yw.api.models.Provider;
-import com.yugabyte.yw.api.models.Region;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 
 import play.libs.Json;
 import play.mvc.Http;
@@ -73,7 +73,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionWithoutZonesAndValidProviderUUID() {
     String authToken = customer.createAuthToken();
-    Region r = Region.create(provider, "foo-region", "Foo Region");
+    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion");
     Http.RequestBuilder fr = fakeRequest("GET", "/api/providers/" + provider.uuid + "/regions")
                              .header("X-AUTH-TOKEN", authToken);
     Result result = route(fr);
@@ -87,8 +87,8 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithValidProviderUUID() {
     String authToken = customer.createAuthToken();
-    Region r = Region.create(provider, "foo-region", "Foo Region");
-    AvailabilityZone.create(r, "AZ-1.1", "AZ 1.1", "Subnet - 1.1");
+    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion");
+    AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
 
     Http.RequestBuilder fr = fakeRequest("GET", "/api/providers/" + provider.uuid + "/regions")
                              .header("X-AUTH-TOKEN", authToken);
@@ -106,16 +106,16 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithMultiAZOption() {
     String authToken = customer.createAuthToken();
-    Region r1 = Region.create(provider, "region-1", "Region 1");
-    Region r2 = Region.create(provider, "region-2", "Region 2");
-    AvailabilityZone.create(r1, "AZ-1.1", "AZ 1.1", "Subnet - 1.1");
-    AvailabilityZone.create(r1, "AZ-1.2", "AZ 1.2", "Subnet - 1.2");
-    AvailabilityZone.create(r1, "AZ-1.3", "AZ 1.3", "Subnet - 1.3");
-    AvailabilityZone.create(r2, "AZ-2.1", "AZ 2.1", "Subnet - 2.1");
-    AvailabilityZone.create(r2, "AZ-2.2", "AZ 2.2", "Subnet - 2.2");
+    Region r1 = Region.create(provider, "region-1", "PlacementRegion 1");
+    Region r2 = Region.create(provider, "region-2", "PlacementRegion 2");
+    AvailabilityZone.create(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone.create(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
+    AvailabilityZone.create(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
+    AvailabilityZone.create(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
+    AvailabilityZone.create(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
 
     Http.RequestBuilder fr =
-        fakeRequest("GET", "/api/providers/" + provider.uuid + "/regions?multiAZ=true")
+        fakeRequest("GET", "/api/providers/" + provider.uuid + "/regions?isMultiAZ=true")
         .header("X-AUTH-TOKEN", authToken);
     Result result = route(fr);
     JsonNode json = Json.parse(contentAsString(result));
@@ -156,7 +156,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
-    regionJson.put("name", "Foo Region");
+    regionJson.put("name", "Foo PlacementRegion");
     Http.RequestBuilder fr = fakeRequest("POST", "/api/providers/" + provider.uuid + "/regions")
                              .header("X-AUTH-TOKEN", authToken)
                              .bodyJson(regionJson);
@@ -167,6 +167,6 @@ public class RegionControllerTest extends FakeDBApplication {
 
     assertThat(json.get("uuid").toString(), is(notNullValue()));
     assertThat(json.get("code").asText(), is(allOf(notNullValue(), instanceOf(String.class), equalTo("foo-region"))));
-    assertThat(json.get("name").asText(), is(allOf(notNullValue(), instanceOf(String.class), equalTo("Foo Region"))));
+    assertThat(json.get("name").asText(), is(allOf(notNullValue(), instanceOf(String.class), equalTo("Foo PlacementRegion"))));
   }
 }

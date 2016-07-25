@@ -4,8 +4,8 @@ package com.yugabyte.yw.api.models;
 
 import org.junit.Test;
 
-import com.yugabyte.yw.api.models.Provider;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.Provider;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
