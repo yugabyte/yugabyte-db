@@ -23,11 +23,11 @@ import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.api.models.AvailabilityZone;
-import com.yugabyte.yw.api.models.Customer;
-import com.yugabyte.yw.api.models.Provider;
-import com.yugabyte.yw.api.models.Region;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 
 import play.libs.Json;
 import play.mvc.Http;
@@ -42,13 +42,13 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 	public void setUp() {
 		customer = Customer.create("Valid Customer", "foo@bar.com", "password");
 		defaultProvider = Provider.create("Amazon");
-		defaultRegion = Region.create(defaultProvider, "default-region", "Default Region");
+		defaultRegion = Region.create(defaultProvider, "default-region", "Default PlacementRegion");
 	}
 
 	@Test
 	public void testListAvailabilityZonesWithInvalidProviderRegionUUID() {
 		JsonNode json = doListAZAndVerifyResult(UUID.randomUUID(), UUID.randomUUID(), BAD_REQUEST);
-		assertEquals("Invalid Region/Provider UUID", json.get("error").asText());
+		assertEquals("Invalid PlacementRegion/Provider UUID", json.get("error").asText());
 	}
 
 	@Test
@@ -59,7 +59,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
 	@Test
 	public void testListAvailabilityZonesWithValidProviderRegionUUID() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "AZ-1", "AZ One", "Subnet 1");
+    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "PlacementAZ-1", "PlacementAZ One", "Subnet 1");
     JsonNode json = doListAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, OK);
 
 		assertEquals(1, json.size());
@@ -73,7 +73,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 	public void testCreateAvailabilityZoneWithInvalidProviderRegionUUID() {
 	  JsonNode json =
 	      doCreateAZAndVerifyResult(UUID.randomUUID(), UUID.randomUUID(), null, BAD_REQUEST);
-		assertEquals("Invalid Region/Provider UUID", json.get("error").asText());
+		assertEquals("Invalid PlacementRegion/Provider UUID", json.get("error").asText());
 	}
 
 	@Test

@@ -3,12 +3,12 @@ package com.yugabyte.yw.api.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.api.models.Customer;
-import com.yugabyte.yw.api.models.CustomerTask;
-import com.yugabyte.yw.api.models.Instance;
-import com.yugabyte.yw.api.models.Provider;
-import com.yugabyte.yw.api.models.Region;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.UserUniverse;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -33,7 +33,7 @@ public class InstanceTest extends FakeDBApplication {
 	@Test
 	public void testCreate() {
 		JsonNode placementInfo = Json.newObject();
-		Instance inst = Instance.create(defaultCustomer, "instance 1",  placementInfo);
+		UserUniverse inst = UserUniverse.create(defaultCustomer, "instance 1",  placementInfo);
 		assertNotNull(inst.getInstanceId());
 		assertEquals(inst.name, "instance 1");
 		assertTrue(inst.getPlacementInfo() instanceof  JsonNode);
@@ -42,7 +42,7 @@ public class InstanceTest extends FakeDBApplication {
 	@Test(expected=javax.persistence.PersistenceException.class)
 	public void testInvalidCreate() {
 		JsonNode placementInfo = Json.newObject();
-		Instance inst = Instance.create(defaultCustomer, null, placementInfo);
+		UserUniverse inst = UserUniverse.create(defaultCustomer, null, placementInfo);
 		inst.save();
 	}
 
@@ -52,9 +52,9 @@ public class InstanceTest extends FakeDBApplication {
 		placementInfo.put("r-factor", 3);
 		placementInfo.put("single-az", true);
 		placementInfo.put("prefix", "test-");
-		Instance inst = Instance.create(defaultCustomer, "instance 1", placementInfo);
+		UserUniverse inst = UserUniverse.create(defaultCustomer, "instance 1", placementInfo);
 
-		Instance fetchInstance = Instance.find.where().eq("instance_id", inst.getInstanceId()).findUnique();
+		UserUniverse fetchInstance = UserUniverse.find.where().eq("instance_id", inst.getInstanceId()).findUnique();
 		assertNotNull(fetchInstance.getInstanceId());
 		assertTrue(fetchInstance.getCustomerId() instanceof UUID);
 		assertEquals(fetchInstance.getPlacementInfo().toString(), "{\"r-factor\":3,\"single-az\":true,\"prefix\":\"test-\"}");
@@ -63,7 +63,7 @@ public class InstanceTest extends FakeDBApplication {
 	@Test
 	public void testAddTask() {
 		JsonNode placementInfo = Json.newObject();
-		Instance inst = Instance.create(defaultCustomer, "instance 1",  placementInfo);
+		UserUniverse inst = UserUniverse.create(defaultCustomer, "instance 1",  placementInfo);
 
 		UUID taskUUID = UUID.randomUUID();
 		inst.addTask(taskUUID, CustomerTask.TaskType.Create);

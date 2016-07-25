@@ -13,8 +13,8 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.models.TaskInfo;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.TaskInfo;
 
 import play.libs.Json;
 

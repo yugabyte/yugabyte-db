@@ -5,7 +5,7 @@ package com.yugabyte.yw.api.models;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import com.yugabyte.yw.api.models.CustomerInstanceKey;
+import com.yugabyte.yw.models.CustomerInstanceKey;
 
 import java.util.UUID;
 

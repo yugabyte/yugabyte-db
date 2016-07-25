@@ -17,8 +17,8 @@ import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.yugabyte.yw.api.models.Customer;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.Customer;
 
 import play.mvc.Http;
 import play.mvc.Result;

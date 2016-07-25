@@ -9,13 +9,12 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import com.yugabyte.yw.api.forms.GrafanaPanelData;
-import com.yugabyte.yw.api.models.Instance;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.controllers.AuthenticatedController;
+import com.yugabyte.yw.forms.GrafanaPanelData;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.ui.views.html.*;
 
 import play.mvc.Result;
-import com.yugabyte.yw.ui.views.html.*;
 
 public class UniversePageController extends AuthenticatedController {
 
@@ -25,11 +24,11 @@ public class UniversePageController extends AuthenticatedController {
   protected static final String GRAFANA_API_ENDPOINT = "/api/dashboards/db/yugabyte-cluster";
   protected static final String GRAFANA_DASHBOARD_URL = "/dashboard-solo/db/yugabyte-cluster";
 
-  public Result index(UUID instanceUUID) {
+  public Result index(UUID universeUUID) {
     long toTime = System.currentTimeMillis();
     long fromTime = toTime - 60 * 60 * 1000;
 
-    Instance instance = Instance.find.where().eq("instance_id", instanceUUID).findUnique();
+    Universe universe = Universe.get(universeUUID);
     Config conf = ConfigFactory.load();
     String grafanaUrl = conf.getString("yb.grafana.url") + GRAFANA_API_ENDPOINT;
     String grafanaAccessKey = conf.getString("yb.grafana.accessKey");
@@ -48,11 +47,11 @@ public class UniversePageController extends AuthenticatedController {
             + "?panelId=" + data.id
             + "&from=" + fromTime
             + "&to=" + toTime
-            + "&var-host=" + instance.name;
+            + "&var-host=" + universe.name;
           grafanaPanelDataList.add(data);
         }
       }
     }
-    return ok(showInstance.render(instance, grafanaPanelDataList));
+    return ok(showInstance.render(universe, grafanaPanelDataList));
   }
 }
