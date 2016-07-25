@@ -4,10 +4,10 @@ package com.yugabyte.yw.api.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.api.models.Customer;
-import com.yugabyte.yw.api.models.CustomerTask;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -115,7 +115,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     assertThat(json.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
-    assertThat(json.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Instance : Foo")));
+    assertThat(json.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating UserUniverse : Foo")));
     assertThat(json.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(json.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
   }
@@ -138,7 +138,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     );
 
     assertEquals(OK, result.status());
-    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Creating Instance : Foo")));
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Creating UserUniverse : Foo")));
   }
 
   @Test
@@ -161,7 +161,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     CustomerTask ct = CustomerTask.find.where().eq("task_uuid", taskUUID.toString()).findUnique();
 
     assertEquals(OK, result.status());
-    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Created Instance : Foo")));
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Created UserUniverse : Foo")));
     assertTrue(ct.getCreateTime().before(ct.getCompletionTime()));
   }
 }

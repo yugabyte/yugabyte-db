@@ -1,14 +1,14 @@
-@import com.yugabyte.yw.api.models._
-@import com.yugabyte.yw.api.forms._
+@import com.yugabyte.yw.models._
+@import com.yugabyte.yw.forms._
 @import play.api._
 
-@(instance: Instance, panelList: List[GrafanaPanelData] )
+@(universe: Universe, panelList: List[GrafanaPanelData] )
 
 @main(true, "show-instance") {
 <div id="page-wrapper" style="min-height: 1191px;">
   <div class="row header-row">
     <div class="col-lg-10">
-      <h1>Instance: @instance.name</h1>
+      <h1>Universe: @universe.name</h1>
     </div>
     <div class="col-lg-2">
       <a href="#" class="btn btn-primary action-btn">

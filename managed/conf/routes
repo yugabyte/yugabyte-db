@@ -9,14 +9,14 @@
 ###################################################################################################
 
 # Web Specific Routes
-GET     /                           com.yugabyte.yw.ui.controllers.DashboardPageController.index()
-GET     /createInstance             com.yugabyte.yw.ui.controllers.DashboardPageController.createInstance()
-GET     /instances                  com.yugabyte.yw.ui.controllers.DashboardPageController.instances()
-GET     /tables                     com.yugabyte.yw.ui.controllers.DashboardPageController.tables()
-GET     /profile                    com.yugabyte.yw.ui.controllers.DashboardPageController.profile()
-GET     /login                      com.yugabyte.yw.ui.controllers.HomePageController.login()
-GET     /register                   com.yugabyte.yw.ui.controllers.HomePageController.register()
-GET     /instances/:iUUID           com.yugabyte.yw.ui.controllers.UniversePageController.index(iUUID: java.util.UUID)
+GET     /                                             com.yugabyte.yw.ui.controllers.DashboardPageController.index()
+GET     /createInstance                               com.yugabyte.yw.ui.controllers.DashboardPageController.createInstance()
+GET     /instances                                    com.yugabyte.yw.ui.controllers.DashboardPageController.instances()
+GET     /tables                                       com.yugabyte.yw.ui.controllers.DashboardPageController.tables()
+GET     /profile                                      com.yugabyte.yw.ui.controllers.DashboardPageController.profile()
+GET     /login                                        com.yugabyte.yw.ui.controllers.HomePageController.login()
+GET     /register                                     com.yugabyte.yw.ui.controllers.HomePageController.register()
+GET     /instances/:iUUID                             com.yugabyte.yw.ui.controllers.UniversePageController.index(iUUID: java.util.UUID)
 
 
 ###################################################################################################
@@ -25,45 +25,37 @@ GET     /instances/:iUUID           com.yugabyte.yw.ui.controllers.UniversePageC
 #
 ###################################################################################################
 
-# Session Specific Routes
-POST    /api/login                                    com.yugabyte.yw.api.controllers.SessionController.login()
-GET     /api/logout                                   com.yugabyte.yw.api.controllers.SessionController.logout()
-POST    /api/register                                 com.yugabyte.yw.api.controllers.SessionController.register()
+# Session specific API
+POST    /api/login                                    com.yugabyte.yw.controllers.SessionController.login()
+GET     /api/logout                                   com.yugabyte.yw.controllers.SessionController.logout()
+POST    /api/register                                 com.yugabyte.yw.controllers.SessionController.register()
 
-# Cloud Specific API
-GET     /api/providers                                com.yugabyte.yw.api.controllers.CloudProviderController.list()
-POST    /api/providers                                com.yugabyte.yw.api.controllers.CloudProviderController.create()
-GET     /api/providers/:pUUID/regions                 com.yugabyte.yw.api.controllers.RegionController.list(pUUID: java.util.UUID)
-POST    /api/providers/:pUUID/regions                 com.yugabyte.yw.api.controllers.RegionController.create(pUUID: java.util.UUID)
-GET     /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.api.controllers.AvailabilityZoneController.list(pUUID: java.util.UUID, rUUID: java.util.UUID)
-POST    /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.api.controllers.AvailabilityZoneController.create(pUUID: java.util.UUID, rUUID: java.util.UUID)
+# Cloud provider API
+GET     /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.list()
+POST    /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.create()
+GET     /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(pUUID: java.util.UUID)
+POST    /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(pUUID: java.util.UUID)
+GET     /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.list(pUUID: java.util.UUID, rUUID: java.util.UUID)
+POST    /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.create(pUUID: java.util.UUID, rUUID: java.util.UUID)
 
-# Customer Management API
-GET     /api/customers/:cUUID                         com.yugabyte.yw.api.controllers.CustomerController.index(cUUID: java.util.UUID)
-PUT     /api/customers/:cUUID                         com.yugabyte.yw.api.controllers.CustomerController.update(cUUID: java.util.UUID)
+# Customer profile API
+GET     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
+PUT     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 
-# Universe Management API
-POST    /api/customers/:cUUID/instances               com.yugabyte.yw.api.controllers.UniverseController.create(cUUID: java.util.UUID)
-PUT     /api/customers/:cUUID/instances               com.yugabyte.yw.api.controllers.UniverseController.update(cUUID: java.util.UUID)
-GET     /api/customers/:cUUID/instances               com.yugabyte.yw.api.controllers.UniverseController.list(cUUID: java.util.UUID)
-GET     /api/tables                                   com.yugabyte.yw.api.controllers.TablesController.list()
-GET     /api/tablet-servers                           com.yugabyte.yw.api.controllers.TabletServerController.list()
+# Universe, table, etc management API
+POST    /api/customers/:cUUID/instances               com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
+PUT     /api/customers/:cUUID/instances/:uniUUID      com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/instances               com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.getDetails(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+# Table Management API
+GET     /api/tables                                   com.yugabyte.yw.controllers.TablesController.list()
+GET     /api/tablet-servers                           com.yugabyte.yw.controllers.TabletServerController.list()
 
 # Task History API
-GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.api.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
+GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
+GET     /commissioner/tasks/:tUUID                    com.yugabyte.yw.controllers.CustomerTaskController.getTaskStatus(tUUID: java.util.UUID)
 
-
-###################################################################################################
-#
-# Commissioner endpoints.
-#
-###################################################################################################
-
-# Create or edit an instance.
-POST    /commissioner/universes/:iUUID                com.yugabyte.yw.commissioner.controllers.TasksController.createOrEdit(iUUID: java.util.UUID)
-
-# Get details of a task. Currently returns its status and percentage completion.
-GET     /commissioner/tasks/:tUUID                    com.yugabyte.yw.commissioner.controllers.TasksController.show(tUUID: java.util.UUID)
 
 ###################################################################################################
 #
@@ -72,7 +64,7 @@ GET     /commissioner/tasks/:tUUID                    com.yugabyte.yw.commission
 ###################################################################################################
 
 # Returns the list of masters for a given instance.
-GET     /metamaster/universe/:iUUID                   com.yugabyte.yw.metamaster.MetaMasterController.get(iUUID: java.util.UUID)
+GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.metamaster.MetaMasterController.get(universeUUID: java.util.UUID)
 
 
 ###################################################################################################
@@ -82,4 +74,4 @@ GET     /metamaster/universe/:iUUID                   com.yugabyte.yw.metamaster
 ###################################################################################################
 
 # Map static resources from the /public folder to the /assets URL path
-GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)
+GET     /assets/*file                                 controllers.Assets.versioned(path="/public", file: Asset)

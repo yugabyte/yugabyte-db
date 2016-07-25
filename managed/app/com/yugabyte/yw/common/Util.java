@@ -7,7 +7,7 @@ import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import com.yugabyte.yw.commissioner.models.Universe;
+import com.yugabyte.yw.models.Universe;
 
 import java.util.ArrayList;
 import java.util.Collection;

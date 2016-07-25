@@ -3,8 +3,8 @@
 package com.yugabyte.yw.api.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.api.controllers.TablesController;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.TablesController;
 
 import org.junit.*;
 import org.yb.client.ListTablesResponse;

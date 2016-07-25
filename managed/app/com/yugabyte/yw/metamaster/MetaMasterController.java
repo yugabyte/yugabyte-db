@@ -10,9 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.models.Universe;
-import com.yugabyte.yw.commissioner.models.Universe.NodeDetails;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.NodeDetails;
 
 import play.data.FormFactory;
 import play.mvc.Controller;

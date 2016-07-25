@@ -2,13 +2,12 @@
 
 package com.yugabyte.yw.ui.controllers;
 
-import static com.yugabyte.yw.common.controllers.TokenAuthenticator.COOKIE_AUTH_TOKEN;
+import static com.yugabyte.yw.ui.controllers.TokenAuthenticator.COOKIE_AUTH_TOKEN;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.api.controllers.CustomerController;
-import com.yugabyte.yw.api.forms.CustomerLoginFormData;
-import com.yugabyte.yw.api.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.common.controllers.TokenAuthenticator;
+import com.yugabyte.yw.controllers.CustomerController;
+import com.yugabyte.yw.forms.CustomerLoginFormData;
+import com.yugabyte.yw.forms.CustomerRegisterFormData;
 
 import play.data.Form;
 import play.data.FormFactory;

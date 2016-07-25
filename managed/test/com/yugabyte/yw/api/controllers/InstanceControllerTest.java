@@ -4,14 +4,14 @@ package com.yugabyte.yw.api.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.api.models.AvailabilityZone;
-import com.yugabyte.yw.api.models.Customer;
-import com.yugabyte.yw.api.models.CustomerTask;
-import com.yugabyte.yw.api.models.Instance;
-import com.yugabyte.yw.api.models.Provider;
-import com.yugabyte.yw.api.models.Region;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.UserUniverse;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -69,7 +69,7 @@ public class InstanceControllerTest extends FakeDBApplication {
   @Test
   public void testInstanceListWithValidUUID() {
     ObjectNode placementInfo = Json.newObject();
-    Instance i1 = Instance.create(customer, "instance-1", placementInfo);
+    UserUniverse i1 = UserUniverse.create(customer, "instance-1", placementInfo);
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/instances").cookie(validCookie));
@@ -101,7 +101,7 @@ public class InstanceControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
 
     assertThat(contentAsString(result), is(containsString("\"regionUUID\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"multiAZ\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"isMultiAZ\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"name\":[\"This field is required\"]")));
   }
 
@@ -110,12 +110,12 @@ public class InstanceControllerTest extends FakeDBApplication {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Provider p = Provider.create("Amazon");
-    Region r = Region.create(p, "region-1", "Region 1");
+    Region r = Region.create(p, "region-1", "PlacementRegion 1");
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("regionUUID", r.uuid.toString());
-    bodyJson.put("name", "Single Instance");
-    bodyJson.put("multiAZ", false);
+    bodyJson.put("name", "Single UserUniverse");
+    bodyJson.put("isMultiAZ", false);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/instances").cookie(validCookie).bodyJson(bodyJson));
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
@@ -135,14 +135,14 @@ public class InstanceControllerTest extends FakeDBApplication {
 			.thenReturn(postResponseJson);
 
 		Provider p = Provider.create("Amazon");
-    Region r = Region.create(p, "region-1", "Region 1");
-    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "AZ 2", "subnet-2");
+    Region r = Region.create(p, "region-1", "PlacementRegion 1");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("regionUUID", r.uuid.toString());
-    bodyJson.put("name", "Single Instance");
-    bodyJson.put("multiAZ", false);
+    bodyJson.put("name", "Single UserUniverse");
+    bodyJson.put("isMultiAZ", false);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/instances").cookie(validCookie).bodyJson(bodyJson));
 		assertEquals(OK, result.status());
@@ -164,7 +164,7 @@ public class InstanceControllerTest extends FakeDBApplication {
 		CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
 		assertNotNull(th);
 		assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-		assertThat(th.getTarget().toString(), allOf(notNullValue(), equalTo("Instance")));
+		assertThat(th.getTarget().toString(), allOf(notNullValue(), equalTo("UserUniverse")));
   }
 
   @Test
@@ -172,10 +172,10 @@ public class InstanceControllerTest extends FakeDBApplication {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Provider p = Provider.create("Amazon");
-    Region r = Region.create(p, "region-1", "Region 1");
-    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "AZ 2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "AZ 3", "subnet-3");
+    Region r = Region.create(p, "region-1", "PlacementRegion 1");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
 
 		ObjectNode postResponseJson = Json.newObject();
 		UUID fakeTaskUUID = UUID.randomUUID();
@@ -185,8 +185,8 @@ public class InstanceControllerTest extends FakeDBApplication {
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("regionUUID", r.uuid.toString());
-    bodyJson.put("name", "Single Instance");
-    bodyJson.put("multiAZ", true);
+    bodyJson.put("name", "Single UserUniverse");
+    bodyJson.put("isMultiAZ", true);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/instances").cookie(validCookie).bodyJson(bodyJson));
     assertEquals(OK, result.status());
@@ -209,6 +209,6 @@ public class InstanceControllerTest extends FakeDBApplication {
 		CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
 		assertNotNull(th);
 		assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-		assertThat(th.getTarget().toString(), allOf(notNullValue(), equalTo("Instance")));
+		assertThat(th.getTarget().toString(), allOf(notNullValue(), equalTo("UserUniverse")));
   }
 }

@@ -8,8 +8,8 @@ import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.api.controllers.TabletServerController;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.TabletServerController;
 
 import java.lang.String;
 import java.util.ArrayList;
