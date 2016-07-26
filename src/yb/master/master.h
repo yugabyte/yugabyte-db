@@ -71,7 +71,8 @@ class Master : public server::ServerBase {
   // Wait until this Master's catalog manager instance is the leader and is ready.
   // This method is intended for use by unit tests.
   // If 'timeout' time is exceeded, returns Status::TimedOut.
-  Status WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& timeout)
+  Status WaitUntilCatalogManagerIsLeaderAndReadyForTests(
+    const MonoDelta& timeout = MonoDelta::FromSeconds(10))
       WARN_UNUSED_RESULT;
 
   void Shutdown();

@@ -183,8 +183,7 @@ Status MiniCluster::StartSingleMaster() {
   gscoped_ptr<MiniMaster> mini_master(
       new MiniMaster(env_, GetMasterFsRoot(0), master_rpc_port, is_creating_));
   RETURN_NOT_OK_PREPEND(mini_master->Start(), "Couldn't start master");
-  RETURN_NOT_OK(mini_master->master()->
-      WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));
+  RETURN_NOT_OK(mini_master->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   mini_masters_[0] = shared_ptr<MiniMaster>(mini_master.release());
   return Status::OK();
 }

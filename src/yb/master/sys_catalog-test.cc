@@ -54,7 +54,7 @@ class SysCatalogTest : public YBTest {
     mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0, true));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
-    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));
+    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
     // Create a client proxy to it.
     MessengerBuilder bld("Client");

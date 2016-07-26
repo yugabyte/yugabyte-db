@@ -2010,8 +2010,7 @@ TEST_F(ClientTest, TestStaleLocations) {
   // On Master restart and no tablet report we expect the locations to be stale
   cluster_->mini_tablet_server(0)->Shutdown();
   ASSERT_OK(cluster_->mini_master()->Restart());
-  ASSERT_OK(cluster_->mini_master()->master()->
-      WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));
+  ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
                   tablet_id, &locs_pb));
   ASSERT_TRUE(locs_pb.stale());

@@ -65,7 +65,7 @@ class MasterTest : public YBTest {
     mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0, true));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
-    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));
+    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
     // Create a client proxy to it.
     MessengerBuilder bld("Client");
@@ -300,8 +300,7 @@ TEST_F(MasterTest, TestCatalog) {
 
   // Restart the master, verify the table still shows up.
   ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->
-      WaitUntilCatalogManagerIsLeaderAndReadyForTests(MonoDelta::FromSeconds(5)));
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
   ASSERT_EQ(1, tables.tables_size());

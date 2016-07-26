@@ -44,7 +44,10 @@ MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, bool is_crea
       rpc_port_(rpc_port) {}
 
 MiniMaster::~MiniMaster() {
-  CHECK(!running_);
+  if (running_) {
+    LOG(WARNING) << "MiniMaster destructor called without clean shutdown for: "
+                 << bound_rpc_addr_str();
+  }
 }
 
 Status MiniMaster::Start() {
