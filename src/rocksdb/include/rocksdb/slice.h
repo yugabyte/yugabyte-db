@@ -98,6 +98,14 @@ class Slice {
             (memcmp(data_ + size_ - x.size_, x.data_, x.size_) == 0));
   }
 
+  char ConsumeByte() {
+    assert(size_ > 0);
+    char c = *data_;
+    ++data_;
+    --size_;
+    return c;
+  }
+
   // Compare two slices and returns the first byte where they differ
   size_t difference_offset(const Slice& b) const;
 

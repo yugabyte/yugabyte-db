@@ -37,6 +37,10 @@ Options:
     Force a static build.
   --target
     Pass the given target to make.
+  --cxx-test <test_name>
+    Build and run the given C++ test. We run the test directly (not going through ctest).
+  --no-fix-rpath
+    Skip running fix_rpath.py.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -58,6 +62,8 @@ build_java=true
 run_java_tests=false
 save_log=false
 make_targets=()
+fix_rpath=true
+cxx_test_name=""
 
 original_args=( "$@" )
 while [ $# -gt 0 ]; do
@@ -109,6 +115,15 @@ while [ $# -gt 0 ]; do
       make_targets+=( "$2" )
       shift
     ;;
+    --no-fix-rpath)
+      fix_rpath=false
+    ;;
+    --cxx-test)
+      cxx_test_name="$2"
+      make_targets+=( "$2" )
+      build_java=false
+      shift
+    ;;
     debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
       build_type="$1"
       build_type_specified=true
@@ -125,7 +140,7 @@ while [ $# -gt 0 ]; do
 done
 
 cmake_opts=()
-set_cmake_build_type_and_compiler_type
+set_cmake_build_type_and_compiler_type  # this can also update cmake_opts
 cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
 
 if "$verbose"; then
@@ -250,7 +265,9 @@ fi
 
 touch "$thirdparty_built_flag_file"
 
-"$YB_SRC_ROOT"/build-support/fix_rpath.py --build-root "$BUILD_ROOT"
+if "$fix_rpath"; then
+  "$YB_SRC_ROOT"/build-support/fix_rpath.py --build-root "$BUILD_ROOT"
+fi
 
 (
   cd "$BUILD_ROOT"
@@ -261,6 +278,11 @@ touch "$thirdparty_built_flag_file"
     fatal "Some test binaries referenced in CMakeLists.txt files do not exist"
   fi
 )
+
+if [[ -n $cxx_test_name ]]; then
+  # TODO: also fix this to work with RocksDB tests.
+  "$BUILD_ROOT/bin/$cxx_test_name"
+fi
 
 # Check if the java build is needed. And skip java unit test runs if specified - time taken
 # for tests is around two minutes currently.

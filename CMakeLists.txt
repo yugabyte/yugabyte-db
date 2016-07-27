@@ -606,7 +606,7 @@ set(EXECUTABLE_OUTPUT_PATH "${CMAKE_CURRENT_BINARY_DIR}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-include_directories(src src/rocksdb/include)
+include_directories(src src/rocksdb src/rocksdb/include)
 
 ############################################################
 # Visibility
@@ -1160,3 +1160,4 @@ add_subdirectory(src/yb/benchmarks)
 add_subdirectory(src/yb/twitter-demo)
 add_subdirectory(src/yb/tools)
 add_subdirectory(src/yb/rocksutil)
+add_subdirectory(src/yb/docdb)

@@ -28,7 +28,7 @@ inline std::string ToString(T value) {
 }
 
 template <typename T>
-inline std::string VectorToString(const std::vector<T> vec) {
+inline std::string VectorToString(const std::vector<T>& vec) {
   std::stringstream os;
   os << "[";
   bool need_separator = false;

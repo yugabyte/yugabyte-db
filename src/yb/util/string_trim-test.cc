@@ -23,5 +23,10 @@ TEST(StringTrimTest, TrimStr) {
   ASSERT_EQ("ooba", TrimStr("foobar", "fr"));
 }
 
+TEST(StringTrimTest, TestApplyEagerLineContinuation) {
+  ASSERT_EQ("  foo bar\n  baz  ", ApplyEagerLineContinuation("  foo \\\n      bar\n  baz  "));
+  ASSERT_EQ("  foo bar\n  baz  ", ApplyEagerLineContinuation("  foo \\\n   \\\n    bar\n  baz  "));
+}
+
 }
 }

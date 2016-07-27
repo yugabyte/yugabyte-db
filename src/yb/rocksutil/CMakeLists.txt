@@ -6,7 +6,8 @@
 
 set(ROCKSUTIL_SRCS
     yb_rocksdb.cc
-    yb_rocksdb_logger.cc)
+    yb_rocksdb_logger.cc
+    write_batch_formatter.cc)
 
 set(ROCKSUTIL_LIBS
     gflags

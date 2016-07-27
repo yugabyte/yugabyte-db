@@ -111,6 +111,10 @@ message WriteRequestPB {
   // The required consistency mode for this write.
   optional ExternalConsistencyMode external_consistency_mode = 4 [default = CLIENT_PROPAGATED];
 
+  // When replicating RocksDB write operations through Raft for single-shard transactions, we put
+  // a byte representation of a write batch here directly.
+  optional bytes rocksdb_write_batch = 6;
+
   // A timestamp obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with
   // the timestamp.

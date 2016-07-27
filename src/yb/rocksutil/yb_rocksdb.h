@@ -4,6 +4,9 @@
 #define YB_YB_ROCKSDB_H
 
 #include <string>
+#include <cstddef>
+
+#include "yb/util/slice.h"
 #include "rocksdb/env.h"
 #include "rocksdb/include/rocksdb/options.h"
 
@@ -15,6 +18,16 @@ namespace yb {
 void InitRocksDBOptions(rocksdb::Options *options,
                         const std::string& tablet_id,
                         const std::shared_ptr<rocksdb::Statistics>& statistics);
+
+std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice);
+
+inline rocksdb::Slice YBToRocksDBSlice(const yb::Slice& yb_slice) {
+  return rocksdb::Slice(reinterpret_cast<const char*>(yb_slice.data()), yb_slice.size());
+}
+
+inline yb::Slice RocksDBToYBSlice(const rocksdb::Slice& rocksdb_slice) {
+  return yb::Slice(reinterpret_cast<const uint8_t*>(rocksdb_slice.data()), rocksdb_slice.size());
+}
 
 }
 

@@ -34,6 +34,11 @@ inline std::string TrimStr(const std::string& s,
   return LeftTrimStr(RightTrimStr(s, chars_to_trim), chars_to_trim);
 }
 
+// Concatenates lines if the final character of a line is "\". Also removes whitespace in the
+// next line after such continuation backslash (hence "eager" in the name). This is useful in
+// respecting the maximum line length rule in expected test output specified using raw literals.
+std::string ApplyEagerLineContinuation(const std::string& s);
+
 }
 }
 
