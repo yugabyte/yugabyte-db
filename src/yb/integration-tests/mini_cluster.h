@@ -157,6 +157,10 @@ class MiniCluster {
   Status CreateClient(client::YBClientBuilder* builder,
                       client::sp::shared_ptr<client::YBClient>* client);
 
+  // Allocates a free port and stores a file lock guarding access to that port into an internal
+  // array of file locks.
+  uint16_t AllocateFreePort();
+
  private:
   enum {
     kTabletReportWaitTimeSeconds = 5,
@@ -177,6 +181,7 @@ class MiniCluster {
 
   std::vector<std::shared_ptr<master::MiniMaster> > mini_masters_;
   std::vector<std::shared_ptr<tserver::MiniTabletServer> > mini_tablet_servers_;
+  std::vector<std::unique_ptr<FileLock> > free_port_file_locks_;
 };
 
 } // namespace yb

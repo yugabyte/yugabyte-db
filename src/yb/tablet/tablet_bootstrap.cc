@@ -791,6 +791,13 @@ Status TabletBootstrap::HandleEntry(ReplayState* state, LogEntryPB* entry) {
       if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
         // check the unpaired ops for the matching replicate msg, abort if not found
         RETURN_NOT_OK(HandleCommitMessage(state, entry));
+      } else if (entry->has_commit() && entry->commit().op_type() == NO_OP) {
+        // These entry types are still expected to appear when a no-op is replicated. We should
+        // eventually get rid of them too for non-Kudu tables.
+        delete entry;
+      } else {
+        LOG(FATAL) << "COMMIT entries other than no-ops should not be used by non-Kudu tables: "
+            << entry->ShortDebugString();
       }
       break;
     default:
@@ -831,6 +838,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
       index <= state->rocksdb_max_persistent_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied
     // to RocksDB.
+    delete replicate_entry;
     return Status::OK();
   }
 

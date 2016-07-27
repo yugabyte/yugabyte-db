@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_name=${0##*/}
+script_name=${script_name%.*}
+
 # Source the common-build-env.sh script in the build-support subdirectory of the directory of this
 # script.
 . "${0%/*}"/build-support/common-build-env.sh
@@ -32,6 +35,8 @@ Options:
     Run the java unit tests when build is enabled.
   --static
     Force a static build.
+  --target
+    Pass the given target to make.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -51,7 +56,10 @@ make_opts=()
 force=false
 build_java=true
 run_java_tests=false
+save_log=false
+make_targets=()
 
+original_args=( "$@" )
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -85,7 +93,7 @@ while [ $# -gt 0 ]; do
     --clang)
       YB_COMPILER_TYPE="clang"
     ;;
-    --skip-java-build)
+    --skip-java|--skip-java-build)
       build_java=false
     ;;
     --run-java-tests)
@@ -93,6 +101,13 @@ while [ $# -gt 0 ]; do
     ;;
     --static)
       YB_LINK=static
+    ;;
+    --save-log)
+      save_log=true
+    ;;
+    --target)
+      make_targets+=( "$2" )
+      shift
     ;;
     debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
       build_type="$1"
@@ -109,43 +124,49 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [[ "$OSTYPE" =~ ^darwin && "$YB_COMPILER_TYPE" != "clang" ]]; then
-  echo "Can only build with clang on Mac OS X, but found YB_COMPILER_TYPE=$YB_COMPILER_TYPE" >&2
-  exit 1
+cmake_opts=()
+set_cmake_build_type_and_compiler_type
+cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
+
+if "$verbose"; then
+  log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
 
-cmake_opts=()
-case "$build_type" in
-  asan)
-    cmake_opts+=( -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 )
-    cmake_build_type=fastdebug
-    if [ -n "$YB_COMPILER_TYPE" ] && [ "$YB_COMPILER_TYPE" != "clang" ]; then
-      echo "ASAN builds require clang"
+if "$save_log"; then
+  log_dir="$HOME/logs"
+  mkdir -p "$log_dir"
+  log_name_prefix="$log_dir/${script_name}_${build_type}"
+  log_path="${log_name_prefix}_$( date +%Y-%m-%d_%H_%M_%S ).log"
+  latest_log_symlink_path="${log_name_prefix}_latest.log"
+  rm -f "$latest_log_symlink_path"
+  ln -s "$log_path" "$latest_log_symlink_path"
+
+  echo "Logging to $log_path (also symlinked to $latest_log_symlink_path)" >&2
+  filtered_args=()
+  for arg in "${original_args[@]}"; do
+    if [[ "$arg" != "--save-log" ]]; then
+      filtered_args+=( "$arg" )
     fi
-    YB_COMPILER_TYPE="clang"
-  ;;
-  tsan)
-    echo "TSAN builds are not supported yet" >&2
-    exit 1
-  ;;
-  *)
-    cmake_build_type=$build_type
-esac
+  done
+
+  set +eu
+  ( set -x; "$0" "${filtered_args[@]}" ) 2>&1 | tee "$log_path"
+  exit_code=$?
+  echo "Log saved to $log_path (also symlinked to $latest_log_symlink_path)" >&2
+  exit "$exit_code"
+fi
+
+if "$verbose"; then
+  log "$script_name command line: ${original_args[@]}"
+fi
 
 set_build_root "$build_type"
-
-# We have set cmake_build_type and BUILD_ROOT based on build_type, so build_type is not needed
-# anymore. The difference between build_type and cmake_build_type is that the former can be set to
-# some special values, such as "tsan" and "asan".
-unset build_type
 
 validate_cmake_build_type "$cmake_build_type"
 
 export YB_COMPILER_TYPE
 
-cmake_opts=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
-
-if "$verbose"; then 
+if "$verbose"; then
   # http://stackoverflow.com/questions/22803607/debugging-cmakelists-txt
   cmake_opts+=( -Wdev --debug-output --trace -DYB_VERBOSE=1 )
   make_opts+=( VERBOSE=1 SH="bash -x" )
@@ -161,12 +182,11 @@ if tty -s && ( $clean_before_build || $clean_thirdparty ); then
     last_clean_timestamp_sec=$( cat "$last_clean_timestamp_path" )
     last_build_time_sec_ago=$(( $current_timestamp_sec - $last_clean_timestamp_sec ))
     if [[ "$last_build_time_sec_ago" -lt 3600 ]] && ! "$force"; then
-      echo "Last clean build was performed less than an hour ($last_build_time_sec_ago sec) ago" >&2
-      echo "Do you still want to do a clean build? [y/N]" >&2
+      log "Last clean build was performed less than an hour ($last_build_time_sec_ago sec) ago"
+      log "Do you still want to do a clean build? [y/N]"
       read answer
       if [[ ! "$answer" =~ ^[yY]$ ]]; then
-        echo "Operation canceled" >&2
-        exit 1
+        fatal "Operation canceled"
       fi
     fi
   fi
@@ -175,7 +195,7 @@ if tty -s && ( $clean_before_build || $clean_thirdparty ); then
 fi
 
 if "$clean_before_build"; then
-  echo "Removing '$BUILD_ROOT' (--clean specified)"
+  log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "$BUILD_ROOT" )
 fi
 
@@ -188,29 +208,29 @@ cd "$BUILD_ROOT"
 
 thirdparty_built_flag_file="$BUILD_ROOT/built_thirdparty"
 if $clean_thirdparty; then
-  echo "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
+  log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
     set -x
-    cd "$thirdparty_dir"
+    cd "$YB_THIRDPARTY_DIR"
     git clean -dxf
     rm -f "$thirdparty_built_flag_file"
   )
 fi
 
 # Add the installed/bin directory to PATH so that we run the cmake binary from there.
-export PATH="$thirdparty_dir/installed/bin:$PATH"
+export PATH="$YB_THIRDPARTY_DIR/installed/bin:$PATH"
 
 if "$no_ccache"; then
   cmake_opts+=( -DYB_NO_CCACHE=1 )
 fi
 
-if "$force_run_cmake" || [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
+if "$force_run_cmake" || [[ ! -f Makefile || ! -f "$thirdparty_built_flag_file" ]]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
-    echo "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
+    log "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
       "before running cmake"
     export NO_REBUILD_THIRDPARTY=1
   fi
-  echo "Running cmake in $PWD"
+  log "Running cmake in $PWD"
   ( set -x; cmake "${cmake_opts[@]}" "$YB_SRC_ROOT" )
 fi
 
@@ -218,12 +238,12 @@ if "$rocksdb_only"; then
   make_opts+=( build_rocksdb_all_targets )
 fi
 
-echo Running make in $PWD
+log "Running make in $PWD"
 set +u +e  # "set -u" may cause failures on empty lists
-time ( set -x; make -j8 "${make_opts[@]}" )
+time ( set -x; make -j8 "${make_opts[@]}" "${make_targets[@]}" )
 exit_code=$?
 set -u -e
-echo "Non-java build finished with exit code $exit_code. Timing information is available above."
+log "Non-java build finished with exit code $exit_code. Timing information is available above."
 if [ "$exit_code" -ne 0 ]; then
   exit "$exit_code"
 fi
@@ -234,26 +254,22 @@ touch "$thirdparty_built_flag_file"
 
 (
   cd "$BUILD_ROOT"
+  log "Checking if all test binaries referenced by CMakeLists.txt files exist."
   set +e
   YB_CHECK_TEST_EXISTENCE_ONLY=1 ctest -j8 2>&1 | grep Failed
   if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
-    echo "Some test binaries referenced in CMakeLists.txt files do not exist" >&2
-    exit 1
+    fatal "Some test binaries referenced in CMakeLists.txt files do not exist"
   fi
 )
 
 # Check if the java build is needed. And skip java unit test runs if specified - time taken
 # for tests is around two minutes currently.
-if $build_java; then
+if "$build_java"; then
   cd "$YB_SRC_ROOT"/java
-  if command -v mvn 2>/dev/null; then
-    if $run_java_tests; then
-      time ( mvn install )
-    else
-      time ( mvn install -DskipTests )
-    fi
-    echo "Java build finished, total time information above."
+  if $run_java_tests; then
+    time ( mvn install )
   else
-    echo "NOTE: mvn binary not found, skipping java build."
+    time ( mvn install -DskipTests )
   fi
+  log "Java build finished, total time information above."
 fi

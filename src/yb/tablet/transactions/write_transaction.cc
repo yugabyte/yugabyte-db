@@ -138,10 +138,15 @@ Status WriteTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {
     i++;
   }
 
-  // Create the Commit message
-  commit_msg->reset(new CommitMsg());
-  state()->ReleaseTxResultPB((*commit_msg)->mutable_result());
-  (*commit_msg)->set_op_type(WRITE_OP);
+  if (tablet->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // Create the Commit message
+    commit_msg->reset(new CommitMsg());
+    state()->ReleaseTxResultPB((*commit_msg)->mutable_result());
+    (*commit_msg)->set_op_type(WRITE_OP);
+  } else {
+    // We don't use COMMIT messages for non-Kudu tables.
+    commit_msg->reset(nullptr);
+  }
 
   return Status::OK();
 }

@@ -288,6 +288,10 @@ JSONDocument::Type JSONDocument::type() const {
 
     case fbson::FbsonType::T_Binary:
       assert(false);
+      // Added to avoid a compile error of the YugaByte codebase (we treat unannotated fall-through
+      // as an error).
+      break;
+
     default:
       assert(false);
   }

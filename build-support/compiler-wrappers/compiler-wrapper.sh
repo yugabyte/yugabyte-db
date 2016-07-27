@@ -28,6 +28,7 @@ trap 'rm -f "$stderr_path"' EXIT
 
 compiler_args=( "$@" )
 
+set_default_compiler_type
 case "$YB_COMPILER_TYPE" in
   gcc)
     cc_executable=gcc
@@ -106,6 +107,8 @@ set -e
 if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/null || \
    grep "$PCH_NAME: not used because " "$stderr_path" >/dev/null || \
    grep "fatal error: malformed or corrupted AST file:" "$stderr_path" >/dev/null || \
+   grep "new operators was enabled in PCH file but is currently disabled" "$stderr_path" \
+     >/dev/null || \
    egrep "definition of macro '.*' differs between the precompiled header .* and the command line" \
          "$stderr_path" >/dev/null
 then

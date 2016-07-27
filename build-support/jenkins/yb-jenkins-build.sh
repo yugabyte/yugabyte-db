@@ -2,7 +2,9 @@
 
 set -euo pipefail
 
-function print_help() {
+. "${0%/*}/../common-test-env.sh"
+
+print_help() {
   cat <<-EOT
 Usage: ${0##*} <options>
 Options:
@@ -14,14 +16,13 @@ Options:
 
 Environment variables:
   JOB_NAME
-    Jenkins job name. 
+    Jenkins job name.
   BUILD_TYPE
     Passed directly to build-and-test.sh. The default value is determined based on the job name
     if this environment variable is not specified or if the value is "auto".
   YB_NUM_TESTS_TO_RUN
     Maximum number of tests ctest should run before exiting. Used for testing Jenkins scripts.
 EOT
-
 }
 
 delete_arc_patch_branches=false
@@ -42,24 +43,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-#
-# If BUILD_TYPE has not been passed in, or is set to auto, then infer
-# the build type automatically from the job name.
-#
 JOB_NAME=${JOB_NAME:-}
-if [[ -z "${BUILD_TYPE:-}" || "${BUILD_TYPE:-}" = "auto" ]]; then
-  if [[ "$JOB_NAME" == *"-release"* ]]; then
-    export BUILD_TYPE=release
-  elif [[ "$JOB_NAME" == *"-debug"* ]]; then
-    export BUILD_TYPE=debug
-  elif [[ "$JOB_NAME" == *"-tsan"* ]]; then
-    export BUILD_TYPE=tsan
-  else
-    export BUILD_TYPE=debug
-  fi
-fi
+build_type=${BUILD_TYPE:-}
+set_build_type_based_on_jenkins_job_name
+readonly BUILD_TYPE=$build_type
+export BUILD_TYPE
 
 echo "Build type: ${BUILD_TYPE}";
+
+set_compiler_type_based_on_jenkins_job_name
 
 if "$delete_arc_patch_branches"; then
   echo "Deleting branches starting with 'arcpatch-D'"

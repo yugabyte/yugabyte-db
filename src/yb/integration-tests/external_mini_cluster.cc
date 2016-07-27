@@ -265,7 +265,8 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
 
 Status ExternalMiniCluster::StartSingleMaster() {
   string exe = GetBinaryPath(kMasterBinaryName);
-  uint16_t free_port = GetFreePort();
+  uint16_t free_port = AllocateFreePort();
+
   LOG(INFO) << "Using an auto-assigned port " << free_port
       << " to start an external mini-cluster non-distributed master";
   scoped_refptr<ExternalMaster> master =
@@ -280,7 +281,7 @@ Status ExternalMiniCluster::StartSingleMaster() {
 Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
   int add_at_index = num_masters();
 
-  int new_port = GetFreePort();
+  int new_port = AllocateFreePort();
   LOG(INFO) << "Using an auto-assigned port " << new_port
             << " to start a new external mini-cluster master.";
 
@@ -588,7 +589,7 @@ Status ExternalMiniCluster::StartDistributedMasters() {
 
   for (int i = 0; i < opts_.master_rpc_ports.size(); ++i) {
     if (opts_.master_rpc_ports[i] == 0) {
-      opts_.master_rpc_ports[i] = GetFreePort();
+      opts_.master_rpc_ports[i] = AllocateFreePort();
       LOG(INFO) << "Using an auto-assigned port " << opts_.master_rpc_ports[i]
         << " to start an external mini-cluster master";
     }
@@ -884,6 +885,13 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
                                resp.ShortDebugString());
   }
   return Status::OK();
+}
+
+uint16_t ExternalMiniCluster::AllocateFreePort() {
+  // This will take a file lock ensuring the port does not get claimed by another thread/process
+  // and add it to our vector of such locks that will be freed on minicluster shutdown.
+  free_port_file_locks_.emplace_back();
+  return GetFreePort(&free_port_file_locks_.back());
 }
 
 //------------------------------------------------------------

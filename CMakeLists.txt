@@ -301,6 +301,26 @@ else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
 
+if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
+  if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
+    NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
+    message(SEND_ERROR "YB_COMPILER_TYPE is set to '$ENV{YB_COMPILER_TYPE}', but it must be 'clang'\
+ for ASAN/TSAN/UBSAN builds. YB_USE_ASAN=${YB_USE_ASAN}, YB_USE_TSAN=${YB_USE_TSAN},\
+ YB_USE_UBSAN=${YB_USE_UBSAN}")
+  endif()
+  set(ENV{YB_COMPILER_TYPE} "clang")
+endif()
+
+if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
+  if (APPLE)
+    message("Setting compiler type to clang on Mac OS X by default")
+    set(ENV{YB_COMPILER_TYPE} "clang")
+  else()
+    message("Setting compiler type to gcc by default")
+    set(ENV{YB_COMPILER_TYPE} "gcc")
+  endif()
+endif()
+
 # Determine compiler version. This will set COMPILER_FAMILY.
 include(CompilerInfo)
 
@@ -387,24 +407,16 @@ endif()
 # ADD_EXPORTABLE_LIBRARY() when actually compiling exported library variants.
 add_definitions("-DYB_STATIC_DEFINE")
 
+message("YB_USE_ASAN=${YB_USE_ASAN}")
 # Clang does not support using ASAN and TSAN simultaneously.
 if ("${YB_USE_ASAN}" AND "${YB_USE_TSAN}")
   message(SEND_ERROR "Can only enable one of ASAN or TSAN at a time")
 endif()
 
-if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
-  if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
-      NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
-    message(SEND_ERROR "YB_COMPILER_TYPE is set to '$ENV{YB_COMPILER_TYPE}', but it must be 'clang'\
- for ASAN/TSAN/UBSAN builds. YB_USE_ASAN=${YB_USE_ASAN}, YB_USE_TSAN=${YB_USE_TSAN},\
- YB_USE_UBSAN=${YB_USE_UBSAN}")
-  endif()
-  set(ENV{YB_COMPILER_TYPE} "clang")
-endif()
-
 # Flag to enable clang address sanitizer
 # This will only build if clang or a recent enough gcc is the chosen compiler
 if (${YB_USE_ASAN})
+  message("Using ASAN (Address Sanitizer)")
   if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
           ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
     message(SEND_ERROR "Cannot use ASAN without clang or gcc >= 4.8")

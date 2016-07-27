@@ -298,7 +298,11 @@ ADD_YB_TEST(rle-test)
 ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_semaphore-test)
 ADD_YB_TEST(rwc_lock-test)
-ADD_YB_TEST(safe_math-test)
+if (NOT YB_USE_UBSAN)
+  # We disable this test when Undefined Behavior Sanitizer turned on (which is enabled in ASAN
+  # builds). This test involves some integer overflows.
+  ADD_YB_TEST(safe_math-test)
+endif()
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(stack_watchdog-test)

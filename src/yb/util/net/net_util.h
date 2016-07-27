@@ -21,8 +21,9 @@
 #include <vector>
 #include <memory>
 
-#include "yb/util/status.h"
 #include "yb/common/common.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -131,7 +132,9 @@ void TryRunLsof(const Sockaddr& addr, std::vector<std::string>* log = NULL);
 
 // Get a free port that a local server could listen to. For use in tests. Tries up to a 1000 times
 // and fatals after that.
-uint16_t GetFreePort();
+// @param file_lock This will be set to a file lock ensuring the port does not get taken by
+//                  another call to this function, possibly in another process.
+uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock);
 
 } // namespace yb
 #endif

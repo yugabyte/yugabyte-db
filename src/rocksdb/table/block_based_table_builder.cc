@@ -46,6 +46,8 @@
 #include "util/stop_watch.h"
 #include "util/xxhash.h"
 
+#include "yb/gutil/macros.h"
+
 namespace rocksdb {
 
 extern const std::string kHashIndexPrefixesBlock;
@@ -657,6 +659,11 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
         // we don't support no checksum yet
         assert(false);
         // intentional fallthrough in release binary
+        // We add a fallthrough annotation in release mode only -- otherwise we get a compile error
+        // in debug mode ("fallthrough annotation in unreachable code").
+#ifdef NDEBUG
+        FALLTHROUGH_INTENDED;
+#endif
       case kCRC32c: {
         auto crc = crc32c::Value(block_contents.data(), block_contents.size());
         crc = crc32c::Extend(crc, trailer, 1);  // Extend to cover block type

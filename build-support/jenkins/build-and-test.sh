@@ -51,57 +51,63 @@
 #   EXTRA_MAKE_ARGS
 #     Extra arguments to pass to Make
 
+set -e
+# We pipe our build output to a log file with tee.
+# This bash setting ensures that the script exits if the build fails.
+set -o pipefail
+
+. "${0%/*}/../common-test-env.sh"
+
 MAX_NUM_PARALLEL_TESTS=3
 
 # If a commit messages contains a line that says 'DONT_BUILD', exit
 # immediately.
-DONT_BUILD=$(git show|egrep '^\s{4}DONT_BUILD$')
+set +e
+DONT_BUILD=$( git show | egrep '^\s{4}DONT_BUILD$' )
+set -e
 if [ -n "$DONT_BUILD" ]; then
   echo "*** Build not requested. Exiting."
   exit 1
 fi
 
-if [ "`uname`" == "Darwin" ]; then
-  IS_MAC=1
-else
-  IS_MAC=0
-fi
-
+set +e
 SKIP_CPP_BUILD=$(git show|egrep '^\s{4}SKIP_CPP_BUILD$')
+set -e
 if [ -n "$SKIP_CPP_BUILD" ]; then
   BUILD_CPP="0"
 else
   BUILD_CPP="1"
 fi
 
-set -e
-# We pipe our build output to a log file with tee.
-# This bash setting ensures that the script exits if the build fails.
-set -o pipefail
 # gather core dumps
 ulimit -c unlimited
 
 BUILD_TYPE=${BUILD_TYPE:-debug}
-BUILD_TYPE=$(echo "$BUILD_TYPE" | tr A-Z a-z)
+build_type=$BUILD_TYPE
+normalize_build_type
+readonly build_type
+BUILD_TYPE=$build_type
+readonly BUILD_TYPE
 
 if [ "$BUILD_TYPE" = "tsan" ]; then
+  # TODO: move this to cmake_opts in common-build-env.sh.
   export YB_USE_TSAN=1
 fi
+
+set_cmake_build_type_and_compiler_type
+set_build_root "$BUILD_TYPE"
 
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
 
-. "${0%/*}/../common-test-env.sh"
-
-set_build_root "$BUILD_TYPE"
-
 LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 
-if [ "$IS_MAC" == "1" ]; then
+if is_mac; then
+  # TODO: this should be unnecessary with fix_rpath.py.
   export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
-  export DYLD_FALLBACK_LIBRARY_PATH+=":$YB_SRC_ROOT/thirdparty/gflags-2.1.2/lib"
+  export DYLD_FALLBACK_LIBRARY_PATH+=":$YB_THIRDPARTY_DIR/gflags-2.1.2/lib"
   echo "Set DYLD_FALLBACK_LIBRARY_PATH to $DYLD_FALLBACK_LIBRARY_PATH"
 fi
 
@@ -142,36 +148,36 @@ if [ -d "$TOOLCHAIN_DIR" ]; then
 fi
 
 log "Starting third-party dependency build"
-time $YB_SRC_ROOT/build-support/enable_devtoolset.sh thirdparty/build-if-necessary.sh
+enable_devtoolset_script=$YB_SRC_ROOT/build-support/enable_devtoolset.sh
+time "$enable_devtoolset_script" thirdparty/build-if-necessary.sh
 log "Third-party dependency build finished (see timing information above)"
 
-THIRDPARTY_BIN=$(pwd)/thirdparty/installed/bin
+THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
 
 if which ccache >/dev/null ; then
-  CLANG=$(pwd)/build-support/ccache-clang/clang
+  CLANG=$YB_SRC_ROOT/build-support/ccache-clang/clang
 else
-  CLANG=$(pwd)/thirdparty/clang-toolchain/bin/clang
+  CLANG=$YB_SRC_ROOT/thirdparty/clang-toolchain/bin/clang
 fi
 
-enable_devtoolset_script=$YB_SRC_ROOT/build-support/enable_devtoolset.sh
 # Configure the build
 #
 # ASAN/TSAN can't build the Python bindings because the exported YB client
 # library (which the bindings depend on) is missing ASAN/TSAN symbols.
+
 cd "$BUILD_ROOT"
+cmake_cmd_line="$THIRDPARTY_BIN/cmake ${cmake_opts[@]}"
 if [ "$BUILD_TYPE" = "asan" ]; then
   log "Starting ASAN build"
-  time "$enable_devtoolset_script" \
-    "env CC=$CLANG CXX=$CLANG++ $THIRDPARTY_BIN/cmake -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 $YB_SRC_ROOT"
-  log "ASAN build finished (see timing information above)"
-  BUILD_TYPE=fastdebug
+  time "$enable_devtoolset_script" "$cmake_cmd_line $YB_SRC_ROOT"
+  log "CMake invocation for ASAN build finished (see timing information above)"
   BUILD_PYTHON=0
 elif [ "$BUILD_TYPE" = "tsan" ]; then
   log "Starting TSAN build"
   time "$enable_devtoolset_script" \
-    "env CC=$CLANG CXX=$CLANG++ $THIRDPARTY_BIN/cmake -DYB_USE_TSAN=1 $YB_SRC_ROOT"
-  log "TSAN build finished (see timing information above)"
+    "$THIRDPARTY_BIN/cmake $cmake_cmd_line -DYB_USE_TSAN=1 $YB_SRC_ROOT"
+  log "CMake invocation for TSAN build finished (see timing information above)"
   BUILD_TYPE=fastdebug
   EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -LE no_tsan"
   BUILD_PYTHON=0
@@ -179,8 +185,8 @@ elif [ "$BUILD_TYPE" = "coverage" ]; then
   DO_COVERAGE=1
   BUILD_TYPE=debug
   log "Starting coverage build"
-  time "$enable_devtoolset_script" "$THIRDPARTY_BIN/cmake -DYB_GENERATE_COVERAGE=1 $YB_SRC_ROOT"
-  log "Coverage build finished (see timing information above)"
+  time "$enable_devtoolset_script" "$cmake_cmd_line -DYB_GENERATE_COVERAGE=1 $YB_SRC_ROOT"
+  log "CMake invocation for coverage build finished (see timing information above)"
 elif [ "$BUILD_TYPE" = "lint" ]; then
   # Create empty test logs or else Jenkins fails to archive artifacts, which
   # results in the build failing.
@@ -191,13 +197,16 @@ elif [ "$BUILD_TYPE" = "lint" ]; then
   set +e
   time (
     set -e
-    "$enable_devtoolset_script" "$THIRDPARTY_BIN/cmake $YB_SRC_ROOT"
+    "$enable_devtoolset_script" "$cmake_cmd_line $YB_SRC_ROOT"
     make lint
-  ) | tee "$TEST_LOG_DIR"/lint.log
+  ) 2>&1 | tee "$TEST_LOG_DIR"/lint.log
   exit_code=$?
   log "Lint build finished (see timing information above)"
   exit $exit_code
-  set -e
+else
+  log "Running CMake with CMAKE_BUILD_TYPE set to $cmake_build_type"
+  time "$enable_devtoolset_script" "$cmake_cmd_line $YB_SRC_ROOT"
+  log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
 fi
 
 # Only enable test core dumps for certain build types.
@@ -206,11 +215,6 @@ if [ "$BUILD_TYPE" != "asan" ]; then
   # unless the OS configuration enables us to.
   export YB_TEST_ULIMIT_CORE=unlimited
 fi
-
-log "Running CMake with build type $BUILD_TYPE"
-time $YB_SRC_ROOT/build-support/enable_devtoolset.sh \
-  "$THIRDPARTY_BIN/cmake -DCMAKE_BUILD_TYPE=${BUILD_TYPE} $YB_SRC_ROOT"
-log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
 
 NUM_PROCS=$(getconf _NPROCESSORS_ONLN)
 
@@ -278,21 +282,32 @@ if [ "$BUILD_JAVA" == "1" ]; then
   export JAVA_HOME=$JAVA7_HOME
   export PATH=$JAVA_HOME/bin:$PATH
   pushd $YB_SRC_ROOT/java
-  export TSAN_OPTIONS="$TSAN_OPTIONS suppressions=$YB_SRC_DIR/build-support/tsan-suppressions.txt history_size=7"
-  set -x
+  export TSAN_OPTIONS="$TSAN_OPTIONS suppressions=$YB_SRC_DIR/build-support/tsan-suppressions.txt \
+    history_size=7"
   VALIDATE_CSD_FLAG=""
   if [ "$VALIDATE_CSD" == "1" ]; then
     VALIDATE_CSD_FLAG="-PvalidateCSD"
   fi
-  if ! mvn -DskipTests $MVN_FLAGS -PbuildCSD \
+  # --batch-mode hides download progress.
+  # We are filtering out some patterns from Maven output, e.g.:
+  # [INFO] META-INF/NOTICE already added, skipping
+  # [INFO] Downloaded: https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-classworlds/2.4/plexus-classworlds-2.4.jar (46 KB at 148.2 KB/sec)
+  # [INFO] Downloading: https://repo.maven.apache.org/maven2/org/apache/maven/doxia/doxia-logging-api/1.1.2/doxia-logging-api-1.1.2.jar
+  set +e -x
+  mvn -DskipTests $MVN_FLAGS -PbuildCSD \
       $VALIDATE_CSD_FLAG \
       -Dsurefire.rerunFailingTestsCount=3 \
       -Dfailsafe.rerunFailingTestsCount=3 \
-      clean verify ; then
+      --batch-mode \
+      clean verify 2>&1 | \
+        egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
+        egrep -v '^Generating .*[.]html[.][.][.]$'
+  if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+    set -e +x
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'Java build/test failed\n'
   fi
-  set +x
+  set -e +x
   popd
 fi
 

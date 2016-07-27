@@ -402,11 +402,15 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 // Tell ThreadSanitizer to ignore a given function. This can dramatically reduce
 // the running time and memory requirements for racy code when TSAN is active.
 // GCC does not support this attribute at the time of this writing (GCC 4.8).
+// Also a similar macro for AddressSanitizer.
 #if defined(__llvm__)
 #define ATTRIBUTE_NO_SANITIZE_THREAD \
     __attribute__((no_sanitize_thread))
+#define ATTRIBUTE_NO_SANITIZE_ADDRESS \
+    __attribute__((no_sanitize("address")))
 #else
 #define ATTRIBUTE_NO_SANITIZE_THREAD
+#define ATTRIBUTE_NO_SANITIZE_ADDRESS
 #endif
 
 #ifndef HAVE_ATTRIBUTE_SECTION  // may have been pre-set to 0, e.g. for Darwin

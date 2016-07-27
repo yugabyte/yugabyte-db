@@ -39,6 +39,9 @@ Options:
     Skip creation of a symlink directory tree for an out-of-source RocksDB build. This can be used
     if we know this has already been done (e.g. when building a test right after building the
     RocksDB library).
+  --make-opts
+    Additional options to pass to make when building RocksDB.
+
 EOT
 }
 
@@ -131,6 +134,12 @@ while [ $# -ne 0 ]; do
     ;;
     --extra-lib-dir)
       extra_lib_dirs+=( "$2" )
+      shift
+    ;;
+    --make-opts)
+      for make_opt in $2; do
+        make_opts+=( "$make_opt" )
+      done
       shift
     ;;
     *)
@@ -296,7 +305,7 @@ if [ -n "$extra_cflags" ]; then
 fi
 
 # TODO: this should probably be installed-deps-tsan in some cases.
-make_opts+=( EXEC_LDFLAGS="-Wl,-rpath,$YB_SRC_ROOT/thirdparty/installed-deps/lib" )
+make_opts+=( EXTRA_EXEC_LDFLAGS="-Wl,-rpath,$YB_SRC_ROOT/thirdparty/installed-deps/lib" )
 
 if ! $skip_link_dir_creation; then
   (

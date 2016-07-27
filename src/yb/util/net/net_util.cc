@@ -326,7 +326,7 @@ void TryRunLsof(const Sockaddr& addr, vector<string>* log) {
   LOG_STRING(WARNING, log) << results;
 }
 
-uint16_t GetFreePort() {
+uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   // To avoid a race condition where the free port returned to the caller gets used by another
   // process before this caller can use it, we will lock the port using a file level lock.
   // First create the directory, if it doesn't already exist, where these lock files will live.
@@ -362,6 +362,7 @@ uint16_t GetFreePort() {
       FileLock *lock = nullptr;
       if (env->LockFile(lock_file, &lock).ok()) {
         CHECK(lock) << "Lock should not be NULL";
+        file_lock->reset(lock);
         LOG(INFO) << "Selected random free RPC port " << random_port;
         return random_port;
       }

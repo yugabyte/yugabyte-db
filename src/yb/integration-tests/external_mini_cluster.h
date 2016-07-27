@@ -32,6 +32,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
+#include "yb/util/env.h"
 
 namespace yb {
 
@@ -297,6 +298,10 @@ class ExternalMiniCluster {
                  const std::string& flag,
                  const std::string& value);
 
+  // Allocates a free port and stores a file lock guarding access to that port into an internal
+  // array of file locks.
+  uint16_t AllocateFreePort();
+
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
@@ -341,6 +346,8 @@ class ExternalMiniCluster {
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
 
   std::shared_ptr<rpc::Messenger> messenger_;
+
+  std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
 
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
 };

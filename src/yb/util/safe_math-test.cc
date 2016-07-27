@@ -44,7 +44,6 @@ TEST(TestSafeMath, TestSignedInts) {
   // Underflow around negative
   DoTest<int32_t>(MathLimits<int32_t>::kMin + 10, -15, true);
   DoTest<int32_t>(MathLimits<int32_t>::kMin + 10, -5, false);
-
 }
 
 TEST(TestSafeMath, TestUnsignedInts) {

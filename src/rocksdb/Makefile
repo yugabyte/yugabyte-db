@@ -165,40 +165,49 @@ OPT += -DNDEBUG
 endif
 
 ifeq ($(PLATFORM), OS_SOLARIS)
-	PLATFORM_CXXFLAGS += -D _GLIBCXX_USE_C99
+  PLATFORM_CXXFLAGS += -D _GLIBCXX_USE_C99
 endif
 ifneq ($(filter -DROCKSDB_LITE,$(OPT)),)
-	# found
-	CFLAGS += -fno-exceptions
-	CXXFLAGS += -fno-exceptions
+  # found
+  CFLAGS += -fno-exceptions
+  CXXFLAGS += -fno-exceptions
 endif
 
 # ASAN doesn't work well with jemalloc. If we're compiling with ASAN, we should use regular malloc.
 ifdef COMPILE_WITH_ASAN
-	DISABLE_JEMALLOC=1
-	EXEC_LDFLAGS += -fsanitize=address
-	PLATFORM_CCFLAGS += -fsanitize=address
-	PLATFORM_CXXFLAGS += -fsanitize=address
+  ifneq ($(MAKECMDGOALS),clean)  # no debug messages for the "clean" target
+    $(warning "RocksDB Makefile: COMPILE_WITH_ASAN is specified, adding ASAN options")
+  endif
+  DISABLE_JEMALLOC=1
+  EXEC_LDFLAGS += -fsanitize=address
+  PLATFORM_CCFLAGS += -fsanitize=address
+  PLATFORM_CXXFLAGS += -fsanitize=address
+else
+  ifneq ($(MAKECMDGOALS),clean)
+    $(warning "RocksDB Makefile: COMPILE_WITH_ASAN not specified ")
+  endif
 endif
 
 # TSAN doesn't work well with jemalloc. If we're compiling with TSAN, we should use regular malloc.
 ifdef COMPILE_WITH_TSAN
-	DISABLE_JEMALLOC=1
-	EXEC_LDFLAGS += -fsanitize=thread -pie
-	PLATFORM_CCFLAGS += -fsanitize=thread -fPIC -DROCKSDB_TSAN_RUN
-	PLATFORM_CXXFLAGS += -fsanitize=thread -fPIC -DROCKSDB_TSAN_RUN
-        # Turn off -pg when enabling TSAN testing, because that induces
-        # a link failure.  TODO: find the root cause
-	pg =
+  DISABLE_JEMALLOC=1
+  EXEC_LDFLAGS += -fsanitize=thread -pie
+  PLATFORM_CCFLAGS += -fsanitize=thread -fPIC -DROCKSDB_TSAN_RUN
+  PLATFORM_CXXFLAGS += -fsanitize=thread -fPIC -DROCKSDB_TSAN_RUN
+  # Turn off -pg when enabling TSAN testing, because that induces
+  # a link failure.  TODO: find the root cause
+  pg =
 else
-	pg = -pg
+  pg = -pg
 endif
 
 ifndef DISABLE_JEMALLOC
-	EXEC_LDFLAGS := $(JEMALLOC_LIB) $(EXEC_LDFLAGS)
-	PLATFORM_CXXFLAGS += $(JEMALLOC_INCLUDE)
-	PLATFORM_CCFLAGS += $(JEMALLOC_INCLUDE)
+  EXEC_LDFLAGS := $(JEMALLOC_LIB) $(EXEC_LDFLAGS)
+  PLATFORM_CXXFLAGS += $(JEMALLOC_INCLUDE)
+  PLATFORM_CCFLAGS += $(JEMALLOC_INCLUDE)
 endif
+
+EXEC_LDFLAGS += $(EXTRA_EXEC_LDFLAGS)
 
 export GTEST_THROW_ON_FAILURE=1 GTEST_HAS_EXCEPTIONS=1
 GTEST_DIR = ./third-party/gtest-1.7.0/fused-src
@@ -223,6 +232,11 @@ CFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
 CXXFLAGS += $(WARNING_FLAGS) -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
+
+ifneq ($(MAKECMDGOALS),clean)  # no debug messages for the "clean" target
+  $(warning "EXEC_LDFLAGS=$(EXEC_LDFLAGS)")
+  $(warning "AM_LINK=$(AM_LINK)")
+endif
 
 date := $(shell date +%F)
 ifdef FORCE_GIT_SHA

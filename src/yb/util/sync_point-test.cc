@@ -26,7 +26,6 @@
 using std::string;
 using std::vector;
 
-#ifndef NDEBUG
 namespace yb {
 
 static void RunThread(bool *var) {
@@ -35,6 +34,7 @@ static void RunThread(bool *var) {
 }
 
 TEST(SyncPointTest, TestSyncPoint) {
+#ifndef NDEBUG
   // Set up a sync point "second" that depends on "first".
   vector<SyncPoint::Dependency> dependencies;
   dependencies.push_back(SyncPoint::Dependency("first", "second"));
@@ -53,7 +53,9 @@ TEST(SyncPointTest, TestSyncPoint) {
   ASSERT_TRUE(var);
 
   thread->Join();
+#else
+  LOG(INFO) << "Test skipped in release mode.";
+#endif // NDEBUG
 }
 
 } // namespace yb
-#endif // NDEBUG

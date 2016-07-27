@@ -113,7 +113,7 @@ Status MiniCluster::StartDistributedMasters() {
 
   for (int i = 0; i < master_rpc_ports_.size(); ++i) {
     if (master_rpc_ports_[i] == 0) {
-      master_rpc_ports_[i] = GetFreePort();
+      master_rpc_ports_[i] = AllocateFreePort();
       LOG(INFO) << "Using auto-assigned port " << master_rpc_ports_[i]
         << " to start a mini-cluster master";
     }
@@ -341,6 +341,13 @@ Status MiniCluster::CreateClient(YBClientBuilder* builder,
     builder->add_master_server_addr(master->bound_rpc_addr_str());
   }
   return builder->Build(client);
+}
+
+uint16_t MiniCluster::AllocateFreePort() {
+  // This will take a file lock ensuring the port does not get claimed by another thread/process
+  // and add it to our vector of such locks that will be freed on minicluster shutdown.
+  free_port_file_locks_.emplace_back();
+  return GetFreePort(&free_port_file_locks_.back());
 }
 
 } // namespace yb

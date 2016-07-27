@@ -375,7 +375,9 @@ void TransactionDriver::ApplyTask() {
   {
     gscoped_ptr<CommitMsg> commit_msg;
     CHECK_OK(transaction_->Apply(&commit_msg));
-    commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
+    if (commit_msg) {
+      commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
+    }
     SetResponseTimestamp(transaction_->state(), transaction_->state()->timestamp());
 
     // If the client requested COMMIT_WAIT as the external consistency mode

@@ -1936,6 +1936,7 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
   }
   VLOG(1) << state_->LogPrefixThreadSafe() << "Committing " << op_type_str << " with op id "
           << round->id();
+  // TODO: do not use these commit messages for RocksDB-backed tables.
   gscoped_ptr<CommitMsg> commit_msg(new CommitMsg);
   commit_msg->set_op_type(round->replicate_msg()->op_type());
   *commit_msg->mutable_commited_op_id() = round->id();

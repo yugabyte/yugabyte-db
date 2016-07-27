@@ -155,6 +155,7 @@ TEST_F(EnvMirrorTest, Locks) {
   // These are no-ops, but we test they return success.
   ASSERT_OK(env_->LockFile("some file", &lock));
   ASSERT_OK(env_->UnlockFile(lock));
+  delete lock;
 }
 
 TEST_F(EnvMirrorTest, Misc) {

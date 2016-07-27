@@ -43,6 +43,13 @@ if ("${YB_VERBOSE}" STREQUAL "1")
   SET(ROCKSDB_BUILD_VERBOSE_ARG "--verbose")
 endif()
 
+# A way to pass arbitrary options to make when building RocksDB.
+set(ROCKSDB_MAKE_OPTS " ")
+
+if ("${YB_USE_ASAN}")
+  set(ROCKSDB_MAKE_OPTS "${ROCKSDB_MAKE_OPTS} COMPILE_WITH_ASAN=1")
+endif()
+
 # TODO: auto-detect the gflags version installed in the thirdparty directory.
 set(BUILD_ROCKSDB_ARGS
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-rocksdb.sh
@@ -57,7 +64,9 @@ set(BUILD_ROCKSDB_ARGS
   --extra-lib-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/lib"
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
   ${ROCKSDB_BUILD_VERBOSE_ARG}
+  --make-opts "${ROCKSDB_MAKE_OPTS}"
 )
+
 
 set(ROCKSDB_CXX_FLAGS "${CXX_GLOBAL_COMMON_FLAGS}")
 # Use the same flags for the C compiler as for the C++ compiler, with some optional customizations

@@ -145,7 +145,7 @@ is_known_non_gtest_test() {
 
   if ( [ "$is_rocksdb" == "1" ] &&
        ( [[ "$test_name" =~ $NON_GTEST_ROCKSDB_TESTS_RE ]] ||
-         ( [ "$IS_MAC" == "1" ] && [ "$test_name" == thread_list_test ] ) ) || \
+         ( [[ "$OSTYPE" =~ ^darwin ]] && [ "$test_name" == thread_list_test ] ) ) || \
        ( [ "$is_rocksdb" == "0" ] && [[ "$test_name" =~ $NON_GTEST_TESTS_RE ]] ) ); then
     return 0  # "true return value" in bash
   else
@@ -237,20 +237,28 @@ collect_gtest_tests() {
     exit 1
   fi
 
+  # https://nixtricks.wordpress.com/2013/01/09/sed-delete-the-lines-lying-in-between-two-patterns/
+  # Use the following command to delete the lines lying between PATTERN-1 and PATTERN-2, including
+  # the lines containing these patterns:
+  # sed '/PATTERN-1/,/PATTERN-2/d' input.txt
+  sed '/^Suppressions used:$/,/^-\{53\}$/d' \
+    <"$gtest_list_stderr_path" | sed '/^-\{53\}$/d; /^\s*$/d;' \
+    >"$gtest_list_stderr_path.filtered"
+
   # -s tests if the given file is non-empty
-  if [ -s "$gtest_list_stderr_path" ]; then
+  if [ -s "$gtest_list_stderr_path.filtered" ]; then
     (
       echo
       echo "'$abs_test_binary_path' produced non-empty stderr output when run with" \
            "--gtest_list_tests:"
-      echo
-      cat "$gtest_list_stderr_path"
-      echo
-      echo "Please add the test '$rel_test_binary' to the appropriate list in common-test-env.sh"
-      echo "or fix the underlying issue in the code."
+      echo "[ ==== STDERR OUTPUT START ========================================================== ]"
+      cat "$gtest_list_stderr_path.filtered"
+      echo "[ ==== STDERR OUTPUT END ============================================================ ]"
+      echo "Please add the test '$rel_test_binary' to the appropriate list in"
+      echo "common-test-env.sh or fix the underlying issue in the code."
     ) >&2
 
-    rm -f "$gtest_list_stderr_path"
+    rm -f "$gtest_list_stderr_path" "$gtest_list_stderr_path.filtered"
     exit 1
   fi
 
@@ -597,7 +605,6 @@ handle_test_failure() {
     unset core_dir
     global_exit_code=1
   fi
-
 }
 
 delete_successful_output_if_needed() {
@@ -606,7 +613,7 @@ delete_successful_output_if_needed() {
     test_log_path
   # Mac OS X slaves are having trouble uploading artifacts, so we delete logs and temporary
   # files for successful tests.
-  if [[ "$IS_MAC" == "1" ]] && ! "$test_failed"; then
+  if is_mac && ! "$test_failed"; then
     # This will be shown on console output if the test fails for whatever reason after this point
     # (that would indicate a bug in test scripts).
     echo "Deleting '$test_log_path' after a successful test on Mac OS X" >&2
@@ -626,22 +633,7 @@ run_test_and_process_results() {
 # Initialization
 # -------------------------------------------------------------------------------------------------
 
-# Absolute path to the root source directory. This script is expected to be inside the build-support
-# subdirectory of the source directory.
-YB_SRC_ROOT=$(cd "$(dirname "$BASH_SOURCE")"/.. && pwd)
-if [ ! -d "$YB_SRC_ROOT/build-support" ]; then
-  echo "Could not determine source root directory from script path '$BASH_SOURCE'." \
-    "The auto-detected directory '$YB_SRC_ROOT' does not contain a 'build-support' directory." >&2
-  exit 1
-fi
-
-if [[ "$OSTYPE" =~ ^darwin ]]; then
-  IS_MAC=1
-else
-  IS_MAC=0
-fi
-
-if [ "$IS_MAC" == "1" ]; then
+if is_mac; then
   # Stack trace address to line number conversion is disabled on Mac OS X as of Apr 2016.
   # See https://yugabyte.atlassian.net/browse/ENG-37
   STACK_TRACE_FILTER=cat
