@@ -348,7 +348,7 @@ struct StateChangeContext {
   ~StateChangeContext() {}
 
   std::string ToString() const {
-    switch(reason) {
+    switch (reason) {
       case TABLET_PEER_STARTED:
         return "Started TabletPeer";
       case CONSENSUS_STARTED:

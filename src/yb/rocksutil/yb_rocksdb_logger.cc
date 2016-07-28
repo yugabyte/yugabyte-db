@@ -44,7 +44,7 @@ int YBRocksDBLogger::ConvertToGLogLevel(const rocksdb::InfoLogLevel rocksdb_log_
 }
 
 rocksdb::InfoLogLevel YBRocksDBLogger::ConvertToRocksDBLogLevel(const int glog_level) {
-  switch(glog_level) {
+  switch (glog_level) {
     case google::GLOG_INFO:
       return InfoLogLevel::INFO_LEVEL;
     case google::GLOG_WARNING:

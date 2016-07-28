@@ -1158,7 +1158,6 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
                                            *entry));
       }
 
-
       // If HandleEntry returns OK, then it has taken ownership of the entry.
       // So, we have to remove it from the entries vector to avoid it getting
       // freed by ElementDeleter.

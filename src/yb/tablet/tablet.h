@@ -20,6 +20,7 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -195,6 +196,11 @@ class Tablet {
   void ApplyKeyValueRowOperations(const std::vector<RowOp*>& row_ops,
                                   const rocksdb::SequenceNumber seq_num);
 
+  // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
+  // KEY_VALUE_TABLE_TYPE.
+  Status CreateCheckpoint(const std::string& dir,
+                          google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
+
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
@@ -317,7 +323,6 @@ class Tablet {
   // memrowset in the current implementation.
   Status CountRows(uint64_t *count) const;
 
-
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.
@@ -386,6 +391,9 @@ class Tablet {
   // Returns the maximum persistent sequence number from all SSTables in RocksDB.
   rocksdb::SequenceNumber MaxPersistentSequenceNumber() const;
 
+  // Returns the location of the last rocksdb checkpoint. Used for tests only.
+  std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }
+
   static const char* kDMSMemTrackerId;
 
  private:
@@ -438,7 +446,6 @@ class Tablet {
     const MvccSnapshot &snap,
     const ScanSpec *spec,
     vector<std::shared_ptr<RowwiseIterator> > *iters) const;
-
 
   Status PickRowSetsToCompact(RowSetsInCompaction *picked,
                               CompactFlags flags) const;
@@ -524,6 +531,9 @@ class Tablet {
   scoped_refptr<TabletMetadata> metadata_;
   TableType table_type_;
 
+  // Used for tests only.
+  std::string last_rocksdb_checkpoint_dir_;
+
   // Lock protecting access to the 'components_' member (i.e the rowsets in the tablet)
   //
   // Shared mode:
@@ -565,7 +575,6 @@ class Tablet {
 
   gscoped_ptr<CompactionPolicy> compaction_policy_;
 
-
   // Lock protecting the selection of rowsets for compaction.
   // Only one thread may run the compaction selection algorithm at a time
   // so that they don't both try to select the same rowset.
@@ -575,6 +584,9 @@ class Tablet {
   // don't want to have two flushes in progress at once, in case the one which
   // started earlier completes after the one started later.
   mutable Semaphore rowsets_flush_sem_;
+
+  // Lock used to serialize the creation of RocksDB checkpoints.
+  mutable std::mutex create_checkpoint_lock_;
 
   enum State {
     kInitialized,
@@ -599,7 +611,6 @@ class Tablet {
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
-
 
 // Hooks used in test code to inject faults or other code into interesting
 // parts of the compaction code.

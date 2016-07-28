@@ -687,6 +687,7 @@ Status YBTableCreator::Create() {
                                                                     deadline));
   }
 
+  LOG(INFO) << "Created table of type " << data_->table_type_;
   return Status::OK();
 }
 

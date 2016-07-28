@@ -68,14 +68,16 @@ class MiniTabletServer {
   // Requires that the server has already been started with Start().
   Status AddTestTablet(const std::string& table_id,
                        const std::string& tablet_id,
-                       const Schema& schema);
+                       const Schema& schema,
+                       TableType table_type);
 
   // Add a new tablet to the test server and specify the consensus configuration
   // for the tablet.
   Status AddTestTablet(const std::string& table_id,
                        const std::string& tablet_id,
                        const Schema& schema,
-                       const consensus::RaftConfigPB& config);
+                       const consensus::RaftConfigPB& config,
+                       TableType table_type);
 
   // Create a RaftConfigPB which should be used to create a local-only
   // tablet on the given tablet server.

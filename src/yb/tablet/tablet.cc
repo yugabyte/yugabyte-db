@@ -74,6 +74,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
+#include "rocksdb/utilities/checkpoint.h"
 #include "rocksdb/write_batch.h"
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
@@ -220,6 +221,8 @@ Status Tablet::OpenKeyValueTablet() {
   InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_);
 
   const string db_dir = metadata()->rocksdb_dir();
+  LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
+
   RETURN_NOT_OK_PREPEND(metadata()->fs_manager()->CreateDirIfMissing(db_dir),
                         "Failed to create RocksDB directory for the tablet");
 
@@ -360,7 +363,6 @@ Status Tablet::NewRowIterator(const Schema &projection,
   MvccSnapshot snap(mvcc_);
   return NewRowIterator(projection, snap, Tablet::UNORDERED, iter);
 }
-
 
 Status Tablet::NewRowIterator(const Schema &projection,
                               const MvccSnapshot &snap,
@@ -655,6 +657,53 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
   }
 }
 
+Status Tablet::CreateCheckpoint(const std::string& dir,
+                                google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files) {
+  CHECK(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+
+  std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
+
+  rocksdb::Status status;
+  std::unique_ptr<rocksdb::Checkpoint> checkpoint;
+  {
+    rocksdb::Checkpoint* checkpoint_raw_ptr = nullptr;
+    status = rocksdb::Checkpoint::Create(rocksdb_.get(), &checkpoint_raw_ptr);
+    if (!status.ok()) {
+      return Status::IllegalState(Substitute("Unable to create checkpoint object: $0",
+                                             status.ToString()));
+    }
+    checkpoint.reset(checkpoint_raw_ptr);
+  }
+
+  status = checkpoint->CreateCheckpoint(dir);
+
+  if (!status.ok()) {
+    LOG(WARNING) << "Create checkpoint status: " << status.ToString();
+    return Status::IllegalState(Substitute("Unable to create checkpoint: $0", status.ToString()));
+  }
+  LOG(INFO) << "Checkpoint created in " << dir;
+
+  vector<rocksdb::Env::FileAttributes> files_attrs;
+  status = rocksdb_->GetEnv()->GetChildrenFileAttributes(dir, &files_attrs);
+  if (!status.ok()) {
+    return Status::IllegalState(Substitute("Unable to get RocksDB files in dir $0: $1", dir,
+                                           status.ToString()));
+  }
+
+  for (const auto& file_attrs : files_attrs) {
+    if (file_attrs.name == "." || file_attrs.name == "..") {
+        continue;
+    }
+    auto rocksdb_file_pb = rocksdb_files->Add();
+    rocksdb_file_pb->set_name(file_attrs.name);
+    rocksdb_file_pb->set_size_bytes(file_attrs.size_bytes);
+  }
+
+  last_rocksdb_checkpoint_dir_ = dir;
+
+  return Status::OK();
+}
+
 void Tablet::ApplyKeyValueRowOperations(const vector<RowOp*>& row_ops,
                                         const rocksdb::SequenceNumber seq_num) {
   rocksdb::WriteOptions write_options;
@@ -791,6 +840,9 @@ Status Tablet::DoMajorDeltaCompaction(const vector<ColumnId>& col_ids,
 }
 
 Status Tablet::Flush() {
+  if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+    return Status::OK();
+  }
   TRACE_EVENT1("tablet", "Tablet::Flush", "id", tablet_id());
   boost::lock_guard<Semaphore> lock(rowsets_flush_sem_);
   return FlushUnlocked();
@@ -798,6 +850,12 @@ Status Tablet::Flush() {
 
 Status Tablet::FlushUnlocked() {
   TRACE_EVENT0("tablet", "Tablet::FlushUnlocked");
+
+  // This is a KUDU specific flush.
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
+
   RowSetsInCompaction input;
   shared_ptr<MemRowSet> old_mrs;
   {
@@ -937,7 +995,6 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
       return metadata_->Flush();
     }
   }
-
 
   // Replace the MemRowSet
   {
@@ -1614,7 +1671,6 @@ void Tablet::UpdateCompactionStats(MaintenanceOpStats* stats) {
   stats->set_perf_improvement(quality);
 }
 
-
 Status Tablet::DebugDump(vector<string> *lines) {
   boost::shared_lock<rw_spinlock> lock(component_lock_);
 
@@ -2059,7 +2115,6 @@ string Tablet::Iterator::ToString() const {
 void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
   iter_->GetIteratorStats(stats);
 }
-
 
 } // namespace tablet
 } // namespace yb

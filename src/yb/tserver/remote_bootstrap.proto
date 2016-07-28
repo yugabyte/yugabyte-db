@@ -74,6 +74,9 @@ message RemoteBootstrapErrorPB {
 
     // Error reading or transferring data.
     IO_ERROR = 7;
+
+    // Unknown RocksDB file.
+    ROCKSDB_FILE_NOT_FOUND = 8;
   }
 
   // The error code.
@@ -135,6 +138,7 @@ message DataIdPB {
     UNKNOWN = 0;
     BLOCK = 1;
     LOG_SEGMENT = 2;
+    ROCKSDB_FILE = 3;
   }
 
   // Indicator whether it's a block or log segment id.
@@ -143,6 +147,7 @@ message DataIdPB {
   // Exactly one of these must be set.
   optional BlockIdPB block_id = 2;          // To fetch a block.
   optional uint64 wal_segment_seqno = 3;    // To fetch a log segment.
+  optional string file_name = 4;            // To fetch a RocksDB file.
 }
 
 message FetchDataRequestPB {

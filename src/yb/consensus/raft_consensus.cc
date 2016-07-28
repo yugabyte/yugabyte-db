@@ -159,7 +159,8 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
     const shared_ptr<rpc::Messenger>& messenger,
     const scoped_refptr<log::Log>& log,
     const shared_ptr<MemTracker>& parent_mem_tracker,
-    const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk) {
+    const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    TableType table_type) {
   gscoped_ptr<PeerProxyFactory> rpc_factory(new RpcPeerProxyFactory(messenger));
 
   // The message queue that keeps track of which operations need to be replicated
@@ -199,7 +200,8 @@ scoped_refptr<RaftConsensus> RaftConsensus::Create(
                               txn_factory,
                               log,
                               parent_mem_tracker,
-                              mark_dirty_clbk));
+                              mark_dirty_clbk,
+                              table_type));
 }
 
 RaftConsensus::RaftConsensus(
@@ -211,7 +213,8 @@ RaftConsensus::RaftConsensus(
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
     ReplicaTransactionFactory* txn_factory, const scoped_refptr<log::Log>& log,
     shared_ptr<MemTracker> parent_mem_tracker,
-    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk)
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    TableType table_type)
     : thread_pool_(thread_pool.Pass()),
       log_(log),
       clock_(clock),
@@ -231,7 +234,8 @@ RaftConsensus::RaftConsensus(
           &METRIC_follower_memory_pressure_rejections)),
       term_metric_(metric_entity->FindOrCreateGauge(&METRIC_raft_term,
                                                     cmeta->current_term())),
-      parent_mem_tracker_(std::move(parent_mem_tracker)) {
+      parent_mem_tracker_(std::move(parent_mem_tracker)),
+      table_type_(table_type) {
   DCHECK_NOTNULL(log_.get());
   state_.reset(new ReplicaState(options,
                                 peer_uuid,
@@ -1393,6 +1397,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     return Status::InvalidArgument("Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
   }
+  VLOG(1) << "Received ChangeConfig request " << req.ShortDebugString();
   ChangeConfigType type = req.type();
   RaftPeerPB* new_peer = nullptr;
   const RaftPeerPB& server = req.server();
@@ -1950,9 +1955,15 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
     client_cb.Run(status);
     return;
   }
+
+  // Do not use these commit messages for RocksDB-backed tables.
+  if (table_type_ == KEY_VALUE_TABLE_TYPE) {
+    client_cb.Run(status);
+    return;
+  }
+
   VLOG(1) << state_->LogPrefixThreadSafe() << "Committing " << op_type_str << " with op id "
           << round->id();
-  // TODO: do not use these commit messages for RocksDB-backed tables.
   gscoped_ptr<CommitMsg> commit_msg(new CommitMsg);
   commit_msg->set_op_type(round->replicate_msg()->op_type());
   *commit_msg->mutable_commited_op_id() = round->id();

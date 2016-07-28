@@ -62,6 +62,19 @@ RemoteBootstrapSession::RemoteBootstrapSession(
 RemoteBootstrapSession::~RemoteBootstrapSession() {
   // No lock taken in the destructor, should only be 1 thread with access now.
   CHECK_OK(UnregisterAnchorIfNeededUnlocked());
+
+  // Delete checkpoint directory.
+  if (!checkpoint_dir_.empty()) {
+    auto s = fs_manager_->env()->DeleteRecursively(checkpoint_dir_);
+    if (!s.ok()) {
+      LOG(WARNING) << "Unable to delete checkpoint directory " << checkpoint_dir_;
+    } else {
+      LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
+    }
+  } else {
+    LOG(INFO) << "No checkpoint directory was created for this session";
+  }
+
 }
 
 Status RemoteBootstrapSession::ChangeRole() {
@@ -142,11 +155,13 @@ Status RemoteBootstrapSession::Init() {
   // Anchor the data blocks by opening them and adding them to the cache.
   //
   // All subsequent requests should reuse the opened blocks.
-  vector<BlockIdPB> data_blocks;
-  TabletMetadata::CollectBlockIdPBs(tablet_superblock_, &data_blocks);
-  for (const BlockIdPB& block_id : data_blocks) {
-    LOG(INFO) << "Opening block " << block_id.DebugString();
-    RETURN_NOT_OK(OpenBlockUnlocked(BlockId::FromPB(block_id)));
+  if (tablet_superblock_.table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    vector<BlockIdPB> data_blocks;
+    TabletMetadata::CollectBlockIdPBs(tablet_superblock_, &data_blocks);
+    for (const BlockIdPB& block_id : data_blocks) {
+      LOG(INFO) << "Opening block " << block_id.DebugString();
+      RETURN_NOT_OK(OpenBlockUnlocked(BlockId::FromPB(block_id)));
+    }
   }
 
   // Get the latest opid in the log at this point in time so we can re-anchor.
@@ -165,7 +180,7 @@ Status RemoteBootstrapSession::Init() {
   // Look up the committed consensus state.
   // We do this after snapshotting the log to avoid a scenario where the latest
   // entry in the log has a term higher than the term stored in the consensus
-  // metadata, which will results in a CHECK failure on RaftConsensus init.
+  // metadata, which will result in a CHECK failure on RaftConsensus init.
   scoped_refptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   if (!consensus) {
     tablet::TabletStatePB tablet_state = tablet_peer_->state();
@@ -182,6 +197,26 @@ Status RemoteBootstrapSession::Init() {
   // this anchor is released by ending the remote bootstrap session.
   RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
       last_logged_opid.index(), anchor_owner_token, &log_anchor_));
+
+  if (tablet_superblock_.table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
+
+  assert(tablet_superblock_.table_type() == TableType::KEY_VALUE_TABLE_TYPE);
+  auto tablet = tablet_peer_->shared_tablet();
+  if (PREDICT_FALSE(!tablet)) {
+    return Status::IllegalState("Tablet is not running");
+  }
+
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
+  RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
+                        Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
+
+  auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
+  checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
+  RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
+                                         tablet_superblock_.mutable_rocksdb_files()));
 
   return Status::OK();
 }
@@ -310,6 +345,38 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno,
 
   // Note: We do not eagerly close log segment files, since we share ownership
   // of the LogSegment objects with the Log itself.
+
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::GetFilePiece(const std::string file_name,
+                                            uint64_t offset, int64_t client_maxlen,
+                                            std::string* data, int64_t* block_file_size,
+                                            RemoteBootstrapErrorPB::Code* error_code) {
+
+  auto file_path = JoinPathSegments(checkpoint_dir_, file_name);
+  if (!fs_manager_->env()->FileExists(file_path)) {
+    *error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
+    return Status::NotFound(Substitute("Unable to find RocksDB file $0 in checkpoint directory $1",
+                                       file_name, checkpoint_dir_));
+  }
+
+  gscoped_ptr<RandomAccessFile> readable_file;
+  shared_ptr<RandomAccessFile> readable_file_shared_ptr;
+
+  RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(file_path, &readable_file));
+
+  uint64 file_size = 0;
+  RETURN_NOT_OK(readable_file->Size(&file_size));
+  VLOG(2) << "Reading RocksDB file. File path: " << file_path << " file size: " << file_size;
+
+  readable_file_shared_ptr.reset(readable_file.release());
+
+  std::unique_ptr<ImmutableRandomAccessFileInfo> file_info(
+      new ImmutableRandomAccessFileInfo(readable_file_shared_ptr, file_size));
+  RETURN_NOT_OK(ReadFileChunkToBuf(file_info.get(), offset, client_maxlen,
+                                   Substitute("rocksdb file $0", file_name),
+                                   data, block_file_size, error_code));
 
   return Status::OK();
 }

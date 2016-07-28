@@ -194,7 +194,6 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
                                            rpc::RpcContext* context) {
   const string& session_id = req->session_id();
-
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSession> session;
   {
@@ -218,18 +217,28 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   DataChunkPB* data_chunk = resp->mutable_chunk();
   string* data = data_chunk->mutable_data();
   int64_t total_data_length = 0;
+  bool valid_type = false;
   if (data_id.type() == DataIdPB::BLOCK) {
     // Fetching a data block chunk.
     const BlockId& block_id = BlockId::FromPB(data_id.block_id());
     RPC_RETURN_NOT_OK(session->GetBlockPiece(block_id, offset, client_maxlen,
                                              data, &total_data_length, &error_code),
                       error_code, "Unable to get piece of data block");
-  } else {
+  } else if (data_id.type() == DataIdPB::LOG_SEGMENT) {
     // Fetching a log segment chunk.
     uint64_t segment_seqno = data_id.wal_segment_seqno();
     RPC_RETURN_NOT_OK(session->GetLogSegmentPiece(segment_seqno, offset, client_maxlen,
                                                   data, &total_data_length, &error_code),
                       error_code, "Unable to get piece of log segment");
+  } else if (data_id.type() == DataIdPB::ROCKSDB_FILE) {
+    auto file_name = data_id.file_name();
+    RPC_RETURN_NOT_OK(session->GetFilePiece(file_name, offset, client_maxlen, data,
+                                            &total_data_length, &error_code),
+                      error_code, "Unable to get piece of RocksDB file");
+  } else {
+    auto msg = Substitute("Invalid request type $0", data_id.type());
+    RPC_RETURN_APP_ERROR(RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST, msg,
+                         Status::InvalidArgument(msg));
   }
 
   data_chunk->set_total_data_length(total_data_length);
@@ -290,32 +299,40 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
         const DataIdPB& data_id,
         RemoteBootstrapErrorPB::Code* app_error,
         const scoped_refptr<RemoteBootstrapSession>& session) const {
-  if (PREDICT_FALSE(data_id.has_block_id() && data_id.has_wal_segment_seqno())) {
+  int num_set = data_id.has_block_id() + data_id.has_wal_segment_seqno() +
+      data_id.has_file_name();
+  if (PREDICT_FALSE(num_set == 0 || num_set > 1)) {
     *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
     return Status::InvalidArgument(
-        Substitute("Only one of BlockId or segment sequence number are required, "
-            "but both were specified. DataTypeID: $0", data_id.ShortDebugString()));
-  } else if (PREDICT_FALSE(!data_id.has_block_id() && !data_id.has_wal_segment_seqno())) {
-    *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-    return Status::InvalidArgument(
-        Substitute("Only one of BlockId or segment sequence number are required, "
-            "but neither were specified. DataTypeID: $0", data_id.ShortDebugString()));
+        Substitute("Only one of BlockId, segment sequence number, and file name can be specified. "
+                   "DataTypeID: $0", data_id.ShortDebugString()));
   }
 
-  if (data_id.type() == DataIdPB::BLOCK) {
-    if (PREDICT_FALSE(!data_id.has_block_id())) {
-      return Status::InvalidArgument("block_id must be specified for type == BLOCK",
-                                     data_id.ShortDebugString());
-    }
-  } else {
-    if (PREDICT_FALSE(!data_id.wal_segment_seqno())) {
-      return Status::InvalidArgument(
-          "segment sequence number must be specified for type == LOG_SEGMENT",
-          data_id.ShortDebugString());
-    }
+  switch (data_id.type()) {
+    case DataIdPB::BLOCK:
+      if (PREDICT_FALSE(!data_id.has_block_id())) {
+        return Status::InvalidArgument("block_id must be specified for type == BLOCK",
+                                       data_id.ShortDebugString());
+      }
+      return Status::OK();
+    case DataIdPB::LOG_SEGMENT:
+      if (PREDICT_FALSE(!data_id.wal_segment_seqno())) {
+        return Status::InvalidArgument(
+            "segment sequence number must be specified for type == LOG_SEGMENT",
+            data_id.ShortDebugString());
+      }
+      return Status::OK();
+    case DataIdPB::ROCKSDB_FILE:
+      if (PREDICT_FALSE(data_id.file_name().empty())) {
+        return Status::InvalidArgument(
+            "file name must be specified for type == ROCKSDB_FILE",
+            data_id.ShortDebugString());
+      }
+      return Status::OK();
+    case DataIdPB::UNKNOWN:
+      return Status::InvalidArgument("Type UNKNOWN not supported", data_id.ShortDebugString());
   }
-
-  return Status::OK();
+  LOG(FATAL) << "Invalid data id type: " << data_id.type();
 }
 
 void RemoteBootstrapServiceImpl::ResetSessionExpirationUnlocked(const std::string& session_id) {

@@ -110,11 +110,14 @@ class RemoteBootstrapClient {
   Status Finish();
 
  private:
-  FRIEND_TEST(RemoteBootstrapClientTest, TestBeginEndSession);
-  FRIEND_TEST(RemoteBootstrapClientTest, TestDownloadBlock);
-  FRIEND_TEST(RemoteBootstrapClientTest, TestVerifyData);
-  FRIEND_TEST(RemoteBootstrapClientTest, TestDownloadWalSegment);
-  FRIEND_TEST(RemoteBootstrapClientTest, TestDownloadAllBlocks);
+  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestBeginEndSession);
+  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadBlock);
+  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestVerifyData);
+  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadWalSegment);
+  FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadAllBlocks);
+
+  FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
+  FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles);
 
   // Extract the embedded Status message from the given ErrorStatusPB.
   // The given ErrorStatusPB must extend RemoteBootstrapErrorPB.
@@ -171,6 +174,8 @@ class RemoteBootstrapClient {
   template<class Appendable>
   Status DownloadFile(const DataIdPB& data_id, Appendable* appendable);
 
+  Status DownloadRocksDBFiles();
+
   Status VerifyData(uint64_t offset, const DataChunkPB& resp);
 
   // Return standard log prefix.
@@ -186,6 +191,7 @@ class RemoteBootstrapClient {
   bool started_;            // Session started.
   bool downloaded_wal_;     // WAL segments downloaded.
   bool downloaded_blocks_;  // Data blocks downloaded.
+  bool downloaded_rocksdb_files_;
 
   // Session-specific data items.
   bool replace_tombstoned_tablet_;

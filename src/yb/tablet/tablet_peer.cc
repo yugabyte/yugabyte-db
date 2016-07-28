@@ -173,7 +173,8 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
                                          messenger_,
                                          log_.get(),
                                          tablet_->mem_tracker(),
-                                         mark_dirty_clbk_);
+                                         mark_dirty_clbk_,
+                                         tablet_->table_type());
     }
   }
 

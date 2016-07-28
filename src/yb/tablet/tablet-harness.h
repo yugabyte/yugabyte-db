@@ -64,11 +64,13 @@ class TabletHarness {
         : env(Env::Default()),
           tablet_id("test_tablet_id"),
           root_dir(std::move(root_dir)),
+          table_type(TableType::DEFAULT_TABLE_TYPE),
           enable_metrics(true) {}
 
     Env* env;
     string tablet_id;
     string root_dir;
+    TableType table_type;
     bool enable_metrics;
   };
 
@@ -89,7 +91,7 @@ class TabletHarness {
     RETURN_NOT_OK(TabletMetadata::LoadOrCreate(fs_manager_.get(),
                                                options_.tablet_id,
                                                "YBTableTest",
-                                               TableType::DEFAULT_TABLE_TYPE,
+                                               options_.table_type,
                                                schema_,
                                                partition.first,
                                                partition.second,

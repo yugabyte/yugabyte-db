@@ -45,9 +45,10 @@ using std::vector;
 
 class YBTabletTest : public YBTest {
  public:
-  explicit YBTabletTest(const Schema& schema)
+  explicit YBTabletTest(const Schema& schema, TableType table_type = TableType::DEFAULT_TABLE_TYPE)
     : schema_(schema.CopyWithColumnIds()),
-      client_schema_(schema) {
+      client_schema_(schema),
+      table_type_(table_type) {
     // Keep unit tests fast, but only if no one has set the flag explicitly.
     if (google::GetCommandLineFlagInfoOrDie("enable_data_block_fsync").is_default) {
       FLAGS_enable_data_block_fsync = false;
@@ -64,6 +65,7 @@ class YBTabletTest : public YBTest {
     string dir = root_dir.empty() ? GetTestPath("fs_root") : root_dir;
     TabletHarness::Options opts(dir);
     opts.enable_metrics = true;
+    opts.table_type = table_type_;
     bool first_time = harness_ == NULL;
     harness_.reset(new TabletHarness(schema_, opts));
     CHECK_OK(harness_->Create(first_time));
@@ -115,6 +117,7 @@ class YBTabletTest : public YBTest {
  protected:
   const Schema schema_;
   const Schema client_schema_;
+  TableType table_type_;
 
   gscoped_ptr<TabletHarness> harness_;
 };

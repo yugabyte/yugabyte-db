@@ -71,10 +71,11 @@ class TabletServerTestBase : public YBTest {
  public:
   typedef pair<int32_t, int32_t> KeyValue;
 
-  TabletServerTestBase()
-    : schema_(GetSimpleTestSchema()),
-      ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(
-                                 &ts_test_metric_registry_, "ts_server-test")) {
+  explicit TabletServerTestBase(TableType table_type = DEFAULT_TABLE_TYPE)
+      : schema_(GetSimpleTestSchema()),
+        ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(
+                                   &ts_test_metric_registry_, "ts_server-test")),
+        table_type_(table_type) {
 
     // Disable the maintenance ops manager since we want to trigger our own
     // maintenance operations at predetermined times.
@@ -113,7 +114,7 @@ class TabletServerTestBase : public YBTest {
     CHECK_OK(mini_server_->Start());
 
     // Set up a tablet inside the server.
-    CHECK_OK(mini_server_->AddTestTablet(kTableId, kTabletId, schema_));
+    CHECK_OK(mini_server_->AddTestTablet(kTableId, kTabletId, schema_, table_type_));
     CHECK(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet_peer_));
 
     // Creating a tablet is async, we wait here instead of having to handle errors later.
@@ -451,6 +452,7 @@ class TabletServerTestBase : public YBTest {
   const Schema schema_;
   Schema key_schema_;
   gscoped_ptr<RowBuilder> rb_;
+  TableType table_type_;
 
   std::shared_ptr<rpc::Messenger> client_messenger_;
 
@@ -472,6 +474,5 @@ const char* TabletServerTestBase::kTabletId = "TestTablet";
 
 } // namespace tserver
 } // namespace yb
-
 
 #endif /* YB_TSERVER_TABLET_SERVER_TEST_BASE_H_ */

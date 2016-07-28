@@ -72,7 +72,8 @@ class RaftConsensus : public Consensus,
     const std::shared_ptr<rpc::Messenger>& messenger,
     const scoped_refptr<log::Log>& log,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
+    const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    TableType table_type);
 
   RaftConsensus(const ConsensusOptions& options,
     gscoped_ptr<ConsensusMetadata> cmeta,
@@ -86,7 +87,8 @@ class RaftConsensus : public Consensus,
     ReplicaTransactionFactory* txn_factory,
     const scoped_refptr<log::Log>& log,
     std::shared_ptr<MemTracker> parent_mem_tracker,
-    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
+    Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
+    TableType table_type);
 
   virtual ~RaftConsensus();
 
@@ -419,6 +421,7 @@ class RaftConsensus : public Consensus,
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;
   gscoped_ptr<PeerProxyFactory> peer_proxy_factory_;
+  TableType table_type_;
 
   gscoped_ptr<PeerManager> peer_manager_;
 

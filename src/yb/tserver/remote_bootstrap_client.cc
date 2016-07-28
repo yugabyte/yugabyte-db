@@ -19,6 +19,7 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <yb/rpc/rpc_controller.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_meta.h"
@@ -95,6 +96,7 @@ RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
       started_(false),
       downloaded_wal_(false),
       downloaded_blocks_(false),
+      downloaded_rocksdb_files_(false),
       replace_tombstoned_tablet_(false),
       status_listener_(nullptr),
       session_idle_timeout_millis_(0),
@@ -248,18 +250,28 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   CHECK(started_);
   status_listener_ = CHECK_NOTNULL(status_listener);
 
-  // Download all the files (serially, for now, but in parallel in the future).
-  RETURN_NOT_OK(DownloadBlocks());
-  RETURN_NOT_OK(DownloadWALs());
+  VLOG(2) << "Fetching table_type: " << TableType_Name(meta_->table_type());
+  if (meta_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+    RETURN_NOT_OK(DownloadRocksDBFiles());
+  } else {
+    // Download all the files (serially, for now, but in parallel in the future).
+    RETURN_NOT_OK(DownloadBlocks());
+  }
 
+  RETURN_NOT_OK(DownloadWALs());
   return Status::OK();
 }
 
 Status RemoteBootstrapClient::Finish() {
   CHECK(meta_);
   CHECK(started_);
+
   CHECK(downloaded_wal_);
-  CHECK(downloaded_blocks_);
+  if (meta_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+    CHECK(downloaded_rocksdb_files_);
+  } else if (meta_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    CHECK(downloaded_blocks_);
+  }
 
   RETURN_NOT_OK(WriteConsensusMetadata());
 
@@ -358,6 +370,35 @@ Status RemoteBootstrapClient::DownloadWALs() {
   }
 
   downloaded_wal_ = true;
+  return Status::OK();
+}
+
+Status RemoteBootstrapClient::DownloadRocksDBFiles() {
+  gscoped_ptr<TabletSuperBlockPB> new_sb(new TabletSuperBlockPB());
+  new_sb->CopyFrom(*superblock_);
+  auto rocksdb_dir = meta_->rocksdb_dir();
+  // Replace rocksdb_dir with our rocksdb_dir
+  new_sb->set_rocksdb_dir(rocksdb_dir);
+  RETURN_NOT_OK_PREPEND(meta_->fs_manager()->CreateDirIfMissing(rocksdb_dir),
+                        "Failed to create RocksDB directory for the tablet")
+
+  for (auto const& file_pb : new_sb->rocksdb_files()) {
+    WritableFileOptions opts;
+    opts.sync_on_close = true;
+    gscoped_ptr<WritableFile> rocksdb_file;
+    auto file_path = JoinPathSegments(rocksdb_dir, file_pb.name());
+    RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(opts, file_path, &rocksdb_file));
+
+    DataIdPB data_id;
+    data_id.set_type(DataIdPB::ROCKSDB_FILE);
+    data_id.set_file_name(file_pb.name());
+    RETURN_NOT_OK_PREPEND(DownloadFile(data_id, rocksdb_file.get()),
+                          Substitute("Unable to download rocksdb file $0",
+                                     file_path));
+    VLOG(2) << "Downloading file " << file_path;
+  }
+  new_superblock_.swap(new_sb);
+  downloaded_rocksdb_files_ = true;
   return Status::OK();
 }
 
@@ -517,7 +558,6 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
     RETURN_NOT_OK_UNWIND_PREPEND(proxy_->FetchData(req, &resp, &controller),
                                 controller,
                                 "Unable to fetch data from remote");
-
     // Sanity-check for corruption.
     RETURN_NOT_OK_PREPEND(VerifyData(offset, resp.chunk()),
                           Substitute("Error validating data item $0", data_id.ShortDebugString()));

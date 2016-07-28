@@ -121,6 +121,14 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
                             std::string* data, int64_t* log_file_size,
                             RemoteBootstrapErrorPB::Code* error_code);
 
+  // Get a piece of a rocksdb checkpoint file.
+  // The behavior and params are very similar to GetBlockPiece(), but this one
+  // is only for sending rocksdb files.
+  Status GetFilePiece(const std::string file_name,
+                      uint64_t offset, int64_t client_maxlen,
+                      std::string* data, int64_t* log_file_size,
+                      RemoteBootstrapErrorPB::Code* error_code);
+
   const tablet::TabletSuperBlockPB& tablet_superblock() const { return tablet_superblock_; }
 
   const consensus::ConsensusStatePB& initial_committed_cstate() const {
@@ -141,6 +149,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
 private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
+
+  FRIEND_TEST(RemoteBootstrapRocksDBTest, TestCheckpointDirectory);
+  FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields);
 
   typedef std::unordered_map<BlockId, ImmutableReadableBlockInfo*, BlockIdHash> BlockMap;
   typedef std::unordered_map<uint64_t, ImmutableRandomAccessFileInfo*> LogMap;
@@ -191,6 +202,9 @@ private:
   // We need to know whether this ended succesfully before changing the peer's member type from
   // NON_VOTER to VOTER.
   bool succeeded_;
+
+  // Directory where the checkpoint files are stored for this session (only for rocksdb).
+  std::string checkpoint_dir_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };

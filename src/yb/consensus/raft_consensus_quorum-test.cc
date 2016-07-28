@@ -99,7 +99,6 @@ class RaftConsensusQuorumTest : public YBTest {
     FLAGS_enable_leader_failure_detection = false;
   }
 
-
   // Builds an initial configuration of 'num' elements.
   // All of the peers start as followers.
   void BuildInitialRaftConfigPB(int num) {
@@ -183,7 +182,8 @@ class RaftConsensusQuorumTest : public YBTest {
                             txn_factory,
                             logs_[i],
                             parent_mem_trackers_[i],
-                            Bind(&DoNothing)));
+                            Bind(&DoNothing),
+                            DEFAULT_TABLE_TYPE));
 
       txn_factory->SetConsensus(peer.get());
       txn_factories_.push_back(txn_factory);
@@ -968,7 +968,6 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
 
   scoped_refptr<RaftConsensus> follower;
   CHECK_OK(peers_->GetPeerByIdx(0, &follower));
-
 
   req.set_caller_uuid(leader->peer_uuid());
   req.set_caller_term(last_op_id.term());

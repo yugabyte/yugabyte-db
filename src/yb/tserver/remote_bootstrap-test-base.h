@@ -41,6 +41,9 @@ static const int kNumLogRolls = 2;
 
 class RemoteBootstrapTest : public TabletServerTestBase {
  public:
+  explicit RemoteBootstrapTest(TableType table_type = DEFAULT_TABLE_TYPE)
+      : TabletServerTestBase(table_type) {}
+
   virtual void SetUp() OVERRIDE {
     TabletServerTestBase::SetUp();
     StartTabletServer();
