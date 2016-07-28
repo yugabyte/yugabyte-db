@@ -64,6 +64,7 @@ set_common_test_paths() {
     exit 1
   fi
   YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
+  mkdir -p "$YB_TEST_LOG_ROOT_DIR"
 }
 
 validate_relative_test_binary_path() {
@@ -350,6 +351,26 @@ prepare_for_running_test() {
   local test_binary_sanitized=$( sanitize_for_path "$rel_test_binary" )
   local test_name_sanitized=$( sanitize_for_path "$test_name" )
 
+  #
+  # If there are ephermeral drives, pick a random one for this test and create a symlink from
+  # $BUILD_ROOT/yb-test-logs/<testname> to /mnt/ephemeral?/test-workspace/<testname>.
+  # Otherwise, simply create the directory under $BUILD_ROOT/yb-test-logs.
+  #
+  test_dir="$YB_TEST_LOG_ROOT_DIR/$test_binary_sanitized"
+  if [[ ! -d $test_dir ]]; then
+    set +e
+    num_ephemeral_drives=$(ls -d /mnt/ephemeral* 2> /dev/null | wc -l)
+    set -e
+    if [[ $num_ephemeral_drives -eq 0 ]]; then
+      mkdir -p $test_dir
+    else
+      rand_drive=$(ls -d /mnt/ephemeral* | sort -R | tail -1)
+      actual_dir=$rand_drive/test-workspace/$test_binary_sanitized
+      mkdir -p "$actual_dir"
+      ln -s "$actual_dir" "$test_dir"
+    fi
+  fi
+
   rel_test_log_path_prefix="$test_binary_sanitized"
   if "$run_at_once"; then
     # Make this similar to the case when we run tests separately. Pretend that the test binary name
@@ -379,7 +400,6 @@ prepare_for_running_test() {
   fi
 
   export TEST_TMPDIR="$test_log_path_prefix.tmp"
-
   mkdir -p "$TEST_TMPDIR"
   test_log_path="$test_log_path_prefix.log"
   raw_test_log_path="${test_log_path_prefix}__raw.log"

@@ -115,8 +115,24 @@ fi
 # else. Otherwise, if we fail during the "build" step, Jenkins will
 # archive the test logs from the previous run, thinking they came from
 # this run, and confuse us when we look at the failed build.
+
 rm -rf "$BUILD_ROOT"
 mkdir -p "$BUILD_ROOT"
+
+#
+# Create or clean (if already present) a "test-workspace" directory
+# in each ephemeral drive. Each test will randomly pick one of
+# the drives for its working directory.
+#
+set +e
+for ephemeral_dir in $(ls -d /mnt/ephemeral* 2> /dev/null); do
+  if [[ -d $ephemeral_dir/test-workspace ]]; then
+    rm -rf "$ephemeral_dir"/test-workspace/*
+  else
+    mkdir -p "$ephemeral_dir"/test-workspace
+  fi
+done
+set -e
 
 TEST_LOG_DIR="$BUILD_ROOT/test-logs"
 TEST_TMP_ROOT_DIR="$BUILD_ROOT/test-tmp"
