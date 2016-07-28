@@ -133,8 +133,9 @@ class ClusterLoadBalancer {
   void ResetState();
 
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
-  // across the cluster.
-  void AnalyzeTablets();
+  // across the cluster. Returns false if we encounter transient errors that should stop the load
+  // balancing.
+  bool AnalyzeTablets();
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
@@ -153,7 +154,8 @@ class ClusterLoadBalancer {
   // building the initial state.
 
   // Method called when initially analyzing tablets, to build up load and usage information.
-  void UpdateTabletInfo(TabletInfo* tablet);
+  // Returns false only if there are transient errors in updating the internal state.
+  bool UpdateTabletInfo(TabletInfo* tablet);
 
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.

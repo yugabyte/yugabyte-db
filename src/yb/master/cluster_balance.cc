@@ -138,7 +138,7 @@ class ClusterLoadBalancer::ClusterLoadState {
   void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
 
   // Update the per-tablet information for this tablet.
-  void UpdateTablet(TabletInfo* tablet) {
+  bool UpdateTablet(TabletInfo* tablet) {
     const auto& tablet_id = tablet->id();
     // Set the per-tablet entry to empty default and get the reference for filling up information.
     auto& tablet_meta = per_tablet_meta_[tablet_id];
@@ -153,20 +153,30 @@ class ClusterLoadBalancer::ClusterLoadState {
     // Set state information for both the tablet and the tablet server replicas.
     for (const auto& replica : replica_map) {
       const auto& ts_uuid = replica.first;
-      // Set the per-ts entry to empty default, if first time looking at this tablet server, and/or
-      // get the reference from the map afterwards, for filling up information.
-      auto& ts_meta = per_ts_meta_[ts_uuid];
+      // If we do not have ts_meta information for this particular replica, then we are in the
+      // rare case where we just became the master leader and started doing load balancing, but we
+      // have yet to receive heartbeats from all the tablet servers. We will just return false
+      // across the stack and stop load balancing and log errors, until we get all the needed info.
+      //
+      // Worst case scenario, there is a network partition that is stopping us from actually
+      // getting the heartbeats from a certain tablet server, but we anticipate that to be a
+      // temporary matter. We should monitor error logs for this and see that it never actually
+      // becomes a problem!
+      auto ts_meta_it = per_ts_meta_.find(ts_uuid);
+      if (ts_meta_it == per_ts_meta_.end()) {
+        return false;
+      }
 
       const tablet::TabletStatePB& tablet_state = replica.second.state;
       if (tablet_state == tablet::RUNNING) {
-        ts_meta.tablets.insert(tablet_id);
-        ++ts_meta.running;
+        ts_meta_it->second.tablets.insert(tablet_id);
+        ++ts_meta_it->second.running;
         ++tablet_meta.running;
         ++total_running_;
       } else if (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED) {
         // Keep track of transitioning state (not running, but not in a stopped or failed state).
-        ts_meta.tablets.insert(tablet_id);
-        ++ts_meta.starting;
+        ts_meta_it->second.tablets.insert(tablet_id);
+        ++ts_meta_it->second.starting;
         ++tablet_meta.starting;
         ++total_starting_;
       }
@@ -255,6 +265,8 @@ class ClusterLoadBalancer::ClusterLoadState {
     if (tablet_meta.has_wrong_placements()) {
       tablets_wrong_placement_.insert(tablet_id);
     }
+
+    return true;
   }
 
   void UpdateTabletServer(shared_ptr<TSDescriptor> ts_desc) {
@@ -419,7 +431,7 @@ class ClusterLoadBalancer::ClusterLoadState {
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
 };
 
-void ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
+bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
   const auto& table_id = tablet->table()->id();
   // Set the placement information on a per-table basis, only once.
   if (!state_->placement_by_table_.count(table_id)) {
@@ -438,7 +450,7 @@ void ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
     state_->placement_by_table_[table_id] = std::move(pb);
   }
 
-  state_->UpdateTablet(tablet);
+  return state_->UpdateTablet(tablet);
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetPlacementByTablet(const TabletId& tablet_id) const {
@@ -477,7 +489,10 @@ void ClusterLoadBalancer::RunLoadBalancer() {
   boost::shared_lock<CatalogManager::LockType> l(catalog_manager_->lock_);
 
   // Prepare the in-memory structures.
-  AnalyzeTablets();
+  if (!AnalyzeTablets()) {
+    LOG(WARNING) << "Skipping load balancing due to internal state error";
+    return;
+  }
 
   // Outsput  parameters are unused in the load balancer, but useful in testing.
   TabletId out_tablet_id;
@@ -503,7 +518,7 @@ void ClusterLoadBalancer::ResetState() {
   state_ = unique_ptr<ClusterLoadState>(new ClusterLoadState());
 }
 
-void ClusterLoadBalancer::AnalyzeTablets() {
+bool ClusterLoadBalancer::AnalyzeTablets() {
   // Loop over alive tablet servers to set empty defaults, so we can also have info on those
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
@@ -539,7 +554,10 @@ void ClusterLoadBalancer::AnalyzeTablets() {
     // concerned, but just be underreplicated, and have some TS currently bootstrapping instances
     // of the tablet.
     if (tablet_running) {
-      UpdateTabletInfo(tablet.get());
+      if (!UpdateTabletInfo(tablet.get())) {
+        // Logging for this error is handled in the call itself.
+        return false;
+      }
     }
   }
 
@@ -550,6 +568,7 @@ void ClusterLoadBalancer::AnalyzeTablets() {
   VLOG(1) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2",
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets());
+  return true;
 }
 
 bool ClusterLoadBalancer::HandleAddIfMissingPlacement(
@@ -742,6 +761,11 @@ bool ClusterLoadBalancer::GetTabletToMove(
     // If we have placement information, we want to only pick the tablet if it's moving to the same
     // placement, so we guarantee we're keeping the same type of distribution.
     if (!placement_info.placement_blocks().empty() && !same_placement) {
+      continue;
+    }
+    // Skip this tablet if we are trying to move away from the leader, as we would like to avoid
+    // extra leader stepdowns.
+    if (state_->per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
       continue;
     }
     // If we got here, it means we either have no placement, in which case we can pick any TS, or

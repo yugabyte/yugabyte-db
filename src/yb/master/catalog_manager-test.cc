@@ -116,6 +116,9 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
     PrepareTestState(ts_descs);
     TestWithBlacklist();
+
+    PrepareTestState(ts_descs);
+    TestWithMissingTabletServers();
   }
 
  protected:
@@ -334,6 +337,16 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     ASSERT_EQ(total_num_tablets_ - 3, get_total_running_tablets());
     ASSERT_EQ(3, get_total_starting_tablets());
     ASSERT_EQ(0, get_total_over_replication());
+  }
+
+  void TestWithMissingTabletServers() {
+    LOG(INFO) << "Testing with missing tablet servers";
+
+    // Remove one of the needed tablet servers.
+    ts_descs_.pop_back();
+
+    // Analyze the tablets into the internal state.
+    ASSERT_FALSE(AnalyzeTablets());
   }
 
   // Methods to prepare the state of the current test.
