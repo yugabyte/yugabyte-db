@@ -36,7 +36,7 @@ mysql> create database yugaware;
 mysql> show databases;
 ----
 
-Needs AWS auth credentials to run.
+Needs AWS auth credentials to run. Make sure no quotes around the keys!
 [source,bash]
 ----
 cat > ~/.sbt/.s3credentials
