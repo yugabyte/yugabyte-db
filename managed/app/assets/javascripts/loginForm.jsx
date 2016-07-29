@@ -45,6 +45,9 @@ var LoginForm = React.createClass({
               </form>
               <YBErrorBox name="loginFormAlert" />
             </div>
+            <div className="panel-footer">
+              <a href="/register">Create a new account.</a>
+            </div>
           </div>
         </div>
       </div>
