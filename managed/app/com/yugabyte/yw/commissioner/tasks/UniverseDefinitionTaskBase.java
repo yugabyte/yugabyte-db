@@ -25,7 +25,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
@@ -38,8 +38,8 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
 import play.libs.Json;
 
-public abstract class UniverseTaskBase extends AbstractTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
+public abstract class UniverseDefinitionTaskBase extends AbstractTaskBase {
+  public static final Logger LOG = LoggerFactory.getLogger(UniverseDefinitionTaskBase.class);
 
   // The default number of masters in the cluster.
   public static final int defaultNumMastersToChoose = 3;
@@ -52,7 +52,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   boolean universeLocked = false;
 
   // The task params.
-  protected UniverseTaskParams taskParams;
+  protected UniverseDefinitionTaskParams taskParams;
 
   // The threadpool on which the tasks are executed.
   ExecutorService executor;
@@ -62,7 +62,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
-    this.taskParams = (UniverseTaskParams)params;
+    this.taskParams = (UniverseDefinitionTaskParams)params;
     // Create the threadpool for the subtasks to use.
     int numThreads = 10;
     ThreadFactory namedThreadFactory =
