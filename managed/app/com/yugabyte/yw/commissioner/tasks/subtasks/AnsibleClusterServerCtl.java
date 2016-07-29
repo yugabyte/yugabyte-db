@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
 
@@ -17,28 +16,24 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
     public String command;
   }
 
-  Params taskParams;
-
-  @Override
-  public void initialize(ITaskParams params) {
-    this.taskParams = (Params)params;
+  protected Params taskParams() {
+    return (Params)taskParams;
   }
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams.nodeName + ", " +
-           taskParams.process + ": " + taskParams.command + ")";
+    return super.getName() + "(" + taskParams().nodeName + ", " +
+           taskParams().process + ": " + taskParams().command + ")";
   }
 
   @Override
   public void run() {
-    Params params = taskParams;
     // Create the process to fetch information about the node from the cloud provider.
     String ybDevopsHome = Util.getDevopsHome();
     String command = ybDevopsHome + "/bin/yb_cluster_server_ctl.sh" +
-                     " --instance-name " + params.nodeName +
-                     " --process " + params.process +
-                     " --command " + params.command;
+                     " --instance-name " + taskParams().nodeName +
+                     " --process " + taskParams().process +
+                     " --command " + taskParams().command;
     // Execute the ansible command.
     execCommand(command);
 

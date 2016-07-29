@@ -34,35 +34,38 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     public OpType opType;
   }
 
-  Params taskParams;
+  protected Params taskParams() {
+    return (Params)taskParams;
+  }
 
   @Override
   public void initialize(ITaskParams params) {
-    taskParams = (Params)params;
+    super.initialize(params);
     ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams.nodeName + ", " + taskParams.opType.toString() + ")";
+    return super.getName() + "(" + taskParams().nodeName +
+           ", " + taskParams().opType.toString() + ")";
   }
 
   @Override
   public void run() {
     try {
       // Get the master addresses.
-      String masterAddresses = Universe.get(taskParams.universeUUID).getMasterAddresses();
+      String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
       LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
-               taskParams.universeUUID, masterAddresses);
+               taskParams().universeUUID, masterAddresses);
       if (masterAddresses == null || masterAddresses.isEmpty()) {
         throw new IllegalStateException("No master host/ports for a change config op in " +
-            taskParams.universeUUID);
+            taskParams().universeUUID);
       }
 
       // Get the node details.
-      NodeDetails node = Universe.get(taskParams.universeUUID).getNode(taskParams.nodeName);
+      NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
       // Perform the change config operation.
-      boolean isAddMasterOp = (taskParams.opType == OpType.AddMaster);
+      boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
       ChangeConfigResponse response =
           ybService.getClient(masterAddresses).changeMasterConfig(node.private_ip,
                                                                   node.masterRpcPort,

@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
@@ -145,6 +146,36 @@ public class UniverseController extends AuthenticatedController {
 
   public Result getDetails(UUID customerUUID, UUID universeUUID) {
     return TODO;
+  }
+
+  public Result destroy(UUID customerUUID, UUID universeUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.find.byId(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    // Make sure the universe exists, this method will throw an exception if it does not.
+    try {
+      Universe.get(universeUUID);
+    } catch (IllegalStateException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Create the Commissioner task to destroy the universe.
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.universeUUID = universeUUID;
+
+    // Submit the task to destroy the universe.
+    UUID taskUUID = Commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);
+    LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
+
+    // Remove the entry for the universe from the customer table.
+    customer.removeUniverseUUID(universeUUID);
+    customer.save();
+    LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
+
+    return ApiResponse.success(taskUUID);
   }
 
   private Universe.PlacementInfo getPlacementInfo(Universe.UserIntent userIntent) {
