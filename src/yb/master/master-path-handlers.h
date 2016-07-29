@@ -61,6 +61,7 @@ class MasterPathHandlers {
                      std::stringstream* output);
   void HandleDumpEntities(const Webserver::WebRequest& req,
                           std::stringstream* output);
+  void HandleGetClusterConfig(const Webserver::WebRequest& req, std::stringstream* output);
 
   // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.

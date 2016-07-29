@@ -439,6 +439,20 @@ void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
   jw.EndObject();
 }
 
+void MasterPathHandlers::HandleGetClusterConfig(
+    const Webserver::WebRequest& req, stringstream* output) {
+  *output << "<h1>Current Cluster Config</h1>\n";
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    return;
+  }
+
+  *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
+          << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
+}
+
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -468,6 +482,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/dump-entities", "Dump Entities",
       boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
       false);
+  cb = boost::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
+  server->RegisterPathHandler(
+      "/cluster-config", "Cluster Config",
+      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      is_on_nav_bar);
   return Status::OK();
 }
 
