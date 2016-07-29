@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 
 import play.data.FormFactory;
@@ -67,7 +67,7 @@ public class Commissioner {
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
    */
-  public static UUID submit(TaskInfo.Type taskType, UniverseTaskParams taskParams) {
+  public static UUID submit(TaskInfo.Type taskType, UniverseDefinitionTaskParams taskParams) {
     try {
       // Claim the task if we can - check if we will go above the max local concurrent task
       // threshold. If we can claim it, set ourselves as the owner of the task. Otherwise, do not

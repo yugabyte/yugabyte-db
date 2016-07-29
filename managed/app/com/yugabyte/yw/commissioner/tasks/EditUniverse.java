@@ -22,7 +22,7 @@ import com.yugabyte.yw.models.Universe.NodeDetails;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
-public class EditUniverse extends UniverseTaskBase {
+public class EditUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(EditUniverse.class);
 
   // The set of new nodes that need to be created.

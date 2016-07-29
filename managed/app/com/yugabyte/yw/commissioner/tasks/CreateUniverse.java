@@ -14,7 +14,7 @@ import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.NodeDetails;
 
-public class CreateUniverse extends UniverseTaskBase {
+public class CreateUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
 
   // The set of new nodes that need to be created.

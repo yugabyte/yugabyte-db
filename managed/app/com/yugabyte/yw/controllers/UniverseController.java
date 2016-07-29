@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CreateUniverseFormData;
@@ -77,7 +77,7 @@ public class UniverseController extends AuthenticatedController {
                " for customer [" + customer.name + "]");
 
       // Setup the create universe task.
-      UniverseTaskParams taskParams = new UniverseTaskParams();
+      UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
       taskParams.universeUUID = universe.universeUUID;
       taskParams.cloudProvider = CloudType.aws.toString();
       taskParams.numNodes = formData.get().replicationFactor;
