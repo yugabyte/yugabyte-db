@@ -6,10 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.ITask;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 
-public class DestroyUniverse extends UniverseTaskBase {
+public class DestroyUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
 
   @Override
