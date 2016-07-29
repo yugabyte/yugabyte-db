@@ -47,6 +47,7 @@ POST    /api/customers/:cUUID/instances               com.yugabyte.yw.controller
 PUT     /api/customers/:cUUID/instances/:uniUUID      com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/instances               com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.getDetails(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Table Management API
 GET     /api/tables                                   com.yugabyte.yw.controllers.TablesController.list()

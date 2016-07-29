@@ -37,6 +37,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate();
 
+      // Update the user intent.
+      universe = writeUserIntentToUniverse();
+
       // Configure the cluster nodes.
       configureNewNodes(universe.universeDetails.nodePrefix,
                         1 /* nodeStartIndex */,
@@ -83,13 +86,13 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
   }
 
   private void verifyParams() {
-    if (taskParams.universeUUID == null) {
+    if (taskParams().universeUUID == null) {
       throw new RuntimeException(getName() + ": universeUUID not set");
     }
-    if (taskParams.nodePrefix == null) {
+    if (taskParams().nodePrefix == null) {
       throw new RuntimeException(getName() + ": nodePrefix not set");
     }
-    if (taskParams.numNodes < 3) {
+    if (taskParams().numNodes < 3) {
       throw new RuntimeException(getName() + ": numNodes is invalid, need at least 3 nodes");
     }
   }
