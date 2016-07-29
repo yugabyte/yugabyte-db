@@ -42,28 +42,30 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
     public Set<String> blacklistNodes = null;
   }
 
-  Params taskParams;
+  protected Params taskParams() {
+    return (Params)taskParams;
+  }
 
   @Override
   public void initialize(ITaskParams params) {
-    this.taskParams = (Params)params;
+    super.initialize(params);
     ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams.universeUUID + ")";
+    return super.getName() + "(" + taskParams().universeUUID + ")";
   }
 
   @Override
   public void run() {
-    String hostPorts = Universe.get(taskParams.universeUUID).getMasterAddresses();
+    String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
 
       ModifyUniverseConfig modifyConfig = new ModifyUniverseConfig(ybService.getClient(hostPorts),
-                                                                   taskParams.universeUUID,
-                                                                   taskParams.blacklistNodes);
+                                                                   taskParams().universeUUID,
+                                                                   taskParams().blacklistNodes);
       modifyConfig.doCall();
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());

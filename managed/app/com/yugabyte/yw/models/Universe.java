@@ -92,8 +92,8 @@ public class Universe extends Model {
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = new UniverseDetails();
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
-    LOG.debug("Created universe " + universe.universeUUID + " with details [" +
-              universe.universeDetailsJson + "]");
+    LOG.debug("Created universe " + universe.universeUUID + " with name " + universe.name +
+              "details [" + universe.universeDetailsJson + "]");
     // Save the object.
     universe.save();
     return universe;
@@ -165,6 +165,20 @@ public class Universe extends Model {
       }
     }
     return universe;
+  }
+
+  /**
+   * Deletes the universe entry with the given UUID.
+   * @param universeUUID : uuid of the universe.
+   */
+  public static void delete(UUID universeUUID) {
+    // First get the universe.
+    Universe universe = Universe.get(universeUUID);
+    // Make sure this universe has been locked.
+    assert !universe.universeDetails.updateInProgress;
+    // Delete the universe.
+    LOG.info("Deleting universe " + universe.name + ":" + universeUUID);
+    universe.delete();
   }
 
   /**

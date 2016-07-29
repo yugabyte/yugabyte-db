@@ -2,15 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import java.util.UUID;
-
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.Universe;
 
-public class UniverseDefinitionTaskParams implements ITaskParams {
-  // The instance against which this node's details should be saved.
-  public UUID universeUUID;
-
+public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The cloud on which to create the instance.
   public String cloudProvider = CloudType.aws.toString();
 

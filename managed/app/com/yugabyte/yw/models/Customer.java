@@ -67,12 +67,19 @@ public class Customer extends Model {
   @Column(columnDefinition = "LONGTEXT", nullable = false)
 	private String universeUUIDs = "";
 
-  public void addUniverseUUID(UUID universeUUID) {
+  public synchronized void addUniverseUUID(UUID universeUUID) {
 	  Set<UUID> universes = getUniverseUUIDs();
 	  universes.add(universeUUID);
 	  universeUUIDs = Joiner.on(",").join(universes);
 	  LOG.debug("New universe list for customer [" + name + "] : " + universeUUIDs);
 	}
+
+  public synchronized void removeUniverseUUID(UUID universeUUID) {
+    Set<UUID> universes = getUniverseUUIDs();
+    universes.remove(universeUUID);
+    universeUUIDs = Joiner.on(",").join(universes);
+    LOG.debug("New universe list for customer [" + name + "] : " + universeUUIDs);
+  }
 
 	public Set<UUID> getUniverseUUIDs() {
 	  Set<UUID> uuids = new HashSet<UUID>();

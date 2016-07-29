@@ -39,7 +39,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), taskParams.universeUUID);
+    LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
       // Create the task list sequence.
@@ -49,6 +49,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate();
 
+      // Update the user intent.
+      universe = writeUserIntentToUniverse();
+
       // Get the existing nodes.
       existingNodes = universe.getNodes();
       // Get the existing masters.
@@ -56,7 +59,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Get the number of masters currently present in the cluster.
       int numMasters = existingMasters.size();
       // For now, we provision the same number of nodes as before.
-      taskParams.numNodes = existingNodes.size();
+      taskParams().numNodes = existingNodes.size();
       // Get the index of the largest node. We start from an index greater than that.
       int maxNodeIdx = -1;
       for (NodeDetails node : existingNodes) {
@@ -168,7 +171,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Add the node name.
     params.nodeName = nodeName;
     // Add the universe uuid.
-    params.universeUUID = taskParams.universeUUID;
+    params.universeUUID = taskParams().universeUUID;
     // This is an add master.
     params.opType = isAdd ? ChangeMasterConfig.OpType.AddMaster :
                             ChangeMasterConfig.OpType.RemoveMaster;
