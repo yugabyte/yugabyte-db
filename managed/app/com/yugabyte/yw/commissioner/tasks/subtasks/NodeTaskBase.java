@@ -10,11 +10,16 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 
 import play.libs.Json;
 
-public abstract class NodeTaskBase extends AbstractTaskBase{
+public abstract class NodeTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(NodeTaskBase.class);
 
   // The task params.
   protected NodeTaskParams taskParams;
+
+  @Override
+  protected NodeTaskParams taskParams() {
+    return taskParams;
+  }
 
   @Override
   public void initialize(ITaskParams params) {

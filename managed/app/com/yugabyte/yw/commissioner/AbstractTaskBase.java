@@ -20,6 +20,10 @@ public abstract class AbstractTaskBase implements ITask {
 
   protected ITaskParams taskParams;
 
+  protected ITaskParams taskParams() {
+    return taskParams;
+  }
+
   @Override
   public void initialize(ITaskParams params) {
     this.taskParams = params;
@@ -60,7 +64,11 @@ public abstract class AbstractTaskBase implements ITask {
         LOG.info("[" + getName() + "] STDERR: " + line);
       }
       int exitValue = p.waitFor();
-      LOG.info("Command [" + command + "] finished with exit code " + exitValue);
+      String message = "Command [" + command + "] finished with exit code " + exitValue;
+      LOG.info(message);
+      if (exitValue != 0) {
+        throw new RuntimeException(message);
+      }
       // TODO: log output stream somewhere.
     } catch (IOException e) {
       throw new RuntimeException(e);
