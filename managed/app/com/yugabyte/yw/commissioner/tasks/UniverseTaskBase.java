@@ -36,6 +36,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected TaskListQueue taskListQueue;
 
   // The task params.
+  @Override
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams)taskParams;
   }
