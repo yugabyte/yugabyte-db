@@ -21,6 +21,8 @@ public class DashboardPageController extends AuthenticatedController {
   FormFactory formFactory;
   public Result index() {
     UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+    Form<CreateUniverseFormData> createUniverseFormData = formFactory.form(CreateUniverseFormData.class);
+
     // Verify the customer with this universe is present.
     Customer customer = Customer.find.byId(customerUUID);
     if (customer == null) {
@@ -30,12 +32,7 @@ public class DashboardPageController extends AuthenticatedController {
         (customer.getUniverseUUIDs() == null) ? 0 : customer.getUniverseUUIDs().size();
     // TODO: need to fetch this from a API.
     Integer tableCount = 0;
-    return ok(dashboard.render(universeCount, tableCount));
-  }
-
-  public Result createInstance() {
-		Form<CreateUniverseFormData> formData = formFactory.form(CreateUniverseFormData.class);
-    return ok(createInstance.render(formData));
+    return ok(dashboard.render(universeCount, tableCount, createUniverseFormData));
   }
 
   public Result instances() {

@@ -62,9 +62,9 @@ function fetchAndUpdateTasks(ulParentNode) {
 
 function bindKeyboardEvents() {
     Mousetrap.bind("?", function() {$("#keyboard-shortcut-dialog-dialog").modal(); });
-    Mousetrap.bind("c", function() {window.location.href = "/createInstance"; })
-    Mousetrap.bind("p", function() {window.location.href = "/profile"; })
-    Mousetrap.bind("d", function() {window.location.href = "/"; })
+    Mousetrap.bind("c", function() {$("#create-universe-dialog").modal("show"); });
+    Mousetrap.bind("p", function() {window.location.href = "/profile"; });
+    Mousetrap.bind("d", function() {window.location.href = "/"; });
 }
 
 function parseFormErrorResponse(response) {

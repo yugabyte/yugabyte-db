@@ -1,13 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 $(document).ready(function() {
-  var map = L.map( 'map', {
-      center: [10.0, 5.0],
-      minZoom: 2,
-      zoom: 2,
-      maxZoom: 2,
-  });
+  var map = L.map( 'map', { zoomAnimation: false  });
   map.dragging.disable();
+  map.fitWorld().zoomIn();
 
   // TODO: need to investigate if we can use some other tile
   L.tileLayer('http://korona.geog.uni-heidelberg.de/tiles/roads/x={x}&y={y}&z={z}', {
