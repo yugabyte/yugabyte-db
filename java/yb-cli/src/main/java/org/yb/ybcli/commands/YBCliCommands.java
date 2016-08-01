@@ -154,10 +154,14 @@ public class YBCliCommands implements CommandMarker {
       LeaderStepDownResponse resp = ybClient.masterLeaderStepDown();
       if (resp.hasError()) {
         return "Leader step down response failed, error = " + resp.errorMessage();
+      } else {
+        if (!ybClient.waitForMasterLeader(ybClient.getDefaultAdminOperationTimeoutMs())) {
+          return "Leader was stepped down, but new leader did not come up in the allotted time!";
+        }
       }
 
       StringBuilder sb = new StringBuilder();
-      sb.append(resp.hasError() ? "Hit Error " + resp.errorMessage() + ".\n" : "Success.\n");
+      sb.append("Success.\n");
       sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
       return sb.toString();
     } catch (Exception e) {

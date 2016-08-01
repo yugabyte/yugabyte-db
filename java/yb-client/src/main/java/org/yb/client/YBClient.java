@@ -235,6 +235,30 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+  * Wait for the cluster to have successfully elected a Master Leader.
+  * @param timeoutMs the amount of time, in MS, to wait until a Leader is present
+  * @return whether a Leader was found in the allotted time
+  */
+  public boolean waitForMasterLeader(long timeoutMs) {
+    String leaderUuid = null;
+    try {
+      long start = System.currentTimeMillis();
+      long now = -1;
+      do {
+        if (now > 0) {
+          Thread.sleep(AsyncYBClient.SLEEP_TIME);
+        }
+        leaderUuid = asyncClient.getLeaderMasterUUID();
+        now = System.currentTimeMillis();
+      } while (leaderUuid == null && now - start < timeoutMs);
+    } catch (Exception e) {
+      LOG.error("Could not get Master Leader UUID: " + e);
+      return false;
+    }
+    return leaderUuid != null;
+  }
+
+  /**
    * Change master server configuration.
    * @return status of the step down via a response.
    */
