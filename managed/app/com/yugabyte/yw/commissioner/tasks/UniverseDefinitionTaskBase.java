@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.NodeDetails;
 import com.yugabyte.yw.models.Universe.UniverseDetails;
@@ -339,6 +340,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add it to the task list.
       taskList.addTask(task);
     }
+    taskListQueue.add(taskList);
+  }
+
+  public void createWaitForMasterLeaderTask() {
+    TaskList taskList = new TaskList("WaitForMasterLeader", executor);
+    WaitForMasterLeader task = new WaitForMasterLeader();
+    WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    taskList.addTask(task);
     taskListQueue.add(taskList);
   }
 
