@@ -48,6 +48,28 @@ Here's how to build the yb-csd module with validation:
 
 $ mvn package -DskipTests -PbuildCSD -PvalidateCSD
 
+Publishing YB build to S3 
+------------------------------------------------------------
+
+You can push YB client package to S3, so yugaware and other
+clients can have the latest changes. This needs the s3 credentials
+in ~/.m2/settings.xml
+  <settings>
+    <servers>
+      <server>
+        <id>s3.release</id>
+        <username>AWS_ACCESS_KEY</username>
+        <password>AWS_SECRET_KEY</password>
+      </server>
+      <server>
+        <id>s3.snapshot</id>
+        <username>AWS_ACCESS_KEY</username>
+        <password>AWS_SECRET_KEY</password>
+      </server>
+    </servers>
+  </settings>
+
+$ mvn deploy  -DskipTests
 
 Running the Tests
 ------------------------------------------------------------
