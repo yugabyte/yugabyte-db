@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -108,6 +109,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(existingNodes);
 
       // Wait for %age completion of the tablet move from master.
+      createWaitForDataMoveTask();
 
       // Finally send destroy old set of nodes to ansible.
 
@@ -183,6 +185,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     changeConfig.initialize(params);
     // Add it to the task list.
     taskList.addTask(changeConfig);
+    // Add the task list to the task queue.
+    taskListQueue.add(taskList);
+  }
+  
+  private void createWaitForDataMoveTask() {
+    TaskList taskList = new TaskList("WaitForDataMove", executor);
+    WaitForDataMove.Params params = new WaitForDataMove.Params();
+    params.universeUUID = taskParams().universeUUID;
+    // Create the task.
+    WaitForDataMove waitForMove = new WaitForDataMove();
+    waitForMove.initialize(params);
+    // Add it to the task list.
+    taskList.addTask(waitForMove);
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
   }
