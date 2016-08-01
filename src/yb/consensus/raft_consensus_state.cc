@@ -595,6 +595,12 @@ const OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
   return last_committed_index_;
 }
 
+bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
+  int64_t term = GetCurrentTermUnlocked();
+  const OpId &opid = GetCommittedOpIdUnlocked();
+  return opid.term() == term;
+}
+
 Status ReplicaState::CheckHasCommittedOpInCurrentTermUnlocked() const {
   int64_t term = GetCurrentTermUnlocked();
   const OpId& opid = GetCommittedOpIdUnlocked();

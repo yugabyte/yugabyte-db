@@ -21,6 +21,7 @@
 #include <boost/optional.hpp>
 #include <gflags/gflags.h>
 #include <iostream>
+#include <yb/tserver/tserver.pb.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
@@ -364,11 +365,11 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
     if (state_->HasLeaderUnlocked()) {
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "Failure of leader " << state_->GetLeaderUuidUnlocked()
-          << " detected. Triggering leader election";
+          << " detected. Triggering leader election, mode=" << mode;
     } else {
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "No leader contacted us within the election timeout. "
-          << "Triggering leader election";
+          << "Triggering leader election, mode=" << mode;
     }
 
     // Increment the term.
@@ -463,7 +464,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   auto replicate = new ReplicateMsg;
   replicate->set_op_type(NO_OP);
   replicate->mutable_noop_request(); // Define the no-op request field.
-
+  LOG(INFO) << "Sending NO_OP at op " << state_->GetCommittedOpIdUnlocked();
   // This committed OpId is used for tablet bootstrap for RocksDB-backed tables.
   replicate->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
 
@@ -1369,6 +1370,17 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   return RequestVoteRespondVoteGranted(request, response);
 }
 
+Status RaftConsensus::IsLeaderReadyForChangeConfig(bool* is_ready) {
+  *is_ready = false;
+  {
+    ReplicaState::UniqueLock lock;
+    RETURN_NOT_OK(state_->LockForConfigChange(&lock));
+    *is_ready = state_->AreCommittedAndCurrentTermsSameUnlocked();
+  }
+
+  return Status::OK();
+}
+
 Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                                    const StatusCallback& client_cb,
                                    boost::optional<TabletServerErrorPB::Code>* error_code) {
@@ -1387,7 +1399,11 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
-    RETURN_NOT_OK(state_->CheckActiveLeaderUnlocked());
+    Status s = state_->CheckActiveLeaderUnlocked();
+    if (!s.ok()) {
+      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
+      return s;
+    }
     RETURN_NOT_OK(state_->CheckNoConfigChangePendingUnlocked());
 
     // We are required by Raft to reject config change operations until we have
@@ -2015,7 +2031,11 @@ MonoDelta RaftConsensus::LeaderElectionExpBackoffDeltaUnlocked() {
   double max_timeout = std::min<double>(
       min_timeout * backoff_factor,
       FLAGS_leader_failure_exp_backoff_max_delta_ms);
-
+  if (max_timeout < min_timeout) {
+    LOG(INFO) << "Resetting max_timeout from " <<  max_timeout << " to " << min_timeout
+              << ", max_delta_flag=" << FLAGS_leader_failure_exp_backoff_max_delta_ms;
+    max_timeout = min_timeout;
+  }
   // Randomize the timeout between the minimum and the calculated value.
   // We do this after the above capping to the max. Otherwise, after a
   // churny period, we'd end up highly likely to backoff exactly the max

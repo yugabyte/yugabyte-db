@@ -462,6 +462,24 @@ message StartRemoteBootstrapResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
 }
 
+// Check to see if the leader server for this tablet is ready to accept a config change request by
+// abiding to the Raft protocol requirements.
+message IsLeaderReadyForChangeConfigRequestPB {
+  // UUID of server this request is addressed.
+  optional bytes dest_uuid = 1;
+
+  // UUID of the tablet.
+  optional bytes tablet_id = 2;
+}
+
+// If no error is set, is_ready being true would imply that the leader is ready to perform a
+// config change operation (for e.g., there has been at least one committed op in the current term
+// as a leader).
+message IsLeaderReadyForChangeConfigResponsePB {
+  optional tserver.TabletServerErrorPB error = 1;
+  optional bool is_ready = 2;
+}
+
 // A Raft implementation.
 service ConsensusService {
   // Analogous to AppendEntries in Raft, but only used for followers.
@@ -484,6 +502,7 @@ service ConsensusService {
   // Force this node to step down as leader.
   rpc LeaderStepDown(LeaderStepDownRequestPB) returns (LeaderStepDownResponsePB);
 
+  // Get the latest committed or received opid on the server.
   rpc GetLastOpId(GetLastOpIdRequestPB) returns (GetLastOpIdResponsePB);
 
   // Returns the committed Consensus state.
@@ -491,4 +510,8 @@ service ConsensusService {
 
   // Instruct this server to remotely bootstrap a tablet from another host.
   rpc StartRemoteBootstrap(StartRemoteBootstrapRequestPB) returns (StartRemoteBootstrapResponsePB);
+
+  // Check if the consensus layer of the leader server is ready for a ChangeConfig call.
+  rpc IsLeaderReadyForChangeConfig(IsLeaderReadyForChangeConfigRequestPB)
+    returns (IsLeaderReadyForChangeConfigResponsePB);
 }

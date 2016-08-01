@@ -96,6 +96,8 @@ using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
+using consensus::IsLeaderReadyForChangeConfigRequestPB;
+using consensus::IsLeaderReadyForChangeConfigResponsePB;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
 using consensus::RunLeaderElectionRequestPB;
@@ -796,6 +798,34 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
   Status s = consensus->RequestVote(req, resp);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s,
+                         TabletServerErrorPB::UNKNOWN_ERROR,
+                         context);
+    return;
+  }
+  context->RespondSuccess();
+}
+
+void ConsensusServiceImpl::IsLeaderReadyForChangeConfig(
+    const IsLeaderReadyForChangeConfigRequestPB* req,
+    IsLeaderReadyForChangeConfigResponsePB* resp,
+    RpcContext* context) {
+  LOG(INFO) << "Received IsLeaderReadyForChangeConfig RPC: " << req->DebugString();
+  if (!CheckUuidMatchOrRespond(tablet_manager_, "IsLeaderReadyForChangeConfig", req, resp, context)) {
+    return;
+  }
+  scoped_refptr<TabletPeer> tablet_peer;
+  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context,
+                                 &tablet_peer)) {
+    return;
+  }
+
+  scoped_refptr<Consensus> consensus;
+  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
+  bool is_ready = false;
+  Status status = consensus->IsLeaderReadyForChangeConfig(&is_ready);
+  resp->set_is_ready(is_ready);
+  if (PREDICT_FALSE(!status.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), status,
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          context);
     return;

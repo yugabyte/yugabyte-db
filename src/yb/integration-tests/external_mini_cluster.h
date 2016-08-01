@@ -141,6 +141,9 @@ class ExternalMiniCluster {
     ALL
   };
 
+  // Threshold of the number of retries for master related rpc calls.
+  static const int kMaxRetryIterations = 100;
+
   explicit ExternalMiniCluster(const ExternalMiniClusterOptions& opts);
   ~ExternalMiniCluster();
 
@@ -334,6 +337,12 @@ class ExternalMiniCluster {
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
       vector<OpId>* op_ids);
+
+  // Ensure that the leader server is allowed to process a config change (by having at least one
+  // commit in the current term as leader).
+  Status WaitForLeaderToAllowChangeConfig(
+      const string& uuid,
+      ConsensusServiceProxy* leader_proxy);
 
   ExternalMiniClusterOptions opts_;
 

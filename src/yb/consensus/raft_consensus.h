@@ -380,6 +380,10 @@ class RaftConsensus : public Consensus,
   // The maximum delta is capped by 'FLAGS_leader_failure_exp_backoff_max_delta_ms'.
   MonoDelta LeaderElectionExpBackoffDeltaUnlocked();
 
+  // Checks if the leader is ready to process a change config request (one requirement for this is
+  // for it to have at least one committed op in the current term).
+  Status IsLeaderReadyForChangeConfig(bool* is_ready) OVERRIDE;
+
   // Increment the term to the next term, resetting the current leader, etc.
   Status IncrementTermUnlocked();
 
