@@ -63,6 +63,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Creates the YB cluster by starting the masters in the create mode.
       createClusterStartTasks(newMasters, false /* isShell */);
 
+      // Wait for a Master Leader to be elected.
+      createWaitForMasterLeaderTask();
+
       // Persist the placement info into the YB master.
       createPlacementInfoTask(null /* blacklistNodes */);
 

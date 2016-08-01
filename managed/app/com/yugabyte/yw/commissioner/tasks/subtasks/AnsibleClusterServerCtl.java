@@ -37,13 +37,5 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
                      " --command " + taskParams().command;
     // Execute the ansible command.
     execCommand(command);
-
-    // TODO: make sure the process command has completed. Especially make sure the cluster has been
-    // created when process == master and command == create.
-    try {
-      Thread.sleep(5000);
-    } catch (InterruptedException e) {
-      LOG.error("Error waiting for " + command + "to complete.", e);
-    }
   }
 }
