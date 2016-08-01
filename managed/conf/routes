@@ -10,7 +10,6 @@
 
 # Web Specific Routes
 GET     /                                             com.yugabyte.yw.ui.controllers.DashboardPageController.index()
-GET     /createInstance                               com.yugabyte.yw.ui.controllers.DashboardPageController.createInstance()
 GET     /instances                                    com.yugabyte.yw.ui.controllers.DashboardPageController.instances()
 GET     /tables                                       com.yugabyte.yw.ui.controllers.DashboardPageController.tables()
 GET     /profile                                      com.yugabyte.yw.ui.controllers.DashboardPageController.profile()

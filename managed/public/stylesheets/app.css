@@ -6,7 +6,7 @@ body {
     width: 100%;
 }
 
-#map { height: 500px; }
+#map { height: 600px; width: 1000px;}
 
 #page-wrapper {
     padding: 0 15px;
