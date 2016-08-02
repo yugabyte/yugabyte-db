@@ -45,7 +45,7 @@ ELSIF v_run_maint = false THEN
     RAISE EXCEPTION 'Any parent table that will be part of a sub-partitioned set (on any level) must have use_run_maintenance set to true in part_config table, even for serial partitioning. See documentation for more info.';
 END IF;
 
-IF p_upsert IS NOT NULL AND @extschema@.check_version('9.5.0') = 'false' THEN
+IF p_upsert <> '' AND @extschema@.check_version('9.5.0') = 'false' THEN
     RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
 END IF;
 
