@@ -27,11 +27,15 @@ public class AnsibleSetupServer extends NodeTaskBase {
   @Override
   public void run() {
     String command = "yb_server_provision.py " + taskParams().nodeName +
-                     " --cloud " + taskParams().cloud;
+                     " --cloud " + taskParams().cloud +
+                     " --region " + taskParams().region;
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
     if (taskParams().cloud == CloudType.aws) {
-      command += " --extra-vars {\"aws_vpc_subnet_id\":\"" + taskParams().subnetId + "\"}";
+      command += " --aws_vpc_subnet_id " + taskParams().subnetId;
+      // TODO: remove the hardcoded one from here and use it from nodeTaskParams?
+      command += " --aws_image " + "ami-9c68a8fc";
+      command += " --aws_instance_type " + "c3.xlarge";
     }
     // Execute the ansible command.
     execCommand(command);

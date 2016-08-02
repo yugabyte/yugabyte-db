@@ -218,6 +218,7 @@ public class UniverseController extends AuthenticatedController {
 
     PlacementRegion placementRegion = new PlacementRegion();
     placementRegion.uuid = region.uuid;
+    placementRegion.code = region.code;
     placementRegion.name = region.name;
     placementRegion.azList = new ArrayList<PlacementAZ>();
 

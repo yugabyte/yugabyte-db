@@ -25,6 +25,8 @@ public class PlacementInfo {
   public static class PlacementRegion {
     // The region provider id.
     public UUID uuid;
+    // The actual provider given region code.
+    public String code;
     // The region name.
     public String name;
     // The list of AZs inside this region into which we want to place data.

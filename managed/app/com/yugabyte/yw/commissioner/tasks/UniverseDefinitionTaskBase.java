@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -81,7 +82,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       nodeDetails.cloud = placementCloud.name;
       // Set the region.
       PlacementRegion placementRegion = placementCloud.regionList.get(regionIdx);
-      nodeDetails.region = placementRegion.name;
+      nodeDetails.region = placementRegion.code;
       // Set the AZ and the subnet.
       PlacementAZ placementAZ = placementRegion.azList.get(azIdx);
       nodeDetails.az = placementAZ.name;
@@ -222,6 +223,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the cloud name.
       params.cloud = CloudType.aws;
+      // Set the region code.
+      params.region = node.region;
       // Add the node name.
       params.nodeName = node.instance_name;
       // Add the universe uuid.
@@ -249,6 +252,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       // Set the cloud name.
       params.cloud = CloudType.aws;
+      // Set the region name to the proper provider code so we can use it in the cloud API calls.
+      params.region = node.region;
       // Add the node name.
       params.nodeName = node.instance_name;
       // Add the universe uuid.
@@ -343,6 +348,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
       task.initialize(params);
       // Add it to the task list.
+      taskList.addTask(task);
+    }
+    taskListQueue.add(taskList);
+  }
+
+  /**
+   * Create a task list to ping all servers until they are up.
+   *
+   * @param nodes : a collection of nodes that need to be pinged
+   */
+  public void createWaitForServerTasks(Collection<NodeDetails> nodes) {
+    TaskList taskList = new TaskList("WaitForServer", executor);
+    for (NodeDetails node : nodes) {
+      WaitForServer.Params params = new WaitForServer.Params();
+      params.universeUUID = taskParams().universeUUID;
+      params.nodeName = node.instance_name;
+      WaitForServer task = new WaitForServer();
+      task.initialize(params);
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);
