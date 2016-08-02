@@ -11,7 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.api.Play;
 
@@ -54,7 +54,8 @@ public class ChangeMasterConfig extends AbstractTaskBase {
   public void run() {
     try {
       // Get the master addresses.
-      String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
+      Universe universe = Universe.get(taskParams().universeUUID);
+      String masterAddresses = universe.getMasterAddresses();
       LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
                taskParams().universeUUID, masterAddresses);
       if (masterAddresses == null || masterAddresses.isEmpty()) {
@@ -63,7 +64,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       }
 
       // Get the node details.
-      NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
+      NodeDetails node = universe.getNode(taskParams().nodeName);
       // Perform the change config operation.
       boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
       ChangeConfigResponse response =

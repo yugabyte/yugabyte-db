@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.metamaster;
+package com.yugabyte.yw.controllers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,21 +9,16 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
-import play.data.FormFactory;
 import play.mvc.Controller;
 import play.mvc.Result;
 
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
-
-  @Inject
-  FormFactory formFactory;
 
   public Result get(UUID universeUUID) {
     try {
@@ -35,9 +30,8 @@ public class MetaMasterController extends Controller {
         masters.add(MasterNode.fromUniverseNode(node));
       }
       return ApiResponse.success(masters);
-    } catch (IllegalStateException e) {
-      // If the entry was not found, return an error.
-      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
+    } catch (RuntimeException e) {
+			return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
     }
   }
 

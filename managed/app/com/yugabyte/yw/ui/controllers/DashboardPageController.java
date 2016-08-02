@@ -35,10 +35,6 @@ public class DashboardPageController extends AuthenticatedController {
     return ok(dashboard.render(universeCount, tableCount, createUniverseFormData));
   }
 
-  public Result instances() {
-    return ok(listInstance.render());
-  }
-
   public Result tables() {
     return TODO;
   }
@@ -52,9 +48,5 @@ public class DashboardPageController extends AuthenticatedController {
       return ok(editProfile.render(formData));
     }
     return redirect("/");
-  }
-
-  public Result showInstance(UUID instanceUUID) {
-    return TODO;
   }
 }

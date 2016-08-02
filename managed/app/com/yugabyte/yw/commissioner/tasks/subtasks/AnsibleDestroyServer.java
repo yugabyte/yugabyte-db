@@ -20,9 +20,9 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    String ybDevopsHome = Util.getDevopsHome();
-    String command = ybDevopsHome + " /ybops/ybops/scripts/yb_server_provision.py" +
-                     " -c " + taskParams().cloud + " " + taskParams().nodeName + " --destroy";
+    String command = "yb_server_provision.py " + taskParams().nodeName +
+                     " -c " + taskParams().cloud + " --destroy";
+
     // Execute the ansible command.
     execCommand(command);
   }

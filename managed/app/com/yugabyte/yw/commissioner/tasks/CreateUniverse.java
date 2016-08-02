@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class CreateUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
@@ -41,7 +41,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       universe = writeUserIntentToUniverse();
 
       // Configure the cluster nodes.
-      configureNewNodes(universe.universeDetails.nodePrefix,
+      configureNewNodes(universe.getUniverseDetails().nodePrefix,
                         1 /* nodeStartIndex */,
                         defaultNumMastersToChoose,
                         newNodesMap,

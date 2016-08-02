@@ -19,7 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.api.Play;
 
@@ -87,7 +87,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
     @Override
     protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
       // Get the masters in the universe.
-      Collection<Universe.NodeDetails> masters = Universe.get(universeUUID).getMasters();
+      Collection<NodeDetails> masters = Universe.get(universeUUID).getMasters();
 
       Master.SysClusterConfigEntryPB.Builder configBuilder =
           Master.SysClusterConfigEntryPB.newBuilder();

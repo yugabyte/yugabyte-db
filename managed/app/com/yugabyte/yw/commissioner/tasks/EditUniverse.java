@@ -18,7 +18,7 @@ import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -70,7 +70,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       int startNodeIndex = maxNodeIdx + 1;
 
       // Configure the new cluster nodes.
-      configureNewNodes(universe.universeDetails.nodePrefix,
+      configureNewNodes(universe.getUniverseDetails().nodePrefix,
                         startNodeIndex,
                         numMasters,
                         newNodesMap,

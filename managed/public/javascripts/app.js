@@ -26,12 +26,12 @@ $(document).ready(function() {
 
 function fetchInstances() {
   var customerUUID = $("#customerUUID").val();
-  $.get( "api/customers/" + customerUUID + "/instances" , function( results ) {
+  $.get( "/api/customers/" + customerUUID + "/universes" , function( results ) {
     var ulParentNode = $(".instance-list");
 
     ulParentNode.empty();
-    $.each(results, function(idx, instance) {
-      ulParentNode.append($("<li><a href='/instances/"+ instance.instanceId + "'>" + instance.name + "</a></li>"));
+    $.each(results, function(idx, universe) {
+      ulParentNode.append($("<li><a href='/universes/"+ universe.universeUUID + "'>" + universe.name + "</a></li>"));
     });
   });
 }

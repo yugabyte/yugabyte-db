@@ -10,12 +10,12 @@
 
 # Web Specific Routes
 GET     /                                             com.yugabyte.yw.ui.controllers.DashboardPageController.index()
-GET     /instances                                    com.yugabyte.yw.ui.controllers.DashboardPageController.instances()
 GET     /tables                                       com.yugabyte.yw.ui.controllers.DashboardPageController.tables()
 GET     /profile                                      com.yugabyte.yw.ui.controllers.DashboardPageController.profile()
 GET     /login                                        com.yugabyte.yw.ui.controllers.HomePageController.login()
 GET     /register                                     com.yugabyte.yw.ui.controllers.HomePageController.register()
-GET     /instances/:iUUID                             com.yugabyte.yw.ui.controllers.UniversePageController.index(iUUID: java.util.UUID)
+GET     /universes/:iUUID                             com.yugabyte.yw.ui.controllers.UniversePageController.index(iUUID: java.util.UUID)
+GET     /universes                                    com.yugabyte.yw.ui.controllers.UniversePageController.list()
 
 
 ###################################################################################################
@@ -42,9 +42,9 @@ GET     /api/customers/:cUUID                         com.yugabyte.yw.controller
 PUT     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 
 # Universe, table, etc management API
-POST    /api/customers/:cUUID/instances               com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
-PUT     /api/customers/:cUUID/instances/:uniUUID      com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /api/customers/:cUUID/instances               com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
+POST    /api/customers/:cUUID/universes               com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
+PUT     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes               com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.getDetails(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
@@ -54,7 +54,7 @@ GET     /api/tablet-servers                           com.yugabyte.yw.controller
 
 # Task History API
 GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
-GET     /commissioner/tasks/:tUUID                    com.yugabyte.yw.controllers.CustomerTaskController.getTaskStatus(tUUID: java.util.UUID)
+GET    /commissioner/tasks/:tUUID                     com.yugabyte.yw.controllers.CustomerTaskController.getTaskStatus(tUUID: java.util.UUID)
 
 
 ###################################################################################################
@@ -64,7 +64,7 @@ GET     /commissioner/tasks/:tUUID                    com.yugabyte.yw.controller
 ###################################################################################################
 
 # Returns the list of masters for a given instance.
-GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.metamaster.MetaMasterController.get(universeUUID: java.util.UUID)
+GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.controllers.MetaMasterController.get(universeUUID: java.util.UUID)
 
 
 ###################################################################################################

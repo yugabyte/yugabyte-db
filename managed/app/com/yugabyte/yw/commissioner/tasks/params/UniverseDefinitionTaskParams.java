@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.params;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.UserIntent;
 
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The cloud on which to create the instance.
@@ -14,10 +16,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public String nodePrefix = null;
 
   // The configuration for the universe the user intended.
-  public Universe.UserIntent userIntent;
+  public UserIntent userIntent;
 
   // The placement information computed from the user intent.
-  public Universe.PlacementInfo placementInfo;
+  public PlacementInfo placementInfo;
 
   // The number of nodes to provision.
   public int numNodes;

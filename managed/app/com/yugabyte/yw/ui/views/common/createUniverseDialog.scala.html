@@ -1,7 +1,7 @@
 @import com.yugabyte.yw.forms._
 @import helper._
 
-@(instanceForm: Form[CreateUniverseFormData])
+@(universeForm: Form[CreateUniverseFormData])
 
 @implicitField = @{ FieldConstructor(formFieldTemplate.f) }
 
@@ -18,7 +18,7 @@
 			<div class="modal-body">
 				<form id="createInstanceForm">
 					<fieldset>
-						@inputText(instanceForm("universeName"), 'class -> "form-control", '_label -> "Universe Name")
+						@inputText(universeForm("universeName"), 'class -> "form-control", '_label -> "Universe Name")
 						<div class="form-group">
 							<label>AZ Preference</label>
 							<label class="radio-inline">
@@ -28,8 +28,8 @@
 								<input type="radio" name="isMultiAZ" id="multiAZ_2" value=true>Multi
 							</label>
 						</div>
-						@select(instanceForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )
-						@select(instanceForm("regionUUID"), options(Seq("")), 'class -> "form-control", '_label -> "Region" )
+						@select(universeForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )
+						@select(universeForm("regionUUID"), options(Seq("")), 'class -> "form-control", '_label -> "Region" )
 						<input class="btn btn-lg btn-success btn-block" type="submit" value="Create">
 					</fieldset>
 				</form>
