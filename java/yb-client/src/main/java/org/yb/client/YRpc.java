@@ -58,6 +58,7 @@ import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
 public abstract class YRpc<R> {
 
   // Service names.
+  protected static final String GENERIC_SERVICE_NAME = "yb.server.GenericService";
   protected static final String MASTER_SERVICE_NAME = "yb.master.MasterService";
   protected static final String TABLET_SERVER_SERVICE_NAME = "yb.tserver.TabletServerService";
   protected static final String CONSENSUS_SERVICE_NAME = "yb.consensus.ConsensusService";

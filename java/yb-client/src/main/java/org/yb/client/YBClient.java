@@ -249,25 +249,74 @@ public class YBClient implements AutoCloseable {
   /**
   * Wait for the cluster to have successfully elected a Master Leader.
   * @param timeoutMs the amount of time, in MS, to wait until a Leader is present
-  * @return whether a Leader was found in the allotted time
   */
-  public boolean waitForMasterLeader(long timeoutMs) {
+  public void waitForMasterLeader(long timeoutMs) throws Exception {
     String leaderUuid = null;
-    try {
-      long start = System.currentTimeMillis();
-      long now = -1;
-      do {
+    long start = System.currentTimeMillis();
+    long now = -1;
+    do {
+      if (now > 0) {
+        Thread.sleep(AsyncYBClient.SLEEP_TIME);
+      }
+      now = System.currentTimeMillis();
+      leaderUuid = asyncClient.getLeaderMasterUUID();
+      // 'now < start' is just a safety check to avoid system time changes causing time 'regression'.
+      if (now < start) {
+        throw new RuntimeException("Time went backwards??? Now: " + now + ", Start: " + start);
+      }
+    } while (leaderUuid == null && now - start < timeoutMs);
+
+    if (leaderUuid == null) {
+      throw new RuntimeException("Timed out waiting for Master Leader.");
+    }
+  }
+
+  /**
+  * Ping a certain server to see if it is responding to RPC requests.
+  * @param host the hostname or IP of the server
+  * @param port the port number of the server
+  * @return true if the server responded to ping
+  */
+  public boolean ping(final HostAndPort hp) throws Exception {
+    Deferred<PingResponse> d = asyncClient.ping(hp);
+    PingResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+    return true;
+  }
+
+  /**
+  * Wait for the specific server to come online.
+  * @param hp the HostAndPort of the server
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the server responded to pings in the given time, false otherwise
+  */
+  public boolean waitForServer(final HostAndPort hp, final long timeoutMs) {
+    Exception finalException = null;
+    boolean pingRet = false;
+    long start = System.currentTimeMillis();
+    long now = -1;
+    do {
+      try {
         if (now > 0) {
           Thread.sleep(AsyncYBClient.SLEEP_TIME);
         }
-        leaderUuid = asyncClient.getLeaderMasterUUID();
         now = System.currentTimeMillis();
-      } while (leaderUuid == null && now - start < timeoutMs);
-    } catch (Exception e) {
-      LOG.error("Could not get Master Leader UUID: " + e);
-      return false;
+        pingRet = ping(hp);
+        // 'now < start' is just a safety check to avoid system time changes causing time 'regression'.
+        if (now < start) {
+          return false;
+        }
+      } catch (Exception e) {
+        // We will get exceptions if we cannot connect to the other end. Catch them and save for
+        // final debug if we never succeed.
+        finalException = e;
+      }
+    } while (pingRet == false && now - start < timeoutMs);
+
+    if (pingRet == false) {
+      LOG.warn("Timed out waiting for server to come online at: " + hp.toString() + "." +
+          " Final exception was: " + finalException);
     }
-    return leaderUuid != null;
+    return pingRet;
   }
 
   /**

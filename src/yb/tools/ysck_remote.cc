@@ -46,11 +46,11 @@ MonoDelta GetDefaultTimeout() {
 }
 
 Status RemoteYsckTabletServer::Connect() const {
-  tserver::PingRequestPB req;
-  tserver::PingResponsePB resp;
+  server::PingRequestPB req;
+  server::PingResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(GetDefaultTimeout());
-  return ts_proxy_->Ping(req, &resp, &rpc);
+  return generic_proxy_->Ping(req, &resp, &rpc);
 }
 
 Status RemoteYsckTabletServer::CurrentTimestamp(uint64_t* timestamp) const {
@@ -215,11 +215,11 @@ void RemoteYsckTabletServer::RunTabletChecksumScanAsync(
 }
 
 Status RemoteYsckMaster::Connect() const {
-  master::PingRequestPB req;
-  master::PingResponsePB resp;
+  server::PingRequestPB req;
+  server::PingResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(GetDefaultTimeout());
-  return proxy_->Ping(req, &resp, &rpc);
+  return generic_proxy_->Ping(req, &resp, &rpc);
 }
 
 Status RemoteYsckMaster::Build(const Sockaddr& address, shared_ptr<YsckMaster>* master) {

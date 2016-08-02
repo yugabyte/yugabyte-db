@@ -380,9 +380,9 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     for (const TabletServerMap::value_type& entry : tablet_servers_) {
       controller.Reset();
       controller.set_timeout(MonoDelta::FromSeconds(10));
-      PingRequestPB req;
-      PingResponsePB resp;
-      Status s = entry.second->tserver_proxy->Ping(req, &resp, &controller);
+      server::PingRequestPB req;
+      server::PingResponsePB resp;
+      Status s = entry.second->generic_proxy->Ping(req, &resp, &controller);
       if (!s.ok()) {
         error += "\n" + entry.second->ToString() +  " (" + s.ToString() + ")";
         continue;

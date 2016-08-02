@@ -22,8 +22,6 @@ import "yb/tserver/tserver.proto";
 import "yb/tablet/metadata.proto";
 
 service TabletServerService {
-
-  rpc Ping(PingRequestPB) returns (PingResponsePB);
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
   rpc Scan(ScanRequestPB) returns (ScanResponsePB);
   rpc ScannerKeepAlive(ScannerKeepAliveRequestPB) returns (ScannerKeepAliveResponsePB);

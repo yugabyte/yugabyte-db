@@ -245,12 +245,6 @@ message SysClusterConfigEntryPB {
 // RPCs
 ////////////////////////////////////////////////////////////
 
-message PingRequestPB {
-}
-
-message PingResponsePB {
-}
-
 // Sent by the TS when it first heartbeats with a master. This sends the
 // master all of the necessary information about the current instance
 // of the TS.
@@ -709,8 +703,6 @@ message GetLoadMovePercentResponsePB {
 }
 
 service MasterService {
-  rpc Ping(PingRequestPB) returns (PingResponsePB);
-
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
 

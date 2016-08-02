@@ -24,6 +24,9 @@ import org.yb.client.YBClient;
 import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
 
+// TODO: understand this magic?
+import org.yb.client.shaded.com.google.common.net.HostAndPort;
+
 @Component
 public class YBCliCommands implements CommandMarker {
   public static final Logger LOG = LoggerFactory.getLogger(YBCliCommands.class);
@@ -155,9 +158,7 @@ public class YBCliCommands implements CommandMarker {
       if (resp.hasError()) {
         return "Leader step down response failed, error = " + resp.errorMessage();
       } else {
-        if (!ybClient.waitForMasterLeader(ybClient.getDefaultAdminOperationTimeoutMs())) {
-          return "Leader was stepped down, but new leader did not come up in the allotted time!";
-        }
+        ybClient.waitForMasterLeader(ybClient.getDefaultAdminOperationTimeoutMs());
       }
 
       StringBuilder sb = new StringBuilder();
@@ -245,6 +246,25 @@ public class YBCliCommands implements CommandMarker {
       }
 
       return "Percent completed = " + resp.getPercentCompleted();
+    } catch (Exception e) {
+      LOG.error("Caught exception ", e);
+      return "Failed: " + e.toString() + "\n";
+    }
+  }
+
+  @CliCommand(value = "ping",
+              help = "Ping a certain YB server.")
+  public String ping(
+      @CliOption(key = {"host", "h"},
+                 mandatory = true,
+                 help = "Hostname or IP of the server. ") final String host,
+      @CliOption(key = {"port", "p"},
+                 mandatory = true,
+                 help = "Port number of the server. ") final int port) {
+    try {
+      boolean ret = ybClient.ping(HostAndPort.fromParts(host, port));
+
+      return ret ? "Success." : "Failed.";
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";

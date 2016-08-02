@@ -48,10 +48,6 @@ class TabletServiceImpl : public TabletServerServiceIf {
  public:
   explicit TabletServiceImpl(TabletServer* server);
 
-  virtual void Ping(const PingRequestPB* req,
-                    PingResponsePB* resp,
-                    rpc::RpcContext* context) OVERRIDE;
-
   virtual void Write(const WriteRequestPB* req, WriteResponsePB* resp,
                    rpc::RpcContext* context) OVERRIDE;
 

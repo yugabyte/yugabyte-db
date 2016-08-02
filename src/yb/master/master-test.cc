@@ -24,15 +24,16 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/row_operations.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/rpc_server.h"
+#include "yb/server/server_base.proxy.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
@@ -101,9 +102,12 @@ class MasterTest : public YBTest {
 
 TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
-  PingRequestPB req;
-  PingResponsePB resp;
-  ASSERT_OK(proxy_->Ping(req, &resp, ResetAndGetController()));
+  server::PingRequestPB req;
+  server::PingResponsePB resp;
+  gscoped_ptr<server::GenericServiceProxy> generic_proxy;
+  generic_proxy.reset(
+      new server::GenericServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
+  ASSERT_OK(generic_proxy->Ping(req, &resp, ResetAndGetController()));
 }
 
 static void MakeHostPortPB(const string& host, uint32_t port, HostPortPB* pb) {

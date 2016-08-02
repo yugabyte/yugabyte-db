@@ -263,6 +263,20 @@ public class AsyncYBClient implements AutoCloseable {
     return lastPropagatedTimestamp;
   }
 
+  public Deferred<PingResponse> ping(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    PingRequest rpc = new PingRequest();
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<PingResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
   /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.
@@ -1573,6 +1587,14 @@ public class AsyncYBClient implements AutoCloseable {
     // host and port which is enough to identify the node we're connecting to.
     return newClient(MASTER_TABLE_NAME_PLACEHOLDER + " - " + masterHostPort.toString(),
         ip, masterHostPort.getPort());
+  }
+
+  // TODO: this is a hack around the current ip2client cache framework that relies on uuids. We
+  // should ideally have something like the Proxy in c++, but until then, we need a way to create
+  // clients that are not explicitly bound to tablets, but tservers/masters for admin-style ops.
+  TabletClient newSimpleClient(final HostAndPort hp) {
+    String uuid = "fakeUUID -> " + hp.toString();
+    return newClient(uuid, hp.getHostText(), hp.getPort());
   }
 
   TabletClient newClient(String uuid, final String host, final int port) {

@@ -147,5 +147,10 @@ void GenericServiceImpl::GetStatus(const GetStatusRequestPB* req,
   rpc->RespondSuccess();
 }
 
+void GenericServiceImpl::Ping(
+    const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext* rpc) {
+  rpc->RespondSuccess();
+}
+
 } // namespace server
 } // namespace yb

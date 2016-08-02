@@ -90,12 +90,11 @@ class RemoteYsckMaster : public YsckMaster {
   virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) OVERRIDE;
 
  private:
-
-  explicit RemoteYsckMaster(const Sockaddr& address,
-                            const std::shared_ptr<rpc::Messenger>& messenger)
+  explicit RemoteYsckMaster(
+      const Sockaddr& address, const std::shared_ptr<rpc::Messenger>& messenger)
       : messenger_(messenger),
-        proxy_(new master::MasterServiceProxy(messenger, address)) {
-  }
+        generic_proxy_(new server::GenericServiceProxy(messenger, address)),
+        proxy_(new master::MasterServiceProxy(messenger, address)) {}
 
   Status GetTableInfo(const std::string& table_name, Schema* schema, int* num_replicas);
 
@@ -107,6 +106,7 @@ class RemoteYsckMaster : public YsckMaster {
     std::vector<std::shared_ptr<YsckTablet> >& tablets, bool* more_tablets);
 
   std::shared_ptr<rpc::Messenger> messenger_;
+  const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
   std::shared_ptr<master::MasterServiceProxy> proxy_;
 };
 

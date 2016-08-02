@@ -487,12 +487,6 @@ TabletServiceImpl::TabletServiceImpl(TabletServer* server)
     server_(server) {
 }
 
-void TabletServiceImpl::Ping(const PingRequestPB* req,
-                             PingResponsePB* resp,
-                             rpc::RpcContext* context) {
-  context->RespondSuccess();
-}
-
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
   : TabletServerAdminServiceIf(server->metric_entity()),
     server_(server) {

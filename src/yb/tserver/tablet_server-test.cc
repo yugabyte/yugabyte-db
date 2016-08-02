@@ -73,10 +73,10 @@ class TabletServerTest : public TabletServerTestBase {
 
 TEST_F(TabletServerTest, TestPingServer) {
   // Ping the server.
-  PingRequestPB req;
-  PingResponsePB resp;
+  server::PingRequestPB req;
+  server::PingResponsePB resp;
   RpcController controller;
-  ASSERT_OK(proxy_->Ping(req, &resp, &controller));
+  ASSERT_OK(generic_proxy_->Ping(req, &resp, &controller));
 }
 
 TEST_F(TabletServerTest, TestServerClock) {

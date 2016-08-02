@@ -36,10 +36,6 @@ class MasterServiceImpl : public MasterServiceIf {
  public:
   explicit MasterServiceImpl(Master* server);
 
-  virtual void Ping(const PingRequestPB* req,
-                    PingResponsePB* resp,
-                    rpc::RpcContext* rpc) OVERRIDE;
-
   virtual void TSHeartbeat(const TSHeartbeatRequestPB* req,
                            TSHeartbeatResponsePB* resp,
                            rpc::RpcContext* rpc) OVERRIDE;

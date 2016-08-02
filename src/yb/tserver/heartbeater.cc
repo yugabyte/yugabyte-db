@@ -26,17 +26,18 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
-#include "yb/master/master_rpc.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_rpc.h"
+#include "yb/server/server_base.proxy.h"
 #include "yb/server/webserver.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/thread.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
+#include "yb/util/thread.h"
 
 DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
              "Timeout used for the TS->Master heartbeat RPCs.");
@@ -249,21 +250,22 @@ Status Heartbeater::Thread::ConnectToMaster() {
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   // TODO send heartbeats without tablet reports to non-leader masters.
   RETURN_NOT_OK(FindLeaderMaster(deadline, &leader_master_hostport_));
-  gscoped_ptr<MasterServiceProxy> new_proxy;
-  MasterServiceProxyForHostPort(leader_master_hostport_,
-                                server_->messenger(),
-                                &new_proxy);
   RETURN_NOT_OK(leader_master_hostport_.ResolveAddresses(&addrs));
+  // Pings are common for both Master and Tserver.
+  gscoped_ptr<server::GenericServiceProxy> new_proxy;
+  new_proxy.reset(new server::GenericServiceProxy(server_->messenger(), addrs[0]));
 
   // Ping the master to verify that it's alive.
-  master::PingRequestPB req;
-  master::PingResponsePB resp;
+  server::PingRequestPB req;
+  server::PingResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   RETURN_NOT_OK_PREPEND(new_proxy->Ping(req, &resp, &rpc),
                         Substitute("Failed to ping master at $0", addrs[0].ToString()));
   LOG(INFO) << "Connected to a leader master server at " << leader_master_hostport_.ToString();
-  proxy_.reset(new_proxy.release());
+
+  // Save state in the instance.
+  MasterServiceProxyForHostPort(leader_master_hostport_, server_->messenger(), &proxy_);
   return Status::OK();
 }
 

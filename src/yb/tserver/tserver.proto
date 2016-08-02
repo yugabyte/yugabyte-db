@@ -96,13 +96,6 @@ message TabletServerErrorPB {
   required AppStatusPB status = 2;
 }
 
-
-message PingRequestPB {
-}
-
-message PingResponsePB {
-}
-
 // A batched set of insert/mutate requests.
 message WriteRequestPB {
   required bytes tablet_id = 1;

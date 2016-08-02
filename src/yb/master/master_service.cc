@@ -113,12 +113,6 @@ MasterServiceImpl::MasterServiceImpl(Master* server)
     server_(server) {
 }
 
-void MasterServiceImpl::Ping(const PingRequestPB* req,
-                             PingResponsePB* resp,
-                             rpc::RpcContext* rpc) {
-  rpc->RespondSuccess();
-}
-
 void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                                     TSHeartbeatResponsePB* resp,
                                     rpc::RpcContext* rpc) {

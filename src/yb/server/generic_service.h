@@ -49,6 +49,9 @@ class GenericServiceImpl : public GenericServiceIf {
   virtual void GetStatus(const GetStatusRequestPB* req,
                          GetStatusResponsePB* resp,
                          rpc::RpcContext* rpc) OVERRIDE;
+
+  virtual void Ping(const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   ServerBase* server_;
 

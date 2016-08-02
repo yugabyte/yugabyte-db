@@ -136,7 +136,7 @@ public class TestYBClient extends BaseYBTest {
   @Test(timeout = 100000)
   public void testChangeMasterConfig() throws Exception {
     // TODO: See if TestName @Rule can be made to work instead of explicit test names.
-    assertTrue(syncClient.waitForMasterLeader(10000));
+    syncClient.waitForMasterLeader(10000);
     LOG.info("Starting testChangeMasterConfig");
     int numBefore = BaseYBTest.miniCluster().getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
@@ -158,7 +158,7 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testChangeMasterConfigOfLeader() throws Exception {
-    assertTrue(syncClient.waitForMasterLeader(10000));
+    syncClient.waitForMasterLeader(10000);
     LOG.info("Starting testChangeMasterConfigOfLeader");
     int numBefore = BaseYBTest.miniCluster().getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();

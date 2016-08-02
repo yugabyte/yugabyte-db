@@ -113,6 +113,12 @@ message SetServerWallClockForTestsResponsePB {
   required bool success = 1;
 }
 
+message PingRequestPB {
+}
+
+message PingResponsePB {
+}
+
 service GenericService {
   rpc SetFlag(SetFlagRequestPB)
     returns (SetFlagResponsePB);
@@ -128,4 +134,6 @@ service GenericService {
 
   rpc GetStatus(GetStatusRequestPB)
     returns (GetStatusResponsePB);
+
+  rpc Ping(PingRequestPB) returns (PingResponsePB);
 }
