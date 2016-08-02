@@ -331,6 +331,15 @@ public class BaseYBTest {
   }
 
   /**
+   * Find the uuid of the leader master.
+   * @return The uuid of the leader master.
+   * @throws Exception If we are unable to find the leader master.
+   */
+  public static String findLeaderMasterUUID() throws Exception {
+    return client.getLeaderMasterUUID();
+  }
+
+  /**
    * Helper method to easily kill the leader master.
    *
    * This method is thread-safe.

@@ -62,7 +62,6 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
                   .setHost(host);
     RaftPeerPB.Builder pbb =
         RaftPeerPB.newBuilder()
-                  .setMemberType(RaftPeerPB.MemberType.VOTER)
                   .setPermanentUuid(ByteString.copyFromUtf8(uuid))
                   .setLastKnownAddr(hpb.build());
     builder.setType(this.changeType)

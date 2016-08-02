@@ -99,6 +99,36 @@ public class TestYBClient extends BaseYBTest {
     return new Schema(columns);
   }
 
+  // Check if the leader master is ready to serve config changes.
+  // If it times out, we return false.
+  private boolean leaderReadyForChangeConfig(long timeoutMs) throws Exception {
+    IsLeaderReadyForChangeConfigResponse readyResp;
+    long start = System.currentTimeMillis();
+    long now = -1;
+    do {
+      if (now > 0) {
+        Thread.sleep(AsyncYBClient.SLEEP_TIME);
+      }
+      now = System.currentTimeMillis();
+      readyResp = syncClient.isMasterLeaderReadyForChangeConfig();
+      assertFalse(readyResp.hasError());
+
+      // If 'now' regresses due to some timing system issues, then fail fast.
+      if (now < start) {
+        LOG.warn("Time regressed from {} to {}.", start, now);
+        return false;
+      }
+    } while (!readyResp.isReady() && now < start + timeoutMs);
+
+    // Here if the leader is ready or if there was no timeout.
+    if (now >= start + timeoutMs) {
+      LOG.warn("Timed out waiting for leader to be ready for change config.");
+      return false;
+    } else {
+      return true;
+    }
+  }
+
   /**
    * Test for Master Configuration Change operations.
    * @throws Exception
@@ -106,11 +136,13 @@ public class TestYBClient extends BaseYBTest {
   @Test(timeout = 100000)
   public void testChangeMasterConfig() throws Exception {
     // TODO: See if TestName @Rule can be made to work instead of explicit test names.
+    assertTrue(syncClient.waitForMasterLeader(10000));
     LOG.info("Starting testChangeMasterConfig");
     int numBefore = BaseYBTest.miniCluster().getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
     HostAndPort newHp = BaseYBTest.miniCluster().startShellMaster();
+    assertTrue(leaderReadyForChangeConfig(10000));
     ChangeConfigResponse resp = syncClient.changeMasterConfig(
         newHp.getHostText(), newHp.getPort(), true);
     assertFalse(resp.hasError());
@@ -126,10 +158,12 @@ public class TestYBClient extends BaseYBTest {
    */
   @Test(timeout = 100000)
   public void testChangeMasterConfigOfLeader() throws Exception {
+    assertTrue(syncClient.waitForMasterLeader(10000));
     LOG.info("Starting testChangeMasterConfigOfLeader");
     int numBefore = BaseYBTest.miniCluster().getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
+    assertTrue(leaderReadyForChangeConfig(10000));
     HostAndPort leaderHp = BaseYBTest.findLeaderMasterHostPort();
     ChangeConfigResponse resp = syncClient.changeMasterConfig(
         leaderHp.getHostText(), leaderHp.getPort(), false);

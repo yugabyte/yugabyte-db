@@ -512,6 +512,23 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(rpc);
   }
 
+  /**
+   * Check if the master leader is ready to accept change config operations.
+   * @return a deferred object that yields a leader ready response.
+   */
+  public Deferred<IsLeaderReadyForChangeConfigResponse> isMasterLeaderReadyForChangeConfig(
+      String leaderUuid, String tabletId) throws Exception {
+    if (leaderUuid == null || tabletId == null) {
+      throw new IllegalArgumentException("Invalid leader/tablet argument during leader ready check " +
+                                         "request. Leader = " + leaderUuid);
+    }
+    checkIsClosed();
+    IsLeaderReadyForChangeConfigRequest rpc =
+      new IsLeaderReadyForChangeConfigRequest(this.masterTable, leaderUuid, tabletId);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
   Deferred<GetTableSchemaResponse> getTableSchema(String name) {
     GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);

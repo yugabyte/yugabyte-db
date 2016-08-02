@@ -211,6 +211,18 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the master leader is ready for change configuration operation.
+   * @return response with info on master leader being ready. 
+   */
+  public IsLeaderReadyForChangeConfigResponse isMasterLeaderReadyForChangeConfig()
+      throws Exception {
+    Deferred<IsLeaderReadyForChangeConfigResponse> d =
+      asyncClient.isMasterLeaderReadyForChangeConfig(getLeaderMasterUUID(), getMasterTabletId());
+    IsLeaderReadyForChangeConfigResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+    return resp;
+  }
+
+  /**
    * Get the master's tablet id.
    * @return master tablet id.
    */
