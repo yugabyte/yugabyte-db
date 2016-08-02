@@ -99,6 +99,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // list as only one change config job can be done in one step.
       createMoveMastersTasks();
 
+      // Wait for all servers to be responsive.
+      createWaitForServerTasks(newNodesMap.values());
+
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform
       // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
