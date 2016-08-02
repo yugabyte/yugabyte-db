@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.google.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,18 +22,18 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 
-import play.data.FormFactory;
 import play.libs.Json;
 
+@Singleton
 public class Commissioner {
 
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
   // Max number of concurrent tasks to execute at a time.
-  public static final int NUM_TASK_THREADS = 10;
+  public final int NUM_TASK_THREADS = 10;
 
   // The interval after which progress monitor wakes up and does work.
-  public static final long PROGRESS_MONITOR_SLEEP_INTERVAL = 300;
+  public final long PROGRESS_MONITOR_SLEEP_INTERVAL = 300;
 
   // State variable which signals if the task manager is shutting down.
   private static AtomicBoolean shuttingDown = new AtomicBoolean(false);
@@ -48,26 +49,24 @@ public class Commissioner {
   // persisted before removing the task from this map.
   static Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<UUID, TaskRunner>();
 
-  @Inject
-  FormFactory formFactory;
 
-  static {
-    // Initialize the tasks threadpool.
-    ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
-    executor = Executors.newFixedThreadPool(NUM_TASK_THREADS, namedThreadFactory);
-    LOG.info("Started TaskPool with " + NUM_TASK_THREADS + " threads.");
+	public Commissioner() {
+		// Initialize the tasks threadpool.
+		ThreadFactory namedThreadFactory =
+			new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+		executor = Executors.newFixedThreadPool(NUM_TASK_THREADS, namedThreadFactory);
+		LOG.info("Started TaskPool with " + NUM_TASK_THREADS + " threads.");
 
-    // Initialize the task manager.
-    progressMonitor = new ProgressMonitor();
-    progressMonitor.start();
-    LOG.info("Started TaskProgressMonitor thread.");
-  }
+		// Initialize the task manager.
+		progressMonitor = new ProgressMonitor();
+		progressMonitor.start();
+		LOG.info("Started TaskProgressMonitor thread.");
+	}
 
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
    */
-  public static UUID submit(TaskInfo.Type taskType, UniverseTaskParams taskParams) {
+  public UUID submit(TaskInfo.Type taskType, UniverseTaskParams taskParams) {
     try {
       // Claim the task if we can - check if we will go above the max local concurrent task
       // threshold. If we can claim it, set ourselves as the owner of the task. Otherwise, do not
@@ -94,7 +93,7 @@ public class Commissioner {
     }
   }
 
-  public static ObjectNode getStatus(UUID taskUUID) {
+  public ObjectNode getStatus(UUID taskUUID) {
     ObjectNode responseJson = Json.newObject();
 
     // Find the task runner for the task.
@@ -127,7 +126,7 @@ public class Commissioner {
    * A progress monitor to constantly write a last updated timestamp in the DB so that this
    * process and all its subtasks are considered to be alive.
    */
-  private static class ProgressMonitor extends Thread {
+  private class ProgressMonitor extends Thread {
 
     public ProgressMonitor() {
       setName("TaskProgressMonitor");
@@ -162,7 +161,7 @@ public class Commissioner {
 
         // Sleep for the required interval.
         try {
-          Thread.sleep(Commissioner.PROGRESS_MONITOR_SLEEP_INTERVAL);
+          Thread.sleep(PROGRESS_MONITOR_SLEEP_INTERVAL);
         } catch (InterruptedException e) { }
       }
     }

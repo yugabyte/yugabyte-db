@@ -26,10 +26,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    String ybDevopsHome = Util.getDevopsHome();
-    String command = ybDevopsHome + "/ybops/ybops/scripts/yb_server_provision.py" +
-                     " --cloud " + taskParams().cloud +
-                     " " + taskParams().nodeName;
+    String command = "yb_server_provision.py " + taskParams().nodeName +
+                     " --cloud " + taskParams().cloud;
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
     if (taskParams().cloud == CloudType.aws) {

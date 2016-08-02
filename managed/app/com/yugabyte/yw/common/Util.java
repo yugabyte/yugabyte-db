@@ -7,12 +7,13 @@ import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.MiniYBCluster;
@@ -113,9 +114,9 @@ public class Util {
   }
 
   // Convert node details to list of host/ports.
-  public static List<HostAndPort> getHostPortList(Collection<Universe.NodeDetails> nodes) {
+  public static List<HostAndPort> getHostPortList(Collection<NodeDetails> nodes) {
      List<HostAndPort> curServers = new ArrayList<HostAndPort>();
-     for (Universe.NodeDetails node : nodes) {
+     for (NodeDetails node : nodes) {
        curServers.add(HostAndPort.fromParts(node.public_ip, node.masterRpcPort));
      }
      return curServers;

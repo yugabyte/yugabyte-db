@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.UUID;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
@@ -12,7 +10,6 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 
 import play.api.Play;

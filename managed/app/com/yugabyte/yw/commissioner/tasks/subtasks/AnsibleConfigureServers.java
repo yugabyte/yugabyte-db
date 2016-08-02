@@ -23,13 +23,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   @Override
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
-    String ybDevopsHome = Util.getDevopsHome();
-    String command = ybDevopsHome + "/ybops/ybops/scripts/yb_server_configure.py" +
+    String command = "yb_server_configure.py " + taskParams().nodeName +
                      " --package " + taskParams().ybServerPkg +
                      " --cloud " + taskParams().cloud +
                      " --master_addresses " +
-                     Universe.get(taskParams().universeUUID).getMasterAddresses() +
-                     " " + taskParams().nodeName;
+                     Universe.get(taskParams().universeUUID).getMasterAddresses();
+
     // Execute the ansible command.
     execCommand(command);
   }

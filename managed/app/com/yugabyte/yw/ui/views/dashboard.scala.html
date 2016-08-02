@@ -1,7 +1,7 @@
 @import common._
 @import com.yugabyte.yw.forms._
 
-@(instanceCount: Integer, tableCount: Integer, instanceForm: Form[CreateUniverseFormData])
+@(universeCount: Integer, tableCount: Integer, universeForm: Form[CreateUniverseFormData])
 
 @main(true, "dashboard") {
 <script src="@routes.Assets.versioned("lib/leaflet/leaflet.js")"></script>
@@ -16,13 +16,13 @@
     </div>
     <div class="col-lg-2">
 	    <button class="btn btn-primary action-btn" data-toggle="modal" data-target="#create-universe-dialog">
-		    <span class="fa  fa-plus-square-o" aria-hidden="true"></span> Create Instance
+		    <span class="fa  fa-plus-square-o" aria-hidden="true"></span> Create Universe
 	    </button>
     </div>
   </div>
   <div class="row">
     <div class="col-lg-3 col-md-6">
-      @dashboardPanel("Instances", instanceCount, "panel-primary", "fa-database")
+      @dashboardPanel("Universes", universeCount, "panel-primary", "fa-database")
     </div>
     <div class="col-lg-3 col-md-6">
       @dashboardPanel("Tables", tableCount, "panel-green", "fa-table")
@@ -31,5 +31,5 @@
   <div id="map"></div>
 </div>
 
-@createUniverseDialog(instanceForm)
+@createUniverseDialog(universeForm)
 }

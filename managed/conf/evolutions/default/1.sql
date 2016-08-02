@@ -31,12 +31,12 @@ create table customer_task (
   id                            bigint auto_increment not null,
   customer_uuid                 varchar(40),
   task_uuid                     varchar(40) not null,
-  target_type                   varchar(12) not null,
+  target_type                   varchar(8) not null,
   target_name                   varchar(255) not null,
   type                          varchar(6) not null,
   create_time                   datetime(6) not null,
   completion_time               datetime(6),
-  constraint ck_customer_task_target_type check (target_type in ('Table','UserUniverse')),
+  constraint ck_customer_task_target_type check (target_type in ('Table','Universe')),
   constraint ck_customer_task_type check (type in ('Delete','Create','Update')),
   constraint pk_customer_task primary key (id)
 );

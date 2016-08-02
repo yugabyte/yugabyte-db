@@ -29,226 +29,236 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.ui.controllers.AuthenticatedController;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.UserIntent;
 
 import play.data.Form;
 import play.data.FormFactory;
 import play.mvc.Result;
 
 public class UniverseController extends AuthenticatedController {
-  public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
+	public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
 
-  @Inject
-  FormFactory formFactory;
+	@Inject
+	FormFactory formFactory;
 
-  @Inject
-  ApiHelper apiHelper;
+	@Inject
+	ApiHelper apiHelper;
 
-  Random random = new Random();
+	@Inject
+	Commissioner commissioner;
 
-  /**
-   * API that queues a task to create a new universe. This does not wait for the creation.
-   * @return result of the universe create operation.
-   */
-  public Result create(UUID customerUUID) {
-    try {
-      // Get the user submitted form data.
-      Form<CreateUniverseFormData> formData =
-          formFactory.form(CreateUniverseFormData.class).bindFromRequest();
+	Random random = new Random();
 
-      // Check for any form errors.
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-      }
+	/**
+	 * API that queues a task to create a new universe. This does not wait for the creation.
+	 *
+	 * @return result of the universe create operation.
+	 */
+	public Result create(UUID customerUUID) {
+		try {
+			// Get the user submitted form data.
+			Form<CreateUniverseFormData> formData =
+				formFactory.form(CreateUniverseFormData.class).bindFromRequest();
 
-      // Verify the customer with this universe is present.
-      Customer customer = Customer.find.byId(customerUUID);
-      if (customer == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-      }
+			// Check for any form errors.
+			if (formData.hasErrors()) {
+				return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+			}
 
-      // Create a new universe. This makes sure that a universe of this name does not already exist
-      // for this customer id.
-      Universe universe = Universe.create(formData.get().universeName, customer.customerId);
-      LOG.info("Created universe " + universe.universeUUID + ":" + universe.name);
+			// Verify the customer with this universe is present.
+			Customer customer = Customer.find.byId(customerUUID);
+			if (customer == null) {
+				return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+			}
 
-      // Add an entry for the universe into the customer table.
-      customer.addUniverseUUID(universe.universeUUID);
-      customer.save();
-      LOG.info("Added universe " + universe.universeUUID + ":" + universe.name +
-               " for customer [" + customer.name + "]");
+			// Create a new universe. This makes sure that a universe of this name does not already exist
+			// for this customer id.
+			Universe universe = Universe.create(formData.get().universeName, customer.customerId);
+			LOG.info("Created universe " + universe.universeUUID + ":" + universe.name);
 
-      // Setup the create universe task.
-      UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-      taskParams.universeUUID = universe.universeUUID;
-      taskParams.cloudProvider = CloudType.aws.toString();
-      taskParams.numNodes = formData.get().replicationFactor;
+			// Add an entry for the universe into the customer table.
+			customer.addUniverseUUID(universe.universeUUID);
+			customer.save();
+			LOG.info("Added universe " + universe.universeUUID + ":" + universe.name +
+				" for customer [" + customer.name + "]");
 
-      // Compose a unique name for the universe.
-      taskParams.nodePrefix = Integer.toString(customer.customerId) + "-" + universe.name;
+			// Setup the create universe task.
+			UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+			taskParams.universeUUID = universe.universeUUID;
+			taskParams.cloudProvider = CloudType.aws.toString();
+			taskParams.numNodes = formData.get().replicationFactor;
 
-      // Fill in the user intent.
-      taskParams.userIntent = new Universe.UserIntent();
-      taskParams.userIntent.isMultiAZ = formData.get().isMultiAZ;
-      LOG.debug("Setting isMultiAZ = " + taskParams.userIntent.isMultiAZ);
-      taskParams.userIntent.preferredRegion = formData.get().preferredRegion;
+			// Compose a unique name for the universe.
+			taskParams.nodePrefix = Integer.toString(customer.customerId) + "-" + universe.name;
 
-      // TODO: remove this hack.
-      taskParams.userIntent.regionList = new ArrayList<UUID>();
-      taskParams.userIntent.regionList.add(formData.get().regionUUID);
-      // TODO: enable this.
-//      taskParams.userIntent.regionList = formData.get().regionList;
-      LOG.debug("Added " + taskParams.userIntent.regionList.size() + " regions to placement info");
+			// Fill in the user intent.
+			taskParams.userIntent = new UserIntent();
+			taskParams.userIntent.isMultiAZ = formData.get().isMultiAZ;
+			LOG.debug("Setting isMultiAZ = " + taskParams.userIntent.isMultiAZ);
+			taskParams.userIntent.preferredRegion = formData.get().preferredRegion;
 
-      // Set the replication factor.
-      taskParams.userIntent.replicationFactor = formData.get().replicationFactor;
+			// TODO: remove this hack.
+			taskParams.userIntent.regionList = new ArrayList<UUID>();
+			taskParams.userIntent.regionList.add(formData.get().regionUUID);
+			// TODO: enable this.
+			// taskParams.userIntent.regionList = formData.get().regionList;
+			LOG.debug("Added " + taskParams.userIntent.regionList.size() + " regions to placement info");
 
-      // Compute and fill in the placement info.
-      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
-      LOG.info("Initialized params for creating universe " +
-               universe.universeUUID + ":" + universe.name);
+			// Set the replication factor.
+			taskParams.userIntent.replicationFactor = formData.get().replicationFactor;
 
-      // Submit the task to create the universe.
-      UUID taskUUID = Commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
-      LOG.info("Submitted create universe for " + universe.universeUUID + ":" + universe.name +
-               ", task uuid = " + taskUUID);
+			// Compute and fill in the placement info.
+			taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+			LOG.info("Initialized params for creating universe " +
+				universe.universeUUID + ":" + universe.name);
 
-      // Add this task uuid to the user universe.
-      CustomerTask.create(customer,
-                          taskUUID,
-                          CustomerTask.TargetType.Instance,
-                          CustomerTask.TaskType.Create,
-                          universe.name);
-      LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
-               universe.universeUUID + ":" + universe.name);
-      return ApiResponse.success(universe);
-    } catch (Throwable t) {
-      LOG.error("Error creating universe", t);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
-    }
-  }
+			// Submit the task to create the universe.
+			UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
+			LOG.info("Submitted create universe for " + universe.universeUUID + ":" + universe.name +
+				", task uuid = " + taskUUID);
 
-  public Result update(UUID customerUUID, UUID universeUUID) {
-    return TODO;
-  }
+			// Add this task uuid to the user universe.
+			CustomerTask.create(customer,
+				taskUUID,
+				CustomerTask.TargetType.Universe,
+				CustomerTask.TaskType.Create,
+				universe.name);
+			LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
+				universe.universeUUID + ":" + universe.name);
+			return ApiResponse.success(universe);
+		} catch (Throwable t) {
+			LOG.error("Error creating universe", t);
+			return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+		}
+	}
 
-  /**
-   * List the universes for a given customer.
-   * @return
-   */
-  public Result list(UUID customerUUID) {
-    // Verify the customer is present.
-    Customer customer = Customer.find.byId(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    return ApiResponse.success(customer.getUniverses());
-  }
+	public Result update(UUID customerUUID, UUID universeUUID) {
+		return TODO;
+	}
 
-  public Result getDetails(UUID customerUUID, UUID universeUUID) {
-    return TODO;
-  }
+	/**
+	 * List the universes for a given customer.
+	 *
+	 * @return
+	 */
+	public Result list(UUID customerUUID) {
+		// Verify the customer is present.
+		Customer customer = Customer.find.byId(customerUUID);
+		if (customer == null) {
+			return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+		}
+		return ApiResponse.success(customer.getUniverses());
+	}
 
-  public Result destroy(UUID customerUUID, UUID universeUUID) {
-    // Verify the customer with this universe is present.
-    Customer customer = Customer.find.byId(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
+	public Result getDetails(UUID customerUUID, UUID universeUUID) {
+		return TODO;
+	}
 
-    // Make sure the universe exists, this method will throw an exception if it does not.
-    try {
-      Universe.get(universeUUID);
-    } catch (IllegalStateException e) {
-      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
-    }
+	public Result destroy(UUID customerUUID, UUID universeUUID) {
+		// Verify the customer with this universe is present.
+		Customer customer = Customer.find.byId(customerUUID);
+		if (customer == null) {
+			return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+		}
 
-    // Create the Commissioner task to destroy the universe.
-    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
-    taskParams.universeUUID = universeUUID;
+		// Make sure the universe exists, this method will throw an exception if it does not.
+		try {
+			Universe.get(universeUUID);
+		} catch (RuntimeException e) {
+			return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+		}
 
-    // Submit the task to destroy the universe.
-    UUID taskUUID = Commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);
-    LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
+		// Create the Commissioner task to destroy the universe.
+		DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+		taskParams.universeUUID = universeUUID;
 
-    // Remove the entry for the universe from the customer table.
-    customer.removeUniverseUUID(universeUUID);
-    customer.save();
-    LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
+		// Submit the task to destroy the universe.
+		UUID taskUUID = commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);
+		LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
 
-    return ApiResponse.success(taskUUID);
-  }
+		// Remove the entry for the universe from the customer table.
+		customer.removeUniverseUUID(universeUUID);
+		customer.save();
+		LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
 
-  private Universe.PlacementInfo getPlacementInfo(Universe.UserIntent userIntent) {
-    // We currently do not support multi-region placement.
-    if (userIntent.regionList.size() > 1) {
-      throw new UnsupportedOperationException("Multi-region placement not supported.");
-    }
-    UUID regionUUID = userIntent.regionList.get(0);
+		return ApiResponse.success(taskUUID);
+	}
 
-    // Find the cloud object.
-    // TODO: standardize on the cloud name.
-    Provider cloudProvider = Provider.get("Amazon");
-    // Find the region object.
-    Region region = Region.get(regionUUID);
-    // Find the AZs for the required region.
-    List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(regionUUID);
-    if (azList.isEmpty()) {
-      throw new RuntimeException("No AZ found for region: " + regionUUID);
-    }
+	private PlacementInfo getPlacementInfo(UserIntent userIntent) {
+		// We currently do not support multi-region placement.
+		if (userIntent.regionList.size() > 1) {
+			throw new UnsupportedOperationException("Multi-region placement not supported.");
+		}
+		UUID regionUUID = userIntent.regionList.get(0);
 
-    // Create the placement info object.
-    Universe.PlacementInfo placementInfo = new Universe.PlacementInfo();
-    placementInfo.cloudList = new ArrayList<Universe.PlacementCloud>();
+		// Find the cloud object.
+		// TODO: standardize on the cloud name.
+		Provider cloudProvider = Provider.get("Amazon");
+		// Find the region object.
+		Region region = Region.get(regionUUID);
+		// Find the AZs for the required region.
+		List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(regionUUID);
+		if (azList.isEmpty()) {
+			throw new RuntimeException("No AZ found for region: " + regionUUID);
+		}
 
-    Universe.PlacementCloud placementCloud = new Universe.PlacementCloud();
-    // TODO: fix this.
-    placementCloud.name = "aws";
-    placementCloud.uuid = cloudProvider.uuid;
-    placementCloud.regionList = new ArrayList<Universe.PlacementRegion>();
+		// Create the placement info object.
+		PlacementInfo placementInfo = new PlacementInfo();
+		placementInfo.cloudList = new ArrayList<PlacementCloud>();
 
-    Universe.PlacementRegion placementRegion = new Universe.PlacementRegion();
-    placementRegion.uuid = region.uuid;
-    placementRegion.name = region.name;
-    placementRegion.azList = new ArrayList<Universe.PlacementAZ>();
+		PlacementCloud placementCloud = new PlacementCloud();
+		// TODO: fix this.
+		placementCloud.name = "aws";
+		placementCloud.uuid = cloudProvider.uuid;
+		placementCloud.regionList = new ArrayList<PlacementRegion>();
 
-    // In case of a single PlacementAZ placement request, choose a random PlacementAZ to
-    // place the universe into.
-    Collections.shuffle(azList);
-    if (!userIntent.isMultiAZ) {
-      AvailabilityZone az = azList.get(0);
-      Universe.PlacementAZ placementAZ = new Universe.PlacementAZ();
-      placementAZ.uuid = az.uuid;
-      placementAZ.name = az.name;
-      placementAZ.replicationFactor = userIntent.replicationFactor;
-      placementAZ.subnet = az.subnet;
-      placementRegion.azList.add(placementAZ);
-    } else {
-      Map<UUID, Universe.PlacementAZ> idToAzMap = new HashMap<UUID, Universe.PlacementAZ>();
-      for (int idx = 0; idx < userIntent.replicationFactor; idx++) {
-        AvailabilityZone az = azList.get(idx % azList.size());
-        // Check if we have created an entry for this AZ.
-        Universe.PlacementAZ placementAZ = idToAzMap.get(az.uuid);
-        // If not, create a new entry.
-        if (placementAZ == null) {
-          placementAZ = new Universe.PlacementAZ();
-          placementAZ.uuid = az.uuid;
-          placementAZ.name = az.name;
-          placementAZ.replicationFactor = 0;
-          placementAZ.subnet = az.subnet;
-          // Add this AZ to the list of AZs in this region.
-          placementRegion.azList.add(placementAZ);
-          // Add this AZ to the map to make sure we do not create it again.
-          idToAzMap.put(az.uuid, placementAZ);
-        }
-        // Increment the number of copies of data to be placed on this AZ.
-        placementAZ.replicationFactor++;
-      }
-    }
-    // Add the region to the cloud.
-    placementCloud.regionList.add(placementRegion);
-    // Add the cloud to the placement info.
-    placementInfo.cloudList.add(placementCloud);
+		PlacementRegion placementRegion = new PlacementRegion();
+		placementRegion.uuid = region.uuid;
+		placementRegion.name = region.name;
+		placementRegion.azList = new ArrayList<PlacementAZ>();
 
-    return placementInfo;
-  }
+		// In case of a single PlacementAZ placement request, choose a random PlacementAZ to
+		// place the universe into.
+		Collections.shuffle(azList);
+		if (!userIntent.isMultiAZ) {
+			AvailabilityZone az = azList.get(0);
+			PlacementAZ placementAZ = new PlacementAZ();
+			placementAZ.uuid = az.uuid;
+			placementAZ.name = az.name;
+			placementAZ.replicationFactor = userIntent.replicationFactor;
+			placementAZ.subnet = az.subnet;
+			placementRegion.azList.add(placementAZ);
+		} else {
+			Map<UUID, PlacementAZ> idToAzMap = new HashMap<UUID, PlacementAZ>();
+			for (int idx = 0; idx < userIntent.replicationFactor; idx++) {
+				AvailabilityZone az = azList.get(idx % azList.size());
+				// Check if we have created an entry for this AZ.
+				PlacementAZ placementAZ = idToAzMap.get(az.uuid);
+				// If not, create a new entry.
+				if (placementAZ == null) {
+					placementAZ = new PlacementAZ();
+					placementAZ.uuid = az.uuid;
+					placementAZ.name = az.name;
+					placementAZ.replicationFactor = 0;
+					placementAZ.subnet = az.subnet;
+					// Add this AZ to the list of AZs in this region.
+					placementRegion.azList.add(placementAZ);
+					// Add this AZ to the map to make sure we do not create it again.
+					idToAzMap.put(az.uuid, placementAZ);
+				}
+				// Increment the number of copies of data to be placed on this AZ.
+				placementAZ.replicationFactor++;
+			}
+		}
+		// Add the region to the cloud.
+		placementCloud.regionList.add(placementRegion);
+		// Add the cloud to the placement info.
+		placementInfo.cloudList.add(placementCloud);
+
+		return placementInfo;
+	}
 }
