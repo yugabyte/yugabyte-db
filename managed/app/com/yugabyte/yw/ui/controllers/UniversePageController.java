@@ -52,6 +52,10 @@ public class UniversePageController extends AuthenticatedController {
         }
       }
     }
-    return ok(showInstance.render(universe, grafanaPanelDataList));
+    return ok(showUniverse.render(universe, grafanaPanelDataList));
   }
+
+	public Result list() {
+		return ok(listUniverse.render());
+	}
 }

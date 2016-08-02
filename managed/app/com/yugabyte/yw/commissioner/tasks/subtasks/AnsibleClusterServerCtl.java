@@ -29,10 +29,8 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
   @Override
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
-    String ybDevopsHome = Util.getDevopsHome();
-    String command = ybDevopsHome + "/ybops/ybops/scripts/yb_server_ctl.py" +
+    String command = "yb_server_ctl.py " +  taskParams().nodeName +
                      " --cloud " + taskParams().cloud +
-                     " " + taskParams().nodeName +
                      " " + taskParams().process +
                      " --command " + taskParams().command;
     // Execute the ansible command.

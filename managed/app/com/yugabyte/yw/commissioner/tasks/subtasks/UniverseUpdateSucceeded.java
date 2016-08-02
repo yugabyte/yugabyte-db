@@ -11,8 +11,8 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.UniverseDetails;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class UniverseUpdateSucceeded extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseUpdateSucceeded.class);
@@ -46,7 +46,7 @@ public class UniverseUpdateSucceeded extends AbstractTaskBase {
       UniverseUpdater updater = new UniverseUpdater() {
         @Override
         public void run(Universe universe) {
-          UniverseDetails universeDetails = universe.universeDetails;
+          UniverseDetails universeDetails = universe.getUniverseDetails();
           // If this universe is not being edited, fail the request.
           if (!universeDetails.updateInProgress) {
             LOG.error("UserUniverse " + taskParams().universeUUID + " is not being edited.");
@@ -55,11 +55,12 @@ public class UniverseUpdateSucceeded extends AbstractTaskBase {
           }
           // Set the operation success flag.
           universeDetails.updateSucceeded = true;
-        }
-      };
+        	universe.setUniverseDetails(universeDetails);
+				}
+			};
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
-      Universe.save(taskParams().universeUUID, updater);
+      Universe.saveDetails(taskParams().universeUUID, updater);
 
     } catch (Exception e) {
       String msg = getName() + " failed with exception "  + e.getMessage();

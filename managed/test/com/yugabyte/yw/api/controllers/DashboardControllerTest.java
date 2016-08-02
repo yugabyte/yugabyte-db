@@ -50,23 +50,12 @@ public class DashboardControllerTest extends FakeDBApplication {
 	}
 
 	@Test
-	public void testDashboardCreateInstancePage() {
-		String authToken = customer.createAuthToken();
-		Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-		Result result = route(fakeRequest("GET", "/createInstance").cookie(validCookie));
-		assertEquals(OK, result.status());
-		assertThat(contentAsString(result), CoreMatchers.containsString("body id=\"create-instance\""));
-		assertThat(contentAsString(result),
-		           CoreMatchers.containsString("\"customerUUID\" value=\""+ customer.uuid + "\""));
-	}
-
-	@Test
 	public void testDashboardListInstancesPage() {
 		String authToken = customer.createAuthToken();
 		Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-		Result result = route(fakeRequest("GET", "/instances").cookie(validCookie));
+		Result result = route(fakeRequest("GET", "/universes").cookie(validCookie));
 		assertEquals(OK, result.status());
-		assertThat(contentAsString(result), CoreMatchers.containsString("body id=\"list-instance\""));
+		assertThat(contentAsString(result), CoreMatchers.containsString("body id=\"list-universe\""));
 		assertThat(contentAsString(result),
 		           CoreMatchers.containsString("\"customerUUID\" value=\""+ customer.uuid + "\""));
 	}

@@ -12,7 +12,7 @@ import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);

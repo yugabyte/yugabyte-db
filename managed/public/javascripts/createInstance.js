@@ -42,7 +42,7 @@ $(document).on("submit", '#createInstanceForm', function() {
   $(".alert").hide();
 
   $.ajax( {
-    url: "/api/customers/" + customerUUID + "/instances",
+    url: "/api/customers/" + customerUUID + "/universes",
     type: 'POST',
     data: $('#createInstanceForm').serialize(),
     success: function(response) {

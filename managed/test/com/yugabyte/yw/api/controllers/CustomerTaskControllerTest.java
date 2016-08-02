@@ -97,12 +97,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryListAsJSON() {
     String authToken = customer.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
+    CustomerTask.create(customer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
 
     ObjectNode getResponseJson = Json.newObject();
     getResponseJson.put("status", "Success");
     getResponseJson.put("percent", "50");
-    when(mockApiHelper.getRequest(Matchers.any(String.class))).thenReturn(getResponseJson);
+    when(mockApiHelper.getRequest(Matchers.anyString(), Matchers.anyMap())).thenReturn(getResponseJson);
 
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
@@ -115,7 +115,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     assertThat(json.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
-    assertThat(json.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating UserUniverse : Foo")));
+    assertThat(json.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
     assertThat(json.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(json.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
   }
@@ -124,12 +124,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskHistoryListAsHTML() {
     String authToken = customer.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
+    CustomerTask.create(customer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
 
     ObjectNode getResponseJson = Json.newObject();
     getResponseJson.put("status", "Success");
     getResponseJson.put("percent", "50");
-    when(mockApiHelper.getRequest(Matchers.any(String.class))).thenReturn(getResponseJson);
+    when(mockApiHelper.getRequest(Matchers.anyString(), Matchers.anyMap())).thenReturn(getResponseJson);
 
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
@@ -138,19 +138,19 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     );
 
     assertEquals(OK, result.status());
-    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Creating UserUniverse : Foo")));
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Creating Universe : Foo")));
   }
 
   @Test
   public void testTaskHistoryProgressCompletes() {
     String authToken = customer.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
+    CustomerTask.create(customer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
 
     ObjectNode getResponseJson = Json.newObject();
     getResponseJson.put("status", "Success");
     getResponseJson.put("percent", "100");
-    when(mockApiHelper.getRequest(Matchers.any(String.class))).thenReturn(getResponseJson);
+    when(mockApiHelper.getRequest(Matchers.anyString(), Matchers.anyMap())).thenReturn(getResponseJson);
 
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
@@ -161,7 +161,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     CustomerTask ct = CustomerTask.find.where().eq("task_uuid", taskUUID.toString()).findUnique();
 
     assertEquals(OK, result.status());
-    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Created UserUniverse : Foo")));
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("Created Universe : Foo")));
     assertTrue(ct.getCreateTime().before(ct.getCompletionTime()));
   }
 }

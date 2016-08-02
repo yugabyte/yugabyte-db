@@ -15,8 +15,8 @@ import java.util.UUID;
 @Entity
 public class CustomerTask extends Model {
 	public enum TargetType {
-		@EnumValue("UserUniverse")
-		Instance,
+		@EnumValue("Universe")
+		Universe,
 
 		@EnumValue("Table")
 		Table

@@ -28,25 +28,23 @@ public class CustomerTaskTest extends FakeDBApplication {
   @Test
   public void testCreateInstance() throws InterruptedException {
     UUID taskUUID = UUID.randomUUID();
-    CustomerTask th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
-    assertEquals(th.getTarget(), CustomerTask.TargetType.Instance);
+    CustomerTask th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
+    assertEquals(th.getTarget(), CustomerTask.TargetType.Universe);
     Thread.sleep(5000);
     Date currentDate  = new Date();
     assertTrue(currentDate.after(th.getCreateTime()));
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating UserUniverse : Foo"))));
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating Universe : Foo"))));
   }
 
   @Test
   public void testMarkTaskComplete() throws InterruptedException {
     UUID taskUUID = UUID.randomUUID();
-    CustomerTask th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
-    assertEquals(th.getTarget(), CustomerTask.TargetType.Instance);
-    Date currentDate  = new Date();
-    assertTrue(currentDate.after(th.getCreateTime()));
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating UserUniverse : Foo"))));
-    Thread.sleep(5000);
+    CustomerTask th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
+    assertEquals(th.getTarget(), CustomerTask.TargetType.Universe);
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating Universe : Foo"))));
+    Thread.sleep(1000);
     th.markAsCompleted();
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Created UserUniverse : Foo"))));
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Created Universe : Foo"))));
     assertTrue(th.getCreateTime().before(th.getCompletionTime()));
   }
 
@@ -55,20 +53,20 @@ public class CustomerTaskTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     CustomerTask th;
 
-    th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Create, "Foo");
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating UserUniverse : Foo"))));
+    th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating Universe : Foo"))));
     th.markAsCompleted();
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Created UserUniverse : Foo"))));
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Created Universe : Foo"))));
 
-    th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Update, "Foo");
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Updating UserUniverse : Foo"))));
+    th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Update, "Foo");
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Updating Universe : Foo"))));
     th.markAsCompleted();
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Updated UserUniverse : Foo"))));
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Updated Universe : Foo"))));
 
-    th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Instance, CustomerTask.TaskType.Delete, "Foo");
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Deleting UserUniverse : Foo"))));
+    th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Delete, "Foo");
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Deleting Universe : Foo"))));
     th.markAsCompleted();
-    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Deleted UserUniverse : Foo"))));
+    assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Deleted Universe : Foo"))));
 
     th = CustomerTask.create(defaultCustomer, taskUUID, CustomerTask.TargetType.Table, CustomerTask.TaskType.Create, "Foo");
     assertThat(th.getFriendlyDescription(), is(allOf(notNullValue(), equalTo("Creating Table : Foo"))));

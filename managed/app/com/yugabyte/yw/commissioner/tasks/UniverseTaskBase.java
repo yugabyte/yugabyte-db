@@ -19,9 +19,9 @@ import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Universe.NodeDetails;
-import com.yugabyte.yw.models.Universe.UniverseDetails;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.UniverseDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public abstract class UniverseTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
@@ -73,7 +73,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.universeDetails;
+        UniverseDetails universeDetails = universe.getUniverseDetails();
         // If this universe is already being edited, fail the request.
         if (universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";
@@ -84,11 +84,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = true;
         universeDetails.updateSucceeded = false;
-      }
+				universe.setUniverseDetails(universeDetails);
+			}
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
-    Universe universe = Universe.save(taskParams().universeUUID, updater);
+    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     universeLocked = true;
     LOG.debug("Locked universe " + taskParams().universeUUID + " for updates");
     // Return the universe object that we have already updated.
@@ -104,7 +105,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.universeDetails;
+        UniverseDetails universeDetails = universe.getUniverseDetails();
         // If this universe is not being edited, fail the request.
         if (!universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
@@ -113,11 +114,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = false;
+				universe.setUniverseDetails(universeDetails);
       }
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
-    Universe.save(taskParams().universeUUID, updater);
+    Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Unlocked universe " + taskParams().universeUUID + " for updates");
   }
 
