@@ -16,7 +16,7 @@
     latitude: 36.778261
     longitude: -119.417932
 - &aws-us-west-2 !!com.yugabyte.yw.models.Region
-    code: us-east-2
+    code: us-west-2
     name: US West (Oregon)
     provider: *provider_aws
     latitude: 43.804133
