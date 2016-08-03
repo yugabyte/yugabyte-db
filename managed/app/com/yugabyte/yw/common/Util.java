@@ -54,18 +54,6 @@ public class Util {
     return sb.toString();
   }
 
-  // Get the devops home. If not present, throw an error.
-  public static String getDevopsHome() {
-    Config conf = ConfigFactory.load();
-    String ybDevopsHome = conf.getString("yb.devops.home");
-    if (ybDevopsHome == null) {
-      LOG.error("Devops repo path not found. Please specify yb.devops.home property: " +
-                "'sbt run -Dyb.devops.home=<path to devops repo>'");
-      throw new RuntimeException("Property yb.devops.home was not found.");
-    }
-    return ybDevopsHome;
-  }
-
   // Check if we want to unit test via the mini-cluster.
   public static boolean isLocalTesting() {
     String ybLocalTesting = System.getProperty("yb.local.testing");
