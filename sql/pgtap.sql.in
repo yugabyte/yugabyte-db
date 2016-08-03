@@ -743,19 +743,55 @@ RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), NULL, NULL );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _error_diag( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT COALESCE(
+               COALESCE( NULLIF($1, '') || ': ', '' ) || COALESCE( NULLIF($2, ''), '' ),
+               'NO ERROR FOUND'
+           )
+        || COALESCE(E'\n        DETAIL:     ' || nullif($3, ''), '')
+        || COALESCE(E'\n        HINT:       ' || nullif($4, ''), '')
+        || COALESCE(E'\n        SCHEMA:     ' || nullif($6, ''), '')
+        || COALESCE(E'\n        TABLE:      ' || nullif($7, ''), '')
+        || COALESCE(E'\n        COLUMN:     ' || nullif($8, ''), '')
+        || COALESCE(E'\n        CONSTRAINT: ' || nullif($9, ''), '')
+        || COALESCE(E'\n        TYPE:       ' || nullif($10, ''), '')
+        -- We need to manually indent all the context lines
+        || COALESCE(E'\n        CONTEXT:\n'
+               || regexp_replace(NULLIF( $5, ''), '^', '            ', 'gn'
+           ), '');
+$$ LANGUAGE sql IMMUTABLE;
+
 -- lives_ok( sql, description )
 CREATE OR REPLACE FUNCTION lives_ok ( TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     code  TEXT := _query($1);
     descr ALIAS FOR $2;
+    detail  text;
+    hint    text;
+    context text;
+    schname text;
+    tabname text;
+    colname text;
+    chkname text;
+    typname text;
 BEGIN
     EXECUTE code;
     RETURN ok( TRUE, descr );
 EXCEPTION WHEN OTHERS THEN
     -- There should have been no exception.
+    GET STACKED DIAGNOSTICS
+        detail  = PG_EXCEPTION_DETAIL,
+        hint    = PG_EXCEPTION_HINT,
+        context = PG_EXCEPTION_CONTEXT,
+        schname = SCHEMA_NAME,
+        tabname = TABLE_NAME,
+        colname = COLUMN_NAME,
+        chkname = CONSTRAINT_NAME,
+        typname = PG_DATATYPE_NAME;
     RETURN ok( FALSE, descr ) || E'\n' || diag(
-           '        died: ' || SQLSTATE || ': ' || SQLERRM
+           '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -803,7 +839,8 @@ $$ LANGUAGE sql;
 -- I could have left this logic in performs_within, but I have
 -- plans to hook into this function for other purposes outside
 -- of pgTAP
-CREATE TYPE _time_trial_type AS (a_time NUMERIC);
+CREATE TYPE _time_trial_type
+AS (a_time NUMERIC);
 CREATE OR REPLACE FUNCTION _time_trials(TEXT, INT, NUMERIC)
 RETURNS SETOF _time_trial_type AS $$
 DECLARE
@@ -842,7 +879,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- performs_within( sql, average_milliseconds, within, iterations, description )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT, TEXT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT, TEXT)
+RETURNS TEXT AS $$
 DECLARE
     query          TEXT := _query($1);
     expected_avg   ALIAS FOR $2;
@@ -860,20 +898,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- performs_within( sql, average_milliseconds, within, iterations )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT)
+RETURNS TEXT AS $$
 SELECT performs_within(
           $1, $2, $3, $4,
           'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
 $$ LANGUAGE sql;
 -- performs_within( sql, average_milliseconds, within, description )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, TEXT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, TEXT)
+RETURNS TEXT AS $$
 SELECT performs_within(
           $1, $2, $3, 10, $4
         );
 $$ LANGUAGE sql;
 
 -- performs_within( sql, average_milliseconds, within )
-CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC)
+RETURNS TEXT AS $$
 SELECT performs_within(
           $1, $2, $3, 10,
           'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
@@ -2758,13 +2799,13 @@ RETURNS TEXT AS $$
    SELECT has_index( $1, $2, $3, $4, 'Index ' || quote_ident($3) || ' should exist' );
 $$ LANGUAGE sql;
 
--- has_index( schema, table, index, column/expression, description )
+-- has_index( schema, table, index, column, description )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, NAME, text )
 RETURNS TEXT AS $$
     SELECT has_index( $1, $2, $3, ARRAY[$4], $5 );
 $$ LANGUAGE sql;
 
--- has_index( schema, table, index, columns/expression )
+-- has_index( schema, table, index, column )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
    SELECT has_index( $1, $2, $3, $4, 'Index ' || quote_ident($3) || ' should exist' );
@@ -2791,7 +2832,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- has_index( table, index, columns[], description )
+-- has_index( table, index, columns[] )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
    SELECT has_index( $1, $2, $3, 'Index ' || quote_ident($2) || ' should exist' );
@@ -2881,6 +2922,100 @@ RETURNS TEXT AS $$
         'Index ' || quote_ident($2) || ' should not exist'
     );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _is_indexed( NAME, NAME, NAME[])
+RETURNS BOOLEAN AS $$
+    WITH cols AS (
+       SELECT x.indexrelid, x.indrelid, unnest(x.indkey) as colid
+         FROM pg_catalog.pg_index x
+         JOIN pg_catalog.pg_class r ON r.oid = x.indrelid
+         JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+       WHERE n.nspname = $1
+         AND r.relname = $2),
+    colsdef AS (
+       SELECT cols.indexrelid, cols.indrelid, array_agg(a.attname) as cols
+         FROM cols
+         JOIN pg_catalog.pg_attribute a ON (a.attrelid = cols.indrelid
+                                            AND a.attnum = cols.colid)
+       GROUP BY 1, 2)
+    SELECT EXISTS (
+    SELECT TRUE
+      FROM colsdef
+    WHERE colsdef.cols::NAME[] = $3
+    );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _is_indexed( NAME, NAME[])
+RETURNS BOOLEAN AS $$
+    WITH cols AS (
+       SELECT x.indexrelid, x.indrelid, unnest(x.indkey) as colid
+         FROM pg_catalog.pg_index x
+         JOIN pg_catalog.pg_class r ON r.oid = x.indrelid
+       WHERE r.relname = $1),
+    colsdef AS (
+       SELECT cols.indexrelid, cols.indrelid, array_agg(a.attname) as cols
+         FROM cols
+         JOIN pg_catalog.pg_attribute a ON (a.attrelid = cols.indrelid
+                                            AND a.attnum = cols.colid)
+       GROUP BY 1, 2)
+    SELECT EXISTS (
+    SELECT TRUE
+      FROM colsdef
+    WHERE colsdef.cols::NAME[] = $2
+    );
+$$ LANGUAGE sql;
+
+-- is_indexed( schema, table, columns[], description )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+   SELECT ok ( _is_indexed( $1, $2, $3), $4);
+$$ LANGUAGE sql;
+
+-- is_indexed( schema, table, columns[] )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+   SELECT ok ( _is_indexed( $1, $2, $3), 'An index on ' || quote_ident($1) || '.' || quote_ident($2) || ' with ' || $3::text || ' should exist');
+$$ LANGUAGE sql;
+
+-- is_indexed( table, columns[], description )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+   SELECT ok ( _is_indexed( $1, $2), $3);
+$$ LANGUAGE sql;
+
+-- is_indexed( table, columns[] )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME[] )
+RETURNS TEXT AS $$
+   SELECT ok ( _is_indexed( $1, $2), 'An index on ' || quote_ident($1) || ' with ' || $2::text || ' should exist');
+$$ LANGUAGE sql;
+
+-- is_indexed( schema, table, column, description )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+   SELECT ok ( _is_indexed( $1, $2, ARRAY[$3]::NAME[]), $4);
+$$ LANGUAGE sql;
+
+-- is_indexed( schema, table, column )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT CASE WHEN _is_schema( $1 ) THEN
+        -- Looking for schema.table index.
+            ok ( _is_indexed( $1, $2, ARRAY[$3]::NAME[]),
+                'An index on ' || quote_ident($1) || '.' || quote_ident($2)
+                    || ' on column ' || quote_ident($3) || ' should exist')
+        ELSE
+        -- Looking for particular columns.
+            ok ( _is_indexed( $1, ARRAY[$2]::NAME[]), $3)
+        END;
+$$ LANGUAGE sql;
+
+-- is_indexed( table, column )
+CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME )
+RETURNS TEXT AS $$
+   SELECT ok ( _is_indexed( $1, ARRAY[$2]::NAME[]),
+              'An index on ' || quote_ident($1) || ' on column '
+                  || $2::text || ' should exist');
+$$ LANGUAGE sql;
 
 -- index_is_unique( schema, table, index, description )
 CREATE OR REPLACE FUNCTION index_is_unique ( NAME, NAME, NAME, text )
@@ -4769,7 +4904,7 @@ $$ LANGUAGE SQL;
 -- hasnt_opclass( schema, name )
 CREATE OR REPLACE FUNCTION hasnt_opclass( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _opc_exists( $1, $2 ), 'Operator class ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist' );
+    SELECT ok( NOT _opc_exists( $1, $2 ), 'Operator class ' || quote_ident($1) || '.' || quote_ident($2) || ' should not exist' );
 $$ LANGUAGE SQL;
 
 -- hasnt_opclass( name, description )
@@ -4781,7 +4916,7 @@ $$ LANGUAGE SQL;
 -- hasnt_opclass( name )
 CREATE OR REPLACE FUNCTION hasnt_opclass( NAME )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _opc_exists( $1 ), 'Operator class ' || quote_ident($1) || ' should exist' );
+    SELECT ok( NOT _opc_exists( $1 ), 'Operator class ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
 -- opclasses_are( schema, opclasses[], description )
@@ -6037,7 +6172,6 @@ DECLARE
     tnumb    INTEGER := 0;
     fnumb    INTEGER := 0;
     tok      BOOLEAN := TRUE;
-    errmsg   TEXT;
 BEGIN
     BEGIN
         -- No plan support.
@@ -6067,6 +6201,17 @@ BEGIN
             PERFORM _set('failed', 0);
         END IF;
 
+        DECLARE
+            errstate text;
+            errmsg   text;
+            detail   text;
+            hint     text;
+            context  text;
+            schname  text;
+            tabname  text;
+            colname  text;
+            chkname  text;
+            typname  text;
         BEGIN
             BEGIN
                 -- Run the setup functions.
@@ -6107,7 +6252,17 @@ BEGIN
 
             EXCEPTION WHEN raise_exception THEN
                 -- Something went wrong. Record that fact.
+                errstate := SQLSTATE;
                 errmsg := SQLERRM;
+                GET STACKED DIAGNOSTICS
+                    detail  = PG_EXCEPTION_DETAIL,
+                    hint    = PG_EXCEPTION_HINT,
+                    context = PG_EXCEPTION_CONTEXT,
+                    schname = SCHEMA_NAME,
+                    tabname = TABLE_NAME,
+                    colname = COLUMN_NAME,
+                    chkname = CONSTRAINT_NAME,
+                    typname = PG_DATATYPE_NAME;
             END;
 
             -- Always raise an exception to rollback any changes.
@@ -6117,10 +6272,12 @@ BEGIN
             IF errmsg IS NOT NULL THEN
                 -- Something went wrong. Emit the error message.
                 tok := FALSE;
-                RETURN NEXT '    ' || diag('Test died: ' || errmsg);
+               RETURN NEXT regexp_replace( diag('Test died: ' || _error_diag(
+                   errstate, errmsg, detail, hint, context, schname, tabname, colname, chkname, typname
+               )), '^', '    ', 'gn');
                 errmsg := NULL;
             END IF;
-       END;
+        END;
 
         -- Restore the sequence.
         EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb + 1;
@@ -9215,26 +9372,6 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _get_schema_privs(NAME, TEXT)
-RETURNS TEXT[] AS $$
-DECLARE
-    privs  TEXT[] := ARRAY['CREATE', 'USAGE'];
-    grants TEXT[] := '{}';
-BEGIN
-    FOR i IN 1..array_upper(privs, 1) LOOP
-        IF pg_catalog.has_schema_privilege($1, $2, privs[i]) THEN
-            grants := grants || privs[i];
-        END IF;
-    END LOOP;
-    RETURN grants;
-EXCEPTION
-    -- Not a valid schema name.
-    WHEN invalid_schema_name THEN RETURN '{invalid_schema_name}';
-    -- Not a valid role.
-    WHEN undefined_object   THEN RETURN '{undefined_role}';
-END;
-$$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION _get_server_privs (NAME, TEXT)
 RETURNS TEXT[] AS $$
 BEGIN
@@ -9434,3 +9571,54 @@ $$ LANGUAGE SQL;
 
 GRANT SELECT ON tap_funky           TO PUBLIC;
 GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;
+
+-- Get extensions in a given schema
+CREATE OR REPLACE FUNCTION _extensions( NAME )
+RETURNS SETOF NAME AS $$
+    SELECT e.extname
+      FROM pg_catalog.pg_namespace n
+      JOIN pg_catalog.pg_extension e ON n.oid = e.extnamespace
+     WHERE n.nspname = $1
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _extensions()
+RETURNS SETOF NAME AS $$
+    SELECT extname FROM pg_catalog.pg_extension
+$$ LANGUAGE SQL;
+
+-- extensions_are( schema, extensions, description )
+CREATE OR REPLACE FUNCTION extensions_are( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'extensions',
+        ARRAY(SELECT _extensions($1) EXCEPT SELECT unnest($2)),
+        ARRAY(SELECT unnest($2) EXCEPT SELECT _extensions($1)),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- extensions_are( schema, extensions)
+CREATE OR REPLACE FUNCTION extensions_are( NAME, NAME[] )
+RETURNS TEXT AS $$
+  SELECT extensions_are(
+        $1, $2,
+        'Schema ' || quote_ident($1) || ' should have the correct extensions'
+    );
+$$ LANGUAGE SQL;
+
+-- extensions_are( extensions, description )
+CREATE OR REPLACE FUNCTION extensions_are( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'extensions',
+        ARRAY(SELECT _extensions() EXCEPT SELECT unnest($1)),
+        ARRAY(SELECT unnest($1) EXCEPT SELECT _extensions()),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- extensions_are( schema, extensions)
+CREATE OR REPLACE FUNCTION extensions_are( NAME[] )
+RETURNS TEXT AS $$
+  SELECT extensions_are($1, 'Should have the correct extensions');
+$$ LANGUAGE SQL;

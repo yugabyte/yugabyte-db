@@ -97,6 +97,12 @@ endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
+ifeq ($(shell echo $(VERSION) | grep -qE "9[.][012]|8[.][1234]" && echo yes || echo no),yes)
+	patch -p0 < compat/install-9.2.patch
+endif
+ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01]|8[.][1234]" && echo yes || echo no),yes)
+	patch -p0 < compat/install-9.1.patch
+endif
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.]0|8[.][1234]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-9.0.patch
 endif
@@ -115,14 +121,8 @@ endif
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 	mv sql/pgtap.tmp sql/pgtap.sql
 
-sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test/setup.sql
-	cp sql/uninstall_pgtap.sql.in sql/uninstall_pgtap.sql
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
-	patch -p0 < compat/uninstall-8.3.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
-	patch -p0 < compat/uninstall-8.2.patch
-endif
+sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
+	grep '^CREATE ' sql/pgtap.sql | $(PERL) -e 'for (reverse <STDIN>) { chomp; s/CREATE (OR REPLACE)?/DROP/; print "$$_;\n" }' > sql/uninstall_pgtap.sql
 
 sql/pgtap-core.sql: sql/pgtap.sql.in
 	cp $< $@
@@ -134,6 +134,8 @@ sql/pgtap-core.sql: sql/pgtap.sql.in
 
 sql/pgtap-schema.sql: sql/pgtap.sql.in
 	cp $< $@
+	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.2.patch | patch -p0
+	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.1.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-9.0.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.4.patch | patch -p0
 	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.3.patch | patch -p0

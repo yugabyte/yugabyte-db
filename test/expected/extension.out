@@ -1,0 +1,26 @@
+\unset ECHO
+1..24
+ok 1 - extensions_are(sch, exts, desc) should pass
+ok 2 - extensions_are(sch, exts, desc) should have the proper description
+ok 3 - extensions_are(sch, exts, desc) should have the proper diagnostics
+ok 4 - extensions_are(sch, exts) should pass
+ok 5 - extensions_are(sch, exts) should have the proper description
+ok 6 - extensions_are(sch, exts) should have the proper diagnostics
+ok 7 - extensions_are(exts, desc) should pass
+ok 8 - extensions_are(exts, desc) should have the proper description
+ok 9 - extensions_are(exts, desc) should have the proper diagnostics
+ok 10 - extensions_are(exts) should pass
+ok 11 - extensions_are(exts) should have the proper description
+ok 12 - extensions_are(exts) should have the proper diagnostics
+ok 13 - extensions_are(public, exts, desc) should pass
+ok 14 - extensions_are(public, exts, desc) should have the proper description
+ok 15 - extensions_are(public, exts, desc) should have the proper diagnostics
+ok 16 - extensions_are(non-sch, exts) should pass
+ok 17 - extensions_are(non-sch, exts) should have the proper description
+ok 18 - extensions_are(non-sch, exts) should have the proper diagnostics
+ok 19 - extensions_are(sch, good/bad, desc) should fail
+ok 20 - extensions_are(sch, good/bad, desc) should have the proper description
+ok 21 - extensions_are(sch, good/bad, desc) should have the proper diagnostics
+ok 22 - extensions_are(someexts) should fail
+ok 23 - extensions_are(someexts) should have the proper description
+ok 24 - extensions_are(someexts) should have the proper diagnostics

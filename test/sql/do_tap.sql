@@ -2,7 +2,7 @@
 \i test/setup.sql
 SET client_min_messages = notice;
 
-SELECT plan(28);
+SELECT plan(29);
 --SELECT * FROM no_plan();
 
 CREATE OR REPLACE FUNCTION public.testthis() RETURNS SETOF TEXT AS $$
@@ -49,6 +49,12 @@ SELECT is(
     findfuncs('^test'),
     ARRAY[ 'public."test ident"', 'public.testplpgsql', 'public.testthis' ],
     'findfuncs(^test) should work'
+);
+
+SELECT is(
+    findfuncs('foo'),
+    CASE WHEN pg_version_num() < 80300 THEN NULL ELSE '{}'::text[] END,
+    'findfuncs(unknown) should find no tests'
 );
 
 SELECT * FROM do_tap('public', '^test');

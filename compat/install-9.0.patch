@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -3585,7 +3585,7 @@ RETURNS TEXT AS $$
+@@ -3617,7 +3617,7 @@
                 AND n.nspname = $1
                 AND t.typname = $2
                 AND t.typtype = 'e'
@@ -9,7 +9,7 @@
          ),
          $3,
          $4
-@@ -3613,7 +3613,7 @@ RETURNS TEXT AS $$
+@@ -3645,7 +3645,7 @@
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typname = $1
                 AND t.typtype = 'e'
@@ -18,3 +18,58 @@
          ),
          $2,
          $3
+@@ -9459,54 +9459,3 @@
+ 
+ GRANT SELECT ON tap_funky           TO PUBLIC;
+ GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;
+-
+--- Get extensions in a given schema
+-CREATE OR REPLACE FUNCTION _extensions( NAME )
+-RETURNS SETOF NAME AS $$
+-    SELECT e.extname
+-      FROM pg_catalog.pg_namespace n
+-      JOIN pg_catalog.pg_extension e ON n.oid = e.extnamespace
+-     WHERE n.nspname = $1
+-$$ LANGUAGE SQL;
+-
+-CREATE OR REPLACE FUNCTION _extensions()
+-RETURNS SETOF NAME AS $$
+-    SELECT extname FROM pg_catalog.pg_extension
+-$$ LANGUAGE SQL;
+-
+--- extensions_are( schema, extensions, description )
+-CREATE OR REPLACE FUNCTION extensions_are( NAME, NAME[], TEXT )
+-RETURNS TEXT AS $$
+-    SELECT _are(
+-        'extensions',
+-        ARRAY(SELECT _extensions($1) EXCEPT SELECT unnest($2)),
+-        ARRAY(SELECT unnest($2) EXCEPT SELECT _extensions($1)),
+-        $3
+-    );
+-$$ LANGUAGE SQL;
+-
+--- extensions_are( schema, extensions)
+-CREATE OR REPLACE FUNCTION extensions_are( NAME, NAME[] )
+-RETURNS TEXT AS $$
+-  SELECT extensions_are(
+-        $1, $2,
+-        'Schema ' || quote_ident($1) || ' should have the correct extensions'
+-    );
+-$$ LANGUAGE SQL;
+-
+--- extensions_are( extensions, description )
+-CREATE OR REPLACE FUNCTION extensions_are( NAME[], TEXT )
+-RETURNS TEXT AS $$
+-    SELECT _are(
+-        'extensions',
+-        ARRAY(SELECT _extensions() EXCEPT SELECT unnest($1)),
+-        ARRAY(SELECT unnest($1) EXCEPT SELECT _extensions()),
+-        $2
+-    );
+-$$ LANGUAGE SQL;
+-
+--- extensions_are( schema, extensions)
+-CREATE OR REPLACE FUNCTION extensions_are( NAME[] )
+-RETURNS TEXT AS $$
+-  SELECT extensions_are($1, 'Should have the correct extensions');
+-$$ LANGUAGE SQL;

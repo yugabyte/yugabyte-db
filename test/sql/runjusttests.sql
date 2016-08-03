@@ -30,7 +30,43 @@ BEGIN
     RETURN NEXT pass( 'plpgsql simple 2' );
     INSERT INTO whatever.foo VALUES(1);
     RETURN NEXT is( MAX(id), 1, 'Should be a 1 in the test table') FROM whatever.foo;
-    RAISE EXCEPTION 'This test should die, but not halt execution';
+    IF pg_version_num() >= 90300 THEN
+        EXECUTE $E$
+            CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
+            BEGIN
+            RAISE EXCEPTION 'This test should die, but not halt execution.
+Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.'
+            USING
+                    DETAIL =      'DETAIL',
+                    COLUMN =      'COLUMN',
+                    CONSTRAINT =  'CONSTRAINT',
+                    DATATYPE =    'TYPE',
+                    TABLE =       'TABLE',
+                    SCHEMA =      'SCHEMA';
+            END;
+            $F$;
+        $E$;
+    ELSIF pg_version_num() >= 80400 THEN
+        EXECUTE $E$
+            CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
+            BEGIN
+            RAISE EXCEPTION 'This test should die, but not halt execution.
+Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.'
+                USING DETAIL = 'DETAIL';
+            END;
+            $F$;
+        $E$;
+    ELSE
+        EXECUTE $E$
+            CREATE OR REPLACE FUNCTION __die() RETURNS VOID LANGUAGE plpgsql AS $F$
+            BEGIN
+            RAISE EXCEPTION 'This test should die, but not halt execution.
+Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.';
+            END;
+            $F$;
+        $E$;
+    END IF;
+    EXECUTE 'SELECT __die();';
 END;
 $$ LANGUAGE plpgsql;
 

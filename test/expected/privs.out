@@ -279,9 +279,9 @@ ok 276 - any_column_privs_are(tab, role, no privs) should have the proper diagno
 ok 277 - column_privs_are(sch, tab, col, role, privs, desc) should pass
 ok 278 - column_privs_are(sch, tab, col, role, privs, desc) should have the proper description
 ok 279 - column_privs_are(sch, tab, col, role, privs, desc) should have the proper diagnostics
-ok 280 - column_privs_are(LOL, ATable, AColumn role, privs, desc) should pass
-ok 281 - column_privs_are(LOL, ATable, AColumn role, privs, desc) should have the proper description
-ok 282 - column_privs_are(LOL, ATable, AColumn role, privs, desc) should have the proper diagnostics
+ok 280 - column_privs_are(LOL, ATable, AColumn, role, privs, desc) should pass
+ok 281 - column_privs_are(LOL, ATable, AColumn, role, privs, desc) should have the proper description
+ok 282 - column_privs_are(LOL, ATable, AColumn, role, privs, desc) should have the proper diagnostics
 ok 283 - column_privs_are(sch, tab, col, role, privs) should pass
 ok 284 - column_privs_are(sch, tab, col, role, privs) should have the proper description
 ok 285 - column_privs_are(sch, tab, col, role, privs) should have the proper diagnostics
@@ -357,9 +357,9 @@ ok 354 - server_privs_are(SomeServer, role, privs, desc) should have the proper 
 ok 355 - server_privs_are(server, role, privs, desc) should pass
 ok 356 - server_privs_are(server, role, privs, desc) should have the proper description
 ok 357 - server_privs_are(server, role, privs, desc) should have the proper diagnostics
-ok 358 - server_privs_are(SomeSrver, role, privs, desc) should pass
-ok 359 - server_privs_are(SomeSrver, role, privs, desc) should have the proper description
-ok 360 - server_privs_are(SomeSrver, role, privs, desc) should have the proper diagnostics
+ok 358 - server_privs_are(SomeServer, role, privs, desc) should pass
+ok 359 - server_privs_are(SomeServer, role, privs, desc) should have the proper description
+ok 360 - server_privs_are(SomeServer, role, privs, desc) should have the proper diagnostics
 ok 361 - server_privs_are(non-server, role, privs, desc) should fail
 ok 362 - server_privs_are(non-server, role, privs, desc) should have the proper description
 ok 363 - server_privs_are(non-server, role, privs, desc) should have the proper diagnostics

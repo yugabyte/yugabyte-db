@@ -1,4 +1,4 @@
-pgTAP 0.95.1
+pgTAP 0.96.1
 ============
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
@@ -2550,6 +2550,46 @@ missing operators, like so:
     #     Missing enums:
     #         +(integer,text) RETURNS text
 
+### `extensions_are()` ###
+
+    SELECT extensions_are( :schema, :extensions, :description );
+    SELECT extensions_are( :schema, :extensions );
+    SELECT extensions_are( :extensions, :description );
+    SELECT extensions_are( :extensions );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find extensions.
+
+`:extensions`
+: An array of extension names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the extensions in the named schema, or that
+are visible in the search path, are only the extensions that *should* be
+there. If the `:schema` argument is omitted, all extensions will be checked.
+If the description is omitted, a generally useful default description will be
+generated. Example:
+
+    SELECT extensions_are(
+        'myschema',
+        ARRAY[ 'citext', 'isn', 'plpgsql' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing extensions, like so:
+
+    # Failed test 91: "Schema public should have the correct extensions"
+    #     Extra extensions:
+    #         pgtap
+    #         ltree
+    #     Missing extensions:
+    #         citext
+    #         isn
+
 To Have or Have Not
 -------------------
 
@@ -4603,6 +4643,36 @@ Tests whether a table is clustered on the given index. A table is clustered on
 an index when the SQL command `CLUSTER TABLE INDEXNAME` has been executed.
 Clustering reorganizes the table tuples so that they are stored on disk in the
 order defined by the index.
+
+### `is_indexed()` ###
+
+    SELECT is_indexed( :schema, :table, :columns, :description );
+    SELECT is_indexed( :schema, :table, :columns );
+    SELECT is_indexed( :table, :columns, :description );
+    SELECT is_indexed( :table, :columns );
+    SELECT is_indexed( :schema, :table, :column, :description );
+    SELECT is_indexed( :schema, :table, :column );
+    SELECT is_indexed( :table, :column, :description );
+    SELECT is_indexed( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the index.
+
+`:column`
+: Name of the column.
+
+`:columns`
+: Array of columns name.
+
+`:description`
+: A short description of the test.
+
+Tests an index exists on table for a set of columns. Order of column matters.
 
 ### `index_is_type()` ###
 
@@ -7561,15 +7631,29 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
-9.1 and Up
+9.3 and Up
 ----------
 
 No changes. Everything should just work.
+
+9.2 and Down
+------------
+* Diagnostic output from `lives_ok()` and xUnit function exceptions will not
+  include schema, table, column, data type, or constraint information, since
+  such diagnostics were not introduced until 9.3.
+
+9.1 and Down
+------------
+* Diagnostic output from `lives_ok()` and xUnit function exceptions will not
+  error context or details, since such diagnostics were not introduced until
+  9.2.
 
 9.0 and Down
 ------------
 * The `foreign_table_owner_is()` function will not work, because, of course,
   there were no foreign tables until 9.1.
+* The `extensions_are()` functions are not available, because extensions were
+  not introduced until 9.1.
 
 8.4 and Down
 ------------
@@ -7653,7 +7737,7 @@ Credits
 Copyright and License
 ---------------------
 
-Copyright (c) 2008-2015 David E. Wheeler. Some rights reserved.
+Copyright (c) 2008-2016 David E. Wheeler. Some rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
