@@ -1,31 +1,38 @@
 @import com.yugabyte.yw.models._
 @import com.yugabyte.yw.forms._
 @import play.api._
+@import common._
 
 @(universe: Universe, panelList: List[GrafanaPanelData] )
 
 @main(true, "show-universe") {
-<div id="page-wrapper" style="min-height: 1191px;">
-  <div class="row header-row">
-    <div class="col-lg-10">
-      <h1>Universe: @universe.name</h1>
-    </div>
-    <div class="col-lg-2">
-      <a href="#" class="btn btn-primary action-btn">
-        <span class="fa  fa-pencil-square-o" aria-hidden="true"></span> Edit
-      </a>
-    </div>
-  </div>
 
-  @for(panel <- panelList){
-    <div class="panel panel-default" style="width: 45%; display:inline-block; margin-right:10px;">
-      <div class="panel-heading">
-        <i class="fa fa-bar-chart-o fa-fw"></i> @panel.title
-      </div>
-      <div class="panel-body>">
-        <iframe class="embed-responsive-item" src="@panel.url" width="100%" height="100%"></iframe>
-      </div>
-    </div>
-  }
+<div id="page-wrapper" style="min-height: 1191px;">
+	<div class="row header-row">
+		<div class="col-lg-9">
+			<h1>Universe: @universe.name</h1>
+		</div>
+		<div class="col-lg-3">
+			<button class="btn btn-primary action-btn" data-toggle="modal" data-target="#edit-universe-dialog">
+				<span class="fa  fa-pencil-square-o" aria-hidden="true"></span> Edit
+			</button>
+			<button class="btn btn-default action-btn" data-href="@universe.universeUUID" data-toggle="modal"
+			        data-target="#destroy-universe-dialog">
+				<span class="fa  fa-minus-square-o" aria-hidden="true"></span> Destroy
+			</button>
+		</div>
+	</div>
+
+	@for(panel <- panelList){
+	<div class="panel panel-default" style="width: 45%; display:inline-block; margin-right:10px;">
+		<div class="panel-heading">
+			<i class="fa fa-bar-chart-o fa-fw"></i> @panel.title
+		</div>
+		<div class="panel-body>">
+			<iframe class="embed-responsive-item" src="@panel.url" width="100%" height="100%"></iframe>
+		</div>
+	</div>
+	}
 </div>
+@destroyUniverseDialog(universe)
 }
