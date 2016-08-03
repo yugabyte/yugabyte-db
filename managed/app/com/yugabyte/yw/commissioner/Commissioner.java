@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 
@@ -50,18 +49,18 @@ public class Commissioner {
   static Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<UUID, TaskRunner>();
 
 
-	public Commissioner() {
-		// Initialize the tasks threadpool.
-		ThreadFactory namedThreadFactory =
-			new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
-		executor = Executors.newFixedThreadPool(NUM_TASK_THREADS, namedThreadFactory);
-		LOG.info("Started TaskPool with " + NUM_TASK_THREADS + " threads.");
+  public Commissioner() {
+    // Initialize the tasks threadpool.
+    ThreadFactory namedThreadFactory =
+      new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+    executor = Executors.newFixedThreadPool(NUM_TASK_THREADS, namedThreadFactory);
+    LOG.info("Started TaskPool with " + NUM_TASK_THREADS + " threads.");
 
-		// Initialize the task manager.
-		progressMonitor = new ProgressMonitor();
-		progressMonitor.start();
-		LOG.info("Started TaskProgressMonitor thread.");
-	}
+    // Initialize the task manager.
+    progressMonitor = new ProgressMonitor();
+    progressMonitor.start();
+    LOG.info("Started TaskProgressMonitor thread.");
+  }
 
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
@@ -76,7 +75,7 @@ public class Commissioner {
 
       // Create the task runner object based on the various parameters passed in.
       TaskRunner taskRunner =
-          TaskRunner.createTask(taskType, taskParams, claimTask);
+        TaskRunner.createTask(taskType, taskParams, claimTask);
 
       if (claimTask) {
         // Add this task to our queue.
@@ -119,7 +118,7 @@ public class Commissioner {
 
     // We are not able to find the task. Report an error.
     LOG.error("Not able to find task " + taskUUID);
-    return null;
+    throw new RuntimeException("Not able to find task " + taskUUID);
   }
 
   /**
@@ -144,13 +143,11 @@ public class Commissioner {
           // If the task is still running, update its latest timestamp as a part of the heartbeat.
           if (taskRunner.isTaskRunning()) {
             taskRunner.doHeartbeat();
-          }
-          else if (taskRunner.hasTaskSucceeded()) {
+          } else if (taskRunner.hasTaskSucceeded()) {
             LOG.info("Task " + taskRunner.toString() + " has succeeded.");
             // Remove task from the set of live tasks.
             iter.remove();
-          }
-          else if (taskRunner.hasTaskFailed()) {
+          } else if (taskRunner.hasTaskFailed()) {
             LOG.info("Task " + taskRunner.toString() + " has failed.");
             // Remove task from the set of live tasks.
             iter.remove();
@@ -162,7 +159,8 @@ public class Commissioner {
         // Sleep for the required interval.
         try {
           Thread.sleep(PROGRESS_MONITOR_SLEEP_INTERVAL);
-        } catch (InterruptedException e) { }
+        } catch (InterruptedException e) {
+        }
       }
     }
   }
