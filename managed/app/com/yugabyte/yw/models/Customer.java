@@ -41,7 +41,7 @@ public class Customer extends Model {
 	@Column(length = 256, unique = true, nullable = false)
 	@Constraints.Required
 	@Constraints.Email
-	private String email;
+	public String email;
 
 	public String getEmail() {
 		return this.email;
