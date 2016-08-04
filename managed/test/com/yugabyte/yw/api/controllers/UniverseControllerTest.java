@@ -34,16 +34,16 @@ import static play.test.Helpers.*;
 
 public class UniverseControllerTest extends FakeDBApplication {
   private Customer customer;
-	private Commissioner mockCommissioner;
+  private Commissioner mockCommissioner;
 
-	@Override
-	protected Application provideApplication() {
-		mockCommissioner = mock(Commissioner.class);
-		return new GuiceApplicationBuilder()
-			.configure((Map) Helpers.inMemoryDatabase())
-			.overrides(bind(Commissioner.class).toInstance(mockCommissioner))
-			.build();
-	}
+  @Override
+  protected Application provideApplication() {
+    mockCommissioner = mock(Commissioner.class);
+    return new GuiceApplicationBuilder()
+      .configure((Map) Helpers.inMemoryDatabase())
+      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+      .build();
+  }
 
   @Before
   public void setUp() {
@@ -63,10 +63,10 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseListWithValidUUID() {
-		Universe u1 = Universe.create("Universe-1", customer.customerId);
-		customer.addUniverseUUID(u1.universeUUID);
+    Universe u1 = Universe.create("Universe-1", customer.customerId);
+    customer.addUniverseUUID(u1.universeUUID);
 
-		String authToken = customer.createAuthToken();
+    String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie));
     assertEquals(OK, result.status());
@@ -122,11 +122,11 @@ public class UniverseControllerTest extends FakeDBApplication {
   public void testUniverseCreateWithSingleAvailabilityZones() {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-		UUID fakeTaskUUID = UUID.randomUUID();
-		when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
-			.thenReturn(fakeTaskUUID);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
 
-		Provider p = Provider.create("Amazon");
+    Provider p = Provider.create("Amazon");
     Region r = Region.create(p, "region-1", "PlacementRegion 1");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -137,17 +137,17 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("isMultiAZ", false);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie).bodyJson(bodyJson));
-		assertEquals(OK, result.status());
+    assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("universeUUID").asText(), is(notNullValue()));
     assertThat(json.get("customerId").asInt(), allOf( notNullValue(), equalTo(customer.customerId)));
     assertEquals(json.get("version").asInt(), 1);
-		JsonNode universeDetails = json.get("universeDetails");
+    JsonNode universeDetails = json.get("universeDetails");
     assertThat(universeDetails, is(notNullValue()));
 
-		CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
-		assertNotNull(th);
-		assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
-		assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Single UserUniverse")));
+    CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Single UserUniverse")));
   }
 }

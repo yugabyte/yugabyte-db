@@ -3,12 +3,12 @@
 package com.yugabyte.yw.forms;
 
 public class GrafanaPanelData {
-	public Integer id;
+  public Integer id;
 
-	public String title;
+  public String title;
 
-	public String url;
+  public String url;
 
-	public int width = 450;
-	public int height = 200;
+  public int width = 450;
+  public int height = 200;
 }

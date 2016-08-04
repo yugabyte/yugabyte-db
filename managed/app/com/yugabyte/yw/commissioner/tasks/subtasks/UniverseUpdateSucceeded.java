@@ -55,9 +55,9 @@ public class UniverseUpdateSucceeded extends AbstractTaskBase {
           }
           // Set the operation success flag.
           universeDetails.updateSucceeded = true;
-        	universe.setUniverseDetails(universeDetails);
-				}
-			};
+          universe.setUniverseDetails(universeDetails);
+        }
+      };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
       Universe.saveDetails(taskParams().universeUUID, updater);

@@ -11,10 +11,10 @@ import java.util.Map;
 
 public class FakeDBApplication extends WithApplication {
 
-	@Override
-	protected Application provideApplication() {
-		return new GuiceApplicationBuilder()
-				.configure((Map) Helpers.inMemoryDatabase())
-				.build();
-	}
+  @Override
+  protected Application provideApplication() {
+    return new GuiceApplicationBuilder()
+        .configure((Map) Helpers.inMemoryDatabase())
+        .build();
+  }
 }

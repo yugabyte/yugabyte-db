@@ -97,9 +97,9 @@ public class CustomerTest extends FakeDBApplication {
     assertNull(authCust);
   }
 
-	@Test(expected=javax.persistence.PersistenceException.class)
-	public void testInvalidCreate() {
-		Customer c = Customer.create(null, "foo@bar.com", "password");
-		c.save();
-	}
+  @Test(expected=javax.persistence.PersistenceException.class)
+  public void testInvalidCreate() {
+    Customer c = Customer.create(null, "foo@bar.com", "password");
+    c.save();
+  }
 }

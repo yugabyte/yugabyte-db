@@ -27,10 +27,10 @@ import play.data.validation.Constraints;
  */
 public class CreateUniverseFormData {
   // Nice name for the universe.
-	@Constraints.Required()
-	public String universeName;
+  @Constraints.Required()
+  public String universeName;
 
-	// The default replication factor in this universe.
+  // The default replication factor in this universe.
   @Constraints.Min(3)
   public int replicationFactor = 3;
 
@@ -38,13 +38,13 @@ public class CreateUniverseFormData {
   @Constraints.Required()
   public Boolean isMultiAZ;
 
-	// The list of regions that the user wants to place data replicas into.
+  // The list of regions that the user wants to place data replicas into.
   // TODO: remove regionUUID and replace with regionList.
-	@Constraints.Required()
-	public UUID regionUUID;
-	public List<UUID> regionList;
+  @Constraints.Required()
+  public UUID regionUUID;
+  public List<UUID> regionList;
 
   // The regions that the user wants to nominate as the preferred region. This makes sense only for
-	// a multi-region setup.
+  // a multi-region setup.
   public UUID preferredRegion;
 }

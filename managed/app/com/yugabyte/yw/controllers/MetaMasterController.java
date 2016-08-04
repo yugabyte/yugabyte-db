@@ -31,7 +31,7 @@ public class MetaMasterController extends Controller {
       }
       return ApiResponse.success(masters);
     } catch (RuntimeException e) {
-			return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
+      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
     }
   }
 
