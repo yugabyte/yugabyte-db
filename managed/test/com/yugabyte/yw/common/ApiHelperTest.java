@@ -31,55 +31,55 @@ import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ApiHelperTest {
-	@Mock
-	WSClient mockClient;
-	@Mock
-	WSRequest mockRequest;
-	@Mock
-	WSResponse mockResponse;
+  @Mock
+  WSClient mockClient;
+  @Mock
+  WSRequest mockRequest;
+  @Mock
+  WSResponse mockResponse;
 
-	@InjectMocks
-	ApiHelper apiHelper;
+  @InjectMocks
+  ApiHelper apiHelper;
 
-	@Test
-	public void testGetRequestValidJSONWithUrl() {
-		CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
-		ObjectNode jsonResponse = Json.newObject();
-		jsonResponse.put("Foo", "Bar");
-		when(mockClient.url(anyString())).thenReturn(mockRequest);
-		when(mockRequest.get()).thenReturn(mockCompletion);
-		when(mockResponse.asJson()).thenReturn(jsonResponse);
-		JsonNode result = apiHelper.getRequest("http://foo.com/test");
-		Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-		assertEquals(result.get("Foo").asText(), "Bar");
-	}
+  @Test
+  public void testGetRequestValidJSONWithUrl() {
+    CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
+    ObjectNode jsonResponse = Json.newObject();
+    jsonResponse.put("Foo", "Bar");
+    when(mockClient.url(anyString())).thenReturn(mockRequest);
+    when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockResponse.asJson()).thenReturn(jsonResponse);
+    JsonNode result = apiHelper.getRequest("http://foo.com/test");
+    Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
+    assertEquals(result.get("Foo").asText(), "Bar");
+  }
 
-	@Test
-	public void testGetRequestInvalidJSONWithUrl() {
-		CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
-		when(mockClient.url(anyString())).thenReturn(mockRequest);
-		when(mockRequest.get()).thenReturn(mockCompletion);
-		doThrow(new RuntimeException("Incorrect JSON")).when(mockResponse).asJson();
-		JsonNode result = apiHelper.getRequest("http://foo.com/test");
-		Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-		assertThat(result.get("error").asText(), CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
-	}
+  @Test
+  public void testGetRequestInvalidJSONWithUrl() {
+    CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
+    when(mockClient.url(anyString())).thenReturn(mockRequest);
+    when(mockRequest.get()).thenReturn(mockCompletion);
+    doThrow(new RuntimeException("Incorrect JSON")).when(mockResponse).asJson();
+    JsonNode result = apiHelper.getRequest("http://foo.com/test");
+    Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
+    assertThat(result.get("error").asText(), CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
+  }
 
-	@Test
-	public void testPostRequestWithValidURLAndData() {
-		CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
-		when(mockClient.url(anyString())).thenReturn(mockRequest);
-		ObjectNode postData = Json.newObject();
-		postData.put("Foo", "Bar");
-		ObjectNode jsonResponse = Json.newObject();
-		jsonResponse.put("Success", true);
+  @Test
+  public void testPostRequestWithValidURLAndData() {
+    CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
+    when(mockClient.url(anyString())).thenReturn(mockRequest);
+    ObjectNode postData = Json.newObject();
+    postData.put("Foo", "Bar");
+    ObjectNode jsonResponse = Json.newObject();
+    jsonResponse.put("Success", true);
 
-		when(mockRequest.get()).thenReturn(mockCompletion);
-		when(mockRequest.post(Matchers.any(JsonNode.class))).thenReturn(mockCompletion);
-		when(mockResponse.asJson()).thenReturn(jsonResponse);
-		JsonNode result = apiHelper.postRequest("http://foo.com/test", postData);
-		Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-		Mockito.verify(mockRequest, times(1)).post(postData);
-		assertEquals(result.get("Success").asBoolean(), true);
-	}
+    when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockRequest.post(Matchers.any(JsonNode.class))).thenReturn(mockCompletion);
+    when(mockResponse.asJson()).thenReturn(jsonResponse);
+    JsonNode result = apiHelper.postRequest("http://foo.com/test", postData);
+    Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
+    Mockito.verify(mockRequest, times(1)).post(postData);
+    assertEquals(result.get("Success").asBoolean(), true);
+  }
 }

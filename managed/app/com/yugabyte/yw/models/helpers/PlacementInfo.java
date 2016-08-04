@@ -13,35 +13,35 @@ import java.util.UUID;
  * path from the first level).
  */
 public class PlacementInfo {
-	public static class PlacementCloud {
-		// The cloud provider id.
-		public UUID uuid;
-		// The cloud provider name.
-		public String name;
-		// The list of region in this cloud we want to place data in.
-		public List<PlacementRegion> regionList;
-	}
+  public static class PlacementCloud {
+    // The cloud provider id.
+    public UUID uuid;
+    // The cloud provider name.
+    public String name;
+    // The list of region in this cloud we want to place data in.
+    public List<PlacementRegion> regionList;
+  }
 
-	public static class PlacementRegion {
-		// The region provider id.
-		public UUID uuid;
-		// The region name.
-		public String name;
-		// The list of AZs inside this region into which we want to place data.
-		public List<PlacementAZ> azList;
-	}
+  public static class PlacementRegion {
+    // The region provider id.
+    public UUID uuid;
+    // The region name.
+    public String name;
+    // The list of AZs inside this region into which we want to place data.
+    public List<PlacementAZ> azList;
+  }
 
-	public static class PlacementAZ {
-		// The AZ provider id.
-		public UUID uuid;
-		// The AZ name.
-		public String name;
-		// The number of copies of data we should place into this AZ.
-		public int replicationFactor;
-		// The subnet in the AZ.
-		public String subnet;
-	}
+  public static class PlacementAZ {
+    // The AZ provider id.
+    public UUID uuid;
+    // The AZ name.
+    public String name;
+    // The number of copies of data we should place into this AZ.
+    public int replicationFactor;
+    // The subnet in the AZ.
+    public String subnet;
+  }
 
-	// The list of clouds to place data in.
-	public List<PlacementCloud> cloudList;
+  // The list of clouds to place data in.
+  public List<PlacementCloud> cloudList;
 }

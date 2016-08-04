@@ -21,19 +21,19 @@ import java.util.List;
 @Singleton
 public class AppInit {
 
-	@Inject
-	public AppInit(Environment environment, Application application) {
-		Logger.info("Yugaware Application has started");
-		if (!environment.isTest()) {
-			// Check if we have provider data, if not, we need to see the database
-			if (Provider.find.where().findRowCount() == 0) {
-				Logger.debug("Seed the Yugaware DB");
-				List<?> all = (ArrayList<?>) Yaml.load(
-						application.resourceAsStream("db_seed.yml"),
-						application.classloader()
-				);
-				Ebean.saveAll(all);
-			}
-		}
-	}
+  @Inject
+  public AppInit(Environment environment, Application application) {
+    Logger.info("Yugaware Application has started");
+    if (!environment.isTest()) {
+      // Check if we have provider data, if not, we need to see the database
+      if (Provider.find.where().findRowCount() == 0) {
+        Logger.debug("Seed the Yugaware DB");
+        List<?> all = (ArrayList<?>) Yaml.load(
+            application.resourceAsStream("db_seed.yml"),
+            application.classloader()
+        );
+        Ebean.saveAll(all);
+      }
+    }
+  }
 }
