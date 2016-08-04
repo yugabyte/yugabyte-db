@@ -2,38 +2,52 @@
 
 package com.yugabyte.yw.api.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.*;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.Matchers;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Result;
-import play.test.Helpers;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.*;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
+
+import java.util.Map;
+import java.util.UUID;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.Matchers;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
+
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Result;
+import play.test.Helpers;
 
 public class UniverseControllerTest extends FakeDBApplication {
   private Customer customer;
@@ -108,7 +122,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Provider p = Provider.create("Amazon");
-    Region r = Region.create(p, "region-1", "PlacementRegion 1");
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
 
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
@@ -132,7 +146,7 @@ public class UniverseControllerTest extends FakeDBApplication {
       .thenReturn(fakeTaskUUID);
 
     Provider p = Provider.create("Amazon");
-    Region r = Region.create(p, "region-1", "PlacementRegion 1");
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
 

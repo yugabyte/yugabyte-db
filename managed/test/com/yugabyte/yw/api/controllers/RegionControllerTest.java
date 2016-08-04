@@ -73,7 +73,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionWithoutZonesAndValidProviderUUID() {
     String authToken = customer.createAuthToken();
-    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion");
+    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     Http.RequestBuilder fr = fakeRequest("GET", "/api/providers/" + provider.uuid + "/regions")
                              .header("X-AUTH-TOKEN", authToken);
     Result result = route(fr);
@@ -87,7 +87,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithValidProviderUUID() {
     String authToken = customer.createAuthToken();
-    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion");
+    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
 
     Http.RequestBuilder fr = fakeRequest("GET", "/api/providers/" + provider.uuid + "/regions")
@@ -106,8 +106,8 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithMultiAZOption() {
     String authToken = customer.createAuthToken();
-    Region r1 = Region.create(provider, "region-1", "PlacementRegion 1");
-    Region r2 = Region.create(provider, "region-2", "PlacementRegion 2");
+    Region r1 = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+    Region r2 = Region.create(provider, "region-2", "PlacementRegion 2", "default-image");
     AvailabilityZone.create(r1, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     AvailabilityZone.create(r1, "PlacementAZ-1.2", "PlacementAZ 1.2", "Subnet - 1.2");
     AvailabilityZone.create(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");

@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -35,7 +34,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
       // Create the process to fetch information about the node from the cloud provider.
       String command = "yb_inventory.py" +
                        " --cloud " + taskParams().cloud +
-                       " --region " + taskParams().region +
+                       " --region " + taskParams().getRegion().code +
                        " --as_json" +
                        " " + taskParams().nodeName;
       LOG.info("Command to run: [{}]", command);
