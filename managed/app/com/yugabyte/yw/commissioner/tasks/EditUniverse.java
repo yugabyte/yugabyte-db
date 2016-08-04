@@ -43,10 +43,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
+      // Verify the task params.
+      verifyParams();
+
       // Create the task list sequence.
       taskListQueue = new TaskListQueue();
 
-      // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
+      // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate();
 
@@ -70,6 +73,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
       int startNodeIndex = maxNodeIdx + 1;
 
+      LOG.info("Configure nodes starting at node index={}, numNodes={}, numMasters={}",
+    		   startNodeIndex, taskParams().numNodes, numMasters);
       // Configure the new cluster nodes.
       configureNewNodes(universe.getUniverseDetails().nodePrefix,
                         startNodeIndex,
@@ -112,6 +117,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createWaitForDataMoveTask();
 
       // Finally send destroy old set of nodes to ansible.
+      createDestroyServerTasks(existingNodes);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();

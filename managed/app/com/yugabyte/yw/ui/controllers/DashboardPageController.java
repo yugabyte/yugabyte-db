@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.CreateUniverseFormData;
+import com.yugabyte.yw.forms.UniverseFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -21,7 +21,7 @@ public class DashboardPageController extends AuthenticatedController {
   FormFactory formFactory;
   public Result index() {
     UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
-    Form<CreateUniverseFormData> createUniverseFormData = formFactory.form(CreateUniverseFormData.class);
+    Form<UniverseFormData> createUniverseFormData = formFactory.form(UniverseFormData.class);
 
     // Verify the customer with this universe is present.
     Customer customer = Customer.find.byId(customerUUID);

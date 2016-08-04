@@ -17,9 +17,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
 
-  // Initial state of nodes in this universe before deleting it.
-  Collection<NodeDetails> existingNodes;
-
   public static class Params extends UniverseTaskParams { }
 
   @Override
@@ -37,11 +34,8 @@ public class DestroyUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate();
 
-      // Get the existing nodes.
-      existingNodes = universe.getNodes();
-
       // Create tasks to destroy the existing nodes.
-      createDestroyServerTasks(existingNodes);
+      createDestroyServerTasks(universe.getNodes());
 
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask();

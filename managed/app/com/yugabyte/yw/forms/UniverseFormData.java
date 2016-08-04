@@ -14,7 +14,7 @@ import play.data.validation.Constraints;
  * Single AZ deployments:
  * Exactly one region should be specified in the 'regionList'.
  *
- * Muti-AZ deployments:
+ * Multi-AZ deployments:
  * 1. There is at least one region specified which has a at least 'replicationFactor' number of AZs.
  *
  * 2. There are multiple regions specified, and the sum total of all AZs in those regions is greater
@@ -25,7 +25,7 @@ import play.data.validation.Constraints;
  *
  * NOTE #1: The regions can potentially be present in different clouds.
  */
-public class CreateUniverseFormData {
+public class UniverseFormData {
   // Nice name for the universe.
   @Constraints.Required()
   public String universeName;
