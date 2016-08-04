@@ -42,7 +42,7 @@ public class RegionController extends AuthenticatedController {
 
     try {
       int azCountNeeded = multiAZ ? MULTI_AZ_MIN_ZONE_COUNT : 1;
-      regionList = Region.fetchRegionsWithZoneCount(providerUUID, azCountNeeded);
+      regionList = Region.fetchValidRegions(providerUUID, azCountNeeded);
     } catch (Exception e) {
       responseJson.put("error", e.getMessage());
       return internalServerError(responseJson);
@@ -70,7 +70,10 @@ public class RegionController extends AuthenticatedController {
     }
 
     try {
-      Region p = Region.create(provider, formData.get().code, formData.get().name);
+      Region p = Region.create(provider,
+                               formData.get().code,
+                               formData.get().name,
+                               formData.get().ybImage);
       return ok(Json.toJson(p));
     } catch (Exception e) {
       // TODO: Handle exception and print user friendly message

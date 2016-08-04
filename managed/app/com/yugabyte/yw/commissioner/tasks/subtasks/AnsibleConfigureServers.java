@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 
 public class AnsibleConfigureServers extends NodeTaskBase {
@@ -26,6 +25,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     String command = "yb_server_configure.py " + taskParams().nodeName +
                      " --package " + taskParams().ybServerPkg +
                      " --cloud " + taskParams().cloud +
+                     " --region " + taskParams().getRegion().code +
                      " --master_addresses " +
                      Universe.get(taskParams().universeUUID).getMasterAddresses();
 

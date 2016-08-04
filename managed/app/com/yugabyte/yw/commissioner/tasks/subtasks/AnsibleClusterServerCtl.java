@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.Util;
 
 public class AnsibleClusterServerCtl extends AbstractTaskBase {
 
@@ -16,6 +15,7 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
     public String command;
   }
 
+  @Override
   protected Params taskParams() {
     return (Params)taskParams;
   }
@@ -31,6 +31,7 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
     // Create the process to fetch information about the node from the cloud provider.
     String command = "yb_server_ctl.py " +  taskParams().nodeName +
                      " --cloud " + taskParams().cloud +
+                     " --region " + taskParams().getRegion().code +
                      " " + taskParams().process +
                      " --command " + taskParams().command;
     // Execute the ansible command.

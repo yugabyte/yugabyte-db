@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import java.util.UUID;
+
 /**
  * Represents all the details of a cloud node that are of interest.
  *
@@ -25,7 +27,7 @@ public class NodeDetails {
   // The private dns name of the node.
   public String private_dns;
 
-  // AWS only. The id of the subnet into which this node is deployed.
+  // The id of the subnet into which this node is deployed.
   public String subnet_id;
   // The az into which the node is deployed.
   public String az;
@@ -33,6 +35,9 @@ public class NodeDetails {
   public String region;
   // The cloud provider where the node is located.
   public String cloud;
+
+  // The AZ UUID (the YB UUID for the AZ) into which the node is deployed.
+  public UUID azUuid;
 
   // True if this node is a master, along with port info.
   public boolean isMaster;
@@ -48,8 +53,7 @@ public class NodeDetails {
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("name: ")
-      .append(instance_name).append(".").append(az).append(".")
-      .append(region).append(".").append(cloud)
+      .append(instance_name).append(".").append(az).append(".").append(cloud)
       .append(", ip: ").append(private_ip)
       .append(", isMaster: ").append(isMaster)
       .append(", isTserver: ").append(isTserver);

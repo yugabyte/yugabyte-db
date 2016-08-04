@@ -20,8 +20,8 @@ import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public abstract class UniverseTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
@@ -134,6 +134,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the cloud name.
       params.cloud = CloudType.aws;
+      // Set the region name to the proper provider code so we can use it in the cloud API calls.
+      params.azUuid = node.azUuid;
       // Add the node name.
       params.nodeName = node.instance_name;
       // Add the universe uuid.

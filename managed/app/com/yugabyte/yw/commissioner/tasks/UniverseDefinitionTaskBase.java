@@ -27,10 +27,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 /**
@@ -85,6 +85,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       nodeDetails.region = placementRegion.code;
       // Set the AZ and the subnet.
       PlacementAZ placementAZ = placementRegion.azList.get(azIdx);
+      nodeDetails.azUuid = placementAZ.uuid;
       nodeDetails.az = placementAZ.name;
       nodeDetails.subnet_id = placementAZ.subnet;
       // Set the tablet server role to true.
@@ -224,7 +225,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Set the region code.
-      params.region = node.region;
+      params.azUuid = node.azUuid;
       // Add the node name.
       params.nodeName = node.instance_name;
       // Add the universe uuid.
@@ -253,7 +254,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
-      params.region = node.region;
+      params.azUuid = node.azUuid;
       // Add the node name.
       params.nodeName = node.instance_name;
       // Add the universe uuid.
@@ -284,6 +285,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.instance_name;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
       // The software package to install for this cluster.
       params.ybServerPkg = taskParams().ybServerPkg;
       // Create the Ansible task to get the server info.
@@ -313,6 +316,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.instance_name;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
       // The service and the command we want to run.
       params.process = "master";
       params.command = isShell ? "start" : "create";
@@ -341,6 +346,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.instance_name;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
       // The service and the command we want to run.
       params.process = "tserver";
       params.command = "start";

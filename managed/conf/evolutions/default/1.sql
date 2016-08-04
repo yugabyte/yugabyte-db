@@ -53,6 +53,7 @@ create table region (
   uuid                          varchar(40) not null,
   code                          varchar(25) not null,
   name                          varchar(100) not null,
+  yb_image                      varchar(255),
   longitude                     double,
   latitude                      double,
   provider_uuid                 varchar(40),
