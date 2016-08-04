@@ -203,8 +203,6 @@ class TabletBootstrap {
 
   // Plays operations, skipping those that have already been flushed.
   Status PlayRowOperations(WriteTransactionState* tx_state,
-                           const SchemaPB& schema_pb,
-                           const RowOperationsPB& ops_pb,
                            const TxResultPB* result);
 
   // Pass through all of the decoded operations in tx_state. For
@@ -1302,10 +1300,17 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
   tx_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
   if (write->has_row_operations()) {
-    // TODO: get rid of redundant params below - they can be gotten from the Request
+    assert(!write->has_write_batch());
+    assert(tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  }
+
+  if (write->has_write_batch()) {
+    assert(!write->has_row_operations());
+    assert(tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE);
+  }
+
+  if (write->has_row_operations() || write->has_write_batch()) {
     RETURN_NOT_OK(PlayRowOperations(&tx_state,
-                                    write->schema(),
-                                    write->row_operations(),
                                     commit_msg == nullptr ? nullptr : &commit_msg->result()));
   }
 
@@ -1380,16 +1385,14 @@ Status TabletBootstrap::PlayNoOpRequest(ReplicateMsg* replicate_msg, const Commi
 }
 
 Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
-                                          const SchemaPB& schema_pb,
-                                          const RowOperationsPB& ops_pb,
                                           const TxResultPB* result) {
   Schema inserts_schema;
-  RETURN_NOT_OK_PREPEND(SchemaFromPB(schema_pb, &inserts_schema),
+  RETURN_NOT_OK_PREPEND(SchemaFromPB(tx_state->request()->schema(), &inserts_schema),
                         "Couldn't decode client schema");
 
   RETURN_NOT_OK_PREPEND(tablet_->DecodeWriteOperations(&inserts_schema, tx_state),
                         Substitute("Could not decode row operations: $0",
-                                   ops_pb.ShortDebugString()));
+                                   tx_state->request()->row_operations().ShortDebugString()));
   if (result != nullptr) {
     CHECK_EQ(tx_state->row_ops().size(), result->ops_size());
   }

@@ -451,7 +451,13 @@ if (${YB_USE_UBSAN})
           ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.9")))
     message(SEND_ERROR "Cannot use UBSAN without clang or gcc >= 4.9")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr -fno-sanitize-recover")
+  set(CXX_NO_SANITIZE_FLAG "alignment")
+  if(NOT APPLE)
+    set(CXX_NO_SANITIZE_FLAG "${CXX_NO_SANITIZE_FLAG},vptr")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
+  endif()
+  set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -fno-sanitize-recover -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
 endif ()
 
 # Flag to enable thread sanitizer (clang or gcc 4.8)
@@ -1006,12 +1012,14 @@ ADD_THIRDPARTY_LIB(squeasel
 find_package(GPerf REQUIRED)
 message("Deciding whether to use tcmalloc based on:\
  YB_USE_ASAN=${YB_USE_ASAN},\
- YB_USE_TSAN=${YB_USE_TSAN},
- YB_USING_GOLD=${YB_USING_GOLD}")
+ YB_USE_TSAN=${YB_USE_TSAN},\
+ YB_USING_GOLD=${YB_USING_GOLD},\
+ YB_TCMALLOC_AVAILABLE=${YB_TCMALLOC_AVAILABLE}")
 
 if (NOT "${YB_USE_ASAN}" AND
     NOT "${YB_USE_TSAN}" AND
-    NOT "${YB_USING_GOLD}")
+    NOT "${YB_USING_GOLD}" AND
+    "${YB_TCMALLOC_AVAILABLE}" STREQUAL "")
   message("Using tcmalloc")
   ADD_THIRDPARTY_LIB(tcmalloc
     STATIC_LIB "${TCMALLOC_STATIC_LIB}"

@@ -51,6 +51,7 @@ using std::string;
 namespace yb {
 namespace tserver {
 
+using std::unique_ptr;
 using consensus::ConsensusMetadata;
 using consensus::OpId;
 using consensus::RaftConfigPB;
@@ -151,10 +152,10 @@ class RemoteBootstrapTest : public YBTabletTest {
 
   void PopulateTablet() {
     for (int32_t i = 0; i < 1000; i++) {
-      WriteRequestPB req;
-      req.set_tablet_id(tablet_peer_->tablet_id());
-      ASSERT_OK(SchemaToPB(client_schema_, req.mutable_schema()));
-      RowOperationsPB* data = req.mutable_row_operations();
+      unique_ptr<WriteRequestPB> req(new WriteRequestPB());
+      req->set_tablet_id(tablet_peer_->tablet_id());
+      ASSERT_OK(SchemaToPB(client_schema_, req->mutable_schema()));
+      RowOperationsPB* data = req->mutable_row_operations();
       RowOperationsPBEncoder enc(data);
       YBPartialRow row(&client_schema_);
 
@@ -166,7 +167,17 @@ class RemoteBootstrapTest : public YBTabletTest {
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      auto state = new WriteTransactionState(tablet_peer_.get(), &req, &resp);
+      unique_ptr<const WriteRequestPB> key_value_write_request;
+
+      if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+        Status s = tablet()->CreateKeyValueWriteRequestPB(*req.get(), &key_value_write_request);
+        assert(s.ok());
+      } else {
+        key_value_write_request = std::move(req);
+      }
+
+      auto state = new WriteTransactionState(
+          tablet_peer_.get(), key_value_write_request.get(), &resp);
       state->set_completion_callback(gscoped_ptr<tablet::TransactionCompletionCallback>(
           new tablet::LatchTransactionCompletionCallback<WriteResponsePB>(&latch, &resp)).Pass());
       ASSERT_OK(tablet_peer_->SubmitWrite(state));

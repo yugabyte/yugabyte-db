@@ -111,6 +111,7 @@ using consensus::StartRemoteBootstrapResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
 
+using std::unique_ptr;
 using google::protobuf::RepeatedPtrField;
 using rpc::RpcContext;
 using std::shared_ptr;
@@ -706,9 +707,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  auto tx_state = new WriteTransactionState(tablet_peer.get(), req, resp);
-
-  // If the client sent us a timestamp, decode it and update the clock so that all future
+    // If the client sent us a timestamp, decode it and update the clock so that all future
   // timestamps are greater than the passed timestamp.
   if (req->has_propagated_timestamp()) {
     Timestamp ts(req->propagated_timestamp());
@@ -721,12 +720,50 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  if (PREDICT_FALSE(req->has_write_batch())) {
+    Status s = Status::NotSupported("Write Request contains write batch. This field should be "
+                                    "used only for post-processed write requests during "
+                                    "Raft replication.");
+    SetupErrorAndRespond(resp->mutable_error(), s,
+                         TabletServerErrorPB::INVALID_MUTATION,
+                         context);
+    return;
+  }
+
+  if (!req->has_row_operations()) {
+    // An empty request. This is fine, can just exit early with ok status instead of working hard.
+    // This doesn't need to go to Raft log.
+    RpcTransactionCompletionCallback<WriteResponsePB> rpc(context, resp);
+    rpc.TransactionCompleted();
+    return;
+  }
+
+  unique_ptr<WriteTransactionState> tx_state;
+
+  if (tablet->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+    // We'll construct a new WriteRequestPB for raft replication.
+    unique_ptr<const WriteRequestPB> key_value_write_request;
+
+    s = tablet->CreateKeyValueWriteRequestPB(*req, &key_value_write_request);
+    if (PREDICT_FALSE(!s.ok())) {
+      SetupErrorAndRespond(resp->mutable_error(), s,
+                           TabletServerErrorPB::UNKNOWN_ERROR,
+                           context);
+      return;
+    }
+    tx_state = unique_ptr<WriteTransactionState>(
+        new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
+  } else {
+    tx_state = unique_ptr<WriteTransactionState>(
+        new WriteTransactionState(tablet_peer.get(), req, resp));
+  }
+
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
       new RpcTransactionCompletionCallback<WriteResponsePB>(context,
                                                             resp)).Pass());
 
   // Submit the write. The RPC will be responded to asynchronously.
-  s = tablet_peer->SubmitWrite(tx_state);
+  s = tablet_peer->SubmitWrite(tx_state.release());
 
   // Check that we could submit the write
   if (PREDICT_FALSE(!s.ok())) {

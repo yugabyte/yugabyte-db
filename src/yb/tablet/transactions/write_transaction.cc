@@ -45,6 +45,7 @@ TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
 namespace yb {
 namespace tablet {
 
+using std::unique_ptr;
 using consensus::ReplicateMsg;
 using consensus::CommitMsg;
 using consensus::DriverType;
@@ -214,7 +215,7 @@ WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
                                              const tserver::WriteRequestPB *request,
                                              tserver::WriteResponsePB *response)
   : TransactionState(tablet_peer),
-    request_(request),
+    request_(unique_ptr<const WriteRequestPB>(new WriteRequestPB(*request))),
     response_(response),
     mvcc_tx_(nullptr),
     schema_at_decode_time_(nullptr) {
@@ -336,7 +337,6 @@ void WriteTransactionState::Reset() {
 
 void WriteTransactionState::ResetRpcFields() {
   std::lock_guard<simple_spinlock> l(txn_state_lock_);
-  request_ = nullptr;
   response_ = nullptr;
   STLDeleteElements(&row_ops_);
 }

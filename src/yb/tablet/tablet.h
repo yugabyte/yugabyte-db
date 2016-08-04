@@ -27,9 +27,13 @@
 #include <boost/thread/shared_mutex.hpp>
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
+#include "rocksdb/write_batch.h"
+
+#include "yb/tserver/tserver.pb.h"
 #include "yb/common/iterator.h"
 #include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
+#include "yb/common/row_operations.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -113,8 +117,8 @@ class Tablet {
 
   void Shutdown();
 
-  // Decode the Write (insert/mutate) operations from within a user's
-  // request.
+  // Decode the Write (insert/mutate) operations from within a user's request.
+  // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
   Status DecodeWriteOperations(const Schema* client_schema,
                                WriteTransactionState* tx_state);
 
@@ -190,9 +194,21 @@ class Tablet {
   void ApplyKuduRowOperation(WriteTransactionState* tx_state,
                              RowOp* row_op);
 
-  //Apply a set of rocksdb row operations
-  void ApplyKeyValueRowOperations(const std::vector<RowOp*>& row_ops,
-                                  const rocksdb::SequenceNumber seq_num);
+  // Apply a set of RocksDB row operations.
+  void ApplyKeyValueRowOperations(rocksdb::WriteBatch* write_batch,
+                                  rocksdb::SequenceNumber seq_num);
+
+  // Takes a Kudu WriteRequestPB as input with its row operations.
+  // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
+  // replicated by Raft. (Makes a copy, it is caller's responsibility to deallocate
+  // kudu_write_request_pb afterwards if it is no longer needed).
+  Status CreateKeyValueWriteRequestPB(
+      const tserver::WriteRequestPB& kudu_write_request_pb,
+      std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb);
+
+  // Uses primary_key:column_name for key encoding.
+  Status CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
+                                        rocksdb::WriteBatch* write_batch);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // KEY_VALUE_TABLE_TYPE.

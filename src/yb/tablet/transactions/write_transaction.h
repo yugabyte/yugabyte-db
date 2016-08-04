@@ -22,6 +22,9 @@
 #include <string>
 #include <vector>
 
+#include "rocksdb/db.h"
+#include "rocksdb/write_batch.h"
+
 #include "yb/common/schema.h"
 #include "yb/gutil/macros.h"
 #include "yb/tablet/lock_manager.h"
@@ -89,7 +92,7 @@ class WriteTransactionState : public TransactionState {
   // Returns the original client request for this transaction, if there was
   // one.
   const tserver::WriteRequestPB *request() const OVERRIDE {
-    return request_;
+    return request_.get();
   }
 
   // Returns the prepared response to the client that will be sent when this
@@ -162,9 +165,18 @@ class WriteTransactionState : public TransactionState {
     return row_ops_;
   }
 
+  rocksdb::WriteBatch* kv_write_batch() {
+    return &kv_write_batch_;
+  }
+
   void swap_row_ops(std::vector<RowOp*>* new_ops) {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     row_ops_.swap(*new_ops);
+  }
+
+  void swap_kv_write_batch(rocksdb::WriteBatch* kv_batch) {
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    kv_write_batch_ = *kv_batch;
   }
 
   void UpdateMetricsForOp(const RowOp& op);
@@ -180,19 +192,24 @@ class WriteTransactionState : public TransactionState {
   virtual std::string ToString() const OVERRIDE;
 
  private:
-  // Reset the RPC request, response, and row_ops_ (which refers to data
-  // from the request).
+  // Reset the response, and row_ops_ (which refers to data
+  // from the request). Request is owned by WriteTransaction using a unique_ptr.
+  // A copy is made at initialization, so we don't need to reset it.
   void ResetRpcFields();
 
   // pointers to the rpc context, request and response, lifecyle
   // is managed by the rpc subsystem. These pointers maybe NULL if the
   // transaction was not initiated by an RPC call.
-  const tserver::WriteRequestPB* request_;
+  const std::unique_ptr<const tserver::WriteRequestPB> request_;
   tserver::WriteResponsePB* response_;
 
   // The row operations which are decoded from the request during PREPARE
   // Protected by superclass's txn_state_lock_.
   std::vector<RowOp*> row_ops_;
+
+  // For transactions that work on KV tables, the KV batch is constructed and appended
+  // to Raft log before applying.
+  rocksdb::WriteBatch kv_write_batch_;
 
   // The MVCC transaction, set up during PREPARE phase
   gscoped_ptr<ScopedTransaction> mvcc_tx_;

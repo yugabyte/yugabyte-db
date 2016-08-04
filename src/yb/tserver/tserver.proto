@@ -108,17 +108,24 @@ message WriteRequestPB {
   // Operations to perform (insert/update/delete)
   optional RowOperationsPB row_operations = 3;
 
+  // When replicating RocksDB write operations through Raft for single-shard transactions,
+  // we put a write batch here.
+  optional KeyValueWriteBatchPB write_batch = 7;
+
+  // NOTE: exactly one of row_operations and write_batch must be set.
+
   // The required consistency mode for this write.
   optional ExternalConsistencyMode external_consistency_mode = 4 [default = CLIENT_PROPAGATED];
-
-  // When replicating RocksDB write operations through Raft for single-shard transactions, we put
-  // a byte representation of a write batch here directly.
-  optional bytes rocksdb_write_batch = 6;
 
   // A timestamp obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with
   // the timestamp.
   optional fixed64 propagated_timestamp = 5;
+}
+
+// A RocksDB write batch serialized to bytes.
+message KeyValueWriteBatchPB {
+  optional bytes serialized_write_batch = 1;
 }
 
 message WriteResponsePB {

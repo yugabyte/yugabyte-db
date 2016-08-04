@@ -110,6 +110,12 @@ using std::shared_ptr;
 using std::string;
 using std::unordered_set;
 using std::vector;
+using std::unique_ptr;
+
+using rocksdb::WriteBatch;
+using rocksdb::SequenceNumber;
+using yb::tserver::WriteRequestPB;
+using yb::tserver::KeyValueWriteBatchPB;
 
 namespace yb {
 namespace tablet {
@@ -383,34 +389,48 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
   TRACE_EVENT0("tablet", "Tablet::DecodeWriteOperations");
 
   DCHECK_EQ(tx_state->row_ops().size(), 0);
+  DCHECK_EQ(tx_state->kv_write_batch()->Count(), 0);
 
-  // Acquire the schema lock in shared mode, so that the schema doesn't
-  // change while this transaction is in-flight.
-  tx_state->AcquireSchemaLock(&schema_lock_);
+  if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+    CHECK(tx_state->request()->has_write_batch())
+        << "Write request for kv-table has no write batch";
+    CHECK(!tx_state->request()->has_row_operations())
+        << "Write request for kv-table has row operations";
+    WriteBatch write_batch(tx_state->request()->write_batch().serialized_write_batch());
+    tx_state->swap_kv_write_batch(&write_batch);
+  } else {
+    CHECK(!tx_state->request()->has_write_batch())
+        << "Write request for kudu-table has write batch";
+    CHECK(tx_state->request()->has_row_operations())
+        << "Write request for kudu-table has no row operations";
+    // Acquire the schema lock in shared mode, so that the schema doesn't
+    // change while this transaction is in-flight.
+    tx_state->AcquireSchemaLock(&schema_lock_);
 
-  // The Schema needs to be held constant while any transactions are between
-  // PREPARE and APPLY stages
-  TRACE("PREPARE: Decoding operations");
-  vector<DecodedRowOperation> ops;
+    // The Schema needs to be held constant while any transactions are between
+    // PREPARE and APPLY stages
+    TRACE("PREPARE: Decoding operations");
+    vector<DecodedRowOperation> ops;
 
-  // Decode the ops
-  RowOperationsPBDecoder dec(&tx_state->request()->row_operations(),
-                             client_schema,
-                             schema(),
-                             tx_state->arena());
-  RETURN_NOT_OK(dec.DecodeOperations(&ops));
+    // Decode the ops
+    RowOperationsPBDecoder dec(&tx_state->request()->row_operations(),
+                               client_schema,
+                               schema(),
+                               tx_state->arena());
+    RETURN_NOT_OK(dec.DecodeOperations(&ops));
 
-  // Create RowOp objects for each
-  vector<RowOp*> row_ops;
-  ops.reserve(ops.size());
-  for (const DecodedRowOperation& op : ops) {
-    row_ops.push_back(new RowOp(op));
+    // Create RowOp objects for each
+    vector<RowOp*> row_ops;
+    ops.reserve(ops.size());
+    for (const DecodedRowOperation& op : ops) {
+      row_ops.push_back(new RowOp(op));
+    }
+
+    // Important to set the schema before the ops -- we need the
+    // schema in order to stringify the ops.
+    tx_state->set_schema_at_decode_time(schema());
+    tx_state->swap_row_ops(&row_ops);
   }
-
-  // Important to set the schema before the ops -- we need the
-  // schema in order to stringify the ops.
-  tx_state->set_schema_at_decode_time(schema());
-  tx_state->swap_row_ops(&row_ops);
 
   return Status::OK();
 }
@@ -650,8 +670,7 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
       }
       break;
     case TableType::KEY_VALUE_TABLE_TYPE:
-      ApplyKeyValueRowOperations(tx_state->row_ops(),
-                                 static_cast<rocksdb::SequenceNumber>(tx_state->op_id().index()));
+      ApplyKeyValueRowOperations(tx_state->kv_write_batch(), tx_state->op_id().index());
       break;
     default:
       LOG(FATAL) << "Invalid table type: " << table_type_;
@@ -705,18 +724,68 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
   return Status::OK();
 }
 
-void Tablet::ApplyKeyValueRowOperations(const vector<RowOp*>& row_ops,
-                                        const rocksdb::SequenceNumber seq_num) {
+void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
+                                        const SequenceNumber seq_num) {
+  assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  write_batch->AddAllUserSequenceNumbers(seq_num);
+  // We are using Raft replication index for the RocksDB sequence number for
+  // all members of this write batch.
   rocksdb::WriteOptions write_options;
   write_options.sync = false;
   // We disable the WAL in RocksDB because we already have the Raft log and we should
   // replay it during recovery.
   write_options.disableWAL = true;
+  auto rocksdb_write_status = rocksdb_->Write(write_options, write_batch);
+  if (!rocksdb_write_status.ok()) {
+    LOG(FATAL) << "Failed to write a batch with " << write_batch->Count() << " operations"
+               << " into RocksDB";
+  }
+}
+
+Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_request_pb,
+                                            unique_ptr<const WriteRequestPB>* kudu_write_batch_pb) {
+
+  TRACE("PREPARE: Decoding operations");
+
+  TRACE("Acquiring schema lock in shared mode");
+  boost::shared_lock<rw_semaphore> schema_lock(schema_lock_);
+  TRACE("Acquired schema lock");
+  vector<DecodedRowOperation> ops;
+
+  Schema client_schema;
+
+  RETURN_NOT_OK(SchemaFromPB(kudu_write_request_pb.schema(), &client_schema));
+
+  // Allocating temporary arena for decoding.
+  Arena arena(32 * 1024, 4 * 1024 * 1024);
+
+  RowOperationsPBDecoder dec(&kudu_write_request_pb.row_operations(),
+                             &client_schema,
+                             schema(),
+                             &arena);
+
+  RETURN_NOT_OK(dec.DecodeOperations(&ops));
+
   rocksdb::WriteBatch write_batch;
-  for (RowOp* row_op : row_ops) {
-    switch (row_op->decoded_op.type) {
+
+  CreateWriteBatchFromKuduRowOps(ops, &write_batch);
+
+  WriteRequestPB* const write_request_copy = new WriteRequestPB(kudu_write_request_pb);
+
+  kudu_write_batch_pb->reset(write_request_copy);
+
+  write_request_copy->clear_row_operations();
+  write_request_copy->mutable_write_batch()->set_serialized_write_batch(write_batch.Data());
+
+  return Status::OK();
+}
+
+Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
+                                              WriteBatch* write_batch) {
+  for (DecodedRowOperation row_op : row_ops) {
+    switch (row_op.type) {
       case RowOperationsPB_Type_INSERT: {
-        ConstContiguousRow r(schema(), row_op->decoded_op.row_data);
+        ConstContiguousRow r(schema(), row_op.row_data);
 
         assert(schema()->num_key_columns() == 1);
 
@@ -726,14 +795,7 @@ void Tablet::ApplyKeyValueRowOperations(const vector<RowOp*>& row_ops,
           const string column_key = schema()->column_id(i).ToString();
           string key = yb::util::PackZeroEncoded({primary_key, column_key});
           const Slice value_slice = r.CellSlice(i);
-          // Use the Raft index as the basis of RocksDB sequence id. Note that the index part
-          // of the Raft OpId keeps increasing even across term boundaries, and all peers must
-          // agree at the log entry located at a particular index as long as it has been
-          // committed, so we can ignore the term here. We are also converting from signed to
-          // unsigned 64-bit integer. For now we are assuming that it will be a while until
-          // the Raft index gets close to kMaxSequenceNumber (72057594037927935).
-          write_batch.AddUserSequenceNumber(seq_num);
-          write_batch.Put(
+          write_batch->Put(
               rocksdb::Slice(key), rocksdb::Slice(
                   reinterpret_cast<const char *>(value_slice.data()), value_slice.size())
           );
@@ -742,29 +804,17 @@ void Tablet::ApplyKeyValueRowOperations(const vector<RowOp*>& row_ops,
         break;
       }
       default:
-        LOG(FATAL) << "Unsupported row operation type " << row_op->decoded_op.type
-        << " for key-value tables";
+        LOG(FATAL) << "Unsupported row operation type " << row_op.type
+                   << " for key-value tables";
     }
   }
-  auto rocksdb_write_status = rocksdb_->Write(write_options, &write_batch);
-  if (!rocksdb_write_status.ok()) {
-    LOG(FATAL) << "Failed to write a batch with " << write_batch.Count() << " operations"
-    << " into RocksDB";
-  }
-  for (RowOp* row_op : row_ops) {
-    switch (row_op->decoded_op.type) {
-      case RowOperationsPB_Type_INSERT:
-        row_op->SetInsertSucceeded(/* mrs_id = */ 0);
-        break;
-      default:
-        LOG(FATAL) << "Unsupported row operation type " << row_op->decoded_op.type
-        << " (we should never get here -- should have failed earlier)";
-    }
-  }
+  return Status::OK();
 }
 
 void Tablet::ApplyKuduRowOperation(WriteTransactionState *tx_state,
                                    RowOp *row_op) {
+  CHECK(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE)
+      << "Failed while trying to apply Kudu row operations on non-Kudu table";
   switch (row_op->decoded_op.type) {
     case RowOperationsPB::INSERT:
       ignore_result(InsertUnlocked(tx_state, row_op));
@@ -1390,11 +1440,11 @@ bool Tablet::HasSSTables() const {
   return !live_files_metadata.empty();
 }
 
-rocksdb::SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
+SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
   assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
   vector<rocksdb::LiveFileMetaData> live_files_metadata;
   rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
-  rocksdb::SequenceNumber max_seqno = 0;
+  SequenceNumber max_seqno = 0;
   for (auto& live_file_metadata : live_files_metadata) {
     max_seqno = std::max(max_seqno, live_file_metadata.largest_seqno);
   }

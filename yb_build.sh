@@ -41,6 +41,8 @@ Options:
     Build and run the given C++ test. We run the test directly (not going through ctest).
   --no-fix-rpath
     Skip running fix_rpath.py.
+  --no-tcmalloc
+    Do not use tcmalloc.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -63,6 +65,7 @@ run_java_tests=false
 save_log=false
 make_targets=()
 fix_rpath=true
+no_tcmalloc=false
 cxx_test_name=""
 
 original_args=( "$@" )
@@ -124,6 +127,9 @@ while [ $# -gt 0 ]; do
     ;;
     --no-fix-rpath)
       fix_rpath=false
+    ;;
+    --no-tcmalloc)
+      no_tcmalloc=true
     ;;
     --cxx-test)
       cxx_test_name="$2"
@@ -244,8 +250,11 @@ if "$no_ccache"; then
   cmake_opts+=( -DYB_NO_CCACHE=1 )
 fi
 
-if "$force_run_cmake" || \
-   [[ ! -f Makefile || ! -f $thirdparty_built_flag_file ]]; then
+if "$no_tcmalloc"; then
+  cmake_opts+=( -DYB_TCMALLOC_AVAILABLE=0 )
+fi
+
+if "$force_run_cmake" || [[ ! -f Makefile || ! -f $thirdparty_built_flag_file ]]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
     log "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
       "before running cmake"

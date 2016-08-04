@@ -234,6 +234,18 @@ class WriteBatch : public WriteBatchBase {
     user_sequence_numbers_.push_back(user_sequence_number);
   }
 
+  // Set the same sequence numbers for all updates that don't have a sequence number.
+  void AddAllUserSequenceNumbers(SequenceNumber user_sequence_number) {
+    int n = Count();
+    assert(n >= 0);
+    if (n >= 0 && static_cast<size_t>(n) > user_sequence_numbers_.size()) {
+      user_sequence_numbers_.insert(
+          user_sequence_numbers_.end(),
+          n - user_sequence_numbers_.size(),
+          user_sequence_number);
+    }
+  }
+
   bool HasUserSequenceNumbers() const {
     return !user_sequence_numbers_.empty();
   }
