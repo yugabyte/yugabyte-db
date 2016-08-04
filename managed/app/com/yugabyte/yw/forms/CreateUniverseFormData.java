@@ -39,9 +39,7 @@ public class CreateUniverseFormData {
   public Boolean isMultiAZ;
 
   // The list of regions that the user wants to place data replicas into.
-  // TODO: remove regionUUID and replace with regionList.
   @Constraints.Required()
-  public UUID regionUUID;
   public List<UUID> regionList;
 
   // The regions that the user wants to nominate as the preferred region. This makes sense only for
