@@ -28,13 +28,15 @@ $(document).ready(function() {
     var multiAZ = $('input[name=multiAZ]:checked', '#createInstanceForm').val();
 
     $.get( "api/providers/" + providerID + "/regions?multiAZ="+ multiAZ , function( results ) {
-      var options = $("#regionUUID");
+      var options = $("#regionList");
       options.empty();
       $.each(results, function(idx, region) {
         options.append($("<option />").val(region.uuid).text(region.name));
       });
     });
   });
+
+  $('#regionList').select2();
 });
 
 $(document).on("submit", '#createInstanceForm', function() {

@@ -29,7 +29,8 @@
               </label>
             </div>
             @select(universeForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )
-            @select(universeForm("regionUUID"), options(Seq("")), 'class -> "form-control", '_label -> "Region" )
+            @select(universeForm("regionList"), options(Seq("")), 'class -> "form-control", '_label -> "Region",
+            'multiple -> "multiple")
             <input class="btn btn-lg btn-success btn-block" type="submit" value="Create">
           </fieldset>
         </form>

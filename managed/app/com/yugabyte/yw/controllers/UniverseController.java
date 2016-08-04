@@ -101,11 +101,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.debug("Setting isMultiAZ = " + taskParams.userIntent.isMultiAZ);
       taskParams.userIntent.preferredRegion = formData.get().preferredRegion;
 
-      // TODO: remove this hack.
-      taskParams.userIntent.regionList = new ArrayList<UUID>();
-      taskParams.userIntent.regionList.add(formData.get().regionUUID);
-      // TODO: enable this.
-      // taskParams.userIntent.regionList = formData.get().regionList;
+      taskParams.userIntent.regionList = formData.get().regionList;
       LOG.debug("Added " + taskParams.userIntent.regionList.size() + " regions to placement info");
 
       // Set the replication factor.
@@ -191,7 +187,8 @@ public class UniverseController extends AuthenticatedController {
   private PlacementInfo getPlacementInfo(UserIntent userIntent) {
     // We currently do not support multi-region placement.
     if (userIntent.regionList.size() > 1) {
-      throw new UnsupportedOperationException("Multi-region placement not supported.");
+      //  throw new UnsupportedOperationException("Multi-region placement not supported.");
+      LOG.warn("Multi-region placement not supported.");
     }
     UUID regionUUID = userIntent.regionList.get(0);
 

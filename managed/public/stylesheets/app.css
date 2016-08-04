@@ -23,6 +23,16 @@ body {
     }
 }
 
+.select2-container {
+   width: 100% !important;
+   border: 1px solid #ccc;
+   background: transparent;
+   box-shadow: none;
+       border: none;
+       margin: 0;
+       padding: 0;
+}
+
 .form-error-alert {
     margin-top: 15px;
     margin-bottom: 0px;
