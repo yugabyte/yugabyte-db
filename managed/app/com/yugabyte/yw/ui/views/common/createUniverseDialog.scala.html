@@ -6,34 +6,34 @@
 @implicitField = @{ FieldConstructor(formFieldTemplate.f) }
 
 <div id="create-universe-dialog" class="modal fade in" role="dialog">
-	<div class="modal-dialog">
-		<div class="modal-content">
-			<div class="modal-header">
-				<button type="button" class="close" data-dismiss="modal">&times;</button>
-				<h3 class="modal-title">Create Universe</h3>
-			</div>
-			<div class="alert alert-danger">
-				<strong>Error:</strong>
-			</div>
-			<div class="modal-body">
-				<form id="createInstanceForm">
-					<fieldset>
-						@inputText(universeForm("universeName"), 'class -> "form-control", '_label -> "Universe Name")
-						<div class="form-group">
-							<label>AZ Preference</label>
-							<label class="radio-inline">
-								<input type="radio" name="isMultiAZ" id="multiAZ_1" value=false checked>Single
-							</label>
-							<label class="radio-inline">
-								<input type="radio" name="isMultiAZ" id="multiAZ_2" value=true>Multi
-							</label>
-						</div>
-						@select(universeForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )
-						@select(universeForm("regionUUID"), options(Seq("")), 'class -> "form-control", '_label -> "Region" )
-						<input class="btn btn-lg btn-success btn-block" type="submit" value="Create">
-					</fieldset>
-				</form>
-			</div>
-		</div>
-	</div>
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+        <h3 class="modal-title">Create Universe</h3>
+      </div>
+      <div class="alert alert-danger">
+        <strong>Error:</strong>
+      </div>
+      <div class="modal-body">
+        <form id="createInstanceForm">
+          <fieldset>
+            @inputText(universeForm("universeName"), 'class -> "form-control", '_label -> "Universe Name")
+            <div class="form-group">
+              <label>AZ Preference</label>
+              <label class="radio-inline">
+                <input type="radio" name="isMultiAZ" id="multiAZ_1" value=false checked>Single
+              </label>
+              <label class="radio-inline">
+                <input type="radio" name="isMultiAZ" id="multiAZ_2" value=true>Multi
+              </label>
+            </div>
+            @select(universeForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider" )
+            @select(universeForm("regionUUID"), options(Seq("")), 'class -> "form-control", '_label -> "Region" )
+            <input class="btn btn-lg btn-success btn-block" type="submit" value="Create">
+          </fieldset>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>

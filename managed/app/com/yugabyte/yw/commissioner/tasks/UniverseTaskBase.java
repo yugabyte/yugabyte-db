@@ -84,8 +84,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = true;
         universeDetails.updateSucceeded = false;
-				universe.setUniverseDetails(universeDetails);
-			}
+        universe.setUniverseDetails(universeDetails);
+      }
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -114,7 +114,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         }
         // Persist the updated information about the universe. Mark it as being edited.
         universeDetails.updateInProgress = false;
-				universe.setUniverseDetails(universeDetails);
+        universe.setUniverseDetails(universeDetails);
       }
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not

@@ -18,16 +18,16 @@ import com.yugabyte.yw.ui.views.html.*;
 
 public class HomePageController extends Controller {
 
-	@Inject
-	FormFactory formFactory;
+  @Inject
+  FormFactory formFactory;
 
-	public Result login() {
-		Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class);
-		return ok(loginForm.render(formData));
-	}
+  public Result login() {
+    Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class);
+    return ok(loginForm.render(formData));
+  }
 
-	public Result register() {
-		Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class);
-		return ok(registerForm.render(formData));
-	}
+  public Result register() {
+    Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class);
+    return ok(registerForm.render(formData));
+  }
 }

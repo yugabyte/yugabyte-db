@@ -21,38 +21,38 @@ public class CustomerController extends AuthenticatedController {
   @Inject
   FormFactory formFactory;
 
-	public Result index(UUID customerUUID) {
-		Customer customer = Customer.find.byId(customerUUID);
+  public Result index(UUID customerUUID) {
+    Customer customer = Customer.find.byId(customerUUID);
 
-		if (customer == null) {
-			ObjectNode responseJson = Json.newObject();
-			responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
-			return badRequest(responseJson);
-		}
+    if (customer == null) {
+      ObjectNode responseJson = Json.newObject();
+      responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
+      return badRequest(responseJson);
+    }
 
-		return ok(Json.toJson(customer));
-	}
+    return ok(Json.toJson(customer));
+  }
 
-	public Result update(UUID customerUUID) {
-		ObjectNode responseJson = Json.newObject();
+  public Result update(UUID customerUUID) {
+    ObjectNode responseJson = Json.newObject();
 
-		Customer customer = Customer.find.byId(customerUUID);
-		if (customer == null) {
-			responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
-			return badRequest(responseJson);
-		}
+    Customer customer = Customer.find.byId(customerUUID);
+    if (customer == null) {
+      responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
+      return badRequest(responseJson);
+    }
 
-		Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class).bindFromRequest();
-		if (formData.hasErrors()) {
-			responseJson.set("error", formData.errorsAsJson());
-			return badRequest(responseJson);
-		}
+    Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      responseJson.set("error", formData.errorsAsJson());
+      return badRequest(responseJson);
+    }
 
 
-		customer.setPassword(formData.get().password);
-		customer.name = formData.get().name;
-		customer.update();
+    customer.setPassword(formData.get().password);
+    customer.name = formData.get().name;
+    customer.update();
 
-		return ok(Json.toJson(customer));
-	}
+    return ok(Json.toJson(customer));
+  }
 }

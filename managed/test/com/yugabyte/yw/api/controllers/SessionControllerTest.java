@@ -52,11 +52,11 @@ public class SessionControllerTest extends FakeDBApplication {
     loginJson.put("email", "foo@bar.com");
     loginJson.put("password", "password1");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
-	  JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(UNAUTHORIZED, result.status());
-	  assertThat(json.get("error").toString(),
-	             allOf(notNullValue(), containsString("Invalid Customer Credentials")));
+    assertThat(json.get("error").toString(),
+               allOf(notNullValue(), containsString("Invalid Customer Credentials")));
   }
 
   @Test
@@ -64,11 +64,11 @@ public class SessionControllerTest extends FakeDBApplication {
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "foo@bar.com");
     Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
-	  JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
-	  assertThat(json.get("error").toString(),
-	             allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
+    assertThat(json.get("error").toString(),
+               allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
   }
 
   @Test
@@ -103,10 +103,10 @@ public class SessionControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
-	  assertThat(json.get("error").toString(),
-	             allOf(notNullValue(),
-	                   containsString("{\"password\":[\"This field is required\"]}")));
-	}
+    assertThat(json.get("error").toString(),
+               allOf(notNullValue(),
+                     containsString("{\"password\":[\"This field is required\"]}")));
+  }
 
   @Test
   public void testLogout() {
@@ -119,6 +119,6 @@ public class SessionControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     String authToken = json.get("authToken").asText();
     result = route(fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
-	  assertEquals(OK, result.status());
+    assertEquals(OK, result.status());
   }
 }

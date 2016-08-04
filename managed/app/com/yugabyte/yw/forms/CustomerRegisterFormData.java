@@ -24,10 +24,10 @@ public class CustomerRegisterFormData {
   @Constraints.MinLength(3)
   public String name;
 
-	public static CustomerRegisterFormData createFromCustomer(Customer cust) {
-		CustomerRegisterFormData data = new CustomerRegisterFormData();
-		data.email = cust.getEmail();
-		data.name = cust.name;
-		return data;
-	}
+  public static CustomerRegisterFormData createFromCustomer(Customer cust) {
+    CustomerRegisterFormData data = new CustomerRegisterFormData();
+    data.email = cust.getEmail();
+    data.name = cust.name;
+    return data;
+  }
 }

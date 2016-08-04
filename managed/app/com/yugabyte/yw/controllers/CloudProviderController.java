@@ -14,38 +14,38 @@ import play.mvc.Result;
 import java.util.List;
 
 public class CloudProviderController extends AuthenticatedController {
-	@Inject
-	FormFactory formFactory;
+  @Inject
+  FormFactory formFactory;
 
-	/**
-	 * GET endpoint for listing providers
-	 * @return JSON response with provider's
-	 */
-	public Result list() {
-		List<Provider> providerList = Provider.find.all();
-		return ok(Json.toJson(providerList));
-	}
+  /**
+   * GET endpoint for listing providers
+   * @return JSON response with provider's
+   */
+  public Result list() {
+    List<Provider> providerList = Provider.find.all();
+    return ok(Json.toJson(providerList));
+  }
 
-	/**
-	 * POST endpoint for creating new providers
-	 * @return JSON response of newly created provider
-	 */
-	public Result create() {
-		Form<Provider> formData = formFactory.form(Provider.class).bindFromRequest();
-		ObjectNode responseJson = Json.newObject();
+  /**
+   * POST endpoint for creating new providers
+   * @return JSON response of newly created provider
+   */
+  public Result create() {
+    Form<Provider> formData = formFactory.form(Provider.class).bindFromRequest();
+    ObjectNode responseJson = Json.newObject();
 
-		if (formData.hasErrors()) {
-			responseJson.set("error", formData.errorsAsJson());
-			return badRequest(responseJson);
-		}
+    if (formData.hasErrors()) {
+      responseJson.set("error", formData.errorsAsJson());
+      return badRequest(responseJson);
+    }
 
-		try {
-			Provider p = Provider.create(formData.get().name);
-			return ok(Json.toJson(p));
-		} catch (Exception e) {
-			// TODO: Handle exception and print user friendly message
-			responseJson.put("error", e.getMessage());
-			return internalServerError(responseJson);
-		}
-	}
+    try {
+      Provider p = Provider.create(formData.get().name);
+      return ok(Json.toJson(p));
+    } catch (Exception e) {
+      // TODO: Handle exception and print user friendly message
+      responseJson.put("error", e.getMessage());
+      return internalServerError(responseJson);
+    }
+  }
 }

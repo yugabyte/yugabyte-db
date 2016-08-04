@@ -14,102 +14,102 @@ import java.util.UUID;
 
 @Entity
 public class CustomerTask extends Model {
-	public enum TargetType {
-		@EnumValue("Universe")
-		Universe,
+  public enum TargetType {
+    @EnumValue("Universe")
+    Universe,
 
-		@EnumValue("Table")
-		Table
-	}
+    @EnumValue("Table")
+    Table
+  }
 
-	public enum TaskType {
-		@EnumValue("Create")
-		Create,
+  public enum TaskType {
+    @EnumValue("Create")
+    Create,
 
-		@EnumValue("Update")
-		Update,
+    @EnumValue("Update")
+    Update,
 
-		@EnumValue("Delete")
-		Delete
-	}
+    @EnumValue("Delete")
+    Delete
+  }
 
-	@Id @GeneratedValue(strategy= GenerationType.IDENTITY)
-	private Long id;
+  @Id @GeneratedValue(strategy= GenerationType.IDENTITY)
+  private Long id;
 
-	@Constraints.Required
-	@Column(nullable = false)
-	@JsonBackReference
-	@ManyToOne
-	private Customer customer;
-	public UUID getCustomerUUID() { return customer.uuid; }
+  @Constraints.Required
+  @Column(nullable = false)
+  @JsonBackReference
+  @ManyToOne
+  private Customer customer;
+  public UUID getCustomerUUID() { return customer.uuid; }
 
-	@Constraints.Required
-	@Column(nullable = false)
-	private UUID taskUUID;
-	public UUID getTaskUUID() { return taskUUID; }
+  @Constraints.Required
+  @Column(nullable = false)
+  private UUID taskUUID;
+  public UUID getTaskUUID() { return taskUUID; }
 
-	@Constraints.Required
-	@Column(nullable = false)
-	private TargetType targetType;
-	public TargetType getTarget() { return targetType; }
+  @Constraints.Required
+  @Column(nullable = false)
+  private TargetType targetType;
+  public TargetType getTarget() { return targetType; }
 
-	@Constraints.Required
-	@Column(nullable = false)
-	private String targetName;
-	public String getTargetName() { return targetName; }
+  @Constraints.Required
+  @Column(nullable = false)
+  private String targetName;
+  public String getTargetName() { return targetName; }
 
-	@Constraints.Required
-	@Column(nullable = false)
-	private TaskType type;
-	public TaskType getType() { return type; }
+  @Constraints.Required
+  @Column(nullable = false)
+  private TaskType type;
+  public TaskType getType() { return type; }
 
-	@Constraints.Required
-	@Column(nullable = false)
-	@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
-	private Date createTime;
-	public Date getCreateTime() { return createTime; }
+  @Constraints.Required
+  @Column(nullable = false)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+  private Date createTime;
+  public Date getCreateTime() { return createTime; }
 
-	@Column
-	@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
-	private Date completionTime;
-	public Date getCompletionTime() { return completionTime; }
-	public void markAsCompleted() {
-		completionTime = new Date();
-		save();
-	}
+  @Column
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
+  private Date completionTime;
+  public Date getCompletionTime() { return completionTime; }
+  public void markAsCompleted() {
+    completionTime = new Date();
+    save();
+  }
 
-	public static final Find<Long, CustomerTask> find = new Find<Long, CustomerTask>(){};
+  public static final Find<Long, CustomerTask> find = new Find<Long, CustomerTask>(){};
 
-	public static CustomerTask create(Customer customer, UUID taskUUID, TargetType targetType, TaskType type, String targetName) {
-		CustomerTask th = new CustomerTask();
-		th.customer = customer;
-		th.taskUUID = taskUUID;
-		th.targetType = targetType;
-		th.type = type;
-		th.targetName = targetName;
-		th.createTime = new Date();
-		th.save();
-		return th;
-	}
+  public static CustomerTask create(Customer customer, UUID taskUUID, TargetType targetType, TaskType type, String targetName) {
+    CustomerTask th = new CustomerTask();
+    th.customer = customer;
+    th.taskUUID = taskUUID;
+    th.targetType = targetType;
+    th.type = type;
+    th.targetName = targetName;
+    th.createTime = new Date();
+    th.save();
+    return th;
+  }
 
-	public String getFriendlyDescription() {
-		StringBuilder sb = new StringBuilder();
+  public String getFriendlyDescription() {
+    StringBuilder sb = new StringBuilder();
 
-		switch(this.type) {
-			case Create:
-				sb.append( (completionTime != null) ? "Created " : "Creating ");
-				break;
-			case Update:
-				sb.append( (completionTime != null) ? "Updated " : "Updating ");
-				break;
+    switch(this.type) {
+      case Create:
+        sb.append( (completionTime != null) ? "Created " : "Creating ");
+        break;
+      case Update:
+        sb.append( (completionTime != null) ? "Updated " : "Updating ");
+        break;
 
-			case Delete:
-				sb.append( (completionTime != null) ? "Deleted " : "Deleting ");
-				break;
-		}
+      case Delete:
+        sb.append( (completionTime != null) ? "Deleted " : "Deleting ");
+        break;
+    }
 
-		sb.append(targetType.name());
-		sb.append(" : " + targetName);
-		return sb.toString();
-	}
+    sb.append(targetType.name());
+    sb.append(" : " + targetName);
+    return sb.toString();
+  }
 }

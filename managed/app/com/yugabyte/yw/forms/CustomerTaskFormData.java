@@ -11,7 +11,7 @@ public class CustomerTaskFormData {
 
   public int percentComplete;
 
-	// We identify if the task was successful or not.
-	// Based on that we provide different color coding on the UI
+  // We identify if the task was successful or not.
+  // Based on that we provide different color coding on the UI
   public boolean success;
 }
