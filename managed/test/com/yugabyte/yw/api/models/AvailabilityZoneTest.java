@@ -2,6 +2,14 @@
 
 package com.yugabyte.yw.api.models;
 
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+
+import java.util.Set;
+
 import org.junit.Before;
 import org.junit.Test;
 
@@ -10,11 +18,6 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
-import java.util.Set;
-
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.junit.Assert.*;
-
 
 public class AvailabilityZoneTest extends FakeDBApplication {
   Region defaultRegion;
@@ -22,7 +25,7 @@ public class AvailabilityZoneTest extends FakeDBApplication {
   @Before
   public void setUp() {
     Provider provider = Provider.create("Amazon");
-    defaultRegion = Region.create(provider, "region-1", "test region");
+    defaultRegion = Region.create(provider, "region-1", "test region", "default-image");
   }
 
   @Test

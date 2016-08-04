@@ -33,6 +33,10 @@ public class Region extends Model {
   @Constraints.Required
   public String name;
 
+  // The AMI to be used in this region.
+  @Constraints.Required
+  public String ybImage;
+
   @Column
   public double longitude;
 
@@ -77,13 +81,15 @@ public class Region extends Model {
    * @param provider Cloud Provider
    * @param code Unique PlacementRegion Code
    * @param name User Friendly PlacementRegion Name
+   * @param ybImage The YB image id that we need to use for provisioning in this region
    * @return instance of PlacementRegion
    */
-  public static Region create(Provider provider, String code, String name) {
+  public static Region create(Provider provider, String code, String name, String ybImage) {
     Region region = new Region();
     region.provider = provider;
     region.code = code;
     region.name = name;
+    region.ybImage = ybImage;
     region.save();
     return region;
   }
@@ -93,17 +99,17 @@ public class Region extends Model {
   }
 
   /**
-   * Fetch Regions with Specific Zone Count
+   * Fetch Regions with the minimum zone count and having a valid yb server image.
    * @param providerUUID
    * @param minZoneCount
    * @return List of PlacementRegion
    */
-  public static List<Region> fetchRegionsWithZoneCount(UUID providerUUID, int minZoneCount) {
+  public static List<Region> fetchValidRegions(UUID providerUUID, int minZoneCount) {
     String regionQuery
       = " select r.uuid, r.code, r.name"
       + "   from region r left outer join availability_zone zone"
       + "     on zone.region_uuid = r.uuid "
-      + "  where r.provider_uuid = :provider_uuid"
+      + "  where r.provider_uuid = :provider_uuid and r.yb_image is not null"
       + "  group by r.uuid "
       + " having count(zone.uuid) >= " + minZoneCount;
 

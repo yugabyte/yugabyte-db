@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.Util;
 
 public class AnsibleSetupServer extends NodeTaskBase {
 
@@ -28,13 +27,14 @@ public class AnsibleSetupServer extends NodeTaskBase {
   public void run() {
     String command = "yb_server_provision.py " + taskParams().nodeName +
                      " --cloud " + taskParams().cloud +
-                     " --region " + taskParams().region;
+                     " --region " + taskParams().getRegion().code;
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
     if (taskParams().cloud == CloudType.aws) {
       command += " --aws_vpc_subnet_id " + taskParams().subnetId;
       // TODO: remove the hardcoded one from here and use it from nodeTaskParams?
-      command += " --aws_image " + "ami-9c68a8fc";
+      command += " --region " + taskParams().getRegion().code;
+      command += " --aws_image " + taskParams().getRegion().ybImage;
       command += " --aws_instance_type " + "c3.xlarge";
     }
     // Execute the ansible command.
