@@ -3,6 +3,7 @@
 package com.yugabyte.yw.api.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
@@ -19,6 +20,8 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -95,7 +98,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     ObjectNode emptyJson = Json.newObject();
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result), is(containsString("\"regionUUID\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"regionList\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"isMultiAZ\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"universeName\":[\"This field is required\"]")));
   }
@@ -108,7 +111,9 @@ public class UniverseControllerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1");
 
     ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("regionUUID", r.uuid.toString());
+    ArrayNode regionList = Json.newArray();
+    regionList.add(r.uuid.toString());
+    bodyJson.set("regionList", regionList);
     bodyJson.put("universeName", "Single UserUniverse");
     bodyJson.put("isMultiAZ", false);
 
@@ -132,7 +137,9 @@ public class UniverseControllerTest extends FakeDBApplication {
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
 
     ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("regionUUID", r.uuid.toString());
+    ArrayNode regionList = Json.newArray();
+    regionList.add(r.uuid.toString());
+    bodyJson.set("regionList", regionList);
     bodyJson.put("universeName", "Single UserUniverse");
     bodyJson.put("isMultiAZ", false);
 
