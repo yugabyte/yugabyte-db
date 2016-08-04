@@ -11,7 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol;
 import org.yb.client.AbstractModifyMasterClusterConfig;
+import org.yb.client.ProtobufHelper;
 import org.yb.client.YBClient;
+import org.yb.client.shaded.com.google.common.net.HostAndPort;
 import org.yb.master.Master;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -86,8 +88,9 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
     @Override
     protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
+      Universe universe = Universe.get(universeUUID);
       // Get the masters in the universe.
-      Collection<NodeDetails> masters = Universe.get(universeUUID).getMasters();
+      Collection<NodeDetails> masters = universe.getMasters();
 
       Master.SysClusterConfigEntryPB.Builder configBuilder =
           Master.SysClusterConfigEntryPB.newBuilder();
@@ -121,6 +124,19 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
         }
       }
       placementInfo.build();
+
+      // Add in any black listed nodes of tablet servers.
+      if (blacklistNodes != null) {
+        Master.BlacklistPB.Builder blacklistBuilder = configBuilder.getServerBlacklistBuilder();
+        for (String nodeName : blacklistNodes) {
+          NodeDetails node = universe.getNode(nodeName);
+          if (node.isTserver) {
+            blacklistBuilder.addHosts(ProtobufHelper.hostAndPortToPB(
+                HostAndPort.fromParts(node.private_ip, node.tserverRpcPort)));
+          }
+        }
+        blacklistBuilder.build();
+      }
       return configBuilder.build();
     }
   }

@@ -73,7 +73,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     int cloudIdx = 0;
     int regionIdx = 0;
     int azIdx = 0;
-    for (int nodeIdx = nodeStartIndex; nodeIdx <= taskParams().numNodes; nodeIdx++) {
+    for (int nodeIdx = nodeStartIndex; nodeIdx < taskParams().numNodes + nodeStartIndex; nodeIdx++) {
       NodeDetails nodeDetails = new NodeDetails();
       // Create the node name.
       nodeDetails.instance_name = nodePrefix + "-n" + nodeIdx;
@@ -94,9 +94,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       nodeDetails.nodeIdx = nodeIdx;
       // Add the node to the list of nodes.
       newNodesMap.put(nodeDetails.instance_name, nodeDetails);
-      LOG.debug("Placed new node " + nodeDetails.toString() +
-        " in universe " + taskParams().universeUUID +
-        " at cloud: " + cloudIdx + ", region: " + regionIdx + ", az: " + azIdx);
+      LOG.debug("Placed new node {} in universe {} at cloud:{}, region:{}, az:{}.",
+                nodeDetails.toString(), taskParams().universeUUID, cloudIdx, regionIdx, azIdx);
 
       // Advance to the next az/region/cloud combo.
       azIdx = (azIdx + 1) % placementRegion.azList.size();
@@ -175,9 +174,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Override
       public void run(Universe universe) {
         UniverseDetails universeDetails = universe.getUniverseDetails();
-        // Persist the updated information about the universe. Mark it as being edited.
-        universeDetails.updateInProgress = true;
-        universeDetails.updateSucceeded = false;
+        // Persist the updated information about the universe.
+        // It should have been marked as being edited in lockUniverseForUpdate().
+        if (!universeDetails.updateInProgress) {
+          String msg = "Universe " + taskParams().universeUUID +
+                       " has not been marked as being updated.";
+          LOG.error(msg);
+          throw new RuntimeException(msg);
+        }
         universeDetails.userIntent = taskParams().userIntent;
         universeDetails.nodePrefix = taskParams().nodePrefix;
         universeDetails.numNodes = taskParams().numNodes;
@@ -205,7 +209,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           // Replace the entire node value.
           universeDetails.nodeDetailsMap.put(node.instance_name, node);
           LOG.debug("Adding node " + node.instance_name +
-            " to universe " + taskParams().universeUUID);
+                    " to universe " + taskParams().universeUUID);
         }
       }
     };
@@ -424,5 +428,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // TODO: fill this up.
 
     taskListQueue.add(taskList);
+  }
+
+  /**
+   * Verify that the task params are valid.
+   */
+  public void verifyParams() {
+    if (taskParams().universeUUID == null) {
+      throw new RuntimeException(getName() + ": universeUUID not set");
+    }
+    if (taskParams().nodePrefix == null) {
+      throw new RuntimeException(getName() + ": nodePrefix not set");
+    }
+    if (taskParams().numNodes < 3) {
+      throw new RuntimeException(getName() + ": numNodes is invalid, need at least 3 nodes");
+    }
+    if (taskParams().userIntent.replicationFactor < 3) {
+      throw new RuntimeException(getName() + ": replicationFactor is invalid, needs to be at least 3.");
+    }
   }
 }

@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -20,7 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.forms.CreateUniverseFormData;
+import com.yugabyte.yw.forms.UniverseFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -51,18 +50,16 @@ public class UniverseController extends AuthenticatedController {
   @Inject
   Commissioner commissioner;
 
-  Random random = new Random();
-
   /**
    * API that queues a task to create a new universe. This does not wait for the creation.
-   *
    * @return result of the universe create operation.
    */
   public Result create(UUID customerUUID) {
     try {
+      LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
-      Form<CreateUniverseFormData> formData =
-        formFactory.form(CreateUniverseFormData.class).bindFromRequest();
+      Form<UniverseFormData> formData =
+          formFactory.form(UniverseFormData.class).bindFromRequest();
 
       // Check for any form errors.
       if (formData.hasErrors()) {
@@ -78,53 +75,32 @@ public class UniverseController extends AuthenticatedController {
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
       Universe universe = Universe.create(formData.get().universeName, customer.customerId);
-      LOG.info("Created universe " + universe.universeUUID + ":" + universe.name);
+      LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
 
       // Add an entry for the universe into the customer table.
       customer.addUniverseUUID(universe.universeUUID);
       customer.save();
-      LOG.info("Added universe " + universe.universeUUID + ":" + universe.name +
-        " for customer [" + customer.name + "]");
 
-      // Setup the create universe task.
-      UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-      taskParams.universeUUID = universe.universeUUID;
-      taskParams.cloudProvider = CloudType.aws.toString();
-      taskParams.numNodes = formData.get().replicationFactor;
+      LOG.info("Added universe {} : {} for customer [{}].",
+    		  universe.universeUUID, universe.name, customer.customerId);
 
-      // Compose a unique name for the universe.
-      taskParams.nodePrefix = Integer.toString(customer.customerId) + "-" + universe.name;
-
-      // Fill in the user intent.
-      taskParams.userIntent = new UserIntent();
-      taskParams.userIntent.isMultiAZ = formData.get().isMultiAZ;
-      LOG.debug("Setting isMultiAZ = " + taskParams.userIntent.isMultiAZ);
-      taskParams.userIntent.preferredRegion = formData.get().preferredRegion;
-
-      taskParams.userIntent.regionList = formData.get().regionList;
-      LOG.debug("Added " + taskParams.userIntent.regionList.size() + " regions to placement info");
-
-      // Set the replication factor.
-      taskParams.userIntent.replicationFactor = formData.get().replicationFactor;
-
-      // Compute and fill in the placement info.
-      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
-      LOG.info("Initialized params for creating universe " +
-        universe.universeUUID + ":" + universe.name);
+      UniverseDefinitionTaskParams taskParams =
+        getTaskParams(formData, universe, customer.customerId);
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
-      LOG.info("Submitted create universe for " + universe.universeUUID + ":" + universe.name +
-        ", task uuid = " + taskUUID);
+      LOG.info("Submitted create universe for {}:{}, task uuid = {}.", 
+               universe.universeUUID, universe.name, taskUUID);
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.Create,
-        universe.name);
+                          taskUUID,
+                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TaskType.Create,
+                          universe.name);
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
-        universe.universeUUID + ":" + universe.name);
+               universe.universeUUID + ":" + universe.name);
+
       return ApiResponse.success(universe);
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
@@ -132,8 +108,55 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  /**
+   * API that queues a task to update/edit a universe of a given customer.
+   * This does not wait for the completion.
+   * 
+   * @return result of the universe update operation.
+   */
   public Result update(UUID customerUUID, UUID universeUUID) {
-    return TODO;
+    try {
+      LOG.info("Update {} for {}.", customerUUID, universeUUID);
+      // Get the user submitted form data.
+      Form<UniverseFormData> formData =
+        formFactory.form(UniverseFormData.class).bindFromRequest();
+
+      // Check for any form errors.
+      if (formData.hasErrors()) {
+        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      }
+
+      // Verify the customer with this universe is present.
+      Customer customer = Customer.find.byId(customerUUID);
+      if (customer == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+      }
+
+      // Get the universe. This makes sure that a universe of this name does exist
+      // for this customer id.
+      Universe universe = Universe.get(universeUUID);
+      LOG.info("Found universe {} : {}.", universe.universeUUID, universe.name);
+
+      UniverseDefinitionTaskParams taskParams =
+        getTaskParams(formData, universe, customer.customerId);
+
+      UUID taskUUID = commissioner.submit(TaskInfo.Type.EditUniverse, taskParams);
+      LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
+               universe.universeUUID, universe.name, taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(customer,
+                          taskUUID,
+                          CustomerTask.TargetType.Universe,
+                          CustomerTask.TaskType.Update,
+                          universe.name);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
+                universe.universeUUID, universe.name);
+      return ApiResponse.success(universe);
+    } catch (Throwable t) {
+      LOG.error("Error updating universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
   }
 
   /**
@@ -182,6 +205,47 @@ public class UniverseController extends AuthenticatedController {
     LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
 
     return ApiResponse.success(taskUUID);
+  }
+
+  /**
+   * Helper API to convert the user form into task params.
+   * 
+   * @param formData : Input form data.
+   * @param universe : The universe details with which we are working.
+   * @param customerId : Current customer's id.
+   * 
+   * @return: The universe task params.
+   */
+  private UniverseDefinitionTaskParams getTaskParams(
+      Form<UniverseFormData> formData,
+      Universe universe,
+      int customerId) {
+    // Setup the create universe task.
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeUUID = universe.universeUUID;
+    taskParams.cloudProvider = CloudType.aws.toString();
+    taskParams.numNodes = formData.get().replicationFactor;
+
+    // Compose a unique name for the universe.
+    taskParams.nodePrefix = Integer.toString(customerId) + "-" + universe.name;
+
+    // Fill in the user intent.
+    taskParams.userIntent = new UserIntent();
+    taskParams.userIntent.isMultiAZ = formData.get().isMultiAZ;
+    LOG.debug("Setting isMultiAZ = " + taskParams.userIntent.isMultiAZ);
+    taskParams.userIntent.preferredRegion = formData.get().preferredRegion;
+
+    taskParams.userIntent.regionList = formData.get().regionList;
+    LOG.debug("Added {} regions to placement info.", taskParams.userIntent.regionList.size());
+
+    // Set the replication factor.
+    taskParams.userIntent.replicationFactor = formData.get().replicationFactor;
+
+    // Compute and fill in the placement info.
+    taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+    LOG.info("Initialized params for universe {} : {}.", universe.universeUUID, universe.name);
+
+    return taskParams;
   }
 
   private PlacementInfo getPlacementInfo(UserIntent userIntent) {

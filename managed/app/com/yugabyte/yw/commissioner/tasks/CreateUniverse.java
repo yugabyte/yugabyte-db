@@ -43,7 +43,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Configure the cluster nodes.
       configureNewNodes(universe.getUniverseDetails().nodePrefix,
                         1 /* nodeStartIndex */,
-                        defaultNumMastersToChoose,
+                        taskParams().userIntent.replicationFactor,
                         newNodesMap,
                         newMasters);
 
@@ -89,17 +89,5 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
-  }
-
-  private void verifyParams() {
-    if (taskParams().universeUUID == null) {
-      throw new RuntimeException(getName() + ": universeUUID not set");
-    }
-    if (taskParams().nodePrefix == null) {
-      throw new RuntimeException(getName() + ": nodePrefix not set");
-    }
-    if (taskParams().numNodes < 3) {
-      throw new RuntimeException(getName() + ": numNodes is invalid, need at least 3 nodes");
-    }
   }
 }
