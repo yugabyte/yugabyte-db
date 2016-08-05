@@ -21,6 +21,9 @@ public class WaitForMasterLeader extends AbstractTaskBase {
   // The YB client.
   public YBClientService ybService = null;
 
+  // Timeout for failing to respond to pings.
+  private static final long TIMEOUT_SERVER_WAIT_MS = 60000;
+
   public static class Params extends UniverseTaskParams {
   }
 
@@ -46,7 +49,7 @@ public class WaitForMasterLeader extends AbstractTaskBase {
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       YBClient client = ybService.getClient(hostPorts);
-      client.waitForMasterLeader(client.getDefaultAdminOperationTimeoutMs());
+      client.waitForMasterLeader(TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
