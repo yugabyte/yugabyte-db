@@ -3469,7 +3469,6 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
 void CatalogManager::SelectReplicas(
     const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
     set<shared_ptr<TSDescriptor>>* already_selected_ts) {
-  DCHECK_EQ(0, config->peers_size()) << "RaftConfig not empty: " << config->ShortDebugString();
   DCHECK_LE(nreplicas, ts_descs.size());
 
   for (int i = 0; i < nreplicas; ++i) {
