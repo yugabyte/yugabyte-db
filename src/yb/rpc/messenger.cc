@@ -71,7 +71,8 @@ MessengerBuilder::MessengerBuilder(std::string name)
           MonoDelta::FromMilliseconds(FLAGS_rpc_default_keepalive_time_ms)),
       num_reactors_(4),
       num_negotiation_threads_(4),
-      coarse_timer_granularity_(MonoDelta::FromMilliseconds(100)) {}
+      coarse_timer_granularity_(MonoDelta::FromMilliseconds(100)),
+      connection_type_(ConnectionType::YB) {}
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(const MonoDelta &keepalive) {
   connection_keepalive_time_ = keepalive;
@@ -96,6 +97,11 @@ MessengerBuilder& MessengerBuilder::set_coarse_timer_granularity(const MonoDelta
 MessengerBuilder &MessengerBuilder::set_metric_entity(
     const scoped_refptr<MetricEntity>& metric_entity) {
   metric_entity_ = metric_entity;
+  return *this;
+}
+
+MessengerBuilder &MessengerBuilder::use_connection_type(ConnectionType type) {
+  connection_type_ = type;
   return *this;
 }
 
@@ -230,6 +236,7 @@ void Messenger::RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote
 
 Messenger::Messenger(const MessengerBuilder &bld)
   : name_(bld.name_),
+    connection_type_(bld.connection_type_),
     closing_(false),
     metric_entity_(bld.metric_entity_),
     retain_self_(this) {

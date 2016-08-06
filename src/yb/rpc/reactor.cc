@@ -81,6 +81,29 @@ Status ShutdownError(bool aborted) {
       Status::Aborted(msg, "", ESHUTDOWN) :
       Status::ServiceUnavailable(msg, "", ESHUTDOWN);
 }
+
+Connection* MakeNewConnection(ConnectionType connection_type,
+                              ReactorThread* reactor_thread,
+                              const Sockaddr& remote,
+                              int socket,
+                              Connection::Direction direction) {
+  switch (connection_type) {
+    case ConnectionType::YB:
+      return new YBConnection(reactor_thread,
+                              remote,
+                              socket,
+                              direction);
+      break;
+    case ConnectionType::REDIS:
+      return new RedisConnection(reactor_thread,
+                                 remote,
+                                 socket,
+                                 direction);
+      break;
+    default:
+      LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
+  }
+}
 } // anonymous namespace
 
 ReactorThread::ReactorThread(Reactor *reactor, const MessengerBuilder &bld)
@@ -356,7 +379,11 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
   RETURN_NOT_OK(StartConnect(&sock, conn_id.remote(), &connect_in_progress));
 
   // Register the new connection in our map.
-  *conn = new Connection(this, conn_id.remote(), sock.Release(), Connection::CLIENT);
+  conn->reset(MakeNewConnection(reactor_->connection_type_,
+                                this,
+                                conn_id.remote(),
+                                sock.Release(),
+                                Connection::CLIENT));
   (*conn)->set_user_credentials(conn_id.user_credentials());
 
   // Kick off blocking client connection negotiation.
@@ -501,6 +528,7 @@ Reactor::Reactor(const shared_ptr<Messenger>& messenger,
   : messenger_(messenger),
     name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
     closing_(false),
+    connection_type_(messenger->connection_type_),
     thread_(this, bld) {
 }
 
@@ -610,8 +638,12 @@ class RegisterConnectionTask : public ReactorTask {
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote.ToString();
-  scoped_refptr<Connection> conn(
-    new Connection(&thread_, remote, socket->Release(), Connection::SERVER));
+  scoped_refptr<Connection> conn;
+  conn.reset(MakeNewConnection(connection_type_,
+                               &thread_,
+                               remote,
+                               socket->Release(),
+                               Connection::SERVER));
   auto task = new RegisterConnectionTask(conn);
   ScheduleReactorTask(task);
 }

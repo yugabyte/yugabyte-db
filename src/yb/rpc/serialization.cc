@@ -106,9 +106,9 @@ Status SerializeHeader(const MessageLite& header,
   return Status::OK();
 }
 
-Status ParseMessage(const Slice& buf,
-                    MessageLite* parsed_header,
-                    Slice* parsed_main_message) {
+Status ParseYBMessage(const Slice& buf,
+                      MessageLite* parsed_header,
+                      Slice* parsed_main_message) {
 
   // First grab the total length
   if (PREDICT_FALSE(buf.size() < kMsgLengthPrefixLength)) {
@@ -157,6 +157,13 @@ Status ParseMessage(const Slice& buf,
 
   *parsed_main_message = Slice(buf.data() + buf.size() - main_msg_len,
                               main_msg_len);
+  return Status::OK();
+}
+
+Status ParseRedisMessage(const Slice& buf,
+                         MessageLite* parsed_header,
+                         Slice* parsed_main_message) {
+  *parsed_main_message =  buf;
   return Status::OK();
 }
 

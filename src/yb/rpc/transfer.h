@@ -29,6 +29,7 @@
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/rpc/constants.h"
 
 DECLARE_int32(rpc_max_message_size);
 
@@ -53,38 +54,99 @@ struct TransferCallbacks;
 // Inbound Transfer objects are created by a Connection receiving data. When the
 // message is fully received, it is either parsed as a call, or a call response,
 // and the InboundTransfer object itself is handed off.
-class InboundTransfer {
+class AbstractInboundTransfer {
  public:
+  virtual ~AbstractInboundTransfer() {}
 
-  InboundTransfer();
+  // Read from the socket into our buffer.
+  virtual Status ReceiveBuffer(Socket& socket) = 0;
 
-  // read from the socket into our buffer
-  Status ReceiveBuffer(Socket &socket);
+  // Return true if any bytes have yet been received.
+  virtual bool TransferStarted() const = 0;
 
-  // Return true if any bytes have yet been sent.
-  bool TransferStarted() const;
+  // Return true if the entire transfer has been received.
+  virtual bool TransferFinished() const = 0;
 
-  // Return true if the entire transfer has been sent.
-  bool TransferFinished() const;
-
-  Slice data() const {
+  virtual Slice data() const {
     return Slice(buf_);
   }
 
   // Return a string indicating the status of this transfer (number of bytes received, etc)
   // suitable for logging.
-  std::string StatusAsString() const;
+  virtual std::string StatusAsString() const = 0;
+
+ protected:
+  faststring buf_;
+  int32_t cur_offset_ = 0;  // Index into buf_ where the next byte read from the client is stored.
+};
+
+class YBInboundTransfer : public AbstractInboundTransfer {
+ public:
+  YBInboundTransfer();
+
+  // Read from the socket into our buffer.
+  Status ReceiveBuffer(Socket& socket) OVERRIDE;
+
+  // Return true if any bytes have yet been received.
+  bool TransferStarted() const OVERRIDE {
+    return cur_offset_ != 0;
+  }
+
+  // Return true if the entire transfer has been received.
+  bool TransferFinished() const OVERRIDE {
+    return cur_offset_ == total_length_;
+  }
+
+  // Return a string indicating the status of this transfer (number of bytes received, etc)
+  // suitable for logging.
+  std::string StatusAsString() const OVERRIDE;
 
  private:
-
   Status ProcessInboundHeader();
 
-  faststring buf_;
+  int32_t total_length_ = kMsgLengthPrefixLength;
 
-  int32_t total_length_;
-  int32_t cur_offset_;
+  DISALLOW_COPY_AND_ASSIGN(YBInboundTransfer);
+};
 
-  DISALLOW_COPY_AND_ASSIGN(InboundTransfer);
+class RedisInboundTransfer : public AbstractInboundTransfer {
+ public:
+  RedisInboundTransfer();
+
+  // Read from the socket into our buffer.
+  Status ReceiveBuffer(Socket& socket) OVERRIDE;
+
+  bool TransferStarted() const OVERRIDE {
+    return cur_offset_ != prev_offset_;
+  }
+
+  bool TransferFinished() const OVERRIDE {
+    return done_;
+  }
+
+  // Return a string indicating the status of this transfer (number of bytes received, etc.)
+  // suitable for logging.
+  std::string StatusAsString() const OVERRIDE;
+
+  Slice data() const OVERRIDE {
+    return Slice(&buf_[prev_offset_], pos_ - prev_offset_);
+  }
+
+ private:
+  static constexpr int kProtoIOBufLen = 1024 * 16;  // I/O buffer size for reading client commands.
+
+  void CheckReadCompletely();
+
+  int CheckMultibulkBuffer();
+
+  int CheckInlineBuffer();
+
+  int32_t cur_offset_ = 0;  // index into buf_ where the next byte read from the client is stored.
+  int32_t prev_offset_ = 0;  // index into buf_, from where the "current" client command starts.
+  bool done_ = false;
+  int pos_ = 0;  // index into buf_, up to which the input has been parsed.
+
+  DISALLOW_COPY_AND_ASSIGN(RedisInboundTransfer);
 };
 
 
@@ -123,10 +185,18 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
   Status SendBuffer(Socket &socket);
 
   // Return true if any bytes have yet been sent.
-  bool TransferStarted() const;
+  bool TransferStarted() const {
+    return cur_offset_in_slice_ != 0 || cur_slice_idx_ != 0;
+  }
 
   // Return true if the entire transfer has been sent.
-  bool TransferFinished() const;
+  bool TransferFinished() const {
+    if (cur_slice_idx_ == n_payload_slices_) {
+      DCHECK_EQ(0, cur_offset_in_slice_);  // sanity check
+      return true;
+    }
+    return false;
+  }
 
   // Return the total number of bytes to be sent (including those already sent)
   int32_t TotalLength() const;

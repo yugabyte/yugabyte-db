@@ -55,13 +55,15 @@ using std::string;
 TransferCallbacks::~TransferCallbacks()
 {}
 
-InboundTransfer::InboundTransfer()
-  : total_length_(kMsgLengthPrefixLength),
-    cur_offset_(0) {
-  buf_.resize(kMsgLengthPrefixLength);
+YBInboundTransfer::YBInboundTransfer() {
+  buf_.resize(total_length_);
 }
 
-Status InboundTransfer::ReceiveBuffer(Socket &socket) {
+string YBInboundTransfer::StatusAsString() const {
+  return strings::Substitute("$0/$1 bytes received", cur_offset_, total_length_);
+}
+
+Status YBInboundTransfer::ReceiveBuffer(Socket &socket) {
   if (cur_offset_ < kMsgLengthPrefixLength) {
     // receive int32 length prefix
     int32_t rem = kMsgLengthPrefixLength - cur_offset_;
@@ -110,16 +112,33 @@ Status InboundTransfer::ReceiveBuffer(Socket &socket) {
   return Status::OK();
 }
 
-bool InboundTransfer::TransferStarted() const {
-  return cur_offset_ != 0;
+RedisInboundTransfer::RedisInboundTransfer() {
+  buf_.resize(kProtoIOBufLen);
 }
 
-bool InboundTransfer::TransferFinished() const {
-  return cur_offset_ == total_length_;
+string RedisInboundTransfer::StatusAsString() const {
+  return strings::Substitute("$0 : $1 bytes received", this, cur_offset_);
 }
 
-string InboundTransfer::StatusAsString() const {
-  return strings::Substitute("$0/$1 bytes received", cur_offset_, total_length_);
+void RedisInboundTransfer::CheckReadCompletely() {
+  // TBD
+}
+
+Status RedisInboundTransfer::ReceiveBuffer(Socket &socket) {
+  // Try to read into the buffer whatever is available.
+  const int32_t buf_space_left = kProtoIOBufLen - cur_offset_;
+  int32_t bytes_read = 0;
+  Status status = socket.Recv(&buf_[cur_offset_], buf_space_left, &bytes_read);
+  RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status);
+  if (bytes_read == 0) {
+    return Status::OK();
+  }
+  DCHECK_GE(bytes_read, 0);
+  cur_offset_ += bytes_read;
+
+  // Check if we have read the whole command.
+  CheckReadCompletely();
+  return Status::OK();
 }
 
 OutboundTransfer::OutboundTransfer(const std::vector<Slice> &payload,
@@ -198,18 +217,6 @@ Status OutboundTransfer::SendBuffer(Socket &socket) {
   }
 
   return Status::OK();
-}
-
-bool OutboundTransfer::TransferStarted() const {
-  return cur_offset_in_slice_ != 0 || cur_slice_idx_ != 0;
-}
-
-bool OutboundTransfer::TransferFinished() const {
-  if (cur_slice_idx_ == n_payload_slices_) {
-    DCHECK_EQ(0, cur_offset_in_slice_); // sanity check
-    return true;
-  }
-  return false;
 }
 
 string OutboundTransfer::HexDump() const {

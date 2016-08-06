@@ -124,6 +124,8 @@ class DelayedTask : public ReactorTask {
 class ReactorThread {
  public:
   friend class Connection;
+  friend class YBConnection;
+  friend class RedisConnection;
 
   // Client-side connection map.
   typedef std::unordered_map<ConnectionId, scoped_refptr<Connection>,
@@ -341,6 +343,8 @@ class Reactor {
   // Whether the reactor is shutting down.
   // Guarded by lock_.
   bool closing_;
+
+  const ConnectionType connection_type_;
 
   // Tasks to be run within the reactor thread.
   // Guarded by lock_.

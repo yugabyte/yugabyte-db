@@ -439,11 +439,11 @@ Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   return Status::OK();
 }
 
-Status CallResponse::ParseFrom(gscoped_ptr<InboundTransfer> transfer) {
+Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
   CHECK(!parsed_);
   Slice entire_message;
-  RETURN_NOT_OK(serialization::ParseMessage(transfer->data(), &header_,
-                                            &entire_message));
+  RETURN_NOT_OK(serialization::ParseYBMessage(transfer->data(), &header_,
+                                              &entire_message));
 
   // Use information from header to extract the payload slices.
   int last = header_.sidecar_offsets_size() - 1;

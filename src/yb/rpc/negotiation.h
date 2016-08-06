@@ -24,11 +24,17 @@ namespace yb {
 namespace rpc {
 
 class Connection;
+class YBConnection;
+class RedisConnection;
 
 class Negotiation {
  public:
   static void RunNegotiation(const scoped_refptr<Connection>& conn,
-                             const MonoTime &deadline);
+                             const MonoTime& deadline);
+  static void YBNegotiation(const scoped_refptr<YBConnection>& conn,
+                            const MonoTime& deadline);
+  static void RedisNegotiation(const scoped_refptr<RedisConnection>& conn,
+                               const MonoTime& deadline);
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(Negotiation);
 };

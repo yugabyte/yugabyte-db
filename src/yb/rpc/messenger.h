@@ -29,6 +29,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/connection.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
@@ -91,6 +92,9 @@ class MessengerBuilder {
   // Set metric entity for use by RPC systems.
   MessengerBuilder &set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
+  // Uses the given connection type to handle the incoming connections.
+  MessengerBuilder &use_connection_type(ConnectionType type);
+
   Status Build(std::shared_ptr<Messenger> *msgr);
 
  private:
@@ -101,6 +105,7 @@ class MessengerBuilder {
   int num_negotiation_threads_;
   MonoDelta coarse_timer_granularity_;
   scoped_refptr<MetricEntity> metric_entity_;
+  ConnectionType connection_type_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops
@@ -201,6 +206,8 @@ class Messenger {
   void AllExternalReferencesDropped();
 
   const std::string name_;
+
+  const ConnectionType connection_type_;
 
   // Protects closing_, acceptor_pools_, rpc_services_.
   mutable percpu_rwlock lock_;

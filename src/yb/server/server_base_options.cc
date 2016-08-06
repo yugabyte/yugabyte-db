@@ -64,7 +64,8 @@ ServerBaseOptions::ServerBaseOptions()
       metrics_log_interval_ms(FLAGS_metrics_log_interval_ms),
       placement_cloud(FLAGS_placement_cloud),
       placement_region(FLAGS_placement_region),
-      placement_zone(FLAGS_placement_zone) {}
+      placement_zone(FLAGS_placement_zone),
+      connection_type(yb::rpc::ConnectionType::YB) {}
 
 void ServerBaseOptions::ValidateMasterAddresses() const {
   if (!master_addresses_->empty()) {

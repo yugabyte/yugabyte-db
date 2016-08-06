@@ -51,7 +51,7 @@ using std::shared_ptr;
 using strings::Substitute;
 
 // Client: Send ConnectionContextPB message based on information stored in the Connection object.
-static Status SendConnectionContext(Connection* conn, const MonoTime& deadline) {
+static Status SendConnectionContext(YBConnection* conn, const MonoTime& deadline) {
   TRACE("Sending connection context");
   RequestHeader header;
   header.set_call_id(kConnectionContextCallId);
@@ -66,7 +66,7 @@ static Status SendConnectionContext(Connection* conn, const MonoTime& deadline) 
 // Server: Receive ConnectionContextPB message and update the corresponding fields in the
 // associated Connection object. Perform validation against SASL-negotiated information
 // as needed.
-static Status RecvConnectionContext(Connection* conn, const MonoTime& deadline) {
+static Status RecvConnectionContext(YBConnection* conn, const MonoTime& deadline) {
   TRACE("Waiting for connection context");
   faststring recv_buf(1024); // Should be plenty for a ConnectionContextPB message.
   RequestHeader header;
@@ -110,7 +110,7 @@ static Status RecvConnectionContext(Connection* conn, const MonoTime& deadline) 
 }
 
 // Wait for the client connection to be established and become ready for writing.
-static Status WaitForClientConnect(Connection* conn, const MonoTime& deadline) {
+static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline) {
   TRACE("Waiting for socket to connect");
   int fd = conn->socket()->GetFd();
   struct pollfd poll_fd;
@@ -192,7 +192,7 @@ static Status DisableSocketTimeouts(Connection* conn) {
 }
 
 // Perform client negotiation. We don't LOG() anything, we leave that to our caller.
-static Status DoClientNegotiation(Connection* conn,
+static Status DoClientNegotiation(YBConnection* conn,
                                   const MonoTime& deadline) {
   RETURN_NOT_OK(WaitForClientConnect(conn, deadline));
   RETURN_NOT_OK(conn->SetNonBlocking(false));
@@ -206,7 +206,7 @@ static Status DoClientNegotiation(Connection* conn,
 }
 
 // Perform server negotiation. We don't LOG() anything, we leave that to our caller.
-static Status DoServerNegotiation(Connection* conn,
+static Status DoServerNegotiation(YBConnection* conn,
                                   const MonoTime& deadline) {
   RETURN_NOT_OK(conn->SetNonBlocking(false));
   RETURN_NOT_OK(conn->InitSaslServer());
@@ -218,9 +218,26 @@ static Status DoServerNegotiation(Connection* conn,
   return Status::OK();
 }
 
-// Perform negotiation for a connection (either server or client)
+static Status DoRedisServerNegotiation(Connection* conn,
+                                       const MonoTime& deadline) {
+  RETURN_NOT_OK(conn->SetNonBlocking(false));
+  RETURN_NOT_OK(DisableSocketTimeouts(conn));
+  return Status::OK();
+}
+
 void Negotiation::RunNegotiation(const scoped_refptr<Connection>& conn,
                                  const MonoTime& deadline) {
+  conn->RunNegotiation(deadline);
+}
+
+void Negotiation::RedisNegotiation(const scoped_refptr<RedisConnection>& conn,
+                                   const MonoTime& deadline) {
+  CHECK(conn->direction() == Connection::SERVER);
+  conn->CompleteNegotiation(DoRedisServerNegotiation(conn.get(), deadline));
+}
+
+void Negotiation::YBNegotiation(const scoped_refptr<YBConnection>& conn,
+                                const MonoTime& deadline) {
   Status s;
   if (conn->direction() == Connection::SERVER) {
     s = DoServerNegotiation(conn.get(), deadline);

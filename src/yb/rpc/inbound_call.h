@@ -25,6 +25,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/connection_types.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/transfer.h"
@@ -62,7 +63,7 @@ struct InboundCallTiming {
 class InboundCall {
  public:
   explicit InboundCall(Connection* conn);
-  ~InboundCall();
+  virtual ~InboundCall();
 
   // Parse an inbound call message.
   //
@@ -70,7 +71,7 @@ class InboundCall {
   // 'serialized_request_' member variables. The actual call parameter is
   // not deserialized, as this may be CPU-expensive, and this is called
   // from the reactor thread.
-  Status ParseFrom(gscoped_ptr<InboundTransfer> transfer);
+  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) = 0;
 
   // Return the serialized request parameter protobuf.
   const Slice &serialized_request() const {
@@ -105,15 +106,15 @@ class InboundCall {
   void RespondApplicationError(int error_ext_id, const std::string& message,
                                const google::protobuf::MessageLite& app_error_pb);
 
+  // Serialize the response packet for the finished call.
+  // The resulting slices refer to memory in this object.
+  virtual void SerializeResponseTo(std::vector<Slice>* slices) const = 0;
+
   // Convert an application error extension to an ErrorStatusPB.
   // These ErrorStatusPB objects are what are returned in application error responses.
   static void ApplicationErrorToPB(int error_ext_id, const std::string& message,
                                    const google::protobuf::MessageLite& app_error_pb,
                                    ErrorStatusPB* err);
-
-  // Serialize the response packet for the finished call.
-  // The resulting slices refer to memory in this object.
-  void SerializeResponseTo(std::vector<Slice>* slices) const;
 
   // See RpcContext::AddRpcSidecar()
   Status AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
@@ -122,7 +123,7 @@ class InboundCall {
 
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp);
 
-  const UserCredentials& user_credentials() const;
+  virtual const UserCredentials& user_credentials() const;
 
   const Sockaddr& remote_address() const;
 
@@ -157,7 +158,7 @@ class InboundCall {
   // If the client did not specify a deadline, returns MonoTime::Max().
   MonoTime GetClientDeadline() const;
 
- private:
+ protected:
   // Serialize and queue the response.
   void Respond(const google::protobuf::MessageLite& response,
                bool is_success);
@@ -165,8 +166,8 @@ class InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                 bool is_success);
+  virtual Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                         bool is_success) = 0;
 
   // Log a WARNING message if the RPC response was slow enough that the
   // client likely timed out. This is based on the client-provided timeout
@@ -187,7 +188,7 @@ class InboundCall {
   // The transfer that produced the call.
   // This is kept around because it retains the memory referred to
   // by 'serialized_request_' above.
-  gscoped_ptr<InboundTransfer> transfer_;
+  gscoped_ptr<AbstractInboundTransfer> transfer_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
   faststring response_hdr_buf_;
@@ -208,10 +209,56 @@ class InboundCall {
   // This field is filled in when the inbound request header is parsed.
   RemoteMethod remote_method_;
 
+  const ConnectionType connection_type_;
+
+ private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };
 
-} // namespace rpc
+class YBInboundCall : public InboundCall {
+ public:
+  explicit YBInboundCall(Connection* conn);
+
+  // Parse an inbound call message.
+  //
+  // This only deserializes the call header, populating the 'header_' and
+  // 'serialized_request_' member variables. The actual call parameter is
+  // not deserialized, as this may be CPU-expensive, and this is called
+  // from the reactor thread.
+  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+
+  // Serialize the response packet for the finished call.
+  // The resulting slices refer to memory in this object.
+  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
+
+  // Serialize a response message for either success or failure. If it is a success,
+  // 'response' should be the user-defined response type for the call. If it is a
+  // failure, 'response' should be an ErrorStatusPB instance.
+  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                 bool is_success) override;
+};
+
+class RedisInboundCall : public InboundCall {
+ public:
+  explicit RedisInboundCall(Connection* conn);
+
+  // Parse an inbound call message.
+  //
+  // Populates the 'header_' and 'serialized_request_' member variables.
+  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+  // Serialize the response packet for the finished call.
+  // The resulting slices refer to memory in this object.
+
+  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
+
+  // Serialize a response message for either success or failure. If it is a success,
+  // 'response' should be the user-defined response type for the call. If it is a
+  // failure, 'response' should be an ErrorStatusPB instance.
+  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                 bool is_success) override;
+};
+
+}; // namespace rpc
 } // namespace yb
 
 #endif

@@ -30,6 +30,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/connection_types.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/sasl_client.h"
 #include "yb/rpc/sasl_server.h"
@@ -79,7 +80,9 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // remote: the address of the remote end
   // socket: the socket to take ownership of.
   // direction: whether we are the client or server side
-  Connection(ReactorThread *reactor_thread, Sockaddr remote, int socket,
+  Connection(ReactorThread* reactor_thread,
+             Sockaddr remote,
+             int socket,
              Direction direction);
 
   // Set underlying socket to non-blocking (or blocking) mode.
@@ -89,11 +92,20 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // one epoll loop at a time.
   void EpollRegister(ev::loop_ref& loop);
 
-  ~Connection();
+  virtual ~Connection();
 
   MonoTime last_activity_time() const {
     return last_activity_time_;
   }
+
+  // Set the user credentials which should be used to log in.
+  void set_user_credentials(const UserCredentials& user_credentials);
+
+  // Modify the user credentials which will be used to log in.
+  UserCredentials* mutable_user_credentials() { return &user_credentials_; }
+
+  // Get the user credentials which will be used to log in.
+  const UserCredentials& user_credentials() const { return user_credentials_; }
 
   // Returns true if we are not in the process of receiving or sending a
   // message, and we have no outstanding calls.
@@ -102,7 +114,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Fail any calls which are currently queued or awaiting response.
   // Prohibits any future calls (they will be failed immediately with this
   // same Status).
-  void Shutdown(const Status &status);
+  void Shutdown(const Status& status);
 
   // Queue a new call to be made. If the queueing fails, the call will be
   // marked failed.
@@ -116,57 +128,40 @@ class Connection : public RefCountedThreadSafe<Connection> {
   void QueueResponseForCall(gscoped_ptr<InboundCall> call);
 
   // The address of the remote end of the connection.
-  const Sockaddr &remote() const { return remote_; }
-
-  // Set the user credentials which should be used to log in.
-  void set_user_credentials(const UserCredentials &user_credentials);
-
-  // Modify the user credentials which will be used to log in.
-  UserCredentials* mutable_user_credentials() { return &user_credentials_; }
-
-  // Get the user credentials which will be used to log in.
-  const UserCredentials &user_credentials() const { return user_credentials_; }
+  const Sockaddr& remote() const { return remote_; }
 
   // libev callback when data is available to read.
-  void ReadHandler(ev::io &watcher, int revents);
+  void ReadHandler(ev::io& watcher, int revents);
 
   // libev callback when we may write to the socket.
-  void WriteHandler(ev::io &watcher, int revents);
+  void WriteHandler(ev::io& watcher, int revents);
 
   // Safe to be called from other threads.
   std::string ToString() const;
 
   Direction direction() const { return direction_; }
 
-  Socket *socket() { return &socket_; }
+  Socket* socket() { return &socket_; }
 
-  // Return SASL client instance for this connection.
-  SaslClient &sasl_client() { return sasl_client_; }
-
-  // Return SASL server instance for this connection.
-  SaslServer &sasl_server() { return sasl_server_; }
-
-  // Initialize SASL client before negotiation begins.
-  Status InitSaslClient();
-
-  // Initialize SASL server before negotiation begins.
-  Status InitSaslServer();
+  // Perform negotiation for a connection
+  virtual void RunNegotiation(const MonoTime& deadline) = 0;
 
   // Go through the process of transferring control of the underlying socket back to the Reactor.
-  void CompleteNegotiation(const Status &negotiation_status);
+  void CompleteNegotiation(const Status& negotiation_status);
 
   // Indicate that negotiation is complete and that the Reactor is now in control of the socket.
   void MarkNegotiationComplete();
 
+  ReactorThread* reactor_thread() const { return reactor_thread_; }
+
+  virtual ConnectionType connection_type() const = 0;
+
   Status DumpPB(const DumpRunningRpcsRequestPB& req,
                 RpcConnectionPB* resp);
-
-  ReactorThread *reactor_thread() const { return reactor_thread_; }
-
- private:
+ protected:
   friend struct CallAwaitingResponse;
   friend class QueueTransferTask;
-  friend struct ResponseTransferCallbacks;
+  friend class YBResponseTransferCallbacks;
 
   // A call which has been fully sent to the server, which we're waiting for
   // the server to process. This is used on the client side only.
@@ -174,9 +169,9 @@ class Connection : public RefCountedThreadSafe<Connection> {
     ~CallAwaitingResponse();
 
     // Notification from libev that the call has timed out.
-    void HandleTimeout(ev::timer &watcher, int revents);
+    void HandleTimeout(ev::timer& watcher, int revents);
 
-    Connection *conn;
+    Connection* conn;
     std::shared_ptr<OutboundCall> call;
     ev::timer timeout_timer;
   };
@@ -197,18 +192,20 @@ class Connection : public RefCountedThreadSafe<Connection> {
     return call_id;
   }
 
+  virtual AbstractInboundTransfer* MakeNewInboundTransfer() = 0;
+
   // An incoming packet has completed transferring on the server side.
   // This parses the call and delivers it into the call queue.
-  void HandleIncomingCall(gscoped_ptr<InboundTransfer> transfer);
+  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) = 0;
 
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
-  void HandleCallResponse(gscoped_ptr<InboundTransfer> transfer);
+  void HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfer);
 
   // The given CallAwaitingResponse has elapsed its user-defined timeout.
   // Set it to Failed.
-  void HandleOutboundCallTimeout(CallAwaitingResponse *car);
+  void HandleOutboundCallTimeout(CallAwaitingResponse* car);
 
   // Queue a transfer for sending on this connection.
   // We will take ownership of the transfer.
@@ -224,17 +221,17 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // The remote address we're talking to.
   const Sockaddr remote_;
 
-  // The credentials of the user operating on this connection (if a client user).
-  UserCredentials user_credentials_;
-
   // whether we are client or server
   Direction direction_;
 
   // The last time we read or wrote from the socket.
   MonoTime last_activity_time_;
 
+  // The credentials of the user operating on this connection (if a client user).
+  UserCredentials user_credentials_;
+
   // the inbound transfer, if any
-  gscoped_ptr<InboundTransfer> inbound_;
+  gscoped_ptr<AbstractInboundTransfer> inbound_;
 
   // notifies us when our socket is writable.
   ev::io write_io_;
@@ -272,14 +269,66 @@ class Connection : public RefCountedThreadSafe<Connection> {
   ObjectPool<CallAwaitingResponse> car_pool_;
   typedef ObjectPool<CallAwaitingResponse>::scoped_ptr scoped_car;
 
+  // Whether we completed connection negotiation.
+  bool negotiation_complete_;
+};
+
+class RedisConnection : public Connection {
+ public:
+  RedisConnection(ReactorThread* reactor_thread,
+                  Sockaddr remote,
+                  int socket,
+                  Direction direction);
+
+  virtual void RunNegotiation(const MonoTime& deadline) override;
+
+  virtual ConnectionType connection_type() const override {
+    return ConnectionType::REDIS;
+  }
+
+  virtual AbstractInboundTransfer* MakeNewInboundTransfer() override {
+    return new RedisInboundTransfer();
+  }
+
+  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+};
+
+class YBConnection : public Connection {
+ public:
+  YBConnection(ReactorThread* reactor_thread,
+               Sockaddr remote,
+               int socket,
+               Direction direction);
+
+  // Return SASL client instance for this connection.
+  SaslClient& sasl_client() { return sasl_client_; }
+
+  // Return SASL server instance for this connection.
+  SaslServer& sasl_server() { return sasl_server_; }
+
+  // Initialize SASL client before negotiation begins.
+  Status InitSaslClient();
+
+  // Initialize SASL server before negotiation begins.
+  Status InitSaslServer();
+
+  virtual void RunNegotiation(const MonoTime& deadline) override;
+
+  virtual ConnectionType connection_type() const override {
+    return ConnectionType::YB;
+  }
+
+  virtual AbstractInboundTransfer* MakeNewInboundTransfer() override {
+    return new YBInboundTransfer();
+  }
+
+  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+ private:
   // SASL client instance used for connection negotiation when Direction == CLIENT.
   SaslClient sasl_client_;
 
   // SASL server instance used for connection negotiation when Direction == SERVER.
   SaslServer sasl_server_;
-
-  // Whether we completed connection negotiation.
-  bool negotiation_complete_;
 };
 
 } // namespace rpc

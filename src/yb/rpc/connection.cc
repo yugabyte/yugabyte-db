@@ -33,6 +33,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -54,8 +55,10 @@ namespace rpc {
 ///
 /// Connection
 ///
-Connection::Connection(ReactorThread *reactor_thread, Sockaddr remote,
-                       int socket, Direction direction)
+Connection::Connection(ReactorThread* reactor_thread,
+                       Sockaddr remote,
+                       int socket,
+                       Direction direction)
     : reactor_thread_(reactor_thread),
       socket_(socket),
       remote_(std::move(remote)),
@@ -63,8 +66,6 @@ Connection::Connection(ReactorThread *reactor_thread, Sockaddr remote,
       last_activity_time_(MonoTime::Now(MonoTime::FINE)),
       is_epoll_registered_(false),
       next_call_id_(1),
-      sasl_client_(kSaslAppName, socket),
-      sasl_server_(kSaslAppName, socket),
       negotiation_complete_(false) {}
 
 Status Connection::SetNonBlocking(bool enabled) {
@@ -101,7 +102,7 @@ Connection::~Connection() {
 bool Connection::Idle() const {
   DCHECK(reactor_thread_->IsCurrentThread());
   // check if we're in the middle of receiving something
-  InboundTransfer *transfer = inbound_.get();
+  AbstractInboundTransfer* transfer = inbound_.get();
   if (transfer && (transfer->TransferStarted())) {
     return false;
   }
@@ -126,7 +127,7 @@ bool Connection::Idle() const {
   return true;
 }
 
-void Connection::Shutdown(const Status &status) {
+void Connection::Shutdown(const Status& status) {
   DCHECK(reactor_thread_->IsCurrentThread());
   shutdown_status_ = status;
 
@@ -305,26 +306,44 @@ struct ResponseTransferCallbacks : public TransferCallbacks {
     conn_(conn)
   {}
 
-  ~ResponseTransferCallbacks() {
-    // Remove the call from the map.
-    InboundCall *call_from_map = EraseKeyReturnValuePtr(
-      &conn_->calls_being_handled_, call_->call_id());
-    DCHECK_EQ(call_from_map, call_.get());
-  }
+  virtual ~ResponseTransferCallbacks() {}
 
   virtual void NotifyTransferFinished() OVERRIDE {
     delete this;
   }
 
   virtual void NotifyTransferAborted(const Status &status) OVERRIDE {
-    LOG(WARNING) << "Connection torn down before " <<
-      call_->ToString() << " could send its response";
+    LOG(WARNING) << "Connection torn down before "
+                 << call_->ToString() << " could send its response";
     delete this;
   }
 
- private:
+ protected:
   gscoped_ptr<InboundCall> call_;
   Connection *conn_;
+};
+
+class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
+ public:
+  YBResponseTransferCallbacks(gscoped_ptr<InboundCall> call,
+                              Connection* conn) : ResponseTransferCallbacks(call.Pass(), conn) {}
+
+  ~YBResponseTransferCallbacks() {
+    // Remove the call from the map.
+    InboundCall* call_from_map = EraseKeyReturnValuePtr(
+        &conn_->calls_being_handled_, call_->call_id());
+    DCHECK_EQ(call_from_map, call_.get());
+  }
+};
+
+class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
+ public:
+  RedisResponseTransferCallbacks(gscoped_ptr<InboundCall> call,
+                                 Connection* conn) : ResponseTransferCallbacks(call.Pass(), conn) {}
+
+  ~RedisResponseTransferCallbacks() {
+    // TBD in https://phabricator.dev.yugabyte.com/D366
+  }
 };
 
 // Reactor task which puts a transfer on the outbound transfer queue.
@@ -351,6 +370,17 @@ class QueueTransferTask : public ReactorTask {
   Connection *conn_;
 };
 
+TransferCallbacks* GetResponseTransferCallback(Connection* conn,
+                                               gscoped_ptr<InboundCall> call) {
+  switch (conn->connection_type()) {
+    case ConnectionType::YB:
+      return new YBResponseTransferCallbacks(call.Pass(), conn);
+    case ConnectionType::REDIS:
+      return new RedisResponseTransferCallbacks(call.Pass(), conn);
+  }
+  LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(conn->connection_type());
+}
+
 void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
   // This is usually called by the IPC worker thread when the response
   // is set, but in some circumstances may also be called by the
@@ -365,11 +395,11 @@ void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
   std::vector<Slice> slices;
   call->SerializeResponseTo(&slices);
 
-  TransferCallbacks *cb = new ResponseTransferCallbacks(call.Pass(), this);
+  TransferCallbacks* cb = GetResponseTransferCallback(this, call.Pass());
   // After the response is sent, can delete the InboundCall object.
   gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb));
 
-  QueueTransferTask *task = new QueueTransferTask(t.Pass(), this);
+  QueueTransferTask* task = new QueueTransferTask(t.Pass(), this);
   reactor_thread_->reactor()->ScheduleReactorTask(task);
 }
 
@@ -390,7 +420,7 @@ void Connection::ReadHandler(ev::io &watcher, int revents) {
 
   while (true) {
     if (!inbound_) {
-      inbound_.reset(new InboundTransfer());
+      inbound_.reset(MakeNewInboundTransfer());
     }
     Status status = inbound_->ReceiveBuffer(socket_);
     if (PREDICT_FALSE(!status.ok())) {
@@ -427,31 +457,7 @@ void Connection::ReadHandler(ev::io &watcher, int revents) {
   }
 }
 
-void Connection::HandleIncomingCall(gscoped_ptr<InboundTransfer> transfer) {
-  DCHECK(reactor_thread_->IsCurrentThread());
-
-  gscoped_ptr<InboundCall> call(new InboundCall(this));
-  Status s = call->ParseFrom(transfer.Pass());
-  if (!s.ok()) {
-    LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
-    // TODO: shutdown? probably, since any future stuff on this socket will be
-    // "unsynchronized"
-    return;
-  }
-
-  if (!InsertIfNotPresent(&calls_being_handled_, call->call_id(), call.get())) {
-    LOG(WARNING) << ToString() << ": received call ID " << call->call_id() <<
-      " but was already processing this ID! Ignoring";
-    reactor_thread_->DestroyConnection(
-      this, Status::RuntimeError("Received duplicate call id",
-                                 Substitute("$0", call->call_id())));
-    return;
-  }
-
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.Pass());
-}
-
-void Connection::HandleCallResponse(gscoped_ptr<InboundTransfer> transfer) {
+void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
   gscoped_ptr<CallResponse> resp(new CallResponse);
   CHECK_OK(resp->ParseFrom(transfer.Pass()));
@@ -530,23 +536,6 @@ std::string Connection::ToString() const {
     remote_.ToString());
 }
 
-Status Connection::InitSaslClient() {
-  RETURN_NOT_OK(sasl_client().Init(kSaslProtoName));
-  RETURN_NOT_OK(sasl_client().EnableAnonymous());
-  RETURN_NOT_OK(sasl_client().EnablePlain(user_credentials().real_user(),
-                                          user_credentials().password()));
-  return Status::OK();
-}
-
-Status Connection::InitSaslServer() {
-  // TODO: Do necessary configuration plumbing to enable user authentication.
-  // Right now we just enable PLAIN with a "dummy" auth store, which allows everyone in.
-  RETURN_NOT_OK(sasl_server().Init(kSaslProtoName));
-  gscoped_ptr<AuthStore> auth_store(new DummyAuthStore());
-  RETURN_NOT_OK(sasl_server().EnablePlain(auth_store.Pass()));
-  return Status::OK();
-}
-
 // Reactor task that transitions this Connection from connection negotiation to
 // regular RPC handling. Destroys Connection on negotiation error.
 class NegotiationCompletedTask : public ReactorTask {
@@ -613,6 +602,87 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
     LOG(FATAL);
   }
   return Status::OK();
+}
+
+YBConnection::YBConnection(ReactorThread* reactor_thread,
+                           Sockaddr remote,
+                           int socket,
+                           Direction direction)
+    : Connection(reactor_thread, remote, socket, direction),
+      sasl_client_(kSaslAppName, socket),
+      sasl_server_(kSaslAppName, socket) {}
+
+void YBConnection::RunNegotiation(const MonoTime& deadline) {
+  Negotiation::YBNegotiation(this, deadline);
+}
+
+Status YBConnection::InitSaslClient() {
+  RETURN_NOT_OK(sasl_client().Init(kSaslProtoName));
+  RETURN_NOT_OK(sasl_client().EnableAnonymous());
+  RETURN_NOT_OK(sasl_client().EnablePlain(user_credentials().real_user(),
+                                          user_credentials().password()));
+  return Status::OK();
+}
+
+Status YBConnection::InitSaslServer() {
+  // TODO: Do necessary configuration plumbing to enable user authentication.
+  // Right now we just enable PLAIN with a "dummy" auth store, which allows everyone in.
+  RETURN_NOT_OK(sasl_server().Init(kSaslProtoName));
+  gscoped_ptr<AuthStore> auth_store(new DummyAuthStore());
+  RETURN_NOT_OK(sasl_server().EnablePlain(auth_store.Pass()));
+  return Status::OK();
+}
+
+void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
+  DCHECK(reactor_thread_->IsCurrentThread());
+
+  gscoped_ptr<InboundCall> call(new YBInboundCall(this));
+
+  Status s = call->ParseFrom(transfer.Pass());
+  if (!s.ok()) {
+    LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
+    // TODO: shutdown? probably, since any future stuff on this socket will be
+    // "unsynchronized"
+    return;
+  }
+
+  // call_id exists only for YB. Not for Redis.
+  if (!InsertIfNotPresent(&calls_being_handled_, call->call_id(), call.get())) {
+    LOG(WARNING) << ToString() << ": received call ID " << call->call_id()
+                 << " but was already processing this ID! Ignoring";
+    reactor_thread_->DestroyConnection(
+        this, Status::RuntimeError("Received duplicate call id",
+                                   Substitute("$0", call->call_id())));
+    return;
+  }
+
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.Pass());
+}
+
+RedisConnection::RedisConnection(ReactorThread* reactor_thread,
+                                 Sockaddr remote,
+                                 int socket,
+                                 Direction direction)
+    : Connection(reactor_thread, remote, socket, direction) {}
+
+void RedisConnection::RunNegotiation(const MonoTime& deadline) {
+  Negotiation::RedisNegotiation(this, deadline);
+}
+
+void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
+  DCHECK(reactor_thread_->IsCurrentThread());
+
+  gscoped_ptr<InboundCall> call(new RedisInboundCall(this));
+
+  Status s = call->ParseFrom(transfer.Pass());
+  if (!s.ok()) {
+    LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
+    // TODO: shutdown? probably, since any future stuff on this socket will be
+    // "unsynchronized"
+    return;
+  }
+
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.Pass());
 }
 
 } // namespace rpc

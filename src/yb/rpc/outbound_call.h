@@ -47,7 +47,7 @@ namespace rpc {
 class CallResponse;
 class Connection;
 class DumpRunningRpcsRequestPB;
-class InboundTransfer;
+class YBInboundTransfer;
 class RpcCallInProgressPB;
 class RpcController;
 
@@ -314,7 +314,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object.
-  Status ParseFrom(gscoped_ptr<InboundTransfer> transfer);
+  Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -354,7 +354,7 @@ class CallResponse {
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
-  gscoped_ptr<InboundTransfer> transfer_;
+  gscoped_ptr<AbstractInboundTransfer> transfer_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };

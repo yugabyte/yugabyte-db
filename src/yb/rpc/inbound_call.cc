@@ -49,31 +49,12 @@ namespace rpc {
 InboundCall::InboundCall(Connection* conn)
   : conn_(conn),
     sidecars_deleter_(&sidecars_),
-    trace_(new Trace) {
+    trace_(new Trace),
+    connection_type_(conn->connection_type()) {
   RecordCallReceived();
 }
 
 InboundCall::~InboundCall() {}
-
-Status InboundCall::ParseFrom(gscoped_ptr<InboundTransfer> transfer) {
-  TRACE_EVENT_FLOW_BEGIN0("rpc", "InboundCall", this);
-  TRACE_EVENT0("rpc", "InboundCall::ParseFrom");
-  RETURN_NOT_OK(serialization::ParseMessage(transfer->data(), &header_, &serialized_request_));
-
-  // Adopt the service/method info from the header as soon as it's available.
-  if (PREDICT_FALSE(!header_.has_remote_method())) {
-    return Status::Corruption("Non-connection context request header must specify remote_method");
-  }
-  if (PREDICT_FALSE(!header_.remote_method().IsInitialized())) {
-    return Status::Corruption("remote_method in request header is not initialized",
-                              header_.remote_method().InitializationErrorString());
-  }
-  remote_method_.FromPB(header_.remote_method());
-
-  // Retain the buffer that we have a view into.
-  transfer_.swap(transfer);
-  return Status::OK();
-}
 
 void InboundCall::RespondSuccess(const MessageLite& response) {
   TRACE_EVENT0("rpc", "InboundCall::RespondSuccess");
@@ -126,41 +107,6 @@ void InboundCall::Respond(const MessageLite& response,
 
   LogTrace();
   conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
-}
-
-Status InboundCall::SerializeResponseBuffer(const MessageLite& response,
-                                            bool is_success) {
-  uint32_t protobuf_msg_size = response.ByteSize();
-
-  ResponseHeader resp_hdr;
-  resp_hdr.set_call_id(header_.call_id());
-  resp_hdr.set_is_error(!is_success);
-  uint32_t absolute_sidecar_offset = protobuf_msg_size;
-  for (RpcSidecar* car : sidecars_) {
-    resp_hdr.add_sidecar_offsets(absolute_sidecar_offset);
-    absolute_sidecar_offset += car->AsSlice().size();
-  }
-
-  int additional_size = absolute_sidecar_offset - protobuf_msg_size;
-  RETURN_NOT_OK(serialization::SerializeMessage(response, &response_msg_buf_,
-                                                additional_size, true));
-  int main_msg_size = additional_size + response_msg_buf_.size();
-  RETURN_NOT_OK(serialization::SerializeHeader(resp_hdr, main_msg_size,
-                                               &response_hdr_buf_));
-
-  return Status::OK();
-}
-
-void InboundCall::SerializeResponseTo(vector<Slice>* slices) const {
-  TRACE_EVENT0("rpc", "InboundCall::SerializeResponseTo");
-  CHECK_GT(response_hdr_buf_.size(), 0);
-  CHECK_GT(response_msg_buf_.size(), 0);
-  slices->reserve(slices->size() + 2 + sidecars_.size());
-  slices->push_back(Slice(response_hdr_buf_));
-  slices->push_back(Slice(response_msg_buf_));
-  for (RpcSidecar* car : sidecars_) {
-    slices->push_back(car->AsSlice());
-  }
 }
 
 Status InboundCall::AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx) {
@@ -217,10 +163,6 @@ void InboundCall::LogTrace() const {
   }
 }
 
-const UserCredentials& InboundCall::user_credentials() const {
-  return conn_->user_credentials();
-}
-
 const Sockaddr& InboundCall::remote_address() const {
   return conn_->remote();
 }
@@ -272,6 +214,107 @@ MonoTime InboundCall::GetClientDeadline() const {
   MonoTime deadline = timing_.time_received;
   deadline.AddDelta(MonoDelta::FromMilliseconds(header_.timeout_millis()));
   return deadline;
+}
+
+YBInboundCall::YBInboundCall(Connection* conn) : InboundCall(conn) {}
+
+const UserCredentials& InboundCall::user_credentials() const {
+  return conn_->user_credentials();
+}
+
+Status YBInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
+  TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
+  TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
+
+  RETURN_NOT_OK(serialization::ParseYBMessage(transfer->data(), &header_, &serialized_request_));
+
+  // Adopt the service/method info from the header as soon as it's available.
+  if (PREDICT_FALSE(!header_.has_remote_method())) {
+    return Status::Corruption("Non-connection context request header must specify remote_method");
+  }
+  if (PREDICT_FALSE(!header_.remote_method().IsInitialized())) {
+    return Status::Corruption("remote_method in request header is not initialized",
+                              header_.remote_method().InitializationErrorString());
+  }
+  remote_method_.FromPB(header_.remote_method());
+
+  // Retain the buffer that we have a view into.
+  transfer_.swap(transfer);
+  return Status::OK();
+}
+
+Status YBInboundCall::SerializeResponseBuffer(const MessageLite& response,
+                                              bool is_success) {
+  uint32_t protobuf_msg_size = response.ByteSize();
+
+  ResponseHeader resp_hdr;
+  resp_hdr.set_call_id(header_.call_id());
+  resp_hdr.set_is_error(!is_success);
+  uint32_t absolute_sidecar_offset = protobuf_msg_size;
+  for (RpcSidecar* car : sidecars_) {
+    resp_hdr.add_sidecar_offsets(absolute_sidecar_offset);
+    absolute_sidecar_offset += car->AsSlice().size();
+  }
+
+  int additional_size = absolute_sidecar_offset - protobuf_msg_size;
+  RETURN_NOT_OK(serialization::SerializeMessage(response, &response_msg_buf_,
+                                                additional_size, true));
+  int main_msg_size = additional_size + response_msg_buf_.size();
+  RETURN_NOT_OK(serialization::SerializeHeader(resp_hdr, main_msg_size,
+                                               &response_hdr_buf_));
+  return Status::OK();
+}
+
+void YBInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
+  TRACE_EVENT0("rpc", "YBInboundCall::SerializeResponseTo");
+  CHECK_GT(response_hdr_buf_.size(), 0);
+  CHECK_GT(response_msg_buf_.size(), 0);
+  slices->reserve(slices->size() + 2 + sidecars_.size());
+  slices->push_back(Slice(response_hdr_buf_));
+  slices->push_back(Slice(response_msg_buf_));
+  for (RpcSidecar* car : sidecars_) {
+    slices->push_back(car->AsSlice());
+  }
+}
+
+RedisInboundCall::RedisInboundCall(Connection* conn) : InboundCall(conn) {}
+
+Status RedisInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
+  TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
+  TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
+  // YB does a shallow copy of the data from transfer and holds on to the InboundTransfer buffer
+  // in transfer_. This gets deleted after the call, which is fine because YB knows that it has
+  // exactly read the number of bytes requried to handle the call. Nothing more. Nothing less.
+  //
+  // With Redis, we do not know apriori how long the data for a single call is. So, by the time we
+  // get here, it is possible that we have read a few more bytes (from the next call). We do not
+  // want to throw these bytes away, since that would disturb the handling for the next call.
+  // TBD: check if we have extra bytes. If so, copy the requried data from transfer into the
+  // serialized_request_, by doing a deep copy.
+  RETURN_NOT_OK(serialization::ParseRedisMessage(
+      transfer->data(), &header_, &serialized_request_));
+
+  RemoteMethodPB remote_method_pb;
+  remote_method_pb.set_service_name("yb.redisserver.RedisServerService");
+  remote_method_pb.set_method_name("anyMethod");
+  remote_method_.FromPB(remote_method_pb);
+
+  // Retain the buffer that we have a view into.
+  transfer_.swap(transfer);
+  return Status::OK();
+}
+
+Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
+                                                 bool is_success) {
+  // TBD
+  return Status::OK();
+}
+
+void RedisInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
+  TRACE_EVENT0("rpc", "RedisInboundCall::SerializeResponseTo");
+  // TBD
+  Slice ok("+OK\r\n");
+  slices->push_back(ok);
 }
 
 } // namespace rpc

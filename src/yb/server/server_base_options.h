@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "yb/fs/fs_manager.h"
+#include "yb/rpc/connection.h"
 #include "yb/server/webserver_options.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/net/net_util.h"
@@ -52,6 +53,8 @@ class ServerBaseOptions {
   std::string placement_zone;
 
   std::string master_addresses_flag;
+
+  rpc::ConnectionType connection_type;
 
   // This can crash the process if you pass in an invalid list of master addresses!
   void SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses);
