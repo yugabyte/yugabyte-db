@@ -94,6 +94,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       is_first_run_(false),
       connection_type_(options.connection_type),
       options_(options),
+      initialized_(false),
       stop_metrics_logging_latch_(1) {
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
@@ -120,6 +121,8 @@ const NodeInstancePB& RpcServerBase::instance_pb() const {
 }
 
 Status RpcServerBase::Init() {
+  CHECK(!initialized_);
+
   glog_metrics_.reset(new ScopedGLogMetrics(metric_entity_));
   tcmalloc::RegisterMetrics(metric_entity_);
   RegisterSpinLockContentionMetrics(metric_entity_);
@@ -145,7 +148,12 @@ Status RpcServerBase::Init() {
 
   RETURN_NOT_OK_PREPEND(StartMetricsLogging(), "Could not enable metrics logging");
 
+  initialized_ = true;
   return Status::OK();
+}
+
+std::string RpcServerBase::ToString() const {
+  return strings::Substitute("$0 : rpc=$1", name_, first_rpc_address().ToString());
 }
 
 void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -243,9 +251,16 @@ void RpcServerBase::MetricsLoggingThread() {
 }
 
 Status RpcServerBase::Start() {
-
   RETURN_NOT_OK(RegisterService(make_gscoped_ptr<rpc::ServiceIf>(
       new GenericServiceImpl(this))));
+
+  RETURN_NOT_OK(StartRpcServer());
+
+  return Status::OK();
+}
+
+Status RpcServerBase::StartRpcServer() {
+  CHECK(initialized_);
 
   RETURN_NOT_OK(rpc_server_->Start());
 

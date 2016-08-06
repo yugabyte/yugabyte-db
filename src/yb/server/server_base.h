@@ -57,7 +57,7 @@ class ServerStatusPB;
 // Base class that is common to implementing a Redis server, as well as
 // a YB tablet server and master.
 class RpcServerBase {
-public:
+ public:
   const RpcServer *rpc_server() const { return rpc_server_.get(); }
   const std::shared_ptr<rpc::Messenger>& messenger() const { return messenger_; }
 
@@ -78,17 +78,21 @@ public:
   // Returns this server's clock.
   Clock* clock() { return clock_.get(); }
 
+  virtual std::string ToString() const;
+
   // Return a PB describing the status of the server (version info, bound ports, etc)
   virtual void GetStatusPB(ServerStatusPB* status) const;
 
  protected:
-  RpcServerBase(std::string name, const ServerBaseOptions& options,
-  const std::string& metrics_namespace);
+  RpcServerBase(std::string name,
+                const ServerBaseOptions& options,
+                const std::string& metrics_namespace);
   virtual ~RpcServerBase();
 
   Status Init();
   Status RegisterService(gscoped_ptr<rpc::ServiceIf> rpc_impl);
   Status Start();
+  Status StartRpcServer();
   void Shutdown();
 
   const std::string name_;
@@ -109,9 +113,10 @@ public:
 
   ServerBaseOptions options_;
 
-  Status DumpServerInfo(const std::string& path,
+  virtual Status DumpServerInfo(const std::string& path,
                         const std::string& format) const;
 
+  bool initialized_;
  private:
   Status StartMetricsLogging();
   void MetricsLoggingThread();
