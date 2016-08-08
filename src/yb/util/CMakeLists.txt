@@ -140,6 +140,7 @@ set(UTIL_SRCS
   random_util.cc
   resettable_heartbeater.cc
   rolling_log.cc
+  rw_mutex.cc
   rwc_lock.cc
   ${SEMAPHORE_CC}
   slice.cc
@@ -298,6 +299,7 @@ ADD_YB_TEST(random_util-test)
 ADD_YB_TEST(resettable_heartbeater-test)
 ADD_YB_TEST(rle-test)
 ADD_YB_TEST(rolling_log-test)
+ADD_YB_TEST(rw_mutex-test)
 ADD_YB_TEST(rw_semaphore-test)
 ADD_YB_TEST(rwc_lock-test)
 if (NOT YB_USE_UBSAN)

@@ -348,27 +348,27 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
 }
 
 Status ReplicaState::CancelPendingTransactions() {
-  {
-    ThreadRestrictions::AssertWaitAllowed();
-    UniqueLock lock(update_lock_);
-    if (state_ != kShuttingDown) {
-      return Status::IllegalState("Can only wait for pending commits on kShuttingDown state.");
-    }
-    if (pending_txns_.empty()) {
-      return Status::OK();
-    }
+ {
+   ThreadRestrictions::AssertWaitAllowed();
+   UniqueLock lock(update_lock_);
+   if (state_ != kShuttingDown) {
+     return Status::IllegalState("Can only wait for pending commits on kShuttingDown state.");
+   }
+   if (pending_txns_.empty()) {
+     return Status::OK();
+   }
 
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_txns_.size()
-                                   << " pending transactions.";
-    for (const auto& txn : pending_txns_) {
-      const scoped_refptr<ConsensusRound>& round = txn.second;
-      // We cancel only transactions whose applies have not yet been triggered.
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting transaction as it isn't in flight: "
-                            << txn.second->replicate_msg()->ShortDebugString();
-      round->NotifyReplicationFinished(Status::Aborted("Transaction aborted"));
-    }
-  }
-  return Status::OK();
+   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_txns_.size()
+                                  << " pending transactions.";
+   for (const auto& txn : pending_txns_) {
+     const scoped_refptr<ConsensusRound>& round = txn.second;
+     // We cancel only transactions whose applies have not yet been triggered.
+     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting transaction as it isn't in flight: "
+                                    << txn.second->replicate_msg()->ShortDebugString();
+     round->NotifyReplicationFinished(Status::Aborted("Transaction aborted"));
+   }
+ }
+ return Status::OK();
 }
 
 Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {

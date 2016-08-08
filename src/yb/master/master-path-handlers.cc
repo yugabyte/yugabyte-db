@@ -57,7 +57,8 @@ MasterPathHandlers::~MasterPathHandlers() {
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     const Webserver::WebRequest& req, stringstream* output,
     const boost::function<void(const Webserver::WebRequest&, std::stringstream*)>& callback) {
-  if (!master_->catalog_manager()->CheckIsLeaderAndReady().ok()) {
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  if (!l.first_failed_status().ok()) {
     *output << "<h1>This is not the Master Leader!</h1>\n";
 
     do {
@@ -169,6 +170,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   if (!FindCopy(req.parsed_args, "id", &table_id)) {
     // TODO: webserver should give a way to return a non-200 response code
     *output << "Missing 'id' argument";
+    return;
+  }
+
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  if (!l.first_failed_status().ok()) {
+    *output << "Master is not ready: " << l.first_failed_status().ToString();
     return;
   }
 

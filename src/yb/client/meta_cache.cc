@@ -588,7 +588,7 @@ const scoped_refptr<RemoteTablet>& MetaCache::ProcessLookupResponse(const Lookup
 bool MetaCache::LookupTabletByKeyFastPath(const YBTable* table,
                                           const string& partition_key,
                                           scoped_refptr<RemoteTablet>* remote_tablet) {
-  shared_lock<rw_spinlock> l(&lock_);
+  shared_lock<rw_spinlock> l(lock_);
   const TabletMap* tablets = FindOrNull(tablets_by_table_and_key_, table->id());
   if (PREDICT_FALSE(!tablets)) {
     // No cache available for this table.
@@ -634,7 +634,7 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
                              const Status& status) {
   LOG(INFO) << "Marking tablet server " << ts->ToString() << " as failed.";
-  shared_lock<rw_spinlock> l(&lock_);
+  shared_lock<rw_spinlock> l(lock_);
 
   Status ts_status = status.CloneAndPrepend("TS failed");
 

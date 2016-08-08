@@ -174,8 +174,8 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
   int backoff_ms = 1;
   const int kMaxBackoffMs = 256;
   do {
-    s = catalog_manager_->CheckIsLeaderAndReady();
-    if (s.ok()) {
+    CatalogManager::ScopedLeaderSharedLock l(catalog_manager_.get());
+    if (l.catalog_status().ok() && l.leader_status().ok()) {
       return Status::OK();
     }
     SleepFor(MonoDelta::FromMilliseconds(backoff_ms));

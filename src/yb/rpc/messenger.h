@@ -179,7 +179,7 @@ class Messenger {
   }
 
   bool closing() const {
-    shared_lock<rw_spinlock> guard(&lock_.get_lock());
+    shared_lock<rw_spinlock> guard(lock_.get_lock());
     return closing_;
   }
 

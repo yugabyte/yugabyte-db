@@ -444,6 +444,7 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
 void RaftConsensus::ReportFailureDetected(const std::string& name, const Status& msg) {
   DCHECK_EQ(name, kTimerId);
   // Start an election.
+  LOG_WITH_PREFIX(INFO) << "ReportFailureDetected: Starting NORMAL_ELECTION...";
   Status s = StartElection(NORMAL_ELECTION);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to trigger leader election: " << s.ToString();
@@ -525,7 +526,6 @@ Status RaftConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
   }
 
   peer_manager_->SignalRequest();
-
   RETURN_NOT_OK(ExecuteHook(POST_REPLICATE));
   return Status::OK();
 }

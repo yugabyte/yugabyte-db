@@ -48,42 +48,6 @@ using std::shared_ptr;
 
 namespace {
 
-template<class RespClass>
-bool CheckCatalogManagerInitializedOrRespond(Master* master,
-                                             RespClass* resp,
-                                             rpc::RpcContext* rpc) {
-  if (PREDICT_FALSE(!master->catalog_manager()->IsInitialized())) {
-    SetupErrorAndRespond(resp->mutable_error(),
-                         Status::ServiceUnavailable("catalog manager has not been initialized"),
-                         MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED,
-                         rpc);
-    return false;
-  }
-  return true;
-}
-
-template<class RespClass>
-bool CheckIsLeaderOrRespond(Master* master,
-                            RespClass* resp,
-                            rpc::RpcContext* rpc) {
-  Status s = master->catalog_manager()->CheckIsLeaderAndReady();
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         MasterErrorPB::NOT_THE_LEADER,
-                         rpc);
-    return false;
-  }
-  return true;
-}
-
-template<class RespClass>
-bool CheckLeaderAndCatalogManagerInitializedOrRespond(Master* master,
-                                                      RespClass* resp,
-                                                      rpc::RpcContext* rpc) {
-  return PREDICT_TRUE(CheckCatalogManagerInitializedOrRespond(master, resp, rpc) &&
-                      CheckIsLeaderOrRespond(master, resp, rpc));
-}
-
 // If 's' is not OK and 'resp' has no application specific error set,
 // set the error field of 'resp' to match 's' and set the code to
 // UNKNOWN_ERROR.
@@ -107,7 +71,6 @@ static void SetupErrorAndRespond(MasterErrorPB* error,
   rpc->RespondSuccess();
 }
 
-
 MasterServiceImpl::MasterServiceImpl(Master* server)
   : MasterServiceIf(server->metric_entity()),
     server_(server) {
@@ -119,13 +82,13 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   // If CatalogManager is not initialized don't even know whether
   // or not we will be a leader (so we can't tell whether or not we can
   // accept tablet reports).
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
     return;
   }
 
   resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
-  Status s = server_->catalog_manager()->CheckIsLeaderAndReady();
-  if (!s.ok()) {
+  if (!l.leader_status().ok()) {
     // For the time being, ignore heartbeats sent to non-leader distributed
     // masters.
     //
@@ -134,7 +97,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     // masters, or by storing heartbeat information in a replicated
     // SysTable.
     LOG(WARNING) << "Received a heartbeat, but this Master instance is not a leader or a "
-                 << "single Master: " << s.ToString();
+                 << "single Master: " << l.leader_status().ToString();
     resp->set_leader_master(false);
     rpc->RespondSuccess();
     return;
@@ -142,7 +105,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   resp->set_leader_master(true);
 
   consensus::ConsensusStatePB cpb;
-  s = server_->catalog_manager()->GetCurrentConfig(&cpb);
+  Status s = server_->catalog_manager()->GetCurrentConfig(&cpb);
   if (!s.ok()) {
     // For now, we skip setting the config on errors (hopefully next heartbeat will work).
     // We could enhance to fail rpc, if there are too many error, on a case by case error basis.
@@ -215,7 +178,8 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* req,
                                            GetTabletLocationsResponsePB* resp,
                                            rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -243,7 +207,8 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
 void MasterServiceImpl::CreateTable(const CreateTableRequestPB* req,
                                     CreateTableResponsePB* resp,
                                     rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -255,7 +220,8 @@ void MasterServiceImpl::CreateTable(const CreateTableRequestPB* req,
 void MasterServiceImpl::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                           IsCreateTableDoneResponsePB* resp,
                                           rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -267,7 +233,8 @@ void MasterServiceImpl::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
                                     DeleteTableResponsePB* resp,
                                     rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -279,7 +246,8 @@ void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
 void MasterServiceImpl::AlterTable(const AlterTableRequestPB* req,
                                    AlterTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -291,7 +259,8 @@ void MasterServiceImpl::AlterTable(const AlterTableRequestPB* req,
 void MasterServiceImpl::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                          IsAlterTableDoneResponsePB* resp,
                                          rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -303,7 +272,8 @@ void MasterServiceImpl::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 void MasterServiceImpl::ListTables(const ListTablesRequestPB* req,
                                    ListTablesResponsePB* resp,
                                    rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -315,7 +285,8 @@ void MasterServiceImpl::ListTables(const ListTablesRequestPB* req,
 void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
                                           GetTableLocationsResponsePB* resp,
                                           rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
   if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
@@ -329,7 +300,8 @@ void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
 void MasterServiceImpl::GetTableSchema(const GetTableSchemaRequestPB* req,
                                        GetTableSchemaResponsePB* resp,
                                        rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -341,7 +313,8 @@ void MasterServiceImpl::GetTableSchema(const GetTableSchemaRequestPB* req,
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
                                           rpc::RpcContext* rpc) {
-  if (!CheckLeaderAndCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -393,7 +366,8 @@ void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequest
                                               rpc::RpcContext* rpc) {
   // instance_id must always be set in order for status pages to be useful.
   resp->mutable_instance_id()->CopyFrom(server_->instance_pb());
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
     return;
   }
   Status s = server_->GetMasterRegistration(resp->mutable_registration());
@@ -406,7 +380,8 @@ void MasterServiceImpl::DumpState(
     const DumpMasterStateRequestPB* req,
     DumpMasterStateResponsePB* resp,
     rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
     return;
   }
 
@@ -449,7 +424,8 @@ void MasterServiceImpl::DumpState(
 void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* req,
                                             RemovedMasterUpdateResponsePB* resp,
                                             rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedOrRespond(resp, rpc)) {
     return;
   }
 
@@ -462,7 +438,8 @@ void MasterServiceImpl::RemovedMasterUpdate(const RemovedMasterUpdateRequestPB* 
 void MasterServiceImpl::ChangeLoadBalancerState(
     const ChangeLoadBalancerStateRequestPB* req, ChangeLoadBalancerStateResponsePB* resp,
     rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
 
@@ -477,7 +454,8 @@ void MasterServiceImpl::ChangeLoadBalancerState(
 void MasterServiceImpl::GetMasterClusterConfig(
     const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
     rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->GetClusterConfig(resp->mutable_cluster_config());
@@ -489,7 +467,8 @@ void MasterServiceImpl::GetMasterClusterConfig(
 void MasterServiceImpl::ChangeMasterClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
     rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->SetClusterConfig(req, resp);
@@ -501,7 +480,8 @@ void MasterServiceImpl::ChangeMasterClusterConfig(
 void MasterServiceImpl::GetLoadMoveCompletion(
     const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
     rpc::RpcContext* rpc) {
-  if (!CheckCatalogManagerInitializedOrRespond(server_, resp, rpc)) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
   Status s = server_->catalog_manager()->GetLoadMoveCompletionPercent(resp);

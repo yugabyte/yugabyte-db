@@ -208,7 +208,7 @@ void Messenger::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
 }
 
 void Messenger::QueueInboundCall(gscoped_ptr<InboundCall> call) {
-  shared_lock<rw_spinlock> guard(&lock_.get_lock());
+  shared_lock<rw_spinlock> guard(lock_.get_lock());
   scoped_refptr<RpcService>* service = FindOrNull(rpc_services_,
                                                   call->remote_method().service_name());
   if (PREDICT_FALSE(!service)) {
@@ -267,7 +267,7 @@ Status Messenger::Init() {
 
 Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                   DumpRunningRpcsResponsePB* resp) {
-  shared_lock<rw_spinlock> guard(&lock_.get_lock());
+  shared_lock<rw_spinlock> guard(lock_.get_lock());
   for (Reactor* reactor : reactors_) {
     RETURN_NOT_OK(reactor->DumpRunningRpcs(req, resp));
   }

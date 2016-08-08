@@ -281,7 +281,7 @@ void BlockManagerStressTest<T>::ReaderThread() {
     gscoped_ptr<ReadableBlock> block;
     {
       // Grab a block at random.
-      shared_lock<rw_spinlock> l(&lock_);
+      shared_lock<rw_spinlock> l(lock_);
       size_t num_blocks = written_blocks_.size();
       if (num_blocks > 0) {
         uint32_t next_id = rand.Uniform(num_blocks);

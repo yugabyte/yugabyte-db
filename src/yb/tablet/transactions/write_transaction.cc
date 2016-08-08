@@ -245,7 +245,7 @@ void WriteTransactionState::set_tablet_components(
 
 void WriteTransactionState::AcquireSchemaLock(rw_semaphore* schema_lock) {
   TRACE("Acquiring schema lock in shared mode");
-  shared_lock<rw_semaphore> temp(schema_lock);
+  shared_lock<rw_semaphore> temp(*schema_lock);
   schema_lock_.swap(temp);
   TRACE("Acquired schema lock");
 }

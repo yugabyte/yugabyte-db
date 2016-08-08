@@ -41,6 +41,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -373,6 +374,82 @@ struct BlackListInfo {
 // Thread-safe.
 class CatalogManager : public tserver::TabletPeerLookupIf {
  public:
+
+  // Scoped "shared lock" to serialize master leader elections.
+  //
+  // While in scope, blocks the catalog manager in the event that it becomes
+  // the leader of its Raft configuration and needs to reload its persistent
+  // metadata. Once destroyed, the catalog manager is unblocked.
+  //
+  // Usage:
+  //
+  // void MasterServiceImpl::CreateTable(const CreateTableRequestPB* req,
+  //                                     CreateTableResponsePB* resp,
+  //                                     rpc::RpcContext* rpc) {
+  //   CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  //   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+  //     return;
+  //   }
+  //
+  //   Status s = server_->catalog_manager()->CreateTable(req, resp, rpc);
+  //   CheckRespErrorOrSetUnknown(s, resp);
+  //   rpc->RespondSuccess();
+  // }
+  //
+  class ScopedLeaderSharedLock {
+  public:
+    // Creates a new shared lock, acquiring the catalog manager's leader_lock_
+    // for reading in the process. The lock is released when this object is
+    // destroyed.
+    //
+    // 'catalog' must outlive this object.
+    explicit ScopedLeaderSharedLock(CatalogManager* catalog);
+
+    // General status of the catalog manager. If not OK (e.g. the catalog
+    // manager is still being initialized), all operations are illegal and
+    // leader_status() should not be trusted.
+    const Status& catalog_status() const { return catalog_status_; }
+
+    // Leadership status of the catalog manager. If not OK, the catalog
+    // manager is not the leader, but some operations may still be legal.
+    const Status& leader_status() const {
+      DCHECK(catalog_status_.ok());
+      return leader_status_;
+    }
+
+    // First non-OK status of the catalog manager, adhering to the checking
+    // order specified above.
+    const Status& first_failed_status() const {
+      if (!catalog_status_.ok()) {
+        return catalog_status_;
+      }
+      return leader_status_;
+    }
+
+    // Check that the catalog manager is initialized. It may or may not be the
+    // leader of its Raft configuration.
+    //
+    // If not initialized, writes the corresponding error to 'resp',
+    // responds to 'rpc', and returns false.
+    template<typename RespClass>
+      bool CheckIsInitializedOrRespond(RespClass* resp, rpc::RpcContext* rpc);
+
+    // Check that the catalog manager is initialized and that it is the leader
+    // of its Raft configuration. Initialization status takes precedence over
+    // leadership status.
+    //
+    // If not initialized or if not the leader, writes the corresponding error
+    // to 'resp', responds to 'rpc', and returns false.
+    template<typename RespClass>
+      bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
+
+  private:
+    CatalogManager* catalog_;
+    shared_lock<RWMutex> leader_shared_lock_;
+    Status catalog_status_;
+    Status leader_status_;
+  };
+
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
@@ -521,7 +598,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // using a new leader master, then the in_transit error code is set and percent is not set.
   Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
- private:
+  // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
+  // and 'tablet_map_'), loads tables metadata into memory and if successful
+  // loads the tablets metadata.
+  Status VisitSysCatalog();
+
+private:
   friend class TableLoader;
   friend class TabletLoader;
   friend class ClusterConfigLoader;
@@ -551,14 +633,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // 3) Releases 'lock_' and if successful, updates 'leader_ready_term_'
   // to true (under state_lock_).
   void LoadSysCatalogDataTask();
-
-  // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
-  // and 'tablet_map_'), loads tables metadata into memory and if successful
-  // loads the tablets metadata.
-  //
-  // NOTE: Must be called under external synchronization, see
-  // LoadSysCatalogDataTask() above.
-  Status VisitSysCatalogUnlocked();
 
   // Generated the default entry for the cluster config, that is written into sys_catalog on very
   // first leader election of the cluster.
@@ -739,6 +813,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
+  // Aborts all tasks belonging to 'tables' and waits for them to finish.
+  void AbortAndWaitForAllTasks(const std::vector<scoped_refptr<TableInfo>>& tables);
+
   // Can be used to create background_tasks_ field for this master.
   // Used on normal master startup or when master comes out of the shell mode.
   Status EnableBgTasks();
@@ -824,6 +901,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // that depend on the in-memory state until this master can respond
   // correctly.
   int64_t leader_ready_term_;
+
+  // Lock used to fence operations and leader elections. All logical operations
+  // (i.e. create table, alter table, etc.) should acquire this lock for
+  // reading. Following an election where this master is elected leader, it
+  // should acquire this lock for writing before reloading the metadata.
+  //
+  // Readers should not acquire this lock directly; use ScopedLeadershipLock
+  // instead.
+  //
+  // Always acquire this lock before state_lock_.
+  RWMutex leader_lock_;
 
   // Async operations are accessing some private methods
   // (TODO: this stuff should be deferred and done in the background thread)

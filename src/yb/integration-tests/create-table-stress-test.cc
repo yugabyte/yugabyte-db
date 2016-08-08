@@ -20,6 +20,7 @@
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <thread>
 
 #include "yb/client/client.h"
 #include "yb/common/schema.h"
@@ -52,7 +53,13 @@ using yb::rpc::RpcController;
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(log_preallocate_segments);
 DECLARE_bool(enable_remote_bootstrap);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+
 DEFINE_int32(num_test_tablets, 60, "Number of tablets for stress test");
+
+using std::thread;
+using std::unique_ptr;
+using strings::Substitute;
 
 namespace yb {
 
@@ -314,6 +321,53 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
     ASSERT_EQ(1, resp.tablet_locations_size()) << "Response: [" << resp.DebugString() << "]";
     ASSERT_EQ(start_key_middle, resp.tablet_locations(0).partition().partition_key_start());
   }
+}
+
+// Creates tables and reloads on-disk metadata concurrently to test for races
+// between the two operations.
+TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
+  AtomicBool stop(false);
+
+  // Since this test constantly invokes VisitSysCatalog() which is the function
+  // that runs after a new leader gets elected, during that period the leader rejects
+  // tablet server heart-beats (because it holds the leader_lock_), and this leads
+  // the master to mistakenly think that the tablet servers are dead. To avoid this
+  // increase the TS unresponsive timeout so that the leader correctly thinks that
+  // they are alive.
+  FLAGS_tserver_unresponsive_timeout_ms = 5 * 60 * 1000;
+
+  thread reload_metadata_thread([&]() {
+    while (!stop.Load()) {
+      CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->VisitSysCatalog());
+      // Give table creation a chance to run.
+      SleepFor(MonoDelta::FromMilliseconds(1));
+    }
+    });
+  for (int num_tables_created = 0; num_tables_created < 20;) {
+    string table_name = Substitute("test-$0", num_tables_created);
+    LOG(INFO) << "Creating table " << table_name;
+    unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    Status s = table_creator->table_name(table_name)
+        .schema(&schema_)
+        .set_range_partition_columns({ "key" })
+        .num_replicas(3)
+        .wait(false)
+        .Create();
+    if (s.IsServiceUnavailable()) {
+      // The master was busy reloading its metadata. Try again.
+      //
+      // This is a purely synthetic case. In real life, it only manifests at
+      // startup (single master) or during leader failover (multiple masters).
+      // In the latter case, the client will transparently retry to another
+      // master. That won't happen here as we've only got one master, so we
+      // must handle retrying ourselves.
+      continue;
+    }
+    ASSERT_OK(s);
+    num_tables_created++;
+  }
+  stop.Store(true);
+  reload_metadata_thread.join();
 }
 
 } // namespace yb

@@ -82,6 +82,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
@@ -398,9 +399,11 @@ void CatalogManagerBgTasks::Shutdown() {
 void CatalogManagerBgTasks::Run() {
   while (!NoBarrier_Load(&closing_)) {
     // Perform assignment processing.
-    if (!catalog_manager_->IsInitialized()) {
-      LOG(WARNING) << "Catalog manager is not initialized!";
-    } else if (catalog_manager_->CheckIsLeaderAndReady().ok()) {
+    CatalogManager::ScopedLeaderSharedLock l(catalog_manager_);
+    if (!l.catalog_status().ok()) {
+      LOG(WARNING) << "Catalog manager background task thread going to sleep: "
+                   << l.catalog_status().ToString();
+    } else if (l.leader_status().ok()) {
       // Report metrics.
       catalog_manager_->ReportMetrics();
 
@@ -426,8 +429,6 @@ void CatalogManagerBgTasks::Run() {
       } else {
         catalog_manager_->load_balance_policy_->RunLoadBalancer();
       }
-    } else {
-      VLOG(1) << "We are no longer the leader, aborting the current task...";
     }
 
     //if (!to_delete.empty()) {
@@ -485,6 +486,7 @@ CatalogManager::CatalogManager(Master* master)
       is_initial_blacklist_load_set_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
+      leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new ClusterLoadBalancer(this)) {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -565,7 +567,6 @@ void CatalogManager::LoadSysCatalogDataTask() {
   }
 
   {
-    std::lock_guard<LockType> lock(lock_);
     int64_t term_after_wait = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED).current_term();
     if (term_after_wait != term) {
       // If we got elected leader again while waiting to catch up then we will
@@ -577,15 +578,34 @@ void CatalogManager::LoadSysCatalogDataTask() {
 
     LOG(INFO) << "Loading table and tablet metadata into memory...";
     LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
-      CHECK_OK(VisitSysCatalogUnlocked());
+      Status status = VisitSysCatalog();
+      if (!status.ok() && (consensus->role() != RaftPeerPB::LEADER)) {
+        LOG(INFO) << "Error loading sys catalog; but that's OK as we are not the leader anymore: "
+                  << status.ToString();
+        return;
+      }
+      CHECK_OK(status);
     }
   }
   std::lock_guard<simple_spinlock> l(state_lock_);
   leader_ready_term_ = term;
 }
 
-Status CatalogManager::VisitSysCatalogUnlocked() {
-  DCHECK(lock_.is_locked());
+Status CatalogManager::VisitSysCatalog() {
+
+  // Block new catalog operations, and wait for existing operations to finish.
+  LOG(INFO) << "Wait on leader_lock_ for any existing operations to finish.";
+  std::lock_guard<RWMutex> leader_lock_guard(leader_lock_);
+
+  LOG(INFO) << "Acquire catalog manager lock_ before loading sys catalog..";
+  boost::lock_guard<LockType> lock(lock_);
+
+  // Abort any outstanding tasks. All TableInfos are orphaned below, so
+  // it's important to end their tasks now; otherwise Shutdown() will
+  // destroy master state used by these tasks.
+  vector<scoped_refptr<TableInfo>> tables;
+  AppendValuesFromMap(table_ids_map_, &tables);
+  AbortAndWaitForAllTasks(tables);
 
   // Clear the table and tablet state.
   table_names_map_.clear();
@@ -713,11 +733,18 @@ void CatalogManager::Shutdown() {
     background_tasks_->Shutdown();
   }
 
-  // Abort and Wait tables task completion
-  for (const TableInfoMap::value_type& e : table_ids_map_) {
-    e.second->AbortTasks();
-    e.second->WaitTasksCompletion();
+  // Mark all outstanding table tasks as aborted and wait for them to fail.
+  //
+  // There may be an outstanding table visitor thread modifying the table map,
+  // so we must make a copy of it before we iterate. It's OK if the visitor
+  // adds more entries to the map even after we finish; it won't start any new
+  // tasks for those entries.
+  vector<scoped_refptr<TableInfo>> copy;
+  {
+    shared_lock<LockType> l(lock_);
+    AppendValuesFromMap(table_ids_map_, &copy);
   }
+  AbortAndWaitForAllTasks(copy);
 
   // Shut down the underlying storage for tables and tablets.
   if (sys_catalog_) {
@@ -3759,7 +3786,7 @@ void CatalogManager::SetLoadBalancerEnabled(bool is_enabled) {
 }
 
 Status CatalogManager::GoIntoShellMode() {
-  if (master_->opts().IsShellMode()) {
+  if (master_->IsShellMode()) {
     return Status::IllegalState("Master is already in shell mode.");
   }
 
@@ -3918,6 +3945,126 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
 
   return Status::OK();
 }
+
+void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInfo>>& tables) {
+  for (const auto& t : tables) {
+    t->AbortTasks();
+  }
+  for (const auto& t : tables) {
+    t->WaitTasksCompletion();
+  }
+}
+
+////////////////////////////////////////////////////////////
+// CatalogManager::ScopedLeaderSharedLock
+////////////////////////////////////////////////////////////
+
+CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* catalog)
+  : catalog_(DCHECK_NOTNULL(catalog)),
+    leader_shared_lock_(catalog->leader_lock_, std::try_to_lock) {
+
+  // Check if the catalog manager is running.
+  std::lock_guard<simple_spinlock> l(catalog_->state_lock_);
+  if (PREDICT_FALSE(catalog_->state_ != kRunning)) {
+    catalog_status_ = Status::ServiceUnavailable(
+                          Substitute("Catalog manager is not initialized. State: $0",
+                                     catalog_->state_));
+    return;
+  }
+  if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
+    DCHECK(catalog_->tablet_peer() == nullptr);
+    leader_status_ = Status::IllegalState("Catalog manager is in shell mode, not the leader.");
+    return;
+  }
+  // Check if the catalog manager is the leader.
+  Consensus* consensus = catalog_->sys_catalog_->tablet_peer_->consensus();
+  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  string uuid = catalog_->master_->fs_manager()->uuid();
+  if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
+    leader_status_ = Status::IllegalState(
+                         Substitute("Not the leader. Local UUID: $0, Consensus state: $1",
+                                    uuid, cstate.ShortDebugString()));
+    return;
+  }
+  if (PREDICT_FALSE(catalog_->leader_ready_term_ != cstate.current_term())) {
+    leader_status_ = Status::ServiceUnavailable(
+                         Substitute("Leader not yet ready to serve requests: "
+                                    "leader_ready_term_ = $0; "
+                                    "cstate.current_term = $1",
+                                    catalog_->leader_ready_term_,
+                                    cstate.current_term()));
+    return;
+  }
+  if (PREDICT_FALSE(!leader_shared_lock_.owns_lock())) {
+    leader_status_ = Status::ServiceUnavailable("Couldn't get leader_lock_ in shared mode. "
+                                                "Leader still loading catalog tables.");
+    return;
+  }
+}
+
+template<typename RespClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond(
+    RespClass* resp, RpcContext* rpc) {
+  if (PREDICT_FALSE(!catalog_status_.ok())) {
+    StatusToPB(catalog_status_, resp->mutable_error()->mutable_status());
+    resp->mutable_error()->set_code(MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED);
+    rpc->RespondSuccess();
+    return false;
+  }
+  return true;
+}
+
+template<typename RespClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond(
+    RespClass* resp,
+    RpcContext* rpc) {
+
+  Status& s = catalog_status_;
+  if (PREDICT_TRUE(s.ok())) {
+    s = leader_status_;
+    if (PREDICT_TRUE(s.ok())) {
+      return true;
+    }
+  }
+
+  StatusToPB(s, resp->mutable_error()->mutable_status());
+  resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
+  rpc->RespondSuccess();
+  return false;
+}
+
+// Explicit specialization for callers outside this compilation unit.
+#define INITTED_OR_RESPOND(RespClass) \
+template bool \
+CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond( \
+    RespClass* resp, RpcContext* rpc)
+#define INITTED_AND_LEADER_OR_RESPOND(RespClass) \
+template bool \
+CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond( \
+    RespClass* resp, RpcContext* rpc)
+
+INITTED_OR_RESPOND(GetMasterRegistrationResponsePB);
+INITTED_OR_RESPOND(TSHeartbeatResponsePB);
+INITTED_OR_RESPOND(DumpMasterStateResponsePB);
+INITTED_OR_RESPOND(RemovedMasterUpdateResponsePB);
+
+INITTED_AND_LEADER_OR_RESPOND(AlterTableResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(CreateTableResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(DeleteTableResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(IsAlterTableDoneResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(IsCreateTableDoneResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(ListTablesResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(ListTabletServersResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(GetTableLocationsResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(GetTableSchemaResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(GetTabletLocationsResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(ChangeLoadBalancerStateResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(GetMasterClusterConfigResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(ChangeMasterClusterConfigResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(GetLoadMovePercentResponsePB);
+
+#undef INITTED_OR_RESPOND
+#undef INITTED_AND_LEADER_OR_RESPOND
 
 ////////////////////////////////////////////////////////////
 // TabletInfo
@@ -4087,14 +4234,21 @@ Status TableInfo::GetCreateTableErrorStatus() const {
 }
 
 void TableInfo::AddTask(MonitoredTask* task) {
-  std::lock_guard<simple_spinlock> l(lock_);
   task->AddRef();
-  pending_tasks_.insert(task);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    pending_tasks_.insert(task);
+  }
 }
 
 void TableInfo::RemoveTask(MonitoredTask* task) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  pending_tasks_.erase(task);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    pending_tasks_.erase(task);
+  }
+
+  // Done outside the lock so that if Release() drops the last ref to this
+  // TableInfo, RemoveTask() won't unlock a freed lock.
   task->Release();
 }
 
