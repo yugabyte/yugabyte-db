@@ -2,11 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -27,12 +24,12 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.UserIntent;
+import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -89,7 +86,7 @@ public class UniverseController extends AuthenticatedController {
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
-      LOG.info("Submitted create universe for {}:{}, task uuid = {}.", 
+      LOG.info("Submitted create universe for {}:{}, task uuid = {}.",
                universe.universeUUID, universe.name, taskUUID);
 
       // Add this task uuid to the user universe.
@@ -111,7 +108,7 @@ public class UniverseController extends AuthenticatedController {
   /**
    * API that queues a task to update/edit a universe of a given customer.
    * This does not wait for the completion.
-   * 
+   *
    * @return result of the universe update operation.
    */
   public Result update(UUID customerUUID, UUID universeUUID) {
@@ -209,11 +206,11 @@ public class UniverseController extends AuthenticatedController {
 
   /**
    * Helper API to convert the user form into task params.
-   * 
+   *
    * @param formData : Input form data.
    * @param universe : The universe details with which we are working.
    * @param customerId : Current customer's id.
-   * 
+   *
    * @return: The universe task params.
    */
   private UniverseDefinitionTaskParams getTaskParams(
@@ -249,78 +246,136 @@ public class UniverseController extends AuthenticatedController {
   }
 
   private PlacementInfo getPlacementInfo(UserIntent userIntent) {
-    // We currently do not support multi-region placement.
-    if (userIntent.regionList.size() > 1) {
-      //  throw new UnsupportedOperationException("Multi-region placement not supported.");
-      LOG.warn("Multi-region placement not supported.");
+    // We only support a replication factor of 3.
+    if (userIntent.replicationFactor != 3) {
+      throw new RuntimeException("Replication factor must be 3");
     }
-    UUID regionUUID = userIntent.regionList.get(0);
-
-    // Find the cloud object.
-    // TODO: standardize on the cloud name.
-    Provider cloudProvider = Provider.get("Amazon");
-    // Find the region object.
-    Region region = Region.get(regionUUID);
-    // Find the AZs for the required region.
-    List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(regionUUID);
-    if (azList.isEmpty()) {
-      throw new RuntimeException("No AZ found for region: " + regionUUID);
+    // Make sure the preferred region is in the list of user specified regions.
+    if (userIntent.preferredRegion != null &&
+        !userIntent.regionList.contains(userIntent.preferredRegion)) {
+      throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
+                                 " not in user region list");
     }
 
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
-    placementInfo.cloudList = new ArrayList<PlacementCloud>();
 
-    PlacementCloud placementCloud = new PlacementCloud();
-    // TODO: fix this.
-    placementCloud.name = "aws";
-    placementCloud.uuid = cloudProvider.uuid;
-    placementCloud.regionList = new ArrayList<PlacementRegion>();
-
-    PlacementRegion placementRegion = new PlacementRegion();
-    placementRegion.uuid = region.uuid;
-    placementRegion.code = region.code;
-    placementRegion.name = region.name;
-    placementRegion.azList = new ArrayList<PlacementAZ>();
-
-    // In case of a single PlacementAZ placement request, choose a random PlacementAZ to
-    // place the universe into.
-    Collections.shuffle(azList);
-    if (!userIntent.isMultiAZ) {
-      AvailabilityZone az = azList.get(0);
-      PlacementAZ placementAZ = new PlacementAZ();
-      placementAZ.uuid = az.uuid;
-      placementAZ.name = az.name;
-      placementAZ.replicationFactor = userIntent.replicationFactor;
-      placementAZ.subnet = az.subnet;
-      placementRegion.azList.add(placementAZ);
-    } else {
-      Map<UUID, PlacementAZ> idToAzMap = new HashMap<UUID, PlacementAZ>();
-      for (int idx = 0; idx < userIntent.replicationFactor; idx++) {
-        AvailabilityZone az = azList.get(idx % azList.size());
-        // Check if we have created an entry for this AZ.
-        PlacementAZ placementAZ = idToAzMap.get(az.uuid);
-        // If not, create a new entry.
-        if (placementAZ == null) {
-          placementAZ = new PlacementAZ();
-          placementAZ.uuid = az.uuid;
-          placementAZ.name = az.name;
-          placementAZ.replicationFactor = 0;
-          placementAZ.subnet = az.subnet;
-          // Add this AZ to the list of AZs in this region.
-          placementRegion.azList.add(placementAZ);
-          // Add this AZ to the map to make sure we do not create it again.
-          idToAzMap.put(az.uuid, placementAZ);
+    // If one region is specified, pick all three AZs from it. Make sure there are enough regions.
+    if (userIntent.regionList.size() == 1) {
+      selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, 3);
+    } else if (userIntent.regionList.size() == 2) {
+      // Pick two AZs from one of the regions (preferred region if specified).
+      UUID preferredRegionUUID = userIntent.preferredRegion;
+      // If preferred region was not specified, then pick the region that has at least 2 zones as
+      // the preferred region.
+      if (preferredRegionUUID == null) {
+        if (AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0)).size() >= 2) {
+          preferredRegionUUID = userIntent.regionList.get(0);
+        } else {
+          preferredRegionUUID = userIntent.regionList.get(1);
         }
-        // Increment the number of copies of data to be placed on this AZ.
-        placementAZ.replicationFactor++;
       }
+      selectAndAddPlacementZones(preferredRegionUUID, placementInfo, 2);
+
+      // Pick one AZ from the other region.
+      UUID otherRegionUUID = userIntent.regionList.get(0).equals(preferredRegionUUID) ?
+                             userIntent.regionList.get(1) :
+                             userIntent.regionList.get(0);
+      selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
+
+    } else if (userIntent.regionList.size() == 3) {
+      // If the user has specified three regions, pick one AZ from each region.
+      for (int idx = 0; idx < 3; idx++) {
+        selectAndAddPlacementZones(userIntent.regionList.get(idx), placementInfo, 1);
+      }
+    } else {
+      throw new RuntimeException("Unsupported placement, num regions = " +
+                                 userIntent.regionList.size() + "more than replication factor");
     }
-    // Add the region to the cloud.
-    placementCloud.regionList.add(placementRegion);
-    // Add the cloud to the placement info.
-    placementInfo.cloudList.add(placementCloud);
 
     return placementInfo;
+  }
+
+  private void selectAndAddPlacementZones(UUID regionUUID,
+                                          PlacementInfo placementInfo,
+                                          int numZones) {
+    // Find the region object.
+    Region region = Region.get(regionUUID);
+    LOG.debug("Selecting and adding " + numZones + " zones in region " + region.name);
+    // Find the AZs for the required region.
+    List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(regionUUID);
+    if (azList.size() < numZones) {
+      throw new RuntimeException("Need at least " + numZones + " zones but found only " +
+                                 azList.size() + " for region " + region.name);
+    }
+    Collections.shuffle(azList);
+    // Pick as many AZs as required.
+    for (int idx = 0; idx < numZones; idx++) {
+      addPlacementZone(azList.get(idx).uuid, placementInfo);
+    }
+  }
+
+  private void addPlacementZone(UUID zone, PlacementInfo placementInfo) {
+    // Get the zone, region and cloud.
+    AvailabilityZone az = AvailabilityZone.find.byId(zone);
+    Region region = az.region;
+    Provider cloud = region.provider;
+
+    // Find the placement cloud if it already exists, or create a new one if one does not exist.
+    PlacementCloud placementCloud = null;
+    for (PlacementCloud pCloud : placementInfo.cloudList) {
+      if (pCloud.uuid.equals(cloud.uuid)) {
+        LOG.debug("Found cloud: " + cloud.name);
+        placementCloud = pCloud;
+        break;
+      }
+    }
+    if (placementCloud == null) {
+      LOG.debug("Adding cloud: " + cloud.name);
+      placementCloud = new PlacementCloud();
+      placementCloud.uuid = cloud.uuid;
+      // TODO: fix this hardcode by creating a 'code' attribute in the cloud object.
+      placementCloud.name = "aws";
+      placementInfo.cloudList.add(placementCloud);
+    }
+
+    // Find the placement region if it already exists, or create a new one.
+    PlacementRegion placementRegion = null;
+    for (PlacementRegion pRegion : placementCloud.regionList) {
+      if (pRegion.uuid.equals(region.uuid)) {
+        LOG.debug("Found region: " + region.name);
+        placementRegion = pRegion;
+        break;
+      }
+    }
+    if (placementRegion == null) {
+      LOG.debug("Adding region: " + region.name);
+      placementRegion = new PlacementRegion();
+      placementRegion.uuid = region.uuid;
+      placementRegion.code = region.code;
+      placementRegion.name = region.name;
+      placementCloud.regionList.add(placementRegion);
+    }
+
+    // Find the placement AZ in the region if it already exists, or create a new one.
+    PlacementAZ placementAZ = null;
+    for (PlacementAZ pAz : placementRegion.azList) {
+      if (pAz.uuid.equals(az.uuid)) {
+        LOG.debug("Found az: " + az.name);
+        placementAZ = pAz;
+        break;
+      }
+    }
+    if (placementAZ == null) {
+      LOG.debug("Adding region: " + az.name);
+      placementAZ = new PlacementAZ();
+      placementAZ.uuid = az.uuid;
+      placementAZ.name = az.name;
+      placementAZ.replicationFactor = 0;
+      placementAZ.subnet = az.subnet;
+      placementRegion.azList.add(placementAZ);
+    }
+    placementAZ.replicationFactor++;
+    LOG.debug("Setting az " + az.name + " replication factor = " + placementAZ.replicationFactor);
   }
 }
