@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.helpers;
 
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,7 +20,7 @@ public class PlacementInfo {
     // The cloud provider name.
     public String name;
     // The list of region in this cloud we want to place data in.
-    public List<PlacementRegion> regionList;
+    public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
   }
 
   public static class PlacementRegion {
@@ -30,7 +31,7 @@ public class PlacementInfo {
     // The region name.
     public String name;
     // The list of AZs inside this region into which we want to place data.
-    public List<PlacementAZ> azList;
+    public List<PlacementAZ> azList = new ArrayList<PlacementAZ>();
   }
 
   public static class PlacementAZ {
@@ -45,5 +46,5 @@ public class PlacementInfo {
   }
 
   // The list of clouds to place data in.
-  public List<PlacementCloud> cloudList;
+  public List<PlacementCloud> cloudList = new ArrayList<PlacementCloud>();
 }
