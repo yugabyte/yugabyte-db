@@ -956,12 +956,18 @@ ADD_THIRDPARTY_LIB(squeasel
 
 ## Google PerfTools
 ##
-## Disabled with TSAN/ASAN as well as with gold+dynamic linking (see comment
+## Disabled with TSAN/ASAN as well as with gold (see comment
 ## near definition of YB_USING_GOLD).
 find_package(GPerf REQUIRED)
+message("Deciding whether to use tcmalloc based on:\
+ YB_USE_ASAN=${YB_USE_ASAN},\
+ YB_USE_TSAN=${YB_USE_TSAN},
+ YB_USING_GOLD=${YB_USING_GOLD}")
+
 if (NOT "${YB_USE_ASAN}" AND
     NOT "${YB_USE_TSAN}" AND
-    NOT ("${YB_USING_GOLD}" AND "${YB_LINK}" STREQUAL "d"))
+    NOT "${YB_USING_GOLD}")
+  message("Using tcmalloc")
   ADD_THIRDPARTY_LIB(tcmalloc
     STATIC_LIB "${TCMALLOC_STATIC_LIB}"
     SHARED_LIB "${TCMALLOC_SHARED_LIB}")
@@ -971,6 +977,8 @@ if (NOT "${YB_USE_ASAN}" AND
   list(APPEND YB_BASE_LIBS tcmalloc profiler)
   add_definitions("-DTCMALLOC_ENABLED")
   set(YB_TCMALLOC_AVAILABLE 1)
+else()
+  message("Not using tcmalloc")
 endif()
 
 # libvmem

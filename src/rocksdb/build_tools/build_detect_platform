@@ -304,7 +304,8 @@ EOF
         JAVA_LDFLAGS="$JAVA_LDFLAGS -ljemalloc"
     else
         # jemalloc is not available. Let's try tcmalloc
-        if echo 'int main() {}' | $CXX $CFLAGS -x c++ - -o /dev/null \
+        if [[ ${YB_DISABLE_TCMALLOC:-} != true ]] && \
+           echo 'int main() {}' | $CXX $CFLAGS -x c++ - -o /dev/null \
           -ltcmalloc 2>/dev/null; then 
             PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -ltcmalloc"
             JAVA_LDFLAGS="$JAVA_LDFLAGS -ltcmalloc"

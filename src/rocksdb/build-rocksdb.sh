@@ -41,7 +41,8 @@ Options:
     RocksDB library).
   --make-opts
     Additional options to pass to make when building RocksDB.
-
+  --disable-tcmalloc
+    Make sure tcmalloc is not being used when building RocksDB.
 EOT
 }
 
@@ -69,6 +70,8 @@ verbose=false
 
 make_opts=( NO_DEBUG_LEVEL_OVERRIDE=1 )
 make_targets=()
+
+unset YB_DISABLE_TCMALLOC
 
 while [ $# -ne 0 ]; do
   case "$1" in
@@ -141,6 +144,9 @@ while [ $# -ne 0 ]; do
         make_opts+=( "$make_opt" )
       done
       shift
+    ;;
+    --disable-tcmalloc)
+      export YB_DISABLE_TCMALLOC=true
     ;;
     *)
       print_help >&2

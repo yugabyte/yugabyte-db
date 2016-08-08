@@ -50,6 +50,11 @@ if ("${YB_USE_ASAN}")
   set(ROCKSDB_MAKE_OPTS "${ROCKSDB_MAKE_OPTS} COMPILE_WITH_ASAN=1")
 endif()
 
+SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG)
+if (NOT YB_TCMALLOC_AVAILABLE) 
+  SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG "--disable-tcmalloc")
+endif()
+
 # TODO: auto-detect the gflags version installed in the thirdparty directory.
 set(BUILD_ROCKSDB_ARGS
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-rocksdb.sh
@@ -65,6 +70,7 @@ set(BUILD_ROCKSDB_ARGS
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
   ${ROCKSDB_BUILD_VERBOSE_ARG}
   --make-opts "${ROCKSDB_MAKE_OPTS}"
+  ${ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG}
 )
 
 
