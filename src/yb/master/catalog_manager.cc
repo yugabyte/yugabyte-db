@@ -3461,8 +3461,8 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
 
   // If we couldn't randomly sample two servers, it's because we only had one
   // more non-excluded choice left.
-  CHECK_EQ(1, ts_descs.size() - excluded.size())
-      << "ts_descs: " << ts_descs.size() << " already_sel: " << excluded.size();
+  CHECK_EQ(1, two_choices.size()) << "ts_descs: " << ts_descs.size()
+                                  << " already_sel: " << excluded.size();
   return two_choices[0];
 }
 
