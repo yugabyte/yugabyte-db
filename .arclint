@@ -1,4 +1,5 @@
 {
+  "exclude":"(\\.l$)",
   "linters": {
     "text": {
       "type": "text",

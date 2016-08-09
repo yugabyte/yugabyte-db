@@ -34,3 +34,7 @@ www/tracing.*
 python/kudu/*.so
 python/kudu/*.cpp
 *.py[ocd]
+
+# SQL yacc and lex
+src/yb/sql/*.cpp
+src/yb/sql/*.hpp
