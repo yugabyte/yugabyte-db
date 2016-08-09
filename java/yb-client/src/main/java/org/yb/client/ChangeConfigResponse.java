@@ -8,7 +8,7 @@ import org.yb.tserver.Tserver.TabletServerErrorPB;
 @InterfaceAudience.Public
 public class ChangeConfigResponse extends YRpcResponse {
   private TabletServerErrorPB serverError;
-  
+
   ChangeConfigResponse(long ellapsedMillis, String masterUUID, TabletServerErrorPB error) {
     super(ellapsedMillis, masterUUID);
     serverError = error;

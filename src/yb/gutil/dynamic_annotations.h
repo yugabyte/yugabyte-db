@@ -432,12 +432,12 @@
 #endif // defined(__GNUC__) && (!defined(SWIG)) && (!defined(__clang__))
 
 
-/* TODO(user) -- Replace __CLANG_SUPPORT_DYN_ANNOTATION__ with the 
+/* TODO(user) -- Replace __CLANG_SUPPORT_DYN_ANNOTATION__ with the
    appropriate feature ID. */
 #if defined(__clang__) && (!defined(SWIG)) \
     && defined(__CLANG_SUPPORT_DYN_ANNOTATION__)
 
-/* TODO(user) -- The exclusive lock here ignores writes as well, but 
+/* TODO(user) -- The exclusive lock here ignores writes as well, but
    allows INGORE_READS_AND_WRITES to work properly. */
 #undef  ANNOTALYSIS_IGNORE_READS_BEGIN
 #define ANNOTALYSIS_IGNORE_READS_BEGIN \
@@ -447,7 +447,7 @@
   __attribute__((unlock_function("*")))
 
 #if DYNAMIC_ANNOTATIONS_ENABLED == 0
-/* Turn on certain macros for static analysis, even if dynamic annotations are 
+/* Turn on certain macros for static analysis, even if dynamic annotations are
    not enabled. */
 #define CLANG_ANNOTALYSIS_ONLY 1
 

@@ -1267,7 +1267,7 @@ public class AsyncYBClient implements AutoCloseable {
         try {
           GetMasterRegistrationResponse resp = d.join(defaultAdminOperationTimeoutMs);
           if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
-            return hostAndPort; 
+            return hostAndPort;
           }
         } catch (Exception e) {
           LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());

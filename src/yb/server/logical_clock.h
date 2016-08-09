@@ -88,4 +88,3 @@ class LogicalClock : public Clock {
 }  // namespace yb
 
 #endif /* YB_SERVER_LOGICAL_CLOCK_H_ */
-

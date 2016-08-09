@@ -102,5 +102,3 @@ class KVTableTestBase : public YBTest {
 } // namespace integration_tests
 } // namespace yb
 #endif
-
-

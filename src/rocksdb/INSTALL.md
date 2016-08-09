@@ -1,6 +1,6 @@
 ## Compilation
 
-**Important**: If you plan to run RocksDB in production, don't compile using default 
+**Important**: If you plan to run RocksDB in production, don't compile using default
 `make` or `make all`. That will compile RocksDB in debug mode, which is much slower
 than release mode.
 

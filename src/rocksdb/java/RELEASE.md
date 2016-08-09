@@ -13,7 +13,7 @@ Once you have these items, run this make command from RocksDB's root source dire
 
     make jclean clean rocksdbjavastaticrelease
 
-This command will build RocksDB natively on OSX, and will then spin up two Vagrant Virtualbox Ubuntu images to build RocksDB for both 32-bit and 64-bit Linux. 
+This command will build RocksDB natively on OSX, and will then spin up two Vagrant Virtualbox Ubuntu images to build RocksDB for both 32-bit and 64-bit Linux.
 
 You can find all native binaries and JARs in the java/target directory upon completion:
 

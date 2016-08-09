@@ -71,12 +71,12 @@ fi
 
 # Highlight the insertion/deletion from the clang-format-diff.py's output
 COLOR_END="\033[0m"
-COLOR_RED="\033[0;31m" 
-COLOR_GREEN="\033[0;32m" 
+COLOR_RED="\033[0;31m"
+COLOR_GREEN="\033[0;32m"
 
 echo -e "Detect lines that doesn't follow the format rules:\r"
 # Add the color to the diff. lines added will be green; lines removed will be red.
-echo "$diffs" | 
+echo "$diffs" |
   sed -e "s/\(^-.*$\)/`echo -e \"$COLOR_RED\1$COLOR_END\"`/" |
   sed -e "s/\(^+.*$\)/`echo -e \"$COLOR_GREEN\1$COLOR_END\"`/"
 

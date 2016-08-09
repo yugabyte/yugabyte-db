@@ -24,7 +24,7 @@ function get_lib_base()
   local lib_platform=$3
 
   local result="$TP2_LATEST/$lib_name/"
-  
+
   # Lib Version
   if [ -z "$lib_version" ] || [ "$lib_version" = "LATEST" ]; then
     # version is not provided, use latest
@@ -32,7 +32,7 @@ function get_lib_base()
   else
     result="$result/$lib_version/"
   fi
-  
+
   # Lib Platform
   if [ -z "$lib_platform" ]; then
     # platform is not provided, use latest gcc
@@ -40,15 +40,15 @@ function get_lib_base()
   else
     result="$result/$lib_platform/"
   fi
-  
+
   result=`ls -1d $result/*/ | head -n1`
-  
+
   # lib_name => LIB_NAME_BASE
   local __res_var=${lib_name^^}"_BASE"
   __res_var=`echo $__res_var | tr - _`
   # LIB_NAME_BASE=$result
   eval $__res_var=`readlink -f $result`
-  
+
   log_variable $__res_var
 }
 
@@ -72,7 +72,7 @@ log_variable CLANG_BASE
 
 # Libraries locations
 get_lib_base libgcc     4.9.x
-get_lib_base glibc      2.20 
+get_lib_base glibc      2.20
 get_lib_base snappy     LATEST
 get_lib_base zlib       LATEST
 get_lib_base bzip2      LATEST
@@ -83,8 +83,8 @@ get_lib_base jemalloc   LATEST
 get_lib_base numa       LATEST
 get_lib_base libunwind  LATEST
 
-get_lib_base kernel-headers LATEST 
-get_lib_base binutils   LATEST centos6-native 
+get_lib_base kernel-headers LATEST
+get_lib_base binutils   LATEST centos6-native
 get_lib_base valgrind   LATEST
 
 git diff $OUTPUT
@@ -109,7 +109,7 @@ log_variable CLANG_BASE
 
 # Libraries locations
 get_lib_base libgcc     4.8.1  gcc-4.8.1-glibc-2.17
-get_lib_base glibc      2.17   gcc-4.8.1-glibc-2.17  
+get_lib_base glibc      2.17   gcc-4.8.1-glibc-2.17
 get_lib_base snappy     LATEST gcc-4.8.1-glibc-2.17
 get_lib_base zlib       LATEST gcc-4.8.1-glibc-2.17
 get_lib_base bzip2      LATEST gcc-4.8.1-glibc-2.17
@@ -120,8 +120,8 @@ get_lib_base jemalloc   LATEST gcc-4.8.1-glibc-2.17
 get_lib_base numa       LATEST gcc-4.8.1-glibc-2.17
 get_lib_base libunwind  LATEST gcc-4.8.1-glibc-2.17
 
-get_lib_base kernel-headers LATEST gcc-4.8.1-glibc-2.17 
-get_lib_base binutils   LATEST centos6-native 
+get_lib_base kernel-headers LATEST gcc-4.8.1-glibc-2.17
+get_lib_base binutils   LATEST centos6-native
 get_lib_base valgrind   3.8.1  gcc-4.8.1-glibc-2.17
 
 git diff $OUTPUT

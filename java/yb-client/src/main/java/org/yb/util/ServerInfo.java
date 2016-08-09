@@ -2,12 +2,12 @@
 
 package org.yb.util;
 
-// Class to track common info provided by master or tablet server. 
+// Class to track common info provided by master or tablet server.
 public class ServerInfo {
   private String uuid;
   private String host;
   private int port;
-  // Note: Need not be set when there is no leader (eg., when all tablet servers are listed). 
+  // Note: Need not be set when there is no leader (eg., when all tablet servers are listed).
   private boolean isLeader;
 
   public ServerInfo(String uuid, String host, int port, boolean isLeader) {

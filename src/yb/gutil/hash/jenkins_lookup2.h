@@ -88,7 +88,7 @@ static inline uint32 Word32At(const char *ptr) {
 // start by considering the low-order byte.  If we loaded an unsigned
 // word and wanted to sign extend it, we isolate the sign bit and subtract
 // that from zero which gives us a sequence of bits matching the sign bit
-// at and above the sign bit.  If we remove (subtract) the sign bit and 
+// at and above the sign bit.  If we remove (subtract) the sign bit and
 // add in the low order byte, we now have a sign-extended byte as desired.
 // We can then operate on all four bytes in parallel because addition
 // is associative and commutative.

@@ -127,10 +127,10 @@
 #define NO_THREAD_SAFETY_ANALYSIS \
   THREAD_ANNOTATION_ATTRIBUTE__(no_thread_safety_analysis)
 
-// Used to mark functions that need to be fixed, because they are producing 
-// thread safety warnings.  This macro is intended primarily for use by the 
-// compiler team; it allows new thread safety warnings to be rolled out 
-// without breaking existing code.  Code which triggers the new warnings are 
+// Used to mark functions that need to be fixed, because they are producing
+// thread safety warnings.  This macro is intended primarily for use by the
+// compiler team; it allows new thread safety warnings to be rolled out
+// without breaking existing code.  Code which triggers the new warnings are
 // marked with a FIXME, and referred back to the code owners to fix.
 #define NO_THREAD_SAFETY_ANALYSIS_FIXME \
   THREAD_ANNOTATION_ATTRIBUTE__(no_thread_safety_analysis)
@@ -145,21 +145,21 @@
 #define NO_THREAD_SAFETY_ANALYSIS_OPT
 #endif
 
-// TS_UNCHECKED should be placed around lock expressions that are not valid 
-// C++ syntax, but which are present for documentation purposes.  The 
-// expressions are passed unchanged to gcc, which will usually treat them 
-// as the universal lock.  
+// TS_UNCHECKED should be placed around lock expressions that are not valid
+// C++ syntax, but which are present for documentation purposes.  The
+// expressions are passed unchanged to gcc, which will usually treat them
+// as the universal lock.
 #define TS_UNCHECKED(x) x
 
-// TS_FIXME is used to mark lock expressions that are not valid C++ syntax.  
-// This annotation should eventually be either fixed, or changed to 
-// TS_UNCHECKED.  
+// TS_FIXME is used to mark lock expressions that are not valid C++ syntax.
+// This annotation should eventually be either fixed, or changed to
+// TS_UNCHECKED.
 #define TS_FIXME(x) x
 
-// This is used to pass different annotations to gcc and clang, in cases where 
+// This is used to pass different annotations to gcc and clang, in cases where
 // gcc would reject a lock expression (e.g. &MyClass::mu_) that is accepted
 // by clang.  This is seldom needed, since GCC usually ignores invalid lock
-// expressions except in certain cases, such as LOCK_RETURNED. 
+// expressions except in certain cases, such as LOCK_RETURNED.
 #define TS_CLANG_ONLY(CLANG_EXPR, GCC_EXPR) GCC_EXPR
 
 // Clang Attributes
@@ -174,19 +174,19 @@
 
 #define PT_GUARDED_BY(x) \
   THREAD_ANNOTATION_ATTRIBUTE__(pt_guarded_by(x))
-  
+
 #define PT_GUARDED_VAR \
   THREAD_ANNOTATION_ATTRIBUTE__(pt_guarded)
 
 #define ACQUIRED_AFTER(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(acquired_after(__VA_ARGS__))
-  
+
 #define ACQUIRED_BEFORE(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(acquired_before(__VA_ARGS__))
 
 #define EXCLUSIVE_LOCKS_REQUIRED(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(exclusive_locks_required(__VA_ARGS__))
-  
+
 #define SHARED_LOCKS_REQUIRED(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(shared_locks_required(__VA_ARGS__))
 
@@ -204,16 +204,16 @@
 
 #define EXCLUSIVE_LOCK_FUNCTION(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(exclusive_lock_function(__VA_ARGS__))
-  
+
 #define SHARED_LOCK_FUNCTION(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(shared_lock_function(__VA_ARGS__))
-  
+
 #define EXCLUSIVE_TRYLOCK_FUNCTION(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(exclusive_trylock_function(__VA_ARGS__))
-  
+
 #define SHARED_TRYLOCK_FUNCTION(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(shared_trylock_function(__VA_ARGS__))
-  
+
 #define UNLOCK_FUNCTION(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(unlock_function(__VA_ARGS__))
 

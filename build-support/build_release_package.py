@@ -96,7 +96,7 @@ def create_tarball():
     [ 'thirdparty/installed-deps', 'lib/*.so.*'] ,
     [ 'thirdparty/installed-deps', 'bin/*']
   ]
-      
+
   print "Create an empty tarball"
   subprocess.check_output(["tar",
                            "cvf",
@@ -112,7 +112,7 @@ def create_tarball():
       path_transformation = ["--transform", item[2]];
     subprocess.check_output(["tar",
                              "rvf",
-                             tarball_path] + 
+                             tarball_path] +
                             path_transformation +
                             glob.glob(item[1]))
 

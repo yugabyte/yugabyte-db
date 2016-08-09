@@ -70,4 +70,3 @@ struct RowOp {
 } // namespace tablet
 } // namespace yb
 #endif /* YB_TABLET_ROW_OP_H */
-

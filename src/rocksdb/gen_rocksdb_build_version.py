@@ -108,4 +108,3 @@ const char* rocksdb_build_compile_date = "%s";
 
 if __name__ == "__main__":
   sys.exit(main())
-

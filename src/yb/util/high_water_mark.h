@@ -81,5 +81,3 @@ class HighWaterMark {
 
 } // namespace yb
 #endif /* YB_UTIL_HIGH_WATER_MARK_H */
-
-

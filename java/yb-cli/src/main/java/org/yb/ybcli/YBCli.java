@@ -9,7 +9,7 @@ public class YBCli {
   /**
    * Start up the spring cli.
    * @param args
-   * @throws IOException 
+   * @throws IOException
    */
   public static void main(String[] args) throws IOException {
     Bootstrap.main(args);

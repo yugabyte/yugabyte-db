@@ -37,4 +37,3 @@ public class TabletServerErrorException extends YBServerException {
     super(serverUuid, errorStatus);
   }
 }
-

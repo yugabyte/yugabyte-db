@@ -48,7 +48,7 @@ Here's how to build the yb-csd module with validation:
 
 $ mvn package -DskipTests -PbuildCSD -PvalidateCSD
 
-Publishing YB build to S3 
+Publishing YB build to S3
 ------------------------------------------------------------
 
 You can push YB client package to S3, so yugaware and other

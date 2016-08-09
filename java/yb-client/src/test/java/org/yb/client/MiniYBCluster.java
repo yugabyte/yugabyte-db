@@ -135,7 +135,7 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
-   * Take into account any started processes and return the next possibly free port number. 
+   * Take into account any started processes and return the next possibly free port number.
    * The multiply by 2 is to account for one port each for rpc and web services per server.
    * @param none
    * @return Port number for a potentially free port.
@@ -223,7 +223,7 @@ public class MiniYBCluster implements AutoCloseable {
       pathsToDelete.add(flagsPath);
     }
     pathsToDelete.add(dataDirPath);
-    
+
     return newHp;
   }
 

@@ -47,4 +47,3 @@ inline client::YBSchema CreateYCSBSchema() {
 
 } // namespace yb
 #endif
-

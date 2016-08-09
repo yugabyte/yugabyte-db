@@ -32,17 +32,17 @@ import org.yb.annotations.InterfaceAudience;
  * It delegates to the Standard Doclet, and takes the same options.
  */
 public class ExcludePrivateAnnotationsStandardDoclet {
-  
+
   public static LanguageVersion languageVersion() {
     return LanguageVersion.JAVA_1_5;
   }
-  
+
   public static boolean start(RootDoc root) {
     System.out.println(
         ExcludePrivateAnnotationsStandardDoclet.class.getSimpleName());
     return Standard.start(RootDocProcessor.process(root));
   }
-  
+
   public static int optionLength(String option) {
     Integer length = StabilityOptions.optionLength(option);
     if (length != null) {
@@ -50,7 +50,7 @@ public class ExcludePrivateAnnotationsStandardDoclet {
     }
     return Standard.optionLength(option);
   }
-  
+
   public static boolean validOptions(String[][] options,
       DocErrorReporter reporter) {
     StabilityOptions.validOptions(options, reporter);

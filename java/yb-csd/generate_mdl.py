@@ -202,7 +202,7 @@ def main():
            metricDefinitions=tablet_metrics),
       ])
 
-  
+
   f = sys.stdout
   if len(sys.argv) > 1:
     f = open(sys.argv[1], 'w')

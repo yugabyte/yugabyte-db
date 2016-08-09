@@ -17,7 +17,7 @@ public class LeaderStepDownResponse extends YRpcResponse {
   public boolean hasError() {
     return serverError != null;
   }
-  
+
   public String errorMessage() {
     if (serverError == null) {
       return "";

@@ -41,4 +41,3 @@ with con:
   cur.execute("INSERT INTO kudu_perf_tpch VALUES(%s, %s, %s, %s, %s, DEFAULT)",
               (job_name, build_number, workload, iteration, runtime))
   rows = cur.fetchall()
-

@@ -12,7 +12,7 @@
 #   step 3) read-write for each number of threads
 #   step 4) merge for each number of threads
 #
-# The list of threads is optional and when not set is equivalent to "24". 
+# The list of threads is optional and when not set is equivalent to "24".
 # Were list-of-threads specified as "1 2 4" then the tests in steps 2, 3 and
 # 4 above would be repeated for 1, 2 and 4 threads. The tests in step 1 are
 # only run for 1 thread.
@@ -250,15 +250,15 @@ for num_thr in "${nthreads[@]}" ; do
     env $ARGS DURATION=$duration NUM_THREADS=$num_thr MB_WRITE_PER_SEC=$fg_mbwps \
       ./tools/benchmark.sh mergerandom
 
-    # Test 16: random read while merging 
+    # Test 16: random read while merging
     env $ARGS DURATION=$duration NUM_THREADS=$num_thr MB_WRITE_PER_SEC=$bg_mbwps \
       DB_BENCH_NO_SYNC=1 ./tools/benchmark.sh readwhilemerging
 
-    # Test 17: range scan while merging 
+    # Test 17: range scan while merging
     env $ARGS DURATION=$duration NUM_THREADS=$num_thr MB_WRITE_PER_SEC=$bg_mbwps \
       DB_BENCH_NO_SYNC=1 NUM_NEXTS_PER_SEEK=$nps ./tools/benchmark.sh fwdrangewhilemerging
 
-    # Test 18: reverse range scan while merging 
+    # Test 18: reverse range scan while merging
     env $ARGS DURATION=$duration NUM_THREADS=$num_thr MB_WRITE_PER_SEC=$bg_mbwps \
       DB_BENCH_NO_SYNC=1 NUM_NEXTS_PER_SEEK=$nps ./tools/benchmark.sh revrangewhilemerging
   fi

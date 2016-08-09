@@ -867,4 +867,3 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 
 }  // namespace consensus
 }  // namespace yb
-

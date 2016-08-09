@@ -38,4 +38,4 @@ find build/latest/src -name \*.o -exec rm -f {} \;
 rm -Rf build/latest/bin build/latest/lib
 
 # Clean up any java build artifacts
-find java -name \*.jar -delete -o -name \*.class -delete 
+find java -name \*.jar -delete -o -name \*.class -delete

@@ -212,7 +212,7 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Check if the master leader is ready for change configuration operation.
-   * @return response with info on master leader being ready. 
+   * @return response with info on master leader being ready.
    */
   public IsLeaderReadyForChangeConfigResponse isMasterLeaderReadyForChangeConfig()
       throws Exception {

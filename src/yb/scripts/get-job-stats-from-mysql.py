@@ -39,4 +39,3 @@ with con:
   print 'workload', '\t', 'runtime', '\t', 'build_number'
   for row in rows:
     print row[0], '\t', row[1], '\t', row[2]
-

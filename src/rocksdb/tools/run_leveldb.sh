@@ -16,7 +16,7 @@
 #   step 2) read-only for each number of threads
 #   step 3) read-write for each number of threads
 #
-# The list of threads is optional and when not set is equivalent to "24". 
+# The list of threads is optional and when not set is equivalent to "24".
 # Were list-of-threads specified as "1 2 4" then the tests in steps 2, 3 and
 # 4 above would be repeated for 1, 2 and 4 threads. The tests in step 1 are
 # only run for 1 thread.

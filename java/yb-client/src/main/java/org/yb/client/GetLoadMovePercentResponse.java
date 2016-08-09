@@ -9,7 +9,7 @@ import org.yb.master.Master;
 public class GetLoadMovePercentResponse extends YRpcResponse {
   private double percentCompleted;
   private Master.MasterErrorPB serverError;
-  private boolean hasRetriableErr = false; 
+  private boolean hasRetriableErr = false;
 
   GetLoadMovePercentResponse(
       long ellapsedMillis, String masterUUID, double percent,
@@ -17,7 +17,7 @@ public class GetLoadMovePercentResponse extends YRpcResponse {
     super(ellapsedMillis, masterUUID);
     serverError = error;
     percentCompleted = percent;
-    // This check for a specific string can be centralized for all retriable  errors. 
+    // This check for a specific string can be centralized for all retriable  errors.
     if (hasError() && serverError.getCode() == Master.MasterErrorPB.Code.IN_TRANSITION_CAN_RETRY) {
       hasRetriableErr = true;
     }

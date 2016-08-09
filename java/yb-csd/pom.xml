@@ -65,7 +65,7 @@ limitations under the License.
             </goals>
           </execution>
         </executions>
-      </plugin> 
+      </plugin>
       <!-- Assemble the CSD. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

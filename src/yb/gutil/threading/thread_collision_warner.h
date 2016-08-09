@@ -10,7 +10,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/macros.h"
- 
+
 #ifndef BASE_EXPORT
 #define BASE_EXPORT
 #endif
