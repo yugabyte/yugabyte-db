@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
@@ -40,9 +41,6 @@ import com.yugabyte.yw.models.helpers.UniverseDetails;
  */
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseDefinitionTaskBase.class);
-
-  // The default number of masters in the cluster.
-  public static final int defaultNumMastersToChoose = 3;
 
   // This is the maximum number of subnets that the masters can be placed across, and need to be an
   // odd number for consensus to work.
@@ -420,13 +418,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Mark the universe as no longer being updated. This will allow other future edits to happen.
+   * Create a task to mark the change on a universe as success.
    */
   public void createMarkUniverseUpdateSuccessTasks() {
     TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
-
-    // TODO: fill this up.
-
+    UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
+    params.universeUUID = taskParams().universeUUID;
+    UniverseUpdateSucceeded task = new UniverseUpdateSucceeded();
+    task.initialize(params);
+    taskList.addTask(task);
     taskListQueue.add(taskList);
   }
 
