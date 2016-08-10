@@ -12,7 +12,10 @@ if [ -n "${YB_COMMON_BUILD_ENV_SOURCED:-}" ]; then
   # Return to the executing script.
   return
 fi
+
 YB_COMMON_BUILD_ENV_SOURCED=1
+
+declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
@@ -40,9 +43,13 @@ fatal() {
   exit 1
 }
 
+get_timestamp() {
+  date +%Y-%m-%dT%H:%M:%S
+}
+
 log() {
   if [[ "${yb_log_quiet:-}" != "true" ]]; then
-    echo "[$( date +%Y-%m-%dT%H:%M:%S ) ${FUNCNAME[1]}:${BASH_LINENO[0]}] $*" >&2
+    echo "[$( get_timestamp ) ${FUNCNAME[1]}:${BASH_LINENO[0]}] $*" >&2
   fi
 }
 
@@ -336,6 +343,44 @@ set_cmake_build_type_and_compiler_type() {
   export YB_COMPILER_TYPE
 
   cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
+}
+
+build_yb_java_code() {
+  # --batch-mode hides download progress.
+  # We are filtering out some patterns from Maven output, e.g.:
+  # [INFO] META-INF/NOTICE already added, skipping
+  # [INFO] Downloaded: https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-classworlds/2.4/plexus-classworlds-2.4.jar (46 KB at 148.2 KB/sec)
+  # [INFO] Downloading: https://repo.maven.apache.org/maven2/org/apache/maven/doxia/doxia-logging-api/1.1.2/doxia-logging-api-1.1.2.jar
+  set +e -x  # do not fail on grep failure; print the command to stderr.
+  mvn "$@" --batch-mode 2>&1 | \
+    egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
+    egrep -v '^Generating .*[.]html[.][.][.]$'
+  local mvn_exit_code=${PIPESTATUS[0]}
+  set -e +x
+  return $mvn_exit_code
+}
+
+build_yb_java_code_with_retries() {
+  local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
+  declare -i attempt=1
+
+  while [[ $attempt -le $MAX_JAVA_BUILD_ATTEMPTS ]]; do
+    if build_yb_java_code "$@" 2>&1 | tee "$java_build_output_path"; then
+      rm -f "$java_build_output_path"
+      return 0
+    fi
+
+    if grep "Could not transfer artifact" "$java_build_output_path" >/dev/null; then
+      echo "Java build attempt $attempt failed due to temporary connectivity issues, re-trying."
+    else
+      return 1
+    fi
+
+    rm -f "$java_build_output_path"
+
+    let attempt+=1
+  done
+  return 1
 }
 
 # -------------------------------------------------------------------------------------------------

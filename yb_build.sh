@@ -289,9 +289,9 @@ fi
 if "$build_java"; then
   cd "$YB_SRC_ROOT"/java
   if $run_java_tests; then
-    time ( mvn install )
+    time ( build_yb_java_code install )
   else
-    time ( mvn install -DskipTests )
+    time ( build_yb_java_code install -DskipTests )
   fi
   log "Java build finished, total time information above."
 fi

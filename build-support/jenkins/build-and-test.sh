@@ -297,26 +297,16 @@ if [ "$BUILD_JAVA" == "1" ]; then
   if [ "$VALIDATE_CSD" == "1" ]; then
     VALIDATE_CSD_FLAG="-PvalidateCSD"
   fi
-  # --batch-mode hides download progress.
-  # We are filtering out some patterns from Maven output, e.g.:
-  # [INFO] META-INF/NOTICE already added, skipping
-  # [INFO] Downloaded: https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-classworlds/2.4/plexus-classworlds-2.4.jar (46 KB at 148.2 KB/sec)
-  # [INFO] Downloading: https://repo.maven.apache.org/maven2/org/apache/maven/doxia/doxia-logging-api/1.1.2/doxia-logging-api-1.1.2.jar
-  set +e -x
-  mvn -DskipTests $MVN_FLAGS -PbuildCSD \
+  if ! build_yb_java_code_with_retries \
+      -DskipTests $MVN_FLAGS -PbuildCSD \
       $VALIDATE_CSD_FLAG \
       -Dsurefire.rerunFailingTestsCount=3 \
       -Dfailsafe.rerunFailingTestsCount=3 \
-      --batch-mode \
-      clean verify 2>&1 | \
-        egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
-        egrep -v '^Generating .*[.]html[.][.][.]$'
-  if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
-    set -e +x
+      clean verify 2>&1
+  then
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'Java build/test failed\n'
   fi
-  set -e +x
   popd
 fi
 

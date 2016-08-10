@@ -24,7 +24,6 @@ thirdparty_install_dir=$YB_SRC_DIR/thirdparty/installed/bin
 cc_or_cxx=${0##*/}
 
 stderr_path=$( mktemp "/tmp/yb-$cc_or_cxx-stderr.XXXXXXXXXXXXXXXX" )
-trap 'rm -f "$stderr_path"' EXIT
 
 compiler_args=( "$@" )
 
@@ -58,7 +57,7 @@ case "$cc_or_cxx" in
 esac
 
 # We use ccache if it is available and YB_NO_CCACHE is not set.
-if which ccache >/dev/null && [ -z "${YB_NO_CCACHE:-}" ]; then
+if which ccache >/dev/null && [[ -z ${YB_NO_CCACHE:-} ]]; then
   export CCACHE_CC="$compiler_executable"
   cmd=( ccache compiler )
 else
@@ -67,23 +66,28 @@ fi
 
 cmd+=( "${compiler_args[@]}" )
 
-if [ -n "${YB_SHOW_COMPILER_COMMAND_LINE:-}" ]; then
+if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]]; then
   echo "Using compiler: $compiler_executable"
 fi
 
 exit_handler() {
   local exit_code=$?
   if [[ "$exit_code" -ne 0 ]]; then
+    # We output the compiler executable path because the actual command we're running will likely
+    # contain ccache instead of the compiler executable.
     echo "Compiler command failed with exit code $exit_code: ${cmd[@]} ;" \
          "compiler executable: $compiler_executable ;" \
          "current directory: $PWD" >&2
-    if [[ -n "${YB_SHOW_COMPILER_STDERR:-}" && -f "$stderr_path" ]]; then
-      # Useful to see what exactly is included in compiler stderr (as opposed to stdout) when
-      # debugging the build.
-      echo "Compiler standard error:" >&2
-      echo "-------------------------------------------------------------------------------------" >&2
-      cat "$stderr_path" >&2
-      echo "-------------------------------------------------------------------------------------" >&2
+    if [[ -n ${stderr_path:-} && -f ${stderr_path:-} ]]; then
+      if [[ -n ${YB_SHOW_COMPILER_STDERR:-} ]]; then
+        # Useful to see what exactly is included in compiler stderr (as opposed to stdout) when
+        # debugging the build.
+        echo "Compiler standard error:" >&2
+        echo "---------------------------------------------------------------------------------" >&2
+        cat "$stderr_path" >&2
+        echo "---------------------------------------------------------------------------------" >&2
+      fi
+      rm -f "$stderr_path"
     fi
   fi
   exit "$exit_code"
@@ -95,7 +99,7 @@ set +e
 # Swap stdout and stderr, capture stderr to a file, and swap them again.
 (
   (
-    if [ -n "${YB_SHOW_COMPILER_COMMAND_LINE:-}" ]; then
+    if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]]; then
       set -x
     fi
     "${cmd[@]}" 3>&2 2>&1 1>&3
