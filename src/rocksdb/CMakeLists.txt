@@ -26,6 +26,8 @@ function(get_rocksdb_version_component COMPONENT)
   set(ROCKSDB_${COMPONENT} ${ROCKSDB_VERSION_COMPONENT} PARENT_SCOPE)
 endfunction()
 
+set(ROCKSDB_BUILD_DIR "${YB_BUILD_DIR}/rocksdb-build" CACHE STRING "RocksDB build dir")
+
 file(READ "include/rocksdb/version.h" ROCKSDB_VERSION_H_CONTENTS)
 get_rocksdb_version_component("MAJOR")
 get_rocksdb_version_component("MINOR")
@@ -33,6 +35,9 @@ get_rocksdb_version_component("PATCH")
 SET(ROCKSDB_VERSION "${ROCKSDB_MAJOR}.${ROCKSDB_MINOR}.${ROCKSDB_PATCH}"
   CACHE STRING "RocksDB version")
 message("Detected RocksDB version: ${ROCKSDB_VERSION}")
+
+# We need this in rpath fix-up for Mac OS X.
+SET(ROCKSDB_SHORT_VERSION "${ROCKSDB_MAJOR}.${ROCKSDB_MINOR}")
 
 # Find all RocksDB sources to make CLion recognize them as such. This is not being passed to a
 # compiler.
@@ -51,7 +56,7 @@ if ("${YB_USE_ASAN}")
 endif()
 
 SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG)
-if (NOT YB_TCMALLOC_AVAILABLE) 
+if (NOT YB_TCMALLOC_AVAILABLE)
   SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG "--disable-tcmalloc")
 endif()
 
@@ -121,8 +126,6 @@ add_custom_target(build_rocksdb_all_targets ALL
   VERBATIM)
 
 add_dependencies(build_rocksdb_all_targets build_rocksdb_library)
-
-set(ROCKSDB_BUILD_DIR "${YB_BUILD_DIR}/rocksdb-build")
 
 set(ROCKSDB_DEBUG_ONLY_TESTS
   auto_roll_logger_test
@@ -220,7 +223,7 @@ set(
   ROCKSDB_LIB_PATH_PREFIX "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}"
   CACHE STRING "RocksDB library path prefix")
 set(ROCKSDB_VERSION_SUFFIX ".${ROCKSDB_VERSION}"
-  CACHE STIRNG "RocksDB dynamic library version suffix")
+  CACHE STRING "RocksDB dynamic library version suffix")
 
 if(APPLE)
   # On Mac OS X the dynamic library extension (".dylib") in the resulting RocksDB library is the
@@ -228,6 +231,11 @@ if(APPLE)
   set(ROCKSDB_SHARED_LIB
     "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_SHARED_LIBRARY_SUFFIX}"
     CACHE STRING "RocksDB shared library path")
+
+  set(ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION
+    "librocksdb${ROCKSDB_LIB_SUFFIX}.${ROCKSDB_SHORT_VERSION}${YB_SHARED_LIBRARY_SUFFIX}"
+    CACHE STRING "RocksDB dynamic library name for Mac OS X with no patch version")
+
   set(ROCKSDB_STATIC_LIB
     "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_STATIC_LIBRARY_SUFFIX}"
     CACHE STRING "RocksDB static library path")

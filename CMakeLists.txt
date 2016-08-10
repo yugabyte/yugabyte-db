@@ -766,6 +766,20 @@ function(ADD_YB_TEST REL_TEST_NAME)
     set(TEST_PATH "${EXECUTABLE_OUTPUT_PATH}/${TEST_NAME}")
     add_executable(${TEST_NAME} "${REL_TEST_NAME}.cc")
     target_link_libraries(${TEST_NAME} ${YB_TEST_LINK_LIBS})
+
+    if(APPLE AND "${YB_LINK}" STREQUAL "d")
+      # For whatever reason, CMake does not use the "@rpath" prefix for the librocksdb dynamic
+      # library dependency on Mac OS X, so even having the directory containing the librocksdb
+      # library on the rpath does not help. Here, we ensure that the dynamic library dependency
+      # entry has the format of "@rpath/librocksdb_debug.4.6.dylib" (also note that the patch
+      # version is omitted, so it is 4.6, not 4.6.0).
+      add_custom_command(TARGET "${TEST_NAME}"
+        POST_BUILD COMMAND
+        ${CMAKE_INSTALL_NAME_TOOL}
+        -change "${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}"
+        "@rpath/${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}"
+        "${YB_BUILD_DIR}/bin/${TEST_NAME}")
+    endif()
   else()
     # No executable, just invoke the test (probably a script) directly.
     get_filename_component(TEST_NAME_WITH_EXT ${REL_TEST_NAME} NAME)
@@ -853,16 +867,26 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
   endif()
 endfunction()
 
+function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
+  set(NEW_RPATH_ENTRY_LINKER_FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
+  message("Adding a global rpath entry: ${RPATH_ENTRY}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${NEW_RPATH_ENTRY_LINKER_FLAGS}"
+      PARENT_SCOPE)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${NEW_RPATH_ENTRY_LINKER_FLAGS}"
+      PARENT_SCOPE)
+endfunction()
+
 # Look in thirdparty prefix paths before anywhere else for system dependencies.
 set(THIRDPARTY_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed)
 set(CMAKE_PREFIX_PATH ${THIRDPARTY_PREFIX} ${CMAKE_PREFIX_PATH})
 if (${YB_USE_TSAN})
-  set(CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps-tsan
-      ${CMAKE_PREFIX_PATH})
+  set(YB_INSTALLED_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps-tsan)
 else()
-  set(CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps
-      ${CMAKE_PREFIX_PATH})
+  set(YB_INSTALLED_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps)
 endif()
+set(CMAKE_PREFIX_PATH ${YB_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
+
+ADD_GLOBAL_RPATH_ENTRY("${YB_INSTALLED_DEPS_DIR}/lib")
 
 ## Cyrus SASL
 find_package(CyrusSASL REQUIRED)
@@ -1149,6 +1173,7 @@ add_subdirectory(src/rocksdb)
 
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
 add_dependencies(rocksdb build_rocksdb_library)
+ADD_GLOBAL_RPATH_ENTRY("${ROCKSDB_BUILD_DIR}")
 
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)

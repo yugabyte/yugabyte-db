@@ -104,13 +104,6 @@ BUILD_PYTHON=${BUILD_PYTHON:-1}
 LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 
-if is_mac; then
-  # TODO: this should be unnecessary with fix_rpath.py.
-  export DYLD_FALLBACK_LIBRARY_PATH="$BUILD_ROOT/rocksdb-build"
-  export DYLD_FALLBACK_LIBRARY_PATH+=":$YB_THIRDPARTY_DIR/gflags-2.1.2/lib"
-  echo "Set DYLD_FALLBACK_LIBRARY_PATH to $DYLD_FALLBACK_LIBRARY_PATH"
-fi
-
 # Remove testing artifacts from the previous run before we do anything
 # else. Otherwise, if we fail during the "build" step, Jenkins will
 # archive the test logs from the previous run, thinking they came from
