@@ -272,6 +272,23 @@ public class UniverseController extends AuthenticatedController {
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
 
+    // Handle the single AZ deployment case.
+    if (!userIntent.isMultiAZ) {
+      // Select an AZ in the required region.
+      List<AvailabilityZone> azList =
+          AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
+      if (azList.isEmpty()) {
+        throw new RuntimeException("No AZ found for region: " + userIntent.regionList.get(0));
+      }
+      Collections.shuffle(azList);
+      UUID azUUID = azList.get(0).uuid;
+      // Add all replicas into the same AZ.
+      for (int idx = 0; idx < userIntent.replicationFactor; idx++) {
+        addPlacementZone(azUUID, placementInfo);
+      }
+      return placementInfo;
+    }
+
     // If one region is specified, pick all three AZs from it. Make sure there are enough regions.
     if (userIntent.regionList.size() == 1) {
       selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, 3);
