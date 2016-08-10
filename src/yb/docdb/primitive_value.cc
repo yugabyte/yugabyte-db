@@ -34,6 +34,8 @@ extern const char* const kTimestampConstantPrefixStr = "TS";
 const PrimitiveValue PrimitiveValue::kNull(PrimitiveValue::FromValueType(ValueType::kNull));
 const PrimitiveValue PrimitiveValue::kTrue(PrimitiveValue::FromValueType(ValueType::kTrue));
 const PrimitiveValue PrimitiveValue::kFalse(PrimitiveValue::FromValueType(ValueType::kFalse));
+const PrimitiveValue PrimitiveValue::kTombstone(
+    PrimitiveValue::FromValueType(ValueType::kTombstone));
 
 string PrimitiveValue::ToString() const {
   switch (type_) {
@@ -128,6 +130,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kNull: return result;
     case ValueType::kFalse: return result;
     case ValueType::kTrue: return result;
+    case ValueType::kTombstone: return result;
 
     case ValueType::kString:
       // No zero encoding necessary when storing the string in a value.
@@ -157,7 +160,11 @@ string PrimitiveValue::ToValue() const {
       // Hashes are not allowed in a value.
       break;
 
-    IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
+    case ValueType::kArray: FALLTHROUGH_INTENDED;
+    case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kObject:
+      break;
   }
 
   LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
@@ -283,6 +290,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {
       return Status::Corruption(
           Substitute("$0 is not allowed in a RocksDB value", ValueTypeToStr(value_type)));
   }
+  LOG(FATAL) << "Invalid value type: " << ValueTypeToStr(value_type);
   return Status::OK();
 }
 

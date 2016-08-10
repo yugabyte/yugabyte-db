@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_DOC_PATH_H
-#define YB_DOCDB_DOC_PATH_H
+#ifndef YB_DOCDB_DOC_PATH_H_
+#define YB_DOCDB_DOC_PATH_H_
 
 #include "yb/docdb/primitive_value.h"
 

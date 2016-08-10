@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_KEY_BYTES_H
-#define YB_DOCDB_KEY_BYTES_H
+#ifndef YB_DOCDB_KEY_BYTES_H_
+#define YB_DOCDB_KEY_BYTES_H_
 
 #include <string>
 
@@ -79,6 +79,10 @@ class KeyBytes {
   }
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
+
+  // @return This key prefix as a string reference. Assumes the reference won't be used beyond
+  //         the lifetime of this object.
+  const std::string& AsStringRef() const { return data_; }
 
   void Reset(rocksdb::Slice slice) {
     data_ = std::string(slice.data(), slice.size());

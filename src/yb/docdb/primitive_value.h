@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_PRIMITIVE_VALUE_H
-#define YB_DOCDB_PRIMITIVE_VALUE_H
+#ifndef YB_DOCDB_PRIMITIVE_VALUE_H_
+#define YB_DOCDB_PRIMITIVE_VALUE_H_
 
 #include <memory.h>
 
@@ -111,6 +111,7 @@ class PrimitiveValue {
   static const PrimitiveValue kNull;
   static const PrimitiveValue kTrue;
   static const PrimitiveValue kFalse;
+  static const PrimitiveValue kTombstone;
 
  private:
 

@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_VALUE_TYPE_H
-#define YB_DOCDB_VALUE_TYPE_H
+#ifndef YB_DOCDB_VALUE_TYPE_H_
+#define YB_DOCDB_VALUE_TYPE_H_
 
 #include <string>
 

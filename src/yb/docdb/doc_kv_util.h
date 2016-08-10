@@ -2,8 +2,8 @@
 
 // Utilities for encoding and decoding key/value pairs that are used in the document DB code.
 
-#ifndef YB_DOCDB_DOC_KV_UTIL_H
-#define YB_DOCDB_DOC_KV_UTIL_H
+#ifndef YB_DOCDB_DOC_KV_UTIL_H_
+#define YB_DOCDB_DOC_KV_UTIL_H_
 
 #include <string>
 

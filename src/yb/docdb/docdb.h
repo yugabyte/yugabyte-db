@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_DOCDB_H
-#define YB_DOCDB_DOCDB_H
+#ifndef YB_DOCDB_DOCDB_H_
+#define YB_DOCDB_DOCDB_H_
 
 #include <cstdint>
 #include <ostream>
@@ -14,6 +14,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/primitive_value.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
@@ -66,6 +67,8 @@ class DocWriteBatch {
   void Clear();
 
  private:
+  DocWriteBatchCache cache_;
+
   rocksdb::DB* rocksdb_;
   rocksdb::WriteBatch write_batch_;
 };

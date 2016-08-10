@@ -26,7 +26,6 @@ namespace yb {
 namespace docdb {
 
 static const string kObjectValueType = EncodeValueType(ValueType::kObject);
-static const string kTombstoneValueType = EncodeValueType(ValueType::kTombstone);
 
 // ------------------------------------------------------------------------------------------------
 // DocWriteBatch
@@ -36,23 +35,37 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
     : rocksdb_(rocksdb) {
 }
 
+// This codepath is used to handle both primitive upserts and deletions.
 Status DocWriteBatch::SetPrimitive(
-    const DocPath& doc_path, const PrimitiveValue& value, Timestamp timestamp) {
+    const DocPath& doc_path, const PrimitiveValue& value, const Timestamp timestamp) {
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
-
-  InternalDocIterator doc_iter(rocksdb_);
-
-  // Navigate to the root of the document, not including the generation timestamp. We don't yet
-  // know whether the document exists or when it was last updated.
-  doc_iter.SeekToDocument(encoded_doc_key);
-
-  // This will append a timestamp only if the document is not found.
-  doc_iter.AppendUpdateTimestampIfNotFound(timestamp);
-
   const int num_subkeys = doc_path.num_subkeys();
+  const bool is_deletion = value.value_type() == ValueType::kTombstone;
+
+  InternalDocIterator doc_iter(rocksdb_, &cache_);
+
+  if (num_subkeys > 0 || is_deletion) {
+    // Navigate to the root of the document, not including the generation timestamp. We don't yet
+    // know whether the document exists or when it was last updated.
+    doc_iter.SeekToDocument(encoded_doc_key);
+    if (!doc_iter.subdoc_exists()) {
+      if (is_deletion) {
+        // We're performing a deletion, and the document is not present. Nothing to do.
+        return Status::OK();
+      }
+      // Record the fact that we're adding this subdocument in the DocWriteBatchCache, so that we
+      // don't try to create it multiple times in the same DocWriteBatch.
+      cache_.Put(doc_iter.key_prefix().AsStringRef(), timestamp, ValueType::kObject);
+    }
+    doc_iter.AppendUpdateTimestampIfNotFound(timestamp);
+  } else {
+    // If we are overwriting an entire document with a primitive value (not deleting it), we don't
+    // need to perform any reads from RocksDB at all.
+    doc_iter.SetDocumentKey(encoded_doc_key);
+    doc_iter.AppendTimestampToPrefix(timestamp);
+  }
+
   for (int subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
-    // Invariant: at this point our key prefix ends with a timestamp, either present in RocksDB,
-    // or set based on the current operation's timestamp.
     assert(doc_iter.key_prefix_ends_with_ts());
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
     if (subkey.value_type() == ValueType::kArrayIndex) {
@@ -64,11 +77,41 @@ Status DocWriteBatch::SetPrimitive(
             "Cannot set values inside a subdocument of type $0",
             ValueTypeToStr(doc_iter.subdoc_type())));
       }
-      doc_iter.SeekToSubDocument(subkey);
-      doc_iter.AppendUpdateTimestampIfNotFound(timestamp);
+      if (subkey_index == num_subkeys - 1 && !is_deletion) {
+        // We don't need to perform a RocksDB read at the last level for upserts, we just
+        // overwrite the value within the last subdocument with what we're trying to write.
+        doc_iter.AppendSubkeyInExistingSubDoc(subkey);
+        doc_iter.AppendTimestampToPrefix(timestamp);
+      } else {
+        // We need to check if the subdocument at this subkey exists.
+        doc_iter.SeekToSubDocument(subkey);
+        if (is_deletion) {
+          if (!doc_iter.subdoc_exists()) {
+            return Status::OK();
+          }
+          if (subkey_index == num_subkeys - 1) {
+            // Replace the last timestamp only at the final level as we're about to write the
+            // tombstone.
+            doc_iter.ReplaceTimestampInPrefix(timestamp);
+          }
+        } else {
+          doc_iter.AppendUpdateTimestampIfNotFound(timestamp);
+        }
+      }
     } else {
-      // The subdocument that this subkey is supposed to live in does not exist. Create it.
+      if (is_deletion) {
+        // A parent subdocument of the subdocument we're trying to delete does not exist, nothing
+        // to do.
+        return Status::OK();
+      }
+
+      // The document/subdocument that this subkey is supposed to live in does not exist, create it.
       write_batch_.Put(doc_iter.key_prefix().AsSlice(), kObjectValueType);
+
+      // Record the fact that we're adding this subdocument in our local cache so that future
+      // operations in this document write batch don't have to add it or look for it in RocksDB.
+      cache_.Put(doc_iter.key_prefix().AsStringRef(), timestamp, ValueType::kObject);
+
       doc_iter.AppendToPrefix(subkey);
       doc_iter.AppendTimestampToPrefix(timestamp);
     }
@@ -79,43 +122,8 @@ Status DocWriteBatch::SetPrimitive(
   return Status::OK();
 }
 
-Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp) {
-  InternalDocIterator doc_iter(rocksdb_);
-  doc_iter.SeekToDocument(doc_path.encoded_doc_key());
-  if (!doc_iter.subdoc_exists()) {
-    // The document itself does not exist, nothing to delete.
-    return Status::OK();
-  }
-  const int num_subkeys = doc_path.num_subkeys();
-  for (int subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
-    assert(doc_iter.subdoc_exists());
-    assert(doc_iter.key_prefix_ends_with_ts());
-    const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
-    if (subkey.value_type() == ValueType::kArrayIndex) {
-      return Status::NotSupported("Arrays not supported yet");
-    }
-    if (doc_iter.subdoc_type() != ValueType::kObject) {
-      // We're being asked to remove a key from a subdocument that is not an object. We're currently
-      // treating this as an error. Alternatively, we could have said that what we're trying to
-      // remove does not exist, so there is nothing to do.
-      return Status::IllegalState(
-          Substitute(
-              "Cannot remove key $0 from subdocument of type $0",
-              subkey.ToString(), ValueTypeToStr(doc_iter.subdoc_type())));
-
-    }
-    doc_iter.SeekToSubDocument(subkey);
-    if (!doc_iter.subdoc_exists()) {
-      return Status::OK();
-    }
-  }
-
-  // We can only delete at a higher timestamp than what existed before.
-  assert(timestamp.CompareTo(doc_iter.subdoc_gen_ts()) > 0);
-  doc_iter.ReplaceTimestampInPrefix(timestamp);
-  write_batch_.Put(doc_iter.key_prefix().AsSlice(), kTombstoneValueType);
-
-  return Status::OK();
+Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const Timestamp timestamp) {
+  return SetPrimitive(doc_path, PrimitiveValue::kTombstone, timestamp);
 }
 
 string DocWriteBatch::ToDebugString() {
@@ -166,8 +174,8 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
 
 
 static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
-                                  rocksdb::Iterator* rocksdb_iter,
-                                  DocVisitor* visitor) {
+                                  rocksdb::Iterator* const rocksdb_iter,
+                                  DocVisitor* const visitor) {
   while (rocksdb_iter->Valid()) {
     SubDocKey subdoc_key;
     RETURN_NOT_OK(subdoc_key.DecodeFrom(rocksdb_iter->key()));

@@ -206,10 +206,11 @@ TEST_F(DocDBTest, BasicTest) {
           \xff\xff\xff\xff\xff\xff\xf2S', '\x04value_bd')
       )#");
 
-  // Delete a non-existent subdocument. No changes expected.
-  TestDeletion(DocPath(encoded_doc_key, "subkey_x"),
-               Timestamp(4000),
-               "");
+  // Delete a non-existent top-level document. We don't expect any tombstones to be created.
+  TestDeletion(
+      DocPath(encoded_doc_key, "subkey_x"),
+      Timestamp(4000),
+      "");
 
   // Delete a leaf-level value in a subdocument.
   TestDeletion(
@@ -293,6 +294,35 @@ EndObject
 EndObject
 EndDocument
       )#", doc_visitor.ToString());
+}
+
+TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
+  DocWriteBatch dwb(rocksdb_.get());
+  const KeyBytes& encoded_doc_key = DocKey(PrimitiveValues("a")).Encode();
+  ASSERT_OK(
+      dwb.SetPrimitive(DocPath(encoded_doc_key, "b"), PrimitiveValue("v1"), Timestamp(1000)));
+  ASSERT_OK(
+      dwb.SetPrimitive(DocPath(encoded_doc_key, "c", "d"), PrimitiveValue("v2"), Timestamp(2000)));
+  ASSERT_OK(
+      dwb.SetPrimitive(DocPath(encoded_doc_key, "c", "e"), PrimitiveValue("v3"), Timestamp(3000)));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      ApplyEagerLineContinuation(
+          R"#(
+1. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17', '@')
+2. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
+          \x04b\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17', '\x04v1')
+3. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
+          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf8/', '@')
+4. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
+          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf8/\
+          \x04d\x00\x00\xff\xff\xff\xff\xff\xff\xf8/', '\x04v2')
+5. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
+          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf4G', '@')
+6. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
+          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf4G\
+          \x04e\x00\x00\xff\xff\xff\xff\xff\xff\xf4G', '\x04v3')
+          )#"
+      ), dwb.ToDebugString());
 }
 
 }

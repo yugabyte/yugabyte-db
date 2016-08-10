@@ -1,22 +1,25 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_INTERNAL_DOC_ITERATOR_H
-#define YB_DOCDB_INTERNAL_DOC_ITERATOR_H
+#ifndef YB_DOCDB_INTERNAL_DOC_ITERATOR_H_
+#define YB_DOCDB_INTERNAL_DOC_ITERATOR_H_
 
 #include <memory>
 
 #include "rocksdb/db.h"
 
+#include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/key_bytes.h"
-#include "yb/docdb/value_type.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
+#include "yb/util/trilean.h"
 
 namespace yb {
 namespace docdb {
 
 // A wrapper around a RocksDB iterator that helps navigating the document structure. This is a
-// relatively low-level interface that allows manipulating key prefixes directly. The iterator keeps
-// the following pieces of state:
+// relatively low-level interface that allows manipulating key prefixes directly. The primary use
+// case for this is as a utility in the implementation of DocWriteBatch operations. The iterator
+// keeps the following pieces of state:
 //
 // - A key prefix for the current document/subdocument. We append to this prefix or truncate it when
 //   traversing the nested document DB structure.
@@ -34,7 +37,9 @@ namespace docdb {
 // This class is not thread-safe.
 class InternalDocIterator {
  public:
-  InternalDocIterator(rocksdb::DB* rocksdb);
+  // @param rocksdb RocksDB database to operate on.
+  // @param doc_write_batch_cache A utility that allows us to avoid redundant lookups.
+  InternalDocIterator(rocksdb::DB* rocksdb, DocWriteBatchCache* doc_write_batch_cache);
 
   // Positions this iterator at the root of a document identified by the given encoded document key.
   // The key must not end with a generation timestamp.
@@ -42,8 +47,14 @@ class InternalDocIterator {
   // @param encoded_doc_key The encoded key pointing to the document.
   void SeekToDocument(const KeyBytes& encoded_doc_key);
 
-  // Similar to SeekToDocument, but positions the iterator at the given timestamp.
-  void SeekToDocumentAtTimestamp(const KeyBytes& encoded_doc_key, Timestamp timestamp);
+  // Sets the iterator to a state where it is positioned at the top of a document, but does not
+  // actually know whether that subdocument exists in the underlying RocksDB database.
+  void SetDocumentKey(const KeyBytes& encoded_doc_key) {
+    key_prefix_ = encoded_doc_key;
+    key_prefix_ends_with_ts_ = false;
+    subdoc_exists_ = Trilean::kUnknown;
+    subdoc_type_ = ValueType::kInvalidValueType;
+  }
 
   // Go one level deeper in the document hierarchy. This assumes the iterator is already positioned
   // inside an existing object-type subdocument, and that the prefix ends with a generation
@@ -52,35 +63,39 @@ class InternalDocIterator {
   // @param subkey The key identifying the subdocument within the current document to navigate to.
   void SeekToSubDocument(const PrimitiveValue& subkey);
 
-  // Positions this iterator at the document pointed to by the underlying RocksDB iterator. This is
-  // useful when we have attempted to SeekToDocument and did not find an exact match, but we still
-  // want to continue scanning from this point. We are assuming that the RocksDB iterator is
-  // positioned at the beginning of a document, which will happen naturally if we seek at a dcoument
-  // key immediately preceding a call to this method.
-  void ResetToCurrentDocument();
+  // Append the given subkey to the document. We are assuming that we have already made sure that
+  // the iterator is positioned inside an existing subdocument, and therefore the current key
+  // prefix ends with a timestamp.
+  void AppendSubkeyInExistingSubDoc(const PrimitiveValue &subkey) {
+    assert(subdoc_exists());
+    assert(subdoc_type_ == ValueType::kObject);
+    AppendToPrefix(subkey);
+  }
 
   // @return Whether the subdocument pointed to by this iterator exists.
-  bool subdoc_exists() { return subdoc_exists_; }
+  bool subdoc_exists() {
+    assert(subdoc_exists_ != Trilean::kUnknown);
+    return static_cast<bool>(subdoc_exists_);
+  }
 
   // @return The type of subdocument pointed to by this iterator, if it exists.
   ValueType subdoc_type() {
-    assert(subdoc_exists_);
+    assert(subdoc_exists());
     return subdoc_type_;
   }
 
   bool subdoc_deleted() {
-    return subdoc_type_ == ValueType::kTombstone;
+    return subdoc_exists_ != Trilean::kUnknown && subdoc_type_ == ValueType::kTombstone;
   }
 
   const KeyBytes& key_prefix() { return key_prefix_; }
   bool key_prefix_ends_with_ts() { return key_prefix_ends_with_ts_; }
 
-  Timestamp subdoc_gen_ts() {
-    assert(subdoc_exists_);
-    return subdoc_gen_ts_;
-  }
-
+  // Encode and append the given primitive value to the current key prefix. We are assuming the
+  // current key prefix already ends with a timestamp, but we don't assume it corresponds to an
+  // existing subdocument.
   void AppendToPrefix(const PrimitiveValue& subkey);
+
   void AppendTimestampToPrefix(Timestamp ts);
   void AppendUpdateTimestampIfNotFound(Timestamp ts);
   void ReplaceTimestampInPrefix(Timestamp ts);
@@ -99,6 +114,8 @@ class InternalDocIterator {
   void SeekToKeyPrefix();
 
   rocksdb::DB* rocksdb_;
+  DocWriteBatchCache* doc_write_batch_cache_;
+
   std::unique_ptr<rocksdb::Iterator> iter_;
 
   // Current key prefix. This corresponds to all keys belonging to a top-level document or a
@@ -110,11 +127,11 @@ class InternalDocIterator {
   ValueType subdoc_type_;
 
   // The "generation timestamp" of the current subdocument, i.e. the timestamp at which the document
-  // was last been fully overwritten or deleted. The notion of "last" may mean "last as of the
-  // timestamp we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
+  // was last fully overwritten or deleted. The notion of "last" may mean "last as of the timestamp
+  // we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
   Timestamp subdoc_gen_ts_;
 
-  bool subdoc_exists_;
+  Trilean subdoc_exists_;
 };
 
 }

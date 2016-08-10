@@ -162,6 +162,7 @@ set(UTIL_SRCS
   bytes_formatter.cc
   shared_lock_manager.cc
   string_trim.cc
+  trilean.cc
 )
 
 if(NOT APPLE)

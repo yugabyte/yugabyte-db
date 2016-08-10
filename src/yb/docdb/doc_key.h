@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_DOC_KEY_H
-#define YB_DOCDB_DOC_KEY_H
+#ifndef YB_DOCDB_DOC_KEY_H_
+#define YB_DOCDB_DOC_KEY_H_
 
 #include <ostream>
 #include <vector>

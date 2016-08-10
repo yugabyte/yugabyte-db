@@ -99,7 +99,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   Status WaitUntilConsensusRunning(const MonoDelta& timeout);
 
   // Submits a write to a tablet and executes it asynchronously.
-  // The caller is expected to build and pass a TrasactionContext that points
+  // The caller is expected to build and pass a WriteTransactionState that points
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
   Status SubmitWrite(WriteTransactionState *tx_state);
