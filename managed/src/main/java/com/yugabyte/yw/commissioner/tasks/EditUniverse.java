@@ -17,9 +17,8 @@ import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
@@ -27,14 +26,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 public class EditUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(EditUniverse.class);
 
-  // The subset of new nodes that are masters.
+  // Get the new masters from the node list.
   Set<NodeDetails> newMasters = new HashSet<NodeDetails>();
-
-  // Initial state of nodes in this universe before editing it.
-  Collection<NodeDetails> existingNodes;
-
-  // Initial set of masters in this universe before editing it.
-  Collection<NodeDetails> existingMasters;
 
   @Override
   public void run() {
@@ -49,16 +42,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
-      // Get the existing nodes.
-      existingNodes = universe.getNodes();
-      // Get the existing masters.
-      existingMasters = universe.getMasters();
-      // Get the number of masters currently present in the cluster.
-      int numMasters = existingMasters.size();
-      // For now, we provision the same number of nodes as before.
-      taskParams().userIntent.numNodes = existingNodes.size();
+      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Update the user intent.
       writeUserIntentToUniverse();
@@ -68,44 +52,57 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       updateNodeNames();
 
       LOG.info("Configure numNodes={}, numMasters={}",
-               taskParams().userIntent.numNodes, numMasters);
+               taskParams().userIntent.numNodes, taskParams().userIntent.replicationFactor);
+
+      Collection<NodeDetails> blacklistNodes =
+          PlacementInfoUtil.getTserversToBeRemoved(taskParams().nodeDetailsSet);
+
+      Collection<NodeDetails> nodesToProvision =
+              PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
 
       // Set the old nodes' state to to-be-decommissioned.
-      createSetNodeStateTasks(existingNodes, NodeDetails.NodeState.ToBeDecommissioned)
-          .setUserSubTask(SubTaskType.Provisioning);
+      if (!blacklistNodes.isEmpty()) {
+        createSetNodeStateTasks(blacklistNodes, NodeDetails.NodeState.ToBeDecommissioned)
+            .setUserSubTask(SubTaskType.Provisioning);
+      }
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().nodeDetailsSet).setUserSubTask(SubTaskType.Provisioning);
+      createSetupServerTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(taskParams().nodeDetailsSet).setUserSubTask(SubTaskType.Provisioning);
+      createServerInfoTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(taskParams().nodeDetailsSet, true /* isShell */)
+      createConfigureServerTasks(nodesToProvision, true /* isShell */)
           .setUserSubTask(SubTaskType.InstallingSoftware);
 
-      // Get the new masters from the node list.
-      getNewMasters(newMasters);
+      newMasters = PlacementInfoUtil.getMastersToProvision(taskParams().nodeDetailsSet);
 
       // Creates the YB cluster by starting the masters in the shell mode.
-      createStartMasterTasks(
-          newMasters, true /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
+      if (!newMasters.isEmpty()) {
+        createStartMasterTasks(
+            newMasters, true /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
-      // Wait for masters to be responsive.
-      createWaitForServersTasks(
-          newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
+        // Wait for masters to be responsive.
+        createWaitForServersTasks(
+            newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
+      }
 
-      // Start the tservers in the clusters.
-      createStartTServersTasks(taskParams().nodeDetailsSet)
-          .setUserSubTask(SubTaskType.ConfigureUniverse);
+      Set<NodeDetails> newTservers =
+          PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet);
 
-      // Wait for all tablet servers to be responsive.
-      createWaitForServersTasks(
-          taskParams().nodeDetailsSet, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
+      if (!newTservers.isEmpty()) {
+        // Start the tservers in the clusters.
+        createStartTServersTasks(newTservers).setUserSubTask(SubTaskType.ConfigureUniverse);
+
+        // Wait for all tablet servers to be responsive.
+        createWaitForServersTasks(
+            newTservers, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
+      }
 
       // Set the new nodes' state to running.
-      createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Running)
+      createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Running)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Now finalize the cluster configuration change tasks.
@@ -114,16 +111,19 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform
       // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-      createPlacementInfoTask(
-          newMasters, existingNodes).setUserSubTask(SubTaskType.WaitForDataMigration);
+      createPlacementInfoTask(blacklistNodes).setUserSubTask(SubTaskType.WaitForDataMigration);
 
-      // Wait for %age completion of the tablet move from master.
-      createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
+      if (!blacklistNodes.isEmpty()) {
+        // Wait for %age completion of the tablet move from master.
+        createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
 
-      // Send destroy old set of nodes to ansible and remove them from this universe.
-      createDestroyServerTasks(existingNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
+        // Send destroy old set of nodes to ansible and remove them from this universe.
+        createDestroyServerTasks(blacklistNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
 
-      // Clearing the blacklist on the yb cluster master is handled on the server side.
+        // Clearing the blacklist on the yb cluster master is handled on the server side.
+      }
+
+      // TODO: If only tservers are added or removed, wait for load to balance across all tservers.
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
@@ -151,11 +151,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     for (NodeDetails node : newMasters) {
       mastersToAdd.add(node.nodeName);
     }
+
+    Collection<NodeDetails> removeMasters =
+        PlacementInfoUtil.getMastersToBeRemoved(taskParams().nodeDetailsSet);
+
     // Get the list of node names to remove as masters.
     List<String> mastersToRemove = new ArrayList<String>();
-    for (NodeDetails node : existingMasters) {
+    for (NodeDetails node : removeMasters) {
       mastersToRemove.add(node.nodeName);
     }
+
     // Find the minimum number of master changes where we can perform an add followed by a remove.
     int numIters = Math.min(mastersToAdd.size(), mastersToRemove.size());
 
@@ -172,11 +177,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     for (int idx = numIters; idx < newMasters.size(); idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
     }
+
     // Perform any removals still left.
-    for (int idx = numIters; idx < existingMasters.size(); idx++) {
+    for (int idx = numIters; idx < removeMasters.size(); idx++) {
       createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
-    LOG.info("Change Creation creation done");
   }
 
   private void createChangeConfigTask(String nodeName,
@@ -216,30 +221,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     waitForMove.initialize(params);
     // Add it to the task list.
     taskList.addTask(waitForMove);
-    // Add the task list to the task queue.
-    taskListQueue.add(taskList);
-    return taskList;
-  }
-
-  /**
-   * Creates a task which modifies the blacklisted servers.
-   * 
-   * @param nodes List of blacklisted nodes to be added or removed.
-   * @param isAdd Boolean that controls if the nodes need to be added/removed to the existing
-   *              list of blacklisted nodes on the master.
-   * @return The newly created task to modify the blacklist.
-   */
-  private TaskList createModifyBlackListTask(Collection<NodeDetails> nodes, boolean isAdd) {
-    TaskList taskList = new TaskList("ModifyBlackList", executor);
-    ModifyBlackList.Params params = new ModifyBlackList.Params();
-    params.universeUUID = taskParams().universeUUID;
-    // Create the task.
-    ModifyBlackList ModifyBlackList = new ModifyBlackList();
-    ModifyBlackList.initialize(params);
-    params.nodes = nodes;
-    params.isAdd = isAdd;
-    // Add it to the task list.
-    taskList.addTask(ModifyBlackList);
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
     return taskList;
