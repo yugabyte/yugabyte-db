@@ -31,7 +31,18 @@ class YBClientBuilder::Data {
   Data();
   ~Data();
 
+  // This is a REST endpoint from which the list of master hosts and ports can be queried. This
+  // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
+  std::string master_server_endpoint_;
+
+  // This is a file which contains the master addresses string in it. It is periodically reloaded
+  // to update the master addresses. This takes precedence over 'master_server_addrs_'.
+  std::string master_server_addrs_file_;
+
+  // This vector holds the list of master server addresses. Note that each entry in this vector
+  // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
   std::vector<std::string> master_server_addrs_;
+
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;
 

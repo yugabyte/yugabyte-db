@@ -207,6 +207,16 @@ YBClientBuilder& YBClientBuilder::add_master_server_addr(const string& addr) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::add_master_server_addr_file(const std::string& file) {
+  data_->master_server_addrs_file_ = file;
+  return *this;
+}
+
+YBClientBuilder& YBClientBuilder::add_master_server_endpoint(const string& endpoint) {
+  data_->master_server_endpoint_ = endpoint;
+  return *this;
+}
+
 YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
@@ -226,6 +236,8 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   MessengerBuilder builder("client");
   RETURN_NOT_OK(builder.Build(&c->data_->messenger_));
 
+  c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
+  c->data_->master_server_addrs_file_ = data_->master_server_addrs_file_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
   c->data_->default_admin_operation_timeout_ = data_->default_admin_operation_timeout_;
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;

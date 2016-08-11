@@ -51,7 +51,8 @@ set(CLIENT_LIBS
 # code to use the linking application's malloc implementation.
 set(EXPORTED_CLIENT_LIBS
   ${CLIENT_LIBS}
-  ${YB_BASE_LIBS})
+  ${YB_BASE_LIBS}
+  curl)
 list(REMOVE_ITEM EXPORTED_CLIENT_LIBS tcmalloc profiler)
 
 # We customize the output name/directory of the exported library so that we can

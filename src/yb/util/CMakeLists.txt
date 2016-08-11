@@ -97,6 +97,7 @@ set(UTIL_SRCS
   coding.cc
   condition_variable.cc
   crc.cc
+  curl_util.cc
   debug-util.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc
@@ -196,6 +197,7 @@ set(EXPORTED_UTIL_LIBS ${UTIL_LIBS})
 if(${YB_TCMALLOC_AVAILABLE})
   list(APPEND UTIL_LIBS tcmalloc)
 endif()
+list(APPEND UTIL_LIBS curl)
 
 ADD_EXPORTABLE_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}
@@ -209,10 +211,8 @@ add_dependencies(yb_util gen_version_info)
 #######################################
 
 add_library(yb_test_util
-  test_util.cc
-  curl_util.cc)
+  test_util.cc)
 target_link_libraries(yb_test_util
-  ${CURL_LIBRARIES}
   gflags
   glog
   gmock

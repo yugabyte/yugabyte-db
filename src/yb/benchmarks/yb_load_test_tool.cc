@@ -31,8 +31,12 @@ DEFINE_int32(rpc_timeout_sec, 30, "Timeout for RPC calls, in seconds");
 DEFINE_int32(num_iter, 1, "Run the entire test this number of times");
 
 DEFINE_string(load_test_master_addresses,
-              "localhost",
+              "",
               "Addresses of masters for the cluster to operate on");
+
+DEFINE_string(load_test_master_endpoint,
+              "",
+              "REST endpoint from which the master addresses can be obtained");
 
 DEFINE_string(table_name, "yb_load_test", "Table name to use for YugaByte load testing");
 
@@ -104,7 +108,9 @@ using yb::load_generator::FormatHexForLoadTestKey;
 
 int main(int argc, char* argv[]) {
   gflags::SetUsageMessage(
-    "Usage: load_test_tool --master_addresses master1:port1,...,masterN:portN"
+    "Usage:\n"
+    "    load_test_tool --load_test_master_endpoint http://<metamaster rest endpoint>\n"
+    "    load_test_tool --load_test_master_addresses master1:port1,...,masterN:portN"
   );
   yb::ParseCommandLineFlags(&argc, &argv, true);
   yb::InitGoogleLoggingSafe(argv[0]);
@@ -114,11 +120,18 @@ int main(int argc, char* argv[]) {
 
   for (int i = 0; i < FLAGS_num_iter; ++i) {
     shared_ptr<YBClient> client;
-    CHECK_OK(
-        YBClientBuilder()
-            .add_master_server_addr(FLAGS_load_test_master_addresses)
-            .default_rpc_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout_sec))
-            .Build(&client));
+    YBClientBuilder client_builder;
+    client_builder.default_rpc_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout_sec));
+    if (!FLAGS_load_test_master_addresses.empty() && !FLAGS_load_test_master_endpoint.empty()) {
+      LOG(FATAL) << "Specify either 'load_test_master_addresses' or 'load_test_master_endpoint'";
+      return 0;
+    }
+    if (!FLAGS_load_test_master_addresses.empty()) {
+      client_builder.add_master_server_addr(FLAGS_load_test_master_addresses);
+    } else if (!FLAGS_load_test_master_endpoint.empty()) {
+      client_builder.add_master_server_endpoint(FLAGS_load_test_master_endpoint);
+    }
+    CHECK_OK(client_builder.Build(&client));
 
     const string table_name(FLAGS_table_name);
 

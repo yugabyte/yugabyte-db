@@ -41,6 +41,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread_restrictions.h"
 
@@ -269,7 +270,8 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                                RpcController*)>& func);
 
 YBClient::Data::Data()
-    : latest_observed_timestamp_(YBClient::kNoTimestamp) {
+    : latest_observed_timestamp_(YBClient::kNoTimestamp), master_server_endpoint_(),
+      master_server_addrs_file_(), master_server_addrs_() {
 }
 
 YBClient::Data::~Data() {
@@ -822,9 +824,14 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   DCHECK(deadline.Initialized());
 
   vector<Sockaddr> master_sockaddrs;
+  // Refresh the value of 'master_server_addrs_' if needed.
+  Status s = ReinitializeMasterAddresses();
+  if (!s.ok() && master_server_addrs_.empty()) {
+    cb.Run(s);
+    return;
+  }
   for (const string& master_server_addr : master_server_addrs_) {
     vector<Sockaddr> addrs;
-    Status s;
     // TODO: Do address resolution asynchronously as well.
     s = ParseAddressList(master_server_addr, master::Master::kDefaultPort, &addrs);
     if (!s.ok()) {
@@ -892,6 +899,35 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 Status YBClient::Data::AddMasterAddress(const Sockaddr& sockaddr) {
   HostPort host_port(sockaddr.host(), sockaddr.port());
   master_server_addrs_.push_back(host_port.ToString());
+  return Status::OK();
+}
+
+// Read the master addresses (from a remote endpoint or a file depending on which is specified), and
+// re-initialize the 'master_server_addrs_' variable.
+Status YBClient::Data::ReinitializeMasterAddresses() {
+  if (!master_server_endpoint_.empty()) {
+    faststring buf;
+    RETURN_NOT_OK(EasyCurl().FetchURL(master_server_endpoint_, &buf));
+    // The JSON serialization adds a " character to the beginning and end of the response, remove
+    // those if they are present.
+    std::string master_addrs = buf.ToString();
+    if (master_addrs.at(0) == '"') {
+      master_addrs = master_addrs.erase(0, 1);
+    }
+    if (master_addrs.at(master_addrs.size() - 1) == '"') {
+      master_addrs = master_addrs.erase(master_addrs.size() - 1, 1);
+    }
+    master_server_addrs_.clear();
+    master_server_addrs_.push_back(master_addrs);
+    LOG(INFO) << "Got master addresses = " << master_addrs
+              << " from REST endpoint: " << master_server_endpoint_;
+  } else if (!master_server_addrs_file_.empty()) {
+    LOG(INFO) << "Reinitialize master addresses from file: " << master_server_addrs_file_;
+    // TODO: implement file based reading.
+    return Status::NotSupported("Reading master addresses from file not yet implemented.");
+  } else {
+    LOG(INFO) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
+  }
   return Status::OK();
 }
 

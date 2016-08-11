@@ -1016,6 +1016,8 @@ endif()
 
 ## curl
 find_package(CURL REQUIRED)
+include_directories(SYSTEM ${CURL_INCLUDE_DIRS})
+ADD_THIRDPARTY_LIB(curl STATIC_LIB "${CURL_LIBRARIES}")
 
 ## crcutil
 find_package(Crcutil REQUIRED)
