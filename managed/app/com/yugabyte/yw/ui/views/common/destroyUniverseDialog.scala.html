@@ -1,20 +1,23 @@
-@import com.yugabyte.yw.models._
+@import com.yugabyte.yw.forms._
 
-@(universe: Universe)
+
+@(universeForm: Form[UniverseFormData])
 
 <div id="destroy-universe-dialog" class="modal fade in" role="dialog">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal">&times;</button>
-        <h4 class="modal-title">Destroy Universe: <mark>@universe.name</mark></h4>
+        <h4 class="modal-title">Destroy Universe:
+          <mark>@universeForm.get().universeName</mark>
+        </h4>
       </div>
       <div class="modal-body">
         Are you sure you want to destroy. All the data would be lost!
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger btn-confirm" data-uuid="@universe.universeUUID">Confirm</button>
+        <button type="button" class="btn btn-danger btn-confirm" data-uuid="@universeForm.get().universeUUID">Confirm</button>
       </div>
     </div>
   </div>

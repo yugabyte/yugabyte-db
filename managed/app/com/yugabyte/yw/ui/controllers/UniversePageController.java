@@ -11,15 +11,21 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.forms.GrafanaPanelData;
+import com.yugabyte.yw.forms.UniverseFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.ui.views.html.*;
 
 import play.mvc.Result;
+import play.data.FormFactory;
+import play.data.Form;
 
 public class UniversePageController extends AuthenticatedController {
 
   @Inject
   ApiHelper apiHelper;
+
+  @Inject
+  FormFactory formFactory;
 
   protected static final String GRAFANA_API_ENDPOINT = "/api/dashboards/db/yugabyte-cluster";
   protected static final String GRAFANA_DASHBOARD_URL = "/dashboard-solo/db/yugabyte-cluster";
@@ -33,6 +39,10 @@ public class UniversePageController extends AuthenticatedController {
     String grafanaUrl = conf.getString("yb.grafana.url") + GRAFANA_API_ENDPOINT;
     String grafanaAccessKey = conf.getString("yb.grafana.accessKey");
     List<GrafanaPanelData> grafanaPanelDataList = new ArrayList<GrafanaPanelData>();
+
+    // Fill universe formdata based on Universe object.
+    Form<UniverseFormData> universeForm = formFactory.form(UniverseFormData.class);
+    universeForm = universeForm.fill(UniverseFormData.fromUniverse(universe));
 
     if (grafanaUrl != null && grafanaAccessKey != null) {
       JsonNode grafanaData =
@@ -52,7 +62,7 @@ public class UniversePageController extends AuthenticatedController {
         }
       }
     }
-    return ok(showUniverse.render(universe, grafanaPanelDataList));
+    return ok(showUniverse.render(universeForm, grafanaPanelDataList));
   }
 
   public Result list() {
