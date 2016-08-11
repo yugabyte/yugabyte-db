@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +34,7 @@ import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.data.Form;
 import play.data.FormFactory;
+import play.libs.Json;
 import play.mvc.Result;
 
 public class UniverseController extends AuthenticatedController {
@@ -56,7 +58,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
       Form<UniverseFormData> formData =
-          formFactory.form(UniverseFormData.class).bindFromRequest();
+        formFactory.form(UniverseFormData.class).bindFromRequest();
 
       // Check for any form errors.
       if (formData.hasErrors()) {
@@ -181,9 +183,10 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
 
+    Universe universe;
     // Make sure the universe exists, this method will throw an exception if it does not.
     try {
-      Universe.get(universeUUID);
+      universe = Universe.get(universeUUID);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
@@ -196,12 +199,21 @@ public class UniverseController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);
     LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
 
+    // Add this task uuid to the user universe.
+    CustomerTask.create(customer,
+                        taskUUID,
+                        CustomerTask.TargetType.Universe,
+                        CustomerTask.TaskType.Delete,
+                        universe.name);
+
     // Remove the entry for the universe from the customer table.
     customer.removeUniverseUUID(universeUUID);
     customer.save();
     LOG.info("Dropped universe " + universeUUID + " for customer [" + customer.name + "]");
 
-    return ApiResponse.success(taskUUID);
+    ObjectNode response = Json.newObject();
+    response.put("taskUUID", taskUUID.toString());
+    return ApiResponse.success(response);
   }
 
   /**

@@ -3,20 +3,24 @@
 @import play.api._
 @import common._
 
-@(universe: Universe, panelList: List[GrafanaPanelData] )
+
+@(universeForm: Form[UniverseFormData], panelList: List[GrafanaPanelData] )
 
 @main(true, "show-universe") {
+<script src="@routes.Assets.versioned("javascripts/universeForm.js")"></script>
+<script src="@routes.Assets.versioned("lib/select2/dist/js/select2.min.js")"></script>
+<link rel='stylesheet' href='@routes.Assets.versioned("lib/select2/dist/css/select2.min.css")'>
 
 <div id="page-wrapper" style="min-height: 1191px;">
   <div class="row header-row">
     <div class="col-lg-9">
-      <h1>Universe: @universe.name</h1>
+      <h1>Universe: @universeForm.get().universeName</h1>
     </div>
     <div class="col-lg-3">
       <button class="btn btn-primary action-btn" data-toggle="modal" data-target="#edit-universe-dialog">
         <span class="fa  fa-pencil-square-o" aria-hidden="true"></span> Edit
       </button>
-      <button class="btn btn-default action-btn" data-href="@universe.universeUUID" data-toggle="modal"
+      <button class="btn btn-default action-btn" data-href="@universeForm.get().universeUUID" data-toggle="modal"
               data-target="#destroy-universe-dialog">
         <span class="fa  fa-minus-square-o" aria-hidden="true"></span> Destroy
       </button>
@@ -34,5 +38,9 @@
   </div>
   }
 </div>
-@destroyUniverseDialog(universe)
+@editUniverseDialog(universeForm)
+@destroyUniverseDialog(universeForm)
+<input type="hidden" id="selectedProviderUUID" value="@universeForm.get().providerUUID" />
+<input type="hidden" id="selectedRegionList" value="@universeForm.get().regionList" />
+<input type="hidden" id="universeUUID" value="@universeForm.get().universeUUID" />
 }
