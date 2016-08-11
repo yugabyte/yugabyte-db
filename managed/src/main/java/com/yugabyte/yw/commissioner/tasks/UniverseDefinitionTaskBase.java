@@ -34,7 +34,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   // Enum for specifying the server type.
   public enum ServerType {
     MASTER,
-    TSERVER
+    TSERVER,
+    EITHER
   }
 
   // The task params.
@@ -60,9 +61,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
-        for (NodeDetails node : taskParams().nodeDetailsSet) {
-          universeDetails.nodeDetailsSet.add(node);
-        }
+        universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
         universeDetails.userIntent = taskParams().userIntent;
         universeDetails.nodePrefix = taskParams().nodePrefix;
         universeDetails.placementInfo = taskParams().placementInfo;
@@ -102,15 +101,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
       LOG.info("Changing in-memory node name from " + node.nodeName + " to " + newName);
       node.nodeName = newName;
-    }
-  }
-
-  // Get the list of new masters to be provisioned.
-  public void getNewMasters(Set<NodeDetails> newMasters) {
-    for (NodeDetails node : taskParams().nodeDetailsSet) {
-      if (node.isMaster) {
-        newMasters.add(node);
-      }
     }
   }
 
@@ -307,9 +297,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Creates a task list to update the placement information by making a call to the master leader
    * of the cluster just created and adds it to the task queue.
+   *
+   * @param blacklistNodes    list of nodes which are being decommissioned.
    */
-  public TaskList createPlacementInfoTask(Set<NodeDetails> newMasters,
-                                          Collection<NodeDetails> blacklistNodes) {
+  public TaskList createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
     TaskList taskList = new TaskList("UpdatePlacementInfo", executor);
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
@@ -317,7 +308,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
     // Set the number of masters.
-    params.numMasters = newMasters.size();
+    params.numReplicas = taskParams().userIntent.replicationFactor;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<String>();

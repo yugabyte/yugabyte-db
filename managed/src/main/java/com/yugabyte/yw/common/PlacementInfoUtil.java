@@ -16,7 +16,9 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -27,7 +29,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -60,12 +61,111 @@ public class PlacementInfoUtil {
     // universe and might get overwritten when this operation is finally run.
     taskParams.expectedUniverseVersion = universe.version;
 
+    taskParams.nodeDetailsSet = new HashSet<NodeDetails>();
+    // If the universe already exists, figure out the delta change that is intended.
+    int numNewNodes = taskParams.userIntent.numNodes;
+    int numNewMasters = taskParams.userIntent.replicationFactor;
+    if (universe.getUniverseDetails().nodeDetailsSet.size() != 0) {
+      UserIntent existingIntent = universe.getUniverseDetails().userIntent;
+      verifyEditParams(taskParams.userIntent, existingIntent);
+
+      boolean areNumNodesSame = existingIntent.numNodes == taskParams.userIntent.numNodes;
+      boolean areRegionListsSame =
+          existingIntent.regionList.equals(taskParams.userIntent.regionList);
+      Collection<NodeDetails> existingNodes = universe.getNodes();
+      if (!areNumNodesSame && areRegionListsSame) {
+        // Expand universe case with new tserver's addition only.
+        numNewNodes = taskParams.userIntent.numNodes - existingIntent.numNodes;
+        numNewMasters = 0;
+        LOG.info("Num nodes changing from {} to {}.",
+                 existingIntent.numNodes, taskParams.userIntent.numNodes);
+        taskParams.nodeDetailsSet.addAll(existingNodes);
+      } else {
+        // Here for full move based edit or full move + expand case.
+        for (NodeDetails node : existingNodes) {
+          node.state = NodeDetails.NodeState.ToBeDecommissioned;
+          taskParams.nodeDetailsSet.add(node);
+        }
+      }
+    }
+
     // Compute the nodes that should be configured for this operation.
-    taskParams.nodeDetailsSet = configureNewNodes(taskParams.nodePrefix,
-                                               getStartIndex(universe),
-                                               taskParams.userIntent.numNodes,
-                                               taskParams.userIntent.replicationFactor,
-                                               taskParams.placementInfo);
+    taskParams.nodeDetailsSet.addAll(configureNewNodes(taskParams.nodePrefix,
+                                                       getStartIndex(universe),
+                                                       numNewNodes,
+                                                       numNewMasters,
+                                                       taskParams.placementInfo));
+  }
+
+  public static Set<NodeDetails> getMastersToBeRemoved(Set<NodeDetails> nodeDetailsSet) {
+    return getServersToBeRemoved(nodeDetailsSet, ServerType.MASTER);
+  }
+
+  public static Set<NodeDetails> getTserversToBeRemoved(Set<NodeDetails> nodeDetailsSet) {
+    return getServersToBeRemoved(nodeDetailsSet, ServerType.TSERVER);
+  }
+
+  private static Set<NodeDetails> getServersToBeRemoved(Set<NodeDetails> nodeDetailsSet,
+                                                       ServerType serverType) {
+    Set<NodeDetails> servers = new HashSet<NodeDetails>();
+
+    for (NodeDetails node : nodeDetailsSet) {
+      if (node.state == NodeDetails.NodeState.ToBeDecommissioned &&
+          (serverType == ServerType.MASTER && node.isMaster ||
+           serverType == ServerType.TSERVER && node.isTserver)) {
+        servers.add(node);
+      }
+    }
+
+    return servers;
+  }
+
+  public static Set<NodeDetails> getNodesToProvision(Set<NodeDetails> nodeDetailsSet) {
+    return getServersToProvision(nodeDetailsSet, ServerType.EITHER);
+  }
+
+  public static Set<NodeDetails> getMastersToProvision(Set<NodeDetails> nodeDetailsSet) {
+    return getServersToProvision(nodeDetailsSet, ServerType.MASTER);
+  }
+
+  public static Set<NodeDetails> getTserversToProvision(Set<NodeDetails> nodeDetailsSet) {
+    return getServersToProvision(nodeDetailsSet, ServerType.TSERVER);
+  }
+
+  private static Set<NodeDetails> getServersToProvision(Set<NodeDetails> nodeDetailsSet,
+                                                        ServerType serverType) {
+    Set<NodeDetails> nodesToProvision = new HashSet<NodeDetails>();
+    for (NodeDetails node : nodeDetailsSet) {
+      if (node.state == NodeDetails.NodeState.ToBeAdded &&
+          (serverType == ServerType.EITHER ||
+           serverType == ServerType.MASTER && node.isMaster ||
+           serverType == ServerType.TSERVER && node.isTserver)) {
+        nodesToProvision.add(node);
+      }
+    }
+    return nodesToProvision;
+  }
+
+  /**
+   * Verify that the planned changes for an Edit Universe operation are allowed.
+   *
+   * @param userIntent     target user intent.
+   * @param existingIntent existing universe intent.
+   */
+  private static void verifyEditParams(UserIntent userIntent,
+                                       UserIntent existingIntent) {
+    // Rule out some of the universe changes that we do not allow (they can be enabled as needed).
+    if (existingIntent.replicationFactor != userIntent.replicationFactor) {
+      LOG.error("Replication factor cannot be changed from {} to {}",
+                existingIntent.replicationFactor, userIntent.replicationFactor);
+      throw new UnsupportedOperationException("Replication factor cannot be modified.");
+    }
+
+    if (userIntent.numNodes < existingIntent.numNodes) {
+      LOG.error("Number of nodes cannot be reduced from {} to {}",
+                userIntent.numNodes, existingIntent.numNodes);
+      throw new UnsupportedOperationException("Number of nodes reduction is not supported yet.");
+    }
   }
 
   /**
@@ -74,7 +174,7 @@ public class PlacementInfoUtil {
    * @param nodePrefix node name prefix.
    * @param startIndex index to used for node naming.
    * @param numNodes   number of nodes desired.
-   * @param numMasters number of masters among these nodes.
+   * @param numMastersToChoose number of masters to be chosen among these nodes.
    * @param placementInfo desired placement info.
    *
    * @return set of node details with their placement info filled in.
@@ -82,7 +182,7 @@ public class PlacementInfoUtil {
   private static Set<NodeDetails> configureNewNodes(String nodePrefix,
                                                     int startIndex,
                                                     int numNodes,
-                                                    int numMasters,
+                                                    int numMastersToChoose,
                                                     PlacementInfo placementInfo) {
     Set<NodeDetails> newNodesSet = new HashSet<NodeDetails>();
     Map<String, NodeDetails> newNodesMap = new HashMap<String, NodeDetails>();
@@ -90,7 +190,7 @@ public class PlacementInfoUtil {
     // Create the names and known properties of all the cluster nodes.
     int cloudIdx = 0;
     int regionIdx = 0;
-    int azIdx = 0;
+    int azIdx = 0; // TODO: Pick a different index from the last round.
     for (int nodeIdx = startIndex; nodeIdx < startIndex + numNodes; nodeIdx++) {
       NodeDetails nodeDetails = new NodeDetails();
       // Create a temporary node name. These are fixed once the operation is actually run.
@@ -126,8 +226,12 @@ public class PlacementInfoUtil {
           placementInfo.cloudList.size();
     }
 
-    // Select the masters for this cluster based on subnets.
-    setMasters(newNodesMap, numMasters);
+    // For expand/shrink universe case, we do not need to select any new masters and as such
+    // numMastersToChoose will be zero.
+    if (numMastersToChoose > 0) {
+      // Select the masters for this cluster based on subnets.
+      selectMasters(newNodesMap, numMastersToChoose);
+    }
 
     return newNodesSet;
   }
@@ -139,7 +243,7 @@ public class PlacementInfoUtil {
    * @param numMasters : the number of masters to choose
    * @return nothing
    */
-  private static void setMasters(Map<String, NodeDetails> nodesMap, int numMasters) {
+  private static void selectMasters(Map<String, NodeDetails> nodesMap, int numMasters) {
     // Group the cluster nodes by subnets.
     Map<String, TreeSet<String>> subnetsToNodenameMap = new HashMap<String, TreeSet<String>>();
     for (Entry<String, NodeDetails> entry : nodesMap.entrySet()) {
