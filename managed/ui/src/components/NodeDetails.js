@@ -45,7 +45,6 @@ export default class NodeDetails extends Component {
         <BootstrapTable data={nodeDetailRows}>
           <TableHeaderColumn dataField="name" isKey={true}>Instance Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
-          <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
           <TableHeaderColumn
               dataField="isMaster"
               dataFormat={ formatIpPort }

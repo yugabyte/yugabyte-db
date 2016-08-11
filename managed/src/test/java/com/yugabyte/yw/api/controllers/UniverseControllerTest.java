@@ -327,6 +327,59 @@ public class UniverseControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUniverseExpand() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+
+    Provider p = Provider.create("aws", "Amazon");
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    InstanceType i =
+      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
+
+    ObjectNode topJson = Json.newObject();
+    ObjectNode bodyJson = Json.newObject();
+    ArrayNode regionList = Json.newArray();
+    regionList.add(r.uuid.toString());
+    bodyJson.set("regionList", regionList);
+    bodyJson.put("isMultiAZ", true);
+    bodyJson.put("universeName", universe.name);
+    bodyJson.put("numNodes", 5);
+    bodyJson.put("instanceType", i.getInstanceTypeCode());
+    bodyJson.put("replicationFactor", 3);
+    topJson.set("userIntent", bodyJson);
+
+    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
+                                             "/universes/" + universe.universeUUID)
+                              .cookie(validCookie).bodyJson(topJson));
+
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("universeUUID").asText(), is(notNullValue()));
+    JsonNode universeDetails = json.get("universeDetails");
+    assertThat(universeDetails, is(notNullValue()));
+    JsonNode userIntent = universeDetails.get("userIntent");
+    assertThat(userIntent, is(notNullValue()));
+
+    // Try universe expand only, and re-check.
+    bodyJson.put("numNodes", 9);
+    result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
+                                      "/universes/" + universe.universeUUID)
+                       .cookie(validCookie).bodyJson(topJson));
+    assertEquals(OK, result.status());
+    json = Json.parse(contentAsString(result));
+    assertThat(json.get("universeUUID").asText(), is(notNullValue()));
+    universeDetails = json.get("universeDetails");
+    assertThat(universeDetails, is(notNullValue()));
+    userIntent = universeDetails.get("userIntent");
+    assertThat(userIntent, is(notNullValue()));
+  }
+
+  @Test
   public void testUniverseDestroyInvalidUUID() {
     UUID randomUUID = UUID.randomUUID();
     Result result = route(fakeRequest("DELETE", "/api/customers/" + customer.uuid + "/universes/" + randomUUID)

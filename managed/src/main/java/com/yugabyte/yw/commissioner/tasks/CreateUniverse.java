@@ -10,13 +10,11 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class CreateUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
-
-  // The subset of new nodes that are masters.
-  protected Set<NodeDetails> newMasters = new HashSet<NodeDetails>();
 
   @Override
   public void run() {
@@ -51,7 +49,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setUserSubTask(SubTaskType.InstallingSoftware);
 
       // Get the new masters from the node list.
-      getNewMasters(newMasters);
+      Set<NodeDetails> newMasters =
+          PlacementInfoUtil.getMastersToProvision(taskParams().nodeDetailsSet);
 
       // Creates the YB cluster by starting the masters in the create mode.
       createStartMasterTasks(
@@ -77,8 +76,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createWaitForMasterLeaderTask().setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Persist the placement info into the YB master.
-      createPlacementInfoTask(
-          newMasters, null /* blacklistNodes */).setUserSubTask(SubTaskType.ConfigureUniverse);
+      createPlacementInfoTask(null /* blacklistNodes */)
+          .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
