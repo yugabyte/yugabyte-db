@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.UniverseFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.ui.views.html.*;
 
 import play.data.Form;
