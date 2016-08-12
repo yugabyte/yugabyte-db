@@ -35,6 +35,18 @@ public class MetaMasterController extends Controller {
     }
   }
 
+  public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
+    // TODO: verify customer has the universe.
+    try {
+      // Lookup the entry for the instanceUUID.
+      Universe universe = Universe.get(universeUUID);
+      return ApiResponse.success(universe.getMasterAddresses());
+    } catch (RuntimeException e) {
+      LOG.error("Error finding universe", e);
+      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
+    }
+  }
+
   public static class MastersList {
     public List<MasterNode> masters = new ArrayList<MasterNode>();
 
