@@ -276,8 +276,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * package.
    *
    * @param nodes : a collection of nodes that need to be created
+   * @param isMasterInShellMode : true if we are configuring a master node in shell mode
    */
-  public void createConfigureServerTasks(Collection<NodeDetails> nodes) {
+  public void createConfigureServerTasks(Collection<NodeDetails> nodes,
+                                         boolean isMasterInShellMode) {
     TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -289,6 +291,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
       params.azUuid = node.azUuid;
+      // Set if this node is a master in shell mode.
+      params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
       params.ybServerPkg = taskParams().ybServerPkg;
       // Create the Ansible task to get the server info.
