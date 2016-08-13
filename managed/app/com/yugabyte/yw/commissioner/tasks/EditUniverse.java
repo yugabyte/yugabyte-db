@@ -93,7 +93,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createServerInfoTasks(newNodesMap.values());
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(newNodesMap.values());
+      createConfigureServerTasks(newNodesMap.values(), true /* isShell */);
 
       // Creates the YB cluster by starting the masters in the shell mode.
       createClusterStartTasks(newMasters, true /* isShell */);
@@ -194,7 +194,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
   }
-  
+
   private void createWaitForDataMoveTask() {
     TaskList taskList = new TaskList("WaitForDataMove", executor);
     WaitForDataMove.Params params = new WaitForDataMove.Params();

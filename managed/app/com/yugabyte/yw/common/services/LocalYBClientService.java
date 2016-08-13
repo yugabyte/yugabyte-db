@@ -2,12 +2,15 @@
 
 package com.yugabyte.yw.common.services;
 
-import com.google.inject.Inject;
-import org.yb.client.YBClient;
-import javax.inject.Singleton;
-import play.inject.ApplicationLifecycle;
-
 import java.util.concurrent.CompletableFuture;
+
+import javax.inject.Singleton;
+
+import org.yb.client.YBClient;
+
+import com.google.inject.Inject;
+
+import play.inject.ApplicationLifecycle;
 
 @Singleton
 public class LocalYBClientService implements YBClientService {
@@ -31,7 +34,7 @@ public class LocalYBClientService implements YBClientService {
       try {
         client.close();
       } catch (Exception e) {
-        
+
       }
       client = getNewClient(masterHPs);
 
@@ -39,11 +42,8 @@ public class LocalYBClientService implements YBClientService {
     }
     return client;
   }
-  
+
   private YBClient getNewClient(String masterHPs) {
-    return new YBClient.YBClientBuilder(masterHPs)
-           .defaultAdminOperationTimeoutMs(600)
-           .defaultOperationTimeoutMs(600)
-           .build();
+    return new YBClient.YBClientBuilder(masterHPs).build();
   }
 }

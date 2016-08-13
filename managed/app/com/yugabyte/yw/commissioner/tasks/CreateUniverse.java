@@ -58,7 +58,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createServerInfoTasks(newNodesMap.values());
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(newNodesMap.values());
+      createConfigureServerTasks(newNodesMap.values(), false /* isShell */);
 
       // Creates the YB cluster by starting the masters in the create mode.
       createClusterStartTasks(newMasters, false /* isShell */);
