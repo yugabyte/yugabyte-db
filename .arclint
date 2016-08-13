@@ -1,4 +1,14 @@
 {
   "linters": {
+    "text": {
+      "type": "text",
+      "text.max-line-length": 100
+    },
+    "pycodestyle": {
+      "type": "pep8",
+      "include": "(\\.py$)",
+      "exclude": "(^thirdparty/)",
+      "bin": "pycodestyle"
+    }
   }
 }
