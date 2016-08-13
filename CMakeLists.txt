@@ -777,7 +777,7 @@ endfunction()
 
 # This is like ADD_EXECUTABLE, but does some of our custom postprocessing.
 macro(ADD_YB_EXECUTABLE _target)
-  _add_executable(${_target} ${ARGN})
+  add_executable(${_target} ${ARGN})
   POSTPROCESS_LIBRARY_OR_EXECUTABLE(${_target})
 endmacro()
 
