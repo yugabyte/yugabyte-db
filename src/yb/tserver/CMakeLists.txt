@@ -138,7 +138,7 @@ target_link_libraries(tserver
 # yb-tserver
 #########################################
 
-add_executable(yb-tserver tablet_server_main.cc)
+add_yb_executable(yb-tserver tablet_server_main.cc)
 target_link_libraries(yb-tserver
   tserver
   dl

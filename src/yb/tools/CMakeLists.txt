@@ -35,20 +35,20 @@ add_library(yb_tools_util
 target_link_libraries(yb_tools_util
   ${LINK_LIBS})
 
-add_executable(create-demo-table create-demo-table.cc)
+add_yb_executable(create-demo-table create-demo-table.cc)
 target_link_libraries(create-demo-table
   ${LINK_LIBS})
 
-add_executable(insert-generated-rows insert-generated-rows.cc)
+add_yb_executable(insert-generated-rows insert-generated-rows.cc)
 target_link_libraries(insert-generated-rows
   yb_tools_util
   ${LINK_LIBS})
 
-add_executable(yb-admin yb-admin.cc)
+add_yb_executable(yb-admin yb-admin.cc)
 target_link_libraries(yb-admin
   ${LINK_LIBS})
 
-add_executable(yb-ts-cli ts-cli.cc)
+add_yb_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
   ${LINK_LIBS})
 
@@ -60,12 +60,12 @@ target_link_libraries(fs_tool
   consensus
   tablet)
 
-add_executable(yb-fs_list fs_list-tool.cc)
+add_yb_executable(yb-fs_list fs_list-tool.cc)
 target_link_libraries(yb-fs_list
   ${LINK_LIBS}
   fs_tool)
 
-add_executable(yb-fs_dump fs_dump-tool.cc)
+add_yb_executable(yb-fs_dump fs_dump-tool.cc)
 target_link_libraries(yb-fs_dump
   ${LINK_LIBS}
   fs_tool)
@@ -87,7 +87,7 @@ target_link_libraries(yb-ysck
   ysck
 )
 
-add_executable(yb-pbc-dump pbc-dump.cc)
+add_yb_executable(yb-pbc-dump pbc-dump.cc)
 target_link_libraries(yb-pbc-dump
   ${LINK_LIBS}
 )

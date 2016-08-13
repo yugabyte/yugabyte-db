@@ -7,9 +7,9 @@
 # dependencies are packaged. Also, there is an ad-hoc fix for glog's rpath so that it can find
 # gflags. We also run this script after downloading pre-build third-party dependencies as well.
 # Finally, there is a mode where this script can do the same on YugaByte binaries after the main
-# build. That mode is triggered using the --build-root option. On Mac OS X, we simply fix some
-# librocksdb-related issues. The differences between Linux and Mac OS X are caused by different
-# mechanisms of dynamic library resolution in these operating systems.
+# build. That mode is triggered using the --build-root option.
+
+# This is only needed on Linux.
 
 import argparse
 import logging
@@ -114,7 +114,9 @@ def main():
 
     elf_files = []
 
-    is_mac = sys.platform == 'darwin'
+    if sys.platform == 'darwin':
+        logging.info("fix_rpath.py does not have to do anything on Mac OS X anymore")
+        return True
 
     if args.build_root:
         build_root = args.build_root.strip()
@@ -126,10 +128,7 @@ def main():
             return False
         build_root = os.path.realpath(build_root)
 
-        if is_mac:
-            logging.info("Fixing librocksdb path entries for the main build on Mac OS X")
-        else:
-            logging.info("Fixing rpath/runpath for the main build on Linux")
+        logging.info("Fixing rpath/runpath for the main build on Linux")
         prefix_dirs = [build_root]
 
         # We need to add this third-party dependencies directory containing libgflags to some
@@ -151,22 +150,10 @@ def main():
         is_main_build = False
         is_thirdparty = True
 
-    if is_mac and is_thirdparty:
-        logging.info(
-            "Nothing to do for third-party build rpath fix-up on Mac OS X because we never " +
-            "package/move the thirdparty directory on this platform. If you want to " +
-            "fix rpath for YugaByte binaries/libraries, please specify --build-root.")
-        return True
-
-    if is_mac:
-        librocksdb_dylib_name = 'librocksdb_debug.4.6.dylib'
-        librocksdb_dylib_real_path = os.path.realpath(
-            os.path.join(build_root, 'rocksdb-build', librocksdb_dylib_name))
+    if os.path.isfile('/usr/bin/patchelf'):
+        linux_change_rpath_cmd = 'patchelf --set-rpath'
     else:
-        if os.path.isfile('/usr/bin/patchelf'):
-            linux_change_rpath_cmd = 'patchelf --set-rpath'
-        else:
-            linux_change_rpath_cmd = 'chrpath -r'
+        linux_change_rpath_cmd = 'chrpath -r'
 
     num_binaries_no_rpath_change = 0
     num_binaries_updated_rpath = 0
@@ -184,42 +171,6 @@ def main():
                         and not file_name.endswith('.sh')
                         and not file_name.endswith('.py')
                         and not file_name.endswith('.la')):
-
-                    # -----------------------------------------------------------------------------
-                    # Mac OS X
-                    # -----------------------------------------------------------------------------
-
-                    if is_mac:
-                        # For Mac OS X builds we only do a minimal fix for the librocksdb path.
-                        install_name_tool_exit_code = os.system(
-                            'install_name_tool -change %s %s %s' % (
-                                pipes.quote(librocksdb_dylib_name),
-                                pipes.quote(librocksdb_dylib_real_path),
-                                pipes.quote(binary_path)
-                            )
-                        ) >> 8
-                        if install_name_tool_exit_code != 0:
-                            logging.error(("Failed to update librocksdb path for '{}' using " +
-                                           "install_name_tool").format(binary_path))
-                            return False
-
-                        original_real_rpath_entries = get_rpath_on_mac(binary_path)
-                        if default_deps_lib_dir not in original_real_rpath_entries:
-                            logging.info("Adding {} to {}'s rpath".format(default_deps_lib_dir,
-                                                                          binary_path))
-                            if os.system(
-                                'install_name_tool -add_rpath {} {}'.format(
-                                    pipes.quote(default_deps_lib_dir),
-                                    pipes.quote(binary_path)
-                                )
-                            ) >> 8 != 0:
-                                raise RuntimeError(
-                                    "Failed to add rpath to '{}'".format(binary_path))
-                            num_binaries_updated_rpath += 1
-                        else:
-                            num_binaries_no_rpath_change += 1
-
-                        continue
 
                     # -----------------------------------------------------------------------------
                     # Linux
@@ -345,17 +296,16 @@ def main():
         num_binaries_no_rpath_change, num_binaries_updated_rpath))
 
     could_resolve_all = True
-    if not is_mac:
-        logging.info("Checking if all libraries can be resolved")
-        for binary_path in elf_files:
-            all_libs_found, missing_libs = run_ldd(binary_path, report_missing_libs=True)
-            if not all_libs_found:
-                could_resolve_all = False
+    logging.info("Checking if all libraries can be resolved")
+    for binary_path in elf_files:
+        all_libs_found, missing_libs = run_ldd(binary_path, report_missing_libs=True)
+        if not all_libs_found:
+            could_resolve_all = False
 
-        if could_resolve_all:
-            logging.info("All libraries resolved successfully!")
-        else:
-            logging.error("Some libraries could not be resolved.")
+    if could_resolve_all:
+        logging.info("All libraries resolved successfully!")
+    else:
+        logging.error("Some libraries could not be resolved.")
 
     return is_success and could_resolve_all
 

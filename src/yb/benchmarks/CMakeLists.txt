@@ -25,13 +25,13 @@ target_link_libraries(tpch
   integration-tests)
 
 # tpch1
-add_executable(tpch1 tpch/tpch1.cc)
+add_yb_executable(tpch1 tpch/tpch1.cc)
 target_link_libraries(tpch1
   tpch
   ${YB_TEST_LINK_LIBS})
 
 # tpch_real_world
-add_executable(tpch_real_world tpch/tpch_real_world.cc)
+add_yb_executable(tpch_real_world tpch/tpch_real_world.cc)
 target_link_libraries(tpch_real_world
   tpch
   ${YB_TEST_LINK_LIBS})
@@ -56,7 +56,7 @@ set(YB_TEST_LINK_LIBS tpch ${YB_TEST_LINK_LIBS})
 
 ADD_YB_TEST(tpch/rpc_line_item_dao-test)
 
-add_executable(yb_load_test_tool yb_load_test_tool.cc)
+add_yb_executable(yb_load_test_tool yb_load_test_tool.cc)
 target_link_libraries(
     yb_load_test_tool
     ${YB_TEST_LINK_LIBS})

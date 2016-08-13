@@ -87,7 +87,7 @@ ADD_YB_TEST(master-test RESOURCE_LOCK "master-web-port")
 ADD_YB_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")
 
 # Actual master executable
-add_executable(yb-master master_main.cc)
+add_yb_executable(yb-master master_main.cc)
 target_link_libraries(yb-master
   master
   ${YB_BASE_LIBS})

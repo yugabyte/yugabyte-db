@@ -747,6 +747,40 @@ endfunction()
 # Testing
 ############################################################
 
+# For whatever reason, CMake does not use the "@rpath" prefix for the librocksdb dynamic
+# library dependency on Mac OS X, so even having the directory containing the librocksdb
+# library on the rpath does not help. Here, we ensure that the dynamic library dependency
+# entry has the format of "@rpath/librocksdb_debug.4.6.dylib" (also note that the patch
+# version is omitted, so it is 4.6, not 4.6.0).
+function(FIX_ROCKSDB_RPATH TEST_OR_LIB_NAME)
+  if(APPLE AND "${YB_LINK}" STREQUAL "d" AND
+     NOT "${TEST_OR_LIB_NAME}" STREQUAL "rocksdb" AND
+     NOT "${TEST_OR_LIB_NAME}" MATCHES "_exported$")
+    add_custom_command(TARGET "${TEST_OR_LIB_NAME}"
+      POST_BUILD COMMAND
+      "${YB_SRC_DIR}/build-support/fix_rocksdb_rpath_on_mac.sh"
+      "${TEST_OR_LIB_NAME}"
+      "lib${TEST_OR_LIB_NAME}.dylib"
+      "${YB_BUILD_DIR}/bin/${TEST_OR_LIB_NAME}"
+      "${YB_BUILD_DIR}/lib/lib${TEST_OR_LIB_NAME}.dylib"
+      --
+      ${CMAKE_INSTALL_NAME_TOOL}
+      -change "${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}"
+      "@rpath/${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}")
+  endif()
+endfunction()
+
+# This is called for all library or executable targest.
+function(POSTPROCESS_LIBRARY_OR_EXECUTABLE TARGET)
+  FIX_ROCKSDB_RPATH(${TARGET})
+endfunction()
+
+# This is like ADD_EXECUTABLE, but does some of our custom postprocessing.
+macro(ADD_YB_EXECUTABLE _target)
+  _add_executable(${_target} ${ARGN})
+  POSTPROCESS_LIBRARY_OR_EXECUTABLE(${_target})
+endmacro()
+
 # Add a new test case, with or without an executable that should be built.
 #
 # REL_TEST_NAME is the name of the test. It may be a single component
@@ -766,20 +800,7 @@ function(ADD_YB_TEST REL_TEST_NAME)
     set(TEST_PATH "${EXECUTABLE_OUTPUT_PATH}/${TEST_NAME}")
     add_executable(${TEST_NAME} "${REL_TEST_NAME}.cc")
     target_link_libraries(${TEST_NAME} ${YB_TEST_LINK_LIBS})
-
-    if(APPLE AND "${YB_LINK}" STREQUAL "d")
-      # For whatever reason, CMake does not use the "@rpath" prefix for the librocksdb dynamic
-      # library dependency on Mac OS X, so even having the directory containing the librocksdb
-      # library on the rpath does not help. Here, we ensure that the dynamic library dependency
-      # entry has the format of "@rpath/librocksdb_debug.4.6.dylib" (also note that the patch
-      # version is omitted, so it is 4.6, not 4.6.0).
-      add_custom_command(TARGET "${TEST_NAME}"
-        POST_BUILD COMMAND
-        ${CMAKE_INSTALL_NAME_TOOL}
-        -change "${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}"
-        "@rpath/${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}"
-        "${YB_BUILD_DIR}/bin/${TEST_NAME}")
-    endif()
+    POSTPROCESS_LIBRARY_OR_EXECUTABLE(${TEST_NAME})
   else()
     # No executable, just invoke the test (probably a script) directly.
     get_filename_component(TEST_NAME_WITH_EXT ${REL_TEST_NAME} NAME)
@@ -1176,6 +1197,13 @@ add_subdirectory(src/rocksdb)
 ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
 add_dependencies(rocksdb build_rocksdb_library)
 ADD_GLOBAL_RPATH_ENTRY("${ROCKSDB_BUILD_DIR}")
+
+if(APPLE)
+  macro(add_library _target)
+    _add_library(${_target} ${ARGN})
+    POSTPROCESS_LIBRARY_OR_EXECUTABLE(${_target})
+  endmacro()
+endif()
 
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
