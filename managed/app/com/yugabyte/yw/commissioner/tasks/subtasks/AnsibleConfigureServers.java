@@ -11,6 +11,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleConfigureServers.class);
 
   public static class Params extends NodeTaskParams {
+    public boolean isMasterInShellMode = false;
     public String ybServerPkg;
   }
 
@@ -22,12 +23,15 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   @Override
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
+    String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
     String command = "yb_server_configure.py " + taskParams().nodeName +
                      " --package " + taskParams().ybServerPkg +
                      " --cloud " + taskParams().cloud +
                      " --region " + taskParams().getRegion().code +
-                     " --master_addresses " +
-                     Universe.get(taskParams().universeUUID).getMasterAddresses();
+                     " --master_addresses_for_tserver " + masterAddresses;
+    if (!taskParams().isMasterInShellMode) {
+      command += " --master_addresses_for_master " + masterAddresses;
+    }
 
     // Execute the ansible command.
     execCommand(command);

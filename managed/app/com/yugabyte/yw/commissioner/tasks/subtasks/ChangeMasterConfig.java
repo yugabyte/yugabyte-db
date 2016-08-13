@@ -39,6 +39,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     public OpType opType;
   }
 
+  @Override
   protected Params taskParams() {
     return (Params)taskParams;
   }
@@ -107,9 +108,9 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       }
 
       YBClient client = ybService.getClient(masterAddresses);
-      // If a new leader got elected, then the Raft Consensus algorithm requirement does not 
+      // If a new leader got elected, then the Raft Consensus algorithm requirement does not
       // let it perform any change config ops in the current term without a commit in the same term.
-      // So this check waits for a commit of a NO_OP after leader election.  
+      // So this check waits for a commit of a NO_OP after leader election.
       if (!waitForLeaderReadyToDoChangeConfig(client, client.getDefaultAdminOperationTimeoutMs())) {
         String msg = "Master leader in " + masterAddresses + " not ready for " +
                      " ChangeConfig op via '" + getName() +
