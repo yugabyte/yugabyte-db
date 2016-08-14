@@ -126,10 +126,14 @@ Status GetLastOpIdForReplica(const std::string& tablet_id,
 //
 // Requires that all servers are running. Returns Status::TimedOut if the
 // indexes do not converge within the given timeout.
+//
+// If actual_index is not nullptr, the index that the servers have agreed on is written to
+// actual_index. If the servers fail to agree, it is set to zero.
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
                              const std::string& tablet_id,
-                             int64_t minimum_index);
+                             int64_t minimum_index,
+                             int64_t* actual_index = nullptr);
 
 // Wait until all specified replicas have logged at least the given index.
 // Unlike WaitForServersToAgree(), the servers do not actually have to converge

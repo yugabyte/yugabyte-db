@@ -149,10 +149,14 @@ Status GetLastOpIdForReplica(const std::string& tablet_id,
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
                              const string& tablet_id,
-                             int64_t minimum_index) {
+                             int64_t minimum_index,
+                             int64_t* actual_index) {
   MonoTime now = MonoTime::Now(MonoTime::COARSE);
   MonoTime deadline = now;
   deadline.AddDelta(timeout);
+  if (actual_index != nullptr) {
+    *actual_index = 0;
+  }
 
   for (int i = 1; now.ComesBefore(deadline); i++) {
     vector<TServerDetails*> servers;
@@ -179,6 +183,9 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       }
       if (!any_behind && !any_disagree) {
         LOG(INFO) << "All servers converged on OpIds: " << ids;
+        if (actual_index != nullptr) {
+          *actual_index = cur_index;
+        }
         return Status::OK();
       }
     } else {

@@ -47,6 +47,10 @@ get_timestamp() {
   date +%Y-%m-%dT%H:%M:%S
 }
 
+get_timestamp_for_filenames() {
+  date +%Y-%m-%dT%H_%M_%S
+}
+
 log() {
   if [[ "${yb_log_quiet:-}" != "true" ]]; then
     echo "[$( get_timestamp ) ${FUNCNAME[1]}:${BASH_LINENO[0]}] $*" >&2

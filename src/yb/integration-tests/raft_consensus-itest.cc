@@ -1757,7 +1757,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
 
 // Ensure that we can elect a server that is in the "pending" configuration.
 // This is required by the Raft protocol. See Diego Ongaro's PhD thesis, section
-// 4.1, where it states that "it is the caller’s configuration that is used in
+// 4.1, where it states that "it is the caller's configuration that is used in
 // reaching consensus, both for voting and for log replication".
 //
 // This test also tests the case where a node comes back from the dead to a
@@ -2030,15 +2030,18 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   // Wait for initial NO_OP to be committed by the leader.
   TServerDetails* leader_ts;
   ASSERT_OK(FindTabletLeader(tablet_servers_, tablet_id, timeout, &leader_ts));
-  ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id, 1));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_ts, tablet_id, timeout));
+  int64_t expected_index = 0;
+  ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id, 1, &expected_index));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(expected_index, leader_ts, tablet_id, timeout));
+  ++expected_index;
 
   // Change the config.
   TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add];
   LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
   ASSERT_OK(AddServer(leader_ts, tablet_id_, tserver_to_add, RaftPeerPB::VOTER, boost::none,
                       timeout));
-  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 2));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, expected_index));
+  ++expected_index;
 
   // Wait for the master to be notified of the config change.
   // It should continue to have the same leader, even without waiting.
@@ -2053,7 +2056,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   ASSERT_OK(RemoveServer(leader_ts, tablet_id_, tserver_to_add, boost::none, timeout));
   active_tablet_servers = tablet_servers_;
   ASSERT_EQ(1, active_tablet_servers.erase(tserver_to_add->uuid()));
-  ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id_, 3));
+  ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id_, expected_index));
 
   // Wait for the master to be notified of the removal.
   LOG(INFO) << "Waiting for Master to see config change...";
