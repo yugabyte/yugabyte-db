@@ -82,6 +82,10 @@ TAG_FLAG(scanner_inject_latency_on_each_batch_ms, unsafe);
 
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
+DEFINE_int32(max_wait_for_safe_time_ms, 5000,
+             "Maximum time in milliseconds to wait for the safe time to advance when trying to "
+             "scan at the given timestamp.");
+
 namespace yb {
 namespace tserver {
 
@@ -1706,8 +1710,9 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
   tablet::MvccSnapshot snap;
 
   // Wait for the in-flights in the snapshot to be finished.
-  // We'll use the client-provided deadline, but not if it's more than 5 seconds from
-  // now -- it's better to make the client retry than hold RPC threads busy.
+  // We'll use the client-provided deadline, but not if it's more than
+  // FLAGS_max_wait_for_safe_time_ms from now -- it's better to make the client retry than hold RPC
+  // threads busy.
   //
   // TODO(KUDU-1127): even this may not be sufficient -- perhaps we should check how long it
   // has been since the MVCC manager was able to advance its safe time. If it has been
@@ -1719,7 +1724,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
   client_deadline.AddDelta(MonoDelta::FromMilliseconds(-10));
 
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
-  deadline.AddDelta(MonoDelta::FromSeconds(5));
+  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_max_wait_for_safe_time_ms));
   if (client_deadline.ComesBefore(deadline)) {
     deadline = client_deadline;
   }

@@ -1171,6 +1171,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   FLAGS_num_tablet_servers = 3;
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
+  ts_flags.push_back("--max_wait_for_safe_time_ms=100");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   BuildAndStart(ts_flags, master_flags);
 
@@ -1208,7 +1209,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ConsensusResponsePB resp;
   RpcController rpc;
 
-  // Send a simple request with no ops.
+  LOG(INFO) << "Send a simple request with no ops.";
   req.set_tablet_id(tablet_id_);
   req.set_dest_uuid(replica_ts->uuid());
   req.set_caller_uuid("fake_caller");
@@ -1219,8 +1220,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error()) << resp.DebugString();
 
-  // Send some operations, but don't advance the commit index.
-  // They should not commit.
+  LOG(INFO) << "Send some operations, but don't advance the commit index. They should not commit.";
   AddOp(MakeOpId(2, 2), &req);
   AddOp(MakeOpId(2, 3), &req);
   AddOp(MakeOpId(2, 4), &req);
@@ -1228,15 +1228,15 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error()) << resp.DebugString();
 
-  // We shouldn't read anything yet, because the ops should be pending.
+  LOG(INFO) << "We shouldn't read anything yet, because the ops should be pending.";
   {
     vector<string> results;
     NO_FATALS(ScanReplica(replica_ts->tserver_proxy.get(), &results));
     ASSERT_EQ(0, results.size()) << results;
   }
 
-  // Send op 2.6, but set preceding OpId to 2.4. This is an invalid
-  // request, and the replica should reject it.
+  LOG(INFO) << "Send op 2.6, but set preceding OpId to 2.4. "
+            << "This is an invalid request, and the replica should reject it.";
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
   req.clear_ops();
   AddOp(MakeOpId(2, 6), &req);
@@ -1249,8 +1249,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   resp.Clear();
   req.clear_ops();
-  // Send ops 3.5 and 2.6, then commit up to index 6, the replica
-  // should fail because of the out-of-order terms.
+  LOG(INFO) << "Send ops 3.5 and 2.6, then commit up to index 6, the replica "
+            << "should fail because of the out-of-order terms.";
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
   AddOp(MakeOpId(3, 5), &req);
   AddOp(MakeOpId(2, 6), &req);
@@ -1261,7 +1261,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
             "New operation's term is not >= than the previous op's term."
             " Current: 2.6. Previous: 3.5");
 
-  // Regression test for KUDU-639: if we send a valid request, but the
+  LOG(INFO) << "Regression test for KUDU-639";
+  // If we send a valid request, but the
   // current commit index is higher than the data we're sending, we shouldn't
   // commit anything higher than the last op sent by the leader.
   //
@@ -1276,7 +1277,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   rpc.Reset();
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error()) << resp.DebugString();
-  // Verify only 2.2 and 2.3 are committed.
+  LOG(INFO) << "Verify only 2.2 and 2.3 are committed.";
   {
     vector<string> results;
     NO_FATALS(WaitForRowCount(replica_ts->tserver_proxy.get(), 2, &results));
@@ -1286,7 +1287,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   resp.Clear();
   req.clear_ops();
-  // Now send some more ops, and commit the earlier ones.
+  LOG(INFO) << "Now send some more ops, and commit the earlier ones.";
   req.mutable_committed_index()->CopyFrom(MakeOpId(2, 4));
   req.mutable_preceding_id()->CopyFrom(MakeOpId(2, 4));
   AddOp(MakeOpId(2, 5), &req);
@@ -1295,7 +1296,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error()) << resp.DebugString();
 
-  // Verify they are committed.
+  LOG(INFO) << "Verify they are committed.";
   {
     vector<string> results;
     NO_FATALS(WaitForRowCount(replica_ts->tserver_proxy.get(), 3, &results));
@@ -1304,6 +1305,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     ASSERT_STR_CONTAINS(results[2], "term: 2 index: 4");
   }
 
+  LOG(INFO) << "Try to perform a snapshot-consistent scan, expect a timeout.";
   // At this point, we still have two operations which aren't committed. If we
   // try to perform a snapshot-consistent scan, we should time out rather than
   // hanging the RPC service thread.
@@ -1311,14 +1313,15 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     ScanRequestPB req;
     ScanResponsePB resp;
     RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromMilliseconds(100));
+    rpc.set_timeout(MonoDelta::FromMilliseconds(200));
     NewScanRequestPB* scan = req.mutable_new_scan_request();
     scan->set_tablet_id(tablet_id_);
     scan->set_read_mode(READ_AT_SNAPSHOT);
     ASSERT_OK(SchemaToColumnPBs(schema_, scan->mutable_projected_columns()));
 
     // Send the call. We expect to get a timeout passed back from the server side
-    // (i.e. not an RPC timeout)
+    // (i.e. not an RPC timeout). This is further enforced by max_wait_for_safe_time_ms
+    // of 100 ms passed to the tablet server.
     req.set_batch_size_bytes(0);
     SCOPED_TRACE(req.DebugString());
     ASSERT_OK(replica_ts->tserver_proxy->Scan(req, &resp, &rpc));
@@ -1348,8 +1351,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
         << " Resp: " << resp.DebugString();
   }
 
-  // Send an empty request from the newest term which should commit
-  // the earlier ops.
+  LOG(INFO) << "Send an empty request from the newest term which should commit "
+            << "the earlier ops.";
   {
     req.mutable_preceding_id()->CopyFrom(MakeOpId(leader_term, 6));
     req.mutable_committed_index()->CopyFrom(MakeOpId(leader_term, 6));
@@ -1359,7 +1362,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
     ASSERT_FALSE(resp.has_error()) << resp.DebugString();
   }
 
-  // Verify the new rows are committed.
+  LOG(INFO) << "Verify the new rows are committed.";
   {
     vector<string> results;
     NO_FATALS(WaitForRowCount(replica_ts->tserver_proxy.get(), 5, &results));
