@@ -19,7 +19,7 @@
       <div class="modal-body">
         <form id="instanceForm">
           <fieldset>
-            @inputText(universeForm("universeName"), 'class -> "form-control", '_label -> "Universe Name", 'disabled -> "")
+            @inputText(universeForm("universeName"), 'class -> "form-control", '_label -> "Universe Name", 'readonly -> "")
             @select(universeForm("provider"), options(Seq("")), 'class -> "form-control", '_label -> "Cloud Provider", 'disabled -> "" )
             @select(universeForm("regionList"), options(Seq("")), 'class -> "form-control", '_label -> "Region",
             'multiple -> "multiple")
