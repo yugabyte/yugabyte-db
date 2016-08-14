@@ -45,7 +45,7 @@ PUT     /api/customers/:cUUID                         com.yugabyte.yw.controller
 POST    /api/customers/:cUUID/universes               com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
 PUT     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes               com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
-GET     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.getDetails(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.index(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID/masters com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
