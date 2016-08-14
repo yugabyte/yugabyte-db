@@ -17,6 +17,8 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 import org.slf4j.Logger;
@@ -69,6 +71,15 @@ public class Universe extends Model {
   private UniverseDetails universeDetails;
   public void setUniverseDetails(UniverseDetails details) {
     universeDetails = details;
+  }
+
+  public JsonNode toJson() {
+    ObjectNode json = Json.newObject();
+    json.put("universeUUID", universeUUID.toString());
+    json.put("name", name);
+    json.put("creationDate", creationDate.toString());
+    json.set("universeDetails", Json.parse(universeDetailsJson));
+    return json;
   }
 
   /**

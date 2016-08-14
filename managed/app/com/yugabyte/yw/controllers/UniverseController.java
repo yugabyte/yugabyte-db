@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,7 @@ import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
+import play.mvc.Results;
 
 public class UniverseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
@@ -100,7 +102,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
                universe.universeUUID + ":" + universe.name);
 
-      return ApiResponse.success(universe);
+      return Results.status(OK, universe.toJson());
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -151,7 +153,7 @@ public class UniverseController extends AuthenticatedController {
                           universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
                 universe.universeUUID, universe.name);
-      return ApiResponse.success(universe);
+      return Results.status(OK, universe.toJson());
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -169,11 +171,24 @@ public class UniverseController extends AuthenticatedController {
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    return ApiResponse.success(customer.getUniverses());
+    ArrayNode universes = Json.newArray();
+    // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
+    for (Universe universe: customer.getUniverses()) {
+      universes.add(universe.toJson());
+    }
+    return ApiResponse.success(universes);
   }
 
-  public Result getDetails(UUID customerUUID, UUID universeUUID) {
-    return TODO;
+  public Result index(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.find.byId(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    Universe universe = Universe.find.byId(universeUUID);
+    if (universe == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+    }
+    return Results.status(OK, universe.toJson());
   }
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
