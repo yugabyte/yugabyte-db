@@ -16,10 +16,12 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UniverseDetails;
+import com.yugabyte.yw.models.helpers.UserIntent;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -88,7 +90,6 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertTrue(json.isArray());
     assertEquals(1, json.size());
     assertThat(json.get(0).get("universeUUID").asText(), allOf(notNullValue(), equalTo(u1.universeUUID.toString())));
-    assertThat(json.get(0).get("customerId").asInt(), allOf(notNullValue(), equalTo(customer.customerId)));
   }
 
   @Test
@@ -98,6 +99,86 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID: " + invalidUUID)));
+  }
+
+  @Test
+  public void testUniverseGetWithInvalidCustomerUUID() {
+    UUID invalidUUID = UUID.randomUUID();
+    Result result =
+      route(fakeRequest("GET", "/api/customers/" + invalidUUID + "/universes/" + UUID.randomUUID()).cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID: " + invalidUUID)));
+  }
+
+  @Test
+  public void testUniverseGetWithInvalidUniverseUUID() {
+    UUID invalidUUID = UUID.randomUUID();
+    Result result =
+      route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" + invalidUUID).cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").asText(), is(containsString("Invalid Universe UUID: " + invalidUUID)));
+  }
+
+  @Test
+  public void testUniverseGetWithValidUniverseUUID() {
+    Universe universe = Universe.create("Test Universe", customer.customerId);
+    UniverseDetails ud = universe.getUniverseDetails();
+
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDetails universeDetails = universe.getUniverseDetails();
+        universeDetails.userIntent = new UserIntent();
+        universeDetails.userIntent.replicationFactor = 3;
+        universeDetails.userIntent.isMultiAZ = true;
+
+        List<String> subnets = new ArrayList<String>();
+        subnets.add("subnet-1");
+        subnets.add("subnet-2");
+        subnets.add("subnet-3");
+
+        // Add a desired number of nodes.
+        universeDetails.numNodes = 5;
+        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+          NodeDetails node = new NodeDetails();
+          node.instance_name = "host-n" + idx;
+          node.cloud = "aws";
+          node.subnet_id = subnets.get(idx % subnets.size());
+          node.private_ip = "host-n" + idx;
+          node.isTserver = true;
+          if (idx <= 3) {
+            node.isMaster = true;
+          }
+          node.nodeIdx = idx;
+          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+        }
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    Universe.saveDetails(universe.universeUUID, updater);
+
+    Result result =
+      route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID).cookie(validCookie));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeDetails = json.get("universeDetails");
+    assertThat(universeDetails, is(notNullValue()));
+    JsonNode userIntent = universeDetails.get("userIntent");
+    assertThat(userIntent, is(notNullValue()));
+    assertThat(userIntent.get("replicationFactor").asInt(), allOf(notNullValue(), equalTo(3)));
+    assertThat(userIntent.get("isMultiAZ").asBoolean(), allOf(notNullValue(), equalTo(true)));
+
+    JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsMap");
+    assertThat(nodeDetailsMap, is(notNullValue()));
+
+    int idx = 1;
+    for (Iterator<Map.Entry<String, JsonNode>> nodeInfo = nodeDetailsMap.fields(); nodeInfo.hasNext();) {
+      Map.Entry<String, JsonNode> node = nodeInfo.next();
+      assertEquals(node.getKey(), "host-n" + idx);
+      idx++;
+    }
   }
 
   @Test
@@ -147,12 +228,10 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("isMultiAZ", false);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
-      .cookie(validCookie).bodyJson(bodyJson));
+                            .cookie(validCookie).bodyJson(bodyJson));
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("universeUUID").asText(), is(notNullValue()));
-    assertThat(json.get("customerId").asInt(), allOf(notNullValue(), equalTo(customer.customerId)));
-    assertEquals(json.get("version").asInt(), 1);
     JsonNode universeDetails = json.get("universeDetails");
     assertThat(universeDetails, is(notNullValue()));
 
@@ -168,7 +247,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     Universe universe = Universe.create("Test Universe", customer.customerId);
     ObjectNode emptyJson = Json.newObject();
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
-      .cookie(validCookie).bodyJson(emptyJson));
+                            .cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), is(containsString("\"regionList\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"isMultiAZ\":[\"This field is required\"]")));
@@ -185,6 +264,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe universe = Universe.create("Test Universe", customer.customerId);
 
     ObjectNode bodyJson = Json.newObject();
@@ -195,13 +275,11 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("universeName", universe.name);
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
-      .cookie(validCookie).bodyJson(bodyJson));
+                            .cookie(validCookie).bodyJson(bodyJson));
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("universeUUID").asText(), is(notNullValue()));
-    assertThat(json.get("customerId").asInt(), allOf(notNullValue(), equalTo(customer.customerId)));
-    assertEquals(json.get("version").asInt(), 1);
     JsonNode universeDetails = json.get("universeDetails");
     assertThat(universeDetails, is(notNullValue()));
 
@@ -213,10 +291,10 @@ public class UniverseControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUniverseDestoryInvalidUUID() {
+  public void testUniverseDestroyInvalidUUID() {
     UUID randomUUID = UUID.randomUUID();
     Result result = route(fakeRequest("DELETE", "/api/customers/" + customer.uuid + "/universes/" + randomUUID)
-      .cookie(validCookie));
+                            .cookie(validCookie));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), is(containsString("No universe found with UUID: " + randomUUID)));
   }
@@ -224,12 +302,12 @@ public class UniverseControllerTest extends FakeDBApplication {
   @Test
   public void testUniverseDestroyValidUUID() {
     UUID fakeTaskUUID = UUID.randomUUID();
-      when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", customer.customerId);
 
     Result result = route(fakeRequest("DELETE", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
-      .cookie(validCookie));
+                            .cookie(validCookie));
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("taskUUID").asText(), allOf(notNullValue(), equalTo(fakeTaskUUID.toString())));
