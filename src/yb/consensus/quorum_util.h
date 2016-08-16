@@ -59,6 +59,10 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const std::string& uuid);
 // Counts the number of voters in the configuration.
 int CountVoters(const RaftConfigPB& config);
 
+// Counts the number of peers that are in transition (being bootstrapped) to become voters.
+// None of the peers that are counted in CountVoters() will be counted by this function.
+int CountVotersInTransition(const RaftConfigPB& config);
+
 // Calculates size of a configuration majority based on # of voters.
 int MajoritySize(int num_voters);
 

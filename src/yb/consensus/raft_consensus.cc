@@ -1379,7 +1379,11 @@ Status RaftConsensus::IsLeaderReadyForChangeConfig(bool* is_ready) {
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
-    *is_ready = state_->AreCommittedAndCurrentTermsSameUnlocked();
+    const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+    // Make sure that there are no peers that are being bootstrapped (in the process of becoming
+    // voters).
+    *is_ready = state_->AreCommittedAndCurrentTermsSameUnlocked() &&
+        CountVotersInTransition(active_config) == 0;
   }
 
   return Status::OK();
