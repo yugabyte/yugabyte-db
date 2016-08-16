@@ -10,6 +10,7 @@ libraryDependencies ++= Seq(
   javaJdbc,
   cache,
   javaWs,
+  filters,
   "org.mockito" % "mockito-core" % "1.10.19",
   "org.mindrot" % "jbcrypt" % "0.3m",
   "mysql" % "mysql-connector-java" % "5.1.27",
