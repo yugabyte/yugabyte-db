@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_RPC_SERIALIZATION_H
-#define YB_RPC_SERIALIZATION_H
+#ifndef YB_RPC_SERIALIZATION_H_
+#define YB_RPC_SERIALIZATION_H_
 
 #include <inttypes.h>
 #include <string.h>
@@ -24,8 +24,8 @@
 namespace google {
 namespace protobuf {
 class MessageLite;
-} // namespace protobuf
-} // namespace google
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 
@@ -74,7 +74,6 @@ Status ParseYBMessage(const Slice& buf,
                       google::protobuf::MessageLite* parsed_header,
                       Slice* parsed_main_message);
 Status ParseRedisMessage(const Slice& buf,
-                         google::protobuf::MessageLite* parsed_header,
                          Slice* parsed_main_message);
 
 // Serialize the RPC connection header (magic number + flags).
@@ -85,7 +84,7 @@ void SerializeConnHeader(uint8_t* buf);
 Status ValidateConnHeader(const Slice& slice);
 
 
-} // namespace serialization
-} // namespace rpc
-} // namespace yb
-#endif // YB_RPC_SERIALIZATION_H
+}  // namespace serialization
+}  // namespace rpc
+}  // namespace yb
+#endif  // YB_RPC_SERIALIZATION_H_

@@ -5,6 +5,7 @@
 #include "yb/redisserver/redis.pb.h"
 #include "yb/redisserver/redis_server.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/util/bytes_formatter.h"
 
 METRIC_DEFINE_histogram(server,
                         handler_latency_yb_redisserver_RedisServerService_Any,
@@ -17,6 +18,11 @@ METRIC_DEFINE_histogram(server,
 namespace yb {
 namespace redisserver {
 
+using yb::rpc::InboundCall;
+using yb::rpc::RedisInboundCall;
+using yb::rpc::RpcContext;
+using yb::rpc::RedisClientCommand;
+
 RedisServiceImpl::RedisServiceImpl(RedisServer* server)
     : RedisServerServiceIf(server->metric_entity()) {
   metrics_[0].handler_latency =
@@ -24,25 +30,28 @@ RedisServiceImpl::RedisServiceImpl(RedisServer* server)
           server->metric_entity());
 }
 
-void RedisServiceImpl::Handle(::yb::rpc::InboundCall* call) {
-  LOG(INFO) << "Asked to handle a call " << call->ToString();
+void RedisServiceImpl::Handle(InboundCall* inbound_call) {
+  auto* call = down_cast<RedisInboundCall*>(CHECK_NOTNULL(inbound_call));
+
+  DVLOG(4) << "Asked to handle a call " << call->ToString();
 
   google::protobuf::Message* empty_response = new EmptyResponsePB();
-  ::yb::rpc::RpcContext* context = new ::yb::rpc::RpcContext(call,
-                                                             nullptr,
-                                                             empty_response,
-                                                             metrics_[0]);
+  RpcContext* context = new RpcContext(call, nullptr, empty_response, metrics_[0]);
+  DVLOG(4) << "call->serialized_request() is " << call->serialized_request();
+  const RedisClientCommand& c = call->GetClientCommand();
 
-  LOG(INFO) << "call->serialized_request() is " << call->serialized_request();
-  LOG(INFO) << "Extracting the slice";
-  Slice data = call->serialized_request();
-  LOG(INFO) << "slice is " << data;
+  // Process the request.
+  DVLOG(4) << "Processing request from client ";
+  const int size = c.cmd_args.size();
+  for (int i = 0; i < size; i++) {
+    LOG(INFO) << i + 1 << " / " << size << " : " << c.cmd_args[i].ToDebugString(8);
+  }
 
   // Send the result.
-  LOG(INFO) << "Responding to call " << call->ToString();
+  DVLOG(4) << "Responding to call " << call->ToString();
   context->RespondSuccess();
-  LOG(INFO) << "Done Responding.";
+  DVLOG(4) << "Done Responding.";
 }
 
-} // namespace redisserver
-} // namespace yb
+}  // namespace redisserver
+}  // namespace yb

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_SERVICE_IF_H
-#define YB_RPC_SERVICE_IF_H
+#ifndef YB_RPC_SERVICE_IF_H_
+#define YB_RPC_SERVICE_IF_H_
 
 #include <string>
 
@@ -37,6 +37,8 @@ class Histogram;
 namespace rpc {
 
 class InboundCall;
+class YBInboundCall;
+class RedisInboundCall;
 
 struct RpcMethodMetrics {
   RpcMethodMetrics();
@@ -50,6 +52,7 @@ class ServiceIf {
  public:
   virtual ~ServiceIf();
   virtual void Handle(InboundCall* incoming) = 0;
+
   virtual void Shutdown();
   virtual std::string service_name() const = 0;
 
@@ -59,6 +62,6 @@ class ServiceIf {
 
 };
 
-} // namespace rpc
-} // namespace yb
-#endif
+}  // namespace rpc
+}  // namespace yb
+#endif  // YB_RPC_SERVICE_IF_H_

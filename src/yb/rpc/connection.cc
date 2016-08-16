@@ -17,32 +17,17 @@
 
 #include "yb/rpc/connection.h"
 
-#include <boost/intrusive/list.hpp>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-#include <stdint.h>
-
 #include <iostream>
-#include <string>
-#include <vector>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/auth_store.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/constants.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_header.pb.h"
-#include "yb/rpc/sasl_client.h"
-#include "yb/rpc/sasl_server.h"
-#include "yb/rpc/transfer.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 using std::shared_ptr;
@@ -141,8 +126,8 @@ void Connection::Shutdown(const Status& status) {
   }
 
   // Clear any calls which have been sent and were awaiting a response.
-  for (const car_map_t::value_type &v : awaiting_response_) {
-    CallAwaitingResponse *c = v.second;
+  for (const car_map_t::value_type& v : awaiting_response_) {
+    CallAwaitingResponse* c = v.second;
     if (c->call) {
       c->call->SetFailed(status);
     }
@@ -153,7 +138,7 @@ void Connection::Shutdown(const Status& status) {
 
   // Clear any outbound transfers.
   while (!outbound_transfers_.empty()) {
-    OutboundTransfer *t = &outbound_transfers_.front();
+    OutboundTransfer* t = &outbound_transfers_.front();
     outbound_transfers_.pop_front();
     delete t;
   }
@@ -190,11 +175,11 @@ Connection::CallAwaitingResponse::~CallAwaitingResponse() {
   DCHECK(conn->reactor_thread_->IsCurrentThread());
 }
 
-void Connection::CallAwaitingResponse::HandleTimeout(ev::timer &watcher, int revents) {
+void Connection::CallAwaitingResponse::HandleTimeout(ev::timer& watcher, int revents) {
   conn->HandleOutboundCallTimeout(this);
 }
 
-void Connection::HandleOutboundCallTimeout(CallAwaitingResponse *car) {
+void Connection::HandleOutboundCallTimeout(CallAwaitingResponse* car) {
   DCHECK(reactor_thread_->IsCurrentThread());
   DCHECK(car->call);
   // The timeout timer is stopped by the car destructor exiting Connection::HandleCallResponse()
@@ -224,7 +209,7 @@ struct CallTransferCallbacks : public TransferCallbacks {
   explicit CallTransferCallbacks(shared_ptr<OutboundCall> call)
       : call_(std::move(call)) {}
 
-  virtual void NotifyTransferFinished() OVERRIDE {
+  void NotifyTransferFinished() override {
     // TODO: would be better to cancel the transfer while it is still on the queue if we
     // timed out before the transfer started, but there is still a race in the case of
     // a partial send that we have to handle here
@@ -236,9 +221,9 @@ struct CallTransferCallbacks : public TransferCallbacks {
     delete this;
   }
 
-  virtual void NotifyTransferAborted(const Status &status) OVERRIDE {
-    VLOG(1) << "Connection torn down before " <<
-      call_->ToString() << " could send its call: " << status.ToString();
+  void NotifyTransferAborted(const Status& status) override {
+    VLOG(1) << "Connection torn down before " << call_->ToString()
+            << " could send its call: " << status.ToString();
     delete this;
   }
 
@@ -246,7 +231,7 @@ struct CallTransferCallbacks : public TransferCallbacks {
   shared_ptr<OutboundCall> call_;
 };
 
-void Connection::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
+void Connection::QueueOutboundCall(const shared_ptr<OutboundCall>& call) {
   DCHECK(call);
   DCHECK_EQ(direction_, CLIENT);
   DCHECK(reactor_thread_->IsCurrentThread());
@@ -280,19 +265,18 @@ void Connection::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
   car->call = call;
 
   // Set up the timeout timer.
-  const MonoDelta &timeout = call->controller()->timeout();
+  const MonoDelta& timeout = call->controller()->timeout();
   if (timeout.Initialized()) {
     reactor_thread_->RegisterTimeout(&car->timeout_timer);
     car->timeout_timer.set<CallAwaitingResponse, // NOLINT(*)
-                           &CallAwaitingResponse::HandleTimeout>(car.get());
+        &CallAwaitingResponse::HandleTimeout>(car.get());
     car->timeout_timer.set(timeout.ToSeconds(), 0);
     car->timeout_timer.start();
   }
 
-  TransferCallbacks *cb = new CallTransferCallbacks(call);
+  TransferCallbacks* cb = new CallTransferCallbacks(call);
   awaiting_response_[call_id] = car.release();
-  QueueOutbound(gscoped_ptr<OutboundTransfer>(
-                  new OutboundTransfer(slices_tmp_, cb)));
+  QueueOutbound(gscoped_ptr<OutboundTransfer>(new OutboundTransfer(slices_tmp_, cb)));
 }
 
 // Callbacks for sending an RPC call response from the server.
@@ -300,33 +284,28 @@ void Connection::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
 // been responded to, we can free up all of the associated memory.
 struct ResponseTransferCallbacks : public TransferCallbacks {
  public:
-  ResponseTransferCallbacks(gscoped_ptr<InboundCall> call,
-                            Connection *conn) :
-    call_(call.Pass()),
-    conn_(conn)
-  {}
+  ResponseTransferCallbacks() {}
 
   virtual ~ResponseTransferCallbacks() {}
 
-  virtual void NotifyTransferFinished() OVERRIDE {
+  virtual void NotifyTransferFinished() override {
     delete this;
   }
 
-  virtual void NotifyTransferAborted(const Status &status) OVERRIDE {
+  virtual void NotifyTransferAborted(const Status& status) override {
     LOG(WARNING) << "Connection torn down before "
-                 << call_->ToString() << " could send its response";
+                 << call()->ToString() << " could send its response";
     delete this;
   }
 
  protected:
-  gscoped_ptr<InboundCall> call_;
-  Connection *conn_;
+  virtual InboundCall* call() = 0;
 };
 
 class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  YBResponseTransferCallbacks(gscoped_ptr<InboundCall> call,
-                              Connection* conn) : ResponseTransferCallbacks(call.Pass(), conn) {}
+  YBResponseTransferCallbacks(gscoped_ptr<YBInboundCall> call, YBConnection* conn)
+      : call_(call.Pass()), conn_(conn) {}
 
   ~YBResponseTransferCallbacks() {
     // Remove the call from the map.
@@ -334,80 +313,62 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
         &conn_->calls_being_handled_, call_->call_id());
     DCHECK_EQ(call_from_map, call_.get());
   }
+
+ protected:
+  InboundCall* call() override {
+    return call_.get();
+  }
+
+ private:
+  gscoped_ptr<YBInboundCall> call_;
+  YBConnection* conn_;
 };
 
 class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  RedisResponseTransferCallbacks(gscoped_ptr<InboundCall> call,
-                                 Connection* conn) : ResponseTransferCallbacks(call.Pass(), conn) {}
+  RedisResponseTransferCallbacks(gscoped_ptr<RedisInboundCall> call, RedisConnection* conn)
+      : call_(call.Pass()), conn_(conn) {}
 
   ~RedisResponseTransferCallbacks() {
     // TBD in https://phabricator.dev.yugabyte.com/D366
   }
+
+ protected:
+  InboundCall* call() override {
+    return call_.get();
+  }
+
+ private:
+  gscoped_ptr<RedisInboundCall> call_;
+  RedisConnection* conn_;
 };
 
 // Reactor task which puts a transfer on the outbound transfer queue.
 class QueueTransferTask : public ReactorTask {
  public:
-  QueueTransferTask(gscoped_ptr<OutboundTransfer> transfer,
-                    Connection *conn)
-    : transfer_(transfer.Pass()),
-      conn_(conn)
-  {}
+  QueueTransferTask(gscoped_ptr<OutboundTransfer> transfer, Connection* conn)
+      : transfer_(transfer.Pass()), conn_(conn) {}
 
-  virtual void Run(ReactorThread *thr) OVERRIDE {
+  virtual void Run(ReactorThread* thr) override {
     conn_->QueueOutbound(transfer_.Pass());
     delete this;
   }
 
-  virtual void Abort(const Status &status) OVERRIDE {
+  virtual void Abort(const Status& status) override {
     transfer_->Abort(status);
     delete this;
   }
 
  private:
   gscoped_ptr<OutboundTransfer> transfer_;
-  Connection *conn_;
+  Connection* conn_;
 };
 
-TransferCallbacks* GetResponseTransferCallback(Connection* conn,
-                                               gscoped_ptr<InboundCall> call) {
-  switch (conn->connection_type()) {
-    case ConnectionType::YB:
-      return new YBResponseTransferCallbacks(call.Pass(), conn);
-    case ConnectionType::REDIS:
-      return new RedisResponseTransferCallbacks(call.Pass(), conn);
-  }
-  LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(conn->connection_type());
-}
-
-void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
-  // This is usually called by the IPC worker thread when the response
-  // is set, but in some circumstances may also be called by the
-  // reactor thread (e.g. if the service has shut down)
-
-  DCHECK_EQ(direction_, SERVER);
-
-  // If the connection is torn down, then the QueueOutbound() call that
-  // eventually runs in the reactor thread will take care of calling
-  // ResponseTransferCallbacks::NotifyTransferAborted.
-
-  std::vector<Slice> slices;
-  call->SerializeResponseTo(&slices);
-
-  TransferCallbacks* cb = GetResponseTransferCallback(this, call.Pass());
-  // After the response is sent, can delete the InboundCall object.
-  gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb));
-
-  QueueTransferTask* task = new QueueTransferTask(t.Pass(), this);
-  reactor_thread_->reactor()->ScheduleReactorTask(task);
-}
-
-void Connection::set_user_credentials(const UserCredentials &user_credentials) {
+void Connection::set_user_credentials(const UserCredentials& user_credentials) {
   user_credentials_.CopyFrom(user_credentials);
 }
 
-void Connection::ReadHandler(ev::io &watcher, int revents) {
+void Connection::ReadHandler(ev::io& watcher, int revents) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
   DVLOG(3) << ToString() << " ReadHandler(revents=" << revents << ")";
@@ -436,7 +397,7 @@ void Connection::ReadHandler(ev::io &watcher, int revents) {
       DVLOG(3) << ToString() << ": read is not yet finished yet.";
       return;
     }
-    DVLOG(3) << ToString() << ": finished reading " << inbound_->data().size() << " bytes";
+    DVLOG(3) << ToString() << ": finished reading " << inbound_->StatusAsString();
 
     if (direction_ == CLIENT) {
       HandleCallResponse(inbound_.Pass());
@@ -462,8 +423,8 @@ void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfe
   gscoped_ptr<CallResponse> resp(new CallResponse);
   CHECK_OK(resp->ParseFrom(transfer.Pass()));
 
-  CallAwaitingResponse *car_ptr =
-    EraseKeyReturnValuePtr(&awaiting_response_, resp->call_id());
+  CallAwaitingResponse* car_ptr =
+      EraseKeyReturnValuePtr(&awaiting_response_, resp->call_id());
   if (PREDICT_FALSE(car_ptr == nullptr)) {
     LOG(WARNING) << ToString() << ": Got a response for call id " << resp->call_id() << " which "
                  << "was not pending! Ignoring.";
@@ -482,7 +443,7 @@ void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfe
   car->call->SetResponse(resp.Pass());
 }
 
-void Connection::WriteHandler(ev::io &watcher, int revents) {
+void Connection::WriteHandler(ev::io& watcher, int revents) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
   if (revents & EV_ERROR) {
@@ -492,10 +453,10 @@ void Connection::WriteHandler(ev::io &watcher, int revents) {
   }
   DVLOG(3) << ToString() << ": writeHandler: revents = " << revents;
 
-  OutboundTransfer *transfer;
+  OutboundTransfer* transfer;
   if (outbound_transfers_.empty()) {
     LOG(WARNING) << ToString() << " got a ready-to-write callback, but there is "
-      "nothing to write.";
+                                  "nothing to write.";
     write_io_.stop();
     return;
   }
@@ -531,9 +492,9 @@ std::string Connection::ToString() const {
   // include anything in the output about the current state,
   // which might concurrently change from another thread.
   return strings::Substitute(
-    "$0 $1",
-    direction_ == SERVER ? "server connection from" : "client connection to",
-    remote_.ToString());
+      "$0 $1",
+      direction_ == SERVER ? "server connection from" : "client connection to",
+      remote_.ToString());
 }
 
 // Reactor task that transitions this Connection from connection negotiation to
@@ -541,20 +502,20 @@ std::string Connection::ToString() const {
 class NegotiationCompletedTask : public ReactorTask {
  public:
   NegotiationCompletedTask(Connection* conn,
-      const Status& negotiation_status)
-    : conn_(conn),
-      negotiation_status_(negotiation_status) {
+                           const Status& negotiation_status)
+      : conn_(conn),
+        negotiation_status_(negotiation_status) {
   }
 
-  virtual void Run(ReactorThread *rthread) OVERRIDE {
+  virtual void Run(ReactorThread* rthread) override {
     rthread->CompleteConnectionNegotiation(conn_, negotiation_status_);
     delete this;
   }
 
-  virtual void Abort(const Status &status) OVERRIDE {
+  virtual void Abort(const Status& status) override {
     DCHECK(conn_->reactor_thread()->reactor()->closing());
-    VLOG(1) << "Failed connection negotiation due to shut down reactor thread: " <<
-        status.ToString();
+    VLOG(1) << "Failed connection negotiation due to shut down reactor thread: "
+            << status.ToString();
     delete this;
   }
 
@@ -588,7 +549,7 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
 
   if (direction_ == CLIENT) {
     for (const car_map_t::value_type& entry : awaiting_response_) {
-      CallAwaitingResponse *c = entry.second;
+      CallAwaitingResponse* c = entry.second;
       if (c->call) {
         c->call->DumpPB(req, resp->add_calls_in_flight());
       }
@@ -616,6 +577,33 @@ void YBConnection::RunNegotiation(const MonoTime& deadline) {
   Negotiation::YBNegotiation(this, deadline);
 }
 
+TransferCallbacks* YBConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
+  gscoped_ptr<YBInboundCall> yb_call(down_cast<YBInboundCall*>(call.release()));
+  return new YBResponseTransferCallbacks(yb_call.Pass(), this);
+}
+
+void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
+  // This is usually called by the IPC worker thread when the response
+  // is set, but in some circumstances may also be called by the
+  // reactor thread (e.g. if the service has shut down)
+
+  DCHECK_EQ(direction_, SERVER);
+
+  // If the connection is torn down, then the QueueOutbound() call that
+  // eventually runs in the reactor thread will take care of calling
+  // ResponseTransferCallbacks::NotifyTransferAborted.
+
+  std::vector<Slice> slices;  // Will point to data, that is owned by InboundCall.
+  call->SerializeResponseTo(&slices);
+
+  TransferCallbacks* cb = GetResponseTransferCallback(call.Pass());
+  // After the response is sent, can delete the InboundCall object.
+  gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb));
+
+  QueueTransferTask* task = new QueueTransferTask(t.Pass(), this);
+  reactor_thread_->reactor()->ScheduleReactorTask(task);
+}
+
 Status YBConnection::InitSaslClient() {
   RETURN_NOT_OK(sasl_client().Init(kSaslProtoName));
   RETURN_NOT_OK(sasl_client().EnableAnonymous());
@@ -636,7 +624,7 @@ Status YBConnection::InitSaslServer() {
 void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
-  gscoped_ptr<InboundCall> call(new YBInboundCall(this));
+  gscoped_ptr<YBInboundCall> call(new YBInboundCall(this));
 
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
@@ -656,7 +644,7 @@ void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> trans
     return;
   }
 
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.Pass());
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
 }
 
 RedisConnection::RedisConnection(ReactorThread* reactor_thread,
@@ -669,10 +657,15 @@ void RedisConnection::RunNegotiation(const MonoTime& deadline) {
   Negotiation::RedisNegotiation(this, deadline);
 }
 
+TransferCallbacks* RedisConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
+  gscoped_ptr<RedisInboundCall> redis_call(down_cast<RedisInboundCall *>(call.release()));
+  return new RedisResponseTransferCallbacks(redis_call.Pass(), this);
+}
+
 void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
-  gscoped_ptr<InboundCall> call(new RedisInboundCall(this));
+  gscoped_ptr<RedisInboundCall> call(new RedisInboundCall(this));
 
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
@@ -682,8 +675,8 @@ void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> tr
     return;
   }
 
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.Pass());
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
 }
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb

@@ -161,7 +161,6 @@ Status ParseYBMessage(const Slice& buf,
 }
 
 Status ParseRedisMessage(const Slice& buf,
-                         MessageLite* parsed_header,
                          Slice* parsed_main_message) {
   *parsed_main_message =  buf;
   return Status::OK();
@@ -202,6 +201,6 @@ Status ValidateConnHeader(const Slice& slice) {
   return Status::OK();
 }
 
-} // namespace serialization
-} // namespace rpc
-} // namespace yb
+}  // namespace serialization
+}  // namespace rpc
+}  // namespace yb

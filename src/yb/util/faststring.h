@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_UTIL_FASTSTRING_H
-#define YB_UTIL_FASTSTRING_H
+#ifndef YB_UTIL_FASTSTRING_H_
+#define YB_UTIL_FASTSTRING_H_
 
 #include <string>
 
@@ -166,6 +166,12 @@ class faststring {
 
   // Return a pointer to the data in this string. Note that this pointer
   // may be invalidated by any later non-const operation.
+  const char *c_str() const {
+    return reinterpret_cast<const char *>(data());
+  }
+
+  // Return a pointer to the data in this string. Note that this pointer
+  // may be invalidated by any later non-const operation.
   uint8_t *data() {
     return &data_[0];
   }
@@ -215,7 +221,6 @@ class faststring {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(faststring);
 
   // If necessary, expand the buffer to fit at least 'count' more bytes.
   // If the array has to be grown, it is grown by at least 50%.
@@ -245,8 +250,10 @@ class faststring {
   uint8_t initial_data_[kInitialCapacity];
   size_t len_;
   size_t capacity_;
+
+  DISALLOW_COPY_AND_ASSIGN(faststring);
 };
 
-} // namespace yb
+}  // namespace yb
 
-#endif
+#endif  // YB_UTIL_FASTSTRING_H_

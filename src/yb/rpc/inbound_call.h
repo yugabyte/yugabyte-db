@@ -37,8 +37,8 @@
 namespace google {
 namespace protobuf {
 class Message;
-} // namespace protobuf
-} // namespace google
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 
@@ -48,6 +48,8 @@ class Trace;
 namespace rpc {
 
 class Connection;
+class YBConnection;
+class RedisConnection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 class RpcSidecar;
@@ -62,7 +64,7 @@ struct InboundCallTiming {
 // Inbound call on server
 class InboundCall {
  public:
-  explicit InboundCall(Connection* conn);
+  InboundCall();
   virtual ~InboundCall();
 
   // Parse an inbound call message.
@@ -80,10 +82,6 @@ class InboundCall {
 
   const RemoteMethod& remote_method() const {
     return remote_method_;
-  }
-
-  const int32_t call_id() const {
-    return header_.call_id();
   }
 
   // Serializes 'response' into the InboundCall's internal buffer, and marks
@@ -119,15 +117,15 @@ class InboundCall {
   // See RpcContext::AddRpcSidecar()
   Status AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
 
-  std::string ToString() const;
+  virtual std::string ToString() const = 0;
 
-  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp);
+  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 
   virtual const UserCredentials& user_credentials() const;
 
   const Sockaddr& remote_address() const;
 
-  const scoped_refptr<Connection>& connection() const;
+  const scoped_refptr<Connection> connection() const;
 
   Trace* trace();
 
@@ -151,17 +149,25 @@ class InboundCall {
   // Return true if the deadline set by the client has already elapsed.
   // In this case, the server may stop processing the call, since the
   // call response will be ignored anyway.
-  bool ClientTimedOut() const;
+  virtual bool ClientTimedOut() const {
+    return false;
+  }
 
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
   // If the client did not specify a deadline, returns MonoTime::Max().
-  MonoTime GetClientDeadline() const;
-
+  virtual MonoTime GetClientDeadline() const = 0;
  protected:
   // Serialize and queue the response.
   void Respond(const google::protobuf::MessageLite& response,
                bool is_success);
+
+  // Returns a ptr to the Connection for use.
+  virtual scoped_refptr<Connection> get_connection() = 0;
+  virtual const scoped_refptr<Connection> get_connection() const = 0;
+
+  // Queues the response to the Connection implementation.
+  virtual void QueueResponseToConnection() = 0;
 
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
@@ -173,13 +179,7 @@ class InboundCall {
   // client likely timed out. This is based on the client-provided timeout
   // value.
   // Also can be configured to log _all_ RPC traces for help debugging.
-  void LogTrace() const;
-
-  // The connection on which this inbound call arrived.
-  scoped_refptr<Connection> conn_;
-
-  // The header of the incoming call. Set by ParseFrom()
-  RequestHeader header_;
+  virtual void LogTrace() const = 0;
 
   // The serialized bytes of the request param protobuf. Set by ParseFrom().
   // This references memory held by 'transfer_'.
@@ -189,10 +189,6 @@ class InboundCall {
   // This is kept around because it retains the memory referred to
   // by 'serialized_request_' above.
   gscoped_ptr<AbstractInboundTransfer> transfer_;
-
-  // The buffers for serialized response. Set by SerializeResponseBuffer().
-  faststring response_hdr_buf_;
-  faststring response_msg_buf_;
 
   // Vector of additional sidecars that are tacked on to the call's response
   // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
@@ -209,15 +205,13 @@ class InboundCall {
   // This field is filled in when the inbound request header is parsed.
   RemoteMethod remote_method_;
 
-  const ConnectionType connection_type_;
-
  private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };
 
 class YBInboundCall : public InboundCall {
  public:
-  explicit YBInboundCall(Connection* conn);
+  explicit YBInboundCall(YBConnection* conn);
 
   // Parse an inbound call message.
   //
@@ -227,6 +221,10 @@ class YBInboundCall : public InboundCall {
   // from the reactor thread.
   virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
+  int32_t call_id() const {
+    return header_.call_id();
+  }
+
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
   virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
@@ -234,21 +232,45 @@ class YBInboundCall : public InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                 bool is_success) override;
+  virtual Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                         bool is_success) override;
+
+  virtual void QueueResponseToConnection() override;
+  virtual void LogTrace() const override;
+  virtual std::string ToString() const override;
+  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+
+  // Return true if the deadline set by the client has already elapsed.
+  // In this case, the server may stop processing the call, since the
+  // call response will be ignored anyway.
+  bool ClientTimedOut() const override;
+
+  virtual MonoTime GetClientDeadline() const override;
+ protected:
+  scoped_refptr<Connection> get_connection() override;
+  const scoped_refptr<Connection> get_connection() const override;
+
+ private:
+  // The header of the incoming call. Set by ParseFrom()
+  RequestHeader header_;
+
+  // The buffers for serialized response. Set by SerializeResponseBuffer().
+  faststring response_hdr_buf_;
+  faststring response_msg_buf_;
+
+  // The connection on which this inbound call arrived.
+  scoped_refptr<YBConnection> conn_;
+
 };
 
 class RedisInboundCall : public InboundCall {
  public:
-  explicit RedisInboundCall(Connection* conn);
+  explicit RedisInboundCall(RedisConnection* conn);
 
-  // Parse an inbound call message.
-  //
-  // Populates the 'header_' and 'serialized_request_' member variables.
   virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-
   virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
 
   // Serialize a response message for either success or failure. If it is a success,
@@ -256,9 +278,24 @@ class RedisInboundCall : public InboundCall {
   // failure, 'response' should be an ErrorStatusPB instance.
   Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                  bool is_success) override;
+
+  virtual void QueueResponseToConnection() override;
+  virtual void LogTrace() const override;
+  virtual std::string ToString() const override;
+  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+
+  virtual MonoTime GetClientDeadline() const override;
+  const RedisClientCommand &GetClientCommand() const;
+ protected:
+  scoped_refptr<Connection> get_connection() override;
+  const scoped_refptr<Connection> get_connection() const override;
+
+ private:
+  // The connection on which this inbound call arrived.
+  scoped_refptr<RedisConnection> conn_;
 };
 
-}; // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
 
 #endif

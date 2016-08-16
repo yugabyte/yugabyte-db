@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_RPC_TRANSFER_H
-#define YB_RPC_TRANSFER_H
+#ifndef YB_RPC_TRANSFER_H_
+#define YB_RPC_TRANSFER_H_
 
 #include <boost/intrusive/list.hpp>
 #include <boost/function.hpp>
@@ -25,6 +25,8 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+
+#include "redis/src/sds.h"
 
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/util/net/sockaddr.h"
@@ -36,8 +38,8 @@ DECLARE_int32(rpc_max_message_size);
 namespace google {
 namespace protobuf {
 class Message;
-} // namespace protobuf
-} // namespace google
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 
@@ -47,6 +49,12 @@ namespace rpc {
 
 class Messenger;
 struct TransferCallbacks;
+
+struct RedisClientCommand {
+  std::vector<Slice> cmd_args;  // Arguments of current command.
+  int num_multi_bulk_args_left = 0;  // Number of multi bulk arguments left to read.
+  int64_t current_multi_bulk_arg_len = -1;  // Length of bulk argument in multi bulk request.
+};
 
 // This class is used internally by the RPC layer to represent an inbound
 // transfer in progress.
@@ -85,21 +93,21 @@ class YBInboundTransfer : public AbstractInboundTransfer {
   YBInboundTransfer();
 
   // Read from the socket into our buffer.
-  Status ReceiveBuffer(Socket& socket) OVERRIDE;
+  Status ReceiveBuffer(Socket& socket) override;
 
   // Return true if any bytes have yet been received.
-  bool TransferStarted() const OVERRIDE {
+  bool TransferStarted() const override {
     return cur_offset_ != 0;
   }
 
   // Return true if the entire transfer has been received.
-  bool TransferFinished() const OVERRIDE {
+  bool TransferFinished() const override {
     return cur_offset_ == total_length_;
   }
 
   // Return a string indicating the status of this transfer (number of bytes received, etc)
   // suitable for logging.
-  std::string StatusAsString() const OVERRIDE;
+  std::string StatusAsString() const override;
 
  private:
   Status ProcessInboundHeader();
@@ -113,23 +121,25 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
  public:
   RedisInboundTransfer();
 
-  // Read from the socket into our buffer.
-  Status ReceiveBuffer(Socket& socket) OVERRIDE;
+  ~RedisInboundTransfer();
 
-  bool TransferStarted() const OVERRIDE {
-    return cur_offset_ != prev_offset_;
+  // Read from the socket into our buffer.
+  Status ReceiveBuffer(Socket& socket) override;
+
+  bool TransferStarted() const override {
+    return cur_offset_ != 0;
   }
 
-  bool TransferFinished() const OVERRIDE {
+  bool TransferFinished() const override {
     return done_;
   }
 
   // Return a string indicating the status of this transfer (number of bytes received, etc.)
   // suitable for logging.
-  std::string StatusAsString() const OVERRIDE;
+  std::string StatusAsString() const override;
 
-  Slice data() const OVERRIDE {
-    return Slice(&buf_[prev_offset_], pos_ - prev_offset_);
+  const RedisClientCommand &client_command() const {
+    return client_command_;
   }
 
  private:
@@ -137,14 +147,41 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
 
   void CheckReadCompletely();
 
-  int CheckMultibulkBuffer();
+  // To be called only for client commands in the multi format.
+  // e.g:
+  //     "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
+  // returns true if the whole command has been read, and is ready for processing.
+  // returns false if more data needs to be read.
+  bool CheckMultiBulkBuffer();
 
-  int CheckInlineBuffer();
+  // To be called only for client commands in the inline format.
+  // e.g:
+  //     "set foo TEST\r\n"
+  // returns true if the whole command has been read, and is ready for processing.
+  // returns false if more data needs to be read.
+  //
+  // Deviation from Redis's implementation in networking.c
+  // 1) This does not translate escaped characters, and
+  // 2) We don't handle the case where the delimiter only has '\n' instead of '\r\n'
+  //
+  // We haven't seen a place where this is used by the redis clients. All known places seem to use
+  // CheckMultiBulkBuffer(). If we find places where this is used, we can come back and make this
+  // compliant. If we are sure this doesn't get used, perhaps, we can get rid of this altogether.
+  bool CheckInlineBuffer();
 
-  int32_t cur_offset_ = 0;  // index into buf_ where the next byte read from the client is stored.
-  int32_t prev_offset_ = 0;  // index into buf_, from where the "current" client command starts.
+  // Returns true if the buffer has the \r\n required at the end of the token.
+  bool FindEndOfLine();
+  int64_t ParseNumber();
+
+  int64_t cur_offset_ = 0;  // index into buf_ where the next byte read from the client is stored.
+  RedisClientCommand client_command_;
   bool done_ = false;
-  int pos_ = 0;  // index into buf_, up to which the input has been parsed.
+  int64_t parsing_pos_ = 0;  // index into buf_, from which the input needs to be parsed.
+  int64_t searching_pos_ = 0;  // index into buf_, from which the input needs to be searched.
+                               // Typically ends up being equal to parsing_pos_ except when we
+                               // receive partial data. We don't want to search the searched data
+                               // again. Otherwise, the worst case analysis takes us to O(N^2) where
+                               // N is the message length.
 
   DISALLOW_COPY_AND_ASSIGN(RedisInboundTransfer);
 };
@@ -233,6 +270,6 @@ struct TransferCallbacks {
   virtual void NotifyTransferAborted(const Status &status) = 0;
 };
 
-} // namespace rpc
-} // namespace yb
-#endif
+}  // namespace rpc
+}  // namespace yb
+#endif  // YB_RPC_TRANSFER_H_

@@ -15,13 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_RPC_CONNECTION_H
-#define YB_RPC_CONNECTION_H
+#ifndef YB_RPC_CONNECTION_H_
+#define YB_RPC_CONNECTION_H_
 
+#include <stdint.h>
 #include <boost/intrusive/list.hpp>
 #include <ev++.h>
 #include <memory>
-#include <stdint.h>
 #include <unordered_map>
 
 #include <limits>
@@ -122,11 +122,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // This may be called from a non-reactor thread.
   void QueueOutboundCall(const std::shared_ptr<OutboundCall> &call);
 
-  // Queue a call response back to the client on the server side.
-  //
-  // This may be called from a non-reactor thread.
-  void QueueResponseForCall(gscoped_ptr<InboundCall> call);
-
   // The address of the remote end of the connection.
   const Sockaddr& remote() const { return remote_; }
 
@@ -152,9 +147,12 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Indicate that negotiation is complete and that the Reactor is now in control of the socket.
   void MarkNegotiationComplete();
 
-  ReactorThread* reactor_thread() const { return reactor_thread_; }
+  // Queue a call response back to the client on the server side.
+  //
+  // This may be called from a non-reactor thread.
+  void QueueResponseForCall(gscoped_ptr<InboundCall> call);
 
-  virtual ConnectionType connection_type() const = 0;
+  ReactorThread* reactor_thread() const { return reactor_thread_; }
 
   Status DumpPB(const DumpRunningRpcsRequestPB& req,
                 RpcConnectionPB* resp);
@@ -191,6 +189,8 @@ class Connection : public RefCountedThreadSafe<Connection> {
     }
     return call_id;
   }
+
+  virtual TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) = 0;
 
   virtual AbstractInboundTransfer* MakeNewInboundTransfer() = 0;
 
@@ -282,13 +282,11 @@ class RedisConnection : public Connection {
 
   virtual void RunNegotiation(const MonoTime& deadline) override;
 
-  virtual ConnectionType connection_type() const override {
-    return ConnectionType::REDIS;
-  }
-
   virtual AbstractInboundTransfer* MakeNewInboundTransfer() override {
     return new RedisInboundTransfer();
   }
+
+  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 };
@@ -314,13 +312,11 @@ class YBConnection : public Connection {
 
   virtual void RunNegotiation(const MonoTime& deadline) override;
 
-  virtual ConnectionType connection_type() const override {
-    return ConnectionType::YB;
-  }
-
   virtual AbstractInboundTransfer* MakeNewInboundTransfer() override {
     return new YBInboundTransfer();
   }
+
+  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
  private:
@@ -331,7 +327,7 @@ class YBConnection : public Connection {
   SaslServer sasl_server_;
 };
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
 
-#endif
+#endif  // YB_RPC_CONNECTION_H_

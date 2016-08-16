@@ -144,6 +144,7 @@ set(UTIL_SRCS
   rwc_lock.cc
   ${SEMAPHORE_CC}
   slice.cc
+  split.cc
   spinlock_profiling.cc
   status.cc
   status_callback.cc
@@ -310,6 +311,7 @@ if (NOT YB_USE_UBSAN)
 endif()
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
+ADD_YB_TEST(split-test)
 ADD_YB_TEST(stack_watchdog-test)
 ADD_YB_TEST(status-test)
 ADD_YB_TEST(string_case-test)

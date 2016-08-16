@@ -73,3 +73,7 @@ target_link_libraries(yb-redisserver
   yb-redis
   dl
   ${YB_BASE_LIBS})
+
+# Tests
+set(YB_TEST_LINK_LIBS yb-redis integration-tests ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(redisserver-test)

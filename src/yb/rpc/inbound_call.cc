@@ -17,8 +17,6 @@
 
 #include "yb/rpc/inbound_call.h"
 
-#include <memory>
-
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_introspection.pb.h"
@@ -46,11 +44,9 @@ TAG_FLAG(rpc_dump_all_traces, runtime);
 namespace yb {
 namespace rpc {
 
-InboundCall::InboundCall(Connection* conn)
-  : conn_(conn),
-    sidecars_deleter_(&sidecars_),
-    trace_(new Trace),
-    connection_type_(conn->connection_type()) {
+InboundCall::InboundCall()
+    : sidecars_deleter_(&sidecars_),
+      trace_(new Trace) {
   RecordCallReceived();
 }
 
@@ -83,7 +79,7 @@ void InboundCall::ApplicationErrorToPB(int error_ext_id, const std::string& mess
                                        ErrorStatusPB* err) {
   err->set_message(message);
   const FieldDescriptor* app_error_field =
-    err->GetReflection()->FindKnownExtensionByNumber(error_ext_id);
+      err->GetReflection()->FindKnownExtensionByNumber(error_ext_id);
   if (app_error_field != nullptr) {
     err->GetReflection()->MutableMessage(err, app_error_field)->CheckTypeAndMergeFrom(app_error_pb);
   } else {
@@ -106,7 +102,7 @@ void InboundCall::Respond(const MessageLite& response,
   TRACE_TO(trace_, "Queueing $0 response", is_success ? "success" : "failure");
 
   LogTrace();
-  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+  QueueResponseToConnection();
 }
 
 Status InboundCall::AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx) {
@@ -121,54 +117,12 @@ Status InboundCall::AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx) {
   return Status::OK();
 }
 
-string InboundCall::ToString() const {
-  return Substitute("Call $0 from $1 (request call id $2)",
-                      remote_method_.ToString(),
-                      conn_->remote().ToString(),
-                      header_.call_id());
-}
-
-void InboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
-                         RpcCallInProgressPB* resp) {
-  resp->mutable_header()->CopyFrom(header_);
-  if (req.include_traces() && trace_) {
-    resp->set_trace_buffer(trace_->DumpToString(true));
-  }
-  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
-                           .ToMicroseconds());
-}
-
-void InboundCall::LogTrace() const {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-
-  if (header_.has_timeout_millis() && header_.timeout_millis() > 0) {
-    double log_threshold = header_.timeout_millis() * 0.75f;
-    if (total_time > log_threshold) {
-      // TODO: consider pushing this onto another thread since it may be slow.
-      // The traces may also be too large to fit in a log message.
-      LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
-                   << header_.timeout_millis() << "ms).";
-      std::string s = trace_->DumpToString(true);
-      if (!s.empty()) {
-        LOG(WARNING) << "Trace:\n" << s;
-      }
-      return;
-    }
-  }
-
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), true);
-  }
-}
-
 const Sockaddr& InboundCall::remote_address() const {
-  return conn_->remote();
+  return get_connection()->remote();
 }
 
-const scoped_refptr<Connection>& InboundCall::connection() const {
-  return conn_;
+const scoped_refptr<Connection> InboundCall::connection() const {
+  return get_connection();
 }
 
 Trace* InboundCall::trace() {
@@ -197,7 +151,13 @@ void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_t
       timing_.time_completed.GetDeltaSince(timing_.time_handled).ToMicroseconds());
 }
 
-bool InboundCall::ClientTimedOut() const {
+const UserCredentials& InboundCall::user_credentials() const {
+  return get_connection()->user_credentials();
+}
+
+YBInboundCall::YBInboundCall(YBConnection* conn) : conn_(conn) {}
+
+bool YBInboundCall::ClientTimedOut() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
     return false;
   }
@@ -207,19 +167,13 @@ bool InboundCall::ClientTimedOut() const {
   return total_time > header_.timeout_millis();
 }
 
-MonoTime InboundCall::GetClientDeadline() const {
+MonoTime YBInboundCall::GetClientDeadline() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
     return MonoTime::Max();
   }
   MonoTime deadline = timing_.time_received;
   deadline.AddDelta(MonoDelta::FromMilliseconds(header_.timeout_millis()));
   return deadline;
-}
-
-YBInboundCall::YBInboundCall(Connection* conn) : InboundCall(conn) {}
-
-const UserCredentials& InboundCall::user_credentials() const {
-  return conn_->user_credentials();
 }
 
 Status YBInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
@@ -265,6 +219,60 @@ Status YBInboundCall::SerializeResponseBuffer(const MessageLite& response,
   return Status::OK();
 }
 
+string YBInboundCall::ToString() const {
+  return Substitute("Call $0 from $1 (request call id $2)",
+                    remote_method_.ToString(),
+                    conn_->remote().ToString(),
+                    header_.call_id());
+}
+
+void YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
+                           RpcCallInProgressPB* resp) {
+  resp->mutable_header()->CopyFrom(header_);
+  if (req.include_traces() && trace_) {
+    resp->set_trace_buffer(trace_->DumpToString(true));
+  }
+  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
+                               .ToMicroseconds());
+}
+
+void YBInboundCall::LogTrace() const {
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+
+  if (header_.has_timeout_millis() && header_.timeout_millis() > 0) {
+    double log_threshold = header_.timeout_millis() * 0.75f;
+    if (total_time > log_threshold) {
+      // TODO: consider pushing this onto another thread since it may be slow.
+      // The traces may also be too large to fit in a log message.
+      LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
+                   << header_.timeout_millis() << "ms).";
+      std::string s = trace_->DumpToString(true);
+      if (!s.empty()) {
+        LOG(WARNING) << "Trace:\n" << s;
+      }
+      return;
+    }
+  }
+
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
+    trace_->Dump(&LOG(INFO), true);
+  }
+}
+
+void YBInboundCall::QueueResponseToConnection() {
+  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+}
+
+scoped_refptr<Connection> YBInboundCall::get_connection() {
+  return conn_;
+}
+
+const scoped_refptr<Connection> YBInboundCall::get_connection() const {
+  return conn_;
+}
+
 void YBInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
   TRACE_EVENT0("rpc", "YBInboundCall::SerializeResponseTo");
   CHECK_GT(response_hdr_buf_.size(), 0);
@@ -277,22 +285,13 @@ void YBInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
   }
 }
 
-RedisInboundCall::RedisInboundCall(Connection* conn) : InboundCall(conn) {}
+RedisInboundCall::RedisInboundCall(RedisConnection* conn) : conn_(conn) {}
 
 Status RedisInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
-  // YB does a shallow copy of the data from transfer and holds on to the InboundTransfer buffer
-  // in transfer_. This gets deleted after the call, which is fine because YB knows that it has
-  // exactly read the number of bytes requried to handle the call. Nothing more. Nothing less.
-  //
-  // With Redis, we do not know apriori how long the data for a single call is. So, by the time we
-  // get here, it is possible that we have read a few more bytes (from the next call). We do not
-  // want to throw these bytes away, since that would disturb the handling for the next call.
-  // TBD: check if we have extra bytes. If so, copy the requried data from transfer into the
-  // serialized_request_, by doing a deep copy.
-  RETURN_NOT_OK(serialization::ParseRedisMessage(
-      transfer->data(), &header_, &serialized_request_));
+
+  RETURN_NOT_OK(serialization::ParseRedisMessage(transfer->data(), &serialized_request_));
 
   RemoteMethodPB remote_method_pb;
   remote_method_pb.set_service_name("yb.redisserver.RedisServerService");
@@ -304,10 +303,55 @@ Status RedisInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer
   return Status::OK();
 }
 
+const RedisClientCommand& RedisInboundCall::GetClientCommand() const {
+  return down_cast<RedisInboundTransfer*>(transfer_.get())->client_command();
+}
+
 Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
                                                  bool is_success) {
   // TBD
   return Status::OK();
+}
+
+string RedisInboundCall::ToString() const {
+  return Substitute("Redis Call $0 from $1",
+                    remote_method_.ToString(),
+                    conn_->remote().ToString());
+}
+
+void RedisInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
+                              RpcCallInProgressPB* resp) {
+  if (req.include_traces() && trace_) {
+    resp->set_trace_buffer(trace_->DumpToString(true));
+  }
+  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
+                               .ToMicroseconds());
+}
+
+MonoTime RedisInboundCall::GetClientDeadline() const {
+  return MonoTime::Max();  // No timeout specified in the protocol for Redis.
+}
+
+void RedisInboundCall::LogTrace() const {
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
+    trace_->Dump(&LOG(INFO), true);
+  }
+}
+
+void RedisInboundCall::QueueResponseToConnection() {
+  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+}
+
+scoped_refptr<Connection> RedisInboundCall::get_connection() {
+  return conn_;
+}
+
+const scoped_refptr<Connection> RedisInboundCall::get_connection() const {
+  return conn_;
 }
 
 void RedisInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
@@ -317,5 +361,5 @@ void RedisInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
   slices->push_back(ok);
 }
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
