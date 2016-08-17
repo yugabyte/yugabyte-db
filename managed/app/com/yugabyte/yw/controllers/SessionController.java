@@ -20,6 +20,7 @@ public class SessionController extends Controller {
   FormFactory formFactory;
 
   public static final String AUTH_TOKEN = "authToken";
+  public static final String CUSTOMER_UUID = "customerUUID";
 
   public Result login() {
     Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class).bindFromRequest();
@@ -41,6 +42,7 @@ public class SessionController extends Controller {
     String authToken = cust.createAuthToken();
     ObjectNode authTokenJson = Json.newObject();
     authTokenJson.put(AUTH_TOKEN, authToken);
+    authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
     response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
     return ok(authTokenJson);
   }
@@ -65,6 +67,7 @@ public class SessionController extends Controller {
     String authToken = cust.createAuthToken();
     ObjectNode authTokenJson = Json.newObject();
     authTokenJson.put(AUTH_TOKEN, authToken);
+    authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
     response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
     return ok(authTokenJson);
   }
