@@ -34,10 +34,6 @@ public class DashboardPageController extends AuthenticatedController {
     return ok(dashboard.render(universeCount, tableCount, createUniverseFormData));
   }
 
-  public Result tables() {
-    return TODO;
-  }
-
   public Result profile() {
     UUID currentProfileUUID = (UUID) ctx().args.get("customer_uuid");
     if (currentProfileUUID != null) {
