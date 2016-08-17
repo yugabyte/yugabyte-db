@@ -61,79 +61,83 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     return getName();
   }
 
-  // Waits and check's if the leader master is ready to serve config changes.
-  // If it times out, we return false.
-  private boolean waitForLeaderReadyToDoChangeConfig(YBClient client, long timeoutMs) throws Exception {
-    IsLeaderReadyForChangeConfigResponse readyResp;
+  // Waits and checks if the leader master is ready to serve config changes. In case of an error or
+  // a timeout, this method throws a runtime exception.
+  private void waitForLeaderReadyToDoChangeConfig(YBClient client, long timeoutMs) {
+    String msg = null;
+    boolean timeout = true;
     long start = System.currentTimeMillis();
-    long now = -1;
     do {
-      if (now > 0) {
+      try {
+        IsLeaderReadyForChangeConfigResponse readyResp =
+            client.isMasterLeaderReadyForChangeConfig();
+        if (readyResp.hasError()) {
+          msg = "Leader Ready check returned error: " + readyResp.errorMessage();
+          LOG.error(msg);
+          timeout = false;
+          break;
+        }
+        if (readyResp.isReady()) {
+          LOG.info("Master leader " + readyResp.getTsUUID() + " is ready for config change.");
+          return;
+        }
         Thread.sleep(PER_ATTEMPT_SLEEP_TIME_MS);
+      } catch (Exception e) {
+        LOG.error("Error in isMasterLeaderReadyForChangeConfig", e);
+        continue;
       }
-      now = System.currentTimeMillis();
-      readyResp = client.isMasterLeaderReadyForChangeConfig();
-      if (readyResp.hasError()) {
-        LOG.error("Leader Ready check returned  error : {}.", readyResp.errorMessage());
-        return false;
-      }
+    } while (System.currentTimeMillis() < start + timeoutMs);
 
-      // If 'now' regresses due to some timing system issues, then fail fast.
-      if (now < start) {
-        LOG.error("Time regressed from {} to {}.", start, now);
-        return false;
-      }
-    } while (!readyResp.isReady() && now < start + timeoutMs);
-
-    // Here if the leader is ready or if there was a timeout.
-    if (!readyResp.isReady()) {
-      LOG.error("Timed out waiting for leader to be ready for change config.");
-      return false;
-    } else {
-      return true;
+    if (timeout) {
+      msg = "Timed out waiting for master leader to be ready for change config.";
+      LOG.error(msg);
     }
+    throw new RuntimeException(msg);
   }
 
   @Override
   public void run() {
+    // Get the master addresses.
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String masterAddresses = universe.getMasterAddresses();
+    LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
+             taskParams().universeUUID, masterAddresses);
+    if (masterAddresses == null || masterAddresses.isEmpty()) {
+      throw new IllegalStateException("No master host/ports for a change config op in " +
+          taskParams().universeUUID);
+    }
+
+    YBClient client = ybService.getClient(masterAddresses);
+    // Wait for the master leader to be able to perform config changes. Give enough time to try all
+    // masters.
+    waitForLeaderReadyToDoChangeConfig(
+        client, universe.getMasters().size() * client.getDefaultAdminOperationTimeoutMs());
+
+    // Get the node details and perform the change config operation.
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
+    LOG.info("Starting changeMasterConfig({}:{}, {})",
+             node.private_ip, node.masterRpcPort, taskParams().opType);
+    ChangeConfigResponse response;
     try {
-      // Get the master addresses.
-      Universe universe = Universe.get(taskParams().universeUUID);
-      String masterAddresses = universe.getMasterAddresses();
-      LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
-               taskParams().universeUUID, masterAddresses);
-      if (masterAddresses == null || masterAddresses.isEmpty()) {
-        throw new IllegalStateException("No master host/ports for a change config op in " +
-            taskParams().universeUUID);
-      }
-
-      YBClient client = ybService.getClient(masterAddresses);
-      // If a new leader got elected, then the Raft Consensus algorithm requirement does not
-      // let it perform any change config ops in the current term without a commit in the same term.
-      // So this check waits for a commit of a NO_OP after leader election.
-      if (!waitForLeaderReadyToDoChangeConfig(client, client.getDefaultAdminOperationTimeoutMs())) {
-        String msg = "Master leader in " + masterAddresses + " not ready for " +
-                     " ChangeConfig op via '" + getName() +
-                     "'in universe " + taskParams().universeUUID;
-        throw new RuntimeException(msg);
-      }
-
-      // Get the node details.
-      NodeDetails node = universe.getNode(taskParams().nodeName);
-      // Perform the change config operation.
-      boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
-      ChangeConfigResponse response = client.changeMasterConfig(node.private_ip,
-                                                                node.masterRpcPort,
-                                                                isAddMasterOp);
-      if (response.hasError()) {
-        String msg = "In " + getName() + ", ChangeConfig response has error " +
-                     response.errorMessage();
-        LOG.error(msg);
-        throw new Exception(msg);
-      }
+      response = client.changeMasterConfig(node.private_ip, node.masterRpcPort, isAddMasterOp);
     } catch (Exception e) {
-      LOG.warn("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(getName() + " hit error: " , e);
+      String msg = "Error performing change config on node " + node.instance_name +
+                   ", host:port = " + node.private_ip + ":" + node.masterRpcPort;
+      LOG.error(msg, e);
+      throw new RuntimeException(msg);
+    }
+    // If there was an error, throw an exception.
+    if (response.hasError()) {
+      String msg = "ChangeConfig response has error " + response.errorMessage();
+      LOG.error(msg);
+      throw new RuntimeException(msg);
+    }
+    // TODO: remove this sleep - needed now to make sure the change config takes effect.
+    try {
+      Thread.sleep(5000);
+    } catch (Exception e) {
+      LOG.error("Error sleeping", e);
     }
   }
 }

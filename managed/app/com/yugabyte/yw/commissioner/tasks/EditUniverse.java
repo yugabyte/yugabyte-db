@@ -111,10 +111,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform
       // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-      createPlacementInfoTask(existingNodes);
+      createPlacementInfoTask(newMasters, existingNodes);
 
       // Wait for %age completion of the tablet move from master.
       createWaitForDataMoveTask();
+
+      // TODO: clear blacklist on the yb cluster master.
 
       // Finally send destroy old set of nodes to ansible.
       createDestroyServerTasks(existingNodes);
