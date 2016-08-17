@@ -17,15 +17,15 @@
 #ifndef YB_TSERVER_TS_TABLET_MANAGER_H
 #define YB_TSERVER_TS_TABLET_MANAGER_H
 
-#include <boost/optional/optional_fwd.hpp>
-#include <boost/thread/locks.hpp>
-#include <gtest/gtest_prod.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <boost/optional/optional_fwd.hpp>
+#include <boost/thread/shared_mutex.hpp>
+#include <gtest/gtest_prod.h>
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/macros.h"

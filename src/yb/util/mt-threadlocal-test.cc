@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/locks.hpp>
-#include <glog/logging.h>
+#include <mutex>
 #include <unordered_set>
 
+#include <glog/logging.h>
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
@@ -86,14 +86,14 @@ class Counter {
       registry_(CHECK_NOTNULL(registry)),
       val_(val) {
     LOG(INFO) << "Counter::~Counter(): tid = " << tid_ << ", addr = " << this << ", val = " << val_;
-    boost::lock_guard<RegistryLockType> reg_lock(*registry_->get_lock());
+    std::lock_guard<RegistryLockType> reg_lock(*registry_->get_lock());
     CHECK(registry_->RegisterUnlocked(this));
   }
 
   ~Counter() {
     LOG(INFO) << "Counter::~Counter(): tid = " << tid_ << ", addr = " << this << ", val = " << val_;
-    boost::lock_guard<RegistryLockType> reg_lock(*registry_->get_lock());
-    boost::lock_guard<CounterLockType> self_lock(lock_);
+    std::lock_guard<RegistryLockType> reg_lock(*registry_->get_lock());
+    std::lock_guard<CounterLockType> self_lock(lock_);
     LOG(INFO) << tid_ << ": deleting self from registry...";
     CHECK(registry_->UnregisterUnlocked(this));
   }
@@ -143,7 +143,7 @@ static void RegisterCounterAndLoopIncr(CounterRegistry* registry,
   reader_ready->Wait();
   // Now rock & roll on the counting loop.
   for (int i = 0; i < kTargetCounterVal; i++) {
-    boost::lock_guard<CounterLockType> l(*counter->get_lock());
+    std::lock_guard<CounterLockType> l(*counter->get_lock());
     counter->IncrementUnlocked();
   }
   // Let the reader know we're ready for him to verify our counts.
@@ -157,11 +157,11 @@ static void RegisterCounterAndLoopIncr(CounterRegistry* registry,
 static uint64_t Iterate(CounterRegistry* registry, int expected_counters) {
   uint64_t sum = 0;
   int seen_counters = 0;
-  boost::lock_guard<RegistryLockType> l(*registry->get_lock());
+  std::lock_guard<RegistryLockType> l(*registry->get_lock());
   for (Counter* counter : *registry->GetCountersUnlocked()) {
     uint64_t value;
     {
-      boost::lock_guard<CounterLockType> l(*counter->get_lock());
+      std::lock_guard<CounterLockType> l(*counter->get_lock());
       value = counter->GetValueUnlocked();
     }
     LOG(INFO) << "tid " << counter->tid() << " (counter " << counter << "): " << value;

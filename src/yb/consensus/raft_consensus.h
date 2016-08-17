@@ -18,12 +18,13 @@
 #ifndef YB_CONSENSUS_RAFT_CONSENSUS_H_
 #define YB_CONSENSUS_RAFT_CONSENSUS_H_
 
-#include <boost/thread/locks.hpp>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <boost/optional/optional_fwd.hpp>
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -33,7 +34,7 @@
 
 namespace yb {
 
-typedef boost::lock_guard<simple_spinlock> Lock;
+typedef std::lock_guard<simple_spinlock> Lock;
 typedef gscoped_ptr<Lock> ScopedLock;
 
 class Counter;

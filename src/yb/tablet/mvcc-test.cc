@@ -15,7 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/thread.hpp>
+#include <mutex>
+#include <thread>
+
 #include <gtest/gtest.h>
 #include <glog/logging.h>
 
@@ -24,6 +26,8 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
+
+using std::thread;
 
 namespace yb {
 namespace tablet {
@@ -42,12 +46,12 @@ class MvccTest : public YBTest {
     MvccSnapshot s;
     CHECK_OK(mgr->WaitForCleanSnapshotAtTimestamp(ts, &s, MonoTime::Max()));
     CHECK(s.is_clean()) << "verifying postcondition";
-    boost::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard<simple_spinlock> lock(lock_);
     result_snapshot_.reset(new MvccSnapshot(s));
   }
 
   bool HasResultSnapshot() {
-    boost::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard<simple_spinlock> lock(lock_);
     return result_snapshot_ != nullptr;
   }
 
@@ -396,7 +400,7 @@ TEST_F(MvccTest, TestAreAllTransactionsCommitted) {
 
 TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithNoInflights) {
   MvccManager mgr(clock_.get());
-  boost::thread waiting_thread = boost::thread(
+  thread waiting_thread = thread(
       &MvccTest::WaitForSnapshotAtTSThread, this, &mgr, clock_->Now());
 
   // join immediately.
@@ -411,7 +415,7 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapWithInFlights) {
   Timestamp tx1 = mgr.StartTransaction();
   Timestamp tx2 = mgr.StartTransaction();
 
-  boost::thread waiting_thread = boost::thread(
+  thread waiting_thread = thread(
       &MvccTest::WaitForSnapshotAtTSThread, this, &mgr, clock_->Now());
 
   ASSERT_FALSE(HasResultSnapshot());
@@ -436,7 +440,7 @@ TEST_F(MvccTest, TestWaitForApplyingTransactionsToCommit) {
 
   mgr.StartApplyingTransaction(tx1);
 
-  boost::thread waiting_thread = boost::thread(
+  thread waiting_thread = thread(
       &MvccManager::WaitForApplyingTransactionsToCommit, &mgr);
   while (mgr.GetNumWaitersForTests() == 0) {
     SleepFor(MonoDelta::FromMilliseconds(5));
@@ -463,7 +467,7 @@ TEST_F(MvccTest, TestWaitForCleanSnapshot_SnapAtTimestampWithInFlights) {
   Timestamp tx3 = mgr.StartTransaction();
 
   // Start a thread waiting for transactions with ts <= 2 to commit
-  boost::thread waiting_thread = boost::thread(
+  thread waiting_thread = thread(
       &MvccTest::WaitForSnapshotAtTSThread, this, &mgr, tx2);
   ASSERT_FALSE(HasResultSnapshot());
 

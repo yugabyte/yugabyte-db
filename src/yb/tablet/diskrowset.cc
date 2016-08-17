@@ -16,10 +16,11 @@
 // under the License.
 
 #include <algorithm>
-#include <boost/thread/locks.hpp>
-#include <glog/logging.h>
+#include <mutex>
 #include <vector>
 
+#include <boost/thread/shared_mutex.hpp>
+#include <glog/logging.h>
 #include "yb/common/generic_iterators.h"
 #include "yb/common/iterator.h"
 #include "yb/common/schema.h"
@@ -519,7 +520,7 @@ Status DiskRowSet::MajorCompactDeltaStores() {
 
 Status DiskRowSet::MajorCompactDeltaStoresWithColumnIds(const vector<ColumnId>& col_ids) {
   TRACE_EVENT0("tablet", "DiskRowSet::MajorCompactDeltaStores");
-  boost::lock_guard<Mutex> l(*delta_tracker()->compact_flush_lock());
+  std::lock_guard<Mutex> l(*delta_tracker()->compact_flush_lock());
 
   // TODO: do we need to lock schema or anything here?
   gscoped_ptr<MajorDeltaCompaction> compaction;
@@ -538,7 +539,7 @@ Status DiskRowSet::MajorCompactDeltaStoresWithColumnIds(const vector<ColumnId>& 
   gscoped_ptr<CFileSet> new_base(new CFileSet(rowset_metadata_));
   RETURN_NOT_OK(new_base->Open());
   {
-    boost::lock_guard<percpu_rwlock> lock(component_lock_);
+    std::lock_guard<percpu_rwlock> lock(component_lock_);
     RETURN_NOT_OK(compaction->UpdateDeltaTracker(delta_tracker_.get()));
     base_data_.reset(new_base.release());
   }

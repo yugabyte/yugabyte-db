@@ -18,6 +18,7 @@
 #define YB_TABLET_COMPACTION_H
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -78,10 +79,10 @@ class CompactionInput {
 class RowSetsInCompaction {
  public:
   void AddRowSet(const std::shared_ptr<RowSet> &rowset,
-                 const std::shared_ptr<boost::mutex::scoped_try_lock> &lock) {
-    CHECK(lock->owns_lock());
+                 std::unique_lock<std::mutex> lock) {
+    CHECK(lock.owns_lock());
 
-    locks_.push_back(lock);
+    locks_.push_back(std::move(lock));
     rowsets_.push_back(rowset);
   }
 
@@ -104,10 +105,8 @@ class RowSetsInCompaction {
   }
 
  private:
-  typedef vector<std::shared_ptr<boost::mutex::scoped_try_lock> > LockVector;
-
   RowSetVector rowsets_;
-  LockVector locks_;
+  vector<std::unique_lock<std::mutex>> locks_;
 };
 
 // One row yielded by CompactionInput::PrepareBlock.

@@ -56,7 +56,6 @@ DECLARE_int32(max_clock_sync_error_usec);
 namespace yb {
 namespace tablet {
 
-using boost::shared_lock;
 using consensus::ALTER_SCHEMA_OP;
 using consensus::CHANGE_CONFIG_OP;
 using consensus::ChangeConfigRecordPB;
@@ -345,7 +344,7 @@ TabletStatusListener::~TabletStatusListener() {
 void TabletStatusListener::StatusMessage(const string& status) {
   LOG(INFO) << "T " << tablet_id() << " P " << meta_->fs_manager()->uuid() << ": "
             << status;
-  boost::lock_guard<boost::shared_mutex> l(lock_);
+  std::lock_guard<boost::shared_mutex> l(lock_);
   last_status_ = status;
 }
 

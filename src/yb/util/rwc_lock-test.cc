@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/thread.hpp>
 #include <string>
 #include <vector>
+#include <mutex>
 
+#include <boost/thread/thread.hpp>
 #include "yb/gutil/atomicops.h"
 #include "yb/util/rwc_lock.h"
 #include "yb/util/test_util.h"
@@ -55,19 +56,19 @@ struct LockHoldersCount {
   }
 
   void AdjustReaders(int delta) {
-    boost::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard<simple_spinlock> l(lock);
     num_readers += delta;
     CheckInvariants();
   }
 
   void AdjustWriters(int delta) {
-    boost::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard<simple_spinlock> l(lock);
     num_writers += delta;
     CheckInvariants();
   }
 
   void AdjustCommitters(int delta) {
-    boost::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard<simple_spinlock> l(lock);
     num_committers += delta;
     CheckInvariants();
   }

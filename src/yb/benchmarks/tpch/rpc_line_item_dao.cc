@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/locks.hpp>
+#include <boost/function.hpp>
 #include <glog/logging.h>
 #include <vector>
 #include <utility>

@@ -17,13 +17,14 @@
 #ifndef YB_TSERVER_SCANNERS_H
 #define YB_TSERVER_SCANNERS_H
 
-#include <boost/thread/shared_mutex.hpp>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <boost/thread/shared_mutex.hpp>
 #include "yb/common/iterator_stats.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -179,7 +180,7 @@ class Scanner {
   // Once a Scanner is initialized, it is safe to assume that iter() and spec()
   // return non-NULL for the lifetime of the Scanner object.
   bool IsInitialized() const {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return iter_ != NULL;
   }
 
@@ -223,19 +224,19 @@ class Scanner {
 
   // Returns the current call sequence ID of the scanner.
   uint32_t call_seq_id() const {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return call_seq_id_;
   }
 
   // Increments the call sequence ID.
   void IncrementCallSeqId() {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     call_seq_id_ += 1;
   }
 
   // Return the delta from the last time this scan was updated to 'now'.
   MonoDelta TimeSinceLastAccess(const MonoTime& now) const {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return now.GetDeltaSince(last_access_time_);
   }
 

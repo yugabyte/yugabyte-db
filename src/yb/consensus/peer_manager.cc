@@ -17,6 +17,8 @@
 
 #include "yb/consensus/peer_manager.h"
 
+#include <mutex>
+
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/map-util.h"
@@ -53,7 +55,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
 
   VLOG(1) << "Updating peers from new config: " << config.ShortDebugString();
 
-  boost::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   // Create new peers
   for (const RaftPeerPB& peer_pb : config.peers()) {
     new_peers.insert(peer_pb.permanent_uuid());
@@ -85,7 +87,7 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
 }
 
 void PeerManager::SignalRequest(bool force_if_queue_empty) {
-  boost::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   auto iter = peers_.begin();
   for (; iter != peers_.end(); iter++) {
     Status s = (*iter).second->SignalRequest(force_if_queue_empty);
@@ -100,7 +102,7 @@ void PeerManager::SignalRequest(bool force_if_queue_empty) {
 
 void PeerManager::Close() {
   {
-    boost::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard<simple_spinlock> lock(lock_);
     for (const PeersMap::value_type& entry : peers_) {
       entry.second->Close();
     }

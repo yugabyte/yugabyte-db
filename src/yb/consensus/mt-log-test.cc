@@ -17,11 +17,8 @@
 
 #include "yb/consensus/log-test-base.h"
 
-#include <boost/thread/locks.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
-
 #include <algorithm>
+#include <mutex>
 #include <vector>
 
 #include "yb/consensus/log_index.h"
@@ -93,7 +90,7 @@ class MultiThreadedLogTest : public LogTestBase {
       DVLOG(1) << num_ops << " ops in this batch";
       num_ops =  std::max(num_ops, 1);
       {
-        boost::lock_guard<simple_spinlock> lock_guard(lock_);
+        std::lock_guard<simple_spinlock> lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
           ReplicateRefPtr replicate = make_scoped_refptr_replicate(new ReplicateMsg);
           int32_t index = current_index_++;

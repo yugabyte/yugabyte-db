@@ -17,8 +17,8 @@
 
 #include "yb/consensus/local_consensus.h"
 
-#include <boost/thread/locks.hpp>
 #include <iostream>
+#include <mutex>
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/quorum_util.h"
@@ -60,7 +60,7 @@ Status LocalConsensus::Start(const ConsensusBootstrapInfo& info) {
   LOG_WITH_PREFIX(INFO) << "Starting LocalConsensus...";
 
   {
-    boost::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard<simple_spinlock> lock(lock_);
 
     const RaftConfigPB& config = cmeta_->committed_config();
     CHECK(config.local()) << "Local consensus must be passed a local config";
@@ -98,7 +98,7 @@ Status LocalConsensus::ResubmitOrphanedReplicates(const std::vector<ReplicateMsg
 }
 
 bool LocalConsensus::IsRunning() const {
-  boost::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   return state_ == kRunning;
 }
 
@@ -117,7 +117,7 @@ Status LocalConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
 
   LogEntryBatch* reserved_entry_batch;
   {
-    boost::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard<simple_spinlock> lock(lock_);
 
     // create the new op id for the entry.
     cur_op_id->set_index(next_op_id_index_++);
@@ -164,7 +164,7 @@ Status LocalConsensus::RequestVote(const VoteRequestPB* request,
 }
 
 ConsensusStatePB LocalConsensus::ConsensusState(ConsensusConfigType type) const {
-  boost::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   return cmeta_->ToConsensusStatePB(type);
 }
 
@@ -174,7 +174,7 @@ ConsensusStatePB LocalConsensus::ConsensusStateUnlocked(ConsensusConfigType type
 }
 
 RaftConfigPB LocalConsensus::CommittedConfig() const {
-  boost::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   return cmeta_->committed_config();
 }
 
@@ -185,7 +185,7 @@ void LocalConsensus::Shutdown() {
 void LocalConsensus::DumpStatusHtml(std::ostream& out) const {
   out << "<h1>Local Consensus Status</h1>\n";
 
-  boost::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   out << "next op: " << next_op_id_index_;
 }
 

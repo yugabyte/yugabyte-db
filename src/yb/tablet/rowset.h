@@ -17,8 +17,8 @@
 #ifndef YB_TABLET_ROWSET_H
 #define YB_TABLET_ROWSET_H
 
-#include <boost/thread/mutex.hpp>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -121,7 +121,7 @@ class RowSet {
   // Return the lock used for including this DiskRowSet in a compaction.
   // This prevents multiple compactions and flushes from trying to include
   // the same rowset.
-  virtual boost::mutex *compact_flush_lock() = 0;
+  virtual std::mutex *compact_flush_lock() = 0;
 
   // Returns the metadata associated with this rowset.
   virtual std::shared_ptr<RowSetMetadata> metadata() = 0;
@@ -159,7 +159,7 @@ class RowSet {
     // the compaction selection has finished because only one thread
     // makes compaction selection at a time on a given Tablet due to
     // Tablet::compact_select_lock_.
-    boost::mutex::scoped_try_lock try_lock(*compact_flush_lock());
+    std::unique_lock<std::mutex> try_lock(*compact_flush_lock(), std::try_to_lock);
     return try_lock.owns_lock();
   }
 
@@ -285,7 +285,7 @@ class DuplicatingRowSet : public RowSet {
   std::shared_ptr<RowSetMetadata> metadata() OVERRIDE;
 
   // A flush-in-progress rowset should never be selected for compaction.
-  boost::mutex *compact_flush_lock() OVERRIDE {
+  std::mutex *compact_flush_lock() OVERRIDE {
     LOG(FATAL) << "Cannot be compacted";
     return NULL;
   }

@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/locks.hpp>
-#include <boost/thread/mutex.hpp>
 #include <mutex>
 #include <sched.h>
 #include <string>

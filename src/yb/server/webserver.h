@@ -32,9 +32,8 @@
 #include <map>
 #include <string>
 #include <vector>
-#include <boost/function.hpp>
-#include <boost/thread/shared_mutex.hpp>
 
+#include <boost/thread/shared_mutex.hpp>
 #include "yb/server/webserver_options.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"

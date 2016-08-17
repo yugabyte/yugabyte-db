@@ -15,16 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/locks.hpp>
-#include <boost/thread/mutex.hpp>
-#include <glog/logging.h>
-#include <string>
-#include <semaphore.h>
+#include "yb/tablet/lock_manager.h"
 
+#include <mutex>
+#include <string>
+
+#include <boost/thread/shared_mutex.hpp>
+#include <glog/logging.h>
+#include <semaphore.h>
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/hash/city.h"
-#include "yb/tablet/lock_manager.h"
 #include "yb/util/locks.h"
 #include "yb/util/semaphore.h"
 
@@ -167,7 +168,7 @@ LockEntry *LockTable::GetLockEntry(const Slice& key) {
     boost::shared_lock<rw_spinlock> table_rdlock(lock_.get_lock());
     Bucket *bucket = FindBucket(new_entry->key_hash_);
     {
-      boost::lock_guard<simple_spinlock> bucket_lock(bucket->lock);
+      std::lock_guard<simple_spinlock> bucket_lock(bucket->lock);
       LockEntry **node = FindSlot(bucket, new_entry->key_, new_entry->key_hash_);
       old_entry = *node;
       if (old_entry != nullptr) {
@@ -186,7 +187,7 @@ LockEntry *LockTable::GetLockEntry(const Slice& key) {
   }
 
   if (base::subtle::NoBarrier_AtomicIncrement(&item_count_, 1) > size_) {
-    boost::unique_lock<percpu_rwlock> table_wrlock(lock_, boost::try_to_lock);
+    std::unique_lock<percpu_rwlock> table_wrlock(lock_, std::try_to_lock);
     // if we can't take the lock, means that someone else is resizing.
     // (The percpu_rwlock try_lock waits for readers to complete)
     if (table_wrlock.owns_lock()) {
@@ -200,10 +201,10 @@ LockEntry *LockTable::GetLockEntry(const Slice& key) {
 void LockTable::ReleaseLockEntry(LockEntry *entry) {
   bool removed = false;
   {
-    boost::lock_guard<rw_spinlock> table_rdlock(lock_.get_lock());
+    std::lock_guard<rw_spinlock> table_rdlock(lock_.get_lock());
     Bucket *bucket = FindBucket(entry->key_hash_);
     {
-      boost::lock_guard<simple_spinlock> bucket_lock(bucket->lock);
+      std::lock_guard<simple_spinlock> bucket_lock(bucket->lock);
       LockEntry **node = FindEntry(bucket, entry);
       if (node != nullptr) {
         // ASSUMPTION: There are few updates, so locking the same row at the same time is rare

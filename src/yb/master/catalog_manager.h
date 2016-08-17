@@ -18,7 +18,6 @@
 #define YB_MASTER_CATALOG_MANAGER_H
 
 #include <boost/optional/optional_fwd.hpp>
-#include <boost/thread/mutex.hpp>
 #include <list>
 #include <map>
 #include <set>

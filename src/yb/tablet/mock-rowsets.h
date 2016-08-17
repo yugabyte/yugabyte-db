@@ -18,6 +18,7 @@
 #define YB_TABLET_MOCK_ROWSETS_H
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -77,7 +78,7 @@ class MockRowSet : public RowSet {
     LOG(FATAL) << "Unimplemented";
     return 0;
   }
-  virtual boost::mutex *compact_flush_lock() OVERRIDE {
+  virtual std::mutex *compact_flush_lock() OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return NULL;
   }

@@ -217,7 +217,6 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   DataChunkPB* data_chunk = resp->mutable_chunk();
   string* data = data_chunk->mutable_data();
   int64_t total_data_length = 0;
-  bool valid_type = false;
   if (data_id.type() == DataIdPB::BLOCK) {
     // Fetching a data block chunk.
     const BlockId& block_id = BlockId::FromPB(data_id.block_id());

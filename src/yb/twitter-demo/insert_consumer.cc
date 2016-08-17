@@ -17,12 +17,12 @@
 
 #include "yb/twitter-demo/insert_consumer.h"
 
-#include <boost/thread/locks.hpp>
-#include <glog/logging.h>
+#include <mutex>
 #include <string>
 #include <time.h>
 #include <vector>
 
+#include <glog/logging.h>
 #include "yb/common/wire_protocol.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
@@ -96,7 +96,7 @@ InsertConsumer::~InsertConsumer() {
 }
 
 void InsertConsumer::BatchFinished(const Status& s) {
-  boost::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   request_pending_ = false;
   if (!s.ok()) {
     bool overflow;
@@ -145,7 +145,7 @@ void InsertConsumer::ConsumeJSON(const Slice& json_slice) {
   // instead of the manual batching here
   bool do_flush = false;
   {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     if (!request_pending_) {
       request_pending_ = true;
       do_flush = true;

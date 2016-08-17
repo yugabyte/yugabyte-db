@@ -45,7 +45,6 @@ TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
 namespace yb {
 namespace tablet {
 
-using boost::bind;
 using consensus::ReplicateMsg;
 using consensus::CommitMsg;
 using consensus::DriverType;

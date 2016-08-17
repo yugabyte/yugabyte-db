@@ -19,10 +19,10 @@
 
 #include <algorithm>
 #include <map>
+#include <mutex>
 #include <string>
 
 #include <gflags/gflags.h>
-
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -89,7 +89,7 @@ void FlushOpPerfImprovementPolicy::SetPerfImprovementForFlush(MaintenanceOpStats
 //
 
 void FlushMRSOp::UpdateStats(MaintenanceOpStats* stats) {
-  boost::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
 
   map<int64_t, int64_t> max_idx_to_segment_size;
   if (tablet_peer_->tablet()->MemRowSetEmpty() ||
@@ -98,8 +98,7 @@ void FlushMRSOp::UpdateStats(MaintenanceOpStats* stats) {
   }
 
   {
-    boost::unique_lock<Semaphore> lock(tablet_peer_->tablet()->rowsets_flush_sem_,
-                                       boost::defer_lock);
+    std::unique_lock<Semaphore> lock(tablet_peer_->tablet()->rowsets_flush_sem_, std::defer_lock);
     stats->set_runnable(lock.try_lock());
   }
 
@@ -127,7 +126,7 @@ void FlushMRSOp::Perform() {
   tablet_peer_->tablet()->FlushUnlocked();
 
   {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     time_since_flush_.start();
   }
   tablet_peer_->tablet()->rowsets_flush_sem_.unlock();
@@ -150,7 +149,7 @@ void FlushDeltaMemStoresOp::UpdateStats(MaintenanceOpStats* stats) {
     return;
   }
 
-  boost::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   int64_t dms_size;
   int64_t retention_size;
   map<int64_t, int64_t> max_idx_to_segment_size;
@@ -180,7 +179,7 @@ void FlushDeltaMemStoresOp::Perform() {
                   Substitute("Failed to flush DMS on $0",
                              tablet_peer_->tablet()->tablet_id()));
   {
-    boost::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     time_since_flush_.start();
   }
 }

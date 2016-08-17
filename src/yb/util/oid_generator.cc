@@ -16,6 +16,8 @@
 // under the License.
 
 #include <boost/thread/locks.hpp>
+
+#include <mutex>
 #include <string>
 
 #include "yb/gutil/stringprintf.h"
@@ -24,7 +26,7 @@
 namespace yb {
 
 string ObjectIdGenerator::Next() {
-  boost::lock_guard<LockType> l(oid_lock_);
+  std::lock_guard<LockType> l(oid_lock_);
   boost::uuids::uuid oid = oid_generator_();
   const uint8_t *uuid = oid.data;
   return StringPrintf("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",

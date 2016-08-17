@@ -18,8 +18,8 @@
 #define YB_BOOST_MUTEX_UTILS_H
 
 
-// Similar to boost::lock_guard except that it takes
-// a lock pointer, and checks against NULL. If the
+// Similar to std::lock_guard except that it takes
+// a lock pointer, and checks against nullptr. If the
 // pointer is NULL, does nothing. Otherwise guards
 // with the lock.
 template<class LockType>
@@ -27,13 +27,13 @@ class lock_guard_maybe {
  public:
   explicit lock_guard_maybe(LockType *l) :
     lock_(l) {
-    if (l != NULL) {
+    if (l != nullptr) {
       l->lock();
     }
   }
 
   ~lock_guard_maybe() {
-    if (lock_ != NULL) {
+    if (lock_ != nullptr) {
       lock_->unlock();
     }
   }
