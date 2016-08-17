@@ -48,7 +48,7 @@ namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-  : ServerBase("TabletServer", opts, "yb.tabletserver"),
+  : RpcAndWebServerBase("TabletServer", opts, "yb.tabletserver"),
     initted_(false),
     fail_heartbeats_for_tests_(false),
     opts_(opts),
@@ -109,7 +109,7 @@ Status TabletServer::Init() {
   // our heartbeat thread will loop until successfully connecting.
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
-  RETURN_NOT_OK(ServerBase::Init());
+  RETURN_NOT_OK(RpcAndWebServerBase::Init());
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   heartbeater_.reset(new Heartbeater(opts_, this));
@@ -138,11 +138,11 @@ Status TabletServer::Start() {
   gscoped_ptr<ServiceIf> remote_bootstrap_service(
       new RemoteBootstrapServiceImpl(fs_manager_.get(), tablet_manager_.get(), metric_entity()));
 
-  RETURN_NOT_OK(ServerBase::RegisterService(ts_service.Pass()));
-  RETURN_NOT_OK(ServerBase::RegisterService(admin_service.Pass()));
-  RETURN_NOT_OK(ServerBase::RegisterService(consensus_service.Pass()));
-  RETURN_NOT_OK(ServerBase::RegisterService(remote_bootstrap_service.Pass()));
-  RETURN_NOT_OK(ServerBase::Start());
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(ts_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(admin_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(consensus_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(remote_bootstrap_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
   RETURN_NOT_OK(maintenance_manager_->Init());
@@ -158,7 +158,7 @@ void TabletServer::Shutdown() {
   if (initted_) {
     maintenance_manager_->Shutdown();
     WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
-    ServerBase::Shutdown();
+    RpcAndWebServerBase::Shutdown();
     tablet_manager_->Shutdown();
   }
 

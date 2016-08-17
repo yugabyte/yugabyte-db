@@ -71,7 +71,7 @@ namespace yb {
 namespace master {
 
 Master::Master(const MasterOptions& opts)
-  : ServerBase("Master", opts, "yb.master"),
+  : RpcAndWebServerBase("Master", opts, "yb.master"),
     state_(kStopped),
     ts_manager_(new TSManager()),
     catalog_manager_(new CatalogManager(this)),
@@ -101,7 +101,7 @@ Status Master::Init() {
 
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 
-  RETURN_NOT_OK(ServerBase::Init());
+  RETURN_NOT_OK(RpcAndWebServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
@@ -128,10 +128,10 @@ Status Master::StartAsync() {
     new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
 
 
-  RETURN_NOT_OK(ServerBase::RegisterService(impl.Pass()));
-  RETURN_NOT_OK(ServerBase::RegisterService(consensus_service.Pass()));
-  RETURN_NOT_OK(ServerBase::RegisterService(remote_bootstrap_service.Pass()));
-  RETURN_NOT_OK(ServerBase::Start());
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(impl.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(consensus_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(remote_bootstrap_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
   RETURN_NOT_OK(InitMasterRegistration());
@@ -190,7 +190,7 @@ void Master::Shutdown() {
     string name = ToString();
     LOG(INFO) << name << " shutting down...";
     maintenance_manager_->Shutdown();
-    ServerBase::Shutdown();
+    RpcAndWebServerBase::Shutdown();
     catalog_manager_->Shutdown();
     LOG(INFO) << name << " shutdown complete.";
   }

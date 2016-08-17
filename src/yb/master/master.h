@@ -54,7 +54,7 @@ class CatalogManager;
 class TSManager;
 class MasterPathHandlers;
 
-class Master : public server::ServerBase {
+class Master : public server::RpcAndWebServerBase {
  public:
   static const uint16_t kDefaultPort = 7051;
   static const uint16_t kDefaultWebPort = 8051;

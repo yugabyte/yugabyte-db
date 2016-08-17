@@ -23,11 +23,11 @@
 namespace yb {
 namespace server {
 
-class ServerBase;
+class RpcServerBase;
 
 class GenericServiceImpl : public GenericServiceIf {
  public:
-  explicit GenericServiceImpl(ServerBase* server);
+  explicit GenericServiceImpl(RpcServerBase* server);
   virtual ~GenericServiceImpl();
 
   virtual void SetFlag(const SetFlagRequestPB* req,
@@ -53,7 +53,7 @@ class GenericServiceImpl : public GenericServiceIf {
   virtual void Ping(const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext* rpc) OVERRIDE;
 
  private:
-  ServerBase* server_;
+  RpcServerBase* server_;
 
   DISALLOW_COPY_AND_ASSIGN(GenericServiceImpl);
 };

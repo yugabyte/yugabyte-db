@@ -432,7 +432,7 @@ class RaftConsensus : public Consensus,
 
   Random rng_;
 
-  // TODO: Plumb this from ServerBase.
+  // TODO: Plumb this from RpcAndWebServerBase.
   RandomizedFailureMonitor failure_monitor_;
 
   scoped_refptr<FailureDetector> failure_detector_;

@@ -42,7 +42,7 @@ extern "C" void __gcov_flush(void);
 namespace yb {
 namespace server {
 
-GenericServiceImpl::GenericServiceImpl(ServerBase* server)
+GenericServiceImpl::GenericServiceImpl(RpcServerBase* server)
   : GenericServiceIf(server->metric_entity()),
     server_(server) {
 }

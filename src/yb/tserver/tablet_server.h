@@ -44,7 +44,7 @@ class ScannerManager;
 class TabletServerPathHandlers;
 class TSTabletManager;
 
-class TabletServer : public server::ServerBase {
+class TabletServer : public server::RpcAndWebServerBase {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.

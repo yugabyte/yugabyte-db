@@ -83,40 +83,30 @@ shared_ptr<MemTracker> CreateMemTrackerForServer() {
 
 } // anonymous namespace
 
-ServerBase::ServerBase(string name, const ServerBaseOptions& options,
-                       const string& metric_namespace)
+RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
+                             const string& metric_namespace)
     : name_(std::move(name)),
       mem_tracker_(CreateMemTrackerForServer()),
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
       rpc_server_(new RpcServer(options.rpc_opts)),
-      web_server_(new Webserver(options.webserver_opts, name_)),
       is_first_run_(false),
       options_(options),
       stop_metrics_logging_latch_(1) {
-  FsManagerOpts fs_opts;
-  fs_opts.metric_entity = metric_entity_;
-  fs_opts.parent_mem_tracker = mem_tracker_;
-  fs_opts.wal_path = options.fs_opts.wal_path;
-  fs_opts.data_paths = options.fs_opts.data_paths;
-  fs_manager_.reset(new FsManager(options.env, fs_opts));
-
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
     clock_ = LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp);
   }
-
-  CHECK_OK(StartThreadInstrumentation(metric_entity_, web_server_.get()));
 }
 
-ServerBase::~ServerBase() {
+RpcServerBase::~RpcServerBase() {
   Shutdown();
   mem_tracker_->UnregisterFromParent();
 }
 
-Sockaddr ServerBase::first_rpc_address() const {
+Sockaddr RpcServerBase::first_rpc_address() const {
   vector<Sockaddr> addrs;
   WARN_NOT_OK(rpc_server_->GetBoundAddresses(&addrs),
               "Couldn't get bound RPC address");
@@ -124,27 +114,11 @@ Sockaddr ServerBase::first_rpc_address() const {
   return addrs[0];
 }
 
-Sockaddr ServerBase::first_http_address() const {
-  vector<Sockaddr> addrs;
-  WARN_NOT_OK(web_server_->GetBoundAddresses(&addrs),
-              "Couldn't get bound webserver addresses");
-  CHECK(!addrs.empty()) << "Not bound";
-  return addrs[0];
-}
-
-const NodeInstancePB& ServerBase::instance_pb() const {
+const NodeInstancePB& RpcServerBase::instance_pb() const {
   return *DCHECK_NOTNULL(instance_pb_.get());
 }
 
-void ServerBase::GenerateInstanceID() {
-  instance_pb_.reset(new NodeInstancePB);
-  instance_pb_->set_permanent_uuid(fs_manager_->uuid());
-  // TODO: maybe actually bump a sequence number on local disk instead of
-  // using time.
-  instance_pb_->set_instance_seqno(Env::Default()->NowMicros());
-}
-
-Status ServerBase::Init() {
+Status RpcServerBase::Init() {
   glog_metrics_.reset(new ScopedGLogMetrics(metric_entity_));
   tcmalloc::RegisterMetrics(metric_entity_);
   RegisterSpinLockContentionMetrics(metric_entity_);
@@ -155,17 +129,6 @@ Status ServerBase::Init() {
   // so we're less likely to get into a partially initialized state on disk during startup
   // if we're having clock problems.
   RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
-
-  Status s = fs_manager_->Open();
-  if (s.IsNotFound()) {
-    LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
-    LOG(INFO) << "Creating new FS layout";
-    is_first_run_ = true;
-    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(),
-                          "Could not create new FS layout");
-    s = fs_manager_->Open();
-  }
-  RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
 
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
@@ -183,7 +146,7 @@ Status ServerBase::Init() {
   return Status::OK();
 }
 
-void ServerBase::GetStatusPB(ServerStatusPB* status) const {
+void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
   // Node instance
   status->mutable_node_instance()->CopyFrom(*instance_pb_);
 
@@ -198,42 +161,11 @@ void ServerBase::GetStatusPB(ServerStatusPB* status) const {
     }
   }
 
-  // HTTP ports
-  {
-    vector<Sockaddr> addrs;
-    CHECK_OK(web_server_->GetBoundAddresses(&addrs));
-    for (const Sockaddr& addr : addrs) {
-      HostPortPB* pb = status->add_bound_http_addresses();
-      pb->set_host(addr.host());
-      pb->set_port(addr.port());
-    }
-  }
-
   VersionInfo::GetVersionInfoPB(status->mutable_version_info());
 }
 
-Status ServerBase::GetRegistration(ServerRegistrationPB* reg) const {
-  vector<Sockaddr> addrs;
-  RETURN_NOT_OK(CHECK_NOTNULL(rpc_server())->GetBoundAddresses(&addrs));
-  RETURN_NOT_OK_PREPEND(
-      AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
-      "Failed to add RPC addresses to registration");
-
-  addrs.clear();
-  RETURN_NOT_OK_PREPEND(
-      CHECK_NOTNULL(web_server())->GetBoundAddresses(&addrs), "Unable to get bound HTTP addresses");
-  RETURN_NOT_OK_PREPEND(
-      AddHostPortPBs(addrs, reg->mutable_http_addresses()),
-      "Failed to add HTTP addresses to registration");
-
-  reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud);
-  reg->mutable_cloud_info()->set_placement_region(options_.placement_region);
-  reg->mutable_cloud_info()->set_placement_zone(options_.placement_zone);
-  return Status::OK();
-}
-
-Status ServerBase::DumpServerInfo(const string& path,
-                                  const string& format) const {
+Status RpcServerBase::DumpServerInfo(const string& path,
+                                     const string& format) const {
   ServerStatusPB status;
   GetStatusPB(&status);
 
@@ -252,20 +184,20 @@ Status ServerBase::DumpServerInfo(const string& path,
   return Status::OK();
 }
 
-Status ServerBase::RegisterService(gscoped_ptr<rpc::ServiceIf> rpc_impl) {
+Status RpcServerBase::RegisterService(gscoped_ptr<rpc::ServiceIf> rpc_impl) {
   return rpc_server_->RegisterService(rpc_impl.Pass());
 }
 
-Status ServerBase::StartMetricsLogging() {
+Status RpcServerBase::StartMetricsLogging() {
   if (options_.metrics_log_interval_ms <= 0) {
     return Status::OK();
   }
 
-  return Thread::Create("server", "metrics-logger", &ServerBase::MetricsLoggingThread,
+  return Thread::Create("server", "metrics-logger", &RpcAndWebServerBase::MetricsLoggingThread,
                         this, &metrics_logging_thread_);
 }
 
-void ServerBase::MetricsLoggingThread() {
+void RpcServerBase::MetricsLoggingThread() {
   RollingLog log(Env::Default(), FLAGS_log_dir, "metrics");
 
   // How long to wait before trying again if we experience a failure
@@ -308,26 +240,12 @@ void ServerBase::MetricsLoggingThread() {
   WARN_NOT_OK(log.Close(), "Unable to close metric log");
 }
 
-std::string ServerBase::FooterHtml() const {
-  return Substitute("<pre>$0\nserver uuid $1</pre>",
-                    VersionInfo::GetShortVersionString(),
-                    instance_pb_->permanent_uuid());
-}
-
-Status ServerBase::Start() {
-  GenerateInstanceID();
+Status RpcServerBase::Start() {
 
   RETURN_NOT_OK(RegisterService(make_gscoped_ptr<rpc::ServiceIf>(
-                                  new GenericServiceImpl(this))));
+      new GenericServiceImpl(this))));
 
   RETURN_NOT_OK(rpc_server_->Start());
-
-  AddDefaultPathHandlers(web_server_.get());
-  AddRpczPathHandlers(messenger_, web_server_.get());
-  RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
-  TracingPathHandlers::RegisterHandlers(web_server_.get());
-  web_server_->set_footer_html(FooterHtml());
-  RETURN_NOT_OK(web_server_->Start());
 
   if (!options_.dump_info_path.empty()) {
     RETURN_NOT_OK_PREPEND(DumpServerInfo(options_.dump_info_path, options_.dump_info_format),
@@ -337,13 +255,124 @@ Status ServerBase::Start() {
   return Status::OK();
 }
 
-void ServerBase::Shutdown() {
+void RpcServerBase::Shutdown() {
   if (metrics_logging_thread_) {
     stop_metrics_logging_latch_.CountDown();
     metrics_logging_thread_->Join();
   }
-  web_server_->Stop();
   rpc_server_->Shutdown();
+}
+
+RpcAndWebServerBase::RpcAndWebServerBase(string name, const ServerBaseOptions& options,
+                                         const string& metric_namespace)
+    : RpcServerBase(name, options, metric_namespace),
+      web_server_(new Webserver(options.webserver_opts, name_)) {
+  FsManagerOpts fs_opts;
+  fs_opts.metric_entity = metric_entity_;
+  fs_opts.parent_mem_tracker = mem_tracker_;
+  fs_opts.wal_path = options.fs_opts.wal_path;
+  fs_opts.data_paths = options.fs_opts.data_paths;
+  fs_manager_.reset(new FsManager(options.env, fs_opts));
+
+  CHECK_OK(StartThreadInstrumentation(metric_entity_, web_server_.get()));
+}
+
+RpcAndWebServerBase::~RpcAndWebServerBase() {
+  Shutdown();
+}
+
+Sockaddr RpcAndWebServerBase::first_http_address() const {
+  vector<Sockaddr> addrs;
+  WARN_NOT_OK(web_server_->GetBoundAddresses(&addrs),
+              "Couldn't get bound webserver addresses");
+  CHECK(!addrs.empty()) << "Not bound";
+  return addrs[0];
+}
+
+void RpcAndWebServerBase::GenerateInstanceID() {
+  instance_pb_.reset(new NodeInstancePB);
+  instance_pb_->set_permanent_uuid(fs_manager_->uuid());
+  // TODO: maybe actually bump a sequence number on local disk instead of
+  // using time.
+  instance_pb_->set_instance_seqno(Env::Default()->NowMicros());
+}
+
+Status RpcAndWebServerBase::Init() {
+  RETURN_NOT_OK(RpcServerBase::Init());
+
+  Status s = fs_manager_->Open();
+  if (s.IsNotFound()) {
+    LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
+    LOG(INFO) << "Creating new FS layout";
+    is_first_run_ = true;
+    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(),
+                          "Could not create new FS layout");
+    s = fs_manager_->Open();
+  }
+  RETURN_NOT_OK_PREPEND(s, "Failed to load FS layout");
+
+  return Status::OK();
+}
+
+void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
+  RpcServerBase::GetStatusPB(status);
+
+  // HTTP ports
+  {
+    vector<Sockaddr> addrs;
+    CHECK_OK(web_server_->GetBoundAddresses(&addrs));
+    for (const Sockaddr& addr : addrs) {
+      HostPortPB* pb = status->add_bound_http_addresses();
+      pb->set_host(addr.host());
+      pb->set_port(addr.port());
+    }
+  }
+}
+
+Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
+  vector<Sockaddr> addrs;
+  RETURN_NOT_OK(CHECK_NOTNULL(rpc_server())->GetBoundAddresses(&addrs));
+  RETURN_NOT_OK_PREPEND(
+      AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
+      "Failed to add RPC addresses to registration");
+
+  addrs.clear();
+  RETURN_NOT_OK_PREPEND(
+      CHECK_NOTNULL(web_server())->GetBoundAddresses(&addrs), "Unable to get bound HTTP addresses");
+  RETURN_NOT_OK_PREPEND(
+      AddHostPortPBs(addrs, reg->mutable_http_addresses()),
+      "Failed to add HTTP addresses to registration");
+
+  reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud);
+  reg->mutable_cloud_info()->set_placement_region(options_.placement_region);
+  reg->mutable_cloud_info()->set_placement_zone(options_.placement_zone);
+  return Status::OK();
+}
+
+std::string RpcAndWebServerBase::FooterHtml() const {
+  return Substitute("<pre>$0\nserver uuid $1</pre>",
+                    VersionInfo::GetShortVersionString(),
+                    instance_pb_->permanent_uuid());
+}
+
+Status RpcAndWebServerBase::Start() {
+  GenerateInstanceID();
+
+  AddDefaultPathHandlers(web_server_.get());
+  AddRpczPathHandlers(messenger_, web_server_.get());
+  RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
+  TracingPathHandlers::RegisterHandlers(web_server_.get());
+  web_server_->set_footer_html(FooterHtml());
+  RETURN_NOT_OK(web_server_->Start());
+
+  RETURN_NOT_OK(RpcServerBase::Start());
+
+  return Status::OK();
+}
+
+void RpcAndWebServerBase::Shutdown() {
+  RpcServerBase::Shutdown();
+  web_server_->Stop();
 }
 
 } // namespace server
