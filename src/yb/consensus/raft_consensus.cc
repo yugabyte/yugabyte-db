@@ -1471,6 +1471,10 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
                             .ShortDebugString()));
         }
+        if (CountVotersInTransition(committed_config) != 0) {
+          return Status::RuntimeError("Current configuration contains at least one peer that is "
+                                      "transitioning to VOTER role");
+        }
         if (!RemoveFromRaftConfig(&new_config, server_uuid)) {
           return Status::NotFound(
               Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
