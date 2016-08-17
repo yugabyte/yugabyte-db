@@ -181,6 +181,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           throw new RuntimeException(msg);
         }
         universeDetails.userIntent = taskParams().userIntent;
+        universeDetails.placementInfo = taskParams().placementInfo;
         universeDetails.nodePrefix = taskParams().nodePrefix;
         universeDetails.numNodes = taskParams().numNodes;
         universeDetails.ybServerPkg = taskParams().ybServerPkg;
@@ -398,13 +399,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Creates a task list to update the placement information by making a call to the master leader
    * of the cluster just created and adds it to the task queue.
    */
-  public void createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
+  public void createPlacementInfoTask(Set<NodeDetails> newMasters,
+                                      Collection<NodeDetails> blacklistNodes) {
     TaskList taskList = new TaskList("UpdatePlacementInfo", executor);
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
     params.cloud = CloudType.aws;
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
+    // Set the number of masters.
+    params.numMasters = newMasters.size();
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<String>();

@@ -70,7 +70,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createWaitForMasterLeaderTask();
 
       // Persist the placement info into the YB master.
-      createPlacementInfoTask(null /* blacklistNodes */);
+      createPlacementInfoTask(newMasters, null /* blacklistNodes */);
 
       // Start the tservers in the clusters.
       createStartTServersTasks(newNodesMap.values());
