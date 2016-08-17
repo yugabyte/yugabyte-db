@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 public class ProviderTest extends FakeDBApplication {
   @Test
   public void testCreate() {
-    Provider provider = Provider.create("Amazon");
+    Provider provider = Provider.create("aws", "Amazon");
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
@@ -22,9 +22,9 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testCreateDuplicateProvider() {
-    Provider.create("Amazon");
+    Provider.create("aws", "Amazon");
     try {
-      Provider.create("Amazon");
+      Provider.create("aws", "Amazon");
     } catch (Exception e) {
       assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
     }
@@ -32,7 +32,7 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testInactiveProvider() {
-    Provider provider = Provider.create("Amazon");
+    Provider provider = Provider.create("aws", "Amazon");
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
@@ -47,7 +47,7 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testFindProvider() {
-    Provider provider = Provider.create("Amazon");
+    Provider provider = Provider.create("aws", "Amazon");
 
     assertNotNull(provider.uuid);
     Provider fetch = Provider.find.byId(provider.uuid);

@@ -262,6 +262,8 @@ public class UniverseController extends AuthenticatedController {
     taskParams.userIntent.regionList = formData.get().regionList;
     LOG.debug("Added {} regions to placement info.", taskParams.userIntent.regionList.size());
 
+    taskParams.userIntent.instanceType = formData.get().instanceType;
+
     // Set the replication factor.
     taskParams.userIntent.replicationFactor = formData.get().replicationFactor;
 
