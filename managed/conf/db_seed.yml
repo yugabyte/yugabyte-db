@@ -6,6 +6,7 @@
 
 # Provider
 - &provider_aws !!com.yugabyte.yw.models.Provider
+    code: aws
     name: Amazon
 
 # Region
@@ -119,3 +120,37 @@
     name: us-east-1e
     region: *aws-us-east-1
     subnet: subnet-9c1d1fa1
+
+# InstanceType
+- &aws-c3xlarge !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: aws
+      instanceTypeCode: c3.xlarge
+    numCores: 4
+    memSize: 7.5
+    volumeSize: 80
+    volumeType: SSD
+- &aws-c32xlarge !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: aws
+      instanceTypeCode: c3.2xlarge
+    numCores: 8
+    memSize: 15
+    volumeSize: 160
+    volumeType: SSD
+- &aws-c34xlarge !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: aws
+      instanceTypeCode: c3.4xlarge
+    numCores: 16
+    memSize: 30
+    volumeSize: 320
+    volumeType: SSD
+- &aws-c38xlarge !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: aws
+      instanceTypeCode: c3.8xlarge
+    numCores: 32
+    memSize: 60
+    volumeSize: 640
+    volumeType: SSD

@@ -41,11 +41,24 @@ create table customer_task (
   constraint pk_customer_task primary key (id)
 );
 
+create table instance_type (
+  provider_code                 varchar(255) not null,
+  instance_type_code            varchar(255) not null,
+  active                        boolean default true not null,
+  num_cores                     integer not null,
+  mem_size                      double not null,
+  volume_size                   integer not null,
+  volume_type                   varchar(3) not null,
+  constraint ck_instance_type_volume_type check (volume_type in ('SSD','EBS')),
+  constraint pk_instance_type primary key (provider_code,instance_type_code)
+);
+
 create table provider (
   uuid                          varchar(40) not null,
+  code                          varchar(255) not null,
   name                          varchar(255) not null,
   active                        boolean default true not null,
-  constraint uq_provider_name unique (name),
+  constraint uq_provider_code unique (code),
   constraint pk_provider primary key (uuid)
 );
 
@@ -112,6 +125,8 @@ drop table if exists availability_zone;
 drop table if exists customer;
 
 drop table if exists customer_task;
+
+drop table if exists instance_type;
 
 drop table if exists provider;
 

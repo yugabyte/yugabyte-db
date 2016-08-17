@@ -48,6 +48,9 @@ public class UniverseFormData {
   @Constraints.Required()
   public List<UUID> regionList;
 
+  @Constraints.Required()
+  public String instanceType;
+
   // The regions that the user wants to nominate as the preferred region. This makes sense only for
   // a multi-region setup.
   public UUID preferredRegion;
@@ -67,6 +70,7 @@ public class UniverseFormData {
       formData.isMultiAZ = universeDetails.userIntent.isMultiAZ;
       formData.replicationFactor = universeDetails.userIntent.replicationFactor;
       formData.preferredRegion = universeDetails.userIntent.preferredRegion;
+      formData.instanceType = universeDetails.userIntent.instanceType;
     }
 
     return formData;

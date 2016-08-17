@@ -49,8 +49,8 @@ public class ProviderControllerTest extends FakeDBApplication {
   @Test
   public void testListProviders() {
     String authToken = customer.createAuthToken();
-    Provider p1 = Provider.create("Amazon");
-    Provider p2 = Provider.create("Google");
+    Provider p1 = Provider.create("aws", "Amazon");
+    Provider p2 = Provider.create("gce", "Google");
 
     Http.RequestBuilder request = play.test.Helpers.fakeRequest("GET", "/api/providers")
                                                    .header("X-AUTH-TOKEN", authToken);
@@ -69,7 +69,9 @@ public class ProviderControllerTest extends FakeDBApplication {
   public void testCreateProvider() {
     String authToken = customer.createAuthToken();
     ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "azu");
     bodyJson.put("name", "Microsoft");
+
 
     Http.RequestBuilder request = play.test.Helpers.fakeRequest("POST", "/api/providers")
                                                     .header("X-AUTH-TOKEN", authToken)
@@ -85,9 +87,10 @@ public class ProviderControllerTest extends FakeDBApplication {
   public void testCreateDuplicateProvider() {
     String authToken = customer.createAuthToken();
 
-    Provider.create("Amazon");
+    Provider.create("aws", "Amazon");
 
     ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
 
     Http.RequestBuilder request = play.test.Helpers.fakeRequest("POST", "/api/providers")

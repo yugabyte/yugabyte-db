@@ -23,7 +23,7 @@ public class UniverseTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = Customer.create("Test", "test@test.com", "foo");
-    defaultProvider = Provider.create("Amazon");
+    defaultProvider = Provider.create("aws", "Amazon");
   }
 
   @Test
