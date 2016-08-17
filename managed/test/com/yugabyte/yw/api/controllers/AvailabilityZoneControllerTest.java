@@ -41,7 +41,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = Customer.create("Valid Customer", "foo@bar.com", "password");
-    defaultProvider = Provider.create("Amazon");
+    defaultProvider = Provider.create("aws", "Amazon");
     defaultRegion = Region.create(defaultProvider,
                                   "default-region",
                                   "Default PlacementRegion",

@@ -35,6 +35,8 @@ GET     /api/providers/:pUUID/regions                 com.yugabyte.yw.controller
 POST    /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(pUUID: java.util.UUID)
 GET     /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.list(pUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.create(pUUID: java.util.UUID, rUUID: java.util.UUID)
+GET     /api/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.list(pUUID: java.util.UUID)
+POST    /api/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.create(pUUID: java.util.UUID)
 
 # Customer profile API
 GET     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)

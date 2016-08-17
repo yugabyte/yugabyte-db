@@ -21,4 +21,7 @@ public class UserIntent {
   // The regions that the user wants to nominate as the preferred region. This makes sense only for
   // a multi-region setup.
   public UUID preferredRegion;
+
+  // Cloud Instance Type that the user wants
+  public String instanceType;
 }

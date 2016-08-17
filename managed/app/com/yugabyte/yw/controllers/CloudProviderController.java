@@ -40,7 +40,7 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     try {
-      Provider p = Provider.create(formData.get().name);
+      Provider p = Provider.create(formData.get().code, formData.get().name);
       return ok(Json.toJson(p));
     } catch (Exception e) {
       // TODO: Handle exception and print user friendly message

@@ -39,7 +39,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = Customer.create("Valid Customer", "foo@bar.com", "password");
-    provider = Provider.create("Amazon");
+    provider = Provider.create("aws", "Amazon");
   }
 
   @Test

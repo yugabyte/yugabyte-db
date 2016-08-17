@@ -29,8 +29,7 @@
                     <input class="" type="checkbox" name="isMultiAZ" value=true checked>Multi-AZ Capable
                   </label>
                 </div>
-                TODO: Add AZ preference as checkbox
-                      Add instance type (c3.xlarge, etc) derive it from the db
+                @select(universeForm("instanceType"), options(Seq("")), 'class -> "form-control", '_label -> "Instance Type" )
             </div>
           </fieldset>
         </form>

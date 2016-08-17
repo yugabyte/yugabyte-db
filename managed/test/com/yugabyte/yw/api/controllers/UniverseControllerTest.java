@@ -18,12 +18,10 @@ import static play.test.Helpers.route;
 
 import java.util.*;
 
-import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 import com.yugabyte.yw.models.helpers.UserIntent;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.Matchers;
 
@@ -40,6 +38,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.InstanceType;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -174,7 +173,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertThat(nodeDetailsMap, is(notNullValue()));
 
     int idx = 1;
-    for (Iterator<Map.Entry<String, JsonNode>> nodeInfo = nodeDetailsMap.fields(); nodeInfo.hasNext();) {
+    for (Iterator<Map.Entry<String, JsonNode>> nodeInfo = nodeDetailsMap.fields(); nodeInfo.hasNext(); ) {
       Map.Entry<String, JsonNode> node = nodeInfo.next();
       assertEquals(node.getKey(), "host-n" + idx);
       idx++;
@@ -193,7 +192,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseCreateWithoutAvailabilityZone() {
-    Provider p = Provider.create("Amazon");
+    Provider p = Provider.create("aws", "Amazon");
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
 
     ObjectNode bodyJson = Json.newObject();
@@ -202,6 +201,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.set("regionList", regionList);
     bodyJson.put("universeName", "Single UserUniverse");
     bodyJson.put("isMultiAZ", false);
+    bodyJson.put("instanceType", "a-instance");
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie).bodyJson(bodyJson));
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
@@ -215,10 +215,11 @@ public class UniverseControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
-    Provider p = Provider.create("Amazon");
+    Provider p = Provider.create("aws", "Amazon");
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i = InstanceType.create(p.code, "c3.xlarge", 10, 5.5, 20, InstanceType.VolumeType.EBS);
 
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
@@ -226,6 +227,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.set("regionList", regionList);
     bodyJson.put("universeName", "Single UserUniverse");
     bodyJson.put("isMultiAZ", false);
+    bodyJson.put("instanceType", i.getInstanceTypeCode());
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
                             .cookie(validCookie).bodyJson(bodyJson));
@@ -260,12 +262,13 @@ public class UniverseControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
-    Provider p = Provider.create("Amazon");
+    Provider p = Provider.create("aws", "Amazon");
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe universe = Universe.create("Test Universe", customer.customerId);
+    InstanceType i = InstanceType.create(p.code, "c3.xlarge", 10, 5.5, 20, InstanceType.VolumeType.EBS);
 
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
@@ -273,6 +276,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.set("regionList", regionList);
     bodyJson.put("isMultiAZ", true);
     bodyJson.put("universeName", universe.name);
+    bodyJson.put("instanceType", i.getInstanceTypeCode());
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie).bodyJson(bodyJson));

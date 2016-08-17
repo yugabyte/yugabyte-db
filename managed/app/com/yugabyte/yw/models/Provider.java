@@ -21,6 +21,9 @@ public class Provider extends Model {
   public UUID uuid;
 
   @Column(unique = true, nullable = false)
+  public String code;
+
+  @Column(nullable = false)
   public String name;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
@@ -35,13 +38,15 @@ public class Provider extends Model {
 
   /**
    * Create a new Cloud Provider
+   * @param code, code of cloud provider
    * @param name, name of cloud provider
    * @return instance of cloud provider
    */
-  public static Provider create(String name)
+  public static Provider create(String code, String name)
   {
     Provider provider = new Provider();
     provider.uuid = UUID.randomUUID();
+    provider.code = code;
     provider.name = name;
     provider.save();
     return provider;

@@ -17,6 +17,7 @@ $(document).ready(function() {
 
     if (selectedProviderUUID) {
       populateRegions();
+      populateInstanceType();
     }
   });
 
@@ -26,6 +27,7 @@ $(document).ready(function() {
 
   $("#provider").on('change', function() {
     populateRegions();
+    populateInstanceType();
   });
 
   $('#regionList').select2();
@@ -49,4 +51,24 @@ function populateRegions() {
        options.val(selectedRegionUUIDs).trigger("change");
      }
    });
+}
+
+function populateInstanceType() {
+  var providerID = $("#provider").val();
+  var selectedInstanceType = $("#selectedInstanceType").val();
+
+  $.get("/api/providers/" + providerID + "/instance_types", function(results) {
+    var options = $("#instanceType");
+    options.empty();
+    $.each(results, function(idx, instanceType) {
+      var option = $("<option />").val(instanceType.instanceTypeCode).text(instanceType.instanceTypeCode);
+
+      if (selectedInstanceType && selectedInstanceType == instanceType.instanceTypeCode) {
+        option.attr("selected", true);
+      }
+      options.append(option);
+
+    });
+
+  });
 }

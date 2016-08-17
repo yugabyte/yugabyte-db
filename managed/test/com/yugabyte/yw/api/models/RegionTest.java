@@ -24,7 +24,7 @@ public class RegionTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    defaultProvider = Provider.create("Amazon");
+    defaultProvider = Provider.create("aws", "Amazon");
   }
 
   @Test
@@ -69,7 +69,7 @@ public class RegionTest extends FakeDBApplication {
     Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region.create(defaultProvider, "region-2", "region 2", "default-image");
 
-    Provider provider2 = Provider.create("Google");
+    Provider provider2 = Provider.create("gce", "Google");
     Region.create(provider2, "region-3", "region 3", "default-image");
 
     Set<Region> regions = Region.find.where().eq("provider_uuid", defaultProvider.uuid).findSet();
