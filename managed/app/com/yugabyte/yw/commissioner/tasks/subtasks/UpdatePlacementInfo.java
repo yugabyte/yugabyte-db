@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -20,8 +18,15 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 
 import play.api.Play;
 
@@ -39,10 +44,14 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
     // The universe against which this node's details should be saved.
     public UUID universeUUID;
 
+    // The set of new masters.
+    public int numMasters;
+
     // If present, then we intend to decommission these nodes.
     public Set<String> blacklistNodes = null;
   }
 
+  @Override
   protected Params taskParams() {
     return (Params)taskParams;
   }
@@ -66,6 +75,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
       ModifyUniverseConfig modifyConfig = new ModifyUniverseConfig(ybService.getClient(hostPorts),
                                                                    taskParams().universeUUID,
+                                                                   taskParams().numMasters,
                                                                    taskParams().blacklistNodes);
       modifyConfig.doCall();
     } catch (Exception e) {
@@ -74,56 +84,59 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
     }
   }
 
+  // TODO: in future, AbstractModifyMasterClusterConfig.run() should have retries.
   public static class ModifyUniverseConfig extends AbstractModifyMasterClusterConfig {
     UUID universeUUID;
+    int numMasters;
     Set<String> blacklistNodes;
 
     public ModifyUniverseConfig(YBClient client,
                                 UUID universeUUID,
+                                int numMasters,
                                 Set<String> blacklistNodes) {
       super(client);
       this.universeUUID = universeUUID;
+      this.numMasters = numMasters;
       this.blacklistNodes = blacklistNodes;
     }
 
     @Override
     protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
       Universe universe = Universe.get(universeUUID);
-      // Get the masters in the universe.
-      Collection<NodeDetails> masters = universe.getMasters();
 
       Master.SysClusterConfigEntryPB.Builder configBuilder =
-          Master.SysClusterConfigEntryPB.newBuilder();
-      Master.PlacementInfoPB.Builder placementInfo = configBuilder.getPlacementInfoBuilder();
+          Master.SysClusterConfigEntryPB.newBuilder(config);
 
+      // Clear the placement info, as it is no longer valid.
+      Master.PlacementInfoPB.Builder placementInfoPB =
+          configBuilder.clearPlacementInfo().getPlacementInfoBuilder();
       // Set the replication factor to the number of masters.
-      placementInfo.setNumReplicas(masters.size());
+      placementInfoPB.setNumReplicas(numMasters);
+      // Create the placement info for the universe.
+      PlacementInfo placementInfo = universe.getUniverseDetails().placementInfo;
+      for (PlacementCloud placementCloud : placementInfo.cloudList) {
+        Provider cloud = Provider.find.byId(placementCloud.uuid);
+        for (PlacementRegion placementRegion : placementCloud.regionList) {
+          Region region = Region.get(placementRegion.uuid);
+          for (PlacementAZ placementAz : placementRegion.azList) {
+            AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
+            // Create the cloud info object.
+            WireProtocol.CloudInfoPB.Builder ccb = WireProtocol.CloudInfoPB.newBuilder();
+            // TODO: change placementCloud.name to cloud.code once code is added to cloud.
+            ccb.setPlacementCloud(placementCloud.name)
+               .setPlacementRegion(region.code)
+               .setPlacementZone(az.code);
 
-      // This is a set to track unique placement ids to prevent repetition.
-      Set<String> placementIds = new HashSet<String>();
-      // Generate the current config from the masters in the universe.
-      for (NodeDetails node : masters) {
-        // Add one entry per (cloud, region, az) tuple. For now, assume the concatenation of the
-        // names is unique with no subname overlapping.
-        String placementId = node.cloud + node.region + node.az;
-        if (!placementIds.contains(placementId)) {
-          // Create the cloud info object.
-          WireProtocol.CloudInfoPB.Builder ccb = WireProtocol.CloudInfoPB.newBuilder();
-          ccb.setPlacementCloud(node.cloud)
-             .setPlacementRegion(node.region)
-             .setPlacementZone(node.az);
-
-          Master.PlacementBlockPB.Builder pbb = Master.PlacementBlockPB.newBuilder();
-          // Set the cloud info.
-          pbb.setCloudInfo(ccb);
-          // Set the minumum number of replicas in this PlacementAZ to 1 (at least one copy of the data).
-          pbb.setMinNumReplicas(1);
-          placementInfo.addPlacementBlocks(pbb);
-          // Add this (cloud, region, az) tuple to the set to make sure we do not process it again.
-          placementIds.add(placementId);
+            Master.PlacementBlockPB.Builder pbb = Master.PlacementBlockPB.newBuilder();
+            // Set the cloud info.
+            pbb.setCloudInfo(ccb);
+            // Set the minimum number of replicas in this PlacementAZ.
+            pbb.setMinNumReplicas(placementAz.replicationFactor);
+            placementInfoPB.addPlacementBlocks(pbb);
+          }
         }
       }
-      placementInfo.build();
+      placementInfoPB.build();
 
       // Add in any black listed nodes of tablet servers.
       if (blacklistNodes != null) {
@@ -137,7 +150,10 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
         }
         blacklistBuilder.build();
       }
-      return configBuilder.build();
+      Master.SysClusterConfigEntryPB newConfig = configBuilder.build();
+      LOG.info("Updating cluster config, old config = [{}], new config = [{}]",
+               config.toString(), newConfig.toString());
+      return newConfig;
     }
   }
 }
