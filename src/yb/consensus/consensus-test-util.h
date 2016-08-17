@@ -173,14 +173,14 @@ class DelayablePeerProxy : public TestPeerProxy {
   // Delay the answer to the next response to this remote
   // peer. The response callback will only be called on Respond().
   virtual void DelayResponse() {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     delay_response_ = true;
     latch_.Reset(1); // Reset for the next time.
   }
 
   virtual void RespondUnlessDelayed(Method method) {
     {
-      lock_guard<simple_spinlock> l(&lock_);
+      std::lock_guard<simple_spinlock> l(lock_);
       if (delay_response_) {
         latch_.CountDown();
         delay_response_ = false;
@@ -237,14 +237,14 @@ class MockedPeerProxy : public TestPeerProxy {
   virtual void set_update_response(const ConsensusResponsePB& update_response) {
     CHECK(update_response.IsInitialized()) << update_response.ShortDebugString();
     {
-      lock_guard<simple_spinlock> l(&lock_);
+      std::lock_guard<simple_spinlock> l(lock_);
       update_response_ = update_response;
     }
   }
 
   virtual void set_vote_response(const VoteResponsePB& vote_response) {
     {
-      lock_guard<simple_spinlock> l(&lock_);
+      std::lock_guard<simple_spinlock> l(lock_);
       vote_response_ = vote_response;
     }
   }
@@ -254,7 +254,7 @@ class MockedPeerProxy : public TestPeerProxy {
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) OVERRIDE {
     {
-      lock_guard<simple_spinlock> l(&lock_);
+      std::lock_guard<simple_spinlock> l(lock_);
       update_count_++;
       *response = update_response_;
     }
@@ -271,7 +271,7 @@ class MockedPeerProxy : public TestPeerProxy {
 
   // Return the number of times that UpdateAsync() has been called.
   int update_count() const {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return update_count_;
   }
 

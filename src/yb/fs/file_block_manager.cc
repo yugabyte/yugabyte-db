@@ -477,7 +477,7 @@ Status FileBlockManager::SyncMetadata(const internal::FileBlockLocation& locatio
   // Figure out what directories to sync.
   vector<string> to_sync;
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     for (const string& parent_dir : parent_dirs) {
       if (dirty_dirs_.erase(parent_dir)) {
         to_sync.push_back(parent_dir);
@@ -649,7 +649,7 @@ Status FileBlockManager::CreateBlock(const CreateBlockOptions& opts,
   uint16_t root_path_idx;
   string root_path;
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     root_path_idx = next_root_path_->first;
     root_path = next_root_path_->second->path();
     next_root_path_++;
@@ -689,7 +689,7 @@ Status FileBlockManager::CreateBlock(const CreateBlockOptions& opts,
       // Update dirty_dirs_ with those provided as well as the block's
       // directory, which may not have been created but is definitely dirty
       // (because we added a file to it).
-      lock_guard<simple_spinlock> l(&lock_);
+      std::lock_guard<simple_spinlock> l(lock_);
       for (const string& created : created_dirs) {
         dirty_dirs_.insert(created);
       }

@@ -40,6 +40,7 @@
 #include <iostream>
 #include <libvmem.h>
 #include <memory>
+#include <mutex>
 #include <stdlib.h>
 #include <string>
 #include <vector>
@@ -311,7 +312,7 @@ void *NvmLRUCache::AllocateAndRetry(size_t size) {
   tmp = VmemMalloc(size);
 
   if (tmp == NULL) {
-    unique_lock<MutexType> l(&mutex_);
+    std::unique_lock<MutexType> l(mutex_);
 
     int retries_remaining = FLAGS_nvm_cache_allocation_retry_count;
     while (tmp == NULL && retries_remaining-- > 0 && lru_.next != &lru_) {
@@ -348,7 +349,7 @@ void NvmLRUCache::NvmLRU_Append(LRUHandle* e) {
 Cache::Handle* NvmLRUCache::Lookup(const Slice& key, uint32_t hash, bool caching) {
  LRUHandle* e;
   {
-    lock_guard<MutexType> l(&mutex_);
+    std::lock_guard<MutexType> l(mutex_);
     e = table_.Lookup(key, hash);
     if (e != NULL) {
       // If an entry exists, remove the old entry from the cache
@@ -436,7 +437,7 @@ Cache::Handle* NvmLRUCache::Insert(const Slice& key, uint32_t hash,
   }
 
   {
-    lock_guard<MutexType> l(&mutex_);
+    std::lock_guard<MutexType> l(mutex_);
 
     NvmLRU_Append(e);
 
@@ -465,7 +466,7 @@ void NvmLRUCache::Erase(const Slice& key, uint32_t hash) {
   LRUHandle* e;
   bool last_reference = false;
   {
-    lock_guard<MutexType> l(&mutex_);
+    std::lock_guard<MutexType> l(mutex_);
     e = table_.Remove(key, hash);
     if (e != NULL) {
       NvmLRU_Remove(e);
@@ -540,7 +541,7 @@ class ShardedLRUCache : public Cache {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
   virtual uint64_t NewId() OVERRIDE {
-    lock_guard<MutexType> l(&id_mutex_);
+    std::lock_guard<MutexType> l(id_mutex_);
     return ++(last_id_);
   }
   virtual void SetMetrics(const scoped_refptr<MetricEntity>& entity) OVERRIDE {

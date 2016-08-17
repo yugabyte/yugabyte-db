@@ -86,7 +86,7 @@ TransactionTracker::TransactionTracker() {
 }
 
 TransactionTracker::~TransactionTracker() {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(pending_txns_.size(), 0);
   if (mem_tracker_) {
     mem_tracker_->UnregisterFromParent();
@@ -120,7 +120,7 @@ Status TransactionTracker::Add(TransactionDriver* driver) {
   // again, as it may disappear between now and then.
   State st;
   st.memory_footprint = driver_mem_footprint;
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   InsertOrDie(&pending_txns_, driver, st);
   return Status::OK();
 }
@@ -167,7 +167,7 @@ void TransactionTracker::Release(TransactionDriver* driver) {
   {
     // Remove the transaction from the map, retaining the state for use
     // below.
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     st = FindOrDie(pending_txns_, driver);
     if (PREDICT_FALSE(pending_txns_.erase(driver) != 1)) {
       LOG(FATAL) << "Could not remove pending transaction from map: "
@@ -183,7 +183,7 @@ void TransactionTracker::Release(TransactionDriver* driver) {
 void TransactionTracker::GetPendingTransactions(
     vector<scoped_refptr<TransactionDriver> >* pending_out) const {
   DCHECK(pending_out->empty());
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   for (const TxnMap::value_type& e : pending_txns_) {
     // Increments refcount of each transaction.
     pending_out->push_back(e.first);
@@ -191,7 +191,7 @@ void TransactionTracker::GetPendingTransactions(
 }
 
 int TransactionTracker::GetNumPendingForTests() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return pending_txns_.size();
 }
 

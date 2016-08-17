@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <cmath>
+#include <mutex>
 #include <vector>
 
 #include "yb/gutil/map-util.h"
@@ -164,59 +165,59 @@ class ThreadSafeRandom {
   }
 
   void Reset(uint32_t s) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     random_.Reset(s);
   }
 
   uint32_t Next() {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Next();
   }
 
   uint32_t Next32() {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Next32();
   }
 
   uint64_t Next64() {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Next64();
   }
 
   uint32_t Uniform(uint32_t n) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Uniform(n);
   }
 
   uint32_t Uniform32(uint32_t n) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Uniform32(n);
   }
 
   uint64_t Uniform64(uint64_t n) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Uniform64(n);
   }
 
   bool OneIn(int n) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.OneIn(n);
   }
 
   uint32_t Skewed(int max_log) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Skewed(max_log);
   }
 
   double Normal(double mean, double std_dev) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     return random_.Normal(mean, std_dev);
   }
 
   template<class Collection, class Set, class T>
   void ReservoirSample(const Collection& c, int k, const Set& avoid,
                        std::vector<T>* result) {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     random_.ReservoirSample(c, k, avoid, result);
   }
 

@@ -22,6 +22,7 @@
 #include <iostream>
 #include <strstream>
 #include <string>
+#include <mutex>
 #include <vector>
 
 #include "yb/gutil/strings/substitute.h"
@@ -103,7 +104,7 @@ TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number)
 }
 
 void Trace::AddEntry(TraceEntry* entry) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   entry->next = nullptr;
 
   if (entries_tail_ != nullptr) {
@@ -123,7 +124,7 @@ void Trace::Dump(std::ostream* out, bool include_time_deltas) const {
   vector<TraceEntry*> entries;
   vector<scoped_refptr<Trace> > child_traces;
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     for (TraceEntry* cur = entries_head_;
          cur != nullptr;
          cur = cur->next) {
@@ -196,7 +197,7 @@ void Trace::DumpCurrentTrace() {
 }
 
 void Trace::AddChildTrace(Trace* child_trace) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   scoped_refptr<Trace> ptr(child_trace);
   child_traces_.push_back(ptr);
 }

@@ -21,6 +21,7 @@
 
 #include <glog/logging.h>
 #include <memory>
+#include <mutex>
 #include <stdlib.h>
 #include <string>
 #include <vector>
@@ -267,7 +268,7 @@ void LRUCache::LRU_Append(LRUHandle* e) {
 Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash, bool caching) {
   LRUHandle* e;
   {
-    lock_guard<MutexType> l(&mutex_);
+    std::lock_guard<MutexType> l(mutex_);
     e = table_.Lookup(key, hash);
     if (e != nullptr) {
       base::RefCountInc(&e->refs);
@@ -328,7 +329,7 @@ Cache::Handle* LRUCache::Insert(
   }
 
   {
-    lock_guard<MutexType> l(&mutex_);
+    std::lock_guard<MutexType> l(mutex_);
 
     LRU_Append(e);
 
@@ -367,7 +368,7 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   LRUHandle* e;
   bool last_reference = false;
   {
-    lock_guard<MutexType> l(&mutex_);
+    std::lock_guard<MutexType> l(mutex_);
     e = table_.Remove(key, hash);
     if (e != nullptr) {
       LRU_Remove(e);
@@ -443,7 +444,7 @@ class ShardedLRUCache : public Cache {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
   virtual uint64_t NewId() OVERRIDE {
-    lock_guard<MutexType> l(&id_mutex_);
+    std::lock_guard<MutexType> l(id_mutex_);
     return ++(last_id_);
   }
 

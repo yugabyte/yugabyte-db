@@ -17,6 +17,8 @@
 
 #include "yb/client/session-internal.h"
 
+#include <mutex>
+
 #include "yb/client/batcher.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/shared_ptr.h"
@@ -42,7 +44,7 @@ YBSession::Data::~Data() {
 }
 
 void YBSession::Data::Init(const shared_ptr<YBSession>& session) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   CHECK(!batcher_);
   NewBatcher(session, NULL);
 }
@@ -65,7 +67,7 @@ void YBSession::Data::NewBatcher(const shared_ptr<YBSession>& session,
 }
 
 void YBSession::Data::FlushFinished(Batcher* batcher) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 

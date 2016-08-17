@@ -19,6 +19,7 @@
 #define YB_TABLET_TRANSACTION_H_
 
 #include <string>
+#include <mutex>
 
 #include "yb/common/timestamp.h"
 #include "yb/common/wire_protocol.h"
@@ -200,19 +201,19 @@ class TransactionState {
   // Sets the timestamp for the transaction
   virtual void set_timestamp(const Timestamp& timestamp) {
     // make sure we set the timestamp only once
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     DCHECK_EQ(timestamp_, Timestamp::kInvalidTimestamp);
     timestamp_ = timestamp;
   }
 
   Timestamp timestamp() const {
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     DCHECK(timestamp_ != Timestamp::kInvalidTimestamp);
     return timestamp_;
   }
 
   bool has_timestamp() const {
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     return timestamp_ != Timestamp::kInvalidTimestamp;
   }
 

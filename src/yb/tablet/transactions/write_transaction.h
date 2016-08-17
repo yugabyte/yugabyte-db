@@ -18,6 +18,7 @@
 #ifndef YB_TABLET_WRITE_TRANSACTION_H_
 #define YB_TABLET_WRITE_TRANSACTION_H_
 
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -120,12 +121,12 @@ class WriteTransactionState : public TransactionState {
 
 
   void set_schema_at_decode_time(const Schema* schema) {
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     schema_at_decode_time_ = schema;
   }
 
   const Schema* schema_at_decode_time() const {
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     return schema_at_decode_time_;
   }
 
@@ -162,7 +163,7 @@ class WriteTransactionState : public TransactionState {
   }
 
   void swap_row_ops(std::vector<RowOp*>* new_ops) {
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     row_ops_.swap(*new_ops);
   }
 

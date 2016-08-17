@@ -229,7 +229,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   *fake_response.mutable_status()->mutable_last_received() = id;
   *fake_response.mutable_status()->mutable_last_received_current_leader() = id;
   {
-    boost::unique_lock<simple_spinlock> lock(queue_lock_);
+    std::lock_guard<simple_spinlock> lock(queue_lock_);
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
   }
   bool junk;
@@ -278,7 +278,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   TrackedPeer* peer = nullptr;
   OpId preceding_id;
   {
-    lock_guard<simple_spinlock> lock(&queue_lock_);
+    std::lock_guard<simple_spinlock> lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, kQueueOpen);
     DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
 
@@ -390,7 +390,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
   TrackedPeer* peer = nullptr;
   {
-    lock_guard<simple_spinlock> lock(&queue_lock_);
+    std::lock_guard<simple_spinlock> lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, kQueueOpen);
     DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
     peer = FindPtrOrNull(peers_map_, uuid);
@@ -466,7 +466,7 @@ void PeerMessageQueue::AdvanceQueueWatermark(const char* type,
 }
 
 void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& peer_uuid) {
-  lock_guard<simple_spinlock> l(&queue_lock_);
+  std::lock_guard<simple_spinlock> l(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
   if (!peer) return;
   peer->last_successful_communication_time = MonoTime::Now(MonoTime::FINE);
@@ -481,7 +481,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   OpId updated_majority_replicated_opid;
   Mode mode_copy;
   {
-    unique_lock<simple_spinlock> scoped_lock(&queue_lock_);
+    std::lock_guard<simple_spinlock> scoped_lock(queue_lock_);
     DCHECK_NE(kQueueConstructed, queue_state_.state);
 
     TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
@@ -647,7 +647,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 }
 
 PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uuid) {
-  unique_lock<simple_spinlock> scoped_lock(&queue_lock_);
+  std::lock_guard<simple_spinlock> scoped_lock(queue_lock_);
   TrackedPeer* tracked = FindOrDie(peers_map_, uuid);
   return *tracked;
 }

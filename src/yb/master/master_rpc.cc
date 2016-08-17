@@ -20,6 +20,7 @@
 #include "yb/master/master_rpc.h"
 
 #include <boost/bind.hpp>
+#include <mutex>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -133,7 +134,7 @@ string GetLeaderMasterRpc::ToString() const {
 }
 
 void GetLeaderMasterRpc::SendRpc() {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   for (int i = 0; i < addrs_.size(); i++) {
     GetMasterRegistrationRpc* rpc = new GetMasterRegistrationRpc(
         Bind(&GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode,
@@ -158,7 +159,7 @@ void GetLeaderMasterRpc::SendRpcCb(const Status& status) {
     return;
   }
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     // 'completed_' prevents 'user_cb_' from being invoked twice.
     if (completed_) {
       return;
@@ -180,7 +181,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Sockaddr& node_
   // pick the one with the highest term/index as the leader.
   Status new_status = status;
   {
-    lock_guard<simple_spinlock> lock(&lock_);
+    std::lock_guard<simple_spinlock> lock(lock_);
     if (completed_) {
       // If 'user_cb_' has been invoked (see SendRpcCb above), we can
       // stop.

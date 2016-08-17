@@ -18,6 +18,7 @@
 #include "yb/client/client.h"
 #include "yb/client/error_collector.h"
 
+#include <mutex>
 #include <vector>
 
 #include "yb/gutil/stl_util.h"
@@ -34,17 +35,17 @@ ErrorCollector::~ErrorCollector() {
 }
 
 void ErrorCollector::AddError(gscoped_ptr<YBError> error) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   errors_.push_back(error.release());
 }
 
 int ErrorCollector::CountErrors() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return errors_.size();
 }
 
 void ErrorCollector::GetErrors(std::vector<YBError*>* errors, bool* overflowed) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   errors->swap(errors_);
   *overflowed = false;
 }

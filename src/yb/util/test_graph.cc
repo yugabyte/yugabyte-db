@@ -15,6 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/test_graph.h"
+
+#include <mutex>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
@@ -22,7 +26,6 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
-#include "yb/util/test_graph.h"
 #include "yb/util/thread.h"
 
 using std::shared_ptr;
@@ -31,17 +34,17 @@ using std::string;
 namespace yb {
 
 void TimeSeries::AddValue(double val) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   val_ += val;
 }
 
 void TimeSeries::SetValue(double val) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   val_ = val;
 }
 
 double TimeSeries::value() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return val_;
 }
 

@@ -15,9 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
-
 #include "yb/util/resettable_heartbeater.h"
+
+#include <mutex>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -115,7 +117,7 @@ void ResettableHeartbeaterThread::RunThread() {
     if (run_latch_.WaitFor(wait_period)) {
       // CountDownLatch reached 0 -- this means there was a manual reset.
       prev_reset_was_manual = true;
-      lock_guard<simple_spinlock> lock(&lock_);
+      std::lock_guard<simple_spinlock> lock(lock_);
       // check if we were told to shutdown
       if (shutdown_) {
         // Latch fired -- exit loop
@@ -163,7 +165,7 @@ Status ResettableHeartbeaterThread::Stop() {
   }
 
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     if (shutdown_) {
       return Status::OK();
     }

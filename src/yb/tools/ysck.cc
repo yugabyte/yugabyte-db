@@ -19,6 +19,7 @@
 
 #include <glog/logging.h>
 #include <iostream>
+#include <mutex>
 #include <unordered_set>
 
 #include "yb/gutil/map-util.h"
@@ -209,7 +210,7 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
                     const std::string& replica_uuid,
                     const Status& status,
                     uint64_t checksum) {
-    lock_guard<simple_spinlock> guard(&lock_);
+    std::lock_guard<simple_spinlock> guard(lock_);
     unordered_map<string, ResultPair>& replica_results =
         LookupOrInsert(&checksums_, tablet_id, unordered_map<string, ResultPair>());
     InsertOrDie(&replica_results, replica_uuid, ResultPair(status, checksum));
@@ -228,7 +229,7 @@ class ChecksumResultReporter : public RefCountedThreadSafe<ChecksumResultReporte
 
   // Get reported results.
   TabletResultMap checksums() const {
-    lock_guard<simple_spinlock> guard(&lock_);
+    std::lock_guard<simple_spinlock> guard(lock_);
     return checksums_;
   }
 

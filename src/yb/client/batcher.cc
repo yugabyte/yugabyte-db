@@ -21,6 +21,7 @@
 #include <boost/bind.hpp>
 #include <glog/logging.h>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -495,12 +496,12 @@ Batcher::Batcher(YBClient* client,
 }
 
 void Batcher::Abort() {
-  unique_lock<simple_spinlock> l(&lock_);
+  std::unique_lock<simple_spinlock> l(lock_);
   state_ = kAborted;
 
   vector<InFlightOp*> to_abort;
   for (InFlightOp* op : ops_) {
-    lock_guard<simple_spinlock> l(&op->lock_);
+    std::lock_guard<simple_spinlock> l(op->lock_);
     if (op->state == InFlightOp::kBufferedToTabletServer) {
       to_abort.push_back(op);
     }
@@ -530,18 +531,18 @@ Batcher::~Batcher() {
 
 void Batcher::SetTimeoutMillis(int millis) {
   CHECK_GE(millis, 0);
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   timeout_ = MonoDelta::FromMilliseconds(millis);
 }
 
 
 bool Batcher::HasPendingOperations() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return !ops_.empty();
 }
 
 int Batcher::CountBufferedOperations() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   if (state_ == kGatheringOps) {
     return ops_.size();
   } else {
@@ -554,7 +555,7 @@ int Batcher::CountBufferedOperations() const {
 void Batcher::CheckForFinishedFlush() {
   sp::shared_ptr<YBSession> session;
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     if (state_ != kFlushing || !ops_.empty()) {
       return;
     }
@@ -593,7 +594,7 @@ MonoTime Batcher::ComputeDeadlineUnlocked() const {
 
 void Batcher::FlushAsync(YBStatusCallback* cb) {
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     CHECK_EQ(state_, kGatheringOps);
     state_ = kFlushing;
     flush_callback_ = cb;
@@ -658,7 +659,7 @@ Status Batcher::Add(YBWriteOperation* write_op) {
 void Batcher::AddInFlightOp(InFlightOp* op) {
   DCHECK_EQ(op->state, InFlightOp::kLookingUpTablet);
 
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(state_, kGatheringOps);
   InsertOrDie(&ops_, op);
   op->sequence_number_ = next_op_sequence_number_++;
@@ -669,12 +670,12 @@ bool Batcher::IsAbortedUnlocked() const {
 }
 
 void Batcher::MarkHadErrors() {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   had_errors_ = true;
 }
 
 void Batcher::MarkInFlightOpFailed(InFlightOp* op, const Status& s) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   MarkInFlightOpFailedUnlocked(op, s);
 }
 
@@ -693,7 +694,7 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
   // Acquire the batcher lock early to atomically:
   // 1. Test if the batcher was aborted, and
   // 2. Change the op state.
-  unique_lock<simple_spinlock> l(&lock_);
+  std::unique_lock<simple_spinlock> l(lock_);
 
   if (IsAbortedUnlocked()) {
     VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->write_op->ToString();
@@ -723,7 +724,7 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
   }
 
   {
-    lock_guard<simple_spinlock> l2(&op->lock_);
+    std::lock_guard<simple_spinlock> l2(op->lock_);
     CHECK_EQ(op->state, InFlightOp::kLookingUpTablet);
     CHECK(op->tablet != NULL);
 
@@ -764,7 +765,7 @@ void Batcher::FlushBuffersIfReady() {
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     if (state_ != kFlushing) {
       VLOG(3) << "FlushBuffersIfReady: batcher not yet in flushing state";
       return;
@@ -830,7 +831,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
 
   // Remove all the ops from the "in-flight" list.
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     for (InFlightOp* op : rpc.ops()) {
       CHECK_EQ(1, ops_.erase(op))
             << "Could not remove op " << op->ToString()

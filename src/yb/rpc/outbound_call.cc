@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <string>
+#include <mutex>
 #include <vector>
 #include <boost/functional/hash.hpp>
 #include <gflags/gflags.h>
@@ -102,12 +103,12 @@ Status OutboundCall::SetRequestParam(const Message& message) {
 }
 
 Status OutboundCall::status() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return status_;
 }
 
 const ErrorStatusPB* OutboundCall::error_pb() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return error_pb_.get();
 }
 
@@ -133,12 +134,12 @@ string OutboundCall::StateName(State state) {
 }
 
 void OutboundCall::set_state(State new_state) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   set_state_unlocked(new_state);
 }
 
 OutboundCall::State OutboundCall::state() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return state_;
 }
 
@@ -239,7 +240,7 @@ void OutboundCall::SetSent() {
 void OutboundCall::SetFailed(const Status &status,
                              ErrorStatusPB* err_pb) {
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     status_ = status;
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
@@ -254,7 +255,7 @@ void OutboundCall::SetFailed(const Status &status,
 
 void OutboundCall::SetTimedOut() {
   {
-    lock_guard<simple_spinlock> l(&lock_);
+    std::lock_guard<simple_spinlock> l(lock_);
     status_ = Status::TimedOut(Substitute(
         "$0 RPC to $1 timed out after $2",
         remote_method_.method_name(),
@@ -266,12 +267,12 @@ void OutboundCall::SetTimedOut() {
 }
 
 bool OutboundCall::IsTimedOut() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return state_ == TIMED_OUT;
 }
 
 bool OutboundCall::IsFinished() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   switch (state_) {
     case READY:
     case ON_OUTBOUND_QUEUE:
@@ -294,7 +295,7 @@ string OutboundCall::ToString() const {
 
 void OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   resp->mutable_header()->CopyFrom(header_);
   resp->set_micros_elapsed(
     MonoTime::Now(MonoTime::FINE) .GetDeltaSince(start_time_).ToMicroseconds());

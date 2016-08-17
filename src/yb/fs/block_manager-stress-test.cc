@@ -17,6 +17,7 @@
 
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -252,7 +253,7 @@ void BlockManagerStressTest<T>::WriterThread() {
 
     // Publish the now sync'ed blocks to readers and deleters.
     {
-      lock_guard<rw_spinlock> l(&lock_);
+      std::lock_guard<rw_spinlock> l(lock_);
       for (WritableBlock* block : dirty_blocks) {
         written_blocks_.push_back(block->id());
       }
@@ -345,7 +346,7 @@ void BlockManagerStressTest<T>::DeleterThread() {
     // Grab all the blocks we can.
     vector<BlockId> to_delete;
     {
-      lock_guard<rw_spinlock> l(&lock_);
+      std::lock_guard<rw_spinlock> l(lock_);
       to_delete.swap(written_blocks_);
     }
 

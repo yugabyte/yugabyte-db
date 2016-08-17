@@ -20,15 +20,14 @@
 #include <arpa/inet.h>
 #include <boost/intrusive/list.hpp>
 #include <ev++.h>
+#include <glog/logging.h>
+#include <mutex>
 #include <netinet/in.h>
 #include <stdlib.h>
+#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <string>
-
-#include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
@@ -509,7 +508,7 @@ Status Reactor::Init() {
 
 void Reactor::Shutdown() {
   {
-    lock_guard<LockType> l(&lock_);
+    std::lock_guard<LockType> l(lock_);
     if (closing_) {
       return;
     }
@@ -537,7 +536,7 @@ const std::string &Reactor::name() const {
 }
 
 bool Reactor::closing() const {
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
   return closing_;
 }
 
@@ -645,7 +644,7 @@ void Reactor::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
 
 void Reactor::ScheduleReactorTask(ReactorTask *task) {
   {
-    unique_lock<LockType> l(&lock_);
+    std::unique_lock<LockType> l(lock_);
     if (closing_) {
       // We guarantee the reactor lock is not taken when calling Abort().
       l.unlock();
@@ -658,7 +657,7 @@ void Reactor::ScheduleReactorTask(ReactorTask *task) {
 }
 
 bool Reactor::DrainTaskQueue(boost::intrusive::list<ReactorTask> *tasks) { // NOLINT(*)
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
   if (closing_) {
     return false;
   }

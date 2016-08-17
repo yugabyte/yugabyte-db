@@ -15,10 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "yb/rpc/rpc_controller.h"
+
 #include <algorithm>
 #include <glog/logging.h>
+#include <mutex>
 
-#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/outbound_call.h"
 
 namespace yb { namespace rpc {
@@ -45,7 +47,7 @@ void RpcController::Swap(RpcController* other) {
 }
 
 void RpcController::Reset() {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   if (call_) {
     CHECK(finished());
   }
@@ -78,7 +80,7 @@ Status RpcController::GetSidecar(int idx, Slice* sidecar) const {
 }
 
 void RpcController::set_timeout(const MonoDelta& timeout) {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   DCHECK(!call_ || call_->state() == OutboundCall::READY);
   timeout_ = timeout;
 }
@@ -88,7 +90,7 @@ void RpcController::set_deadline(const MonoTime& deadline) {
 }
 
 MonoDelta RpcController::timeout() const {
-  lock_guard<simple_spinlock> l(&lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   return timeout_;
 }
 

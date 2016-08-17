@@ -18,6 +18,7 @@
 #define YB_CONSENSUS_RAFT_CONSENSUS_UTIL_H_
 
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <utility>
@@ -86,7 +87,7 @@ class ReplicaState {
     kShutDown
   };
 
-  typedef unique_lock<simple_spinlock> UniqueLock;
+  typedef std::unique_lock<simple_spinlock> UniqueLock;
 
   typedef std::map<int64_t, scoped_refptr<ConsensusRound> > IndexToRoundMap;
 

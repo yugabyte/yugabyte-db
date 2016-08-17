@@ -25,6 +25,7 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <list>
+#include <mutex>
 #include <set>
 #include <string>
 
@@ -131,7 +132,7 @@ void Messenger::Shutdown() {
   // Since we're shutting down, it's OK to block.
   ThreadRestrictions::ScopedAllowWait allow_wait;
 
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   if (closing_) {
     return;
   }
@@ -166,7 +167,7 @@ Status Messenger::AddAcceptorPool(const Sockaddr &accept_addr,
   RETURN_NOT_OK(sock.GetSocketAddress(&remote));
   shared_ptr<AcceptorPool> acceptor_pool(new AcceptorPool(this, &sock, remote));
 
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   acceptor_pools_.push_back(acceptor_pool);
   *pool = acceptor_pool;
   return Status::OK();
@@ -176,7 +177,7 @@ Status Messenger::AddAcceptorPool(const Sockaddr &accept_addr,
 Status Messenger::RegisterService(const string& service_name,
                                   const scoped_refptr<RpcService>& service) {
   DCHECK(service);
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   if (InsertIfNotPresent(&rpc_services_, service_name, service)) {
     return Status::OK();
   } else {
@@ -185,14 +186,14 @@ Status Messenger::RegisterService(const string& service_name,
 }
 
 Status Messenger::UnregisterAllServices() {
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   rpc_services_.clear();
   return Status::OK();
 }
 
 // Unregister an RpcService.
 Status Messenger::UnregisterService(const string& service_name) {
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   if (rpc_services_.erase(service_name)) {
     return Status::OK();
   } else {
@@ -241,7 +242,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
 }
 
 Messenger::~Messenger() {
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   CHECK(closing_) << "Should have already shut down";
   STLDeleteElements(&reactors_);
 }
@@ -294,7 +295,7 @@ void Messenger::ScheduleOnReactor(const boost::function<void(const Status&)>& fu
 }
 
 const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_name) const {
-  lock_guard<percpu_rwlock> guard(&lock_);
+  std::lock_guard<percpu_rwlock> guard(lock_);
   scoped_refptr<RpcService> service;
   if (FindCopy(rpc_services_, service_name, &service)) {
     return service;

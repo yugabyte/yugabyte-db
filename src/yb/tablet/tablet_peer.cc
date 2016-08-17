@@ -190,7 +190,7 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
 }
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
-  lock_guard<simple_spinlock> l(&state_change_lock_);
+  std::lock_guard<simple_spinlock> l(state_change_lock_);
   TRACE("Starting consensus");
 
   VLOG(2) << "T " << tablet_id() << " P " << consensus_->peer_uuid() << ": Peer starting";
@@ -225,7 +225,7 @@ void TabletPeer::Shutdown() {
   LOG(INFO) << "Initiating TabletPeer shutdown for tablet: " << tablet_id_;
 
   {
-    unique_lock<simple_spinlock> lock(&lock_);
+    std::unique_lock<simple_spinlock> lock(lock_);
     if (state_ == QUIESCING || state_ == SHUTDOWN) {
       lock.unlock();
       WaitUntilShutdown();
@@ -234,7 +234,7 @@ void TabletPeer::Shutdown() {
     state_ = QUIESCING;
   }
 
-  lock_guard<simple_spinlock> l(&state_change_lock_);
+  std::lock_guard<simple_spinlock> l(state_change_lock_);
   // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
   // to ensure that any currently running operation finishes before we proceed with
   // the rest of the shutdown sequence. In particular, a maintenance operation could
@@ -558,7 +558,7 @@ Status TabletPeer::NewReplicaTransactionDriver(gscoped_ptr<Transaction> transact
 void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   // Taking state_change_lock_ ensures that we don't shut down concurrently with
   // this last start-up task.
-  lock_guard<simple_spinlock> l(&state_change_lock_);
+  std::lock_guard<simple_spinlock> l(state_change_lock_);
 
   if (state() != RUNNING) {
     LOG(WARNING) << "Not registering maintenance operations for " << tablet_

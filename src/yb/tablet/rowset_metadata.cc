@@ -17,6 +17,7 @@
 
 #include "yb/tablet/rowset_metadata.h"
 
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -93,7 +94,7 @@ Status RowSetMetadata::InitFromPB(const RowSetDataPB& pb) {
 void RowSetMetadata::ToProtobuf(RowSetDataPB *pb) {
   pb->set_id(id_);
 
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
 
   // Write Column Files
   for (const ColumnIdToBlockIdMap::value_type& e : blocks_by_col_id_) {
@@ -134,20 +135,20 @@ const string RowSetMetadata::ToString() const {
 }
 
 void RowSetMetadata::SetColumnDataBlocks(const ColumnIdToBlockIdMap& blocks) {
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
   blocks_by_col_id_ = blocks;
 }
 
 Status RowSetMetadata::CommitRedoDeltaDataBlock(int64_t dms_id,
                                                 const BlockId& block_id) {
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
   last_durable_redo_dms_id_ = dms_id;
   redo_delta_blocks_.push_back(block_id);
   return Status::OK();
 }
 
 Status RowSetMetadata::CommitUndoDeltaDataBlock(const BlockId& block_id) {
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
   undo_delta_blocks_.push_back(block_id);
   return Status::OK();
 }
@@ -155,7 +156,7 @@ Status RowSetMetadata::CommitUndoDeltaDataBlock(const BlockId& block_id) {
 Status RowSetMetadata::CommitUpdate(const RowSetMetadataUpdate& update) {
   vector<BlockId> removed;
   {
-    lock_guard<LockType> l(&lock_);
+    std::lock_guard<LockType> l(lock_);
 
     for (const RowSetMetadataUpdate::ReplaceDeltaBlocks rep :
                   update.replace_redo_blocks_) {
@@ -216,7 +217,7 @@ Status RowSetMetadata::CommitUpdate(const RowSetMetadataUpdate& update) {
 
 vector<BlockId> RowSetMetadata::GetAllBlocks() {
   vector<BlockId> blocks;
-  lock_guard<LockType> l(&lock_);
+  std::lock_guard<LockType> l(lock_);
   if (!adhoc_index_block_.IsNull()) {
     blocks.push_back(adhoc_index_block_);
   }

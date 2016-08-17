@@ -18,6 +18,7 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "yb/gutil/strings/substitute.h"
@@ -100,7 +101,7 @@ class TestMaintenanceOp : public MaintenanceOp {
   virtual ~TestMaintenanceOp() {}
 
   virtual bool Prepare() OVERRIDE {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     if (state_ != OP_RUNNABLE) {
       return false;
     }
@@ -112,14 +113,14 @@ class TestMaintenanceOp : public MaintenanceOp {
 
   virtual void Perform() OVERRIDE {
     DLOG(INFO) << "Performing op " << name();
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     CHECK_EQ(OP_RUNNING, state_);
     state_ = OP_FINISHED;
     state_change_cond_.Broadcast();
   }
 
   virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     stats->set_runnable(state_ == OP_RUNNABLE);
     stats->set_ram_anchored(consumption_.consumption());
     stats->set_logs_retained_bytes(logs_retained_bytes_);
@@ -127,14 +128,14 @@ class TestMaintenanceOp : public MaintenanceOp {
   }
 
   void Enable() {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     DCHECK((state_ == OP_DISABLED) || (state_ == OP_FINISHED));
     state_ = OP_RUNNABLE;
     state_change_cond_.Broadcast();
   }
 
   void WaitForState(TestMaintenanceOpState state) {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     while (true) {
       if (state_ == state) {
         return;
@@ -145,7 +146,7 @@ class TestMaintenanceOp : public MaintenanceOp {
 
   bool WaitForStateWithTimeout(TestMaintenanceOpState state, int ms) {
     MonoDelta to_wait = MonoDelta::FromMilliseconds(ms);
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     while (true) {
       if (state_ == state) {
         return true;
@@ -157,17 +158,17 @@ class TestMaintenanceOp : public MaintenanceOp {
   }
 
   void set_ram_anchored(uint64_t ram_anchored) {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     consumption_.Reset(ram_anchored);
   }
 
   void set_logs_retained_bytes(uint64_t logs_retained_bytes) {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     logs_retained_bytes_ = logs_retained_bytes;
   }
 
   void set_perf_improvement(uint64_t perf_improvement) {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     perf_improvement_ = perf_improvement;
   }
 

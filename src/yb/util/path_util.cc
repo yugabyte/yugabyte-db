@@ -26,7 +26,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 
 #if defined(__APPLE__)
-#include "yb/util/locks.h"
+#include <mutex>
 #endif // defined(__APPLE__)
 
 using std::string;
@@ -49,8 +49,8 @@ std::string JoinPathSegments(const std::string &a,
 string DirName(const string& path) {
   gscoped_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
 #if defined(__APPLE__)
-  static Mutex lock;
-  lock_guard<Mutex> l(&lock);
+  static std::mutex lock;
+  std::lock_guard<std::mutex> l(lock);
 #endif // defined(__APPLE__)
   return ::dirname(path_copy.get());
 }

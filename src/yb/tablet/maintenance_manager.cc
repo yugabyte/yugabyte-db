@@ -127,7 +127,7 @@ Status MaintenanceManager::Init() {
 
 void MaintenanceManager::Shutdown() {
   {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     if (shutdown_) {
       return;
     }
@@ -142,7 +142,7 @@ void MaintenanceManager::Shutdown() {
 }
 
 void MaintenanceManager::RegisterOp(MaintenanceOp* op) {
-  lock_guard<Mutex> guard(&lock_);
+  std::lock_guard<Mutex> guard(lock_);
   CHECK(!op->manager_.get()) << "Tried to register " << op->name()
           << ", but it was already registered.";
   pair<OpMapTy::iterator, bool> val
@@ -157,7 +157,7 @@ void MaintenanceManager::RegisterOp(MaintenanceOp* op) {
 
 void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
   {
-    lock_guard<Mutex> guard(&lock_);
+    std::lock_guard<Mutex> guard(lock_);
     CHECK(op->manager_.get() == this) << "Tried to unregister " << op->name()
           << ", but it is not currently registered with this maintenance manager.";
     auto iter = ops_.find(op);
@@ -186,7 +186,7 @@ void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
 void MaintenanceManager::RunSchedulerThread() {
   MonoDelta polling_interval = MonoDelta::FromMilliseconds(polling_interval_ms_);
 
-  unique_lock<Mutex> guard(&lock_);
+  std::unique_lock<Mutex> guard(lock_);
   while (true) {
     // Loop until we are shutting down or it is time to run another op.
     cond_.TimedWait(polling_interval);
@@ -361,7 +361,7 @@ void MaintenanceManager::LaunchOp(MaintenanceOp* op) {
   op->RunningGauge()->Decrement();
   MonoTime end_time(MonoTime::Now(MonoTime::FINE));
   MonoDelta delta(end_time.GetDeltaSince(start_time));
-  lock_guard<Mutex> guard(&lock_);
+  std::lock_guard<Mutex> guard(lock_);
 
   CompletedOp& completed_op = completed_ops_[completed_ops_count_ % completed_ops_.size()];
   completed_op.name = op->name();
@@ -378,7 +378,7 @@ void MaintenanceManager::LaunchOp(MaintenanceOp* op) {
 
 void MaintenanceManager::GetMaintenanceManagerStatusDump(MaintenanceManagerStatusPB* out_pb) {
   DCHECK(out_pb != nullptr);
-  lock_guard<Mutex> guard(&lock_);
+  std::lock_guard<Mutex> guard(lock_);
   MaintenanceOp* best_op = FindBestOp();
   for (MaintenanceManager::OpMapTy::value_type& val : ops_) {
     MaintenanceManagerStatusPB_MaintenanceOpPB* op_pb = out_pb->add_registered_operations();

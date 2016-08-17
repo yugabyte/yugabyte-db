@@ -336,7 +336,7 @@ void WriteTransactionState::Reset() {
 }
 
 void WriteTransactionState::ResetRpcFields() {
-  lock_guard<simple_spinlock> l(&txn_state_lock_);
+  std::lock_guard<simple_spinlock> l(txn_state_lock_);
   request_ = nullptr;
   response_ = nullptr;
   STLDeleteElements(&row_ops_);
@@ -355,7 +355,7 @@ string WriteTransactionState::ToString() const {
   // user data escaping into the log. See KUDU-387.
   string row_ops_str = "[";
   {
-    lock_guard<simple_spinlock> l(&txn_state_lock_);
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     const size_t kMaxToStringify = 3;
     for (int i = 0; i < std::min(row_ops_.size(), kMaxToStringify); i++) {
       if (i > 0) {
