@@ -74,7 +74,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       int startNodeIndex = maxNodeIdx + 1;
 
       LOG.info("Configure nodes starting at node index={}, numNodes={}, numMasters={}",
-    		   startNodeIndex, taskParams().numNodes, numMasters);
+               startNodeIndex, taskParams().numNodes, numMasters);
       // Configure the new cluster nodes.
       configureNewNodes(universe.getUniverseDetails().nodePrefix,
                         startNodeIndex,
@@ -101,12 +101,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Start the tservers in the clusters.
       createStartTServersTasks(newNodesMap.values());
 
-      // Now finalize the cluster configuration change tasks. This adds directly to the global
-      // list as only one change config job can be done in one step.
-      createMoveMastersTasks();
-
       // Wait for all servers to be responsive.
       createWaitForServerTasks(newNodesMap.values());
+
+      // Now finalize the cluster configuration change tasks.
+      createMoveMastersTasks();
 
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform
@@ -118,7 +117,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // TODO: clear blacklist on the yb cluster master.
 
-      // Finally send destroy old set of nodes to ansible.
+      // Finally send destroy old set of nodes to ansible and remove them from this universe.
       createDestroyServerTasks(existingNodes);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
@@ -155,8 +154,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Find the minimum number of master changes where we can perform an add followed by a remove.
     int numIters = Math.min(mastersToAdd.size(), mastersToRemove.size());
 
-    // Perform a master add followed by a remove if possible.
-    // TODO: Find the master leader and remove it last. The step down will happen in client code.
+    // Perform a master add followed by a remove if possible. Need not remove the (current) master
+    // leader last - even if we get current leader, it might change by the time we run the actual
+    // task. So we might do multiple leader stepdown's, which happens automatically on in the
+    // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true);
       createChangeConfigTask(mastersToRemove.get(idx), false);

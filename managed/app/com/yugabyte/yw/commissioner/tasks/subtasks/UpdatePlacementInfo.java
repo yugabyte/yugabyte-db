@@ -112,6 +112,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
           configBuilder.clearPlacementInfo().getPlacementInfoBuilder();
       // Set the replication factor to the number of masters.
       placementInfoPB.setNumReplicas(numMasters);
+      LOG.info("Starting modify config with {} masters.", numMasters);
       // Create the placement info for the universe.
       PlacementInfo placementInfo = universe.getUniverseDetails().placementInfo;
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
