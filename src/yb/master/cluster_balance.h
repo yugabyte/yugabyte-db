@@ -218,6 +218,10 @@ class ClusterLoadBalancer {
   int get_total_running_tablets() const;
 
  private:
+  // Returns true if at least one member in the tablet's configuration is transitioning into a
+  // VOTER, but it's not a VOTER yet.
+  bool ConfigMemberInTransitionMode(const TabletId& tablet_id) const;
+
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;

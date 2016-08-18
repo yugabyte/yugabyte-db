@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <boost/thread/locks.hpp>
 
+#include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
 #include "yb/util/random_util.h"
 
@@ -786,6 +787,11 @@ bool ClusterLoadBalancer::HandleRemoveReplicas(
   }
 
   for (const auto& tablet_id : state_->tablets_over_replicated_) {
+    // Skip if there is a pending ADD_SERVER.
+    if (ConfigMemberInTransitionMode(tablet_id)) {
+      continue;
+    }
+
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
     const auto& tablet_servers = tablet_meta.over_replicated_tablet_servers;
     auto comparator = ClusterLoadState::Comparator(state_.get());
@@ -816,6 +822,10 @@ bool ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
   for (const auto& tablet_id : state_->tablets_wrong_placement_) {
     // Skip this tablet if it is not over-replicated.
     if (!state_->tablets_over_replicated_.count(tablet_id)) {
+      continue;
+    }
+    // Skip if there is a pending ADD_SERVER
+    if (ConfigMemberInTransitionMode(tablet_id)) {
       continue;
     }
     const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
@@ -905,6 +915,13 @@ void ClusterLoadBalancer::SendReplicaChanges(
         tablet, l.data().pb.committed_consensus_state(), ts_uuid);
     }
   }
+}
+
+bool ClusterLoadBalancer::ConfigMemberInTransitionMode(const TabletId &tablet_id) const {
+  auto tablet = GetTabletMap().at(tablet_id);
+  TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
+  auto config = l.data().pb.committed_consensus_state().config();
+  return CountVotersInTransition(config) != 0;
 }
 
 } // namespace master
