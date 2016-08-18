@@ -413,7 +413,7 @@ Status YBClient::ListMasters(
       &MasterServiceProxy::ListMasters);
   RETURN_NOT_OK(s);
   if (list_resp.has_error()) {
-    return StatusFromPB(list_resp.error());
+    return StatusFromPB(list_resp.error().status());
   }
 
   master_uuids->clear();

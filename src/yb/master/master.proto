@@ -625,7 +625,7 @@ message ListMastersResponsePB {
 
   // Set only if there's an error in retrieving the list of servers or
   // in getting this server's own local registration information.
-  optional AppStatusPB error = 2;
+  optional MasterErrorPB error = 2;
 }
 
 // ListMasterRaftPeersRequest/Response: get information about all of the known servers
@@ -641,7 +641,7 @@ message ListMasterRaftPeersResponsePB {
 
   // Set only if there's an error in retrieving the list of servers or
   // in getting this server's own local registration information.
-  optional AppStatusPB error = 2;
+  optional MasterErrorPB error = 2;
 }
 
 // Make the masters dump all their in-memory and on-disk state to their respective log files.

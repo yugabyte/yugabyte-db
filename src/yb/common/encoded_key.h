@@ -97,6 +97,7 @@ class EncodedKeyBuilder {
 
   void Reset();
 
+  // Adds a new raw key to the encoded key being built. The builder (and the resulting
   void AddColumnKey(const void *raw_key);
 
   EncodedKey *BuildEncodedKey();

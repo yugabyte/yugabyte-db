@@ -196,10 +196,6 @@ class RemoteBootstrapClient {
   // Session-specific data items.
   bool replace_tombstoned_tablet_;
 
-  // We track whether this session succeeded and send this information as part of the
-  // EndRemoteBootstrapSessionRequestPB request.
-  bool succeeded_;
-
   // Local tablet metadata file.
   scoped_refptr<tablet::TabletMetadata> meta_;
 
@@ -215,7 +211,12 @@ class RemoteBootstrapClient {
   gscoped_ptr<tablet::TabletSuperBlockPB> new_superblock_;
   gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
   std::vector<uint64_t> wal_seqnos_;
+
   int64_t start_time_micros_;
+
+  // We track whether this session succeeded and send this information as part of the
+  // EndRemoteBootstrapSessionRequestPB request.
+  bool succeeded_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };

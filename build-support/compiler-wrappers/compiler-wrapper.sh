@@ -114,7 +114,8 @@ if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/
    grep "new operators was enabled in PCH file but is currently disabled" "$stderr_path" \
      >/dev/null || \
    egrep "definition of macro '.*' differs between the precompiled header .* and the command line" \
-         "$stderr_path" >/dev/null
+         "$stderr_path" >/dev/null || \
+   grep " has been modified since the precompiled header " "$stderr_path" >/dev/null
 then
   PCH_PATH=$PWD/$PCH_NAME
   echo "Removing '$PCH_PATH' so that further builds have a chance to" \
@@ -147,7 +148,9 @@ fi
 for pattern in "warning: reference to local variable .* returned" \
                "warning: enumeration value .* not handled in switch" \
                "warning: unannotated fall-through between switch labels" \
-               "warning: fallthrough annotation does not directly precede switch label"; do
+               "warning: fallthrough annotation does not directly precede switch label" \
+               "warning: comparison between .* and .* .*-Wenum-compare" \
+               "will be initialized after .*Wreorder"; do
   if egrep "$pattern" "$stderr_path" >/dev/null; then
     echo "[FATAL] $SCRIPT_NAME: treating warning pattern as an error: '$pattern'." >&2
     exit 1

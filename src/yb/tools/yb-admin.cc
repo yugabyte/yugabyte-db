@@ -417,7 +417,7 @@ Status ClusterAdminClient::GetMasterLeaderInfo(string* leader_uuid) {
   rpc.set_timeout(timeout_);
   master_proxy_->ListMasters(list_req, &list_resp, &rpc);
   if (list_resp.has_error()) {
-    return StatusFromPB(list_resp.error());
+    return StatusFromPB(list_resp.error().status());
   }
   for (int i = 0; i < list_resp.masters_size(); i++) {
     if (list_resp.masters(i).role() == RaftPeerPB::LEADER) {
@@ -652,7 +652,7 @@ Status ClusterAdminClient::ListAllMasters() {
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK(master_proxy_->ListMasters(lreq, &lresp, &rpc));
   if (lresp.has_error()) {
-    return StatusFromPB(lresp.error());
+    return StatusFromPB(lresp.error().status());
   }
   if (!lresp.masters().empty()) {
     std::cout << "\tMaster UUID\t\t  RPC Host/Port\t\tRole" << std::endl;
@@ -851,7 +851,7 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(const bool is_enabled) {
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK(master_proxy_->ListMasters(list_req, &list_resp, &rpc));
   if (list_resp.has_error()) {
-    return StatusFromPB(list_resp.error());
+    return StatusFromPB(list_resp.error().status());
   }
 
   master::ChangeLoadBalancerStateRequestPB req;

@@ -421,7 +421,6 @@ class RaftConsensus : public Consensus,
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;
   gscoped_ptr<PeerProxyFactory> peer_proxy_factory_;
-  TableType table_type_;
 
   gscoped_ptr<PeerManager> peer_manager_;
 
@@ -458,6 +457,7 @@ class RaftConsensus : public Consensus,
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
+  TableType table_type_;
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };
 

@@ -271,8 +271,10 @@ Status YBClient::Data::SyncLeaderMasterRpc(
                                RpcController*)>& func);
 
 YBClient::Data::Data()
-    : latest_observed_timestamp_(YBClient::kNoTimestamp), master_server_endpoint_(),
-      master_server_addrs_file_(), master_server_addrs_() {
+    : master_server_endpoint_(),
+      master_server_addrs_file_(),
+      master_server_addrs_(),
+      latest_observed_timestamp_(YBClient::kNoTimestamp) {
 }
 
 YBClient::Data::~Data() {

@@ -366,11 +366,10 @@ void MasterServiceImpl::ListMasters(
     for (const ServerEntryPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
     }
+    rpc->RespondSuccess();
   } else {
-    StatusToPB(s, resp->mutable_error());
-    resp->mutable_error()->set_code(AppStatusPB::UNKNOWN_ERROR);
+    SetupErrorAndRespond(resp->mutable_error(), s, MasterErrorPB_Code_UNKNOWN_ERROR,  rpc);
   }
-  rpc->RespondSuccess();
 }
 
 void MasterServiceImpl::ListMasterRaftPeers(
@@ -383,11 +382,10 @@ void MasterServiceImpl::ListMasterRaftPeers(
     for (const RaftPeerPB& master : masters) {
       resp->add_masters()->CopyFrom(master);
     }
+    rpc->RespondSuccess();
   } else {
-    StatusToPB(s, resp->mutable_error());
-    resp->mutable_error()->set_code(AppStatusPB::UNKNOWN_ERROR);
+    SetupErrorAndRespond(resp->mutable_error(), s, MasterErrorPB_Code_UNKNOWN_ERROR,  rpc);
   }
-  rpc->RespondSuccess();
 }
 
 void MasterServiceImpl::GetMasterRegistration(const GetMasterRegistrationRequestPB* req,

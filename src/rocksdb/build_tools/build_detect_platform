@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # Detects OS we're compiling on and outputs a file specified by the first
 # argument, which in turn gets read while processing Makefile.
@@ -170,8 +170,9 @@ case "$TARGET_OS" in
         ;;
     OS_ANDROID_CROSSCOMPILE)
         PLATFORM=OS_ANDROID
-	COMMON_FLAGS="$COMMON_FLAGS -fno-builtin-memcmp -D_REENTRANT -DOS_ANDROID -DLEVELDB_PLATFORM_POSIX"
-	PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS "  # All pthread features are in the Android C library
+        COMMON_FLAGS="$COMMON_FLAGS -fno-builtin-memcmp -D_REENTRANT -DOS_ANDROID \
+          -DLEVELDB_PLATFORM_POSIX"
+        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS "  # All pthread features are in the Android C library
         # PORT_FILES=port/android/android.cc
         CROSS_COMPILE=true
         ;;

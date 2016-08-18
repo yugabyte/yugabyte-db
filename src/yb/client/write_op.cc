@@ -45,18 +45,6 @@ YBWriteOperation::YBWriteOperation(const shared_ptr<YBTable>& table)
 
 YBWriteOperation::~YBWriteOperation() {}
 
-EncodedKey* YBWriteOperation::CreateKey() const {
-  CHECK(row_.IsKeySet()) << "key must be set";
-
-  ConstContiguousRow row(row_.schema(), row_.row_data_);
-  EncodedKeyBuilder kb(row.schema());
-  for (int i = 0; i < row.schema()->num_key_columns(); i++) {
-    kb.AddColumnKey(row.cell_ptr(i));
-  }
-  gscoped_ptr<EncodedKey> key(kb.BuildEncodedKey());
-  return key.release();
-}
-
 int64_t YBWriteOperation::SizeInBuffer() const {
   const Schema* schema = row_.schema();
   int size = 1; // for the operation type

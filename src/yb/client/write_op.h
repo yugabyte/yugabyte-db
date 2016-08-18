@@ -70,11 +70,6 @@ class YB_EXPORT YBWriteOperation {
   friend class internal::Batcher;
   friend class internal::WriteRpc;
 
-  // Create and encode the key for this write (key must be set)
-  //
-  // Caller takes ownership of the allocated memory.
-  EncodedKey* CreateKey() const;
-
   const YBTable* table() const { return table_.get(); }
 
   // Return the number of bytes required to buffer this operation,

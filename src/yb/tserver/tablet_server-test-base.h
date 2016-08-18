@@ -73,9 +73,9 @@ class TabletServerTestBase : public YBTest {
 
   explicit TabletServerTestBase(TableType table_type = DEFAULT_TABLE_TYPE)
       : schema_(GetSimpleTestSchema()),
+        table_type_(table_type),
         ts_test_metric_entity_(METRIC_ENTITY_test.Instantiate(
-                                   &ts_test_metric_registry_, "ts_server-test")),
-        table_type_(table_type) {
+                                   &ts_test_metric_registry_, "ts_server-test")) {
 
     // Disable the maintenance ops manager since we want to trigger our own
     // maintenance operations at predetermined times.
