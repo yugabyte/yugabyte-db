@@ -7,6 +7,9 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleSetupServer.class);
@@ -17,6 +20,21 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   @Override
   protected Params taskParams() {
     return (Params)taskParams;
+  }
+
+  private void removeNodeFromUniverse(String nodeName) {
+    // Persist the desired node information into the DB.
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDetails universeDetails = universe.getUniverseDetails();
+        universeDetails.nodeDetailsMap.remove(nodeName);
+        LOG.debug("Removing node " + nodeName +
+                  " from universe " + taskParams().universeUUID);
+      }
+    };
+
+    Universe.saveDetails(taskParams().universeUUID, updater);
   }
 
   @Override
@@ -30,5 +48,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
     // Execute the ansible command.
     execCommand(command);
+
+    removeNodeFromUniverse(taskParams().nodeName);
   }
 }

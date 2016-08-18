@@ -135,7 +135,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the node set back into the map.
       subnetsToNodenameMap.put(entry.getValue().subnet_id, nodeSet);
     }
-
+    LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
+             subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
     // Choose the masters such that we have one master per subnet if there are enough subnets.
     List<String> masters = new ArrayList<String>();
     if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
