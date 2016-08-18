@@ -23,10 +23,7 @@ export default class Dashboard extends Component {
         <SideNavBar />
         <div className="page-wrapper">
           <div className="row header-row">
-            <div className="col-lg-10">
-              <h1>Dashboard</h1>
-            </div>
-            <DashboardRightPane />
+            <DashboardRightPane {...this.props}/>
           </div>
         </div>
       </div>);
