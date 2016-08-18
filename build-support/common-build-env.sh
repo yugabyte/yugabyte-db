@@ -2,13 +2,13 @@
 
 # This is common between build and test scripts.
 
-if [ "$BASH_SOURCE" == "$0" ]; then
+if [[ $BASH_SOURCE == $0 ]]; then
   echo "$BASH_SOURCE must be sourced, not executed" >&2
   exit 1
 fi
 
 # Guard against multiple inclusions.
-if [ -n "${YB_COMMON_BUILD_ENV_SOURCED:-}" ]; then
+if [[ -n ${YB_COMMON_BUILD_ENV_SOURCED:-} ]]; then
   # Return to the executing script.
   return
 fi
@@ -61,7 +61,7 @@ log() {
 # Fatals if there are no arguments.
 expect_some_args() {
   local calling_func_name=${FUNCNAME[1]}
-  if [ $# -eq 0 ]; then
+  if [[ $# -eq 0 ]]; then
     fatal "$calling_func_name expects at least one argument"
   fi
 }
@@ -74,10 +74,10 @@ regex_from_list() {
   local regex=""
   # no quotes around $@ on purpose: we want to break arguments containing spaces.
   for item in $@; do
-    if [ -z "$item" ]; then
+    if [[ -z $item ]]; then
       continue
     fi
-    if [ -n "$regex" ]; then
+    if [[ -n $regex ]]; then
       regex+="|"
     fi
     regex+="$item"
@@ -131,7 +131,7 @@ expect_vars_to_be_set() {
   local calling_func_name=${FUNCNAME[1]}
   local var_name
   for var_name in "$@"; do
-    if [ -z "${!var_name:-}" ]; then
+    if [[ -z ${!var_name:-} ]]; then
       fatal "The '$var_name' variable must be set by the caller of $calling_func_name." \
             "$calling_func_name expects the following variables to be set: $@."
     fi
@@ -147,10 +147,10 @@ expect_num_args() {
   local caller_expected_num_args=$1
   local calling_func_name=${FUNCNAME[1]}
   shift
-  if [ $# -ne "$caller_expected_num_args" ]; then
+  if [[ $# -ne $caller_expected_num_args ]]; then
     yb_log_quiet=false
     log "$calling_func_name expects $caller_expected_num_args arguments, got $#."
-    if [ $# -gt 0 ]; then
+    if [[ $# -gt 0 ]]; then
       log "Actual arguments:"
       local arg
       for arg in "$@"; do
@@ -394,7 +394,7 @@ build_yb_java_code_with_retries() {
 # This script is expected to be in build-support.
 readonly YB_SRC_ROOT=$( cd "$( dirname "$BASH_SOURCE" )"/.. && pwd )
 
-if [ ! -d "$YB_SRC_ROOT/build-support" ]; then
+if [[ ! -d $YB_SRC_ROOT/build-support ]]; then
   fatal "Could not determine YB source directory from '$BASH_SOURCE':" \
         "$YB_SRC_ROOT/build-support does not exist."
 fi
