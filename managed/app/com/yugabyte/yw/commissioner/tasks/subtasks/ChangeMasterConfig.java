@@ -72,18 +72,19 @@ public class ChangeMasterConfig extends AbstractTaskBase {
         IsLeaderReadyForChangeConfigResponse readyResp =
             client.isMasterLeaderReadyForChangeConfig();
         if (readyResp.hasError()) {
-          msg = "Leader Ready check returned error: " + readyResp.errorMessage();
+          msg = "Master leader ready check returned error: " + readyResp.errorMessage();
           LOG.error(msg);
           timeout = false;
           break;
         }
         if (readyResp.isReady()) {
-          LOG.info("Master leader " + readyResp.getTsUUID() + " is ready for config change.");
+          LOG.info("Master leader " + client.getLeaderMasterHostAndPort().toString() +
+                   " is ready for config change.");
           return;
         }
         Thread.sleep(PER_ATTEMPT_SLEEP_TIME_MS);
       } catch (Exception e) {
-        LOG.error("Error in isMasterLeaderReadyForChangeConfig", e);
+        LOG.error("Error from leader ready check rpc.", e);
         continue;
       }
     } while (System.currentTimeMillis() < start + timeoutMs);
@@ -132,12 +133,6 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       String msg = "ChangeConfig response has error " + response.errorMessage();
       LOG.error(msg);
       throw new RuntimeException(msg);
-    }
-    // TODO: remove this sleep - needed now to make sure the change config takes effect.
-    try {
-      Thread.sleep(5000);
-    } catch (Exception e) {
-      LOG.error("Error sleeping", e);
     }
   }
 }
