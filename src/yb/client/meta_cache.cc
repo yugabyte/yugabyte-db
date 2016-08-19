@@ -477,7 +477,9 @@ void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
 
 void LookupRpc::SendRpcCb(const Status& status) {
   gscoped_ptr<LookupRpc> delete_me(this); // delete on scope exit
-
+  if (resp_.has_error()) {
+    LOG(INFO) << "Got resp error " << resp_.error().code() << ", code=" << status.CodeAsString();
+  }
   // Prefer early failures over controller failures.
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
@@ -509,15 +511,14 @@ void LookupRpc::SendRpcCb(const Status& status) {
       }
     } else {
       // Operation deadline expired during this latest RPC.
-      new_status = new_status.CloneAndPrepend(
-          "timed out after deadline expired");
+      new_status = new_status.CloneAndPrepend("timed out after deadline expired");
     }
   }
 
   if (new_status.IsNetworkError()) {
     if (meta_cache_->client_->IsMultiMaster()) {
-      LOG(WARNING) << "Encountered a network error from the Master: " << new_status.ToString()
-                     << ", retrying...";
+      LOG(WARNING) << "Encountered a network error from the Master: "
+                   << new_status.ToString() << ", retrying...";
       ResetMasterLeaderAndRetry();
       ignore_result(delete_me.release());
       return;

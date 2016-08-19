@@ -251,7 +251,6 @@ class SysCatalogTable {
   Master* master_;
 
   ElectedLeaderCallback leader_cb_;
-  consensus::RaftPeerPB::Role old_role_;
 
   consensus::RaftPeerPB local_peer_pb_;
 };

@@ -542,7 +542,16 @@ shared_ptr<YBSession> YBClient::NewSession() {
 }
 
 bool YBClient::IsMultiMaster() const {
-  return data_->master_server_addrs_.size() > 1;
+  if (data_->master_server_addrs_.size() > 1) {
+    return true;
+  }
+  // For single entry case, check if it is a list of host/ports.
+  vector<Sockaddr> addrs;
+  Status s = ParseAddressList(data_->master_server_addrs_[0], master::Master::kDefaultPort, &addrs);
+  if (!s.ok()) {
+    return false;
+  }
+  return addrs.size() > 1;
 }
 
 const MonoDelta& YBClient::default_admin_operation_timeout() const {

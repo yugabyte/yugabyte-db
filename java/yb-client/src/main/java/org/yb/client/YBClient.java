@@ -192,7 +192,6 @@ public class YBClient implements AutoCloseable {
       d = asyncClient.getLoadMoveCompletion();
       resp = d.join(getDefaultAdminOperationTimeoutMs());
     } while (resp.hasRetriableError() && numTries++ < MAX_NUM_RETRIES);
-
     return resp;
   }
 
@@ -251,20 +250,7 @@ public class YBClient implements AutoCloseable {
   * @param timeoutMs the amount of time, in MS, to wait until a Leader is present
   */
   public void waitForMasterLeader(long timeoutMs) throws Exception {
-    String leaderUuid = null;
-    long start = System.currentTimeMillis();
-    long now = -1;
-    do {
-      if (now > 0) {
-        Thread.sleep(AsyncYBClient.SLEEP_TIME);
-      }
-      now = System.currentTimeMillis();
-      leaderUuid = asyncClient.getLeaderMasterUUID();
-      // 'now < start' is just a safety check to avoid system time changes causing time 'regression'.
-      if (now < start) {
-        throw new RuntimeException("Time went backwards??? Now: " + now + ", Start: " + start);
-      }
-    } while (leaderUuid == null && now - start < timeoutMs);
+    String leaderUuid = asyncClient.waitAndGetLeaderMasterUUID(timeoutMs);
 
     if (leaderUuid == null) {
       throw new RuntimeException("Timed out waiting for Master Leader.");
@@ -291,32 +277,28 @@ public class YBClient implements AutoCloseable {
   */
   public boolean waitForServer(final HostAndPort hp, final long timeoutMs) {
     Exception finalException = null;
-    boolean pingRet = false;
     long start = System.currentTimeMillis();
-    long now = -1;
     do {
       try {
-        if (now > 0) {
-          Thread.sleep(AsyncYBClient.SLEEP_TIME);
-        }
-        now = System.currentTimeMillis();
-        pingRet = ping(hp);
-        // 'now < start' is just a safety check to avoid system time changes causing time 'regression'.
-        if (now < start) {
-          return false;
+        if (ping(hp)) {
+          return true;
         }
       } catch (Exception e) {
         // We will get exceptions if we cannot connect to the other end. Catch them and save for
         // final debug if we never succeed.
         finalException = e;
       }
-    } while (pingRet == false && now - start < timeoutMs);
 
-    if (pingRet == false) {
-      LOG.warn("Timed out waiting for server to come online at: " + hp.toString() + "." +
-          " Final exception was: " + finalException);
-    }
-    return pingRet;
+      // Need to wait even when ping has an exception, so the sleep is outside the above try block.
+      try {
+        Thread.sleep(AsyncYBClient.SLEEP_TIME);
+      } catch (Exception e) {}
+    } while (System.currentTimeMillis() < start + timeoutMs);
+
+    LOG.warn("Timed out waiting for server {} to come online at. Final exception was {}.",
+             hp.toString(), finalException);
+
+    return false;
   }
 
   /**

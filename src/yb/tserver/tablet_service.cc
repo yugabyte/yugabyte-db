@@ -786,7 +786,7 @@ ConsensusServiceImpl::~ConsensusServiceImpl() {
 void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
                                            ConsensusResponsePB* resp,
                                            rpc::RpcContext* context) {
-  DVLOG(3) << "Received Consensus Update RPC: " << req->DebugString();
+  DVLOG(3) << "Received Consensus Update RPC: " << req->ShortDebugString();
   if (!CheckUuidMatchOrRespond(tablet_manager_, "UpdateConsensus", req, resp, context)) {
     return;
   }
@@ -794,8 +794,6 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
     return;
   }
-
-  tablet_peer->permanent_uuid();
 
   // Submit the update directly to the TabletPeer's Consensus instance.
   scoped_refptr<Consensus> consensus;
@@ -844,8 +842,12 @@ void ConsensusServiceImpl::IsLeaderReadyForChangeConfig(
     const IsLeaderReadyForChangeConfigRequestPB* req,
     IsLeaderReadyForChangeConfigResponsePB* resp,
     RpcContext* context) {
-  LOG(INFO) << "Received IsLeaderReadyForChangeConfig RPC: " << req->DebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "IsLeaderReadyForChangeConfig", req, resp, context)) {
+  VLOG(1) << "Received IsLeaderReadyForChangeConfig RPC: " << req->ShortDebugString();
+  // TODO: Note that this can be removed once Java YBClient will reset IsLeaderReady request's
+  // uuid correctly after leader step down.
+  if (req->dest_uuid() != "" &&
+      !CheckUuidMatchOrRespond(
+          tablet_manager_, "IsLeaderReadyForChangeConfig", req, resp, context)) {
     return;
   }
   scoped_refptr<TabletPeer> tablet_peer;
@@ -857,21 +859,21 @@ void ConsensusServiceImpl::IsLeaderReadyForChangeConfig(
   scoped_refptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
   bool is_ready = false;
-  Status status = consensus->IsLeaderReadyForChangeConfig(&is_ready);
-  resp->set_is_ready(is_ready);
+  boost::optional<TabletServerErrorPB::Code> error_code;
+  Status status = consensus->IsLeaderReadyForChangeConfig(&is_ready, &error_code);
   if (PREDICT_FALSE(!status.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), status,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
+    HandleErrorResponse(req, resp, context, error_code, status);
     return;
   }
+  resp->set_is_ready(is_ready);
+  VLOG(1) << "Done IsLeaderReadyForChangeConfig RPC: " << req->ShortDebugString();
   context->RespondSuccess();
 }
 
 void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
                                         ChangeConfigResponsePB* resp,
                                         RpcContext* context) {
-  LOG(INFO) << "Received ChangeConfig RPC: " << req->DebugString();
+  VLOG(1) << "Received ChangeConfig RPC: " << req->ShortDebugString();
   // If the destination uuid is empty string, it means the client was retrying after a leader
   // stepdown and did not have a chance to update the uuid inside the request.
   // TODO: Note that this can be removed once Java YBClient will reset change config's uuid
@@ -890,6 +892,7 @@ void ConsensusServiceImpl::ChangeConfig(const ChangeConfigRequestPB* req,
   if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
   boost::optional<TabletServerErrorPB::Code> error_code;
   Status s = consensus->ChangeConfig(*req, BindHandleResponse(req, resp, context), &error_code);
+  VLOG(1) << "Sent ChangeConfig req " << req->ShortDebugString() << " to consensus layer.";
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(req, resp, context, error_code, s);
     return;
@@ -933,7 +936,7 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
 void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                                           LeaderStepDownResponsePB* resp,
                                           RpcContext* context) {
-  DVLOG(3) << "Received Leader stepdown RPC: " << req->DebugString();
+  LOG(INFO) << "Received Leader stepdown RPC: " << req->ShortDebugString();
   if (!CheckUuidMatchOrRespond(tablet_manager_, "LeaderStepDown", req, resp, context)) {
     return;
   }
@@ -951,6 +954,7 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                          context);
     return;
   }
+  LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success.";
   context->RespondSuccess();
 }
 

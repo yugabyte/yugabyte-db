@@ -435,11 +435,78 @@ public class AsyncYBClient implements AutoCloseable {
     }
   }
 
+  // TODO: Move these wait/blocking API's to YBClient.
+  // Check if the new leader master is ready to serve config changes after an old leader was stepped
+  // down. If the wait times out or on errors, we throw exception. Note that this API should only
+  // be called after leader step down as it uses special uuid for leader readiness check.
+  private void waitAfterStepDownForNewLeaderForChangeConfig(long timeoutMs) throws Exception {
+    Deferred<IsLeaderReadyForChangeConfigResponse> d;
+    IsLeaderReadyForChangeConfigResponse readyResp;
+    long start = System.currentTimeMillis();
+    String errorMsg = null;
+    do {
+      // Sending empty uuid for the new leader, as the sendRpcToTablet in this api will try first
+      // with old leader and internally will retry to get the new leader. Seemed very intrusive to
+      // change the request's uuid contents during rpc retry. This can be removed once a "proxy"
+      // like concept is added to java client.
+      d = isMasterLeaderReadyForChangeConfig("", getMasterTabletId());
+      readyResp = d.join(getDefaultAdminOperationTimeoutMs());
+      if (readyResp.hasError()) {
+        errorMsg = "Leader ready response error: " + readyResp.errorMessage();
+        break;
+      }
+
+      if (readyResp.isReady()) {
+        LOG.info("New leader at host/port={} with uuid {} is ready for config change.",
+                 getLeaderMasterHostAndPort().toString(), getLeaderMasterUUID());
+        return;
+      }
+
+      Thread.sleep(SLEEP_TIME);
+    } while (System.currentTimeMillis() < start + timeoutMs);
+
+    if (errorMsg == null) {
+      // Here if there was a timeout.
+      errorMsg = "Timed out waiting for leader to be ready for change config.";
+    }
+
+    LOG.error(errorMsg);
+    throw new RuntimeException(errorMsg);
+  }
+
+  /**
+   * Helper API to wait and get current leader's UUID. This takes care of waiting for election.
+   *
+   * @param timeout error out if this timeout is reached.
+   * @return leader uuid on success, null otherwise.
+   */
+  public String waitAndGetLeaderMasterUUID(long timeoutMs) throws Exception {
+    String leaderUuid = null;
+    long start = System.currentTimeMillis();
+
+    // Retry till we get a valid UUID (or timeout) for the new leader.
+    do {
+      leaderUuid = getLeaderMasterUUID();
+
+      // Done if we got a valid one.
+      if (leaderUuid != null) {
+        return leaderUuid;
+      }
+
+      Thread.sleep(SLEEP_TIME);
+    } while (System.currentTimeMillis() < start + timeoutMs);
+
+    LOG.error("Timed out getting leader uuid.");
+
+    return null;
+  }
+
   /**
    * Change master servers config.
    * @return a deferred object that yields a change config response.
    */
-  public Deferred<ChangeConfigResponse> changeMasterConfig(String host, int port, boolean isAdd) {
+  public Deferred<ChangeConfigResponse> changeMasterConfig(String host, int port, boolean isAdd)
+      throws Exception {
     checkIsClosed();
     String changeUuid = getMasterUUID(host, port);
     if (changeUuid == null) {
@@ -449,62 +516,72 @@ public class AsyncYBClient implements AutoCloseable {
     String leaderUuid = getLeaderMasterUUID();
     if (leaderUuid == null) {
       throw new IllegalStateException("Invalid setup - could not find the leader master in " +
-        masterAddresses);
+                                      masterAddresses);
     }
 
-    HostAndPort hp = getLeaderMasterHostAndPort();
+    HostAndPort leaderHP = getLeaderMasterHostAndPort();
     boolean didStepDown = false;
 
     // If caller is trying to remove the leader, then step it down first and wait for a new one to
     // be elected.
-    if (!isAdd && hp.getHostText().equals(host) && hp.getPort() == port) {
+    if (!isAdd && leaderHP.getHostText().equals(host) && leaderHP.getPort() == port) {
       String tabletId = getMasterTabletId();
       String newLeader = leaderUuid;
 
       int numIters = 0;
       int maxNumIters = 10;
+      String errorMsg = null;
       try {
         // TODO: This while loop will not be needed once JIRA ENG-49 is fixed.
         while (newLeader == leaderUuid) {
           Deferred<LeaderStepDownResponse> d = masterLeaderStepDown(leaderUuid, tabletId);
           LeaderStepDownResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
           if (resp.hasError()) {
-            String errMsg = "Master leader step down hit error " + resp.errorMessage();
-            LOG.error(errMsg);
-            throw new RuntimeException(errMsg);
+            errorMsg = "Master leader step down hit error " + resp.errorMessage();
+            break;
           }
-          Thread.sleep(2000); // TODO: Add API to check if election is done.
-          newLeader = getLeaderMasterUUID();
+          newLeader = waitAndGetLeaderMasterUUID(getDefaultAdminOperationTimeoutMs());
+          if (newLeader == null) {
+            errorMsg = "Timed out as we could not find a valid new leader.";
+            break;
+          }
+
           numIters++;
           LOG.info("Try step down {}, new master {}, iter {}.", leaderUuid, newLeader, numIters);
           if (numIters >= maxNumIters) {
-            throw new IllegalStateException("Maximum iterations exceeded trying to step down the "
-            		+ "leader master with uuid " + leaderUuid);
+            errorMsg = "Maximum iterations reached trying to step down the " +
+                       "leader master with uuid " + leaderUuid;
+            break;
           }
         }
       } catch (Exception e) {
-        LOG.error("Error trying to step down {}, message={}.", leaderUuid, e.getMessage());
-        throw new IllegalStateException("Hit exception " + e.getMessage() +
-            ": could not step down leader master " + leaderUuid);
+        LOG.error("Error trying to step down {}. Error: .", leaderUuid, e);
+        throw new RuntimeException("Could not step down leader master " + leaderUuid, e);
       }
 
-      HostAndPort newHp = getLeaderMasterHostAndPort();
-      LOG.info("Step down {} done, new master {} at {}.", leaderUuid, newLeader, newHp.toString());
+      if (errorMsg != null) {
+        LOG.error(errorMsg);
+        throw new RuntimeException(errorMsg);
+      }
+
+      LOG.info("Step down {} done, new master uuid={}.", leaderUuid, newLeader);
 
       // We just set the leader in this case for tracing purposes, but change config call will
       // not use it.
       leaderUuid = newLeader;
       didStepDown = true;
+
+      waitAfterStepDownForNewLeaderForChangeConfig(getDefaultAdminOperationTimeoutMs());
     }
 
-    LOG.info("Sending changeConfig to leader {}: host {}, port {}, uuid {}, add {}, stepdown {}.",
-    		 leaderUuid, host, port, changeUuid, isAdd, didStepDown);
+    LOG.info("Sending changeConfig to leader {}: Target host/port={}/{} at uuid={}, add={}, " +
+             "stepdown={}.", leaderUuid, host, port, changeUuid, isAdd, didStepDown);
 
     // For the new leader, the sendRpcToTablet will retry to get the correct leader.
     // Seemed very intrusive to change request's uuid contents during rpc retry.
     // didStepDown can be removed once a "proxy" like concept is added to java client.
     ChangeConfigRequest rpc = new ChangeConfigRequest(
-    		didStepDown ? "" : leaderUuid , this.masterTable, host, port, changeUuid, isAdd);
+        didStepDown ? "" : leaderUuid , this.masterTable, host, port, changeUuid, isAdd);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -514,7 +591,7 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a leader step down response.
    */
   public Deferred<LeaderStepDownResponse> masterLeaderStepDown(
-	  String leaderUuid, String tabletId) throws Exception {
+      String leaderUuid, String tabletId) throws Exception {
     checkIsClosed();
     if (leaderUuid == null || tabletId == null) {
       throw new IllegalArgumentException("Invalid leader/tablet argument during step down " +
@@ -1224,7 +1301,7 @@ public class AsyncYBClient implements AutoCloseable {
 
   /**
    * Find the uuid of the leader master.
-   * @return The uuid of the leader master, or an empty string if no leader found.
+   * @return The uuid of the leader master, or null if no leader found.
    * @throws Nothing.
    */
   String getLeaderMasterUUID() {

@@ -140,8 +140,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
     : metric_registry_(metrics),
       master_(master),
-      leader_cb_(std::move(leader_cb)),
-      old_role_(RaftPeerPB::FOLLOWER) {
+      leader_cb_(std::move(leader_cb)) {
   CHECK_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
 }
 
@@ -370,17 +369,23 @@ void SysCatalogTable::SysCatalogStateChanged(
   LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Locked=" << context->is_config_locked_
                         << ". Reason: " << context->ToString()
                         << ". Latest consensus state: " << cstate.ShortDebugString();
-  RaftPeerPB::Role new_role = GetConsensusRole(tablet_peer_->permanent_uuid(), cstate);
+  RaftPeerPB::Role role = GetConsensusRole(tablet_peer_->permanent_uuid(), cstate);
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
-                        << RaftPeerPB::Role_Name(new_role)
-                        << ", previous role was: " << RaftPeerPB::Role_Name(old_role_);
+                        << RaftPeerPB::Role_Name(role);
 
+  // TODO: HACK to work around ENG-286 issue. This could become an assert then.
+  if (context->reason == StateChangeContext::NEW_LEADER_ELECTED &&
+      role == RaftPeerPB::LEARNER &&
+      tablet_peer_->permanent_uuid() == context->new_leader_uuid) {
+    LOG(INFO) << "Changing LEARNER to LEADER";
+    role = RaftPeerPB::LEADER;
+  }
   // For LEADER election case only, load the sysCatalog into memory via the callback.
   // Note that for a *single* master case, the TABLET_PEER_START is being overloaded to imply a
   // leader creation step, as there is no election done per-se.
   // For the change config case, LEADER is the one which started the operation, so new role is same
   // as its old role of LEADER and hence it need not reload the sysCatalog via the callback.
-  if (new_role == RaftPeerPB::LEADER &&
+  if (role == RaftPeerPB::LEADER &&
       (context->reason == StateChangeContext::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeContext::TABLET_PEER_STARTED))) {

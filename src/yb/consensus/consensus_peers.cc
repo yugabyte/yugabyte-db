@@ -213,9 +213,11 @@ void Peer::SendNextRequest(bool even_if_queue_empty) {
 
   MAYBE_FAULT(FLAGS_fault_crash_on_leader_request_fraction);
 
-
-  VLOG_WITH_PREFIX_UNLOCKED(2) << "Sending to peer " << peer_pb().permanent_uuid() << ": "
-      << request_.ShortDebugString();
+  // TODO: Will remove after triaging ENG-287.
+  if (request_.tablet_id() == "00000000000000000000000000000000") {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Sending to peer " << peer_pb().permanent_uuid() << ": "
+                                   << request_.ShortDebugString();
+  }
   controller_.Reset();
 
   proxy_->UpdateAsync(&request_, &response_, &controller_, std::bind(&Peer::ProcessResponse, this));
@@ -269,8 +271,11 @@ void Peer::ProcessResponse() {
 void Peer::DoProcessResponse() {
   failed_attempts_ = 0;
 
-  VLOG_WITH_PREFIX_UNLOCKED(2) << "Response from peer " << peer_pb().permanent_uuid() << ": "
-      << response_.ShortDebugString();
+  // TODO: Will remove after triaging ENG-287.
+  if (request_.tablet_id() == "00000000000000000000000000000000") {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Response from peer " << peer_pb().permanent_uuid() << ": "
+                                   << response_.ShortDebugString();
+  }
 
   bool more_pending;
   queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), response_, &more_pending);

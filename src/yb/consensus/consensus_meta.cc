@@ -227,9 +227,11 @@ std::string ConsensusMetadata::LogPrefix() const {
 
 void ConsensusMetadata::UpdateActiveRole() {
   ConsensusStatePB cstate = ToConsensusStatePB(CONSENSUS_CONFIG_ACTIVE);
+  RaftPeerPB::Role old_role = active_role_;
   active_role_ = GetConsensusRole(peer_uuid_, cstate);
-  VLOG_WITH_PREFIX(1) << "Updating active role to " << RaftPeerPB::Role_Name(active_role_)
-                      << ". Consensus state: " << cstate.ShortDebugString();
+  LOG_WITH_PREFIX(INFO) << "Updating active role from " << RaftPeerPB::Role_Name(old_role)
+                        << " to " << RaftPeerPB::Role_Name(active_role_)
+                        << ". Consensus state: " << cstate.ShortDebugString();
 }
 
 } // namespace consensus

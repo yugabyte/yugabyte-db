@@ -226,7 +226,9 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   }
 
   // Check if a (new) leader is ready to accept config change requests.
-  virtual Status IsLeaderReadyForChangeConfig(bool* is_ready) {
+  virtual Status IsLeaderReadyForChangeConfig(
+     bool* is_ready,
+     boost::optional<tserver::TabletServerErrorPB::Code>* error_code) {
     return Status::NotSupported("Not implemented.");
   }
 

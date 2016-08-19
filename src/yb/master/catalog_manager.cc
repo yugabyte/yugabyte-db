@@ -579,7 +579,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
       return;
     }
 
-    LOG(INFO) << "Loading table and tablet metadata into memory...";
+    LOG(INFO) << "Loading table and tablet metadata into memory for term " << term;
     LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
       Status status = VisitSysCatalog();
       if (!status.ok() && (consensus->role() != RaftPeerPB::LEADER)) {
@@ -625,7 +625,6 @@ Status CatalogManager::VisitSysCatalog() {
 
   // Clear current config.
   cluster_config_.reset();
-
   // Visit the cluster config section and load it into memory.
   unique_ptr<ClusterConfigLoader> config_loader(new ClusterConfigLoader(this));
   RETURN_NOT_OK_PREPEND(
@@ -685,29 +684,33 @@ bool CatalogManager::IsInitialized() const {
   return state_ == kRunning;
 }
 
+// TODO - delete this API after HandleReportedTablet() usage is removed.
 Status CatalogManager::CheckIsLeaderAndReady() const {
   std::lock_guard<simple_spinlock> l(state_lock_);
   if (PREDICT_FALSE(state_ != kRunning)) {
     return Status::ServiceUnavailable(
         Substitute("Catalog manager is shutting down. State: $0", state_));
   }
+  string uuid = master_->fs_manager()->uuid();
   if (master_->opts().IsShellMode()) {
-    DCHECK(tablet_peer() == nullptr);
-    return Status::IllegalState("Catalog manager is in shell mode, not the leader.");
+    // Consensus and other internal fields should not be checked when is shell mode.
+    return Status::IllegalState(Substitute("Catalog manager of $0 is in shell mode, not the leader",
+                                           uuid));
   }
   Consensus* consensus = tablet_peer()->consensus();
   if (consensus == nullptr) {
     return Status::IllegalState("Consensus has not been initialized yet");
   }
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
-  string uuid = master_->fs_manager()->uuid();
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     return Status::IllegalState(
         Substitute("Not the leader. Local UUID: $0, Consensus state: $1",
                    uuid, cstate.ShortDebugString()));
   }
   if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
-    return Status::ServiceUnavailable("Leader not yet ready to serve requests");
+    return Status::ServiceUnavailable(
+        Substitute("Leader not yet ready to serve requests: ready term $0 vs cstate term $1",
+                   leader_ready_term_, cstate.current_term()));
   }
   return Status::OK();
 }
@@ -718,8 +721,9 @@ const scoped_refptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
 
 RaftPeerPB::Role CatalogManager::Role() const {
   CHECK(IsInitialized());
-  if (master_->opts().IsShellMode())
+  if (master_->opts().IsShellMode()) {
     return RaftPeerPB::NON_PARTICIPANT;
+  }
 
   return tablet_peer()->consensus()->role();
 }
@@ -2047,7 +2051,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
 
-  EnableBgTasks();
+  RETURN_NOT_OK(EnableBgTasks());
 
   {
     std::lock_guard<rw_spinlock> lock(lock_);
@@ -3817,6 +3821,9 @@ Status CatalogManager::GoIntoShellMode() {
     return Status::IllegalState("Master is already in shell mode.");
   }
 
+  LOG(INFO) << "Starting going into shell mode.";
+  master_->SetShellMode(true);
+
   {
     std::lock_guard<LockType> l(lock_);
     RETURN_NOT_OK(sys_catalog_->GoIntoShellMode());
@@ -3824,9 +3831,8 @@ Status CatalogManager::GoIntoShellMode() {
     background_tasks_.reset();
   }
 
-  master_->SetShellMode(true);
 
-  LOG(INFO) << "Going into shell mode completed.";
+  LOG(INFO) << "Done going into shell mode.";
 
   return Status::OK();
 }
@@ -3846,7 +3852,8 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist, bool bootup) {
                                blacklist_tservers_.size(), initial_blacklist_load_);
     initial_blacklist_load_ = 0;
   }
-  LOG(INFO) << "Set blacklist size=" << blacklist.hosts_size() << ", isBootup=" << bootup;
+  LOG(INFO) << "Set blacklist size=" << blacklist.hosts_size() << ", bootup=" << bootup
+            << " num_tablets=" << tablet_map_.size();
   for (const auto &hp : blacklist.hosts()) {
     // We always set the host port info here, the load might not be available, especially after
     // new leader bootup.
@@ -3914,6 +3921,7 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   LOG(WARNING) << "Blacklist completion check start " << blacklist_tservers_.empty()
                << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
   int64_t total_pending = 0;
+
   for (auto entry : blacklist_tservers_) {
     // If it is a valid uuid and there was no last reported load, then we stop getting its load.
     if (entry.uuid != "" && entry.last_reported_load == 0) {
@@ -3962,6 +3970,11 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
       SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
       return s;
     } else {
+      // When there is no load to move, return completed.
+      if (is_initial_blacklist_load_set_ && total_pending == 0) {
+        resp->set_percent(100);
+        return Status::OK();
+      }
       // Nothing else to do if no initial load.
       resp->set_percent(0);
       return Status::OK();
@@ -3998,15 +4011,18 @@ CatalogManager::ScopedLeaderSharedLock::ScopedLeaderSharedLock(CatalogManager* c
                                      catalog_->state_));
     return;
   }
+  string uuid = catalog_->master_->fs_manager()->uuid();
   if (PREDICT_FALSE(catalog_->master_->IsShellMode())) {
-    DCHECK(catalog_->tablet_peer() == nullptr);
-    leader_status_ = Status::IllegalState("Catalog manager is in shell mode, not the leader.");
+    // Consensus and other internal fields should not be checked when is shell mode as they may be
+    // in transition.
+    leader_status_ = Status::IllegalState(
+                         Substitute("Catalog manager of $0 is in shell mode, not the leader.",
+                                    uuid));
     return;
   }
   // Check if the catalog manager is the leader.
   Consensus* consensus = catalog_->sys_catalog_->tablet_peer_->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
-  string uuid = catalog_->master_->fs_manager()->uuid();
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     leader_status_ = Status::IllegalState(
                          Substitute("Not the leader. Local UUID: $0, Consensus state: $1",

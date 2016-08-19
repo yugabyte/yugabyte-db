@@ -1376,11 +1376,18 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   return RequestVoteRespondVoteGranted(request, response);
 }
 
-Status RaftConsensus::IsLeaderReadyForChangeConfig(bool* is_ready) {
+Status RaftConsensus::IsLeaderReadyForChangeConfig(
+    bool* is_ready,
+    boost::optional<TabletServerErrorPB::Code>* error_code) {
   *is_ready = false;
   {
     ReplicaState::UniqueLock lock;
-    RETURN_NOT_OK(state_->LockForConfigChange(&lock));
+    RETURN_NOT_OK(state_->LockForRead(&lock));
+    Status s = state_->CheckActiveLeaderUnlocked();
+    if (!s.ok()) {
+      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
+      return s;
+    }
     const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
     // Make sure that there are no peers that are being bootstrapped (in the process of becoming
     // voters).

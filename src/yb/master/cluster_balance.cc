@@ -369,13 +369,16 @@ class ClusterLoadBalancer::ClusterLoadState {
     //
     // If we didn't have or find any blacklisted server to move load from, move to the wrong
     // placement tablet servers. We can pick any of them as the source for now.
-    for (const auto& to_uuid : sorted_load_) {
-      if (CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info)) {
-        *out_from_ts = *tablet_meta.wrong_placement_tablet_servers.begin();
-        *out_to_ts = to_uuid;
-        return true;
+    if (!tablet_meta.wrong_placement_tablet_servers.empty()) {
+      for (const auto& to_uuid : sorted_load_) {
+        if (CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info)) {
+          *out_from_ts = *tablet_meta.wrong_placement_tablet_servers.begin();
+          *out_to_ts = to_uuid;
+          return true;
+        }
       }
     }
+
     return false;
   }
 
