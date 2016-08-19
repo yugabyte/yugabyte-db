@@ -17,66 +17,20 @@ body {
 form a {
   margin-left: 5px;
 }
-.ybLeftPane{
-  position: absolute;
-  left:0;
-  width: 100%;
-}
-.ybRightPane{
-  position: absolute;
-  right: 0;
-  padding-top: 0;
-  margin-top:0;
-  width: 90%;
-  height: 100%;
-  border-left: 1px solid black;
-}
 
 .ybNavBar{
   margin-bottom: 0 !important;
 }
+
 ul{
   list-style: none;
 }
-.ybLeftNavTop{
-  position: relative;
-  margin-top: 0 !important;
-}
-.ybLeftNavBottom{
-  position: relative;
-  margin-bottom: 0 !important;
-}
-.createUniverseButton{
-  margin-top: 10px;
-  margin-left: 20px;
-}
-.modal-heading{
-  padding-top: 0;
-  border-bottom: 1px solid black;
-}
-.modal-body-left{
-  position: relative;
-  left:5%;
-  width: 50%;
-  float: left;
-  height: 100%;
-}
-.modal-body-right{
-  position: relative;
-  right: 5%;
-  float: right;
-  padding-top: 0;
-  margin-top:0;
-  width: 30%;
-  height: 100% !important;
 
-  border-radius: 2px;
+.modal-body {
+  max-height: calc(100% - 120px);
+  overflow: auto;
 }
-.body-right-content{
-  background-color: lightgray;
-  height: 100%;
 
-}
 .createUniverseFormSplit{
   border-bottom: 1px solid black;
   margin-top: 4%;
@@ -85,21 +39,4 @@ ul{
 .form-item-label{
   display: block;
   margin-bottom: 4%;
-}
-.content-head{
-  display: block;
-  padding-top: 4%;
-  margin-bottom: 2%;
-  padding-left: 4%;
-}
-.content-item{
-  display: block;
-  margin-top: 2%;
-  margin-bottom: 2%;
-  padding-left: 4%;
-}
-.createButton{
-  margin-top: 5%;
-  width: 33%;
-  margin-left: 33%;
 }
