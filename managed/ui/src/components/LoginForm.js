@@ -8,7 +8,7 @@ class LoginForm extends Component {
   };
 
   componentWillMount() {
-     this.props.resetMe();
+    this.props.resetMe();
   }
 
   componentWillReceiveProps(nextProps) {
@@ -20,30 +20,34 @@ class LoginForm extends Component {
     }
   }
   render() {
-    const {asyncValidating, fields: {email, password}, handleSubmit, submitting } = this.props;
+    const {asyncValidating, error, fields: {email, password}, handleSubmit, submitting } = this.props;
+
     return (
-        <div className="container">
-          <div className="col-sm-6 col-sm-offset-3">
-            <div className="panel panel-default login-panel">
-              <div className="panel-heading">
-                <h3 className="panel-title">Please log in</h3>
+      <div className="container">
+        <div className="col-sm-6 col-sm-offset-3">
+          <div className="panel panel-default login-panel">
+            <div className="panel-heading">
+              <h3 className="panel-title">Please log in</h3>
+            </div>
+            <div className="panel-body">
+              <div className={`alert alert-danger form-error-alert ${error ? '': 'hide'}`}>
+                {error}
               </div>
-              <div className="panel-body">
-                <form onSubmit={handleSubmit(this.props.loginCustomer.bind(this))}>
-                  <div className={`form-group ${email.touched && email.invalid ? 'has-error' : ''}`}>
-                    <label className="control-label">Email</label>
-                    <input  placeholder="email" type="text" className="form-control" {...email} />
-                    <div className="help-block">
+              <form onSubmit={handleSubmit(this.props.loginCustomer.bind(this))}>
+                <div className={`form-group ${email.touched && email.invalid ? 'has-error' : ''}`}>
+                  <label className="control-label">Email</label>
+                  <input  placeholder="email" type="text" className="form-control" {...email}/>
+                  <div className="help-block">
                     {email.touched ? email.error : ''}
-                    </div>
-                    <div className="help-block">
-                    {asyncValidating === 'email' ? 'validating..': ''}
-                    </div>
                   </div>
-                  <div className={`form-group ${password.touched && password.invalid ? 'has-error' : ''}`}>
-                    <label className="control-label">Password</label>
-                    <input placeholder="password" type="password" className="form-control" {...password} />
-                    <div className="help-block">
+                  <div className="help-block">
+                    {asyncValidating === 'email' ? 'validating..': ''}
+                  </div>
+                </div>
+                <div className={`form-group ${password.touched && password.invalid ? 'has-error' : ''}`}>
+                  <label className="control-label">Password</label>
+                  <input placeholder="password" type="password" className="form-control" {...password}/>
+                  <div className="help-block">
                     {password.touched ? password.error : ''}
                   </div>
                 </div>
@@ -51,8 +55,8 @@ class LoginForm extends Component {
               </form>
             </div>
           </div>
-          </div>
         </div>
+      </div>
     );
   }
 }

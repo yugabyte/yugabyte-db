@@ -7,9 +7,9 @@ import AppContainer from '../containers/AppContainer';
 export default class App extends Component {
   render() {
     return (
-    	<AppContainer>
-    	 {this.props.children}
-    	</AppContainer>
+      <AppContainer>
+        {this.props.children}
+      </AppContainer>
     );
   }
 }

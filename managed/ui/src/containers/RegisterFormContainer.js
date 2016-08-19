@@ -28,36 +28,39 @@ function validate(values) {
   }
 
   if(values.confirmPassword  && values.confirmPassword.trim() !== '' &&
-     values.password  && values.password.trim() !== '' &&
-     values.password !== values.confirmPassword) {
+  values.password  && values.password.trim() !== '' &&
+  values.password !== values.confirmPassword) {
     errors.password = 'Password And Confirm Password don\'t match';
     errors.password = 'Password And Confirm Password don\'t match';
     hasErrors = true;
   }
-   return hasErrors && errors;
-} 
+  return hasErrors && errors;
+}
 
 const validateAndRegisterCustomer = (values, dispatch) => {
   return new Promise((resolve, reject) => {
-        dispatch(register(values)).then((response) => {
-        let data = response.payload.data;
-        if(response.payload.status !== 200) {
-            dispatch(registerFailure(response.payload));
-            reject(data); //this is for redux-form itself
-         } else {
-            localStorage.setItem('customer_token', response.payload.data.authToken);
-            localStorage.setItem('customer_id',response.payload.data.customerUUID);
-            dispatch(registerSuccess(response.payload));
-            resolve();
+    dispatch(register(values)).then((response) => {
+      let data = response.payload.data;
+      if(response.payload.status !== 200) {
+        dispatch(registerFailure(response.payload));
+        if (typeof data.error === 'string') {
+          reject({_error: data.error});
         }
-      });
+        reject(data.error);
+      } else {
+        localStorage.setItem('customer_token', response.payload.data.authToken);
+        localStorage.setItem('customer_id',response.payload.data.customerUUID);
+        dispatch(registerSuccess(response.payload));
+        resolve();
+      }
+    });
   });
 };
 
 const mapDispatchToProps = (dispatch) => {
   return {
-   registerCustomer: validateAndRegisterCustomer,
-   resetMe: () =>{
+    registerCustomer: validateAndRegisterCustomer,
+    resetMe: () =>{
 
     }
   }

@@ -5,19 +5,18 @@ import {getRegionList, getRegionListSuccess, getRegionListFailure } from '../act
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 
-
 const getRegionListFromApi = (values, dispatch) => {
   return new Promise((resolve, reject) => {
     dispatch(getRegionList())
-      .then((response) => {
-        if(response.payload.status !== 200) {
-          dispatch(getRegionListFailure(response.payload));
-          reject(data); //this is for redux-form itself
-        } else {
-          dispatch(getRegionListSuccess(response.payload));
-          resolve();
-        }
-      });
+    .then((response) => {
+      if(response.payload.status !== 200) {
+        dispatch(getRegionListFailure(response.payload));
+        reject(data); //this is for redux-form itself
+      } else {
+        dispatch(getRegionListSuccess(response.payload));
+        resolve();
+      }
+    });
   });
 };
 
