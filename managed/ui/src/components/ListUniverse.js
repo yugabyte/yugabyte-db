@@ -10,22 +10,22 @@ export default class ListUniverse extends Component {
     this.showUniverseDialog = this.showUniverseDialog.bind(this);
   }
 
-  showUniverseDialog (){
-      //TODO show Selected Universe Page
+  showUniverseDialog () {
+    //TODO show Selected Universe Page
   }
 
-  render(){
-    const universeDisplay = [];
+  render() {
+    var universeDisplay = [];
     if(typeof this.props.customer.universes !== "undefined") {
-      this.props.customer.universes.map(function (item, idx) {
-        universeDisplay.push({
+      universeDisplay = this.props.customer.universes.map(function (item, idx) {
+        return {
           id: item.universeUUID,
           name: item.name,
           created:moment.default(item.creationDate).format(),
           masters:item.masters.length,
           nodes:item.masters.length, //Placeholder values , since nodes is not present in the current response
           status:"active"
-        });
+        };
       });
     }
 

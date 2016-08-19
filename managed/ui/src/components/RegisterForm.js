@@ -8,7 +8,7 @@ class RegisterForm extends Component {
   };
 
   componentWillMount() {
-     this.props.resetMe();
+    this.props.resetMe();
   }
 
   componentWillReceiveProps(nextProps) {
@@ -18,7 +18,10 @@ class RegisterForm extends Component {
   }
 
   render() {
-    const {asyncValidating, fields: { name, email, password, confirmPassword }, handleSubmit, submitting } = this.props;
+    const {
+      asyncValidating, error, handleSubmit, submitting,
+      fields: { name, email, password, confirmPassword }
+    } = this.props;
     return (
       <div className="container">
         <div className="col-sm-6 col-sm-offset-3">
@@ -27,6 +30,9 @@ class RegisterForm extends Component {
               <h3 className="panel-title">Register Customer</h3>
             </div>
             <div className="panel-body">
+              <div className={`alert alert-danger form-error-alert ${error ? '': 'hide'}`}>
+                {error}
+              </div>
               <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
                 <div className={`form-group ${name.touched && name.invalid ? 'has-error' : ''}`}>
                   <label className="control-label">Full Name*</label>

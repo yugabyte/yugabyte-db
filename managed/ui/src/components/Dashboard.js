@@ -2,8 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import DashboardRightPane from './DashboardRightPane';
-import TopNavBar from './TopNavBar';
-import SideNavBar from './SideNavBar';
+import NavBar from './NavBar';
 
 export default class Dashboard extends Component {
   static contextTypes = {
@@ -19,8 +18,7 @@ export default class Dashboard extends Component {
   render() {
     return (
       <div className="dashboard">
-        <TopNavBar />
-        <SideNavBar />
+        <NavBar />
         <div className="page-wrapper">
           <div className="row header-row">
             <DashboardRightPane {...this.props}/>
