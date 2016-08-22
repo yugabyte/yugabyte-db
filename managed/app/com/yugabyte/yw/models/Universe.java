@@ -79,6 +79,16 @@ public class Universe extends Model {
     json.put("name", name);
     json.put("creationDate", creationDate.toString());
     json.set("universeDetails", Json.parse(universeDetailsJson));
+
+    if (getUniverseDetails().userIntent != null && getUniverseDetails().userIntent.regionList != null) {
+      List<Region> regions = Region.find.where().idIn(getUniverseDetails().userIntent.regionList).findList();
+
+      if (!regions.isEmpty()) {
+        json.set("regions", Json.toJson(regions));
+        json.set("provider", Json.toJson(regions.get(0).provider));
+      }
+    }
+
     return json;
   }
 

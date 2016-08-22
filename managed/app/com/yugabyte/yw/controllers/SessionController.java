@@ -4,6 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
@@ -13,6 +15,8 @@ import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.*;
+
+import javax.persistence.PersistenceException;
 
 public class SessionController extends Controller {
 
@@ -49,27 +53,27 @@ public class SessionController extends Controller {
 
   public Result register() {
     Form<CustomerRegisterFormData> formData = formFactory.form(CustomerRegisterFormData.class).bindFromRequest();
-    ObjectNode responseJson = Json.newObject();
 
     if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
     CustomerRegisterFormData data = formData.get();
-    Customer cust = Customer.create(data.name, data.email, data.password);
+    try {
+      Customer cust = Customer.create(data.name, data.email, data.password);
+      if (cust == null) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to register the customer");
+      }
 
-    if (cust == null) {
-      responseJson.put("error", "Unable to register the customer");
-      return internalServerError(responseJson);
+      String authToken = cust.createAuthToken();
+      ObjectNode authTokenJson = Json.newObject();
+      authTokenJson.put(AUTH_TOKEN, authToken);
+      authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
+      response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
+      return ok(authTokenJson);
+    } catch (PersistenceException pe) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Customer already registered.");
     }
-
-    String authToken = cust.createAuthToken();
-    ObjectNode authTokenJson = Json.newObject();
-    authTokenJson.put(AUTH_TOKEN, authToken);
-    authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
-    response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
-    return ok(authTokenJson);
   }
 
   @With(TokenAuthenticator.class)
