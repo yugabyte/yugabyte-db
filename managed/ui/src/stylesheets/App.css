@@ -3,23 +3,31 @@
     margin-top: 25%;
 }
 
-body {
-    background-color: #f8f8f8;
+#ybPortal {
+  background-color: #f8f8f8;
 }
 
-.page-wrapper {
+#ybPortal .navbar {
+  margin-bottom: 0px;
+}
+
+#page-wrapper {
     position: inherit;
     margin: 0 0 0 250px;
     padding: 0 30px;
     border-left: 1px solid #e7e7e7;
+    background-color: #fff;
+    min-height: 1191px;
+}
+
+#page-wrapper .header-row {
+    padding-bottom: 9px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #eee;
 }
 
 form a {
   margin-left: 5px;
-}
-
-.ybNavBar{
-  margin-bottom: 0 !important;
 }
 
 ul{
