@@ -9,12 +9,6 @@ export default class Dashboard extends Component {
     router: PropTypes.object
   };
 
-  componentWillMount() {
-    if(typeof this.props.customer === "undefined" || this.props.customer.status !== "authenticated"){
-			this.context.router.push('/login');
-	  }
-	}
-
   render() {
     return (
       <div className="dashboard">
