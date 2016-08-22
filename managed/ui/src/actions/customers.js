@@ -30,7 +30,7 @@ export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
   var auth_token = localStorage.getItem("customer_token").toString();
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
-  const request=axios(`${ROOT_URL}/customers/`+cUUID);
+  const request = axios(`${ROOT_URL}/customers/${cUUID}`);
   return {
     type: VALIDATE_FROM_TOKEN,
     payload: request
@@ -103,6 +103,3 @@ export function logout() {
     type: LOGOUT
   };
 }
-
-
-
