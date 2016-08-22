@@ -11,10 +11,15 @@ export default class Dashboard extends Component {
 
   render() {
     return (
-      <div className="dashboard">
+      <div>
         <NavBar />
-        <div className="page-wrapper">
+        <div id="page-wrapper">
           <div className="row header-row">
+            <div className="col-lg-10">
+              <h1>Dashboard</h1>
+            </div>
+          </div>
+          <div>
             <DashboardRightPane {...this.props}/>
           </div>
         </div>
