@@ -184,11 +184,12 @@ public class UniverseController extends AuthenticatedController {
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    Universe universe = Universe.find.byId(universeUUID);
-    if (universe == null) {
+    try {
+      Universe universe = Universe.get(universeUUID);
+      return Results.status(OK, universe.toJson());
+    } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
     }
-    return Results.status(OK, universe.toJson());
   }
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
