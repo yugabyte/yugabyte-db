@@ -1,13 +1,16 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.api.models;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
+import com.yugabyte.yw.models.helpers.UserIntent;
 import org.junit.Before;
 import org.junit.Test;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -150,5 +153,63 @@ public class UniverseTest extends FakeDBApplication {
     };
     u = Universe.saveDetails(u.universeUUID, updater);
     assertThat(u.getMasterAddresses(), is(allOf(notNullValue(), equalTo("host-n1:7100,host-n2:7100,host-n3:7100"))));
+  }
+
+  @Test
+  public void testToJSON() {
+    Universe u = Universe.create("Test Universe", defaultCustomer.customerId);
+
+    Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    Region r3 = Region.create(defaultProvider, "region-3", "Region 3", "yb-image-1");
+    List<UUID> regionList = new ArrayList<UUID>();
+    regionList.add(r1.uuid);
+    regionList.add(r2.uuid);
+    regionList.add(r3.uuid);
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDetails universeDetails = universe.getUniverseDetails();
+        universeDetails.userIntent = new UserIntent();
+        universeDetails.userIntent.isMultiAZ = true;
+        universeDetails.userIntent.replicationFactor = 3;
+        universeDetails.userIntent.regionList = regionList;
+
+        // Add a desired number of nodes.
+        universeDetails.numNodes = 3;
+        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+          NodeDetails node = new NodeDetails();
+          node.instance_name = "host-n" + idx;
+          node.cloud = "aws";
+          node.az = "az-" + idx;
+          node.region = "test-region";
+          node.subnet_id = "subnet-" + idx;
+          node.private_ip = "host-n" + idx;
+          node.isTserver = true;
+          if (idx <= 3) {
+            node.isMaster = true;
+          }
+          node.nodeIdx = idx;
+          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+        }
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    u = Universe.saveDetails(u.universeUUID, updater);
+
+    JsonNode universeJson = u.toJson();
+    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    JsonNode userIntent = universeJson.get("universeDetails").get("userIntent");
+    assertTrue(userIntent.get("regionList").isArray());
+    assertEquals(3, userIntent.get("regionList").size());
+
+    JsonNode regionsNode = universeJson.get("regions");
+    assertThat(regionsNode, is(notNullValue()));
+    assertTrue(regionsNode.isArray());
+    assertEquals(3, regionsNode.size());
+
+    JsonNode providerNode = universeJson.get("provider");
+    assertThat(providerNode, is(notNullValue()));
+    assertThat(providerNode.get("uuid").asText(), allOf(notNullValue(), equalTo(defaultProvider.uuid.toString())));
   }
 }
