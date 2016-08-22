@@ -17,15 +17,16 @@
 
 #include "yb/rpc/proxy.h"
 
-#include <boost/bind.hpp>
-#include <glog/logging.h>
 #include <inttypes.h>
-#include <memory>
 #include <stdint.h>
 
+#include <functional>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/messenger.h"
@@ -98,8 +99,7 @@ Status Proxy::SyncRequest(const string& method,
                           google::protobuf::Message* resp,
                           RpcController* controller) const {
   CountDownLatch latch(1);
-  AsyncRequest(method, req, DCHECK_NOTNULL(resp), controller,
-               boost::bind(&CountDownLatch::CountDown, boost::ref(latch)));
+  AsyncRequest(method, req, DCHECK_NOTNULL(resp), controller, [&latch]() { latch.CountDown(); });
 
   latch.Wait();
   return controller->status();

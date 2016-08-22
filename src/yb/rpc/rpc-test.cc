@@ -17,6 +17,7 @@
 
 #include "yb/rpc/rpc-test-base.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -367,8 +368,9 @@ TEST_F(TestRpc, TestServerShutsDown) {
   for (int i = 0; i < n_calls; i++) {
     auto controller = new RpcController();
     controllers.push_back(controller);
-    p.AsyncRequest(GenericCalculatorService::kAddMethodName, req, &resp, controller,
-                   boost::bind(&CountDownLatch::CountDown, boost::ref(latch)));
+    p.AsyncRequest(GenericCalculatorService::kAddMethodName, req, &resp, controller, [&latch]() {
+      latch.CountDown();
+    });
   }
 
   // Accept the TCP connection.
@@ -482,8 +484,7 @@ TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
   controller.set_timeout(MonoDelta::FromMilliseconds(1));
   {
     Proxy p(client_messenger, bad_addr, "xxx");
-    p.AsyncRequest("my-fake-method", req, &resp, &controller,
-                   boost::bind(&DestroyMessengerCallback, &client_messenger, &latch));
+    p.AsyncRequest("my-fake-method", req, &resp, &controller, [&latch]() { latch.CountDown(); });
   }
   latch.Wait();
 }

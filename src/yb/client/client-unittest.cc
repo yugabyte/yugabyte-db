@@ -17,19 +17,22 @@
 //
 // Tests for the client which are true unit tests and don't require a cluster, etc.
 
-#include <boost/bind.hpp>
-#include <gtest/gtest.h>
+#include <functional>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 
+namespace yb {
+namespace client {
+
 using std::string;
 using std::vector;
 
-namespace yb {
-namespace client {
+using namespace std::placeholders;
 
 TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
   YBSchema s;
@@ -163,8 +166,8 @@ TEST(ClientUnitTest, TestRetryFunc) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromMilliseconds(100));
   int counter = 0;
-  Status s = RetryFunc(deadline, "retrying test func", "timed out",
-                       boost::bind(TestFunc, _1, _2, &counter));
+  Status s =
+      RetryFunc(deadline, "retrying test func", "timed out", std::bind(TestFunc, _1, _2, &counter));
   ASSERT_TRUE(s.IsTimedOut());
   ASSERT_GT(counter, 5);
   ASSERT_LT(counter, 20);

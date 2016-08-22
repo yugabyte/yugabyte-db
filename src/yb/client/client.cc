@@ -1310,8 +1310,9 @@ void YBScanner::Close() {
     data_->PrepareRequest(YBScanner::Data::CLOSE);
     data_->next_req_.set_close_scanner(true);
     closer->controller.set_timeout(data_->timeout_);
-    data_->proxy_->ScanAsync(data_->next_req_, &closer->response, &closer->controller,
-                             boost::bind(&CloseCallback::Callback, closer.get()));
+    data_->proxy_->ScanAsync(
+        data_->next_req_, &closer->response, &closer->controller,
+        std::bind(&CloseCallback::Callback, closer.get()));
     ignore_result(closer.release());
   }
   data_->proxy_.reset();

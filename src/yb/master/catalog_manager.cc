@@ -37,6 +37,7 @@
 #include "yb/master/catalog_manager.h"
 
 #include <algorithm>
+#include <functional>
 #include <mutex>
 #include <set>
 #include <string>
@@ -146,11 +147,6 @@ DEFINE_bool(catalog_manager_check_ts_count_for_create_table, true,
             "a table to be created.");
 TAG_FLAG(catalog_manager_check_ts_count_for_create_table, hidden);
 
-using std::shared_ptr;
-using std::string;
-using std::unique_ptr;
-using std::vector;
-
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
                            "The number of tablet servers that have responded or done a heartbeat "
@@ -159,6 +155,13 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
 
 namespace yb {
 namespace master {
+
+using std::shared_ptr;
+using std::string;
+using std::unique_ptr;
+using std::vector;
+
+using namespace std::placeholders;
 
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_CompareAndSwap;
@@ -2274,7 +2277,7 @@ class RetryingTSRpcTask : public MonitoredTask {
       LOG(INFO) << "Scheduling retry of " << description() << " with a delay"
                 << " of " << delay_millis << "ms (attempt = " << attempt_ << ")...";
       master_->messenger()->ScheduleOnReactor(
-          boost::bind(&RetryingTSRpcTask::RunDelayedTask, this, _1),
+          std::bind(&RetryingTSRpcTask::RunDelayedTask, this, _1),
           MonoDelta::FromMilliseconds(delay_millis));
       return true;
     }
@@ -2405,8 +2408,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   }
 
   virtual bool SendRequest(int attempt) OVERRIDE {
-    ts_proxy_->CreateTabletAsync(req_, &resp_, &rpc_,
-                                 boost::bind(&AsyncCreateReplica::RpcCallback, this));
+    ts_proxy_->CreateTabletAsync(
+        req_, &resp_, &rpc_, std::bind(&AsyncCreateReplica::RpcCallback, this));
     VLOG(1) << "Send create tablet request to " << permanent_uuid_ << ":\n"
             << " (attempt " << attempt << "):\n"
             << req_.DebugString();
@@ -2492,8 +2495,8 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
       req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
     }
 
-    ts_proxy_->DeleteTabletAsync(req, &resp_, &rpc_,
-                                 boost::bind(&AsyncDeleteReplica::RpcCallback, this));
+    ts_proxy_->DeleteTabletAsync(
+        req, &resp_, &rpc_, std::bind(&AsyncDeleteReplica::RpcCallback, this));
     VLOG(1) << "Send delete tablet request to " << permanent_uuid_
             << " (attempt " << attempt << "):\n"
             << req.DebugString();
@@ -2581,8 +2584,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
 
     l.Unlock();
 
-    ts_proxy_->AlterSchemaAsync(req, &resp_, &rpc_,
-                                boost::bind(&AsyncAlterTable::RpcCallback, this));
+    ts_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, std::bind(&AsyncAlterTable::RpcCallback, this));
     VLOG(1) << "Send alter table request to " << permanent_uuid()
             << " (attempt " << attempt << "):\n"
             << req.DebugString();
@@ -2671,7 +2673,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
   }
 
   consensus_proxy_->ChangeConfigAsync(
-      req_, &resp_, &rpc_, boost::bind(&AsyncChangeConfigTask::RpcCallback, this));
+      req_, &resp_, &rpc_, std::bind(&AsyncChangeConfigTask::RpcCallback, this));
   VLOG(1) << "Sent " << type_name() << " request to " << permanent_uuid() << ":\n"
           << req_.DebugString();
   return true;
@@ -2850,8 +2852,9 @@ bool AsyncTryStepDownAndRemove::SendRequest(int attempt) {
 
   LOG(INFO) << Substitute("Stepping down leader $0 for tablet $1",
                           change_config_ts_uuid_, tablet_->tablet_id());
-  consensus_proxy_->LeaderStepDownAsync(stepdown_req_, &stepdown_resp_, &rpc_,
-                                        boost::bind(&AsyncTryStepDownAndRemove::RpcCallback, this));
+  consensus_proxy_->LeaderStepDownAsync(
+      stepdown_req_, &stepdown_resp_, &rpc_,
+      std::bind(&AsyncTryStepDownAndRemove::RpcCallback, this));
 
   return true;
 }

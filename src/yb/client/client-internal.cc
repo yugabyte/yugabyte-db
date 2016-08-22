@@ -18,12 +18,13 @@
 #include "yb/client/client-internal.h"
 
 #include <algorithm>
+#include <functional>
+#include <iostream>
 #include <limits>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <iostream>
-#include <sstream>
 
 #include "yb/client/meta_cache.h"
 #include "yb/common/schema.h"
@@ -46,12 +47,15 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread_restrictions.h"
 
+namespace yb {
+
 using std::set;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using strings::Substitute;
 
-namespace yb {
+using namespace std::placeholders;
 
 using consensus::RaftPeerPB;
 using master::AlterTableRequestPB;
@@ -83,7 +87,6 @@ using master::MasterServiceProxy;
 using master::MasterErrorPB;
 using rpc::Rpc;
 using rpc::RpcController;
-using strings::Substitute;
 
 namespace client {
 
@@ -91,10 +94,9 @@ using internal::GetTableSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
 
-Status RetryFunc(const MonoTime& deadline,
-                 const string& retry_msg,
-                 const string& timeout_msg,
-                 const boost::function<Status(const MonoTime&, bool*)>& func) {
+Status RetryFunc(
+    const MonoTime& deadline, const string& retry_msg, const string& timeout_msg,
+    const std::function<Status(const MonoTime&, bool*)>& func) {
   DCHECK(deadline.Initialized());
 
   MonoTime now = MonoTime::Now(MonoTime::FINE);
@@ -138,18 +140,12 @@ Status RetryFunc(const MonoTime& deadline,
   return Status::TimedOut(timeout_msg);
 }
 
-template<class ReqClass, class RespClass>
+template <class ReqClass, class RespClass>
 Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline,
-    YBClient* client,
-    const ReqClass& req,
-    RespClass* resp,
-    int* num_attempts,
-    const char* func_name,
-    const boost::function<Status(MasterServiceProxy*,
-                                 const ReqClass&,
-                                 RespClass*,
-                                 RpcController*)>& func) {
+    const MonoTime& deadline, YBClient* client, const ReqClass& req, RespClass* resp,
+    int* num_attempts, const char* func_name,
+    const std::function<Status(MasterServiceProxy*, const ReqClass&, RespClass*, RpcController*)>&
+        func) {
   DCHECK(deadline.Initialized());
 
   while (true) {
@@ -221,54 +217,30 @@ Status YBClient::Data::SyncLeaderMasterRpc(
 }
 
 // Explicit specialization for callers outside this compilation unit.
-template
-Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline,
-    YBClient* client,
-    const ListTablesRequestPB& req,
-    ListTablesResponsePB* resp,
-    int* num_attempts,
-    const char* func_name,
-    const boost::function<Status(MasterServiceProxy*,
-                                 const ListTablesRequestPB&,
-                                 ListTablesResponsePB*,
-                                 RpcController*)>& func);
-template
-Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline,
-    YBClient* client,
-    const ListTabletServersRequestPB& req,
-    ListTabletServersResponsePB* resp,
-    int* num_attempts,
-    const char* func_name,
-    const boost::function<Status(MasterServiceProxy*,
-                                 const ListTabletServersRequestPB&,
-                                 ListTabletServersResponsePB*,
-                                 RpcController*)>& func);
-template
-Status YBClient::Data::SyncLeaderMasterRpc(
-  const MonoTime& deadline,
-  YBClient* client,
-  const GetTableLocationsRequestPB& req,
-  GetTableLocationsResponsePB* resp,
-  int* num_attempts,
-  const char* func_name,
-  const boost::function<Status(MasterServiceProxy*,
-                               const GetTableLocationsRequestPB&,
-                               GetTableLocationsResponsePB*,
-                               RpcController*)>& func);
-template
-Status YBClient::Data::SyncLeaderMasterRpc(
-  const MonoTime& deadline,
-  YBClient* client,
-  const ListMastersRequestPB& req,
-  ListMastersResponsePB* resp,
-  int* num_attempts,
-  const char* func_name,
-  const boost::function<Status(MasterServiceProxy*,
-                               const ListMastersRequestPB&,
-                               ListMastersResponsePB*,
-                               RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const ListTablesRequestPB& req,
+    ListTablesResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const ListTablesRequestPB&, ListTablesResponsePB*, RpcController*)>&
+        func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const ListTabletServersRequestPB& req,
+    ListTabletServersResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const ListTabletServersRequestPB&, ListTabletServersResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const GetTableLocationsRequestPB& req,
+    GetTableLocationsResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const GetTableLocationsRequestPB&, GetTableLocationsResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const ListMastersRequestPB& req,
+    ListMastersResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const ListMastersRequestPB&, ListMastersResponsePB*, RpcController*)>&
+        func);
 
 YBClient::Data::Data()
     : master_server_endpoint_(),
@@ -460,11 +432,9 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                     const string& table_name,
                                                     const MonoTime& deadline) {
-  return RetryFunc(deadline,
-                   "Waiting on Create Table to be completed",
-                   "Timed out waiting for Table Creation",
-                   boost::bind(&YBClient::Data::IsCreateTableInProgress,
-                               this, client, table_name, _1, _2));
+  return RetryFunc(
+      deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
+      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client, table_name, _1, _2));
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
@@ -545,12 +515,9 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                    const string& alter_name,
                                                    const MonoTime& deadline) {
-  return RetryFunc(deadline,
-                   "Waiting on Alter Table to be completed",
-                   "Timed out waiting for AlterTable",
-                   boost::bind(&YBClient::Data::IsAlterTableInProgress,
-                               this,
-                               client, alter_name, _1, _2));
+  return RetryFunc(
+      deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
+      std::bind(&YBClient::Data::IsAlterTableInProgress, this, client, alter_name, _1, _2));
 }
 
 Status YBClient::Data::InitLocalHostNames() {
@@ -674,9 +641,8 @@ void GetTableSchemaRpc::SendRpc() {
   GetTableSchemaRequestPB req;
   req.mutable_table()->set_table_name(table_name_);
   client_->data_->master_proxy()->GetTableSchemaAsync(
-      req, &resp_,
-      mutable_retrier()->mutable_controller(),
-      boost::bind(&GetTableSchemaRpc::SendRpcCb, this, Status::OK()));
+      req, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetTableSchemaRpc::SendRpcCb, this, Status::OK()));
 }
 
 string GetTableSchemaRpc::ToString() const {
@@ -957,7 +923,7 @@ Status YBClient::Data::AddClusterPlacementBlock(
     return RetryFunc(
         deadline, "Other clients changed the config. Retrying.",
         "Timed out retrying the config change. Probably too many concurrent attempts.",
-        boost::bind(
+        std::bind(
             &YBClient::Data::AddClusterPlacementBlock, this, client, placement_block, _1, _2));
   }
 

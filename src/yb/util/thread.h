@@ -19,12 +19,12 @@
 #ifndef YB_UTIL_THREAD_H
 #define YB_UTIL_THREAD_H
 
-#include <boost/bind.hpp>
-#include <boost/function.hpp>
 #include <pthread.h>
-#include <string>
 #include <sys/syscall.h>
 #include <sys/types.h>
+
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "yb/gutil/atomicops.h"
@@ -95,9 +95,9 @@ class ThreadJoiner {
 // Thin wrapper around pthread that can register itself with the singleton ThreadMgr
 // (a private class implemented in thread.cc entirely, which tracks all live threads so
 // that they may be monitored via the debug webpages). This class has a limited subset of
-// boost::thread's API. Construction is almost the same, but clients must supply a
+// std::thread's API. Construction is almost the same, but clients must supply a
 // category and a name for each thread so that they can be identified in the debug web
-// UI. Otherwise, Join() is the only supported method from boost::thread.
+// UI. Otherwise, Join() is the only supported method from std::thread.
 //
 // Each Thread object knows its operating system thread ID (TID), which can be used to
 // attach debuggers to specific threads, to retrieve resource-usage statistics from the
@@ -113,7 +113,7 @@ class ThreadJoiner {
 // TODO: Consider allowing fragment IDs as category parameters.
 class Thread : public RefCountedThreadSafe<Thread> {
  public:
-  // This constructor pattern mimics that in boost::thread. There is
+  // This constructor pattern mimics that in std::thread. There is
   // one constructor for each number of arguments that the thread
   // function accepts. To extend the set of acceptable signatures, add
   // another constructor with <class F, class A1.... class An>.
@@ -136,43 +136,43 @@ class Thread : public RefCountedThreadSafe<Thread> {
   template <class F, class A1>
   static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, scoped_refptr<Thread>* holder) {
-    return StartThread(category, name, boost::bind(f, a1), holder);
+    return StartThread(category, name, std::bind(f, a1), holder);
   }
 
   template <class F, class A1, class A2>
   static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, scoped_refptr<Thread>* holder) {
-    return StartThread(category, name, boost::bind(f, a1, a2), holder);
+    return StartThread(category, name, std::bind(f, a1, a2), holder);
   }
 
   template <class F, class A1, class A2, class A3>
   static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, scoped_refptr<Thread>* holder) {
-    return StartThread(category, name, boost::bind(f, a1, a2, a3), holder);
+    return StartThread(category, name, std::bind(f, a1, a2, a3), holder);
   }
 
   template <class F, class A1, class A2, class A3, class A4>
   static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4,
                        scoped_refptr<Thread>* holder) {
-    return StartThread(category, name, boost::bind(f, a1, a2, a3, a4), holder);
+    return StartThread(category, name, std::bind(f, a1, a2, a3, a4), holder);
   }
 
   template <class F, class A1, class A2, class A3, class A4, class A5>
   static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
                        scoped_refptr<Thread>* holder) {
-    return StartThread(category, name, boost::bind(f, a1, a2, a3, a4, a5), holder);
+    return StartThread(category, name, std::bind(f, a1, a2, a3, a4, a5), holder);
   }
 
   template <class F, class A1, class A2, class A3, class A4, class A5, class A6>
   static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
                        const A6& a6, scoped_refptr<Thread>* holder) {
-    return StartThread(category, name, boost::bind(f, a1, a2, a3, a4, a5, a6), holder);
+    return StartThread(category, name, std::bind(f, a1, a2, a3, a4, a5, a6), holder);
   }
 
-  // Emulates boost::thread and detaches.
+  // Emulates std::thread and detaches.
   ~Thread();
 
   // Blocks until this thread finishes execution. Once this method returns, the thread
@@ -262,7 +262,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
   };
 
   // Function object that wraps the user-supplied function to run in a separate thread.
-  typedef boost::function<void ()> ThreadFunctor;
+  typedef std::function<void()> ThreadFunctor;
 
   Thread(std::string category, std::string name, ThreadFunctor functor)
       : thread_(0),

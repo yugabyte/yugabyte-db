@@ -27,9 +27,9 @@
 #include "third-party/fbson/FbsonUtil.h"
 #include "util/coding.h"
 
-using std::placeholders::_1;
-
 namespace {
+
+using namespace std::placeholders;
 
 size_t ObjectNumElem(const fbson::ObjectVal& objectVal) {
   size_t size = 0;

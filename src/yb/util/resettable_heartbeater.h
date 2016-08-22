@@ -18,7 +18,7 @@
 #ifndef YB_UTIL_RESETTABLE_HEARTBEATER_H_
 #define YB_UTIL_RESETTABLE_HEARTBEATER_H_
 
-#include <boost/function.hpp>
+#include <functional>
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -29,7 +29,7 @@ class MonoDelta;
 class Status;
 class ResettableHeartbeaterThread;
 
-typedef boost::function<Status()> HeartbeatFunction;
+typedef std::function<Status()> HeartbeatFunction;
 
 // A resettable hearbeater that takes a function and calls
 // it to perform a regular heartbeat, unless Reset() is called

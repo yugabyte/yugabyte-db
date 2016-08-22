@@ -434,10 +434,10 @@ void SysCatalogTable::SysCatalogStateChanged(
                                       context->remove_uuid,
                                       &peer),
                   Substitute("Could not find uuid=$0 in config.", context->remove_uuid));
-      WARN_NOT_OK(apply_pool_->SubmitFunc(boost::bind(&Master::InformRemovedMaster,
-                                                      master_,
-                                                      peer.last_known_addr())),
-                  Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
+      WARN_NOT_OK(
+          apply_pool_->SubmitFunc(
+              std::bind(&Master::InformRemovedMaster, master_, peer.last_known_addr())),
+          Substitute("Error submitting removal task for uuid=$0", context->remove_uuid));
     }
   } else {
     VLOG(2) << "Reason '" << context->ToString() << "' provided in state change context, "

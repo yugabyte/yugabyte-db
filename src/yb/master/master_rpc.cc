@@ -61,11 +61,9 @@ void GetMasterRegistrationRpc::SendRpc() {
   MasterServiceProxy proxy(retrier().messenger(),
                            addr_);
   GetMasterRegistrationRequestPB req;
-  proxy.GetMasterRegistrationAsync(req, &resp_,
-                                   mutable_retrier()->mutable_controller(),
-                                   boost::bind(&GetMasterRegistrationRpc::SendRpcCb,
-                                               this,
-                                               Status::OK()));
+  proxy.GetMasterRegistrationAsync(
+      req, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&GetMasterRegistrationRpc::SendRpcCb, this, Status::OK()));
 }
 
 string GetMasterRegistrationRpc::ToString() const {

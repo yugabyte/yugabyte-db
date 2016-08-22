@@ -881,19 +881,16 @@ TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
   FLAGS_flush_threshold_mb = 3;
 
   scoped_refptr<Thread> writer;
-  CHECK_OK(Thread::Create("test", "inserter",
-                          boost::bind(&AlterTableTest::InserterThread, this),
-                          &writer));
+  CHECK_OK(Thread::Create(
+      "test", "inserter", std::bind(&AlterTableTest::InserterThread, this), &writer));
 
   scoped_refptr<Thread> updater;
-  CHECK_OK(Thread::Create("test", "updater",
-                          boost::bind(&AlterTableTest::UpdaterThread, this),
-                          &updater));
+  CHECK_OK(
+      Thread::Create("test", "updater", std::bind(&AlterTableTest::UpdaterThread, this), &updater));
 
   scoped_refptr<Thread> scanner;
-  CHECK_OK(Thread::Create("test", "scanner",
-                          boost::bind(&AlterTableTest::ScannerThread, this),
-                          &scanner));
+  CHECK_OK(
+      Thread::Create("test", "scanner", std::bind(&AlterTableTest::ScannerThread, this), &scanner));
 
   // Add columns until we reach 10.
   for (int i = 2; i < 10; i++) {

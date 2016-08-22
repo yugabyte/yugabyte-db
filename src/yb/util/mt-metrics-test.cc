@@ -15,10 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <functional>
 #include <vector>
 
-#include <boost/bind.hpp>
-#include <boost/function.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
@@ -58,7 +57,7 @@ static void CountWithCounter(scoped_refptr<Counter> counter, int num_increments)
 }
 
 // Helper function that spawns and then joins a bunch of threads.
-static void RunWithManyThreads(boost::function<void()>* f, int num_threads) {
+static void RunWithManyThreads(std::function<void()>* f, int num_threads) {
   vector<scoped_refptr<yb::Thread> > threads;
   for (int i = 0; i < num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
@@ -79,8 +78,7 @@ TEST_F(MultiThreadedMetricsTest, CounterIncrementTest) {
   scoped_refptr<Counter> counter = new Counter(&METRIC_test_counter);
   int num_threads = FLAGS_mt_metrics_test_num_threads;
   int num_increments = 1000;
-  boost::function<void()> f =
-      boost::bind(CountWithCounter, counter, num_increments);
+  std::function<void()> f = std::bind(CountWithCounter, counter, num_increments);
   RunWithManyThreads(&f, num_threads);
   ASSERT_EQ(num_threads * num_increments, counter->value());
 }
@@ -112,8 +110,7 @@ TEST_F(MultiThreadedMetricsTest, AddCounterToRegistryTest) {
   scoped_refptr<MetricEntity> entity = METRIC_ENTITY_test_entity.Instantiate(&registry_, "my-test");
   int num_threads = FLAGS_mt_metrics_test_num_threads;
   int num_counters = 1000;
-  boost::function<void()> f =
-      boost::bind(RegisterCounters, entity, "prefix", num_counters);
+  std::function<void()> f = std::bind(RegisterCounters, entity, "prefix", num_counters);
   RunWithManyThreads(&f, num_threads);
   ASSERT_EQ(num_threads * num_counters, entity->UnsafeMetricsMapForTests().size());
 }

@@ -201,8 +201,9 @@ TEST_F(MaintenanceManagerTest, TestRegisterUnregister) {
   op1.set_ram_anchored(1001);
   manager_->RegisterOp(&op1);
   scoped_refptr<yb::Thread> thread;
-  CHECK_OK(Thread::Create("TestThread", "TestRegisterUnregister",
-        boost::bind(&TestMaintenanceOp::Enable, &op1), &thread));
+  CHECK_OK(Thread::Create(
+      "TestThread", "TestRegisterUnregister", std::bind(&TestMaintenanceOp::Enable, &op1),
+      &thread));
   op1.WaitForState(OP_FINISHED);
   manager_->UnregisterOp(&op1);
   ThreadJoiner(thread.get()).Join();
@@ -220,8 +221,9 @@ TEST_F(MaintenanceManagerTest, TestMemoryPressure) {
 
   // set the ram_anchored by the high mem op so high that we'll have to run it.
   scoped_refptr<yb::Thread> thread;
-  CHECK_OK(Thread::Create("TestThread", "MaintenanceManagerTest",
-      boost::bind(&TestMaintenanceOp::set_ram_anchored, &op, 1100), &thread));
+  CHECK_OK(Thread::Create(
+      "TestThread", "MaintenanceManagerTest",
+      std::bind(&TestMaintenanceOp::set_ram_anchored, &op, 1100), &thread));
   op.WaitForState(OP_FINISHED);
   manager_->UnregisterOp(&op);
   ThreadJoiner(thread.get()).Join();

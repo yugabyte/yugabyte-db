@@ -29,21 +29,24 @@
 
 #include "yb/server/webserver.h"
 
+#include <signal.h>
+#include <stdio.h>
+
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <mutex>
-#include <signal.h>
-#include <squeasel.h>
-#include <stdio.h>
 #include <string>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/bind.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/mem_fn.hpp>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <squeasel.h>
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -61,11 +64,6 @@
 typedef sig_t sighandler_t;
 #endif
 
-using std::string;
-using std::stringstream;
-using std::vector;
-using std::make_pair;
-
 DEFINE_int32(webserver_max_post_length_bytes, 1024 * 1024,
              "The maximum length of a POST request that will be accepted by "
              "the embedded web server.");
@@ -73,6 +71,13 @@ TAG_FLAG(webserver_max_post_length_bytes, advanced);
 TAG_FLAG(webserver_max_post_length_bytes, runtime);
 
 namespace yb {
+
+using std::string;
+using std::stringstream;
+using std::vector;
+using std::make_pair;
+
+using namespace std::placeholders;
 
 Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)
   : opts_(opts),
@@ -214,7 +219,7 @@ Status Webserver::Start() {
   }
 
   PathHandlerCallback default_callback =
-    boost::bind<void>(boost::mem_fn(&Webserver::RootHandler), this, _1, _2);
+      std::bind(boost::mem_fn(&Webserver::RootHandler), this, _1, _2);
 
   RegisterPathHandler("/", "Home", default_callback);
 

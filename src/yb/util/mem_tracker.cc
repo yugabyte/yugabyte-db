@@ -264,7 +264,7 @@ void MemTracker::ListTrackers(vector<shared_ptr<MemTracker>>* trackers) {
 }
 
 void MemTracker::UpdateConsumption() {
-  DCHECK(!consumption_func_.empty());
+  DCHECK(consumption_func_);
   DCHECK(parent_.get() == NULL);
   consumption_.set_value(consumption_func_());
 }
@@ -275,7 +275,7 @@ void MemTracker::Consume(int64_t bytes) {
     return;
   }
 
-  if (!consumption_func_.empty()) {
+  if (consumption_func_) {
     UpdateConsumption();
     return;
   }
@@ -287,14 +287,14 @@ void MemTracker::Consume(int64_t bytes) {
   }
   for (auto& tracker : all_trackers_) {
     tracker->consumption_.IncrementBy(bytes);
-    if (!tracker->consumption_func_.empty()) {
+    if (tracker->consumption_func_) {
       DCHECK_GE(tracker->consumption_.current_value(), 0);
     }
   }
 }
 
 bool MemTracker::TryConsume(int64_t bytes) {
-  if (!consumption_func_.empty()) {
+  if (consumption_func_) {
     UpdateConsumption();
   }
   if (bytes <= 0) {
@@ -358,7 +358,7 @@ void MemTracker::Release(int64_t bytes) {
     GcTcmalloc();
   }
 
-  if (!consumption_func_.empty()) {
+  if (consumption_func_) {
     UpdateConsumption();
     return;
   }
@@ -378,7 +378,7 @@ void MemTracker::Release(int64_t bytes) {
     // metric. Don't blow up in this case. (Note that this doesn't affect non-process
     // trackers since we can enforce that the reported memory usage is internally
     // consistent.)
-    if (!tracker->consumption_func_.empty()) {
+    if (tracker->consumption_func_) {
       DCHECK_GE(tracker->consumption_.current_value(), 0);
     }
   }
@@ -458,7 +458,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   }
 
   std::lock_guard<simple_spinlock> l(gc_lock_);
-  if (!consumption_func_.empty()) {
+  if (consumption_func_) {
     UpdateConsumption();
   }
   uint64_t pre_gc_consumption = consumption();
@@ -470,7 +470,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   // Try to free up some memory
   for (const auto& gc_function : gc_functions_) {
     gc_function();
-    if (!consumption_func_.empty()) {
+    if (consumption_func_) {
       UpdateConsumption();
     }
     if (consumption() <= max_consumption) {

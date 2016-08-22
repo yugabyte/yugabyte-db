@@ -274,8 +274,7 @@ Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
   return Status::OK();
 }
 
-void Messenger::ScheduleOnReactor(const boost::function<void(const Status&)>& func,
-                                  MonoDelta when) {
+void Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& func, MonoDelta when) {
   DCHECK(!reactors_.empty());
 
   // If we're already running on a reactor thread, reuse it.

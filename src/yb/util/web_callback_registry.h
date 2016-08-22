@@ -17,7 +17,7 @@
 #ifndef YB_UTIL_WEB_CALLBACK_REGISTRY_H
 #define YB_UTIL_WEB_CALLBACK_REGISTRY_H
 
-#include <boost/function.hpp>
+#include <functional>
 #include <map>
 #include <string>
 
@@ -45,7 +45,7 @@ class WebCallbackRegistry {
     std::string redirect_uri;
   };
 
-  typedef boost::function<void (const WebRequest& args, std::stringstream* output)>
+  typedef std::function<void(const WebRequest& args, std::stringstream* output)>
       PathHandlerCallback;
 
   virtual ~WebCallbackRegistry() {}

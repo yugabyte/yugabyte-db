@@ -169,8 +169,7 @@ class Messenger {
   //
   // The status argument conveys whether 'func' was run correctly (i.e.
   // after the elapsed time) or not.
-  void ScheduleOnReactor(const boost::function<void(const Status&)>& func,
-                         MonoDelta when);
+  void ScheduleOnReactor(const std::function<void(const Status&)>& func, MonoDelta when);
 
   ThreadPool* negotiation_pool() const { return negotiation_pool_.get(); }
 

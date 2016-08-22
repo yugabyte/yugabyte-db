@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/function.hpp>
-#include <glog/logging.h>
-#include <vector>
+#include <functional>
 #include <utility>
+#include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/client/callbacks.h"
@@ -123,7 +124,7 @@ void RpcLineItemDAO::Init() {
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
-void RpcLineItemDAO::WriteLine(boost::function<void(YBPartialRow*)> f) {
+void RpcLineItemDAO::WriteLine(std::function<void(YBPartialRow*)> f) {
   gscoped_ptr<YBInsert> insert(client_table_->NewInsert());
   f(insert->mutable_row());
   CHECK_OK(session_->Apply(insert.release()));
@@ -140,7 +141,7 @@ void RpcLineItemDAO::FlushIfBufferFull() {
   session_->FlushAsync(new FlushCallback(session_, &semaphore_));
 }
 
-void RpcLineItemDAO::MutateLine(boost::function<void(YBPartialRow*)> f) {
+void RpcLineItemDAO::MutateLine(std::function<void(YBPartialRow*)> f) {
   gscoped_ptr<YBUpdate> update(client_table_->NewUpdate());
   f(update->mutable_row());
   CHECK_OK(session_->Apply(update.release()));

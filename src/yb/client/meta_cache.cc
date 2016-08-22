@@ -444,9 +444,9 @@ void LookupRpc::SendRpc() {
   mutable_retrier()->mutable_controller()->set_deadline(
       MonoTime::Earliest(rpc_deadline, retrier().deadline()));
 
-  master_proxy()->GetTableLocationsAsync(req_, &resp_,
-                                         mutable_retrier()->mutable_controller(),
-                                         boost::bind(&LookupRpc::SendRpcCb, this, Status::OK()));
+  master_proxy()->GetTableLocationsAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&LookupRpc::SendRpcCb, this, Status::OK()));
 }
 
 string LookupRpc::ToString() const {

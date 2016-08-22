@@ -56,9 +56,11 @@
 // 'N','O',74476040,111701729697.74,106118230307.6,110367043872.5,25.5,38249.1,0,2920374
 // 'R','F',37719753,56568041380.90,53741292684.6,55889619119.8,25.5,38250.9,0.1,1478870
 // ====
-#include <boost/bind.hpp>
-#include <unordered_map>
+
 #include <stdlib.h>
+
+#include <functional>
+#include <unordered_map>
 
 #include <glog/logging.h>
 
@@ -99,6 +101,8 @@ using client::YBSchema;
 
 using std::unordered_map;
 
+using namespace std::placeholders;
+
 struct Result {
   int32_t l_quantity;
   double l_extendedprice;
@@ -136,8 +140,7 @@ void LoadLineItems(const string &path, RpcLineItemDAO *dao) {
   LineItemTsvImporter importer(path);
 
   while (importer.HasNextLine()) {
-    dao->WriteLine(boost::bind(&LineItemTsvImporter::GetNextLine,
-                               &importer, _1));
+    dao->WriteLine(std::bind(&LineItemTsvImporter::GetNextLine, &importer, _1));
   }
   dao->FinishWriting();
 }

@@ -20,10 +20,12 @@
 #include "yb/rpc/rpc-test-base.h"
 #include "yb/util/countdown_latch.h"
 
-using std::shared_ptr;
 
 namespace yb {
 namespace rpc {
+
+using std::shared_ptr;
+using namespace std::placeholders;
 
 class ReactorTest : public RpcTestBase {
  public:
@@ -45,8 +47,7 @@ class ReactorTest : public RpcTestBase {
 
   void ScheduledTaskScheduleAgain(const Status& status) {
     messenger_->ScheduleOnReactor(
-        boost::bind(&ReactorTest::ScheduledTaskCheckThread, this, _1,
-                    Thread::current_thread()),
+        std::bind(&ReactorTest::ScheduledTaskCheckThread, this, _1, Thread::current_thread()),
         MonoDelta::FromMilliseconds(0));
     latch_.CountDown();
   }
@@ -58,15 +59,14 @@ class ReactorTest : public RpcTestBase {
 
 TEST_F(ReactorTest, TestFunctionIsCalled) {
   messenger_->ScheduleOnReactor(
-      boost::bind(&ReactorTest::ScheduledTask, this, _1, Status::OK()),
-      MonoDelta::FromSeconds(0));
+      std::bind(&ReactorTest::ScheduledTask, this, _1, Status::OK()), MonoDelta::FromSeconds(0));
   latch_.Wait();
 }
 
 TEST_F(ReactorTest, TestFunctionIsCalledAtTheRightTime) {
   MonoTime before = MonoTime::Now(MonoTime::FINE);
   messenger_->ScheduleOnReactor(
-      boost::bind(&ReactorTest::ScheduledTask, this, _1, Status::OK()),
+      std::bind(&ReactorTest::ScheduledTask, this, _1, Status::OK()),
       MonoDelta::FromMilliseconds(100));
   latch_.Wait();
   MonoTime after = MonoTime::Now(MonoTime::FINE);
@@ -76,8 +76,7 @@ TEST_F(ReactorTest, TestFunctionIsCalledAtTheRightTime) {
 
 TEST_F(ReactorTest, TestFunctionIsCalledIfReactorShutdown) {
   messenger_->ScheduleOnReactor(
-      boost::bind(&ReactorTest::ScheduledTask, this, _1,
-                  Status::Aborted("doesn't matter")),
+      std::bind(&ReactorTest::ScheduledTask, this, _1, Status::Aborted("doesn't matter")),
       MonoDelta::FromSeconds(60));
   messenger_->Shutdown();
   latch_.Wait();
@@ -88,8 +87,7 @@ TEST_F(ReactorTest, TestReschedulesOnSameReactorThread) {
   latch_.Reset(2);
 
   messenger_->ScheduleOnReactor(
-      boost::bind(&ReactorTest::ScheduledTaskScheduleAgain, this, _1),
-      MonoDelta::FromSeconds(0));
+      std::bind(&ReactorTest::ScheduledTaskScheduleAgain, this, _1), MonoDelta::FromSeconds(0));
   latch_.Wait();
   latch_.Wait();
 }

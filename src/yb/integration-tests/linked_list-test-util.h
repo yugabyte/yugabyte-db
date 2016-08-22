@@ -16,12 +16,14 @@
 // under the License.
 
 #include <algorithm>
-#include <glog/logging.h>
+#include <functional>
 #include <iostream>
 #include <list>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
@@ -44,6 +46,8 @@
 #include "yb/util/thread.h"
 
 namespace yb {
+
+using namespace std::placeholders;
 
 static const char* const kKeyColumnName = "rand_key";
 static const char* const kLinkColumnName = "link_to";
@@ -94,11 +98,9 @@ class LinkedListTester {
       int64_t *written_count);
 
   // Variant of VerifyLinkedListRemote that verifies at the specified snapshot timestamp.
-  Status VerifyLinkedListAtSnapshotRemote(const uint64_t snapshot_timestamp,
-                                          const int64_t expected,
-                                          const bool log_errors,
-                                          const boost::function<Status(const std::string&)>& cb,
-                                          int64_t* verified_count) {
+  Status VerifyLinkedListAtSnapshotRemote(
+      const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
+      const std::function<Status(const std::string&)>& cb, int64_t* verified_count) {
     return VerifyLinkedListRemote(snapshot_timestamp,
                                   expected,
                                   log_errors,
@@ -110,20 +112,16 @@ class LinkedListTester {
   Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
                                           const bool log_errors,
                                           int64_t* verified_count) {
-    return VerifyLinkedListRemote(kNoSnapshot,
-                                  expected,
-                                  log_errors,
-                                  boost::bind(&LinkedListTester::ReturnOk, this, _1),
-                                  verified_count);
+    return VerifyLinkedListRemote(
+        kNoSnapshot, expected, log_errors, std::bind(&LinkedListTester::ReturnOk, this, _1),
+        verified_count);
   }
 
   // Run the verify step on a table with RPCs. Calls the provided callback 'cb' once during
   // verification to test scanner fault tolerance.
-  Status VerifyLinkedListRemote(const uint64_t snapshot_timestamp,
-                                const int64_t expected,
-                                const bool log_errors,
-                                const boost::function<Status(const std::string&)>& cb,
-                                int64_t* verified_count);
+  Status VerifyLinkedListRemote(
+      const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
+      const std::function<Status(const std::string&)>& cb, int64_t* verified_count);
 
   // Run the verify step on a specific tablet.
   Status VerifyLinkedListLocal(const tablet::Tablet* tablet,
@@ -134,15 +132,13 @@ class LinkedListTester {
   // bootstrapping and replication.
   Status WaitAndVerify(int seconds_to_run,
                        int64_t expected) {
-    return WaitAndVerify(seconds_to_run,
-                         expected,
-                         boost::bind(&LinkedListTester::ReturnOk, this, _1));
+    return WaitAndVerify(
+        seconds_to_run, expected, std::bind(&LinkedListTester::ReturnOk, this, _1));
   }
 
   // A variant of WaitAndVerify that also takes a callback to be run once during verification.
-  Status WaitAndVerify(int seconds_to_run,
-                       int64_t expected,
-                       const boost::function<Status(const std::string&)>& cb);
+  Status WaitAndVerify(
+      int seconds_to_run, int64_t expected, const std::function<Status(const std::string&)>& cb);
 
   // Generates a vector of keys for the table such that each tablet is
   // responsible for an equal fraction of the int64 key space.
@@ -557,8 +553,7 @@ static void VerifyNoDuplicateEntries(const std::vector<int64_t>& ints, int* erro
 
 Status LinkedListTester::VerifyLinkedListRemote(
     const uint64_t snapshot_timestamp, const int64_t expected, bool log_errors,
-    const boost::function<Status(const std::string&)>& cb, int64_t* verified_count) {
-
+    const std::function<Status(const std::string&)>& cb, int64_t* verified_count) {
   client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table));
 
@@ -667,10 +662,8 @@ Status LinkedListTester::VerifyLinkedListLocal(const tablet::Tablet* tablet,
   return verifier.VerifyData(verified_count, true);
 }
 
-Status LinkedListTester::WaitAndVerify(int seconds_to_run,
-                                       int64_t expected,
-                                       const boost::function<Status(const std::string&)>& cb) {
-
+Status LinkedListTester::WaitAndVerify(
+    int seconds_to_run, int64_t expected, const std::function<Status(const std::string&)>& cb) {
   std::list<pair<int64_t, int64_t> > samples_as_list(sampled_timestamps_and_counts_.begin(),
                                                      sampled_timestamps_and_counts_.end());
 
@@ -696,9 +689,9 @@ Status LinkedListTester::WaitAndVerify(int seconds_to_run,
                                              &seen);
         called = true;
       } else {
-        s = VerifyLinkedListAtSnapshotRemote((*iter).first, (*iter).second, last_attempt,
-                                             boost::bind(&LinkedListTester::ReturnOk, this, _1),
-                                             &seen);
+        s = VerifyLinkedListAtSnapshotRemote(
+            (*iter).first, (*iter).second, last_attempt,
+            std::bind(&LinkedListTester::ReturnOk, this, _1), &seen);
       }
 
       if (s.ok() && (*iter).second != seen) {

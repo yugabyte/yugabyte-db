@@ -31,7 +31,7 @@
 namespace yb {
 namespace tablet {
 
-using boost::bind;
+using std::bind;
 using consensus::ReplicateMsg;
 using consensus::CommitMsg;
 using consensus::ALTER_SCHEMA_OP;

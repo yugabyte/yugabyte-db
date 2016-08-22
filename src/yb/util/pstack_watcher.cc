@@ -17,11 +17,13 @@
 
 #include "yb/util/pstack_watcher.h"
 
-#include <memory>
 #include <stdio.h>
-#include <string>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "yb/gutil/strings/substitute.h"
@@ -39,8 +41,8 @@ using strings::Substitute;
 
 PstackWatcher::PstackWatcher(MonoDelta timeout)
     : timeout_(std::move(timeout)), running_(true), cond_(&lock_) {
-  CHECK_OK(Thread::Create("pstack_watcher", "pstack_watcher",
-                 boost::bind(&PstackWatcher::Run, this), &thread_));
+  CHECK_OK(Thread::Create(
+      "pstack_watcher", "pstack_watcher", std::bind(&PstackWatcher::Run, this), &thread_));
 }
 
 PstackWatcher::~PstackWatcher() {

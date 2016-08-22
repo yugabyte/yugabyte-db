@@ -17,12 +17,13 @@
 #ifndef YB_UTIL_THREAD_POOL_H
 #define YB_UTIL_THREAD_POOL_H
 
-#include <boost/function.hpp>
-#include <gtest/gtest_prod.h>
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest_prod.h>
 
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -101,7 +102,7 @@ class ThreadPoolBuilder {
 
 // Thread pool with a variable number of threads.
 // The pool can execute a class that implements the Runnable interface, or a
-// boost::function, which can be obtained via boost::bind().
+// std::function, which can be obtained via std::bind().
 //
 // Usage Example:
 //    static void Func(int n) { ... }
@@ -116,7 +117,7 @@ class ThreadPoolBuilder {
 //            .set_timeout(MonoDelta::FromMilliseconds(2000))
 //            .Build(&thread_pool));
 //    thread_pool->Submit(shared_ptr<Runnable>(new Task()));
-//    thread_pool->Submit(boost::bind(&Func, 10));
+//    thread_pool->Submit(std::bind(&Func, 10));
 class ThreadPool {
  public:
   ~ThreadPool();
@@ -132,9 +133,8 @@ class ThreadPool {
   // Submit a function using the yb Closure system.
   Status SubmitClosure(const Closure& task) WARN_UNUSED_RESULT;
 
-  // Submit a function binded using boost::bind(&FuncName, args...)
-  Status SubmitFunc(const boost::function<void()>& func)
-      WARN_UNUSED_RESULT;
+  // Submit a function binded using std::bind(&FuncName, args...)
+  Status SubmitFunc(const std::function<void()>& func) WARN_UNUSED_RESULT;
 
   // Submit a Runnable class
   Status Submit(const std::shared_ptr<Runnable>& task)

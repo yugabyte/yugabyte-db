@@ -18,20 +18,22 @@
 
 #include "yb/util/thread.h"
 
-#include <algorithm>
-#include <map>
-#include <memory>
-#include <set>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <vector>
 
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif // defined(__linux__)
+
+#include <algorithm>
+#include <functional>
+#include <map>
+#include <memory>
+#include <set>
+#include <vector>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -47,14 +49,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/web_callback_registry.h"
-
-using boost::bind;
-using boost::mem_fn;
-using std::endl;
-using std::map;
-using std::shared_ptr;
-using std::stringstream;
-using strings::Substitute;
 
 METRIC_DEFINE_gauge_uint64(server, threads_started,
                            "Threads Started",
@@ -92,6 +86,14 @@ METRIC_DEFINE_gauge_uint64(server, involuntary_context_switches,
                            yb::EXPOSE_AS_COUNTER);
 
 namespace yb {
+
+using std::endl;
+using std::map;
+using std::shared_ptr;
+using std::stringstream;
+using strings::Substitute;
+
+using namespace std::placeholders;
 
 static uint64_t GetCpuUTime() {
   rusage ru;
@@ -264,7 +266,7 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
         Bind(&GetInVoluntaryContextSwitches)));
 
   WebCallbackRegistry::PathHandlerCallback thread_callback =
-      bind<void>(mem_fn(&ThreadMgr::ThreadPathHandler), this, _1, _2);
+      std::bind(&ThreadMgr::ThreadPathHandler, this, _1, _2);
   DCHECK_NOTNULL(web)->RegisterPathHandler("/threadz", "Threads", thread_callback);
   return Status::OK();
 }

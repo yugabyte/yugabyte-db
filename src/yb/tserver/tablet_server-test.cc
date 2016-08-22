@@ -14,6 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/consensus/log-test-base.h"
@@ -1922,8 +1923,8 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
   for (int i = 0; i < kNumDeletes; i++) {
     SCOPED_TRACE(req.DebugString());
-    admin_proxy_->DeleteTabletAsync(req, &responses[i], &rpcs[i],
-                                    boost::bind(&CountDownLatch::CountDown, &latch));
+    admin_proxy_->DeleteTabletAsync(
+        req, &responses[i], &rpcs[i], [&latch]() { latch.CountDown(); });
   }
   latch.Wait();
 

@@ -15,12 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
-#include <gtest/gtest.h>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
+
+#include <boost/optional.hpp>
+
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -283,8 +286,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   Schema schema = GetSimpleTestSchema();
   ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
   AddTestRowToPB(RowOperationsPB::INSERT, schema, 1, 1, "", req.mutable_row_operations());
-  leader_ts->tserver_proxy->WriteAsync(req, &resp, &rpc,
-                                       boost::bind(&CountDownLatch::CountDown, &latch));
+  leader_ts->tserver_proxy->WriteAsync(req, &resp, &rpc, [&latch]() { latch.CountDown(); });
 
   // Wait for the replicate to show up (this doesn't wait for COMMIT messages).
   ASSERT_OK(itest::WaitForServersToAgree(timeout, ts_map_, tablet_id, 3));

@@ -18,13 +18,12 @@
 #ifndef YB_RPC_RESPONSE_CALLBACK_H
 #define YB_RPC_RESPONSE_CALLBACK_H
 
-#include <boost/function.hpp>
+#include <functional>
 
 namespace yb {
 namespace rpc {
 
-typedef boost::function<void()> ResponseCallback;
-
+typedef std::function<void()> ResponseCallback;
 }
 }
 

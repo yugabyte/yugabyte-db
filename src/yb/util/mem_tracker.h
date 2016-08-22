@@ -17,10 +17,11 @@
 #ifndef YB_UTIL_MEM_TRACKER_H
 #define YB_UTIL_MEM_TRACKER_H
 
-#include <boost/function.hpp>
+#include <stdint.h>
+
+#include <functional>
 #include <list>
 #include <memory>
-#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -91,7 +92,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
  public:
 
   // Signature for function that can be called to free some memory after limit is reached.
-  typedef boost::function<void ()> GcFunction;
+  typedef std::function<void()> GcFunction;
 
   ~MemTracker();
 
@@ -237,7 +238,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // periodically observed rather than explicitly tracked).
   //
   // Currently only used by the root tracker.
-  typedef boost::function<uint64_t ()> ConsumptionFunction;
+  typedef std::function<uint64_t()> ConsumptionFunction;
 
   // If consumption_func is not empty, uses it as the consumption value.
   // Consume()/Release() can still be called.

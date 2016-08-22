@@ -17,7 +17,7 @@
 
 #include "yb/rpc/rpc.h"
 
-#include <boost/bind.hpp>
+#include <functional>
 #include <string>
 
 #include "yb/gutil/basictypes.h"
@@ -25,11 +25,13 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
+namespace yb {
+
 using std::shared_ptr;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
-namespace yb {
+using namespace std::placeholders;
 
 namespace rpc {
 
@@ -62,10 +64,8 @@ void RpcRetrier::DelayedRetry(Rpc* rpc, const Status& why_status) {
   // If the delay causes us to miss our deadline, RetryCb will fail the
   // RPC on our behalf.
   int num_ms = ++attempt_num_ + ((rand() % 5));
-  messenger_->ScheduleOnReactor(boost::bind(&RpcRetrier::DelayedRetryCb,
-                                            this,
-                                            rpc, _1),
-                                MonoDelta::FromMilliseconds(num_ms));
+  messenger_->ScheduleOnReactor(
+      std::bind(&RpcRetrier::DelayedRetryCb, this, rpc, _1), MonoDelta::FromMilliseconds(num_ms));
 }
 
 void RpcRetrier::DelayedRetryCb(Rpc* rpc, const Status& status) {

@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/bind.hpp>
+#include <functional>
+#include <memory>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
@@ -76,9 +77,9 @@ TEST(TestThreadPool, TestSimpleTasks) {
   Atomic32 counter(0);
   std::shared_ptr<Runnable> task(new SimpleTask(15, &counter));
 
-  ASSERT_OK(thread_pool->SubmitFunc(boost::bind(&SimpleTaskMethod, 10, &counter)));
+  ASSERT_OK(thread_pool->SubmitFunc(std::bind(&SimpleTaskMethod, 10, &counter)));
   ASSERT_OK(thread_pool->Submit(task));
-  ASSERT_OK(thread_pool->SubmitFunc(boost::bind(&SimpleTaskMethod, 20, &counter)));
+  ASSERT_OK(thread_pool->SubmitFunc(std::bind(&SimpleTaskMethod, 20, &counter)));
   ASSERT_OK(thread_pool->Submit(task));
   ASSERT_OK(thread_pool->SubmitClosure(Bind(&SimpleTaskMethod, 123, &counter)));
   thread_pool->Wait();
@@ -170,7 +171,7 @@ TEST(TestThreadPool, TestRace) {
 
   for (int i = 0; i < 500; i++) {
     CountDownLatch l(1);
-    ASSERT_OK(thread_pool->SubmitFunc(boost::bind(&CountDownLatch::CountDown, &l)));
+    ASSERT_OK(thread_pool->SubmitFunc([&l]() { l.CountDown(); }));
     l.Wait();
     // Sleeping a different amount in each iteration makes it more likely to hit
     // the bug.
@@ -279,7 +280,7 @@ TEST(TestThreadPool, TestMetrics) {
 
   int kNumItems = 500;
   for (int i = 0; i < kNumItems; i++) {
-    ASSERT_OK(thread_pool->SubmitFunc(boost::bind(&usleep, i)));
+    ASSERT_OK(thread_pool->SubmitFunc(std::bind(&usleep, i)));
   }
 
   thread_pool->Wait();

@@ -18,6 +18,7 @@
 #include "yb/tserver/tserver-path-handlers.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -40,6 +41,9 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/url-coding.h"
 
+namespace yb {
+namespace tserver {
+
 using yb::consensus::GetConsensusRole;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusStatePB;
@@ -57,49 +61,44 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-namespace yb {
-namespace tserver {
+using namespace std::placeholders;
 
 TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
 
 Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
-    "/scans", "Scans",
-    boost::bind(&TabletServerPathHandlers::HandleScansPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/scans", "Scans", std::bind(&TabletServerPathHandlers::HandleScansPage, this, _1, _2),
+      true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/tablets", "Tablets",
-    boost::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
-    true /* styled */, true /* is_on_nav_bar */);
+      "/tablets", "Tablets", std::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
+      true /* styled */, true /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/tablet", "",
-    boost::bind(&TabletServerPathHandlers::HandleTabletPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/tablet", "", std::bind(&TabletServerPathHandlers::HandleTabletPage, this, _1, _2),
+      true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/transactions", "",
-    boost::bind(&TabletServerPathHandlers::HandleTransactionsPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/transactions", "",
+      std::bind(&TabletServerPathHandlers::HandleTransactionsPage, this, _1, _2), true /* styled */,
+      false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/tablet-rowsetlayout-svg", "",
-    boost::bind(&TabletServerPathHandlers::HandleTabletSVGPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/tablet-rowsetlayout-svg", "",
+      std::bind(&TabletServerPathHandlers::HandleTabletSVGPage, this, _1, _2), true /* styled */,
+      false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/tablet-consensus-status", "",
-    boost::bind(&TabletServerPathHandlers::HandleConsensusStatusPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/tablet-consensus-status", "",
+      std::bind(&TabletServerPathHandlers::HandleConsensusStatusPage, this, _1, _2),
+      true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/log-anchors", "",
-    boost::bind(&TabletServerPathHandlers::HandleLogAnchorsPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/log-anchors", "", std::bind(&TabletServerPathHandlers::HandleLogAnchorsPage, this, _1, _2),
+      true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/dashboards", "Dashboards",
-    boost::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2),
-    true /* styled */, true /* is_on_nav_bar */);
+      "/dashboards", "Dashboards",
+      std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
+      true /* is_on_nav_bar */);
   server->RegisterPathHandler(
-    "/maintenance-manager", "",
-    boost::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
-    true /* styled */, false /* is_on_nav_bar */);
+      "/maintenance-manager", "",
+      std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
+      true /* styled */, false /* is_on_nav_bar */);
 
   return Status::OK();
 }

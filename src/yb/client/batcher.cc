@@ -411,9 +411,9 @@ void WriteRpc::InitTSProxyCb(const Status& status) {
 
   VLOG(2) << "Tablet " << tablet_->tablet_id() << ": Writing batch to replica "
           << current_ts_->ToString();
-  current_ts_->proxy()->WriteAsync(req_, &resp_,
-                                   mutable_retrier()->mutable_controller(),
-                                   boost::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
+  current_ts_->proxy()->WriteAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
 }
 
 void WriteRpc::FailToNewReplica(const Status& reason) {

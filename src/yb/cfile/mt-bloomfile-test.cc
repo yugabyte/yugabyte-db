@@ -37,9 +37,9 @@ TEST_F(MTBloomFileTest, Benchmark) {
 
   for (int i = 0; i < FLAGS_benchmark_num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(Thread::Create("test", strings::Substitute("t$0", i),
-                            boost::bind(&BloomFileTestBase::ReadBenchmark, this),
-                            &new_thread));
+    CHECK_OK(Thread::Create(
+        "test", strings::Substitute("t$0", i), std::bind(&BloomFileTestBase::ReadBenchmark, this),
+        &new_thread));
     threads.push_back(new_thread);
   }
   for (scoped_refptr<yb::Thread>& t : threads) {

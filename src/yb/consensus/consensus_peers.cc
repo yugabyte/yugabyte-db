@@ -93,9 +93,9 @@ Status Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
   return Status::OK();
 }
 
-Peer::Peer(const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid,
-           gscoped_ptr<PeerProxy> proxy, PeerMessageQueue* queue,
-           ThreadPool* thread_pool)
+Peer::Peer(
+    const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, gscoped_ptr<PeerProxy> proxy,
+    PeerMessageQueue* queue, ThreadPool* thread_pool)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
@@ -104,9 +104,8 @@ Peer::Peer(const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid,
       failed_attempts_(0),
       sem_(1),
       heartbeater_(
-          peer_pb.permanent_uuid(),
-          MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
-          boost::bind(&Peer::SignalRequest, this, true)),
+          peer_pb.permanent_uuid(), MonoDelta::FromMilliseconds(FLAGS_raft_heartbeat_interval_ms),
+          std::bind(&Peer::SignalRequest, this, true)),
       thread_pool_(thread_pool),
       state_(kPeerCreated) {}
 
@@ -219,8 +218,7 @@ void Peer::SendNextRequest(bool even_if_queue_empty) {
       << request_.ShortDebugString();
   controller_.Reset();
 
-  proxy_->UpdateAsync(&request_, &response_, &controller_,
-                      boost::bind(&Peer::ProcessResponse, this));
+  proxy_->UpdateAsync(&request_, &response_, &controller_, std::bind(&Peer::ProcessResponse, this));
 }
 
 void Peer::ProcessResponse() {
@@ -296,8 +294,9 @@ Status Peer::SendRemoteBootstrapRequest() {
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Sending request to remotely bootstrap";
   RETURN_NOT_OK(queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_));
   controller_.Reset();
-  proxy_->StartRemoteBootstrap(&rb_request_, &rb_response_, &controller_,
-                               boost::bind(&Peer::ProcessRemoteBootstrapResponse, this));
+  proxy_->StartRemoteBootstrap(
+      &rb_request_, &rb_response_, &controller_,
+      std::bind(&Peer::ProcessRemoteBootstrapResponse, this));
   return Status::OK();
 }
 

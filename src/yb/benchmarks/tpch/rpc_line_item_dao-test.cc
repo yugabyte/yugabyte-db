@@ -16,11 +16,11 @@
 // under the License.
 
 #include <algorithm>
-#include <boost/bind.hpp>
-#include <gtest/gtest.h>
-#include <gflags/gflags.h>
 #include <string>
 #include <vector>
+
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
 
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/benchmarks/tpch/tpch-schemas.h"
@@ -37,6 +37,7 @@ using client::YBRowResult;
 using client::YBSchema;
 using std::string;
 using std::vector;
+using namespace std::placeholders;
 
 class RpcLineItemDAOTest : public YBTest {
 
@@ -124,12 +125,12 @@ class RpcLineItemDAOTest : public YBTest {
 }; // class RpcLineItemDAOTest
 
 TEST_F(RpcLineItemDAOTest, TestInsert) {
-  dao_->WriteLine(boost::bind(BuildTestRow, 1, 1, _1));
+  dao_->WriteLine(std::bind(BuildTestRow, 1, 1, _1));
   dao_->FinishWriting();
   ASSERT_EQ(1, CountRows());
   for (int i = 2; i < 10; i++) {
     for (int y = 0; y < 5; y++) {
-      dao_->WriteLine(boost::bind(BuildTestRow, i, y, _1));
+      dao_->WriteLine(std::bind(BuildTestRow, i, y, _1));
     }
   }
   dao_->FinishWriting();
@@ -143,11 +144,11 @@ TEST_F(RpcLineItemDAOTest, TestInsert) {
 }
 
 TEST_F(RpcLineItemDAOTest, TestUpdate) {
-  dao_->WriteLine(boost::bind(BuildTestRow, 1, 1, _1));
+  dao_->WriteLine(std::bind(BuildTestRow, 1, 1, _1));
   dao_->FinishWriting();
   ASSERT_EQ(1, CountRows());
 
-  dao_->MutateLine(boost::bind(UpdateTestRow, 1, 1, 12345, _1));
+  dao_->MutateLine(std::bind(UpdateTestRow, 1, 1, 12345, _1));
   dao_->FinishWriting();
   gscoped_ptr<RpcLineItemDAO::Scanner> scanner;
   dao_->OpenScanner({ tpch::kQuantityColName }, &scanner);

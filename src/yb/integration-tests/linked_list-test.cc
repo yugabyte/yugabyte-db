@@ -30,6 +30,8 @@
 // To verify, the table is scanned, and we ensure that every key is linked to
 // either zero or one times, and no link_to refers to a missing key.
 
+#include <functional>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
@@ -49,12 +51,6 @@
 #include "yb/util/test_util.h"
 #include "yb/util/hdr_histogram.h"
 
-using yb::client::YBClient;
-using yb::client::YBClientBuilder;
-using yb::client::YBSchema;
-using yb::client::sp::shared_ptr;
-using yb::itest::TServerDetails;
-
 DEFINE_int32(seconds_to_run, 5, "Number of seconds for which to run the test");
 
 DEFINE_int32(num_chains, 50, "Number of parallel chains to generate");
@@ -68,6 +64,14 @@ DEFINE_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
 
 namespace yb {
+
+using yb::client::YBClient;
+using yb::client::YBClientBuilder;
+using yb::client::YBSchema;
+using yb::client::sp::shared_ptr;
+using yb::itest::TServerDetails;
+
+using namespace std::placeholders;
 
 class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
  public:
@@ -183,10 +187,9 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     // Restart a tserver during a scan to test scanner fault tolerance.
     WaitForTSAndReplicas();
     LOG(INFO) << "Will restart the tablet server during verification scan.";
-    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written,
-                                     boost::bind(
-                                         &TabletServerIntegrationTestBase::RestartServerWithUUID,
-                                         this, _1)));
+    ASSERT_OK(tester_->WaitAndVerify(
+        FLAGS_seconds_to_run, written,
+        std::bind(&TabletServerIntegrationTestBase::RestartServerWithUUID, this, _1)));
     LOG(INFO) << "Done with tserver restart test.";
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
 
@@ -194,10 +197,9 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     // Note that the previously restarted node is likely still be bootstrapping, which makes this
     // even harder.
     LOG(INFO) << "Will kill the tablet server during verification scan.";
-    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written,
-                                     boost::bind(
-                                         &TabletServerIntegrationTestBase::ShutdownServerWithUUID,
-                                         this, _1)));
+    ASSERT_OK(tester_->WaitAndVerify(
+        FLAGS_seconds_to_run, written,
+        std::bind(&TabletServerIntegrationTestBase::ShutdownServerWithUUID, this, _1)));
     LOG(INFO) << "Done with tserver kill test.";
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()-1));
     ASSERT_NO_FATAL_FAILURE(RestartCluster());

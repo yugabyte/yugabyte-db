@@ -119,9 +119,9 @@ MaintenanceManager::~MaintenanceManager() {
 }
 
 Status MaintenanceManager::Init() {
-  RETURN_NOT_OK(Thread::Create("maintenance", "maintenance_scheduler",
-      boost::bind(&MaintenanceManager::RunSchedulerThread, this),
-      &monitor_thread_));
+  RETURN_NOT_OK(Thread::Create(
+      "maintenance", "maintenance_scheduler",
+      std::bind(&MaintenanceManager::RunSchedulerThread, this), &monitor_thread_));
   return Status::OK();
 }
 
@@ -217,8 +217,7 @@ void MaintenanceManager::RunSchedulerThread() {
     }
 
     // Run the maintenance operation.
-    Status s = thread_pool_->SubmitFunc(boost::bind(
-          &MaintenanceManager::LaunchOp, this, op));
+    Status s = thread_pool_->SubmitFunc(std::bind(&MaintenanceManager::LaunchOp, this, op));
     CHECK(s.ok());
   }
 }

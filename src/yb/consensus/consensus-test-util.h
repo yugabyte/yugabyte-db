@@ -201,9 +201,9 @@ class DelayablePeerProxy : public TestPeerProxy {
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) OVERRIDE {
     RegisterCallback(kUpdate, callback);
-    return proxy_->UpdateAsync(request, response, controller,
-                               boost::bind(&DelayablePeerProxy::RespondUnlessDelayed,
-                                           this, kUpdate));
+    return proxy_->UpdateAsync(
+        request, response, controller,
+        std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, kUpdate));
   }
 
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
@@ -211,9 +211,9 @@ class DelayablePeerProxy : public TestPeerProxy {
                                          rpc::RpcController* controller,
                                          const rpc::ResponseCallback& callback) OVERRIDE {
     RegisterCallback(kRequestVote, callback);
-    return proxy_->RequestConsensusVoteAsync(request, response, controller,
-                                             boost::bind(&DelayablePeerProxy::RespondUnlessDelayed,
-                                                         this, kRequestVote));
+    return proxy_->RequestConsensusVoteAsync(
+        request, response, controller,
+        std::bind(&DelayablePeerProxy::RespondUnlessDelayed, this, kRequestVote));
   }
 
   ProxyType* proxy() const {
@@ -433,8 +433,8 @@ class LocalTestPeerProxy : public TestPeerProxy {
                            rpc::RpcController* controller,
                            const rpc::ResponseCallback& callback) OVERRIDE {
     RegisterCallback(kUpdate, callback);
-    CHECK_OK(pool_->SubmitFunc(boost::bind(&LocalTestPeerProxy::SendUpdateRequest,
-                                           this, request, response)));
+    CHECK_OK(pool_->SubmitFunc(
+        std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, request, response)));
   }
 
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
@@ -442,8 +442,8 @@ class LocalTestPeerProxy : public TestPeerProxy {
                                          rpc::RpcController* controller,
                                          const rpc::ResponseCallback& callback) OVERRIDE {
     RegisterCallback(kRequestVote, callback);
-    CHECK_OK(pool_->SubmitFunc(boost::bind(&LocalTestPeerProxy::SendVoteRequest,
-                                           this, request, response)));
+    CHECK_OK(pool_->SubmitFunc(
+        std::bind(&LocalTestPeerProxy::SendVoteRequest, this, request, response)));
   }
 
   template<class Response>
@@ -601,7 +601,7 @@ class TestDriver {
       return;
     }
     CHECK_OK(status);
-    CHECK_OK(pool_->SubmitFunc(boost::bind(&TestDriver::Apply, this)));
+    CHECK_OK(pool_->SubmitFunc(std::bind(&TestDriver::Apply, this)));
   }
 
   // Called in all modes to delete the transaction and, transitively, the consensus

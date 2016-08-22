@@ -259,9 +259,8 @@ class TestRandomAccess : public YBTabletTest {
 
 TEST_F(TestRandomAccess, Test) {
   scoped_refptr<Thread> flush_thread;
-  CHECK_OK(Thread::Create("test", "flush",
-                          boost::bind(&TestRandomAccess::BackgroundOpThread, this),
-                          &flush_thread));
+  CHECK_OK(Thread::Create(
+      "test", "flush", std::bind(&TestRandomAccess::BackgroundOpThread, this), &flush_thread));
 
   DoRandomBatches();
   done_.CountDown();

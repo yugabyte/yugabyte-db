@@ -197,7 +197,7 @@ set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -DGFLAGS=gflags")
 #     fundamental limitations in escape analysis, which can result in subtle bad code generation.
 #     This has a small perf hit but worth it to avoid hard to debug crashes.
 set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
-set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread -Wno-parentheses")
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], YugaByte's
 # generated code (which always uses clang) must be built against the old ABI.

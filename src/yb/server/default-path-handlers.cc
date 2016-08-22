@@ -29,15 +29,18 @@
 
 #include "yb/server/default-path-handlers.h"
 
-#include <boost/algorithm/string.hpp>
-#include <boost/bind.hpp>
+#include <sys/stat.h>
+
 #include <fstream>
-#include <gperftools/malloc_extension.h>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
 #include <vector>
+
+#include <boost/algorithm/string.hpp>
+
+#include <gperftools/malloc_extension.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
@@ -52,13 +55,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
 
-using boost::replace_all;
-using google::CommandlineFlagsIntoString;
-using std::ifstream;
-using std::string;
-using std::endl;
-using strings::Substitute;
-
 DEFINE_int64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
 TAG_FLAG(web_log_bytes, advanced);
@@ -66,7 +62,15 @@ TAG_FLAG(web_log_bytes, runtime);
 
 namespace yb {
 
+using boost::replace_all;
+using google::CommandlineFlagsIntoString;
+using std::ifstream;
+using std::string;
+using std::endl;
 using std::shared_ptr;
+using strings::Substitute;
+
+using namespace std::placeholders;
 
 namespace {
 // Html/Text formatting tags
@@ -215,7 +219,7 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 }
 
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
-  Webserver::PathHandlerCallback callback = boost::bind(WriteMetricsAsJson, metrics, _1, _2);
+  Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   bool not_styled = false;
   bool not_on_nav_bar = false;
   bool is_on_nav_bar = true;

@@ -14,14 +14,15 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 #include "yb/server/tracing-path-handlers.h"
 
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <boost/bind.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/rapidjson.h>
@@ -30,6 +31,9 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/debug/trace_event_impl.h"
+
+namespace yb {
+namespace server {
 
 using std::map;
 using std::string;
@@ -40,8 +44,7 @@ using yb::debug::CategoryFilter;
 using yb::debug::TraceLog;
 using yb::debug::TraceResultBuffer;
 
-namespace yb {
-namespace server {
+using namespace std::placeholders;
 
 enum Handler {
   kBeginMonitoring,
@@ -256,9 +259,8 @@ void TracingPathHandlers::RegisterHandlers(Webserver* server) {
   typedef pair<string, Handler> HandlerPair;
   for (const HandlerPair& e : handlers) {
     server->RegisterPathHandler(
-      e.first, "",
-      boost::bind(&HandleRequest, e.second, _1, _2),
-      false /* styled */, false /* is_on_nav_bar */);
+        e.first, "", std::bind(&HandleRequest, e.second, _1, _2), false /* styled */,
+        false /* is_on_nav_bar */);
   }
 }
 

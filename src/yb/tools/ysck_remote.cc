@@ -176,7 +176,7 @@ class ChecksumStepper {
         break;
     }
     gscoped_ptr<ChecksumCallbackHandler> handler(new ChecksumCallbackHandler(this));
-    rpc::ResponseCallback cb = boost::bind(&ChecksumCallbackHandler::Run, handler.get());
+    rpc::ResponseCallback cb = std::bind(&ChecksumCallbackHandler::Run, handler.get());
     proxy_->ChecksumAsync(req_, &resp_, &rpc_, cb);
     ignore_result(handler.release());
   }

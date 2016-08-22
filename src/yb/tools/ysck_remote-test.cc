@@ -99,7 +99,7 @@ class RemoteYsckTest : public YBTest {
 
   // Writes rows to the table until the continue_writing flag is set to false.
   //
-  // Public for use with boost::bind.
+  // Public for use with std::bind.
   void GenerateRowWritesLoop(CountDownLatch* started_writing,
                              const AtomicBool& continue_writing,
                              Promise<Status>* promise) {

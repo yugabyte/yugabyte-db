@@ -17,15 +17,19 @@
 #ifndef YB_RPC_REACTOR_H
 #define YB_RPC_REACTOR_H
 
-#include <boost/intrusive/list.hpp>
-#include <boost/utility.hpp>
-#include <ev++.h>
+#include <stdint.h>
+
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <set>
-#include <stdint.h>
 #include <string>
+
+#include <boost/intrusive/list.hpp>
+#include <boost/utility.hpp>
+
+#include <ev++.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection.h"
@@ -86,7 +90,7 @@ class ReactorTask : public boost::intrusive::list_base_hook<> {
 //    receives a Status as its first argument.
 class DelayedTask : public ReactorTask {
  public:
-  DelayedTask(boost::function<void(const Status &)> func, MonoDelta when);
+  DelayedTask(std::function<void(const Status&)> func, MonoDelta when);
 
   // Schedules the task for running later but doesn't actually run it yet.
   virtual void Run(ReactorThread* reactor) OVERRIDE;
@@ -99,7 +103,7 @@ class DelayedTask : public ReactorTask {
   void TimerHandler(ev::timer& watcher, int revents);
 
   // User function to invoke when timer fires or when task is aborted.
-  const boost::function<void(const Status&)> func_;
+  const std::function<void(const Status&)> func_;
 
   // Delay to apply to this task.
   const MonoDelta when_;
@@ -304,7 +308,7 @@ class Reactor {
   // deleting itself after running if it is allocated on the heap.
   void ScheduleReactorTask(ReactorTask *task);
 
-  Status RunOnReactorThread(const boost::function<Status()>& f);
+  Status RunOnReactorThread(const std::function<Status()>& f);
 
   // If the Reactor is closing, returns false.
   // Otherwise, drains the pending_tasks_ queue into the provided list.

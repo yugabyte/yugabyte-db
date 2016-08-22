@@ -44,11 +44,9 @@ class ResettableHeartbeaterTest : public YBTest {
  protected:
   void CreateHeartbeater(uint64_t period_ms, const std::string& name) {
     period_ms_ = period_ms;
-    heartbeater_.reset(
-        new ResettableHeartbeater(name,
-                                  MonoDelta::FromMilliseconds(period_ms),
-                                  boost::bind(&ResettableHeartbeaterTest::HeartbeatFunction,
-                                              this)));
+    heartbeater_.reset(new ResettableHeartbeater(
+        name, MonoDelta::FromMilliseconds(period_ms),
+        std::bind(&ResettableHeartbeaterTest::HeartbeatFunction, this)));
   }
 
   Status HeartbeatFunction() {

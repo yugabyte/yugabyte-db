@@ -18,7 +18,7 @@
 #include "yb/master/master-path-handlers.h"
 
 #include <algorithm>
-#include <boost/bind.hpp>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -49,6 +49,8 @@ using std::stringstream;
 using std::unique_ptr;
 using strings::Substitute;
 
+using namespace std::placeholders;
+
 namespace master {
 
 MasterPathHandlers::~MasterPathHandlers() {
@@ -56,7 +58,7 @@ MasterPathHandlers::~MasterPathHandlers() {
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     const Webserver::WebRequest& req, stringstream* output,
-    const boost::function<void(const Webserver::WebRequest&, std::stringstream*)>& callback) {
+    const Webserver::PathHandlerCallback& callback) {
   CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
   if (!l.first_failed_status().ok()) {
     *output << "<h1>This is not the Master Leader!</h1>\n";
@@ -466,34 +468,31 @@ Status MasterPathHandlers::Register(Webserver* server) {
   bool is_on_nav_bar = true;
   // Cannot use auto with callbacks, as they won't properly deduce types with boost magic...
   Webserver::PathHandlerCallback cb =
-      boost::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
+      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2);
   server->RegisterPathHandler(
       "/tablet-servers", "Tablet Servers",
-      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar);
-  cb = boost::bind(&MasterPathHandlers::HandleCatalogManager, this, _1, _2);
+  cb = std::bind(&MasterPathHandlers::HandleCatalogManager, this, _1, _2);
   server->RegisterPathHandler(
       "/tables", "Tables",
-      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar);
-  cb = boost::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
+  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
   server->RegisterPathHandler(
-      "/table", "", boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
+      "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
       is_styled, false);
-  server->RegisterPathHandler("/masters",
-                              "Masters",
-                              boost::bind(&MasterPathHandlers::HandleMasters, this, _1, _2),
-                              is_styled,
-                              is_on_nav_bar);
-  cb = boost::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
+  server->RegisterPathHandler(
+      "/masters", "Masters", std::bind(&MasterPathHandlers::HandleMasters, this, _1, _2), is_styled,
+      is_on_nav_bar);
+  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",
-      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
-      false);
-  cb = boost::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
-      boost::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar);
   return Status::OK();
 }

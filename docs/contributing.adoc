@@ -265,7 +265,7 @@ in many places. When interfacing with that code, you can continue to use `shared
 
 === Function Binding and Callbacks
 
-Existing code uses `boost::bind` and `boost::function` for function binding and
+Existing code uses `std::bind` and `std::function` for function binding and
 callbacks. For new code, use the `Callback` and `Bind` classes in `gutil` instead.
 While less full-featured (`Bind` doesn't support argument
 place holders, wrapped function pointers, or function objects), they provide

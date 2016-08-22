@@ -17,7 +17,7 @@
 #ifndef YB_CLIENT_CLIENT_INTERNAL_H
 #define YB_CLIENT_CLIENT_INTERNAL_H
 
-#include <boost/function.hpp>
+#include <functional>
 #include <set>
 #include <string>
 #include <unordered_set>
@@ -189,17 +189,12 @@ class YBClient::Data {
   // per operation deadline. If 'deadline' is not initialized, 'func' is
   // retried forever. If 'deadline' expires, 'func_name' is included in
   // the resulting Status.
-  template<class ReqClass, class RespClass>
+  template <class ReqClass, class RespClass>
   Status SyncLeaderMasterRpc(
-      const MonoTime& deadline,
-      YBClient* client,
-      const ReqClass& req,
-      RespClass* resp,
-      int* num_attempts,
-      const char* func_name,
-      const boost::function<Status(master::MasterServiceProxy*,
-                                   const ReqClass&, RespClass*,
-                                   rpc::RpcController*)>& func);
+      const MonoTime& deadline, YBClient* client, const ReqClass& req, RespClass* resp,
+      int* num_attempts, const char* func_name,
+      const std::function<Status(
+          master::MasterServiceProxy*, const ReqClass&, RespClass*, rpc::RpcController*)>& func);
 
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<DnsResolver> dns_resolver_;
@@ -255,10 +250,9 @@ class YBClient::Data {
 // be retried again. On retry == false the return status of the function will be
 // returned to the caller, otherwise a Status::Timeout() will be returned.
 // If the deadline is already expired, no attempt will be made.
-Status RetryFunc(const MonoTime& deadline,
-                 const std::string& retry_msg,
-                 const std::string& timeout_msg,
-                 const boost::function<Status(const MonoTime&, bool*)>& func);
+Status RetryFunc(
+    const MonoTime& deadline, const std::string& retry_msg, const std::string& timeout_msg,
+    const std::function<Status(const MonoTime&, bool*)>& func);
 
 } // namespace client
 } // namespace yb

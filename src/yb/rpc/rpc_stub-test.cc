@@ -15,11 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <functional>
 #include <vector>
 
-#include <gtest/gtest.h>
-#include <boost/bind.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
 #include "yb/rpc/rpc_introspection.pb.h"
@@ -35,12 +36,12 @@
 DEFINE_bool(is_panic_test_child, false, "Used by TestRpcPanic");
 DECLARE_bool(socket_inject_short_recvs);
 
+namespace yb {
+namespace rpc {
+
 using boost::ptr_vector;
 using std::shared_ptr;
 using std::vector;
-
-namespace yb {
-namespace rpc {
 
 class RpcStubTest : public RpcTestBase {
  public:
@@ -108,8 +109,7 @@ TEST_F(RpcStubTest, TestBigCallData) {
     auto controller = new RpcController;
     controllers.push_back(controller);
 
-    p.EchoAsync(req, resp, controller,
-                boost::bind(&CountDownLatch::CountDown, boost::ref(latch)));
+    p.EchoAsync(req, resp, controller, [&latch]() { latch.CountDown(); });
   }
 
   latch.Wait();
@@ -212,7 +212,7 @@ TEST_F(RpcStubTest, TestCallWithMissingPBFieldClientSide) {
   // Request is missing the 'y' field.
   AddResponsePB resp;
   Atomic32 callback_count = 0;
-  p.AddAsync(req, &resp, &controller, boost::bind(&DoIncrement, &callback_count));
+  p.AddAsync(req, &resp, &controller, std::bind(&DoIncrement, &callback_count));
   while (NoBarrier_Load(&callback_count) == 0) {
     SleepFor(MonoDelta::FromMicroseconds(10));
   }
@@ -323,8 +323,8 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
     gscoped_ptr<AsyncSleep> sleep(new AsyncSleep);
     sleep->rpc.set_timeout(MonoDelta::FromSeconds(1));
     sleep->req.set_sleep_micros(100*1000); // 100ms
-    p.SleepAsync(sleep->req, &sleep->resp, &sleep->rpc,
-                 boost::bind(&CountDownLatch::CountDown, &sleep->latch));
+    auto& latch = sleep->latch;
+    p.SleepAsync(sleep->req, &sleep->resp, &sleep->rpc, [&latch]() { latch.CountDown(); });
     sleeps.push_back(sleep.release());
   }
 
@@ -351,8 +351,7 @@ TEST_F(RpcStubTest, TestDumpCallsInFlight) {
   CalculatorServiceProxy p(client_messenger_, server_addr_);
   AsyncSleep sleep;
   sleep.req.set_sleep_micros(100 * 1000); // 100ms
-  p.SleepAsync(sleep.req, &sleep.resp, &sleep.rpc,
-               boost::bind(&CountDownLatch::CountDown, &sleep.latch));
+  p.SleepAsync(sleep.req, &sleep.resp, &sleep.rpc, [&sleep]() { sleep.latch.CountDown(); });
 
   // Check the running RPC status on the client messenger.
   DumpRunningRpcsRequestPB dump_req;
@@ -416,8 +415,7 @@ TEST_F(RpcStubTest, TestCallbackClearedAfterRunning) {
   req.set_x(10);
   req.set_y(20);
   AddResponsePB resp;
-  p.AddAsync(req, &resp, &controller,
-             boost::bind(MyTestCallback, &latch, my_refptr));
+  p.AddAsync(req, &resp, &controller, std::bind(MyTestCallback, &latch, my_refptr));
   latch.Wait();
 
   // The ref count should go back down to 1. However, we need to loop a little

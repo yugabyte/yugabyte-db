@@ -17,7 +17,6 @@
 #ifndef YB_TPCH_RPC_LINE_ITEM_DAO_H
 #define YB_TPCH_RPC_LINE_ITEM_DAO_H
 
-#include <boost/function.hpp>
 #include <set>
 #include <string>
 #include <utility>
@@ -42,8 +41,8 @@ class RpcLineItemDAO {
                  int mstimeout = 5000,
                  std::vector<const YBPartialRow*> tablet_splits = {});
   ~RpcLineItemDAO();
-  void WriteLine(boost::function<void(YBPartialRow*)> f);
-  void MutateLine(boost::function<void(YBPartialRow*)> f);
+  void WriteLine(std::function<void(YBPartialRow*)> f);
+  void MutateLine(std::function<void(YBPartialRow*)> f);
   void Init();
   void FinishWriting();
 

@@ -137,7 +137,7 @@ TEST(MemTrackerTest, GcFunctions) {
 
   // Attach GcFunction that releases 1 byte
   GcFunctionHelper gc_func_helper(t.get());
-  t->AddGcFunction(boost::bind(&GcFunctionHelper::GcFunc, &gc_func_helper));
+  t->AddGcFunction(std::bind(&GcFunctionHelper::GcFunc, &gc_func_helper));
   EXPECT_TRUE(t->TryConsume(2));
   EXPECT_EQ(t->consumption(), 10);
   EXPECT_FALSE(t->LimitExceeded());
@@ -161,9 +161,9 @@ TEST(MemTrackerTest, GcFunctions) {
   // Add more GcFunctions, test that we only call them until the limit is no longer
   // exceeded
   GcFunctionHelper gc_func_helper2(t.get());
-  t->AddGcFunction(boost::bind(&GcFunctionHelper::GcFunc, &gc_func_helper2));
+  t->AddGcFunction(std::bind(&GcFunctionHelper::GcFunc, &gc_func_helper2));
   GcFunctionHelper gc_func_helper3(t.get());
-  t->AddGcFunction(boost::bind(&GcFunctionHelper::GcFunc, &gc_func_helper3));
+  t->AddGcFunction(std::bind(&GcFunctionHelper::GcFunc, &gc_func_helper3));
   t->Consume(1);
   EXPECT_EQ(t->consumption(), 11);
   EXPECT_FALSE(t->LimitExceeded());

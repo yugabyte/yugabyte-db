@@ -17,8 +17,8 @@
 
 #include "yb/server/rpcz-path-handler.h"
 
-#include <boost/bind.hpp>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -28,13 +28,15 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/server/webserver.h"
 
+namespace yb {
+
 using yb::rpc::DumpRunningRpcsRequestPB;
 using yb::rpc::DumpRunningRpcsResponsePB;
 using yb::rpc::Messenger;
 using std::shared_ptr;
 using std::stringstream;
 
-namespace yb {
+using namespace std::placeholders;
 
 namespace {
 
@@ -55,9 +57,8 @@ void RpczPathHandler(const shared_ptr<Messenger>& messenger,
 } // anonymous namespace
 
 void AddRpczPathHandlers(const shared_ptr<Messenger>& messenger, Webserver* webserver) {
-  webserver->RegisterPathHandler("/rpcz", "RPCs",
-                                 boost::bind(RpczPathHandler, messenger, _1, _2),
-                                 false, true);
+  webserver->RegisterPathHandler(
+      "/rpcz", "RPCs", std::bind(RpczPathHandler, messenger, _1, _2), false, true);
 }
 
 } // namespace yb

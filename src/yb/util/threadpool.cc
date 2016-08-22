@@ -15,11 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/function.hpp>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <functional>
 #include <limits>
 #include <memory>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/stl_util.h"
@@ -41,14 +42,14 @@ using std::unique_ptr;
 
 class FunctionRunnable : public Runnable {
  public:
-  explicit FunctionRunnable(boost::function<void()> func) : func_(std::move(func)) {}
+  explicit FunctionRunnable(std::function<void()> func) : func_(std::move(func)) {}
 
   void Run() OVERRIDE {
     func_();
   }
 
  private:
-  boost::function<void()> func_;
+  std::function<void()> func_;
 };
 
 ////////////////////////////////////////////////////////
@@ -160,12 +161,12 @@ void ThreadPool::Shutdown() {
 }
 
 Status ThreadPool::SubmitClosure(const Closure& task) {
-  // TODO: once all uses of boost::bind-based tasks are dead, implement this
+  // TODO: once all uses of std::bind-based tasks are dead, implement this
   // in a more straight-forward fashion.
-  return SubmitFunc(boost::bind(&Closure::Run, task));
+  return SubmitFunc(std::bind(&Closure::Run, task));
 }
 
-Status ThreadPool::SubmitFunc(const boost::function<void()>& func) {
+Status ThreadPool::SubmitFunc(const std::function<void()>& func) {
   return Submit(std::shared_ptr<Runnable>(new FunctionRunnable(func)));
 }
 

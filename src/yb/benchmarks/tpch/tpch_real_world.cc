@@ -38,12 +38,14 @@
 //    insert, so the last timing shouldn't be used.
 //
 // TODO Make the inserts multi-threaded. See Kudu-629 for the technique.
-#include <boost/bind.hpp>
+
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+#include <functional>
 
 #include <glog/logging.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
@@ -97,6 +99,8 @@ namespace yb {
 using client::YBRowResult;
 using client::YBSchema;
 using strings::Substitute;
+
+using namespace std::placeholders;
 
 class TpchRealWorld {
  public:
@@ -264,8 +268,8 @@ void TpchRealWorld::LoadLineItemsThread(int i) {
   gscoped_ptr<RpcLineItemDAO> dao = GetInittedDAO();
   LineItemTsvImporter importer(GetNthLineItemFileName(i));
 
-  boost::function<void(YBPartialRow*)> f =
-      boost::bind(&LineItemTsvImporter::GetNextLine, &importer, _1);
+  std::function<void(YBPartialRow*)> f =
+      std::bind(&LineItemTsvImporter::GetNextLine, &importer, _1);
   while (importer.HasNextLine() && !stop_threads_.Load()) {
     dao->WriteLine(f);
     int64_t current_count = rows_inserted_.Increment();

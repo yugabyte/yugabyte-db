@@ -190,9 +190,9 @@ string MultiThreadedAction::GetValueByIndex(int64_t key_index) {
 
 void MultiThreadedAction::Start() {
   LOG(INFO) << "Starting " << num_action_threads_ << " " << description_ << " threads";
-  thread_pool_->SubmitFunc(boost::bind(&MultiThreadedAction::RunStatsThread, this));
+  thread_pool_->SubmitFunc(std::bind(&MultiThreadedAction::RunStatsThread, this));
   for (int i = 0; i < num_action_threads_; i++) {
-    thread_pool_->SubmitFunc(boost::bind(&MultiThreadedAction::RunActionThread, this, i));
+    thread_pool_->SubmitFunc(std::bind(&MultiThreadedAction::RunActionThread, this, i));
   }
 }
 
@@ -223,7 +223,7 @@ MultiThreadedWriter::MultiThreadedWriter(
 
 void MultiThreadedWriter::Start() {
   MultiThreadedAction::Start();
-  thread_pool_->SubmitFunc(boost::bind(&MultiThreadedWriter::RunInsertionTrackerThread, this));
+  thread_pool_->SubmitFunc(std::bind(&MultiThreadedWriter::RunInsertionTrackerThread, this));
 }
 
 void MultiThreadedWriter::WaitForCompletion() {

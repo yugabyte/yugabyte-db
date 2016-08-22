@@ -210,8 +210,8 @@ Status TSTabletManager::Init() {
     }
 
     scoped_refptr<TabletPeer> tablet_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
-    RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(boost::bind(&TSTabletManager::OpenTablet,
-                                                this, meta, deleter)));
+    RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
+        std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
   }
 
   {
@@ -313,8 +313,8 @@ Status TSTabletManager::CreateNewTablet(
   scoped_refptr<TabletPeer> new_peer = CreateAndRegisterTabletPeer(meta, NEW_PEER);
 
   // We can run this synchronously since there is nothing to bootstrap.
-  RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(boost::bind(&TSTabletManager::OpenTablet,
-                                              this, meta, deleter)));
+  RETURN_NOT_OK(
+      open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
 
   if (tablet_peer) {
     *tablet_peer = new_peer;
@@ -474,10 +474,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // We run this asynchronously. We don't tombstone the tablet if this fails,
   // because if we were to fail to open the tablet, on next startup, it's in a
   // valid fully-copied state.
-  RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(boost::bind(&TSTabletManager::OpenTablet,
-                                                          this,
-                                                          meta,
-                                                          deleter)));
+  RETURN_NOT_OK(
+      open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
   return Status::OK();
 }
 
@@ -811,11 +809,10 @@ void TSTabletManager::GetTabletPeers(vector<scoped_refptr<TabletPeer> >* tablet_
 
 void TSTabletManager::ApplyChange(const string& tablet_id,
                                   shared_ptr<consensus::StateChangeContext> context) {
-  WARN_NOT_OK(apply_pool_->SubmitFunc(boost::bind(&TSTabletManager::MarkTabletDirty,
-                                                  this,
-                                                  tablet_id,
-                                                  context)),
-              "Unable to run MarkDirty callback")
+  WARN_NOT_OK(
+      apply_pool_->SubmitFunc(
+          std::bind(&TSTabletManager::MarkTabletDirty, this, tablet_id, context)),
+      "Unable to run MarkDirty callback")
 }
 
 void TSTabletManager::MarkTabletDirty(const std::string& tablet_id,

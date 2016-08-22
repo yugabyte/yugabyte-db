@@ -44,9 +44,9 @@ DEFINE_STATIC_THREAD_LOCAL(KernelStackWatchdog::TLS,
 KernelStackWatchdog::KernelStackWatchdog()
   : log_collector_(nullptr),
     finish_(1) {
-  CHECK_OK(Thread::Create("kernel-watchdog", "kernel-watcher",
-                          boost::bind(&KernelStackWatchdog::RunThread, this),
-                          &thread_));
+  CHECK_OK(Thread::Create(
+      "kernel-watchdog", "kernel-watcher", std::bind(&KernelStackWatchdog::RunThread, this),
+      &thread_));
 }
 
 KernelStackWatchdog::~KernelStackWatchdog() {
