@@ -34,7 +34,6 @@ export default class ListUniverse extends Component {
       bgColor: "rgb(211,211,211)",   //selected row background color
       onSelect:this.showUniverseDialog()
     };
-
     return (
       <div className="row">
         <BootstrapTable data={universeDisplay} striped={true} hover={true} selectRow={selectRowProp}>
