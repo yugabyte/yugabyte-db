@@ -173,6 +173,7 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
+  expect_num_args 0 "$@"
   normalize_build_type
   readonly build_type
 
@@ -196,12 +197,16 @@ validate_build_type() {
   expect_num_args 1 "$@"
   # Local variable named _build_type to avoid a collision with the global build_type variable.
   local _build_type=$1
-  _build_type=$( echo "$_build_type" | to_lowercase )
-  if [[ ! "$_build_type" =~ $VALID_BUILD_TYPES_RE ]]; then
-    log "Invalid build type: '$_build_type'. Valid build types are: ${VALID_BUILD_TYPES[@]}" \
-        "(case-insensitive)"
-    exit 1
+  if ! is_valid_build_type "$_build_type"; then
+    fatal "Invalid build type: '$_build_type'. Valid build types are: ${VALID_BUILD_TYPES[@]}" \
+          "(case-insensitive)."
   fi
+}
+
+is_valid_build_type() {
+  expect_num_args 1 "$@"
+  local -r _build_type=$( echo "$1" | to_lowercase )
+  [[ "$_build_type" =~ $VALID_BUILD_TYPES_RE ]]
 }
 
 set_build_type_based_on_jenkins_job_name() {
@@ -316,7 +321,7 @@ set_cmake_build_type_and_compiler_type() {
     asan)
       cmake_opts+=( -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 )
       cmake_build_type=fastdebug
-      if [[ -n "${YB_COMPILER_TYPE:-}" && "$YB_COMPILER_TYPE" != "clang" ]]; then
+      if [[ -n ${YB_COMPILER_TYPE:-} && $YB_COMPILER_TYPE != "clang" ]]; then
         fatal "ASAN builds require clang," \
               "but YB_COMPILER_TYPE is already set to '$YB_COMPILER_TYPE'"
       fi

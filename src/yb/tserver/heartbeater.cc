@@ -119,7 +119,7 @@ class Heartbeater::Thread {
   // We keep the HostPort around rather than a Sockaddr because the
   // masters may change IP addresses, and we'd like to re-resolve on
   // every new attempt at connecting.
-  std::shared_ptr<vector<HostPort>> master_addressess_;
+  std::shared_ptr<const vector<HostPort>> master_addressess_;
 
   // Index of the master we last succesfully obtained the master
   // consensus configuration information from.

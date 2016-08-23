@@ -56,7 +56,9 @@ class ServerBaseOptions {
   // This can crash the process if you pass in an invalid list of master addresses!
   void SetMasterAddresses(std::shared_ptr<std::vector<HostPort>> master_addresses);
 
-  std::shared_ptr<std::vector<HostPort>> GetMasterAddresses() const { return master_addresses_; }
+  std::shared_ptr<const std::vector<HostPort>> GetMasterAddresses() const {
+    return master_addresses_;
+  }
 
  protected:
   ServerBaseOptions();
@@ -65,7 +67,7 @@ class ServerBaseOptions {
   // We should ensure that the vector elements are not individually updated. And the shared pointer
   // will guarantee inconsistent in-transit views of the vector are never seen during/across
   // config changes.
-  std::shared_ptr<std::vector<HostPort>> master_addresses_;
+  std::shared_ptr<const std::vector<HostPort>> master_addresses_;
 
   virtual void ValidateMasterAddresses() const;
 };

@@ -693,6 +693,9 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return Status::IllegalState("Catalog manager is in shell mode, not the leader.");
   }
   Consensus* consensus = tablet_peer()->consensus();
+  if (consensus == nullptr) {
+    return Status::IllegalState("Consensus has not been initialized yet");
+  }
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   string uuid = master_->fs_manager()->uuid();
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {

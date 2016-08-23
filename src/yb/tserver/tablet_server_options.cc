@@ -24,6 +24,8 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flag_tags.h"
 
+using std::vector;
+
 namespace yb {
 namespace tserver {
 
@@ -40,10 +42,11 @@ TabletServerOptions::TabletServerOptions() {
 
   master_addresses_flag = FLAGS_tserver_master_addrs;
 
-  master_addresses_ = std::make_shared<std::vector<HostPort>>();
+  vector<HostPort> master_addresses;
   Status s = HostPort::ParseStrings(FLAGS_tserver_master_addrs,
                                     master::Master::kDefaultPort,
-                                    master_addresses_);
+                                    &master_addresses);
+  master_addresses_ = std::make_shared<std::vector<HostPort>>(std::move(master_addresses));
   if (!s.ok()) {
     LOG(FATAL) << "Couldn't parse " << FLAGS_tserver_master_addrs << " flag: " << s.ToString();
   }

@@ -23,6 +23,9 @@
 #include "yb/master/master.h"
 #include "yb/util/flag_tags.h"
 
+using std::make_shared;
+using std::vector;
+
 namespace yb {
 namespace master {
 
@@ -61,14 +64,17 @@ MasterOptions::MasterOptions()
       is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
   master_addresses_flag = FLAGS_master_addresses;
-  master_addresses_ = std::make_shared<std::vector<HostPort>>();
-  if (!FLAGS_master_addresses.empty()) {
+  if (FLAGS_master_addresses.empty()) {
+    master_addresses_ = make_shared<vector<HostPort>>();
+  } else {
+    vector<HostPort> master_addresses;
     Status s = HostPort::ParseStrings(FLAGS_master_addresses, Master::kDefaultPort,
-                                      master_addresses_);
+                                      &master_addresses);
     if (!s.ok()) {
       LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
                  << FLAGS_master_addresses << "'): " << s.ToString();
     }
+    master_addresses_ = make_shared<vector<HostPort>>(std::move(master_addresses));
   }
 
   ValidateMasterAddresses();

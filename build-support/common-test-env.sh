@@ -53,15 +53,13 @@ sanitize_for_path() {
 
 set_common_test_paths() {
   expect_num_args 0 "$@"
-  if [ -z "$BUILD_ROOT" ]; then
-    echo "The BUILD_ROOT environment variable is not set. This must point to the absolute path" \
-         "of the build root directory, e.g. '<yugabyte_src_dir>/build/debug'." >&2
-    exit 1
+  if [[ -z $BUILD_ROOT ]]; then
+    fatal "The BUILD_ROOT environment variable is not set. This must point to the absolute path" \
+          "of the build root directory, e.g. '<yugabyte_src_dir>/build/debug'."
   fi
 
-  if [ ! -d "$BUILD_ROOT" ]; then
-    echo "The directory BUILD_ROOT ('$BUILD_ROOT') does not exist" >&2
-    exit 1
+  if [[ ! -d $BUILD_ROOT ]]; then
+    fatal "The directory BUILD_ROOT ('$BUILD_ROOT') does not exist"
   fi
   YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
   mkdir -p "$YB_TEST_LOG_ROOT_DIR"
@@ -70,16 +68,14 @@ set_common_test_paths() {
 validate_relative_test_binary_path() {
   expect_num_args 1 "$@"
   local rel_test_binary=$1
-  if [[ ! "$rel_test_binary" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]]; then
-    echo "Expected a relative test binary path to consist of two components separated by '/'." \
-         "Got: '$rel_test_binary'." >&2
-    exit 1
+  if [[ ! $rel_test_binary =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]]; then
+    fatal "Expected a relative test binary path to consist of two components separated by '/'." \
+          "Got: '$rel_test_binary'."
   fi
   local rel_test_binary_dirname=${rel_test_binary%/*}
-  if [[ ! "$rel_test_binary_dirname" =~ $VALID_TEST_BINARY_DIRS_RE ]]; then
-    echo "Expected the directory name a test binary is contained in to be one of the following: " \
-         "$VALID_TEST_BINARY_DIRS. Relative test binary path: $rel_test_binary" >&2
-    exit 1
+  if [[ ! $rel_test_binary_dirname =~ $VALID_TEST_BINARY_DIRS_RE ]]; then
+    fatal "Expected the directory name a test binary is contained in to be one of the following: " \
+          "$VALID_TEST_BINARY_DIRS. Relative test binary path: $rel_test_binary" >&2
   fi
 }
 
@@ -87,20 +83,18 @@ create_abs_test_binary_path() {
   expect_num_args 1 "$@"
   local rel_test_binary_path=$1
   local abs_test_binary_path=$BUILD_ROOT/$rel_test_binary_path
-  if [[ ! -f "$abs_test_binary_path" && -f "$abs_test_binary_path.sh" ]]; then
+  if [[ ! -f $abs_test_binary_path && -f "$abs_test_binary_path.sh" ]]; then
     abs_test_binary_path+=".sh"
   fi
   echo "$abs_test_binary_path"
 }
 
 validate_abs_test_binary_path() {
-  if [ ! -f "$abs_test_binary_path" ]; then
-    echo "Test binary '$abs_test_binary_path' does not exist" >&2
-    exit 1
+  if [[ ! -f $abs_test_binary_path ]]; then
+    fatal "Test binary '$abs_test_binary_path' does not exist"
   fi
-  if [ ! -x "$abs_test_binary_path" ]; then
-    echo "Test binary '$abs_test_binary_path' is not executable" >&2
-    exit 1
+  if [[ ! -x $abs_test_binary_path ]]; then
+    fatal "Test binary '$abs_test_binary_path' is not executable"
   fi
 }
 
@@ -120,10 +114,9 @@ validate_abs_test_binary_path() {
 validate_test_descriptor() {
   expect_num_args 1 "$@"
   local test_descriptor=$1
-  if [[ "$test_descriptor" =~ ::: ]]; then
-    if [[ "$test_descriptor" =~ :::.*::: ]]; then
-      echo "The ':::' separator occurs twice within the test descriptor: $test_descriptor" >&2
-      exit 1
+  if [[ $test_descriptor =~ ::: ]]; then
+    if [[ $test_descriptor =~ :::.*::: ]]; then
+      fatal "The ':::' separator occurs twice within the test descriptor: $test_descriptor"
     fi
     # Remove ::: and all that follows and get a relative binary path.
     validate_relative_test_binary_path "${test_descriptor%:::*}"
@@ -138,10 +131,9 @@ is_known_non_gtest_test() {
   local test_name=$1
   local is_rocksdb=$2
 
-  if [[ ! "$is_rocksdb" =~ ^[01]$ ]]; then
-    echo "The second argument to is_known_non_gtest_test (is_rocksdb) must be 0 or 1," \
-         "was '$is_rocksdb'" >&2
-    exit 1
+  if [[ ! $is_rocksdb =~ ^[01]$ ]]; then
+    fatal "The second argument to is_known_non_gtest_test (is_rocksdb) must be 0 or 1," \
+          "was '$is_rocksdb'"
   fi
 
   if ( [ "$is_rocksdb" == "1" ] &&
@@ -157,10 +149,9 @@ is_known_non_gtest_test() {
 # This is used by yb_test.sh.
 # Takes relative test name such as "bin/client-test" or "rocksdb-build/db_test".
 is_known_non_gtest_test_by_rel_path() {
-  if [ $# -ne 1 ]; then
-    echo "is_known_non_gtest_test_by_rel_path takes exactly one argument" \
-         "(test executable path relative to the build directory)" >&2
-    exit 1
+  if [[ $# -ne 1 ]]; then
+    fatal "is_known_non_gtest_test_by_rel_path takes exactly one argument" \
+         "(test executable path relative to the build directory)"
   fi
   local rel_test_path=$1
   validate_relative_test_binary_path "$rel_test_path"
@@ -232,10 +223,9 @@ collect_gtest_tests() {
   process_core_file
   rm -rf "$gtest_list_tests_tmp_dir"
 
-  if [ -z "$gtest_list_tests_result" ]; then
-    echo "Empty output from: $abs_test_binary_path --gtest_list_tests," \
-         "exit code: $gtest_list_tests_exit_code" >&2
-    exit 1
+  if [[ -z $gtest_list_tests_result ]]; then
+    fatal "Empty output from: $abs_test_binary_path --gtest_list_tests," \
+          "exit code: $gtest_list_tests_exit_code"
   fi
 
   # https://nixtricks.wordpress.com/2013/01/09/sed-delete-the-lines-lying-in-between-two-patterns/
@@ -410,8 +400,8 @@ prepare_for_running_test() {
 
   test_failed=false
 
-  if [ -n "${BUILD_URL:-}" ]; then
-    if [ -z "$test_log_url_prefix" ]; then
+  if [[ -n ${BUILD_URL:-} ]]; then
+    if [[ -z $test_log_url_prefix ]]; then
       echo "Expected test_log_url_prefix to be set when running on Jenkins." >&2
       exit 1
     fi
@@ -430,7 +420,7 @@ prepare_for_running_test() {
 #     If this is defined and is not empty, any output generated by this function is appended to the
 #     file at this path.
 process_core_file() {
-  if [ $# -ne 0 ]; then
+  if [[ $# -ne 0 ]]; then
     echo "$FUNCNAME does not take any arguments" >&2
     exit 1
   fi
@@ -440,16 +430,16 @@ process_core_file() {
   local abs_test_binary_path=$BUILD_ROOT/$rel_test_binary
 
   local append_output_to=/dev/null
-  if [ -n "${test_log_path:-}" ]; then
+  if [[ -n ${test_log_path:-} ]]; then
     append_output_to=$test_log_path
   fi
 
-  if [ ! -d "$core_dir" ]; then
+  if [[ ! -d $core_dir ]]; then
     echo "$FUNCNAME: directory '$core_dir' does not exist" >&2
     exit 1
   fi
   local core_path=$core_dir/core
-  if [ -f "$core_path" ]; then
+  if [[ -f $core_path ]]; then
     ( echo "Found a core file at '$core_path', backtrace:" | tee -a "$append_output_to" ) >&2
     local core_binary_path=$abs_test_binary_path
     # The core might have been generated by yb-master or yb-tserver launched as part of an
@@ -493,7 +483,7 @@ handle_xml_output() {
       echo "$rel_test_binary failed to produce an XML output file at $xml_output_file" >&2
       test_failed=true
     fi
-    if [ -f "$test_log_path" ]; then
+    if [[ -f "$test_log_path" ]]; then
       echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
       "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
     else
@@ -503,7 +493,7 @@ handle_xml_output() {
     fi
   fi
 
-  if [ -n "${BUILD_URL:-}" ]; then
+  if [[ -n ${BUILD_URL:-} ]]; then
     if "$test_failed"; then
       echo "Updating $xml_output_file with a link to test log" >&2
     fi
@@ -521,14 +511,14 @@ postprocess_test_log() {
     raw_test_log_path \
     test_log_path_prefix
 
-  if [ ! -f "$raw_test_log_path" ]; then
+  if [[ ! -f $raw_test_log_path ]]; then
     # We must have failed even before we could run the test.
     return
   fi
 
   local stack_trace_filter_err_path="${test_log_path_prefix}__stack_trace_filter_err.txt"
 
-  if [ "$STACK_TRACE_FILTER" == "cat" ]; then
+  if [[ $STACK_TRACE_FILTER == "cat" ]]; then
     # Don't pass the binary name as an argument to the cat command.
     set +e
     "$STACK_TRACE_FILTER" <"$raw_test_log_path" 2>"$stack_trace_filter_err_path" >"$test_log_path"
@@ -540,7 +530,7 @@ postprocess_test_log() {
   local stack_trace_filter_exit_code=$?
   set -e
 
-  if [ "$stack_trace_filter_exit_code" -ne 0 ]; then
+  if [[ $stack_trace_filter_exit_code -ne 0 ]]; then
     # Stack trace filtering failed, create an output file with the error message.
     (
       echo "Failed to run the stack trace filtering program '$STACK_TRACE_FILTER'"
@@ -562,7 +552,7 @@ postprocess_test_log() {
 set_test_log_url_prefix() {
   test_log_url_prefix=""
   local build_type=${BUILD_ROOT##*/}
-  if [ -n "${BUILD_URL:-}" ]; then
+  if [[ -n ${BUILD_URL:-} ]]; then
     build_url_no_trailing_slash=${BUILD_URL%/}
     test_log_url_prefix="${build_url_no_trailing_slash}/artifact/build/$build_type/yb-test-logs"
   fi
@@ -577,8 +567,7 @@ run_one_test() {
     test_failed \
     test_log_path
   if [ "$test_failed" != "false" ]; then
-    echo "Expected test_failed to be false before running test, found: $test_failed" >&2
-    exit 1
+    fatal "Expected test_failed to be false before running test, found: $test_failed"
   fi
 
   pushd "$TEST_TMPDIR" >/dev/null
@@ -613,8 +602,7 @@ handle_test_failure() {
     echo "Log path: $test_log_path" >&2
     if [ -n "${BUILD_URL:-}" ]; then
       if [ -z "${test_log_url_prefix:-}" ]; then
-        echo "Expected test_log_url_prefix to be set if BUILD_URL is defined" >&2
-        exit 1
+        fatal "Expected test_log_url_prefix to be set if BUILD_URL is defined"
       fi
       # Produce a URL like
       # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
@@ -647,6 +635,102 @@ run_test_and_process_results() {
   handle_test_failure
   handle_xml_output
   delete_successful_output_if_needed
+}
+
+set_asan_tsan_options() {
+  local -r build_root_basename=${BUILD_ROOT##*/}
+  if [[ $build_root_basename =~ ^(asan|tsan)- ]]; then
+    # Suppressions require symbolization. We'll default to using the symbolizer in thirdparty.
+    # If ASAN_SYMBOLIZER_PATH is already set but that file does not exist, we'll report that and
+    # still use the default way to find the symbolizer.
+    if [[ -z ${ASAN_SYMBOLIZER_PATH:-} || ! -f ${ASAN_SYMBOLIZER_PATH:-} ]]; then
+      if [[ -n "${ASAN_SYMBOLIZER_PATH:-}" ]]; then
+        log "ASAN_SYMBOLIZER_PATH is set to '$ASAN_SYMBOLIZER_PATH' but that file does not " \
+            "exist, reverting to default behavior."
+      fi
+
+      for asan_symbolizer_candidate_path in \
+          "$YB_THIRDPARTY_DIR/installed/bin/llvm-symbolizer" \
+          "$YB_THIRDPARTY_DIR/clang-toolchain/bin/llvm-symbolizer"; do
+        if [[ -f "$asan_symbolizer_candidate_path" ]]; then
+          ASAN_SYMBOLIZER_PATH=$asan_symbolizer_candidate_path
+          break
+        fi
+      done
+    fi
+
+    if [[ ! -f $ASAN_SYMBOLIZER_PATH ]]; then
+      log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' still does not exist."
+      ( set -x; ls -l "$ASAN_SYMBOLIZER_PATH" )
+    elif [[ ! -x $ASAN_SYMBOLIZER_PATH ]]; then
+      log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' is not executable, updating permissions."
+      ( set -x; chmod a+x "$ASAN_SYMBOLIZER_PATH" )
+    fi
+
+    export ASAN_SYMBOLIZER_PATH
+  fi
+
+  if [[ $build_root_basename =~ ^asan- ]]; then
+    # Enable leak detection even under LLVM 3.4, where it was disabled by default.
+    # This flag only takes effect when running an ASAN build.
+    ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=1"
+    export ASAN_OPTIONS
+
+    # Set up suppressions for LeakSanitizer
+    LSAN_OPTIONS="${LSAN_OPTIONS:-} suppressions=$YB_SRC_ROOT/build-support/lsan-suppressions.txt"
+    export LSAN_OPTIONS
+  fi
+
+  if [[ $build_root_basename =~ ^tsan- ]]; then
+    # Configure TSAN (ignored if this isn't a TSAN build).
+    #
+    # Deadlock detection (new in clang 3.5) is disabled because:
+    # 1. The clang 3.5 deadlock detector crashes in some YB unit tests. It
+    #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
+    # 2. Many unit tests report lock-order-inversion warnings; they should be
+    #    fixed before reenabling the detector.
+    TSAN_OPTIONS="${TSAN_OPTIONS:-} detect_deadlocks=0"
+    TSAN_OPTIONS="$TSAN_OPTIONS suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
+    TSAN_OPTIONS="$TSAN_OPTIONS history_size=7"
+    TSAN_OPTIONS="$TSAN_OPTIONS external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
+    export TSAN_OPTIONS
+  fi
+}
+
+did_test_succeed() {
+  expect_num_args 2 "$@"
+  local -i -r exit_code=$1
+  local -r log_path=$2
+  if [[ $exit_code -ne 0 ]]; then
+    return 1  # "false" value in bash, meaning the test failed
+  fi
+
+  if [[ ! -f "$log_path" ]]; then
+    log "Log path '$log_path' not found."
+    return 1
+  fi
+
+  if grep 'Running 0 tests from 0 test cases' "$log_path" >/dev/null; then
+    log "No tests were run, invalid test filter?"
+    return 1
+  fi
+
+  if grep 'LeakSanitizer: detected memory leaks' "$log_path" >/dev/null; then
+    log "Detected memory leaks"
+    return 1
+  fi
+
+  if grep 'AddressSanitizer: heap-use-after-free' "$log_path" >/dev/null; then
+    log "Detected use of freed memory"
+    return 1
+  fi
+
+  if grep 'AddressSanitizer: undefined-behavior' "$log_path" >/dev/null; then
+    log "Detected undefined behavior"
+    return 1
+  fi
+
+  return 0
 }
 
 # -------------------------------------------------------------------------------------------------

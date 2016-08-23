@@ -147,3 +147,5 @@ test_set_cmake_build_type_and_compiler_type release    darwin    gcc        N/A 
 test_set_cmake_build_type_and_compiler_type release    linux-gnu auto       release    gcc    0
 test_set_cmake_build_type_and_compiler_type release    linux-gnu clang      release    clang  0
 test_set_cmake_build_type_and_compiler_type release    linux-gnu gcc        release    gcc    0
+
+echo "${0##/*} succeeded"

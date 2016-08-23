@@ -6,7 +6,7 @@ script_name=${script_name%.*}
 
 # Source the common-build-env.sh script in the build-support subdirectory of the directory of this
 # script.
-. "${0%/*}"/build-support/common-build-env.sh
+. "${0%/*}"/build-support/common-test-env.sh
 
 show_help() {
   cat >&2 <<-EOT
@@ -67,6 +67,13 @@ cxx_test_name=""
 
 original_args=( "$@" )
 while [ $# -gt 0 ]; do
+  if is_valid_build_type "$1"; then
+    build_type="$1"
+    build_type_specified=true
+    shift
+    continue
+  fi
+
   case "$1" in
     -h|--help)
       show_help >&2
@@ -125,8 +132,6 @@ while [ $# -gt 0 ]; do
       shift
     ;;
     debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
-      build_type="$1"
-      build_type_specified=true
     ;;
     rocksdb_*)
       # Assume this is a CMake target we've created for RocksDB tests.
@@ -175,7 +180,7 @@ if "$verbose"; then
   log "$script_name command line: ${original_args[@]}"
 fi
 
-set_build_root "$build_type"
+set_build_root
 
 validate_cmake_build_type "$cmake_build_type"
 
@@ -239,7 +244,8 @@ if "$no_ccache"; then
   cmake_opts+=( -DYB_NO_CCACHE=1 )
 fi
 
-if "$force_run_cmake" || [[ ! -f Makefile || ! -f "$thirdparty_built_flag_file" ]]; then
+if "$force_run_cmake" || \
+   [[ ! -f Makefile || ! -f $thirdparty_built_flag_file ]]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
     log "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
       "before running cmake"
@@ -281,6 +287,7 @@ fi
 
 if [[ -n $cxx_test_name ]]; then
   # TODO: also fix this to work with RocksDB tests.
+  set_asan_tsan_options
   "$BUILD_ROOT/bin/$cxx_test_name"
 fi
 

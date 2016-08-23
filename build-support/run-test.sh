@@ -87,67 +87,7 @@ else
   IS_ROCKSDB=0
 fi
 
-if [[ $BUILD_ROOT_BASENAME =~ ^(asan|tsan)- ]]; then
-  # Suppressions require symbolization. We'll default to using the symbolizer in thirdparty.
-  # If ASAN_SYMBOLIZER_PATH is already set but that file does not exist, we'll report that and
-  # still use the default way to find the symbolizer.
-  if [[ -z ${ASAN_SYMBOLIZER_PATH:-} || ! -f ${ASAN_SYMBOLIZER_PATH:-} ]]; then
-    if [[ -n "${ASAN_SYMBOLIZER_PATH:-}" ]]; then
-      log "ASAN_SYMBOLIZER_PATH is set to '$ASAN_SYMBOLIZER_PATH' but that file does not exist, " \
-          "reverting to default behavior."
-    fi
-
-    for asan_symbolizer_candidate_path in \
-        "$YB_THIRDPARTY_DIR/installed/bin/llvm-symbolizer" \
-        "$YB_THIRDPARTY_DIR/clang-toolchain/bin/llvm-symbolizer"; do
-      if [[ -f "$asan_symbolizer_candidate_path" ]]; then
-        ASAN_SYMBOLIZER_PATH=$asan_symbolizer_candidate_path
-        log "Found ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH'."
-        break
-      else
-        log "Did not find ASAN symbolizer at '$asan_symbolizer_candidate_path'."
-      fi
-    done
-  else
-    log "ASAN_SYMBOLIZER_PATH is already set to '$ASAN_SYMBOLIZER_PATH' and that file exists"
-  fi
-
-  if [[ ! -f $ASAN_SYMBOLIZER_PATH ]]; then
-    log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' still does not exist."
-    ( set -x; ls -l "$ASAN_SYMBOLIZER_PATH" )
-  elif [[ ! -x $ASAN_SYMBOLIZER_PATH ]]; then
-    log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' is not executable, updating permissions."
-    ( set -x; chmod a+x "$ASAN_SYMBOLIZER_PATH" )
-  fi
-
-  export ASAN_SYMBOLIZER_PATH
-fi
-
-if [[ $BUILD_ROOT_BASENAME =~ ^asan- ]]; then
-  # Enable leak detection even under LLVM 3.4, where it was disabled by default.
-  # This flag only takes effect when running an ASAN build.
-  ASAN_OPTIONS="${ASAN_OPTIONS:-} detect_leaks=1"
-  export ASAN_OPTIONS
-
-  # Set up suppressions for LeakSanitizer
-  LSAN_OPTIONS="${LSAN_OPTIONS:-} suppressions=$YB_SRC_ROOT/build-support/lsan-suppressions.txt"
-  export LSAN_OPTIONS
-fi
-
-if [[ $BUILD_ROOT_BASENAME =~ ^tsan- ]]; then
-  # Configure TSAN (ignored if this isn't a TSAN build).
-  #
-  # Deadlock detection (new in clang 3.5) is disabled because:
-  # 1. The clang 3.5 deadlock detector crashes in some YB unit tests. It
-  #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
-  # 2. Many unit tests report lock-order-inversion warnings; they should be
-  #    fixed before reenabling the detector.
-  TSAN_OPTIONS="${TSAN_OPTIONS:-} detect_deadlocks=0"
-  TSAN_OPTIONS="$TSAN_OPTIONS suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
-  TSAN_OPTIONS="$TSAN_OPTIONS history_size=7"
-  TSAN_OPTIONS="$TSAN_OPTIONS external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
-  export TSAN_OPTIONS
-fi
+set_asan_tsan_options
 
 tests=()
 rel_test_binary="$TEST_DIR_BASENAME/$TEST_NAME"

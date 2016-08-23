@@ -4,7 +4,7 @@
 
 show_usage() {
   cat <<-EOT
-Usage: ${0##*/} <test_executable_name> <test_filter> [<options>]
+Usage: ${0##*/} [<build_type>] <test_executable_name> <test_filter> [<options>]
 Runs the given test in a loop locally, collects statistics about successes/failures, and saves
 logs.
 
@@ -24,7 +24,7 @@ EOT
 
 set -euo pipefail
 
-. "${0%/*}"/../build-support/common-build-env.sh
+. "${0%/*}"/../build-support/common-test-env.sh
 
 script_name=${0##*/}
 script_name_no_ext=${script_name%.sh}
@@ -44,6 +44,11 @@ keep_all_logs=false
 original_args=( "$@" )
 
 while [[ $# -gt 0 ]]; do
+  if [[ ${#positional_args[@]} -eq 0 ]] && is_valid_build_type "$1"; then
+    build_type=$1
+    shift
+    continue
+  fi
   case "$1" in
     -h|--help)
       show_usage >&2
@@ -85,16 +90,21 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+set_cmake_build_type_and_compiler_type
+set_build_root
+set_asan_tsan_options
+
 declare -i -r num_pos_args=${#positional_args[@]}
 if [[ $num_pos_args -ne 2 ]]; then
   show_usage >&2
-  fatal "Expected exactly two positional arguments: <test_executable_name> <test_filter>" >&2
+  fatal "Expected exactly two positional arguments other than build type:" \
+        "<test_executable_name> <test_filter>"
 fi
 
 test_executable_name=${positional_args[0]}
 test_filter=${positional_args[1]}
 
-test_executable=$YB_SRC_ROOT/build/latest/bin/$test_executable_name
+test_executable=$BUILD_ROOT/bin/$test_executable_name
 if [[ -z $log_dir ]]; then
   log_dir=$HOME/logs/$script_name_no_ext/$test_executable_name/$test_filter/$(
     get_timestamp_for_filenames
@@ -106,10 +116,10 @@ if [[ $iteration -gt 0 ]]; then
   log_path=$log_dir/$iteration.log
   # One iteration
   set +e
-  "$test_executable" --gtest_filter="$test_filter" $more_test_args >"$log_path" 2>&1
+  "$test_executable" --gtest_filter="$test_filter" $more_test_args &>"$log_path"
   exit_code=$?
   set -e
-  if [[ $exit_code -ne 0 ]]; then
+  if ! did_test_succeed "$exit_code" "$log_path"; then
     gzip "$log_path"
     echo "FAILED: iteration $iteration (log: $log_path.gz)"
   elif "$keep_all_logs"; then

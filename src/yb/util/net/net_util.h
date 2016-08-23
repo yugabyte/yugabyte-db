@@ -61,7 +61,7 @@ class HostPort {
   // pair.
   static Status ParseStrings(const std::string& comma_sep_addrs,
                              uint16_t default_port,
-                             std::shared_ptr<std::vector<HostPort>> res);
+                             std::vector<HostPort>* res);
 
   // Takes a vector of HostPort objects and returns a comma separated
   // string containing of "host:port" pairs. This method is the

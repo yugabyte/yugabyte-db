@@ -311,7 +311,8 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
   new_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
   // Build the set of followers from our server options.
-  for (const HostPort& host_port : *options.GetMasterAddresses()) {
+  auto master_addresses = options.GetMasterAddresses();  // ENG-285
+  for (const HostPort& host_port : *master_addresses) {
     RaftPeerPB peer;
     HostPortPB peer_host_port_pb;
     RETURN_NOT_OK(HostPortToPB(host_port, &peer_host_port_pb));

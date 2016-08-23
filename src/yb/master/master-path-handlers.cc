@@ -249,8 +249,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   string master_addresses;
   if (master_->opts().IsDistributed()) {
     vector<string> all_addresses;
-    for (const HostPort& hp : *master_->opts().GetMasterAddresses()) {
-      master_addresses.append(hp.ToString());
+    auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();  // ENG-285
+    for (const HostPort& hp : *master_addresses_shared_ptr) {
+      all_addresses.push_back(hp.ToString());
     }
     master_addresses = JoinElements(all_addresses, ",");
   } else {

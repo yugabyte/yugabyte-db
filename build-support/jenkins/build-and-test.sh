@@ -95,7 +95,7 @@ if [ "$BUILD_TYPE" = "tsan" ]; then
 fi
 
 set_cmake_build_type_and_compiler_type
-set_build_root "$BUILD_TYPE"
+set_build_root
 
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}

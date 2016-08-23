@@ -232,7 +232,8 @@ Status Master::ResetMemoryState(const RaftConfigPB& config) {
 void Master::DumpMasterOptionsInfo(std::ostream* out) {
   *out << "Master options : ";
   bool need_comma = false;
-  for (const HostPort& hp : *opts_.GetMasterAddresses()) {
+  auto master_addresses_shared_ptr = opts_.GetMasterAddresses();  // ENG-285
+  for (const HostPort& hp : *master_addresses_shared_ptr) {
     if (need_comma) {
       *out << ", ";
     }
@@ -265,7 +266,12 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     return Status::OK();
   }
 
-  for (const HostPort& peer_addr : *opts_.GetMasterAddresses()) {
+  // ENG-285: Hold on to the shared pointer while iterating over master addresses. Previously, we
+  // would iterate over *opts_.GetMasterAddresses() directly without bumping the refcount, and the
+  // vector would sometimes get deallocated by another thread in the middle of that iteration.
+  auto master_addresses_shared_ptr = opts_.GetMasterAddresses();
+
+  for (const HostPort& peer_addr : *master_addresses_shared_ptr) {
     ServerEntryPB peer_entry;
     Status s = MasterUtil::GetMasterEntryForHost(messenger_,
                                                  peer_addr,
