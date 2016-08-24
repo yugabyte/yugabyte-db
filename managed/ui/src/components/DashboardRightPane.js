@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import CreateUniverse from './CreateUniverse';
+import CreateUniverseContainer from '../containers/CreateUniverseContainer';
 import ListUniverse from './ListUniverse';
 
 export default class DashboardRightPane extends Component {
@@ -9,7 +9,7 @@ export default class DashboardRightPane extends Component {
     return (
       <div>
         <ListUniverse {...this.props} />
-        <CreateUniverse/>
+        <CreateUniverseContainer />
       </div>
     );
   }

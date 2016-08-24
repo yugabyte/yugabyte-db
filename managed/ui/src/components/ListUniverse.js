@@ -8,11 +8,6 @@ export default class ListUniverse extends Component {
 
   constructor(props) {
     super(props);
-    this.showUniverseDialog = this.showUniverseDialog.bind(this);
-  }
-
-  showUniverseDialog () {
-    //TODO show Selected Universe Page
   }
 
   render() {
@@ -31,8 +26,7 @@ export default class ListUniverse extends Component {
     }
 
     const selectRowProp = {
-      bgColor: "rgb(211,211,211)",   //selected row background color
-      onSelect:this.showUniverseDialog()
+      bgColor: "rgb(211,211,211)"
     };
     return (
       <div className="row">
