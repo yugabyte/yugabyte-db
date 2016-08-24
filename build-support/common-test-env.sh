@@ -503,7 +503,6 @@ handle_xml_output() {
   fi
 }
 
-
 postprocess_test_log() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set \
@@ -590,8 +589,13 @@ handle_test_failure() {
     TEST_TMPDIR \
     global_exit_code \
     rel_test_log_path_prefix \
+    test_exit_code \
     test_cmd_line \
     test_log_path
+
+  if ! "$test_failed" & ! did_test_succeed "$test_exit_code" "$test_log_path"; then
+    test_failed=true
+  fi
 
   if "$test_failed"; then
     echo >&2
@@ -710,23 +714,34 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep 'Running 0 tests from 0 test cases' "$log_path" >/dev/null; then
-    log "No tests were run, invalid test filter?"
+  if grep -q 'Running 0 tests from 0 test cases' "$log_path" && \
+     ! egrep -q 'YOU HAVE [[:digit:]]+ DISABLED TEST' "$log_path"; then
+    log 'No tests were run, and no disabled tests found, invalid test filter?'
     return 1
   fi
 
-  if grep 'LeakSanitizer: detected memory leaks' "$log_path" >/dev/null; then
-    log "Detected memory leaks"
+  if grep -q 'LeakSanitizer: detected memory leaks' "$log_path"; then
+    log 'Detected memory leaks'
     return 1
   fi
 
-  if grep 'AddressSanitizer: heap-use-after-free' "$log_path" >/dev/null; then
-    log "Detected use of freed memory"
+  if grep -q 'AddressSanitizer: heap-use-after-free' "$log_path"; then
+    log 'Detected use of freed memory'
     return 1
   fi
 
-  if grep 'AddressSanitizer: undefined-behavior' "$log_path" >/dev/null; then
-    log "Detected undefined behavior"
+  if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
+    log 'Detected undefined behavior'
+    return 1
+  fi
+
+  if grep -q 'ThreadSanitizer' "$log_path"; then
+    log 'ThreadSanitizer failures'
+    return 1
+  fi
+
+  if egrep -q 'Leak check.*detected leaks' "$log_path"; then
+    log 'Leak check failures'
     return 1
   fi
 
