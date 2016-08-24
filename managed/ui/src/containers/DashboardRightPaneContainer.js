@@ -9,17 +9,4 @@ const mapStateToProps = (state) => {
   };
 }
 
-const mapDispatchToProps = (dispatch) => {
-  return {
-    showCreateUniverseForm: createUniverse,
-    resetMe: () =>{
-
-    }
-  }
-}
-
-const createUniverse = (values, dispatch) => {
-
-};
-
 export default connect(mapStateToProps)(DashboardRightPane);
