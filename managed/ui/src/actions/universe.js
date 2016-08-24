@@ -13,6 +13,12 @@ export const FETCH_UNIVERSE_INFO_SUCCESS = 'FETCH_UNIVERSE_INFO_SUCCESS';
 export const FETCH_UNIVERSE_INFO_FAILURE = 'FETCH_UNIVERSE_INFO_FAILURE';
 export const RESET_UNIVERSE_INFO = 'RESET_UNIVERSE_INFO';
 
+// Get List Of Universe
+export const FETCH_UNIVERSE_LIST = 'FETCH_UNIVERSE_LIST';
+export const FETCH_UNIVERSE_LIST_SUCCESS = 'FETCH_UNIVERSE_LIST_SUCCESS';
+export const FETCH_UNIVERSE_LIST_FAILURE = 'FETCH_UNIVERSE_LIST_FAILURE';
+export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
+
 const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 
@@ -32,7 +38,7 @@ export function createUniverseSuccess(result) {
   };
 }
 
-export function createUniverseFailure(error){
+export function createUniverseFailure(error) {
   return {
     type: CREATE_UNIVERSE_FAILURE,
     payload: error
@@ -65,5 +71,35 @@ export function fetchUniverseInfoFailure(error) {
 export function resetUniverseInfo() {
   return {
     type: RESET_UNIVERSE_INFO
+  };
+}
+
+export function fetchUniverseList() {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
+
+  return {
+    type: FETCH_UNIVERSE_LIST,
+    payload: request
+  }
+}
+
+export function fetchUniverseListSuccess(universeList) {
+  return {
+    type: FETCH_UNIVERSE_LIST_SUCCESS,
+    payload: universeList
+  };
+}
+
+export function fetchUniverseListFailure(error) {
+  return {
+    type: FETCH_UNIVERSE_INFO_FAILURE,
+    payload: error
+  };
+}
+
+export function resetUniverseList() {
+  return {
+    type: RESET_UNIVERSE_LIST
   };
 }
