@@ -8,6 +8,8 @@ import fetchRoutes from './routes';
 import configureStore from './store/configureStore.js';
 const store = configureStore();
 import 'bootstrap/dist/css/bootstrap.css';
+import $ from 'jquery';
+window.$ = $;
 
 ReactDOM.render(
   <Provider store={store}>

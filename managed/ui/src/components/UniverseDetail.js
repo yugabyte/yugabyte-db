@@ -10,6 +10,7 @@ export default class UniverseDetail extends Component {
   componentWillUnmount() {
     this.props.resetUniverseInfo();
   }
+  
   componentDidMount() {
     this.props.getUniverseInfo(this.props.uuid);
   }

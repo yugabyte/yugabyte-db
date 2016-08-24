@@ -2,26 +2,23 @@
 
 import axios from 'axios';
 
-//Get current user(me) from token in localStorage
+// Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
 export const VALIDATE_FROM_TOKEN_SUCCESS = 'VALIDATE_FROM_TOKEN_SUCCESS';
 export const VALIDATE_FROM_TOKEN_FAILURE = 'VALIDATE_FROM_TOKEN_FAILURE';
-export const RESET_TOKEN = 'RESET_TOKEN';
 
-//Sign Up Customer
+// Sign Up Customer
 export const REGISTER = 'REGISTER';
 export const REGISTER_SUCCESS = 'REGISTER_SUCCESS';
 export const REGISTER_FAILURE = 'REGISTER_FAILURE';
-export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
-//Sign In Customer
+// Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_SUCCESS = 'LOGIN_SUCCESS';
 export const LOGIN_FAILURE = 'LOGIN_FAILURE';
 
-//log out Customer
+// log out Customer
 export const LOGOUT = 'LOGOUT';
-
 
 const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
@@ -50,7 +47,6 @@ export function validateTokenFailure(error) {
     payload: error
   };
 }
-
 
 export function register(formValues) {
   const request = axios.post(`${ROOT_URL}/register`, formValues);
@@ -103,3 +99,4 @@ export function logout() {
     type: LOGOUT
   };
 }
+
