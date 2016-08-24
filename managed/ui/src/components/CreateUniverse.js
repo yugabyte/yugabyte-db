@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { Modal } from 'react-bootstrap';
 var Multiselect = require('react-bootstrap-multiselect');
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
+import $ from 'jquery';
 
 export default class CreateUniverse extends Component {
   constructor(props) {
@@ -54,7 +55,7 @@ export default class CreateUniverse extends Component {
 
   render() {
     var universeProviderList = this.props.universeProviderList.map(function(providerItem,idx) {
-      return <option key = {providerItem.uuid} value = {providerItem.uuid}>{providerItem.name}</option>;
+      return <option key={providerItem.uuid} value={providerItem.uuid}>{providerItem.name}</option>;
     });
     var universeRegionList = this.props.universeRegionList.map(function (regionItem,idx) {
       return {value: regionItem.uuid, label: regionItem.name}

@@ -5,11 +5,6 @@ import * as moment from 'moment'
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 export default class ListUniverse extends Component {
-
-  constructor(props) {
-    super(props);
-  }
-
   render() {
     var universeDisplay = [];
     if(typeof this.props.customer.universes !== "undefined") {

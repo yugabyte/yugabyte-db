@@ -2,6 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import RegionMap from './RegionMap';
+import NodeDetails from './NodeDetails';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -11,7 +12,7 @@ export default class UniverseDetail extends Component {
   componentWillUnmount() {
     this.props.resetUniverseInfo();
   }
-  
+
   componentDidMount() {
     this.props.getUniverseInfo(this.props.uuid);
   }
@@ -23,7 +24,7 @@ export default class UniverseDetail extends Component {
     } else if (!currentUniverse) {
       return <span />;
     }
-
+    
     return (
       <div id="page-wrapper">
         <div className="row header-row">
@@ -33,6 +34,9 @@ export default class UniverseDetail extends Component {
         </div>
         <div className="row">
           <RegionMap regions={currentUniverse.regions}/>
+        </div>
+        <div className="row">
+          <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsMap}/>
         </div>
       </div>);
   }
