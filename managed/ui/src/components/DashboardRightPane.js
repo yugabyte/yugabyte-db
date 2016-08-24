@@ -2,13 +2,13 @@
 
 import React, { Component } from 'react';
 import CreateUniverseContainer from '../containers/CreateUniverseContainer';
-import ListUniverse from './ListUniverse';
+import ListUniverseContainer from '../containers/ListUniverseContainer';
 
 export default class DashboardRightPane extends Component {
   render() {
     return (
       <div>
-        <ListUniverse {...this.props} />
+        <ListUniverseContainer />
         <CreateUniverseContainer />
       </div>
     );
