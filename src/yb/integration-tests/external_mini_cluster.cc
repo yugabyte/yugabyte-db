@@ -269,14 +269,16 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
 
 Status ExternalMiniCluster::StartSingleMaster() {
   string exe = GetBinaryPath(kMasterBinaryName);
-  uint16_t free_port = AllocateFreePort();
+  uint16_t rpc_port = AllocateFreePort();
+  uint16_t http_port = AllocateFreePort();
 
-  LOG(INFO) << "Using an auto-assigned port " << free_port
-      << " to start an external mini-cluster non-distributed master";
+  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
+            << " to start an external mini-cluster non-distributed master";
+
   scoped_refptr<ExternalMaster> master =
     new ExternalMaster(0, messenger_, exe, GetDataPath("master"),
                        SubstituteInFlags(opts_.extra_master_flags, 0),
-                       Substitute("127.0.0.1:$0", free_port));
+                       Substitute("127.0.0.1:$0", rpc_port), http_port);
   RETURN_NOT_OK(master->Start());
   masters_.push_back(master);
   return Status::OK();
@@ -285,11 +287,12 @@ Status ExternalMiniCluster::StartSingleMaster() {
 Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
   int add_at_index = num_masters();
 
-  int new_port = AllocateFreePort();
-  LOG(INFO) << "Using an auto-assigned port " << new_port
+  uint16_t rpc_port = AllocateFreePort();
+  uint16_t http_port = AllocateFreePort();
+  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
             << " to start a new external mini-cluster master.";
 
-  string addr = Substitute("127.0.0.1:$0", new_port);
+  string addr = Substitute("127.0.0.1:$0", rpc_port);
 
   string exe = GetBinaryPath(kMasterBinaryName);
 
@@ -300,7 +303,9 @@ Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
       GetDataPath(Substitute("master-$0", add_at_index)),
       opts_.extra_master_flags,
       addr,
+      http_port,
       "");
+
   RETURN_NOT_OK_PREPEND(
       master->Start(true),
       Substitute("Unable to start 'shell' mode master at index $0", add_at_index));
@@ -666,6 +671,7 @@ Status ExternalMiniCluster::StartDistributedMasters() {
 
   // Start the masters.
   for (int i = 0; i < num_masters; i++) {
+    uint16_t http_port = AllocateFreePort();
     scoped_refptr<ExternalMaster> peer =
       new ExternalMaster(
         i,
@@ -674,6 +680,7 @@ Status ExternalMiniCluster::StartDistributedMasters() {
         GetDataPath(Substitute("master-$0", i)),
         SubstituteInFlags(flags, i),
         peer_addrs[i],
+        http_port,
         peer_addrs_str);
     RETURN_NOT_OK_PREPEND(peer->Start(),
                           Substitute("Unable to start Master at index $0", i));
@@ -706,10 +713,13 @@ Status ExternalMiniCluster::AddTabletServer() {
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
   }
 
+  uint16_t ts_rpc_port = AllocateFreePort();
+  uint16_t ts_http_port = AllocateFreePort();
   scoped_refptr<ExternalTabletServer> ts =
     new ExternalTabletServer(
       idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
-      master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
+      ts_rpc_port, ts_http_port, master_hostports,
+      SubstituteInFlags(opts_.extra_tserver_flags, idx));
   RETURN_NOT_OK(ts->Start());
   tablet_servers_.push_back(ts);
   return Status::OK();
@@ -1287,10 +1297,12 @@ ExternalMaster::ExternalMaster(
     const string& data_dir,
     const std::vector<string>& extra_flags,
     const string& rpc_bind_address,
+    uint16_t http_port,
     const string& master_addrs)
     : ExternalDaemon(Substitute("m-$0", master_index), messenger, exe, data_dir, extra_flags),
       rpc_bind_address_(std::move(rpc_bind_address)),
-      master_addrs_(std::move(master_addrs)) {
+      master_addrs_(std::move(master_addrs)),
+      http_port_(http_port) {
 }
 
 ExternalMaster::~ExternalMaster() {
@@ -1302,7 +1314,7 @@ Status ExternalMaster::Start(bool shell_mode) {
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
-  flags.push_back("--webserver_port=0");
+  flags.push_back(Substitute("--webserver_port=$0", http_port_));
   // On first start, we need to tell the masters what their list of expected peers is and set the
   // create_cluster flag. For 'shell' master, there is no create flag or master addresses needed.
   if (!shell_mode) {
@@ -1333,13 +1345,14 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    int tablet_server_index,
-    const std::shared_ptr<rpc::Messenger>& messenger, const string& exe,
-    const string& data_dir, string bind_host,
+    int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger, const string& exe,
+    const string& data_dir, string bind_host, uint16_t rpc_port, uint16_t http_port,
     const vector<HostPort>& master_addrs, const vector<string>& extra_flags)
   : ExternalDaemon(Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, extra_flags),
     master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
-    bind_host_(std::move(bind_host)) {}
+    bind_host_(std::move(bind_host)),
+    rpc_port_(rpc_port),
+    http_port_(http_port) {}
 
 ExternalTabletServer::~ExternalTabletServer() {
 }
@@ -1348,13 +1361,13 @@ Status ExternalTabletServer::Start() {
   vector<string> flags;
   flags.push_back("--fs_wal_dir=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
-  flags.push_back(Substitute("--rpc_bind_addresses=$0:0",
-                             bind_host_));
+  flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
+                             bind_host_, rpc_port_));
   flags.push_back(Substitute("--local_ip_for_outbound_sockets=$0",
                              bind_host_));
   flags.push_back(Substitute("--webserver_interface=$0",
                              bind_host_));
-  flags.push_back("--webserver_port=0");
+  flags.push_back(Substitute("--webserver_port=$0", http_port_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
   RETURN_NOT_OK(StartProcess(flags));
   return Status::OK();

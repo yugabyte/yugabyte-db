@@ -475,6 +475,7 @@ class ExternalMaster : public ExternalDaemon {
     const std::string& data_dir,
     const std::vector<std::string>& extra_flags,
     const std::string& rpc_bind_address = "127.0.0.1:0",
+    uint16_t http_port = 0,
     const std::string& master_addrs = "");
 
   Status Start(bool shell_mode = false);
@@ -490,6 +491,7 @@ class ExternalMaster : public ExternalDaemon {
   // used on start to create the cluster; on restart, this should not be used!
   const std::string rpc_bind_address_;
   const std::string master_addrs_;
+  const uint16_t http_port_;
 };
 
 class ExternalTabletServer : public ExternalDaemon {
@@ -500,6 +502,8 @@ class ExternalTabletServer : public ExternalDaemon {
     const std::string& exe,
     const std::string& data_dir,
     std::string bind_host,
+    uint16_t rpc_port,
+    uint16_t http_port,
     const std::vector<HostPort>& master_addrs,
     const std::vector<std::string>& extra_flags);
 
@@ -513,6 +517,8 @@ class ExternalTabletServer : public ExternalDaemon {
  private:
   const std::string master_addrs_;
   const std::string bind_host_;
+  const uint16_t rpc_port_;
+  const uint16_t http_port_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;
   virtual ~ExternalTabletServer();
