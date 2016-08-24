@@ -11,7 +11,6 @@ export default function(state = INITIAL_STATE, action) {
   switch(action.type) {
     case GET_PROVIDER_LIST:
       return {...state, providers: [], status: 'storage', error: null, loading: true};
-      return {...state, providers: [], status: 'storage', error: null, loading: true};
     case GET_PROVIDER_LIST_SUCCESS:
       return {...state, providers: action.payload, status: 'provider_fetch_success', error: null, loading:false};
     case GET_PROVIDER_LIST_FAILURE:
