@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
+import RegionMap from './RegionMap';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -29,6 +30,9 @@ export default class UniverseDetail extends Component {
           <div className="col-lg-10">
             <h3>UniverseDetail: { currentUniverse.name } </h3>
           </div>
+        </div>
+        <div className="row">
+          <RegionMap regions={currentUniverse.regions}/>
         </div>
       </div>);
   }
