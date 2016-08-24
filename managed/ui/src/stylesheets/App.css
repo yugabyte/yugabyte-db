@@ -26,6 +26,11 @@
     border-bottom: 1px solid #eee;
 }
 
+.leaflet-container {
+  height: 300px;
+  width: 500px;
+}
+
 form a {
   margin-left: 5px;
 }
