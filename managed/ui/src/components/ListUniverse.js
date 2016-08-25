@@ -25,15 +25,15 @@ export default class ListUniverse extends Component {
     if (typeof this.props.universe.universeList !== "undefined") {
       universeDisplay = this.props.universe.universeList.map(function (item, idx) {
         var regionNames = "";
-        if (typeof(item.regions) != "undefined") {
+        if (typeof(item.regions) !== "undefined") {
           regionNames = item.regions.map(function(region) { return region.name }).join("|");
         }
         var providerName = "";
-        if (typeof item.provider != "undefined") {
+        if (typeof item.provider !== "undefined") {
           providerName = item.provider.name;
         }
         var numNodes = "";
-        if (typeof item.universeDetails.numNodes != "undefined") {
+        if (typeof item.universeDetails.numNodes !== "undefined") {
           numNodes = item.universeDetails.numNodes;
         }
         var updateProgressStatus = false;
