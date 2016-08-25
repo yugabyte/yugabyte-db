@@ -1,8 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
+import { Grid, Row, Col } from 'react-bootstrap';
 import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
+import UniverseInfoPanel from './UniverseInfoPanel';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -24,20 +26,23 @@ export default class UniverseDetail extends Component {
     } else if (!currentUniverse) {
       return <span />;
     }
-    
+
     return (
-      <div id="page-wrapper">
-        <div className="row header-row">
-          <div className="col-lg-10">
-            <h3>UniverseDetail: { currentUniverse.name } </h3>
-          </div>
-        </div>
-        <div className="row">
-          <RegionMap regions={currentUniverse.regions}/>
-        </div>
-        <div className="row">
+      <Grid id="page-wrapper">
+        <Row className="header-row">
+          <h3>Universe { currentUniverse.name }</h3>
+        </Row>
+        <Row>
+          <Col md={6}>
+            <RegionMap regions={currentUniverse.regions}/>
+          </Col>
+          <Col md={6}>
+            <UniverseInfoPanel universeInfo={currentUniverse} />
+          </Col>
+        </Row>
+        <Row>
           <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsMap}/>
-        </div>
-      </div>);
+        </Row>
+      </Grid>);
   }
 }
