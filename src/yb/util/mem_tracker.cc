@@ -198,6 +198,13 @@ void MemTracker::UnregisterFromParent() {
   }
 }
 
+void MemTracker::UnregisterFromParentIfNoChildren() {
+  DCHECK(parent_);
+  MutexLock l_c(child_trackers_lock_);
+  if (!child_trackers_.empty())
+    UnregisterFromParent();
+}
+
 string MemTracker::ToString() const {
   string s;
   const MemTracker* tracker = this;

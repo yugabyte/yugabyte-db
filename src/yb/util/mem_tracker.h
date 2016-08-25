@@ -111,6 +111,15 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // externally synchronized.
   void UnregisterFromParent();
 
+  // Removes this tracker from its parent's children if this tracker has no
+  // children. Useful when this tracker is only referenced by shared pointers
+  // stored in its children.". This case comes up in the LogCache memtrackers.
+  // The LogCache root MemTracker has no owners other than its children, which
+  // are associated with each LogCache. When all LogCaches are destroyed, there
+  // used to be a brief window where Unregister has not been called on the root
+  // while it is about to be destroyed. (Eng-298)
+  void UnregisterFromParentIfNoChildren();
+
   // Creates and adds the tracker to the tree so that it can be retrieved with
   // FindTracker/FindOrCreateTracker.
   //
@@ -322,6 +331,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // All the child trackers of this tracker. Used for error reporting and
   // listing only (i.e. updating the consumption of a parent tracker does not
   // update that of its children).
+  // Note: This lock must never be taken on a parent before on a child.
+  // It is taken in the opposite order during UnregisterFromParentIfNoChildren()
   mutable Mutex child_trackers_lock_;
   std::list<MemTracker*> child_trackers_;
 

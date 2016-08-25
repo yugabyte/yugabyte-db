@@ -105,9 +105,9 @@ LogCache::~LogCache() {
   tracker_->Release(tracker_->consumption());
   cache_.clear();
 
-  // Don't need to unregister parent_tracker_ because it is reused in each
-  // LogCache, not duplicated.
   tracker_->UnregisterFromParent();
+  // Unregister the log cache root only if all the log caches are gone (nobody else owns it).
+  parent_tracker_->UnregisterFromParentIfNoChildren();
 }
 
 void LogCache::Init(const OpId& preceding_op) {
