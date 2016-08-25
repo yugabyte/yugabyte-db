@@ -19,9 +19,10 @@ export const LOGIN_FAILURE = 'LOGIN_FAILURE';
 
 // log out Customer
 export const LOGOUT = 'LOGOUT';
+export const LOGOUT_SUCCESS = 'LOGOUT_SUCCESS';
+export const LOGOUT_FAILURE = 'LOGOUT_FAILURE';
 
 const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
-
 
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
@@ -95,8 +96,22 @@ export function loginFailure(error) {
 }
 
 export function logout() {
+  const request = axios.get(`${ROOT_URL}/logout`);
   return {
-    type: LOGOUT
+    type: LOGOUT,
+    payload: request
   };
 }
 
+export function logoutSuccess() {
+  return {
+    type: LOGOUT_SUCCESS
+  };
+}
+
+export function logoutFailure(error) {
+  return {
+    type: LOGOUT_FAILURE,
+    payload: error
+  }
+}
