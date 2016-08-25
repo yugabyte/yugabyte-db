@@ -41,8 +41,7 @@ public class UniverseFormData {
   public int replicationFactor = 3;
 
   // Determines if this universe is a single or multi AZ deployment.
-  @Constraints.Required()
-  public Boolean isMultiAZ;
+  public Boolean isMultiAZ = false;
 
   // The list of regions that the user wants to place data replicas into.
   @Constraints.Required()
