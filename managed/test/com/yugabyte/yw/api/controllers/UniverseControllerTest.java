@@ -186,7 +186,6 @@ public class UniverseControllerTest extends FakeDBApplication {
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), is(containsString("\"regionList\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"isMultiAZ\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"universeName\":[\"This field is required\"]")));
   }
 
@@ -252,7 +251,6 @@ public class UniverseControllerTest extends FakeDBApplication {
                             .cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), is(containsString("\"regionList\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"isMultiAZ\":[\"This field is required\"]")));
     assertThat(contentAsString(result), is(containsString("\"universeName\":[\"This field is required\"]")));
   }
 
