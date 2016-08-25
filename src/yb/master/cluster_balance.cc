@@ -286,6 +286,11 @@ class ClusterLoadBalancer::ClusterLoadState {
         break;
       }
     }
+
+    if (ts_desc->HasTabletDeletePending()) {
+      LOG(INFO) << "tablet server " << ts_uuid << " has a pending delete";
+      servers_with_pending_deletes_.insert(ts_uuid);
+    }
   }
 
   bool CanAddTabletToTabletServer(
@@ -302,6 +307,12 @@ class ClusterLoadBalancer::ClusterLoadState {
     }
     // If we ask to use placement information, check against it.
     if (placement_info && !HasValidPlacement(to_ts, placement_info)) {
+      return false;
+    }
+    // If this server has a pending tablet delete, don't use it.
+    if (servers_with_pending_deletes_.count(to_ts)) {
+      LOG(INFO) << "tablet server " << to_ts << " has a pending delete. "
+                <<  "Not allowing it to take more tablets";
       return false;
     }
     // If all checks pass, return true.
@@ -427,6 +438,9 @@ class ClusterLoadBalancer::ClusterLoadState {
 
   // The list of tablet server ids that match the cached blacklist.
   set<TabletServerId> blacklisted_servers_;
+
+  // List of tablet server ids that have pending deletes.
+  set<TabletServerId> servers_with_pending_deletes_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);

@@ -29,7 +29,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/net/net_util.h"
 
-
 using std::shared_ptr;
 
 namespace yb {
@@ -275,6 +274,26 @@ Status TSDescriptor::GetTSServiceProxy(const shared_ptr<rpc::Messenger>& messeng
   }
   *proxy = ts_service_proxy_;
   return Status::OK();
+}
+
+bool TSDescriptor::HasTabletDeletePending() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return !tablets_pending_delete_.empty();
+}
+
+bool TSDescriptor::IsTabletDeletePending(const std::string& tablet_id) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return tablets_pending_delete_.count(tablet_id);
+}
+
+void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  tablets_pending_delete_.insert(tablet_id);
+}
+
+void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  tablets_pending_delete_.erase(tablet_id);
 }
 
 } // namespace master

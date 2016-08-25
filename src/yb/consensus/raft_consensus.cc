@@ -1403,7 +1403,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     return Status::InvalidArgument("Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
   }
-  VLOG(1) << "Received ChangeConfig request " << req.ShortDebugString();
+  LOG(INFO) << "Received ChangeConfig request " << req.ShortDebugString();
   ChangeConfigType type = req.type();
   RaftPeerPB* new_peer = nullptr;
   const RaftPeerPB& server = req.server();

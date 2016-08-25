@@ -1522,11 +1522,21 @@ bool CatalogManager::TableNameExists(const string& table_name) {
   return table_names_map_.find(table_name) != table_names_map_.end();
 }
 
-void CatalogManager::NotifyTabletDeleteSuccess(const string& permanent_uuid,
-                                               const string& tablet_id) {
-  // TODO: Clean up the stale deleted tablet data once all relevant tablet
-  // servers have responded that they have removed the remnants of the deleted
-  // tablet.
+void CatalogManager::NotifyTabletDeleteFinished(const string& tserver_uuid,
+                                                const string& tablet_id) {
+  shared_ptr<TSDescriptor> ts_desc;
+  if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
+    LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
+    return;
+  }
+
+  if (!ts_desc->IsTabletDeletePending(tablet_id)) {
+    LOG(ERROR) << "Pending delete for tablet " << tablet_id << " in ts "
+               << tserver_uuid << " doesn't exist";
+    return;
+  }
+  LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
+  ts_desc->ClearPendingTabletDelete(tablet_id);
 }
 
 Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
@@ -2448,6 +2458,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   virtual string tablet_id() const OVERRIDE { return tablet_id_; }
 
   virtual void HandleResponse(int attempt) OVERRIDE {
+    bool delete_done = false;
     if (resp_.has_error()) {
       Status status = StatusFromPB(resp_.error().status());
 
@@ -2459,11 +2470,13 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
                        << " because the tablet was not found. No further retry: "
                        << status.ToString();
           MarkComplete();
+          delete_done = true;
           break;
         case TabletServerErrorPB::CAS_FAILED:
           LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                        << " due to a CAS failure. No further retry: " << status.ToString();
           MarkComplete();
+          delete_done = true;
           break;
         default:
           LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
@@ -2472,7 +2485,6 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
           break;
       }
     } else {
-      master_->catalog_manager()->NotifyTabletDeleteSuccess(permanent_uuid_, tablet_id_);
       if (table_) {
         LOG(INFO) << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
                   << " (table " << table_->ToString() << ") successfully deleted";
@@ -2481,7 +2493,11 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
                      << " did not belong to a known table, but was successfully deleted";
       }
       MarkComplete();
+      delete_done = true;
       VLOG(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
+    }
+    if (delete_done) {
+      master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
     }
   }
 
@@ -2948,7 +2964,12 @@ void CatalogManager::SendDeleteTabletRequest(
     // created as response to a tablet report.
     call->AddRef();
   }
-  WARN_NOT_OK(call->Run(), "Failed to send delete tablet request");
+
+  auto status = call->Run();
+  WARN_NOT_OK(status, Substitute("Failed to send delete request for tablet $0", tablet_id));
+  if (status.ok()) {
+    ts_desc->AddPendingTabletDelete(tablet_id);
+  }
 }
 
 bool CatalogManager::getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,

@@ -544,9 +544,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // NOTE: This should only be used by tests
   bool TableNameExists(const std::string& table_name);
 
-  // Let the catalog manager know that the the given tablet server successfully
-  // deleted the specified tablet.
-  void NotifyTabletDeleteSuccess(const std::string& permanent_uuid, const std::string& tablet_id);
+  // Let the catalog manager know that we have received a response for a delete tablet request,
+  // and that we either deleted the tablet successfully, or we received a fatal error.
+  void NotifyTabletDeleteFinished(const std::string& tserver_uuid, const std::string& table_id);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.

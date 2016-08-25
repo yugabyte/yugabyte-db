@@ -136,6 +136,13 @@ class TSDescriptor {
     return num_live_replicas_;
   }
 
+  // Set of methods to keep track of pending tablet deletes for a tablet server. We use them to
+  // avoid assigning more tablets to a tserver that might be potentially unresponsive.
+  bool HasTabletDeletePending() const;
+  bool IsTabletDeletePending(const std::string& tablet_id) const;
+  void AddPendingTabletDelete(const std::string& tablet_id);
+  void ClearPendingTabletDelete(const std::string& tablet_id);
+
  private:
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   friend class TestLoadBalancer;
@@ -172,6 +179,9 @@ class TSDescriptor {
   std::shared_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
   std::shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_service_proxy_;
+
+  // Set of tablet uuids for which a delete is pending on this tablet server.
+  std::set<std::string> tablets_pending_delete_;
 
   DISALLOW_COPY_AND_ASSIGN(TSDescriptor);
 };
