@@ -3,7 +3,7 @@
 import {
   VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_SUCCESS, VALIDATE_FROM_TOKEN_FAILURE,
 	REGISTER, REGISTER_SUCCESS, REGISTER_FAILURE,
-	LOGIN, LOGIN_SUCCESS,  LOGIN_FAILURE, LOGOUT
+	LOGIN, LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE
 } from '../actions/customers';
 
 const INITIAL_STATE = {customer: null, universes: [], status: null, error: null, loading: false};
@@ -33,7 +33,11 @@ export default function(state = INITIAL_STATE, action) {
     error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors      
       return { ...state, customer: null, status: 'login', error: error, loading: false};
     case LOGOUT:
-      return {...state, customer: null, status: 'logout', error: null, loading: false};
+      return {...state, status: 'logout', error: null, loading: true};
+    case LOGOUT_SUCCESS:
+      return {...state, customer: null, status: 'logout_success', error: null, loading: false};
+    case LOGOUT_FAILURE:
+      return {...state, status: 'logout_failure', error: error, loading: false};
     default:
       return state;
   }

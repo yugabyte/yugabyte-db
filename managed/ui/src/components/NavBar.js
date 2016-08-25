@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import TopNavBar from './TopNavBar';
+import TopNavBarContainer from '../containers/TopNavBarContainer';
 import SideNavBar from './SideNavBar';
 
 export default class NavBar extends Component {
@@ -17,7 +17,7 @@ export default class NavBar extends Component {
 					</button>
 					<a className="navbar-brand" href="/">YugaByte Customer Portal</a>
 				</div>
-				<TopNavBar />
+				<TopNavBarContainer />
 				<SideNavBar />
 			</nav>
 		);
