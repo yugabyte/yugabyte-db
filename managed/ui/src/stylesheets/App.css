@@ -31,6 +31,11 @@
   width: 500px;
 }
 
+.graph-panel-grid div.dropdown {
+  float: right;
+  margin-top: -7px;
+}
+
 form a {
   margin-left: 5px;
 }
