@@ -22,6 +22,10 @@ export default class ListUniverse extends Component {
       return regionNames.map(function(region) { return region }).join("<br />");
     }
 
+    function universeNameFormatter(cell, row) {
+      return <a href={"/universes/".concat(row.id)}>{cell}</a>;
+    }
+
     if (typeof this.props.universe.universeList !== "undefined") {
       universeDisplay = this.props.universe.universeList.map(function (item, idx) {
         var regionNames = "";
@@ -68,6 +72,7 @@ export default class ListUniverse extends Component {
     const selectRowProp = {
       bgColor: "rgb(211,211,211)"
     };
+
     return (
       <div className="row">
         <BootstrapTable data={universeDisplay}
@@ -76,7 +81,8 @@ export default class ListUniverse extends Component {
                         selectRow={selectRowProp} >
           <TableHeaderColumn dataField="name"
                              dataSort={true}
-                             isKey={true}>Universe Name</TableHeaderColumn>
+                             isKey={true}
+                             dataFormat={universeNameFormatter}>Universe Name</TableHeaderColumn>
           <TableHeaderColumn dataField="created" >Created On</TableHeaderColumn>
           <TableHeaderColumn dataField="region"
                              dataAlign="start"
