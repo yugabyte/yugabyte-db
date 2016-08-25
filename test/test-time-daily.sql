@@ -1,4 +1,4 @@
--- ########## TIME STATIC TESTS ##########
+-- ########## TIME DAILY TESTS ##########
 -- Other tests: With OIDS, run_maintenance(p_analyze := false), check that maintenance catches up if tables are missing
 
 \set ON_ERROR_ROLLBACK 1
@@ -155,7 +155,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
     ARRAY[15], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
 
 UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table = 'partman_test.time_taptest_table';
--- Run to get +5 trigger in plae
+-- Run to get +5 trigger in place
 SELECT run_maintenance(p_analyze := false);
 -- Insert after maintenance so new +5 day trigger is in place
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(101,122), CURRENT_TIMESTAMP + '5 days'::interval);

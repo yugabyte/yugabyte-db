@@ -1,3 +1,16 @@
+2.6.0
+-- New function to aid in column removal: drop_partition_column(). 
+    -- Depending on when a column was added (before or after setting up inheritance for partitioning), dropping it on the parent may or may not drop the column from all children.
+    -- Using this function will ensure the column is always dropped.
+    -- Uses IF EXISTS clause to cleanly work even if column is missing from children already. Will give off warnings if column doesn't exist, but not return errors.
+    -- This function can work for any inheritance set to drop columns, not just those maintained by pg_partman.
+    -- Issue mentioned in blog post by Andrew Dunstan and also borrowed code from there for this function - http://adpgtech.blogspot.com/2015/07/dropping-columns-on-partitioned-tables.html
+-- Added new configuration option to control if the partitioning trigger returns NULL or NEW. Default is to return NULL. See documentation for further use of this option (Github Issue #128 & Pull Request #127).
+    -- New parameter to create_parent() & create_sub_parent() so be sure to account for that in existing function calls
+-- Account for all new config columns when checking subpartition configuration consistency. If you suddenly start getting errors about subpartition configuration mismatches, ensure all sibling subpartition parents are configured exactly the same. See error returned by this check for more details on how to fix this.
+-- Added --version option to vacuum_maintenance.py
+
+
 2.5.1
 -- Fix check for ensuring upsert feature can only be used in 9.5 in create_parent() & create_sub_parent(). Was causing erroneous failures with versions prior to 9.5. Thanks to Death_Syn & ilmari on #postgresql freenode for reporting the issue.
 

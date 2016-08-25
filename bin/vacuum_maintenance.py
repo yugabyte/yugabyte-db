@@ -5,7 +5,7 @@ import argparse, datetime, psycopg2, sys
 partman_version = "2.3.2"
 
 parser = argparse.ArgumentParser(description="Script for performing additional vacuum maintenance on the child tables of a partition set in order to avoid excess vacuuming and transaction id wraparound issues. Whether a table is vacuumed or not by this script depends on whether its age(relfrozenxid) is greater than vacuum_freeze_min_age. This ensures repeated runs of this script do not re-vacuum tables that have already had all of their page tuples frozen. This script does not require pg_partman to be installed and will work on any inheritance set given a parent table, as long as the options --all, --type or --interval are NOT set.")
-parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. Either this option or --all is required.")
+parser.add_argument('-p', '--parent', help="Parent table of an already created partition/inheritance set. Either this option or --all is required.")
 parser.add_argument('--all', action="store_true", help="Run against all tables managed by pg_partman. Either this option or -p is required. Overrides -p if both are set.")
 parser.add_argument('-c', '--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('-z', '--freeze', action="store_true", help="Sets the FREEZE option to the VACUUM command.")
@@ -16,6 +16,7 @@ parser.add_argument('-i', '--interval', help="In addition to checking transactio
 parser.add_argument('--noparent', action="store_true", help="Normally the parent table is included in the list of tables to vacuum if its age(relfrozenxid) is higher than vacuum_freeze_min_age. Set this to force exclusion of the parent table, even if it meets that criteria.")
 parser.add_argument('--dryrun', action="store_true", help="Show what the script will do without actually running it against the database. Highly recommend reviewing this before running for the first time.")
 parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all output.")
+parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 parser.add_argument('--debug', action="store_true", help="Show additional debugging output")
 args = parser.parse_args()
 
@@ -170,6 +171,11 @@ def get_vacuum_freeze_min_age(conn):
     return int(vacuum_freeze_min_age)
 
 
+def print_version():
+    print(partman_version)
+    sys.exit()
+
+
 def vacuum_table(conn, schemaname, tablename):
     cur = conn.cursor()
     sql = "VACUUM "
@@ -186,6 +192,8 @@ def vacuum_table(conn, schemaname, tablename):
 
 
 if __name__ == "__main__":
+    if args.version:
+        print_version()
 
     if args.parent == None and args.all == False:
         print("Either the -p/--parent option or --all must be set.")

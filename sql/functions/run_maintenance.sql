@@ -47,7 +47,6 @@ v_row                           record;
 v_row_max_id                    record;
 v_row_max_time                  record;
 v_row_sub                       record;
-v_skip_maint                    boolean;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_sub_id_max                    bigint;
@@ -107,7 +106,6 @@ FOR v_row IN EXECUTE v_tables_list_sql
 LOOP
 
     CONTINUE WHEN v_row.undo_in_progress;
-    v_skip_maint := true; -- reset every loop
 
     -- Check for consistent data in part_config_sub table. Was unable to get this working properly as either a constraint or trigger. 
     -- Would either delay raising an error until the next write (which I cannot predict) or disallow future edits to update a sub-partition set's configuration.

@@ -13,6 +13,7 @@ CREATE FUNCTION create_parent(
     , p_inherit_fk boolean DEFAULT true
     , p_epoch boolean DEFAULT false
     , p_upsert text DEFAULT ''
+    , p_trigger_return_null boolean DEFAULT true
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean 
@@ -157,6 +158,7 @@ FOR v_row IN
         , sub_jobmon
         , sub_trigger_exception_handling
         , sub_upsert
+        , sub_trigger_return_null
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -179,7 +181,8 @@ LOOP
         , sub_infinite_time_partitions
         , sub_jobmon
         , sub_trigger_exception_handling
-        , sub_upsert)
+        , sub_upsert
+        , sub_trigger_return_null)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -199,7 +202,8 @@ LOOP
         , v_row.sub_infinite_time_partitions
         , v_row.sub_jobmon
         , v_row.sub_trigger_exception_handling
-        , v_row.sub_upsert);
+        , v_row.sub_upsert
+        , v_row.sub_trigger_return_null);
 END LOOP;
 
 IF p_type = 'time' OR p_type = 'time-custom' THEN
@@ -307,7 +311,8 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
         , use_run_maintenance
         , inherit_fk
         , jobmon 
-        , upsert)
+        , upsert
+        , trigger_return_null)
     VALUES (
         p_parent_table
         , p_type
@@ -320,7 +325,8 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
         , v_run_maint
         , p_inherit_fk
         , p_jobmon
-        , p_upsert);
+        , p_upsert
+        , p_trigger_return_null);
 
     v_last_partition_created := @extschema@.create_partition_time(p_parent_table, v_partition_time_array, false);
 
@@ -431,7 +437,8 @@ IF p_type = 'id' THEN
         , use_run_maintenance
         , inherit_fk
         , jobmon
-        , upsert) 
+        , upsert
+        , trigger_return_null) 
     VALUES (
         p_parent_table
         , p_type
@@ -442,7 +449,8 @@ IF p_type = 'id' THEN
         , v_run_maint
         , p_inherit_fk
         , p_jobmon
-        , p_upsert);
+        , p_upsert
+        , p_trigger_return_null);
     v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
     IF v_last_partition_created = false THEN
         -- This can happen with subpartitioning when future or past partitions prevent child creation because they're out of range of the parent

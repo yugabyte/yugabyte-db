@@ -42,6 +42,7 @@ v_step_id                       bigint;
 v_top_parent                    text := p_parent_table;
 v_trig_func                     text;
 v_trigger_exception_handling    boolean;
+v_trigger_return_null           boolean;
 v_upsert                        text;
 
 BEGIN
@@ -54,6 +55,7 @@ SELECT partition_interval::bigint
     , jobmon
     , trigger_exception_handling
     , upsert
+    , trigger_return_null
 INTO v_partition_interval
     , v_control
     , v_premake
@@ -62,6 +64,7 @@ INTO v_partition_interval
     , v_jobmon
     , v_trigger_exception_handling
     , v_upsert
+    , v_trigger_return_null
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND partition_type = 'id';
@@ -262,8 +265,16 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
     END IF;
 
     v_trig_func := v_trig_func ||'
-    END IF; 
+    END IF;';
+
+    IF v_trigger_return_null IS TRUE THEN
+        v_trig_func := v_trig_func ||'
     RETURN NULL;';
+    ELSE
+        v_trig_func := v_trig_func ||'
+    RETURN NEW;';
+    END IF;
+
     IF v_trigger_exception_handling THEN 
         v_trig_func := v_trig_func ||'
     EXCEPTION WHEN OTHERS THEN

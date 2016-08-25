@@ -1,7 +1,7 @@
 /*
  * Create the trigger function for the parent table of a time-based partition set
  */
-CREATE OR REPLACE FUNCTION create_function_time(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
+CREATE FUNCTION create_function_time(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -35,6 +35,7 @@ v_step_id                       bigint;
 v_trig_func                     text;
 v_optimize_trigger              int;
 v_trigger_exception_handling    boolean;
+v_trigger_return_null           boolean;
 v_type                          text;
 v_upsert                        text;
 
@@ -49,6 +50,7 @@ SELECT partition_type
     , jobmon
     , trigger_exception_handling
     , upsert
+    , trigger_return_null
 INTO v_type
     , v_partition_interval
     , v_epoch
@@ -58,6 +60,7 @@ INTO v_type
     , v_jobmon
     , v_trigger_exception_handling
     , v_upsert
+    , v_trigger_return_null
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (partition_type = 'time' OR partition_type = 'time-custom');
@@ -275,8 +278,16 @@ IF v_type = 'time' THEN
             , v_parent_schema);
 
     v_trig_func := v_trig_func ||'
-        END IF; 
-        RETURN NULL;'; 
+        END IF;';
+
+    IF v_trigger_return_null IS TRUE THEN
+        v_trig_func := v_trig_func ||'
+        RETURN NULL;';
+    ELSE
+        v_trig_func := v_trig_func ||'
+        RETURN NEW;';
+    END IF;
+
     IF v_trigger_exception_handling THEN 
         v_trig_func := v_trig_func ||'
         EXCEPTION WHEN OTHERS THEN
@@ -341,9 +352,16 @@ ELSIF v_type = 'time-custom' THEN
             EXECUTE format(''INSERT INTO %I.%I VALUES ($1.*) %s'', v_child_schemaname, v_child_tablename, v_upsert) USING NEW;
         ELSE
             RETURN NEW;
-        END IF;
+        END IF;';
 
+    IF v_trigger_return_null IS TRUE THEN
+        v_trig_func := v_trig_func ||'
         RETURN NULL;';
+    ELSE
+        v_trig_func := v_trig_func ||'
+        RETURN NEW;';
+    END IF;
+
     IF v_trigger_exception_handling THEN 
         v_trig_func := v_trig_func ||'
         EXCEPTION WHEN OTHERS THEN
@@ -391,4 +409,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

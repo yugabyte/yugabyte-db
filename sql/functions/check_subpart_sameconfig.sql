@@ -20,7 +20,10 @@ CREATE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text)
         , sub_optimize_trigger int
         , sub_optimize_constraint int
         , sub_infinite_time_partitions boolean
-        , sub_jobmon boolean)
+        , sub_jobmon boolean
+        , sub_trigger_exception_handling boolean
+        , sub_upsert text
+        , sub_trigger_return_null boolean)
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path = @extschema@,pg_temp
 AS $$
@@ -56,6 +59,9 @@ AS $$
         , a.sub_optimize_constraint
         , a.sub_infinite_time_partitions
         , a.sub_jobmon
+        , a.sub_trigger_exception_handling
+        , a.sub_upsert
+        , a.sub_trigger_return_null
     FROM @extschema@.part_config_sub a
     JOIN child_tables b on a.sub_parent = b.tablename;
 $$;

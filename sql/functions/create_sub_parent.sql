@@ -17,6 +17,7 @@ CREATE FUNCTION create_sub_parent(
     , p_inherit_fk boolean DEFAULT true
     , p_epoch boolean DEFAULT false
     , p_upsert text DEFAULT ''
+    , p_trigger_return_null boolean DEFAULT true
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean
@@ -94,6 +95,7 @@ LOOP
             , p_inherit_fk := %L
             , p_epoch := %L
             , p_upsert := %L
+            , p_trigger_return_null := %L
             , p_jobmon := %L
             , p_debug := %L )'
         , v_row.child_table
@@ -107,6 +109,7 @@ LOOP
         , p_inherit_fk
         , p_epoch
         , p_upsert
+        , p_trigger_return_null
         , p_jobmon
         , p_debug);
     EXECUTE v_sql;
@@ -124,7 +127,8 @@ INSERT INTO @extschema@.part_config_sub (
     , sub_use_run_maintenance
     , sub_epoch
     , sub_upsert
-    , sub_jobmon)
+    , sub_jobmon
+    , sub_trigger_return_null)
 VALUES (
     p_top_parent
     , p_control
@@ -136,7 +140,8 @@ VALUES (
     , true
     , p_epoch
     , p_upsert
-    , p_jobmon);
+    , p_jobmon
+    , p_trigger_return_null);
 
 v_success := true;
 
