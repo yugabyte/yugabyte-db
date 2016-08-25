@@ -5,6 +5,7 @@ import { Grid, Row, Col } from 'react-bootstrap';
 import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
+import GraphPanelContainer from '../containers/GraphPanelContainer';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -26,7 +27,7 @@ export default class UniverseDetail extends Component {
     } else if (!currentUniverse) {
       return <span />;
     }
-
+    const { universeDetails } = currentUniverse;
     return (
       <Grid id="page-wrapper">
         <Row className="header-row">
@@ -41,7 +42,10 @@ export default class UniverseDetail extends Component {
           </Col>
         </Row>
         <Row>
-          <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsMap}/>
+          <NodeDetails nodeDetails={universeDetails.nodeDetailsMap}/>
+        </Row>
+        <Row>
+          <GraphPanelContainer nodePrefix={universeDetails.nodePrefix} />
         </Row>
       </Grid>);
   }
