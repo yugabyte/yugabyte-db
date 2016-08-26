@@ -39,8 +39,6 @@ Options:
     Pass the given target to make.
   --cxx-test <test_name>
     Build and run the given C++ test. We run the test directly (not going through ctest).
-  --no-fix-rpath
-    Skip running fix_rpath.py.
   --no-tcmalloc
     Do not use tcmalloc.
 
@@ -64,7 +62,6 @@ build_java=true
 run_java_tests=false
 save_log=false
 make_targets=()
-fix_rpath=true
 no_tcmalloc=false
 cxx_test_name=""
 
@@ -124,9 +121,6 @@ while [ $# -gt 0 ]; do
     --target)
       make_targets+=( "$2" )
       shift
-    ;;
-    --no-fix-rpath)
-      fix_rpath=false
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
@@ -279,10 +273,6 @@ if [ "$exit_code" -ne 0 ]; then
 fi
 
 touch "$thirdparty_built_flag_file"
-
-if "$fix_rpath"; then
-  "$YB_SRC_ROOT"/build-support/fix_rpath.py --build-root "$BUILD_ROOT"
-fi
 
 (
   cd "$BUILD_ROOT"

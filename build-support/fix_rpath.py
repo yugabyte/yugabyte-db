@@ -95,8 +95,6 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='Fix rpath for YugaByte and third-party binaries.')
-    parser.add_argument('--build-root', dest='build_root', action='store',
-                        help='Build root directory (e.g. build/debug-gcc)')
     parser.add_argument('--verbose', dest='verbose', action='store_true',
                         help='Verbose output')
     args = parser.parse_args()
@@ -118,37 +116,11 @@ def main():
         logging.info("fix_rpath.py does not have to do anything on Mac OS X anymore")
         return True
 
-    if args.build_root:
-        build_root = args.build_root.strip()
-        if not build_root:
-            logging.error("Build root directory cannot be empty")
-            return False
-        if not os.path.isdir(build_root):
-            logging.error("Build root directory '%s' does not exist" % build_root)
-            return False
-        build_root = os.path.realpath(build_root)
-
-        logging.info("Fixing rpath/runpath for the main build on Linux")
-        prefix_dirs = [build_root]
-
-        # We need to add this third-party dependencies directory containing libgflags to some
-        # binaries' runpaths.
-        if 'tsan' in os.path.basename(build_root).lower():
-            default_deps_dir_name = 'installed-deps-tsan'
-        else:
-            default_deps_dir_name = 'installed-deps'
-        default_deps_lib_dir = os.path.join(thirdparty_dir, default_deps_dir_name, 'lib')
-
-        is_main_build = True
-        is_thirdparty = False
-    else:
-        logging.info("Fixing rpath/runpath for the third-party binaries")
-        prefix_dirs = [
-            os.path.join(thirdparty_dir, prefix_rel_dir)
-            for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
-            ]
-        is_main_build = False
-        is_thirdparty = True
+    logging.info("Fixing rpath/runpath for the third-party binaries")
+    prefix_dirs = [
+        os.path.join(thirdparty_dir, prefix_rel_dir)
+        for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
+        ]
 
     if os.path.isfile('/usr/bin/patchelf'):
         linux_change_rpath_cmd = 'patchelf --set-rpath'
@@ -216,21 +188,9 @@ def main():
                         binary_path, ':'.join(original_rpath_entries)))
 
                     # A special case: the glog build ends up missing the rpath entry for gflags.
-                    if not is_main_build and file_name.startswith('libglog.'):
+                    if file_name.startswith('libglog.'):
                         add_if_absent(original_real_rpath_entries,
                                       os.path.realpath(os.path.dirname(binary_path)))
-
-                    # A number of executables are also not being able to find libgflags.
-                    if is_main_build:
-                        all_libs_found, missing_libs = run_ldd(binary_path,
-                                                               report_missing_libs=False)
-                        if not all_libs_found and any(
-                                missing_lib.startswith('libgflags.') for missing_lib in
-                                missing_libs):
-                            logging.info(
-                                "'%s' is not being able to find libgflags, adding deps runpath" %
-                                binary_path)
-                            add_if_absent(original_real_rpath_entries, default_deps_lib_dir)
 
                     if not original_real_rpath_entries:
                         logging.debug("No rpath entries in '%s', skipping", binary_path)
@@ -257,21 +217,12 @@ def main():
                         add_if_absent(new_relative_rpath_entries, new_rpath_entry)
                         add_if_absent(new_real_rpath_entries, real_rpath_entry)
 
-                    if is_thirdparty:
-                        # We have to make rpath entries relative for third-party dependencies.
-                        if original_rpath_entries == new_relative_rpath_entries:
-                            logging.debug("No change in rpath entries for '%s' (already relative)",
-                                          binary_path)
-                            num_binaries_no_rpath_change += 1
-                            continue
-                    else:
-                        # We don't make rpaths relative for the main build, because normally we
-                        # don't move the entire directory somewhere else.
-                        if original_real_rpath_entries == new_real_rpath_entries:
-                            logging.debug(("No change in rpath entries for '%s' " +
-                                           "(expanding to the same absolute paths)") % binary_path)
-                            num_binaries_no_rpath_change += 1
-                            continue
+                    # We have to make rpath entries relative for third-party dependencies.
+                    if original_rpath_entries == new_relative_rpath_entries:
+                        logging.debug("No change in rpath entries for '%s' (already relative)",
+                                      binary_path)
+                        num_binaries_no_rpath_change += 1
+                        continue
 
                     new_rpath_str = ':'.join(new_relative_rpath_entries)
                     # When using patchelf, this will actually set RUNPATH as a newer replacement
