@@ -149,7 +149,11 @@ _nls_run_strxfrm(text *string, text *locale)
 	{
 		if ((lc_collate_cache = setlocale(LC_COLLATE, NULL)))
 			/* Make a copy of the locale name string. */
+#ifdef _MSC_VER
+			lc_collate_cache = _strdup(lc_collate_cache);
+#else
 			lc_collate_cache = strdup(lc_collate_cache);
+#endif
 		if (!lc_collate_cache)
 			elog(ERROR, "failed to retrieve the default LC_COLLATE value");
 	}
