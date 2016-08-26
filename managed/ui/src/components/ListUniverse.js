@@ -69,8 +69,16 @@ export default class ListUniverse extends Component {
       });
     }
 
+    function universeDetailsPage(row) {
+      window.location.href = '/universes/' + row.id;
+    }
+
     const selectRowProp = {
-      bgColor: "rgb(211,211,211)"
+      bgColor: "rgb(211,211,211)",
+      mode: "radio",
+      clickToSelect: true,
+      onSelect: universeDetailsPage,
+      hideSelectColumn: true
     };
 
     return (
