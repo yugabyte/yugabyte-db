@@ -99,7 +99,7 @@ class Heartbeater::Thread {
   void TriggerASAP();
 
   void set_master_addresses(shared_ptr<vector<HostPort>> master_addresses) {
-    master_addressess_ = std::move(master_addresses);
+    master_addresses_ = std::move(master_addresses);
   }
 
  private:
@@ -119,7 +119,7 @@ class Heartbeater::Thread {
   // We keep the HostPort around rather than a Sockaddr because the
   // masters may change IP addresses, and we'd like to re-resolve on
   // every new attempt at connecting.
-  std::shared_ptr<const vector<HostPort>> master_addressess_;
+  std::shared_ptr<const vector<HostPort>> master_addresses_;
 
   // Index of the master we last succesfully obtained the master
   // consensus configuration information from.
@@ -182,7 +182,7 @@ void Heartbeater::set_master_addresses(std::shared_ptr<std::vector<HostPort>> ma
 ////////////////////////////////////////////////////////////
 
 Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
-  : master_addressess_(opts.GetMasterAddresses()),
+  : master_addresses_(opts.GetMasterAddresses()),
     last_locate_master_idx_(0),
     server_(server),
     has_heartbeated_(false),
@@ -190,7 +190,7 @@ Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* serve
     cond_(&mutex_),
     should_run_(false),
     heartbeat_asap_(false) {
-  CHECK(!master_addressess_->empty());
+  CHECK(!master_addresses_->empty());
 }
 
 namespace {
@@ -208,13 +208,15 @@ void LeaderMasterCallback(HostPort* dst_hostport,
 Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
                                              HostPort* leader_hostport) {
   Status s = Status::OK();
-  if (master_addressess_->size() == 1) {
+  if (master_addresses_->size() == 1) {
     // "Shortcut" the process when a single master is specified.
-    *leader_hostport = (*master_addressess_)[0];
+    auto master_addresses = master_addresses_;
+    *leader_hostport = (*master_addresses)[0];
     return Status::OK();
   }
   vector<Sockaddr> master_sock_addrs;
-  for (const HostPort& master_addr : *master_addressess_) {
+  auto master_addresses = master_addresses_;
+  for (const HostPort& master_addr : *master_addresses) {
     vector<Sockaddr> addrs;
     Status s = master_addr.ResolveAddresses(&addrs);
     if (!s.ok()) {
@@ -418,7 +420,7 @@ void Heartbeater::Thread::RunThread() {
       LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
                    << ": " << s.ToString();
       consecutive_failed_heartbeats_++;
-      if (master_addressess_->size() > 1) {
+      if (master_addresses_->size() > 1) {
         // If we encountered a network error (e.g., connection
         // refused) and there's more than one master available, try
         // determining the leader master again.
