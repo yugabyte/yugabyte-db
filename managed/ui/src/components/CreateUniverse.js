@@ -90,14 +90,14 @@ export default class CreateUniverse extends Component {
               </label>
               <label className="form-item-label" >
                 Region<br/>
-                <Multiselect name="regionList" className="region-select form-control" id="regionSelected" onChange={this.regionListChanged} data={universeRegionList} multiple/>
+                <Multiselect name="regionList[]" className="region-select form-control" id="regionSelected" onChange={this.regionListChanged} data={universeRegionList} multiple/>
               </label>
               <div className="createUniverseFormSplit">
                 Advanced
               </div>
               <label className="form-item-label">
                 Multi AZ Capable &nbsp;
-                <input type="checkbox" name="isMultiAZ" onChange={this.multiAZChanged} defaultChecked={this.state.isMultiAZCheck}/>
+                <input type="checkbox" name="isMultiAZ" defaultChecked="true" onChange={this.multiAZChanged} value={this.state.isMultiAZCheck}/>
               </label>
               <label className="form-item-label">
                 Instance Type
