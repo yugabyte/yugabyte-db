@@ -19,6 +19,11 @@ export const FETCH_UNIVERSE_LIST_SUCCESS = 'FETCH_UNIVERSE_LIST_SUCCESS';
 export const FETCH_UNIVERSE_LIST_FAILURE = 'FETCH_UNIVERSE_LIST_FAILURE';
 export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 
+// Delete Universe
+export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
+export const DELETE_UNIVERSE_SUCCESS = 'DELETE_UNIVERSE_SUCCESS';
+export const DELETE_UNIVERSE_FAILURE = 'DELETE_UNIVERSE_FAILURE';
+
 const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 
@@ -102,4 +107,27 @@ export function resetUniverseList() {
   return {
     type: RESET_UNIVERSE_LIST
   };
+}
+
+export function deleteUniverse(universeUUID) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request=axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`);
+  return {
+    type: DELETE_UNIVERSE,
+    payload: request
+  };
+}
+
+export function deleteUniverseSuccess(result) {
+  return {
+    type: DELETE_UNIVERSE_SUCCESS,
+    payload: result
+  }
+}
+
+export function deleteUniverseFailure(error) {
+  return {
+    type: DELETE_UNIVERSE_FAILURE,
+    payload: error
+  }
 }

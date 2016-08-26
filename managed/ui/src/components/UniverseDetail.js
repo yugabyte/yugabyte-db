@@ -6,6 +6,7 @@ import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
+import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -32,6 +33,7 @@ export default class UniverseDetail extends Component {
       <Grid id="page-wrapper">
         <Row className="header-row">
           <h3>Universe { currentUniverse.name }</h3>
+          <DeleteUniverseContainer />
         </Row>
         <Row>
           <Col md={6}>
