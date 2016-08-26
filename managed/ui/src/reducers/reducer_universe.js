@@ -1,8 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-import {FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_FAILURE, RESET_UNIVERSE_INFO,
-  CREATE_UNIVERSE, CREATE_UNIVERSE_SUCCESS, CREATE_UNIVERSE_FAILURE,
-FETCH_UNIVERSE_LIST, FETCH_UNIVERSE_LIST_SUCCESS, FETCH_UNIVERSE_LIST_FAILURE, RESET_UNIVERSE_LIST} from '../actions/universe';
+import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_FAILURE, RESET_UNIVERSE_INFO,
+         CREATE_UNIVERSE, CREATE_UNIVERSE_SUCCESS, CREATE_UNIVERSE_FAILURE,
+         FETCH_UNIVERSE_LIST, FETCH_UNIVERSE_LIST_SUCCESS, FETCH_UNIVERSE_LIST_FAILURE,
+         RESET_UNIVERSE_LIST, DELETE_UNIVERSE, DELETE_UNIVERSE_SUCCESS,
+         DELETE_UNIVERSE_FAILURE } from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null,universeList: [], error: null};
 
@@ -33,6 +35,12 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, universeList: [], error: error, loading: false};
     case RESET_UNIVERSE_LIST:
       return { ...state, universeList: [], error: null, loading: false};
+    case DELETE_UNIVERSE:
+      return { ...state, loading: true, error: null };
+    case DELETE_UNIVERSE_SUCCESS:
+      return { ...state, currentUniverse: null, error: null};
+    case DELETE_UNIVERSE_FAILURE:
+      return { ...state, error: action.payload.error}
     default:
       return state;
   }
