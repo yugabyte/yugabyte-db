@@ -11,6 +11,8 @@
 #include "string.h"
 #include "orafce.h"
 
+#include "stdint.h"
+
 
 #define LIST_ITEMS  512
 
@@ -51,10 +53,14 @@ int cycle = 0;
 static int
 ptr_comp(const void* a, const void* b)
 {
+	ptrdiff_t d;
+
 	list_item *_a = (list_item*) a;
 	list_item *_b = (list_item*) b;
 
-	return (long)_a->first_byte_ptr - (long)_b->first_byte_ptr;
+	d = (uintptr_t)_a->first_byte_ptr - (uintptr_t)_b->first_byte_ptr;
+
+	return d > 0 ? 1 : (d < 0 ? -1 : 0);
 }
 
 char *
