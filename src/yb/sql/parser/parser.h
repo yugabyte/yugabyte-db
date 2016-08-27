@@ -1,40 +1,71 @@
-/*--------------------------------------------------------------------------------------------------
- * Portions Copyright (c) YugaByte, Inc.
- * Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
- * Definitions for the "raw" parser (flex and bison phases only)
- * This is the external API for the raw lexing/parsing functions.
- *-------------------------------------------------------------------------
- */
-#ifndef YB_SQL_PARSER_PARSER_H
-#define YB_SQL_PARSER_PARSER_H
+//--------------------------------------------------------------------------------------------------
+// Copyright (c) YugaByte, Inc.
+//
+// Entry point for the parsing process. Conducting the whole scanning and parsing of SQL statement.
+//--------------------------------------------------------------------------------------------------
 
-#include <stdlib.h>
-#include <ctype.h>
+#ifndef YB_SQL_PARSER_PARSER_H_
+#define YB_SQL_PARSER_PARSER_H_
 
-// Fake the list datatype to compile. We'll replace Postgres List with standard list.
-typedef int64_t List;
+#include <cstddef>
 
-// The YY_EXTRA data that a flex scanner allows us to pass around.  Private
-// state needed for raw parsing/lexing goes here.
-typedef struct Parser_extra_type {
-  // Fields used by the core scanner.
-  YbSql_yy_extra_type     ybsql_yy_extra;
+#include "yb/sql/util/memory_context.h"
+#include "yb/sql/parser/parse_context.h"
+#include "yb/sql/parser/scanner.h"
 
-  // State variables for YbSql_yylex().
-  bool                    have_lookahead;                            /* is lookahead info valid? */
-  int                     lookahead_token;                                /* one-token lookahead */
-  YbSqlScan_YYSTYPE       lookahead_yylval;                        /* yylval for lookahead token */
-  YYLTYPE                 lookahead_yylloc;                        /* yylloc for lookahead token */
-  char                   *lookahead_end;                                 /* end of current token */
-  char                    lookahead_hold_char;               /* to be put back at *lookahead_end */
+namespace yb {
+namespace sql {
 
-  // State variables that belong to the grammar.
-  List                   *parsetree;                     /* final parse result is delivered here */
-} Parser_extra_type;
+class Parser {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef std::shared_ptr<Parser> SharedPtr;
+  typedef std::shared_ptr<const Parser> SharedPtrConst;
 
-// Primary entry point for the raw parsing functions.
-extern List *SqlParse(const char *str);
+  typedef std::unique_ptr<Parser> UniPtr;
+  typedef std::unique_ptr<const Parser> UniPtrConst;
 
-#endif // YB_SQL_PARSER_PARSER_H
+  //------------------------------------------------------------------------------------------------
+  // Constructor & destructor.
+  Parser();
+  virtual ~Parser();
+
+  // Returns 0 if Bison successfully parses SQL statements, and the compiler can continue on to
+  // semantic analysis. Otherwise, it returns one of the errcodes that are defined in file
+  // "yb/sql/errcodes.h", and the caller (YbSql API) should stop the compiling process.
+  int Parse(ParseContext *parse_context);
+
+  // Entry function to scan the next token. Bison parser will call this function.
+  GramProcessor::symbol_type Scan();
+
+  // Memory pool for allocating and deallocating operating memory spaces during parsing process.
+  MemoryContext *ParseMem() const {
+    return parse_context_->ParseMem();
+  }
+
+  // Memory pool for constructing the parse tree of a statement.
+  MemoryContext *PTreeMem() const {
+    return parse_context_->PTreeMem();
+  }
+
+  // Error handling.
+  void Error(const location& l, const std::string& m);
+  void Error(const std::string& m);
+
+ private:
+  //------------------------------------------------------------------------------------------------
+  // Lexical scanner.
+  LexProcessor lex_processor_;
+
+  // Grammar parser.
+  GramProcessor gram_processor_;
+
+  // Parse context which consists of state variables and results.
+  ParseContext *parse_context_;
+};
+
+}  // namespace sql.
+}  // namespace yb.
+
+#endif  // YB_SQL_PARSER_PARSER_H_

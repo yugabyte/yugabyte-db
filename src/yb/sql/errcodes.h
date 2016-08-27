@@ -72,9 +72,19 @@
  * with 'P'. In addition, error codes defined by PostgreSQL clients
  * (such as ecpg) have a class value that begins with 'Y'.
  */
-#ifndef YB_SQL_ERRCODES_H
-#define YB_SQL_ERRCODES_H
+#ifndef YB_SQL_ERRCODES_H_
+#define YB_SQL_ERRCODES_H_
 
+//--------------------------------------------------------------------------------------------------
+// NOTE: All entities in this modules are copies of PostgreSql's code. We made some minor changes
+// to avoid lint errors such as using '{' for if blocks and change the comment style from '/**/'
+// to '//'.
+//--------------------------------------------------------------------------------------------------
+
+namespace yb {
+namespace sql {
+
+// TODO(neil) Redefine enum ERRCODE to class and use it properly.
 enum {
   ERRCODE_SUCCESSFUL_COMPLETION,
   ERRCODE_WARNING,
@@ -320,4 +330,7 @@ enum {
   ERRCODE_INDEX_CORRUPTED,
 };
 
-#endif // YB_SQL_ERRCODES_H
+}  // namespace sql.
+}  // namespace yb.
+
+#endif  // YB_SQL_ERRCODES_H_

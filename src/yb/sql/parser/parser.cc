@@ -1,56 +1,67 @@
-/*-------------------------------------------------------------------------
- * Portions Copyright (c) YugaByte, Inc.
- * Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
- * Main entry point/driver for PostgreSQL grammar
- *
- * Note that the grammar is not allowed to perform any table access
- * (since we need to be able to do basic parsing even while inside an
- * aborted transaction).  Therefore, the data structures returned by
- * the grammar are "raw" parsetrees that still need to be analyzed by
- * analyze.c and related files.
- *-------------------------------------------------------------------------
- */
-#include "yb/sql/parser/scanner_util.h"
-#include "yb/sql/parser/parser_nodes.h"
+//--------------------------------------------------------------------------------------------------
+// Copyright (c) YugaByte, Inc.
+//--------------------------------------------------------------------------------------------------
+
+#include <cstring>
+
+#include "yb/sql/errcodes.h"
 #include "yb/sql/parser/parser.h"
+#include "yb/util/logging.h"
 
-// Include YACC-generated header for parsing.
-#include "yb/sql/parser_gram.hpp"
+namespace yb {
+namespace sql {
 
-// Initialize to parse one query string.
-extern void parser_init(Parser_extra_type *yyext);
+using std::to_string;
+using std::endl;
 
-/*
- * SqlParse
- *    Given a query in string form, do lexical and grammatical analysis.
- *
- * Returns a list of raw (un-analyzed) parse trees.
- */
-List *SqlParse(const char *str)
-{
-  YbSql_yyscan_t      yyscanner;
-  Parser_extra_type   yyextra;
-  int                 yyresult;
+//--------------------------------------------------------------------------------------------------
+// Class Parser.
+//--------------------------------------------------------------------------------------------------
+Parser::Parser()
+    : lex_processor_(),
+      gram_processor_(this) {
 
-  /* initialize the flex scanner */
-  yyscanner = scanner_init(str, &yyextra.ybsql_yy_extra, ScanKeywords, NumScanKeywords);
-
-  /* base_yylex() only needs this much initialization */
-  yyextra.have_lookahead = false;
-
-  /* initialize the bison parser */
-  parser_init(&yyextra);
-
-  /* Parse! */
-  yyresult = YbSql_yyparse(yyscanner);
-
-  /* Clean up (release memory) */
-  scanner_finish(yyscanner);
-
-  if (yyresult)       /* error */
-    return NULL;
-
-  return yyextra.parsetree;
+  // TODO(neil) Complete this prototype.
 }
+
+Parser::~Parser() {
+  // TODO(neil) Complete this prototype.
+}
+
+//--------------------------------------------------------------------------------------------------
+
+int Parser::Parse(ParseContext *parse_context) {
+  LOG(INFO) << "Parsing statement: " << parse_context->stmt();
+
+  parse_context_ = parse_context;
+  lex_processor_.ScanInit(parse_context);
+  gram_processor_.set_debug_level(parse_context_->trace_parsing());
+  const int error_code = gram_processor_.parse();
+
+  // TODO(neil) Redefine enum ERRCODE to class and use it properly.
+  if (error_code == ERRCODE_SUCCESSFUL_COMPLETION) {
+    LOG(INFO) << "Compiled successfully";
+  } else {
+    LOG(ERROR) << "Failed to compile. Errorcode = " << error_code;
+  }
+  return error_code;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+GramProcessor::symbol_type Parser::Scan() {
+  return lex_processor_.Scan();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void Parser::Error(const location& l, const std::string& m) {
+  LOG(ERROR) << "\033[31m" << l << ": " << m << "\033[0m" << endl;
+}
+
+void Parser::Error(const std::string& m) {
+  LOG(ERROR) << "\033[31m" << m << "\033[0m" << endl;
+}
+
+}  // namespace sql.
+}  // namespace yb.

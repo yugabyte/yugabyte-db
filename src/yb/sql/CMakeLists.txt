@@ -1,21 +1,14 @@
 # Copyright (c) YugaByte, Inc.
 
-set(CMAKE_PREFIX_PATH "/usr/local/opt/flex" ${CMAKE_PREFIX_PATH})
-set(CMAKE_PREFIX_PATH "/usr/local/opt/bison" ${CMAKE_PREFIX_PATH})
+add_subdirectory(util)
+add_subdirectory(parser)
 
-find_package(BISON)
-find_package(FLEX)
+add_library(ybsql_api ybsql.cc)
+target_link_libraries(ybsql_api ybsql_parser ybsql_util)
 
-BISON_TARGET(YbSqlParser parser/parser_gram.y ${CMAKE_CURRENT_SOURCE_DIR}/parser_gram.cpp)
-FLEX_TARGET(YbSqlScanner parser/scanner_lex.l ${CMAKE_CURRENT_SOURCE_DIR}/scanner_lex.cpp)
-ADD_FLEX_BISON_DEPENDENCY(YbSqlScanner YbSqlParser)
+add_executable(ybsql ybcmd.cc)
+target_link_libraries(ybsql ybsql_api)
 
-add_library(ybsql
-  ${BISON_YbSqlParser_OUTPUTS}
-  ${FLEX_YbSqlScanner_OUTPUTS}
-  ybsql.cc
-  parser/parser.cc
-  parser/scanner.cc
-  parser/scanner_util.cc)
-
-target_link_libraries(ybsql yb_util ${FLEX_LIBRARIES} ${BISON_LIBRARIES})
+# Tests
+set(YB_TEST_LINK_LIBS ybsql_api ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(ybsql-test)

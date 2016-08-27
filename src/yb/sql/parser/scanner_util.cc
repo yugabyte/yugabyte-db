@@ -1,11 +1,17 @@
-/*--------------------------------------------------------------------------------------------------
- * Portions Copyright (c) YugaByte, Inc.
- * Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
- * Scanning utility functions.
- *--------------------------------------------------------------------------------------------------
- */
+//--------------------------------------------------------------------------------------------------
+// NOTE: All entities in this modules are copies of PostgreSql's code. We made some minor changes
+// to avoid lint errors such as using '{' for if blocks and change the comment style from '/**/'
+// to '//'.
+//--------------------------------------------------------------------------------------------------
+
+//--------------------------------------------------------------------------------------------------
+// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
+// Portions Copyright (c) 1994, Regents of the University of California
+//
+// Scanning utility functions.
+//--------------------------------------------------------------------------------------------------
+
 #include <algorithm>
 
 #include "yb/gutil/macros.h"
@@ -13,27 +19,108 @@
 #include "yb/sql/parser/scanner_util.h"
 #include "yb/util/logging.h"
 
-using namespace std;
+namespace yb {
+namespace sql {
 
-unsigned char *unicode_to_utf8(pg_wchar c, unsigned char *utf8string)
-{
-  if (c <= 0x7F)
-  {
-    utf8string[0] = c;
+using std::min;
+
+//--------------------------------------------------------------------------------------------------
+
+unsigned int hexval(unsigned char c) {
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 0xA;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 0xA;
+
+  LOG(FATAL) << "invalid hexadecimal digit";
+  return 0; /* not reached */
+}
+
+//--------------------------------------------------------------------------------------------------
+
+char *downcase_truncate_identifier(const char *ident, int len, bool warn) {
+  char   *result;
+  int     i;
+
+  result = static_cast<char *>(malloc(len + 1));
+
+  // SQL99 specifies Unicode-aware case normalization, which we don't yet
+  // have the infrastructure for.  Instead we use tolower() to provide a
+  // locale-aware translation.  However, there are some locales where this
+  // is not right either (eg, Turkish may do strange things with 'i' and
+  // 'I').  Our current compromise is to use tolower() for characters with
+  // the high bit set, as long as they aren't part of a multi-byte
+  // character, and use an ASCII-only downcasing for 7-bit characters.
+  for (i = 0; i < len; i++) {
+    unsigned char ch = static_cast<unsigned char>(ident[i]);
+
+    if (ch >= 'A' && ch <= 'Z') {
+      ch += 'a' - 'A';
+    }
+    result[i] = static_cast<char>(ch);
   }
-  else if (c <= 0x7FF)
-  {
+  result[i] = '\0';
+
+  if (i >= NAMEDATALEN) {
+    truncate_identifier(result, i, warn);
+  }
+
+  return result;
+}
+
+void truncate_identifier(char *ident, int len, bool warn) {
+  if (len >= NAMEDATALEN) {
+    len = pg_encoding_mbcliplen(ident, len, NAMEDATALEN - 1);
+    if (warn) {
+      // We avoid using %.*s here because it can misbehave if the data
+      // is not valid in what libc thinks is the prevailing encoding.
+      char buf[NAMEDATALEN];
+
+      memcpy(buf, ident, len);
+      buf[len] = '\0';
+      LOG(WARNING)
+        << "SQL WARNING " << ERRCODE_NAME_TOO_LONG
+        << ": Identifier " << ident << " will be truncated to " << buf;
+    }
+    ident[len] = '\0';
+  }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+bool scanner_isspace(char ch) {
+  // This must match scan.l's list of {space} characters.
+  return (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f');
+}
+
+bool check_uescapechar(unsigned char escape) {
+  if (isxdigit(escape)
+    || escape == '+'
+    || escape == '\''
+    || escape == '"'
+    || scanner_isspace(escape)) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
+void check_unicode_value(pg_wchar c, char *loc) {
+}
+
+unsigned char *unicode_to_utf8(pg_wchar c, unsigned char *utf8string) {
+  if (c <= 0x7F) {
+    utf8string[0] = c;
+  } else if (c <= 0x7FF) {
     utf8string[0] = 0xC0 | ((c >> 6) & 0x1F);
     utf8string[1] = 0x80 | (c & 0x3F);
-  }
-  else if (c <= 0xFFFF)
-  {
+  } else if (c <= 0xFFFF) {
     utf8string[0] = 0xE0 | ((c >> 12) & 0x0F);
     utf8string[1] = 0x80 | ((c >> 6) & 0x3F);
     utf8string[2] = 0x80 | (c & 0x3F);
-  }
-  else
-  {
+  } else {
     utf8string[0] = 0xF0 | ((c >> 18) & 0x07);
     utf8string[1] = 0x80 | ((c >> 12) & 0x3F);
     utf8string[2] = 0x80 | ((c >> 6) & 0x3F);
@@ -42,6 +129,22 @@ unsigned char *unicode_to_utf8(pg_wchar c, unsigned char *utf8string)
 
   return utf8string;
 }
+
+//--------------------------------------------------------------------------------------------------
+
+bool is_utf16_surrogate_first(pg_wchar c) {
+  return (c >= 0xD800 && c <= 0xDBFF);
+}
+
+bool is_utf16_surrogate_second(pg_wchar c) {
+  return (c >= 0xDC00 && c <= 0xDFFF);
+}
+
+pg_wchar surrogate_pair_to_codepoint(pg_wchar first, pg_wchar second) {
+  return ((first & 0x3FF) << 10) + 0x10000 + (second & 0x3FF);
+}
+
+//--------------------------------------------------------------------------------------------------
 
 int pg_utf_mblen(const unsigned char *s) {
   int     len;
@@ -86,24 +189,22 @@ int pg_verify_mbstr_len(const char *mbstr, int len, bool noError) {
     int     l;
 
     /* fast path for ASCII-subset characters */
-    if (!IS_HIGHBIT_SET(*mbstr))
-    {
-      if (*mbstr != '\0')
-      {
+    if (!is_utf_highbit_set(static_cast<unsigned char>(*mbstr))) {
+      if (*mbstr != '\0') {
         mb_len++;
         mbstr++;
         len--;
         continue;
       }
-      if (noError)
+      if (noError) {
         return -1;
+      }
       report_invalid_encoding(mbstr, len);
     }
 
     l = pg_utf8_verifier((const unsigned char *) mbstr, len);
 
-    if (l < 0)
-    {
+    if (l < 0) {
       if (noError)
         return -1;
       report_invalid_encoding(mbstr, len);
@@ -116,27 +217,31 @@ int pg_verify_mbstr_len(const char *mbstr, int len, bool noError) {
   return mb_len;
 }
 
+//--------------------------------------------------------------------------------------------------
+
 void report_invalid_encoding(const char *mbstr, int len) {
   int     l = pg_utf_mblen((const unsigned char *)mbstr);
   char    buf[8 * 5 + 1];
-  char     *p = buf;
-  int     j,
-        jlimit;
+  char   *p = buf;
+  int     j, jlimit;
 
   jlimit = min(l, len);
   jlimit = min(jlimit, 8);  /* prevent buffer overrun */
 
-  for (j = 0; j < jlimit; j++)
-  {
-    p += sprintf(p, "0x%02x", (unsigned char) mbstr[j]);
+  // The following NOLINTs are used as I tried to leave PostgreSql's code as is. Eventually, when we
+  // use our own error reporting for YbSql interface, the NOLINTs should be gone then.
+  for (j = 0; j < jlimit; j++) {
+    p += sprintf(p, "0x%02x", (unsigned char) mbstr[j]);  // NOLINT(*)
     if (j < jlimit - 1)
-      p += sprintf(p, " ");
+      p += sprintf(p, " ");  // NOLINT(*)
   }
 
   LOG(ERROR)
     << "Error " << ERRCODE_CHARACTER_NOT_IN_REPERTOIRE
     << " (Invalid byte sequence for UTF8): " << buf;
 }
+
+//--------------------------------------------------------------------------------------------------
 
 int pg_utf8_verifier(const unsigned char *s, int len) {
   int     l = pg_utf_mblen(s);
@@ -149,6 +254,8 @@ int pg_utf8_verifier(const unsigned char *s, int len) {
 
   return l;
 }
+
+//--------------------------------------------------------------------------------------------------
 
 bool pg_utf8_islegal(const unsigned char *source, int length) {
   unsigned char a;
@@ -207,6 +314,8 @@ bool pg_utf8_islegal(const unsigned char *source, int length) {
   return true;
 }
 
+//--------------------------------------------------------------------------------------------------
+
 int pg_encoding_mbcliplen(const char *mbstr, int len, int limit) {
   int     clen = 0;
   int     l;
@@ -223,3 +332,6 @@ int pg_encoding_mbcliplen(const char *mbstr, int len, int limit) {
   }
   return clen;
 }
+
+}  // namespace sql.
+}  // namespace yb.

@@ -36,6 +36,22 @@ show_compiler_command_line() {
 }
 
 SCRIPT_NAME="compiler-wrapper.sh"
+RED_COLOR="\033[0;31m"
+NO_COLOR="\033[0m"
+
+fatal_error() {
+  echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
+  exit 1
+}
+
+treat_warning_pattern_as_error() {
+  local pattern=$1
+  # We are redirecting grep output to /dev/null, because it has already been shown in stderr.
+  if egrep "$pattern" "$stderr_path" >/dev/null; then
+    fatal_error "treating warning pattern as an error: '$pattern'."
+  fi
+}
+
 YB_SRC_DIR=$( cd "$( dirname "$0" )"/../.. && pwd )
 
 # We currently assume a specific location of the precompiled header file (used in the RocksDB

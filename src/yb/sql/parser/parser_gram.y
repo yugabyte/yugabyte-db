@@ -1,104 +1,170 @@
 %{
-/*--------------------------------------------------------------------------------------------------
- * Portions Copyright (c) YugaByte, Inc.
- * Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
- * POSTGRESQL BISON rules/actions
- *
- * NOTES
- *    CAPITALS are used to represent terminal symbols.
- *    non-capitals are used to represent non-terminals.
- *
- *    In general, nothing in this file should initiate database accesses
- *    nor depend on changeable state (such as SET variables).  If you do
- *    database accesses, your code will fail when we have aborted the
- *    current transaction and are just parsing commands to find the next
- *    ROLLBACK or COMMIT.  If you make use of SET variables, then you
- *    will do the wrong thing in multi-query strings like this:
- *      SET SQL_inheritance TO off; SELECT * FROM foo;
- *    because the entire string is parsed by gram.y before the SET gets
- *    executed.  Anything that depends on the database or changeable state
- *    should be handled during parse analysis so that it happens at the
- *    right time not the wrong time.  The handling of SQL_inheritance is
- *    a good example.
- *--------------------------------------------------------------------------------------------------
- */
+//--------------------------------------------------------------------------------------------------
+// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) 1996-2015, PostgreSQL Global Development Group
+// Portions Copyright (c) 1994, Regents of the University of California
+//
+// POSTGRESQL BISON rules/actions
+//
+// NOTES
+//    CAPITALS are used to represent terminal symbols.
+//    non-capitals are used to represent non-terminals.
+//
+//    In general, nothing in this file should initiate database accesses
+//    nor depend on changeable state (such as SET variables).  If you do
+//    database accesses, your code will fail when we have aborted the
+//    current transaction and are just parsing commands to find the next
+//    ROLLBACK or COMMIT.  If you make use of SET variables, then you
+//    will do the wrong thing in multi-query strings like this:
+//      SET SQL_inheritance TO off; SELECT * FROM foo;
+//    because the entire string is parsed by gram.y before the SET gets
+//    executed.  Anything that depends on the database or changeable state
+//    should be handled during parse analysis so that it happens at the
+//    right time not the wrong time.  The handling of SQL_inheritance is
+//    a good example.
+//--------------------------------------------------------------------------------------------------
+%}
+
+//--------------------------------------------------------------------------------------------------
+// NOTE: All parsing rules are copies of PostgreSql's code. Currently, we left all processing code
+// out. After parse tree and nodes are defined, they should be created while processing the rules.
+//--------------------------------------------------------------------------------------------------
+
+//--------------------------------------------------------------------------------------------------
+// BISON options.
+// The parsing context.
+%skeleton "lalr1.cc" /* -*- C++ -*- */
+%require "3.0.2"
+
+// Debugging options. These should be deleted after coding is completed.
+%debug
+%define parse.error verbose
+%define parse.assert
+
+// BISON options.
+%defines                                                                  // Generate header files.
+
+// Define class for YACC.
+%define api.namespace {yb::sql}
+%define parser_class_name {GramProcessor}
+
+// First parameter for yylex and yyparse.
+%parse-param { Parser *parser_ }
+
+// Define token.
+%define api.value.type variant
+%define api.token.constructor
+%define api.token.prefix {TOK_}
+
+//--------------------------------------------------------------------------------------------------
+// The following code block goes into YACC generated *.hh header file.
+%code requires {
+#include <stdbool.h>
+
+#include <list>
+
+#include "yb/sql/parser/parse_tree.h"
+#include "yb/sql/parser/parser_inactive_nodes.h"
+#include "yb/gutil/macros.h"
+
+namespace yb {
+namespace sql {
+
+class Parser;
+
+// Parsing types.
+// Use shared_ptr here because YACC does not know how to use move() instead of "=" for pointers.
+typedef TreeNode                      *NodeType;
+typedef int64_t                        Int64Type;
+typedef bool                           BoolType;
+typedef char                           CharType;
+typedef const char                    *KeywordType;
+typedef char                          *StringType;
+
+// Inactive parsing node types.
+typedef UndefTreeNode                 *UndefType;
+typedef void                          *list;
+typedef JoinType                       jtype;
+typedef DropBehavior                   dbehavior;
+typedef ObjectType                     objtype;
+typedef FunctionParameterMode          fun_param_mode;
+typedef OnCommitAction                 oncommit;
+
+} // namespace sql.
+} // namespace yb.
+
+}
+
+//--------------------------------------------------------------------------------------------------
+// The code in the rest of this file go into YACC generated *.cc source file.
+%code {
 #include <stdio.h>
 #include <string.h>
 
+#include "yb/sql/parser/parse_tree.h"
+#include "yb/sql/parser/parser.h"
 #include "yb/sql/parser/scanner_util.h"
-#include "yb/sql/parser/parser_nodes.h"
 
-// Include YACC-generated header file in the source file.
-#include "yb/sql/parser_gram.hpp"
+using namespace std;
+using namespace yb::sql;
 
-/*
- * Location tracking support --- simpler than bison's default, since we only
- * want to track the start position not the end position of each nonterminal.
- */
-#define YYLLOC_DEFAULT(Current, Rhs, N) \
-  do { \
-    if ((N) > 0) \
-      (Current) = (Rhs)[1]; \
-    else \
-      (Current) = (-1); \
-  } while (0)
+#undef yylex
+#define yylex parser_->Scan
 
-static void YbSql_yyerror(YYLTYPE *yylloc, YbSql_yyscan_t yyscanner, const char *msg);
-// static int report_yyerror(const char *msg);
-%}
-
-%pure-parser
-%expect 0
-%name-prefix "YbSql_yy"
-%locations
-
-%parse-param {YbSql_yyscan_t yyscanner}
-%lex-param   {YbSql_yyscan_t yyscanner}
-
-%union
-{
-  YbSqlScan_YYSTYPE       ybsql_scan_yystype;
-  /* these fields must match YbSqlScan_YYSTYPE: */
-  int                     ival;
-  char                   *str;
-  const char             *keyword;
-
-  char                    chr;
-  bool                    boolean;
-  JoinType                jtype;
-  DropBehavior            dbehavior;
-  OnCommitAction          oncommit;
-  List                   *list;
-  Node                   *node;
-  Value                  *value;
-  ObjectType              objtype;
-  TypeName               *typnam;
-  FunctionParameter      *fun_param;
-  FunctionParameterMode   fun_param_mode;
-  FuncWithArgs           *funwithargs;
-  DefElem                *defelt;
-  SortBy                 *sortby;
-  WindowDef              *windef;
-  JoinExpr               *jexpr;
-  IndexElem              *ielem;
-  Alias                  *alias;
-  RangeVar               *range;
-  IntoClause             *into;
-  WithClause             *with;
-  InferClause            *infer;
-  OnConflictClause       *onconflict;
-  A_Indices              *aind;
-  ResTarget              *target;
-  struct PrivTarget      *privtarget;
-  AccessPriv             *accesspriv;
-  struct ImportQual      *importqual;
-  InsertStmt             *istmt;
-  VariableSetStmt        *vsetstmt;
+#define parser_strdup(x) parser_->PTreeMem()->Strdup(x)
 }
 
-%type <node>              stmt schema_stmt
+//--------------------------------------------------------------------------------------------------
+// Active tree node declarations (%type).
+// The rule names are currently used by YbSql.
+%type <NodeType>          stmtblock stmtmulti stmt CreateStmt schema_stmt
+
+%type <KeywordType>       unreserved_keyword type_func_name_keyword
+%type <KeywordType>       col_name_keyword reserved_keyword
+
+//--------------------------------------------------------------------------------------------------
+// Inactive tree node declarations (%type).
+// The rule names are currently not used.
+
+%type <KeywordType>       iso_level opt_encoding opt_boolean_or_string row_security_cmd
+                          RowSecurityDefaultForCmd explain_option_name all_Op MathOp extract_arg
+
+%type <CharType>          enable_trigger
+
+%type <StringType>        createdb_opt_name RoleId opt_type foreign_server_version
+                          opt_foreign_server_version opt_in_database OptSchemaName copy_file_name
+                          database_name access_method_clause access_method attr_name name
+                          cursor_name file_name index_name opt_index_name
+                          cluster_index_specification generic_option_name character opt_charset
+                          Sconst comment_text notify_payload ColId ColLabel var_name
+                          type_function_name param_name NonReservedWord NonReservedWord_or_Sconst
+                          ExistingIndex OptTableSpace OptConsTableSpace opt_provider
+                          security_label opt_existing_window_name
+
+%type <BoolType>          opt_if_not_exists xml_whitespace_option constraints_set_mode opt_varying
+                          opt_timezone opt_no_inherit opt_ordinality opt_instead opt_unique
+                          opt_concurrently opt_verbose opt_full opt_freeze opt_default opt_recheck
+                          copy_from opt_program all_or_distinct opt_trusted opt_restart_seqs
+                          opt_or_replace opt_grant_grant_option opt_grant_admin_option opt_nowait
+                          opt_if_exists opt_with_data TriggerForSpec TriggerForType
+
+%type <Int64Type>         TableLikeOptionList TableLikeOption key_actions key_delete key_match
+                          key_update key_action ConstraintAttributeSpec ConstraintAttributeElem
+                          opt_check_option document_or_content reindex_target_type
+                          reindex_target_multitable reindex_option_list reindex_option_elem Iconst
+                          SignedIconst sub_type opt_column event cursor_options opt_hold
+                          opt_set_data row_or_rows first_or_next OptTemp OptNoLog
+                          for_locking_strength defacl_privilege_target import_qualification_type
+                          opt_lock lock_type cast_context vacuum_option_list vacuum_option_elem
+                          opt_nowait_or_skip TriggerActionTime add_drop opt_asc_desc opt_nulls_order
+
+%type <jtype>             join_type
+%type <dbehavior>         opt_drop_behavior
+%type <objtype>           drop_type comment_type security_label_type
+%type <fun_param_mode>    arg_class
+%type <oncommit>          OnCommitOption
+
+%type <UndefType>         inactive_stmt inactive_schema_stmt
                           AlterEventTrigStmt AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt
                           AlterEnumStmt AlterFdwStmt AlterForeignServerStmt AlterObjectSchemaStmt
                           AlterOwnerStmt AlterSeqStmt AlterSystemStmt AlterTableStmt
@@ -110,7 +176,7 @@ static void YbSql_yyerror(YYLTYPE *yylloc, YbSql_yyscan_t yyscanner, const char 
                           ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
                           CreateDomainStmt CreateExtensionStmt CreateOpClassStmt
                           CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
-                          CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
+                          CreateSchemaStmt CreateSeqStmt CreateTableSpaceStmt
                           CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt
                           CreateAssertStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
                           CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
@@ -133,452 +199,304 @@ static void YbSql_yyerror(YYLTYPE *yylloc, YbSql_yyscan_t yyscanner, const char 
                           DropOwnedStmt ReassignOwnedStmt
                           AlterTSConfigurationStmt AlterTSDictionaryStmt
                           CreateMatViewStmt RefreshMatViewStmt
-
-%type <node>              select_no_parens select_with_parens select_clause simple_select
+                          select_no_parens select_with_parens select_clause simple_select
                           values_clause
-
-%type <node>              alter_column_default opclass_item opclass_drop alter_using
-
-%type <ival>              add_drop opt_asc_desc opt_nulls_order
-
-%type <node>              alter_table_cmd alter_type_cmd opt_collate_clause replica_identity
-
-%type <list>              alter_table_cmds alter_type_cmds
-
-%type <dbehavior>         opt_drop_behavior
-
-%type <list>              createdb_opt_list createdb_opt_items copy_opt_list transaction_mode_list
-                          create_extension_opt_list alter_extension_opt_list
-
-%type <defelt>            createdb_opt_item copy_opt_item transaction_mode_item
+                          alter_column_default opclass_item opclass_drop alter_using
+                          alter_table_cmd alter_type_cmd opt_collate_clause replica_identity
+                          createdb_opt_item copy_opt_item transaction_mode_item
                           create_extension_opt_item alter_extension_opt_item
-
-%type <ival>              opt_lock lock_type cast_context
-
-%type <ival>              vacuum_option_list vacuum_option_elem
-
-%type <boolean>           opt_or_replace opt_grant_grant_option opt_grant_admin_option
-                          opt_nowait opt_if_exists opt_with_data
-
-%type <ival>              opt_nowait_or_skip
-
-%type <list>              OptRoleList AlterOptRoleList
-
-%type <defelt>            CreateOptRoleElem AlterOptRoleElem
-
-%type <str>               opt_type
-%type <str>               foreign_server_version opt_foreign_server_version
-%type <str>               opt_in_database
-
-%type <str>               OptSchemaName
-%type <list>              OptSchemaEltList
-
-%type <boolean>           TriggerForSpec TriggerForType
-%type <ival>              TriggerActionTime
-%type <list>              TriggerEvents TriggerOneEvent
-%type <value>             TriggerFuncArg
-%type <node>              TriggerWhen
-
-%type <list>              event_trigger_when_list event_trigger_value_list
-%type <defelt>            event_trigger_when_item
-%type <chr>               enable_trigger
-
-%type <str>               copy_file_name database_name access_method_clause access_method
-                          attr_name name cursor_name file_name index_name opt_index_name
-                          cluster_index_specification
-
-%type <list>              func_name handler_name qual_Op qual_all_Op subquery_Op opt_class
-                          opt_inline_handler opt_validator validator_clause opt_collate
-
-%type <range>             qualified_name insert_target OptConstrFromTable
-
-%type <str>               all_Op MathOp
-
-%type <str>               row_security_cmd RowSecurityDefaultForCmd
-%type <node>              RowSecurityOptionalWithCheck RowSecurityOptionalExpr
-%type <list>              RowSecurityDefaultToRole RowSecurityOptionalToRole
-
-%type <str>               iso_level opt_encoding
-%type <node>              grantee
-%type <list>              grantee_list
-%type <accesspriv>        privilege
-%type <list>              privileges privilege_list
-%type <privtarget>        privilege_target
-%type <funwithargs>       function_with_argtypes
-%type <list>              function_with_argtypes_list
-%type <ival>              defacl_privilege_target
-%type <defelt>            DefACLOption
-%type <list>              DefACLOptionList
-%type <ival>              import_qualification_type
-%type <importqual>        import_qualification
-
-%type <list>              stmtblock stmtmulti
-                          OptTableElementList TableElementList OptInherit definition
-                          OptTypedTableElementList TypedTableElementList reloptions opt_reloptions
-                          OptWith distinct_clause opt_all_clause opt_definition func_args
-                          func_args_list func_args_with_defaults func_args_with_defaults_list
-                          aggr_args aggr_args_list
-                          func_as createfunc_opt_list alterfunc_opt_list
-                          old_aggr_definition old_aggr_list
-                          oper_argtypes RuleActionList RuleActionMulti
-                          opt_column_list columnList opt_name_list
-                          sort_clause opt_sort_clause sortby_list index_params
-                          name_list role_list from_clause from_list opt_array_bounds
-                          qualified_name_list any_name any_name_list type_name_list
-                          any_operator expr_list attrs
-                          target_list opt_target_list insert_column_list set_target_list
-                          set_clause_list set_clause multiple_set_clause
-                          ctext_expr_list ctext_row def_list indirection opt_indirection
-                          reloption_list group_clause TriggerFuncArgs select_limit
-                          opt_select_limit opclass_item_list opclass_drop_list
-                          opclass_purpose opt_opfamily transaction_mode_list_or_empty
-                          OptTableFuncElementList TableFuncElementList opt_type_modifiers
-                          prep_type_clause
-                          execute_param_clause using_clause returning_clause
-                          opt_enum_val_list enum_val_list table_func_column_list
-                          create_generic_options alter_generic_options
-                          relation_expr_list dostmt_opt_list
-                          transform_element_list transform_type_list
-
-%type <list>              group_by_list
-%type <node>              group_by_item empty_grouping_set rollup_clause cube_clause
-%type <node>              grouping_sets_clause
-
-%type <list>              opt_fdw_options fdw_options
-%type <defelt>            fdw_option
-
-%type <range>             OptTempTableName
-%type <into>              into_clause create_as_target create_mv_target
-
-%type <defelt>            createfunc_opt_item common_func_opt_item dostmt_opt_item
-%type <fun_param>         func_arg func_arg_with_default table_func_column aggr_arg
-%type <fun_param_mode>    arg_class
-%type <typnam>            func_return func_type
-
-%type <boolean>           opt_trusted opt_restart_seqs
-%type <ival>              OptTemp
-%type <ival>              OptNoLog
-%type <oncommit>          OnCommitOption
-
-%type <ival>              for_locking_strength
-%type <node>              for_locking_item
-%type <list>              for_locking_clause opt_for_locking_clause for_locking_items
-%type <list>              locked_rels_list
-%type <boolean>           all_or_distinct
-
-%type <node>              join_outer join_qual
-%type <jtype>             join_type
-
-%type <list>              extract_list overlay_list position_list
-%type <list>              substr_list trim_list
-%type <list>              opt_interval interval_second
-%type <node>              overlay_placing substr_from substr_for
-
-%type <boolean>           opt_instead
-%type <boolean>           opt_unique opt_concurrently opt_verbose opt_full
-%type <boolean>           opt_freeze opt_default opt_recheck
-%type <defelt>            opt_binary opt_oids copy_delimiter
-
-%type <boolean>           copy_from opt_program
-
-%type <ival>              opt_column event cursor_options opt_hold opt_set_data
-%type <objtype>           drop_type comment_type security_label_type
-
-%type <node>              fetch_args limit_clause select_limit_value
+                          CreateOptRoleElem AlterOptRoleElem
+                          TriggerFuncArg
+                          TriggerWhen
+                          event_trigger_when_item
+                          qualified_name insert_target OptConstrFromTable
+                          RowSecurityOptionalWithCheck RowSecurityOptionalExpr
+                          grantee
+                          privilege
+                          privilege_target
+                          function_with_argtypes
+                          DefACLOption
+                          import_qualification
+                          group_by_item empty_grouping_set rollup_clause cube_clause
+                          grouping_sets_clause
+                          fdw_option
+                          OptTempTableName
+                          into_clause create_as_target create_mv_target
+                          createfunc_opt_item common_func_opt_item dostmt_opt_item
+                          func_arg func_arg_with_default table_func_column aggr_arg
+                          func_return func_type
+                          for_locking_item
+                          join_outer join_qual
+                          overlay_placing substr_from substr_for
+                          opt_binary opt_oids copy_delimiter
+                          fetch_args limit_clause select_limit_value
                           offset_clause select_offset_value
                           select_offset_value2 opt_select_fetch_first_value
-
-%type <ival>              row_or_rows first_or_next
-
-%type <list>              OptSeqOptList SeqOptList
-%type <defelt>            SeqOptElem
-
-%type <istmt>             insert_rest
-%type <infer>             opt_conf_expr
-%type <onconflict>        opt_on_conflict
-
-%type <vsetstmt>          generic_set set_rest set_rest_more generic_reset reset_rest
+                          SeqOptElem
+                          insert_rest
+                          opt_conf_expr
+                          opt_on_conflict
+                          generic_set set_rest set_rest_more generic_reset reset_rest
                           SetResetClause FunctionSetResetClause
-
-%type <node>              TableElement TypedTableElement ConstraintElem TableFuncElement
-%type <node>              columnDef columnOptions
-%type <defelt>            def_elem reloption_elem old_aggr_elem
-%type <node>              def_arg columnElem where_clause where_or_current_clause
+                          TableElement TypedTableElement ConstraintElem TableFuncElement
+                          columnDef columnOptions
+                          def_elem reloption_elem old_aggr_elem
+                          def_arg columnElem where_clause where_or_current_clause
                           a_expr b_expr c_expr AexprConst indirection_el
                           columnref in_expr having_clause func_table array_expr
                           ExclusionWhereClause
-%type <list>              rowsfrom_item rowsfrom_list opt_col_def_list
-%type <boolean>           opt_ordinality
-%type <list>              ExclusionConstraintList ExclusionConstraintElem
-%type <list>              func_arg_list
-%type <node>              func_arg_expr
-%type <list>              row explicit_row implicit_row type_list array_expr_list
-%type <node>              case_expr case_arg when_clause case_default
-%type <list>              when_clause_list
-%type <ival>              sub_type
-%type <node>              ctext_expr
-%type <value>             NumericOnly
-%type <list>              NumericOnly_list
-%type <alias>             alias_clause opt_alias_clause
-%type <list>              func_alias_clause
-%type <sortby>            sortby
-%type <ielem>             index_elem
-%type <node>              table_ref
-%type <jexpr>             joined_table
-%type <range>             relation_expr
-%type <range>             relation_expr_opt_alias
-%type <node>              tablesample_clause opt_repeatable_clause
-%type <target>            target_el single_set_clause set_target insert_column_item
-
-%type <str>               generic_option_name
-%type <node>              generic_option_arg
-%type <defelt>            generic_option_elem alter_generic_option_elem
-%type <list>              generic_option_list alter_generic_option_list
-%type <str>               explain_option_name
-%type <node>              explain_option_arg
-%type <defelt>            explain_option_elem
-%type <list>              explain_option_list
-
-%type <ival>              reindex_target_type reindex_target_multitable
-%type <ival>              reindex_option_list reindex_option_elem
-
-%type <node>              copy_generic_opt_arg copy_generic_opt_arg_list_item
-%type <defelt>            copy_generic_opt_elem
-%type <list>              copy_generic_opt_list copy_generic_opt_arg_list
-%type <list>              copy_options
-
-%type <typnam>            Typename SimpleTypename ConstTypename
+                          func_arg_expr
+                          case_expr case_arg when_clause case_default
+                          ctext_expr
+                          NumericOnly
+                          alias_clause opt_alias_clause
+                          sortby
+                          index_elem
+                          table_ref
+                          joined_table
+                          relation_expr
+                          relation_expr_opt_alias
+                          tablesample_clause opt_repeatable_clause
+                          target_el single_set_clause set_target insert_column_item
+                          generic_option_arg
+                          generic_option_elem alter_generic_option_elem
+                          explain_option_arg
+                          explain_option_elem
+                          copy_generic_opt_arg copy_generic_opt_arg_list_item
+                          copy_generic_opt_elem
+                          Typename SimpleTypename ConstTypename
                           GenericType Numeric opt_float
                           Character ConstCharacter
                           CharacterWithLength CharacterWithoutLength
                           ConstDatetime ConstInterval
                           Bit ConstBit BitWithLength BitWithoutLength
-%type <str>               character
-%type <str>               extract_arg
-%type <str>               opt_charset
-%type <boolean>           opt_varying opt_timezone opt_no_inherit
-
-%type <ival>              Iconst SignedIconst
-%type <str>               Sconst comment_text notify_payload
-%type <str>               RoleId opt_boolean_or_string
-%type <list>              var_list
-%type <str>               ColId ColLabel var_name type_function_name param_name
-%type <str>               NonReservedWord NonReservedWord_or_Sconst
-%type <str>               createdb_opt_name
-%type <node>              var_value zone_value
-%type <node>              auth_ident RoleSpec opt_granted_by
-
-%type <keyword>           unreserved_keyword type_func_name_keyword
-%type <keyword>           col_name_keyword reserved_keyword
-
-%type <node>              TableConstraint TableLikeClause
-%type <ival>              TableLikeOptionList TableLikeOption
-%type <list>              ColQualList
-%type <node>              ColConstraint ColConstraintElem ConstraintAttr
-%type <ival>              key_actions key_delete key_match key_update key_action
-%type <ival>              ConstraintAttributeSpec ConstraintAttributeElem
-%type <str>               ExistingIndex
-
-%type <list>              constraints_set_list
-%type <boolean>           constraints_set_mode
-%type <str>               OptTableSpace OptConsTableSpace
-%type <node>              OptTableSpaceOwner
-%type <ival>              opt_check_option
-
-%type <str>               opt_provider security_label
-
-%type <target>            xml_attribute_el
-%type <list>              xml_attribute_list xml_attributes
-%type <node>              xml_root_version opt_xml_root_standalone
-%type <node>              xmlexists_argument
-%type <ival>              document_or_content
-%type <boolean>           xml_whitespace_option
-
-%type <node>              func_application func_expr_common_subexpr
-%type <node>              func_expr func_expr_windowless
-%type <node>              common_table_expr
-%type <with>              with_clause opt_with_clause
-%type <list>              cte_list
-
-%type <list>              within_group_clause
-%type <node>              filter_clause
-%type <list>              window_clause window_definition_list opt_partition_clause
-%type <windef>            window_definition over_clause window_specification
+                          var_value zone_value
+                          auth_ident RoleSpec opt_granted_by
+                          TableConstraint TableLikeClause
+                          ColConstraint ColConstraintElem ConstraintAttr
+                          OptTableSpaceOwner
+                          xml_attribute_el
+                          xml_root_version opt_xml_root_standalone
+                          xmlexists_argument
+                          func_application func_expr_common_subexpr
+                          func_expr func_expr_windowless
+                          common_table_expr
+                          with_clause opt_with_clause
+                          filter_clause
+                          window_definition over_clause window_specification
                           opt_frame_clause frame_extent frame_bound
-%type <str>               opt_existing_window_name
-%type <boolean>           opt_if_not_exists
 
-/*
- * Non-keyword token types.  These are hard-wired into the "flex" lexer.
- * They must be listed first so that their numeric codes do not depend on
- * the set of keywords.  PL/pgsql depends on this so that it can share the
- * same lexer.  If you add/change tokens here, fix PL/pgsql to match!
- *
- * DOT_DOT is unused in the core SQL grammar, and so will always provoke
- * parse errors.  It is needed by PL/pgsql.
- */
-%token <str>              IDENT FCONST SCONST BCONST XCONST Op
-%token <ival>             ICONST PARAM
-%token                    TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
-%token                    LESS_EQUALS GREATER_EQUALS NOT_EQUALS
+%type <list>              alter_table_cmds alter_type_cmds createdb_opt_list createdb_opt_items
+                          copy_opt_list transaction_mode_list create_extension_opt_list
+                          alter_extension_opt_list OptRoleList AlterOptRoleList OptSchemaEltList
+                          TriggerEvents TriggerOneEvent event_trigger_when_list
+                          event_trigger_value_list func_name handler_name qual_Op qual_all_Op
+                          subquery_Op opt_class opt_inline_handler opt_validator validator_clause
+                          opt_collate RowSecurityDefaultToRole RowSecurityOptionalToRole
+                          grantee_list privileges privilege_list function_with_argtypes_list
+                          OptTableElementList TableElementList OptInherit definition
+                          OptTypedTableElementList TypedTableElementList reloptions opt_reloptions
+                          OptWith distinct_clause opt_all_clause opt_definition func_args
+                          func_args_list func_args_with_defaults func_args_with_defaults_list
+                          aggr_args aggr_args_list func_as createfunc_opt_list alterfunc_opt_list
+                          old_aggr_definition old_aggr_list oper_argtypes RuleActionList
+                          RuleActionMulti opt_column_list columnList opt_name_list sort_clause
+                          opt_sort_clause sortby_list index_params name_list role_list from_clause
+                          from_list opt_array_bounds qualified_name_list any_name any_name_list
+                          type_name_list any_operator expr_list attrs target_list opt_target_list
+                          insert_column_list set_target_list set_clause_list set_clause
+                          multiple_set_clause ctext_expr_list ctext_row def_list indirection
+                          opt_indirection reloption_list group_clause TriggerFuncArgs select_limit
+                          opt_select_limit opclass_item_list opclass_drop_list opclass_purpose
+                          opt_opfamily transaction_mode_list_or_empty OptTableFuncElementList
+                          TableFuncElementList opt_type_modifiers prep_type_clause
+                          execute_param_clause using_clause returning_clause opt_enum_val_list
+                          enum_val_list table_func_column_list create_generic_options
+                          alter_generic_options relation_expr_list dostmt_opt_list
+                          transform_element_list transform_type_list group_by_list opt_fdw_options
+                          fdw_options for_locking_clause opt_for_locking_clause for_locking_items
+                          locked_rels_list extract_list overlay_list position_list substr_list
+                          trim_list opt_interval interval_second OptSeqOptList SeqOptList
+                          rowsfrom_item rowsfrom_list opt_col_def_list ExclusionConstraintList
+                          ExclusionConstraintElem func_arg_list row explicit_row implicit_row
+                          type_list array_expr_list when_clause_list NumericOnly_list
+                          func_alias_clause generic_option_list alter_generic_option_list
+                          explain_option_list copy_generic_opt_list copy_generic_opt_arg_list
+                          copy_options ColQualList constraints_set_list xml_attribute_list
+                          xml_attributes cte_list within_group_clause window_clause
+                          window_definition_list opt_partition_clause DefACLOptionList var_list
 
-/*
- * If you want to make any keyword changes, update the keyword table in
- * src/include/parser/kwlist.h and add new keywords to the appropriate one
- * of the reserved-or-not-so-reserved keyword lists, below; search
- * this file for "Keyword category lists".
- */
+//--------------------------------------------------------------------------------------------------
+// Token definitions (%token).
+// Keyword: If you want to make any keyword changes, update the keyword table in
+//   src/include/parser/kwlist.h
+// and add new keywords to the appropriate one of the reserved-or-not-so-reserved keyword lists.
+// Search for "Keyword category lists".
 
-/* ordinary key words in alphabetical order */
-%token <keyword>
-  ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
-  AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
-  ASSERTION ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION
+// Declarations for ordinary keywords in alphabetical order.
+%token <KeywordType>      ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER  AGGREGATE ALL
+                          ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC ASSERTION
+                          ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION
 
-  BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
-  BOOLEAN_P BOTH BY
+                          BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT BOOLEAN_P BOTH BY
 
-  CACHE CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
-  CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
-  CLUSTER COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT
-  COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
-  CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
-  CROSS CSV CUBE CURRENT_P
-  CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
-  CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
+                          CACHE CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
+                          CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER
+                          COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT COMMITTED
+                          CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT CONSTRAINTS
+                          CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE CROSS CSV CUBE
+                          CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
+                          CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
-  DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
-  DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DESC
-  DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
+                          DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
+                          DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
+                          DESC DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
+                          DOUBLE_P DROP
 
-  EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
-  EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
-  EXTENSION EXTERNAL EXTRACT
+                          EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT
+                          EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTENSION
+                          EXTERNAL EXTRACT
 
-  FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR
-  FORCE FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
+                          FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR FORCE
+                          FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
-  GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING
+                          GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING
 
-  HANDLER HAVING HEADER_P HOLD HOUR_P
+                          HANDLER HAVING HEADER_P HOLD HOUR_P
 
-  IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P
-  INCLUDING INCREMENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
-  INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
-  INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
+                          IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P
+                          INCLUDING INCREMENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
+                          INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
+                          INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
-  JOIN
+                          JOIN
 
-  KEY
+                          KEY
 
-  LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
-  LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
-  LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
+                          LABEL LANGUAGE LARGE_P LAST_P LATERAL_P LEADING LEAKPROOF LEAST LEFT
+                          LEVEL LIKE LIMIT LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
+                          LOCK_P LOCKED LOGGED
 
-  MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P MOVE
+                          MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P
+                          MOVE
 
-  NAME_P NAMES NATIONAL NATURAL NCHAR NEXT NO NONE
-  NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
-  NULLS_P NUMERIC
+                          NAME_P NAMES NATIONAL NATURAL NCHAR NEXT NO NONE NOT NOTHING NOTIFY
+                          NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
 
-  OBJECT_P OF OFF OFFSET OIDS ON ONLY OPERATOR OPTION OPTIONS OR
-  ORDER ORDINALITY OUT_P OUTER_P OVER OVERLAPS OVERLAY OWNED OWNER
+                          OBJECT_P OF OFF OFFSET OIDS ON ONLY OPERATOR OPTION OPTIONS OR ORDER
+                          ORDINALITY OUT_P OUTER_P OVER OVERLAPS OVERLAY OWNED OWNER
 
-  PARSER PARTIAL PARTITION PASSING PASSWORD PLACING PLANS POLICY POSITION
-  PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
-  PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROGRAM
+                          PARSER PARTIAL PARTITION PASSING PASSWORD PLACING PLANS POLICY
+                          POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY PRIOR
+                          PRIVILEGES PROCEDURAL PROCEDURE PROGRAM
 
-  QUOTE
+                          QUOTE
 
-  RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFRESH REINDEX
-  RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
-  RESET RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
-  ROW ROWS RULE
+                          RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFRESH
+                          REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA RESET
+                          RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+                          ROW ROWS RULE
 
-  SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE SEQUENCES
-  SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
-  SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P START
-  STATEMENT STATISTICS STDIN STDOUT STORAGE STRICT_P STRIP_P SUBSTRING
-  SYMMETRIC SYSID SYSTEM_P
+                          SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
+                          SEQUENCES SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF
+                          SHARE SHOW SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE
+                          STANDALONE_P START STATEMENT STATISTICS STDIN STDOUT STORAGE
+                          STRICT_P STRIP_P SUBSTRING SYMMETRIC SYSID SYSTEM_P
 
-  TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
-  TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM TREAT TRIGGER TRIM TRUE_P
-  TRUNCATE TRUSTED TYPE_P TYPES_P
+                          TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
+                          THEN TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM TREAT TRIGGER
+                          TRIM TRUE_P TRUNCATE TRUSTED TYPE_P TYPES_P
 
-  UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNLOGGED
-  UNTIL UPDATE USER USING
+                          UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
+                          UNLOGGED UNTIL UPDATE USER USING
 
-  VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
-  VERBOSE VERSION_P VIEW VIEWS VOLATILE
+                          VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC
+                          VARYING VERBOSE VERSION_P VIEW VIEWS VOLATILE
 
-  WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+                          WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
-  XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLPARSE
-  XMLPI XMLROOT XMLSERIALIZE
+                          XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST
+                          XMLPARSE XMLPI XMLROOT XMLSERIALIZE
 
-  YEAR_P YES_P
+                          YEAR_P YES_P
 
-  ZONE
+                          ZONE
 
-/*
- * The grammar thinks these are keywords, but they are not in the kwlist.h
- * list and so can never be entered directly.  The filter in parser.c
- * creates these tokens when required (based on looking one token ahead).
- *
- * NOT_LA exists so that productions such as NOT LIKE can be given the same
- * precedence as LIKE; otherwise they'd effectively have the same precedence
- * as NOT, at least with respect to their left-hand subexpression.
- * NULLS_LA and WITH_LA are needed to make the grammar LALR(1).
- */
-%token      NOT_LA NULLS_LA WITH_LA
+// Identifer.
+%token <StringType>       IDENT
 
-/* Precedence: lowest to highest */
-%nonassoc   SET                                                   /* see relation_expr_opt_alias */
+// Bind parameters: "$1", "$2", "$3", etc.
+%token <Int64Type>        PARAM
+
+// Float constants.
+%token <StringType>       FCONST SCONST BCONST XCONST Op
+
+// Integer constants.
+%token <Int64Type>        ICONST
+
+// Integer constants.
+%token <CharType>         CCONST
+
+// Multichar operators: "::", "..", ":=", "=>", "<=", ">=", "<>", "!=".
+%token                    TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER LESS_EQUALS
+                          GREATER_EQUALS NOT_EQUALS
+
+// Special ops. The grammar treat them as keywords, but they are not in the kwlist.h list and so can
+// never be entered directly.  The filter in parser.c creates these tokens when required (based on
+// looking one token ahead). NOT_LA exists so that productions such as NOT LIKE can be given the
+// same precedence as LIKE; otherwise they'd effectively have the same precedence as NOT, at least
+// with respect to their left-hand subexpression. NULLS_LA and WITH_LA are needed to make the
+// grammar LALR(1).
+%token                    NOT_LA NULLS_LA WITH_LA
+
+%token END                0 "end of file";
+
+//--------------------------------------------------------------------------------------------------
+// Precedence: lowest to highest.
+%nonassoc   SET                                                      // see relation_expr_opt_alias.
 %left       UNION EXCEPT
 %left       INTERSECT
 %left       OR
 %left       AND
 %right      NOT
-%nonassoc   IS ISNULL NOTNULL                             /* IS sets precedence for IS NULL, etc */
+%nonassoc   IS ISNULL NOTNULL                                // IS sets precedence for IS NULL, etc.
 %nonassoc   '<' '>' '=' LESS_EQUALS GREATER_EQUALS NOT_EQUALS
 %nonassoc   BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
-%nonassoc   ESCAPE                               /* ESCAPE must be just above LIKE/ILIKE/SIMILAR */
-%left       POSTFIXOP                                              /* dummy for postfix Op rules */
+%nonassoc   ESCAPE                                  // ESCAPE must be just above LIKE/ILIKE/SIMILAR.
+%left       POSTFIXOP                                                 // dummy for postfix Op rules.
 
-/*
- * To support target_el without AS, we must give IDENT an explicit priority
- * between POSTFIXOP and Op.  We can safely assign the same priority to
- * various unreserved keywords as needed to resolve ambiguities (this can't
- * have any bad effects since obviously the keywords will still behave the
- * same as if they weren't keywords).  We need to do this for PARTITION,
- * RANGE, ROWS to support opt_existing_window_name; and for RANGE, ROWS
- * so that they can follow a_expr without creating postfix-operator problems;
- * and for NULL so that it can follow b_expr in ColQualList without creating
- * postfix-operator problems.
- *
- * To support CUBE and ROLLUP in GROUP BY without reserving them, we give them
- * an explicit priority lower than '(', so that a rule with CUBE '(' will shift
- * rather than reducing a conflicting rule that takes CUBE as a function name.
- * Using the same precedence as IDENT seems right for the reasons given above.
- *
- * The frame_bound productions UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING
- * are even messier: since UNBOUNDED is an unreserved keyword (per spec!),
- * there is no principled way to distinguish these from the productions
- * a_expr PRECEDING/FOLLOWING.  We hack this up by giving UNBOUNDED slightly
- * lower precedence than PRECEDING and FOLLOWING.  At present this doesn't
- * appear to cause UNBOUNDED to be treated differently from other unreserved
- * keywords anywhere else in the grammar, but it's definitely risky.  We can
- * blame any funny behavior of UNBOUNDED on the SQL standard, though.
- */
-%nonassoc UNBOUNDED                              /* ideally should have same precedence as IDENT */
+// To support target_el without AS, we must give IDENT an explicit priority
+// between POSTFIXOP and Op.  We can safely assign the same priority to
+// various unreserved keywords as needed to resolve ambiguities (this can't
+// have any bad effects since obviously the keywords will still behave the
+// same as if they weren't keywords).  We need to do this for PARTITION,
+// RANGE, ROWS to support opt_existing_window_name; and for RANGE, ROWS
+// so that they can follow a_expr without creating postfix-operator problems;
+// and for NULL so that it can follow b_expr in ColQualList without creating
+// postfix-operator problems.
+//
+// To support CUBE and ROLLUP in GROUP BY without reserving them, we give them
+// an explicit priority lower than '(', so that a rule with CUBE '(' will shift
+// rather than reducing a conflicting rule that takes CUBE as a function name.
+// Using the same precedence as IDENT seems right for the reasons given above.
+//
+// The frame_bound productions UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING
+// are even messier: since UNBOUNDED is an unreserved keyword (per spec!),
+// there is no principled way to distinguish these from the productions
+// a_expr PRECEDING/FOLLOWING.  We hack this up by giving UNBOUNDED slightly
+// lower precedence than PRECEDING and FOLLOWING.  At present this doesn't
+// appear to cause UNBOUNDED to be treated differently from other unreserved
+// keywords anywhere else in the grammar, but it's definitely risky.  We can
+// blame any funny behavior of UNBOUNDED on the SQL standard, though.
+%nonassoc UNBOUNDED                                  // ideally should have same precedence as IDENT
 %nonassoc IDENT NULL_P PARTITION RANGE ROWS PRECEDING FOLLOWING CUBE ROLLUP
-%left     Op OPERATOR                          /* multi-character ops and user-defined operators */
+%left     Op OPERATOR                             // multi-character ops and user-defined operators
 %left     '+' '-'
 %left     '*' '/' '%'
 %left     '^'
 
-/* Unary Operators */
-%left     AT                                                 /* sets precedence for AT TIME ZONE */
+// Unary Operators.
+%left     AT                                                     // sets precedence for AT TIME ZONE
 %left     COLLATE
 %right    UMINUS
 %left     '[' ']'
@@ -586,36 +504,562 @@ static void YbSql_yyerror(YYLTYPE *yylloc, YbSql_yyscan_t yyscanner, const char 
 %left     TYPECAST
 %left     '.'
 
-/*
- * These might seem to be low-precedence, but actually they are not part
- * of the arithmetic hierarchy at all in their use as JOIN operators.
- * We make them high-precedence to support their use as function names.
- * They wouldn't be given a precedence at all, were it not that we need
- * left-associativity among the JOIN rules themselves.
- */
+// These might seem to be low-precedence, but actually they are not part
+// of the arithmetic hierarchy at all in their use as JOIN operators.
+// We make them high-precedence to support their use as function names.
+// They wouldn't be given a precedence at all, were it not that we need
+// left-associativity among the JOIN rules themselves.
 %left     JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
-/* kluge to keep xml_whitespace_option from causing shift/reduce conflicts */
+
+// kluge to keep xml_whitespace_option from causing shift/reduce conflicts.
 %right    PRESERVE STRIP_P
 
-%%
+//--------------------------------------------------------------------------------------------------
+// Logging.
+%printer { yyoutput << $$; } <*>;
 
-/*
- *  The target production for the whole parse.
- */
+//--------------------------------------------------------------------------------------------------
+// Scanning cursor location: Keep tracking of current text location.
+%locations
+
+%%
+%start stmtblock;
+
+//--------------------------------------------------------------------------------------------------
+// ACTIVE PARSING RULES.
+// YbSql currently uses these PostgreSql rules.
+//--------------------------------------------------------------------------------------------------
+// The target production for the whole parse.
 stmtblock:
   stmtmulti {
+    $$ = move($1);
   }
 ;
 
-/* the thrashing around here is to discard "empty" statements... */
+// The thrashing around here is to discard "empty" statements...
 stmtmulti:
   stmtmulti ';' stmt {
+    $$ = $3;
   }
   | stmt {
+    $$ = nullptr;
   }
 ;
 
-stmt : AlterEventTrigStmt
+stmt:
+  CreateStmt {
+    $$ = $1;
+  }
+  | inactive_stmt {
+    // Report error that the syntax is not yet supported.
+    $$ = $1;
+  }
+;
+
+schema_stmt:
+  CreateStmt {
+    $$ = $1;
+  }
+  | inactive_schema_stmt {
+    // Report error that the syntax is not yet supported.
+    $$ = $1;
+  }
+;
+
+CreateStmt:
+  CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
+  OptInherit OptWith OnCommitOption OptTableSpace {
+    $$ = NULL;
+  }
+  | CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '(' OptTableElementList ')'
+  OptInherit OptWith OnCommitOption OptTableSpace {
+    $$ = NULL;
+  }
+  | CREATE OptTemp TABLE qualified_name OF any_name
+  OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
+    $$ = NULL;
+  }
+  | CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
+  OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
+    $$ = NULL;
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// Keyword category lists.
+// Every keyword present in the Postgres grammar should appear in exactly one of these lists.
+// - Put a new keyword into the first list that it can go into without causing shift or reduce
+//   conflicts.  The earlier lists define "less reserved" categories of keywords.
+// - Make sure that each keyword's category in kwlist.h matches where it is listed here.  (Someday
+//   we may be able to generate these lists and kwlist.h's table from a common master list.)
+//
+// NOTE:
+// BISON (YACC) should apply the default action "$$ = $1;" when left and right values of a syntax
+// rule are of the same datatype. Unfortunately, BISON 3.0.4 didn't do this for the case where left
+// variable is a non-terminal and right hand value is a terminal. As a result, we won't rely on
+// BISON default behavior.
+//--------------------------------------------------------------------------------------------------
+
+// "Unreserved" keywords --- available for use as any kind of name.
+unreserved_keyword:
+  ABORT_P { $$ = $1; }
+  | ABSOLUTE_P { $$ = $1; }
+  | ACCESS { $$ = $1; }
+  | ACTION { $$ = $1; }
+  | ADD_P { $$ = $1; }
+  | ADMIN { $$ = $1; }
+  | AFTER { $$ = $1; }
+  | AGGREGATE { $$ = $1; }
+  | ALSO { $$ = $1; }
+  | ALTER { $$ = $1; }
+  | ALWAYS { $$ = $1; }
+  | ASSERTION { $$ = $1; }
+  | ASSIGNMENT { $$ = $1; }
+  | AT { $$ = $1; }
+  | ATTRIBUTE { $$ = $1; }
+  | BACKWARD { $$ = $1; }
+  | BEFORE { $$ = $1; }
+  | BEGIN_P { $$ = $1; }
+  | BY { $$ = $1; }
+  | CACHE { $$ = $1; }
+  | CALLED { $$ = $1; }
+  | CASCADE { $$ = $1; }
+  | CASCADED { $$ = $1; }
+  | CATALOG_P { $$ = $1; }
+  | CHAIN { $$ = $1; }
+  | CHARACTERISTICS { $$ = $1; }
+  | CHECKPOINT { $$ = $1; }
+  | CLASS { $$ = $1; }
+  | CLOSE { $$ = $1; }
+  | CLUSTER { $$ = $1; }
+  | COMMENT { $$ = $1; }
+  | COMMENTS { $$ = $1; }
+  | COMMIT { $$ = $1; }
+  | COMMITTED { $$ = $1; }
+  | CONFIGURATION { $$ = $1; }
+  | CONFLICT { $$ = $1; }
+  | CONNECTION { $$ = $1; }
+  | CONSTRAINTS { $$ = $1; }
+  | CONTENT_P { $$ = $1; }
+  | CONTINUE_P { $$ = $1; }
+  | CONVERSION_P { $$ = $1; }
+  | COPY { $$ = $1; }
+  | COST { $$ = $1; }
+  | CSV { $$ = $1; }
+  | CUBE { $$ = $1; }
+  | CURRENT_P { $$ = $1; }
+  | CURSOR { $$ = $1; }
+  | CYCLE { $$ = $1; }
+  | DATA_P { $$ = $1; }
+  | DATABASE { $$ = $1; }
+  | DAY_P { $$ = $1; }
+  | DEALLOCATE { $$ = $1; }
+  | DECLARE { $$ = $1; }
+  | DEFAULTS { $$ = $1; }
+  | DEFERRED { $$ = $1; }
+  | DEFINER { $$ = $1; }
+  | DELETE_P { $$ = $1; }
+  | DELIMITER { $$ = $1; }
+  | DELIMITERS { $$ = $1; }
+  | DICTIONARY { $$ = $1; }
+  | DISABLE_P { $$ = $1; }
+  | DISCARD { $$ = $1; }
+  | DOCUMENT_P { $$ = $1; }
+  | DOMAIN_P { $$ = $1; }
+  | DOUBLE_P { $$ = $1; }
+  | DROP { $$ = $1; }
+  | EACH { $$ = $1; }
+  | ENABLE_P { $$ = $1; }
+  | ENCODING { $$ = $1; }
+  | ENCRYPTED { $$ = $1; }
+  | ENUM_P { $$ = $1; }
+  | ESCAPE { $$ = $1; }
+  | EVENT { $$ = $1; }
+  | EXCLUDE { $$ = $1; }
+  | EXCLUDING { $$ = $1; }
+  | EXCLUSIVE { $$ = $1; }
+  | EXECUTE { $$ = $1; }
+  | EXPLAIN { $$ = $1; }
+  | EXTENSION { $$ = $1; }
+  | EXTERNAL { $$ = $1; }
+  | FAMILY { $$ = $1; }
+  | FILTER { $$ = $1; }
+  | FIRST_P { $$ = $1; }
+  | FOLLOWING { $$ = $1; }
+  | FORCE { $$ = $1; }
+  | FORWARD { $$ = $1; }
+  | FUNCTION { $$ = $1; }
+  | FUNCTIONS { $$ = $1; }
+  | GLOBAL { $$ = $1; }
+  | GRANTED { $$ = $1; }
+  | HANDLER { $$ = $1; }
+  | HEADER_P { $$ = $1; }
+  | HOLD { $$ = $1; }
+  | HOUR_P { $$ = $1; }
+  | IDENTITY_P { $$ = $1; }
+  | IF_P { $$ = $1; }
+  | IMMEDIATE { $$ = $1; }
+  | IMMUTABLE { $$ = $1; }
+  | IMPLICIT_P { $$ = $1; }
+  | IMPORT_P { $$ = $1; }
+  | INCLUDING { $$ = $1; }
+  | INCREMENT { $$ = $1; }
+  | INDEX { $$ = $1; }
+  | INDEXES { $$ = $1; }
+  | INHERIT { $$ = $1; }
+  | INHERITS { $$ = $1; }
+  | INLINE_P { $$ = $1; }
+  | INPUT_P { $$ = $1; }
+  | INSENSITIVE { $$ = $1; }
+  | INSERT { $$ = $1; }
+  | INSTEAD { $$ = $1; }
+  | INVOKER { $$ = $1; }
+  | ISOLATION { $$ = $1; }
+  | KEY { $$ = $1; }
+  | LABEL { $$ = $1; }
+  | LANGUAGE { $$ = $1; }
+  | LARGE_P { $$ = $1; }
+  | LAST_P { $$ = $1; }
+  | LEAKPROOF { $$ = $1; }
+  | LEVEL { $$ = $1; }
+  | LISTEN { $$ = $1; }
+  | LOAD { $$ = $1; }
+  | LOCAL { $$ = $1; }
+  | LOCATION { $$ = $1; }
+  | LOCK_P { $$ = $1; }
+  | LOCKED { $$ = $1; }
+  | LOGGED { $$ = $1; }
+  | MAPPING { $$ = $1; }
+  | MATCH { $$ = $1; }
+  | MATERIALIZED { $$ = $1; }
+  | MAXVALUE { $$ = $1; }
+  | MINUTE_P { $$ = $1; }
+  | MINVALUE { $$ = $1; }
+  | MODE { $$ = $1; }
+  | MONTH_P { $$ = $1; }
+  | MOVE { $$ = $1; }
+  | NAME_P { $$ = $1; }
+  | NAMES { $$ = $1; }
+  | NEXT { $$ = $1; }
+  | NO { $$ = $1; }
+  | NOTHING { $$ = $1; }
+  | NOTIFY { $$ = $1; }
+  | NOWAIT { $$ = $1; }
+  | NULLS_P { $$ = $1; }
+  | OBJECT_P { $$ = $1; }
+  | OF { $$ = $1; }
+  | OFF { $$ = $1; }
+  | OIDS { $$ = $1; }
+  | OPERATOR { $$ = $1; }
+  | OPTION { $$ = $1; }
+  | OPTIONS { $$ = $1; }
+  | ORDINALITY { $$ = $1; }
+  | OVER { $$ = $1; }
+  | OWNED { $$ = $1; }
+  | OWNER { $$ = $1; }
+  | PARSER { $$ = $1; }
+  | PARTIAL { $$ = $1; }
+  | PARTITION { $$ = $1; }
+  | PASSING { $$ = $1; }
+  | PASSWORD { $$ = $1; }
+  | PLANS { $$ = $1; }
+  | POLICY { $$ = $1; }
+  | PRECEDING { $$ = $1; }
+  | PREPARE { $$ = $1; }
+  | PREPARED { $$ = $1; }
+  | PRESERVE { $$ = $1; }
+  | PRIOR { $$ = $1; }
+  | PRIVILEGES { $$ = $1; }
+  | PROCEDURAL { $$ = $1; }
+  | PROCEDURE { $$ = $1; }
+  | PROGRAM { $$ = $1; }
+  | QUOTE { $$ = $1; }
+  | RANGE { $$ = $1; }
+  | READ { $$ = $1; }
+  | REASSIGN { $$ = $1; }
+  | RECHECK { $$ = $1; }
+  | RECURSIVE { $$ = $1; }
+  | REF { $$ = $1; }
+  | REFRESH { $$ = $1; }
+  | REINDEX { $$ = $1; }
+  | RELATIVE_P { $$ = $1; }
+  | RELEASE { $$ = $1; }
+  | RENAME { $$ = $1; }
+  | REPEATABLE { $$ = $1; }
+  | REPLACE { $$ = $1; }
+  | REPLICA { $$ = $1; }
+  | RESET { $$ = $1; }
+  | RESTART { $$ = $1; }
+  | RESTRICT { $$ = $1; }
+  | RETURNS { $$ = $1; }
+  | REVOKE { $$ = $1; }
+  | ROLE { $$ = $1; }
+  | ROLLBACK { $$ = $1; }
+  | ROLLUP { $$ = $1; }
+  | ROWS { $$ = $1; }
+  | RULE { $$ = $1; }
+  | SAVEPOINT { $$ = $1; }
+  | SCHEMA { $$ = $1; }
+  | SCROLL { $$ = $1; }
+  | SEARCH { $$ = $1; }
+  | SECOND_P { $$ = $1; }
+  | SECURITY { $$ = $1; }
+  | SEQUENCE { $$ = $1; }
+  | SEQUENCES { $$ = $1; }
+  | SERIALIZABLE { $$ = $1; }
+  | SERVER { $$ = $1; }
+  | SESSION { $$ = $1; }
+  | SET { $$ = $1; }
+  | SETS { $$ = $1; }
+  | SHARE { $$ = $1; }
+  | SHOW { $$ = $1; }
+  | SIMPLE { $$ = $1; }
+  | SKIP { $$ = $1; }
+  | SNAPSHOT { $$ = $1; }
+  | SQL_P { $$ = $1; }
+  | STABLE { $$ = $1; }
+  | STANDALONE_P { $$ = $1; }
+  | START { $$ = $1; }
+  | STATEMENT { $$ = $1; }
+  | STATISTICS { $$ = $1; }
+  | STDIN { $$ = $1; }
+  | STDOUT { $$ = $1; }
+  | STORAGE { $$ = $1; }
+  | STRICT_P { $$ = $1; }
+  | STRIP_P { $$ = $1; }
+  | SYSID { $$ = $1; }
+  | SYSTEM_P { $$ = $1; }
+  | TABLES { $$ = $1; }
+  | TABLESPACE { $$ = $1; }
+  | TEMP { $$ = $1; }
+  | TEMPLATE { $$ = $1; }
+  | TEMPORARY { $$ = $1; }
+  | TEXT_P { $$ = $1; }
+  | TRANSACTION { $$ = $1; }
+  | TRANSFORM { $$ = $1; }
+  | TRIGGER { $$ = $1; }
+  | TRUNCATE { $$ = $1; }
+  | TRUSTED { $$ = $1; }
+  | TYPE_P { $$ = $1; }
+  | TYPES_P { $$ = $1; }
+  | UNBOUNDED { $$ = $1; }
+  | UNCOMMITTED { $$ = $1; }
+  | UNENCRYPTED { $$ = $1; }
+  | UNKNOWN { $$ = $1; }
+  | UNLISTEN { $$ = $1; }
+  | UNLOGGED { $$ = $1; }
+  | UNTIL { $$ = $1; }
+  | UPDATE { $$ = $1; }
+  | VACUUM { $$ = $1; }
+  | VALID { $$ = $1; }
+  | VALIDATE { $$ = $1; }
+  | VALIDATOR { $$ = $1; }
+  | VALUE_P { $$ = $1; }
+  | VARYING { $$ = $1; }
+  | VERSION_P { $$ = $1; }
+  | VIEW { $$ = $1; }
+  | VIEWS { $$ = $1; }
+  | VOLATILE { $$ = $1; }
+  | WHITESPACE_P { $$ = $1; }
+  | WITHIN { $$ = $1; }
+  | WITHOUT { $$ = $1; }
+  | WORK { $$ = $1; }
+  | WRAPPER { $$ = $1; }
+  | WRITE { $$ = $1; }
+  | XML_P { $$ = $1; }
+  | YEAR_P { $$ = $1; }
+  | YES_P { $$ = $1; }
+  | ZONE { $$ = $1; }
+  ;
+
+// Column identifier --- keywords that can be column, table, etc names.
+//
+// Many of these keywords will in fact be recognized as type or function
+// names too; but they have special productions for the purpose, and so
+// can't be treated as "generic" type or function names.
+//
+// The type names appearing here are not usable as function names
+// because they can be followed by '(' in typename productions, which
+// looks too much like a function call for an LR(1) parser.
+col_name_keyword:
+  BETWEEN { $$ = $1; }
+  | BIGINT { $$ = $1; }
+  | BIT { $$ = $1; }
+  | BOOLEAN_P { $$ = $1; }
+  | CHAR_P { $$ = $1; }
+  | CHARACTER { $$ = $1; }
+  | COALESCE { $$ = $1; }
+  | DEC { $$ = $1; }
+  | DECIMAL_P { $$ = $1; }
+  | EXISTS { $$ = $1; }
+  | EXTRACT { $$ = $1; }
+  | FLOAT_P { $$ = $1; }
+  | GREATEST { $$ = $1; }
+  | GROUPING { $$ = $1; }
+  | INOUT { $$ = $1; }
+  | INT_P { $$ = $1; }
+  | INTEGER { $$ = $1; }
+  | INTERVAL { $$ = $1; }
+  | LEAST { $$ = $1; }
+  | NATIONAL { $$ = $1; }
+  | NCHAR { $$ = $1; }
+  | NONE { $$ = $1; }
+  | NULLIF { $$ = $1; }
+  | NUMERIC { $$ = $1; }
+  | OUT_P { $$ = $1; }
+  | OVERLAY { $$ = $1; }
+  | POSITION { $$ = $1; }
+  | PRECISION { $$ = $1; }
+  | REAL { $$ = $1; }
+  | ROW { $$ = $1; }
+  | SETOF { $$ = $1; }
+  | SMALLINT { $$ = $1; }
+  | SUBSTRING { $$ = $1; }
+  | TIME { $$ = $1; }
+  | TIMESTAMP { $$ = $1; }
+  | TREAT { $$ = $1; }
+  | TRIM { $$ = $1; }
+  | VALUES { $$ = $1; }
+  | VARCHAR { $$ = $1; }
+  | XMLATTRIBUTES { $$ = $1; }
+  | XMLCONCAT { $$ = $1; }
+  | XMLELEMENT { $$ = $1; }
+  | XMLEXISTS { $$ = $1; }
+  | XMLFOREST { $$ = $1; }
+  | XMLPARSE { $$ = $1; }
+  | XMLPI { $$ = $1; }
+  | XMLROOT { $$ = $1; }
+  | XMLSERIALIZE { $$ = $1; }
+;
+
+// Type/function identifier --- keywords that can be type or function names.
+//
+// Most of these are keywords that are used as operators in expressions;
+// in general such keywords can't be column names because they would be
+// ambiguous with variables, but they are unambiguous as function identifiers.
+//
+// Do not include POSITION, SUBSTRING, etc here since they have explicit
+// productions in a_expr to support the goofy SQL9x argument syntax.
+// - thomas 2000-11-28
+type_func_name_keyword:
+  AUTHORIZATION { $$ = $1; }
+  | BINARY { $$ = $1; }
+  | COLLATION { $$ = $1; }
+  | CONCURRENTLY { $$ = $1; }
+  | CROSS { $$ = $1; }
+  | CURRENT_SCHEMA { $$ = $1; }
+  | FREEZE { $$ = $1; }
+  | FULL { $$ = $1; }
+  | ILIKE { $$ = $1; }
+  | INNER_P { $$ = $1; }
+  | IS { $$ = $1; }
+  | ISNULL { $$ = $1; }
+  | JOIN { $$ = $1; }
+  | LEFT { $$ = $1; }
+  | LIKE { $$ = $1; }
+  | NATURAL { $$ = $1; }
+  | NOTNULL { $$ = $1; }
+  | OUTER_P { $$ = $1; }
+  | OVERLAPS { $$ = $1; }
+  | RIGHT { $$ = $1; }
+  | SIMILAR { $$ = $1; }
+  | TABLESAMPLE { $$ = $1; }
+  | VERBOSE { $$ = $1; }
+;
+
+// Reserved keyword --- these keywords are usable only as a ColLabel.
+//
+// Keywords appear here if they could not be distinguished from variable,
+// type, or function names in some contexts.  Don't put things here unless
+// forced to.
+reserved_keyword:
+  ALL { $$ = $1; }
+  | ANALYSE { $$ = $1; }
+  | ANALYZE { $$ = $1; }
+  | AND { $$ = $1; }
+  | ANY { $$ = $1; }
+  | ARRAY { $$ = $1; }
+  | AS { $$ = $1; }
+  | ASC { $$ = $1; }
+  | ASYMMETRIC { $$ = $1; }
+  | BOTH { $$ = $1; }
+  | CASE { $$ = $1; }
+  | CAST { $$ = $1; }
+  | CHECK { $$ = $1; }
+  | COLLATE { $$ = $1; }
+  | COLUMN { $$ = $1; }
+  | CONSTRAINT { $$ = $1; }
+  | CREATE { $$ = $1; }
+  | CURRENT_CATALOG { $$ = $1; }
+  | CURRENT_DATE { $$ = $1; }
+  | CURRENT_ROLE { $$ = $1; }
+  | CURRENT_TIME { $$ = $1; }
+  | CURRENT_TIMESTAMP { $$ = $1; }
+  | CURRENT_USER { $$ = $1; }
+  | DEFAULT { $$ = $1; }
+  | DEFERRABLE { $$ = $1; }
+  | DESC { $$ = $1; }
+  | DISTINCT { $$ = $1; }
+  | DO { $$ = $1; }
+  | ELSE { $$ = $1; }
+  | END_P { $$ = $1; }
+  | EXCEPT { $$ = $1; }
+  | FALSE_P { $$ = $1; }
+  | FETCH { $$ = $1; }
+  | FOR { $$ = $1; }
+  | FOREIGN { $$ = $1; }
+  | FROM { $$ = $1; }
+  | GRANT { $$ = $1; }
+  | GROUP_P { $$ = $1; }
+  | HAVING { $$ = $1; }
+  | IN_P { $$ = $1; }
+  | INITIALLY { $$ = $1; }
+  | INTERSECT { $$ = $1; }
+  | INTO { $$ = $1; }
+  | LATERAL_P { $$ = $1; }
+  | LEADING { $$ = $1; }
+  | LIMIT { $$ = $1; }
+  | LOCALTIME { $$ = $1; }
+  | LOCALTIMESTAMP { $$ = $1; }
+  | NOT { $$ = $1; }
+  | NULL_P { $$ = $1; }
+  | OFFSET { $$ = $1; }
+  | ON { $$ = $1; }
+  | ONLY { $$ = $1; }
+  | OR { $$ = $1; }
+  | ORDER { $$ = $1; }
+  | PLACING { $$ = $1; }
+  | PRIMARY { $$ = $1; }
+  | REFERENCES { $$ = $1; }
+  | RETURNING { $$ = $1; }
+  | SELECT { $$ = $1; }
+  | SESSION_USER { $$ = $1; }
+  | SOME { $$ = $1; }
+  | SYMMETRIC { $$ = $1; }
+  | TABLE { $$ = $1; }
+  | THEN { $$ = $1; }
+  | TO { $$ = $1; }
+  | TRAILING { $$ = $1; }
+  | TRUE_P { $$ = $1; }
+  | UNION { $$ = $1; }
+  | UNIQUE { $$ = $1; }
+  | USER { $$ = $1; }
+  | USING { $$ = $1; }
+  | VARIADIC { $$ = $1; }
+  | WHEN { $$ = $1; }
+  | WHERE { $$ = $1; }
+  | WINDOW { $$ = $1; }
+  | WITH { $$ = $1; }
+;
+
+
+//--------------------------------------------------------------------------------------------------
+// INACTIVE PARSING RULES. INACTIVE PARSING RULES. INACTIVE PARSING RULES. INACTIVE PARSING RULES.
+//
+// YbSql currently does not use these PostgreSql rules.
+//--------------------------------------------------------------------------------------------------
+
+inactive_stmt : AlterEventTrigStmt
   | AlterDatabaseStmt
   | AlterDatabaseSetStmt
   | AlterDefaultPrivilegesStmt
@@ -667,7 +1111,6 @@ stmt : AlterEventTrigStmt
   | CreatePLangStmt
   | CreateSchemaStmt
   | CreateSeqStmt
-  | CreateStmt
   | CreateTableSpaceStmt
   | CreateTransformStmt
   | CreateTrigStmt
@@ -745,7 +1188,7 @@ stmt : AlterEventTrigStmt
  *****************************************************************************/
 
 CreateRoleStmt: CREATE ROLE RoleId opt_with OptRoleList {
-    $$ = (Node *)NULL;
+    $$ = nullptr;
   }
 ;
 
@@ -844,7 +1287,7 @@ AlterRoleStmt:
 ;
 
 opt_in_database:
-  /* EMPTY */ { $$ = NULL; }
+  /* EMPTY */ { }
   | IN_P DATABASE database_name { $$ = $3; }
 ;
 
@@ -923,7 +1366,7 @@ CreateSchemaStmt:
 
 OptSchemaName:
   ColId                     { $$ = $1; }
-  | /* EMPTY */             { $$ = NULL; }
+  | /* EMPTY */             { }
 ;
 
 OptSchemaEltList:
@@ -937,9 +1380,8 @@ OptSchemaEltList:
  *  schema_stmt are the ones that can show up inside a CREATE SCHEMA
  *  statement (in addition to by themselves).
  */
-schema_stmt:
-  CreateStmt
-  | IndexStmt
+inactive_schema_stmt:
+  IndexStmt
   | CreateSeqStmt
   | CreateTrigStmt
   | GrantStmt
@@ -1593,11 +2035,11 @@ copy_generic_opt_elem:
 
 copy_generic_opt_arg:
   opt_boolean_or_string                 { }
-  | NumericOnly                         { $$ = (Node *) $1; }
+  | NumericOnly                         { }
   | '*'                                 { }
-  | '(' copy_generic_opt_arg_list ')'   { $$ = (Node *) $2; }
-  | /* EMPTY */                         { $$ = NULL; }
-    ;
+  | '(' copy_generic_opt_arg_list ')'   { }
+  | /* EMPTY */                         { }
+;
 
 copy_generic_opt_arg_list:
   copy_generic_opt_arg_list_item {
@@ -1619,6 +2061,7 @@ copy_generic_opt_arg_list_item:
  *
  *****************************************************************************/
 
+/*
 CreateStmt:
   CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
   OptInherit OptWith OnCommitOption OptTableSpace {
@@ -1633,6 +2076,7 @@ CreateStmt:
   OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
   }
 ;
+*/
 
 /*
  * Redundancy here is needed to avoid shift/reduce conflicts,
@@ -1953,11 +2397,11 @@ OptWith:
 ;
 
 OnCommitOption:
-  ON COMMIT DROP              { }
-  | ON COMMIT DELETE_P ROWS   { }
-  | ON COMMIT PRESERVE ROWS   { }
-  | /*EMPTY*/                 { }
-    ;
+  ON COMMIT DROP              { $$ = ONCOMMIT_DROP; }
+  | ON COMMIT DELETE_P ROWS   { $$ = ONCOMMIT_DELETE_ROWS; }
+  | ON COMMIT PRESERVE ROWS   { $$ = ONCOMMIT_PRESERVE_ROWS; }
+  | /*EMPTY*/                 { $$ = ONCOMMIT_NOOP; }
+;
 
 OptTableSpace:
   TABLESPACE name             { $$ = $2; }
@@ -4323,7 +4767,7 @@ RenameStmt:
 ;
 
 opt_column:
-  COLUMN                    { $$ = COLUMN; }
+  COLUMN                    { $$ = 1; }
   | /*EMPTY*/               { $$ = 0; }
 ;
 
@@ -4692,13 +5136,13 @@ createdb_opt_item:
  * exercising every such option, at least at the syntax level.
  */
 createdb_opt_name:
-  IDENT                 { $$ = $1; }
-  | CONNECTION LIMIT    { $$ = pstrdup("connection_limit"); }
-  | ENCODING            { $$ = pstrdup($1); }
-  | LOCATION            { $$ = pstrdup($1); }
-  | OWNER               { $$ = pstrdup($1); }
-  | TABLESPACE          { $$ = pstrdup($1); }
-  | TEMPLATE            { $$ = pstrdup($1); }
+  IDENT                 { $$ = parser_strdup($1); }
+  | CONNECTION LIMIT    { $$ = parser_strdup("connection_limit"); }
+  | ENCODING            { $$ = parser_strdup($1); }
+  | LOCATION            { $$ = parser_strdup($1); }
+  | OWNER               { $$ = parser_strdup($1); }
+  | TABLESPACE          { $$ = parser_strdup($1); }
+  | TEMPLATE            { $$ = parser_strdup($1); }
 ;
 
 /*
@@ -5882,7 +6326,6 @@ join_outer:
 
 join_qual:
   USING '(' name_list ')' {
-    $$ = (Node *)$3;
   }
   | ON a_expr {
     $$ = $2;
@@ -7177,7 +7620,6 @@ in_expr:
   select_with_parens {
   }
   | '(' expr_list ')' {
-    $$ = (Node *)$2;
   }
 ;
 
@@ -7265,7 +7707,6 @@ opt_asymmetric: ASYMMETRIC
 
 ctext_expr:
   a_expr {
-    $$ = (Node *)$1;
   }
   | DEFAULT {
   }
@@ -7475,521 +7916,42 @@ role_list:
 /* Column identifier --- names that can be column, table, etc names.
  */
 ColId:
-  IDENT                         { $$ = $1; }
-  | unreserved_keyword          { $$ = pstrdup($1); }
-  | col_name_keyword            { $$ = pstrdup($1); }
+  IDENT                         { $$ = parser_strdup($1); }
+  | unreserved_keyword          { $$ = parser_strdup($1); }
+  | col_name_keyword            { $$ = parser_strdup($1); }
 ;
 
 /* Type/function identifier --- names that can be type or function names.
  */
-type_function_name: IDENT             { $$ = $1; }
-      | unreserved_keyword          { $$ = pstrdup($1); }
-      | type_func_name_keyword        { $$ = pstrdup($1); }
-    ;
+type_function_name:
+   IDENT                        { $$ = parser_strdup($1); }
+  | unreserved_keyword          { $$ = parser_strdup($1); }
+  | type_func_name_keyword      { $$ = parser_strdup($1); }
+;
 
 /* Any not-fully-reserved word --- these names can be, eg, role names.
  */
-NonReservedWord:  IDENT             { $$ = $1; }
-      | unreserved_keyword          { $$ = pstrdup($1); }
-      | col_name_keyword            { $$ = pstrdup($1); }
-      | type_func_name_keyword        { $$ = pstrdup($1); }
-    ;
+NonReservedWord:
+  IDENT                         { $$ = parser_strdup($1); }
+  | unreserved_keyword          { $$ = parser_strdup($1); }
+  | col_name_keyword            { $$ = parser_strdup($1); }
+  | type_func_name_keyword      { $$ = parser_strdup($1); }
+;
 
 /* Column label --- allowed labels in "AS" clauses.
  * This presently includes *all* Postgres keywords.
  */
-ColLabel: IDENT                 { $$ = $1; }
-      | unreserved_keyword          { $$ = pstrdup($1); }
-      | col_name_keyword            { $$ = pstrdup($1); }
-      | type_func_name_keyword        { $$ = pstrdup($1); }
-      | reserved_keyword            { $$ = pstrdup($1); }
-    ;
-
-
-/*
- * Keyword category lists.  Generally, every keyword present in
- * the Postgres grammar should appear in exactly one of these lists.
- *
- * Put a new keyword into the first list that it can go into without causing
- * shift or reduce conflicts.  The earlier lists define "less reserved"
- * categories of keywords.
- *
- * Make sure that each keyword's category in kwlist.h matches where
- * it is listed here.  (Someday we may be able to generate these lists and
- * kwlist.h's table from a common master list.)
- */
-
-/* "Unreserved" keywords --- available for use as any kind of name.
- */
-unreserved_keyword:
-  ABORT_P
-  | ABSOLUTE_P
-  | ACCESS
-  | ACTION
-  | ADD_P
-  | ADMIN
-  | AFTER
-  | AGGREGATE
-  | ALSO
-  | ALTER
-  | ALWAYS
-  | ASSERTION
-  | ASSIGNMENT
-  | AT
-  | ATTRIBUTE
-  | BACKWARD
-  | BEFORE
-  | BEGIN_P
-  | BY
-  | CACHE
-  | CALLED
-  | CASCADE
-  | CASCADED
-  | CATALOG_P
-  | CHAIN
-  | CHARACTERISTICS
-  | CHECKPOINT
-  | CLASS
-  | CLOSE
-  | CLUSTER
-  | COMMENT
-  | COMMENTS
-  | COMMIT
-  | COMMITTED
-  | CONFIGURATION
-  | CONFLICT
-  | CONNECTION
-  | CONSTRAINTS
-  | CONTENT_P
-  | CONTINUE_P
-  | CONVERSION_P
-  | COPY
-  | COST
-  | CSV
-  | CUBE
-  | CURRENT_P
-  | CURSOR
-  | CYCLE
-  | DATA_P
-  | DATABASE
-  | DAY_P
-  | DEALLOCATE
-  | DECLARE
-  | DEFAULTS
-  | DEFERRED
-  | DEFINER
-  | DELETE_P
-  | DELIMITER
-  | DELIMITERS
-  | DICTIONARY
-  | DISABLE_P
-  | DISCARD
-  | DOCUMENT_P
-  | DOMAIN_P
-  | DOUBLE_P
-  | DROP
-  | EACH
-  | ENABLE_P
-  | ENCODING
-  | ENCRYPTED
-  | ENUM_P
-  | ESCAPE
-  | EVENT
-  | EXCLUDE
-  | EXCLUDING
-  | EXCLUSIVE
-  | EXECUTE
-  | EXPLAIN
-  | EXTENSION
-  | EXTERNAL
-  | FAMILY
-  | FILTER
-  | FIRST_P
-  | FOLLOWING
-  | FORCE
-  | FORWARD
-  | FUNCTION
-  | FUNCTIONS
-  | GLOBAL
-  | GRANTED
-  | HANDLER
-  | HEADER_P
-  | HOLD
-  | HOUR_P
-  | IDENTITY_P
-  | IF_P
-  | IMMEDIATE
-  | IMMUTABLE
-  | IMPLICIT_P
-  | IMPORT_P
-  | INCLUDING
-  | INCREMENT
-  | INDEX
-  | INDEXES
-  | INHERIT
-  | INHERITS
-  | INLINE_P
-  | INPUT_P
-  | INSENSITIVE
-  | INSERT
-  | INSTEAD
-  | INVOKER
-  | ISOLATION
-  | KEY
-  | LABEL
-  | LANGUAGE
-  | LARGE_P
-  | LAST_P
-  | LEAKPROOF
-  | LEVEL
-  | LISTEN
-  | LOAD
-  | LOCAL
-  | LOCATION
-  | LOCK_P
-  | LOCKED
-  | LOGGED
-  | MAPPING
-  | MATCH
-  | MATERIALIZED
-  | MAXVALUE
-  | MINUTE_P
-  | MINVALUE
-  | MODE
-  | MONTH_P
-  | MOVE
-  | NAME_P
-  | NAMES
-  | NEXT
-  | NO
-  | NOTHING
-  | NOTIFY
-  | NOWAIT
-  | NULLS_P
-  | OBJECT_P
-  | OF
-  | OFF
-  | OIDS
-  | OPERATOR
-  | OPTION
-  | OPTIONS
-  | ORDINALITY
-  | OVER
-  | OWNED
-  | OWNER
-  | PARSER
-  | PARTIAL
-  | PARTITION
-  | PASSING
-  | PASSWORD
-  | PLANS
-  | POLICY
-  | PRECEDING
-  | PREPARE
-  | PREPARED
-  | PRESERVE
-  | PRIOR
-  | PRIVILEGES
-  | PROCEDURAL
-  | PROCEDURE
-  | PROGRAM
-  | QUOTE
-  | RANGE
-  | READ
-  | REASSIGN
-  | RECHECK
-  | RECURSIVE
-  | REF
-  | REFRESH
-  | REINDEX
-  | RELATIVE_P
-  | RELEASE
-  | RENAME
-  | REPEATABLE
-  | REPLACE
-  | REPLICA
-  | RESET
-  | RESTART
-  | RESTRICT
-  | RETURNS
-  | REVOKE
-  | ROLE
-  | ROLLBACK
-  | ROLLUP
-  | ROWS
-  | RULE
-  | SAVEPOINT
-  | SCHEMA
-  | SCROLL
-  | SEARCH
-  | SECOND_P
-  | SECURITY
-  | SEQUENCE
-  | SEQUENCES
-  | SERIALIZABLE
-  | SERVER
-  | SESSION
-  | SET
-  | SETS
-  | SHARE
-  | SHOW
-  | SIMPLE
-  | SKIP
-  | SNAPSHOT
-  | SQL_P
-  | STABLE
-  | STANDALONE_P
-  | START
-  | STATEMENT
-  | STATISTICS
-  | STDIN
-  | STDOUT
-  | STORAGE
-  | STRICT_P
-  | STRIP_P
-  | SYSID
-  | SYSTEM_P
-  | TABLES
-  | TABLESPACE
-  | TEMP
-  | TEMPLATE
-  | TEMPORARY
-  | TEXT_P
-  | TRANSACTION
-  | TRANSFORM
-  | TRIGGER
-  | TRUNCATE
-  | TRUSTED
-  | TYPE_P
-  | TYPES_P
-  | UNBOUNDED
-  | UNCOMMITTED
-  | UNENCRYPTED
-  | UNKNOWN
-  | UNLISTEN
-  | UNLOGGED
-  | UNTIL
-  | UPDATE
-  | VACUUM
-  | VALID
-  | VALIDATE
-  | VALIDATOR
-  | VALUE_P
-  | VARYING
-  | VERSION_P
-  | VIEW
-  | VIEWS
-  | VOLATILE
-  | WHITESPACE_P
-  | WITHIN
-  | WITHOUT
-  | WORK
-  | WRAPPER
-  | WRITE
-  | XML_P
-  | YEAR_P
-  | YES_P
-  | ZONE
-  ;
-
-/* Column identifier --- keywords that can be column, table, etc names.
- *
- * Many of these keywords will in fact be recognized as type or function
- * names too; but they have special productions for the purpose, and so
- * can't be treated as "generic" type or function names.
- *
- * The type names appearing here are not usable as function names
- * because they can be followed by '(' in typename productions, which
- * looks too much like a function call for an LR(1) parser.
- */
-col_name_keyword:
-  BETWEEN
-  | BIGINT
-  | BIT
-  | BOOLEAN_P
-  | CHAR_P
-  | CHARACTER
-  | COALESCE
-  | DEC
-  | DECIMAL_P
-  | EXISTS
-  | EXTRACT
-  | FLOAT_P
-  | GREATEST
-  | GROUPING
-  | INOUT
-  | INT_P
-  | INTEGER
-  | INTERVAL
-  | LEAST
-  | NATIONAL
-  | NCHAR
-  | NONE
-  | NULLIF
-  | NUMERIC
-  | OUT_P
-  | OVERLAY
-  | POSITION
-  | PRECISION
-  | REAL
-  | ROW
-  | SETOF
-  | SMALLINT
-  | SUBSTRING
-  | TIME
-  | TIMESTAMP
-  | TREAT
-  | TRIM
-  | VALUES
-  | VARCHAR
-  | XMLATTRIBUTES
-  | XMLCONCAT
-  | XMLELEMENT
-  | XMLEXISTS
-  | XMLFOREST
-  | XMLPARSE
-  | XMLPI
-  | XMLROOT
-  | XMLSERIALIZE
+ColLabel:
+  IDENT                         { $$ = parser_strdup($1); }
+  | unreserved_keyword          { $$ = parser_strdup($1); }
+  | col_name_keyword            { $$ = parser_strdup($1); }
+  | type_func_name_keyword      { $$ = parser_strdup($1); }
+  | reserved_keyword            { $$ = parser_strdup($1); }
 ;
 
-/* Type/function identifier --- keywords that can be type or function names.
- *
- * Most of these are keywords that are used as operators in expressions;
- * in general such keywords can't be column names because they would be
- * ambiguous with variables, but they are unambiguous as function identifiers.
- *
- * Do not include POSITION, SUBSTRING, etc here since they have explicit
- * productions in a_expr to support the goofy SQL9x argument syntax.
- * - thomas 2000-11-28
- */
-type_func_name_keyword:
-  AUTHORIZATION
-  | BINARY
-  | COLLATION
-  | CONCURRENTLY
-  | CROSS
-  | CURRENT_SCHEMA
-  | FREEZE
-  | FULL
-  | ILIKE
-  | INNER_P
-  | IS
-  | ISNULL
-  | JOIN
-  | LEFT
-  | LIKE
-  | NATURAL
-  | NOTNULL
-  | OUTER_P
-  | OVERLAPS
-  | RIGHT
-  | SIMILAR
-  | TABLESAMPLE
-  | VERBOSE
-;
-
-/* Reserved keyword --- these keywords are usable only as a ColLabel.
- *
- * Keywords appear here if they could not be distinguished from variable,
- * type, or function names in some contexts.  Don't put things here unless
- * forced to.
- */
-reserved_keyword:
-  ALL
-  | ANALYSE
-  | ANALYZE
-  | AND
-  | ANY
-  | ARRAY
-  | AS
-  | ASC
-  | ASYMMETRIC
-  | BOTH
-  | CASE
-  | CAST
-  | CHECK
-  | COLLATE
-  | COLUMN
-  | CONSTRAINT
-  | CREATE
-  | CURRENT_CATALOG
-  | CURRENT_DATE
-  | CURRENT_ROLE
-  | CURRENT_TIME
-  | CURRENT_TIMESTAMP
-  | CURRENT_USER
-  | DEFAULT
-  | DEFERRABLE
-  | DESC
-  | DISTINCT
-  | DO
-  | ELSE
-  | END_P
-  | EXCEPT
-  | FALSE_P
-  | FETCH
-  | FOR
-  | FOREIGN
-  | FROM
-  | GRANT
-  | GROUP_P
-  | HAVING
-  | IN_P
-  | INITIALLY
-  | INTERSECT
-  | INTO
-  | LATERAL_P
-  | LEADING
-  | LIMIT
-  | LOCALTIME
-  | LOCALTIMESTAMP
-  | NOT
-  | NULL_P
-  | OFFSET
-  | ON
-  | ONLY
-  | OR
-  | ORDER
-  | PLACING
-  | PRIMARY
-  | REFERENCES
-  | RETURNING
-  | SELECT
-  | SESSION_USER
-  | SOME
-  | SYMMETRIC
-  | TABLE
-  | THEN
-  | TO
-  | TRAILING
-  | TRUE_P
-  | UNION
-  | UNIQUE
-  | USER
-  | USING
-  | VARIADIC
-  | WHEN
-  | WHERE
-  | WINDOW
-  | WITH
-;
 
 %%
 
-/* Added because panther doesn't have liby.a installed. */
-void YbSql_yyerror(YYLTYPE *yylloc, YbSql_yyscan_t yyscanner, const char *msg) {
-  // report_yyerror(msg);
-}
-
-/*
-int report_yyerror (const char *msg) {
-  return fprintf (stderr, "YACC: %s\n", msg);
-}
-*/
-
-// Initialize to parse one query string.
-void parser_init(Parser_extra_type *yyext) {
-  // In case grammar forgets to set it.
-  yyext->parsetree = NULL;
+void GramProcessor::error(const location_type& l, const std::string& m) {
+  parser_->Error(l, m);
 }

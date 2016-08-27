@@ -16,6 +16,12 @@
  *-------------------------------------------------------------------------
  */
 
+//--------------------------------------------------------------------------------------------------
+// NOTE: All entities in this modules are copies of PostgreSql's code. We made some minor changes
+// to avoid lint errors such as using '{' for if blocks and change the comment style from '/**/'
+// to '//'.
+//--------------------------------------------------------------------------------------------------
+
 /* there is deliberately not an #ifndef KWLIST_H here */
 
 /*
