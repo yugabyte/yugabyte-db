@@ -49,12 +49,13 @@ ul{
   overflow: auto;
 }
 
-.createUniverseFormSplit{
+.universeFormSplit {
   border-bottom: 1px solid black;
   margin-top: 4%;
   margin-bottom: 4%;
 }
-.form-item-label{
+
+.form-item-label {
   display: block;
   margin-bottom: 4%;
 }
