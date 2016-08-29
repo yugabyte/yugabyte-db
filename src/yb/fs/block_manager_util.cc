@@ -108,7 +108,7 @@ Status PathInstanceMetadataFile::Lock() {
   DCHECK(!lock_);
 
   FileLock* lock;
-  RETURN_NOT_OK_PREPEND(env_->LockFile(filename_, &lock),
+  RETURN_NOT_OK_PREPEND(env_->LockFile(filename_, &lock, true /* recursive_lock_ok */),
                         Substitute("Could not lock $0", filename_));
   lock_.reset(lock);
   return Status::OK();

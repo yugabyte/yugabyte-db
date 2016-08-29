@@ -182,8 +182,15 @@ class Env {
   // with a failure.  I.e., this call does not wait for existing locks
   // to go away.
   //
+  // If 'recursive_lock_ok' is true, then the existing process is allowed
+  // to grab the lock on the same file multiple times. Note that a count of
+  // how many times the lock is repeatedly grabbed on the same file is
+  // NOT maintained. A single unlock will release the lock.
+  //
   // May create the named file if it does not already exist.
-  virtual Status LockFile(const std::string& fname, FileLock** lock) = 0;
+  virtual Status LockFile(const std::string& fname,
+                          FileLock** lock,
+                          bool recursive_lock_ok) = 0;
 
   // Release the lock acquired by a previous successful call to LockFile.
   // REQUIRES: lock was returned by a successful LockFile() call
@@ -560,8 +567,8 @@ class EnvWrapper : public Env {
   Status RenameFile(const std::string& s, const std::string& t) OVERRIDE {
     return target_->RenameFile(s, t);
   }
-  Status LockFile(const std::string& f, FileLock** l) OVERRIDE {
-    return target_->LockFile(f, l);
+  Status LockFile(const std::string& f, FileLock** l, bool r) OVERRIDE {
+    return target_->LockFile(f, l, r);
   }
   Status UnlockFile(FileLock* l) OVERRIDE { return target_->UnlockFile(l); }
   virtual Status GetTestDirectory(std::string* path) OVERRIDE {

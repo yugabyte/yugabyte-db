@@ -360,7 +360,7 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
       // we want. In that case, we'll just try another port.
       string lock_file = lock_file_dir + "/" + std::to_string(random_port) + ".lck";
       FileLock *lock = nullptr;
-      if (env->LockFile(lock_file, &lock).ok()) {
+      if (env->LockFile(lock_file, &lock, false /* recursive_lock_ok */).ok()) {
         CHECK(lock) << "Lock should not be NULL";
         file_lock->reset(lock);
         LOG(INFO) << "Selected random free RPC port " << random_port;

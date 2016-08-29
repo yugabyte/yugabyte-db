@@ -148,7 +148,7 @@ TEST_F(MemEnvTest, Locks) {
   FileLock* lock;
 
   // These are no-ops, but we test they return success.
-  ASSERT_OK(env_->LockFile("some file", &lock));
+  ASSERT_OK(env_->LockFile("some file", &lock, false /* recursive_lock_ok */));
   ASSERT_OK(env_->UnlockFile(lock));
 }
 

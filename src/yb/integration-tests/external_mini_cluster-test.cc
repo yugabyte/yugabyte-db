@@ -119,4 +119,20 @@ TEST_F(EMCTest, TestBasicOperation) {
   cluster.Shutdown();
 }
 
+TEST_F(EMCTest, TestUniquePorts) {
+  ExternalMiniClusterOptions opts;
+  ExternalMiniCluster cluster(opts);
+
+  std::set<uint16_t> ports;
+  for (int idx = 0; idx < 100; idx++) {
+    uint16_t port = cluster.AllocateFreePort();
+    if (ports.count(port) == 0) {
+      LOG(INFO) << "allocated port: " << port;
+      ports.insert(port);
+    } else {
+      FAIL() << "port: " << port << " already allocated.";
+    }
+  }
+}
+
 } // namespace yb

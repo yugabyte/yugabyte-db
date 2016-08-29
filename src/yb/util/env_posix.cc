@@ -19,6 +19,8 @@
 #include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <set>
 #include <vector>
 
 #include "yb/gutil/atomicops.h"
@@ -30,6 +32,7 @@
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/monotime.h"
@@ -641,21 +644,54 @@ class PosixRWFile : public RWFile {
   bool pending_sync_;
 };
 
-static int LockOrUnlock(int fd, bool lock) {
-  ThreadRestrictions::AssertIOAllowed();
+// Set of pathnames that are locked, and a mutex for protecting changes to the set.
+static std::set<std::string> locked_files;
+static std::mutex mutex_locked_files;
+
+// Helper function to lock/unlock file whose filename and file descriptor are passed in. Returns -1
+// on failure and a value other than -1 (as mentioned in fcntl() doc) on success.
+static int LockOrUnlock(const std::string& fname,
+                        int fd,
+                        bool lock,
+                        bool recursive_lock_ok) {
+  std::lock_guard<std::mutex> guard(mutex_locked_files);
+  if (lock) {
+    // If recursive locks on the same file must be disallowed, but the specified file name already
+    // exists in the locked_files set, then it is already locked, so we fail this lock attempt.
+    // Otherwise, we insert the specified file name into locked_files. This check is needed because
+    // fcntl() does not detect lock conflict if the fcntl is issued by the same thread that earlier
+    // acquired this lock.
+    if (!locked_files.insert(fname).second && !recursive_lock_ok) {
+      errno = ENOLCK;
+      return -1;
+    }
+  } else {
+    // If we are unlocking, then verify that we had locked it earlier, it should already exist in
+    // locked_files. Remove it from locked_files.
+    if (locked_files.erase(fname) != 1) {
+      errno = ENOLCK;
+      return -1;
+    }
+  }
   errno = 0;
   struct flock f;
   memset(&f, 0, sizeof(f));
   f.l_type = (lock ? F_WRLCK : F_UNLCK);
   f.l_whence = SEEK_SET;
   f.l_start = 0;
-  f.l_len = 0;        // Lock/unlock entire file
-  return fcntl(fd, F_SETLK, &f);
+  f.l_len = 0; // Lock/unlock entire file.
+  int value = fcntl(fd, F_SETLK, &f);
+  if (value == -1 && lock) {
+    // If there is an error in locking, then remove the pathname from locked_files.
+    locked_files.erase(fname);
+  }
+  return value;
 }
 
 class PosixFileLock : public FileLock {
  public:
   int fd_;
+  std::string filename;
 };
 
 class PosixEnv : public Env {
@@ -872,7 +908,9 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status LockFile(const std::string& fname, FileLock** lock) OVERRIDE {
+  virtual Status LockFile(const std::string& fname,
+                          FileLock** lock,
+                          bool recursive_lock_ok) OVERRIDE {
     TRACE_EVENT1("io", "PosixEnv::LockFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     *lock = nullptr;
@@ -880,12 +918,13 @@ class PosixEnv : public Env {
     int fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd < 0) {
       result = IOError(fname, errno);
-    } else if (LockOrUnlock(fd, true) == -1) {
+    } else if (LockOrUnlock(fname, fd, true /* lock */, recursive_lock_ok) == -1) {
       result = IOError("lock " + fname, errno);
       close(fd);
     } else {
       auto my_lock = new PosixFileLock;
       my_lock->fd_ = fd;
+      my_lock->filename = fname;
       *lock = my_lock;
     }
     return result;
@@ -896,7 +935,10 @@ class PosixEnv : public Env {
     ThreadRestrictions::AssertIOAllowed();
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
-    if (LockOrUnlock(my_lock->fd_, false) == -1) {
+    if (LockOrUnlock(my_lock->filename,
+                     my_lock->fd_,
+                     false /* lock */,
+                     false /* recursive_lock_ok (unused when lock = false) */) == -1) {
       result = IOError("unlock", errno);
     }
     close(my_lock->fd_);

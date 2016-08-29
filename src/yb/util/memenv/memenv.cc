@@ -527,7 +527,9 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  virtual Status LockFile(const std::string& fname, FileLock** lock) OVERRIDE {
+  virtual Status LockFile(const std::string& fname,
+                          FileLock** lock,
+                          bool recursive_lock_ok) OVERRIDE {
     *lock = new FileLock;
     return Status::OK();
   }
