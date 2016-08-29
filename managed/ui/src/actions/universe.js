@@ -7,6 +7,11 @@ export const CREATE_UNIVERSE = 'CREATE_NEW_UNIVERSE';
 export const CREATE_UNIVERSE_SUCCESS = 'CREATE_UNIVERSE_SUCCESS';
 export const CREATE_UNIVERSE_FAILURE = 'CREATE_UNIVERSE_FAILURE';
 
+// Edit Universe
+export const EDIT_UNIVERSE = 'EDIT_UNIVERSE';
+export const EDIT_UNIVERSE_SUCCESS = 'EDIT_UNIVERSE_SUCCESS';
+export const EDIT_UNIVERSE_FAILURE = 'EDIT_UNIVERSE_FAILURE';
+
 // Get Universe
 export const FETCH_UNIVERSE_INFO = 'FETCH_UNIVERSE_INFO';
 export const FETCH_UNIVERSE_INFO_SUCCESS = 'FETCH_UNIVERSE_INFO_SUCCESS';
@@ -98,7 +103,7 @@ export function fetchUniverseListSuccess(universeList) {
 
 export function fetchUniverseListFailure(error) {
   return {
-    type: FETCH_UNIVERSE_INFO_FAILURE,
+    type: FETCH_UNIVERSE_LIST_FAILURE,
     payload: error
   };
 }
@@ -128,6 +133,29 @@ export function deleteUniverseSuccess(result) {
 export function deleteUniverseFailure(error) {
   return {
     type: DELETE_UNIVERSE_FAILURE,
+    payload: error
+  }
+}
+
+export function editUniverse(universeUUID, formValues) {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, formValues);
+  return {
+    type: EDIT_UNIVERSE,
+    payload: request
+  }
+}
+
+export function editUniverseSuccess(result) {
+  return {
+    type: EDIT_UNIVERSE_SUCCESS,
+    payload: result
+  }
+}
+
+export function editUniverseFailure(error) {
+  return {
+    type: EDIT_UNIVERSE_FAILURE,
     payload: error
   }
 }

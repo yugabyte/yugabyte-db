@@ -1,21 +1,18 @@
 // Copyright (c) YugaByte Inc.
 
-import CreateUniverse from '../components/CreateUniverse.js';
-import {getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList, getProviderListSuccess, getProviderListFailure,
-  getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure} from '../actions/cloud';
-import {createUniverse, createUniverseSuccess, createUniverseFailure} from '../actions/universe';
+import UniverseModal from '../components/UniverseModal.js';
 import { connect } from 'react-redux';
+import { getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
+         getProviderListSuccess, getProviderListFailure,
+         getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure }
+         from '../actions/cloud';
+import { createUniverse, createUniverseSuccess, createUniverseFailure } from '../actions/universe';
+import { editUniverse, editUniverseSuccess, editUniverseFailure } from '../actions/universe';
 
 const mapStateToProps = (state) => {
   return {
-    customer: state.customer,
-    universeName: state.universe.name,
-    universeProvider: state.universe.provider,
-    universeRegion: state.universe.regions,
-    universeInstanceType: state.universe.instanceType,
-    universeProviderList: state.cloud.providers,
-    universeRegionList: state.cloud.regions,
-    universeInstanceTypeList: state.cloud.instanceTypes
+    universe: state.universe,
+    cloud: state.cloud
   };
 }
 
@@ -53,7 +50,7 @@ const mapDispatchToProps = (dispatch) => {
           }
         });
     },
-    
+
     createNewUniverse: (formData) => {
       dispatch(createUniverse(formData)).then((response) => {
         if(response.payload.status !== 200) {
@@ -62,9 +59,20 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(createUniverseSuccess(response.payload));
         }
       });
-    }
+    },
 
+    editUniverse: (universeUUID, formData) => {
+      dispatch(editUniverse(universeUUID, formData)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(editUniverseFailure(response.payload));
+        } else {
+          dispatch(editUniverseSuccess(response.payload));
+        }
+      });
+    }
   }
 }
 
-export default connect(mapStateToProps,mapDispatchToProps)(CreateUniverse);
+export default connect(mapStateToProps, mapDispatchToProps)(UniverseModal);
+
+
