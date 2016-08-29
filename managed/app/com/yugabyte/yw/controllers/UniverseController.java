@@ -6,11 +6,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -102,7 +102,9 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
                universe.universeUUID + ":" + universe.name);
 
-      return Results.status(OK, universe.toJson());
+      ObjectNode resultNode = (ObjectNode)universe.toJson();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error creating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -153,7 +155,9 @@ public class UniverseController extends AuthenticatedController {
                           universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
                 universe.universeUUID, universe.name);
-      return Results.status(OK, universe.toJson());
+      ObjectNode resultNode = (ObjectNode)universe.toJson();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return Results.status(OK, resultNode);
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
