@@ -533,7 +533,7 @@ public class AsyncYBClient implements AutoCloseable {
       String errorMsg = null;
       try {
         // TODO: This while loop will not be needed once JIRA ENG-49 is fixed.
-        while (newLeader == leaderUuid) {
+        while (newLeader.equals(leaderUuid)) {
           Deferred<LeaderStepDownResponse> d = masterLeaderStepDown(leaderUuid, tabletId);
           LeaderStepDownResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
           if (resp.hasError()) {
