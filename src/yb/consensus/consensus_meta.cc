@@ -219,7 +219,8 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
     : fs_manager_(CHECK_NOTNULL(fs_manager)),
       tablet_id_(std::move(tablet_id)),
       peer_uuid_(std::move(peer_uuid)),
-      has_pending_config_(false) {}
+      has_pending_config_(false),
+      active_role_(RaftPeerPB::UNKNOWN_ROLE) {}
 
 std::string ConsensusMetadata::LogPrefix() const {
   return Substitute("T $0 P $1: ", tablet_id_, peer_uuid_);

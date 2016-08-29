@@ -419,8 +419,8 @@ void Heartbeater::Thread::RunThread() {
     if (!s.ok()) {
       LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
                    << ": " << s.ToString() << " tries=" << consecutive_failed_heartbeats_
-                   << ", num=" << master_addressess_->size()
-                   << ", masters=" << master_addressess_.get() << ", code=" << s.CodeAsString();
+                   << ", num=" << master_addresses_->size()
+                   << ", masters=" << master_addresses_.get() << ", code=" << s.CodeAsString();
       consecutive_failed_heartbeats_++;
       if (master_addresses_->size() > 1) {
         // If we encountered a network error (e.g., connection
