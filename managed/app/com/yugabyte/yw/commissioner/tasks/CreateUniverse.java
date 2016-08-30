@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -51,29 +52,32 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       addNodesToUniverse(newNodesMap.values());
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(newNodesMap.values());
+      createSetupServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(newNodesMap.values());
+      createServerInfoTasks(newNodesMap.values()).setUserSubTask(SubTaskType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(newNodesMap.values(), false /* isShell */);
+      createConfigureServerTasks(
+          newNodesMap.values(), false /* isShell */).setUserSubTask(SubTaskType.InstallingSoftware);
 
       // Creates the YB cluster by starting the masters in the create mode.
-      createClusterStartTasks(newMasters, false /* isShell */);
+      createClusterStartTasks(
+          newMasters, false /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for all servers to be responsive.
-      createWaitForServerTasks(newNodesMap.values());
+      createWaitForServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for a Master Leader to be elected.
-      createWaitForMasterLeaderTask();
+      createWaitForMasterLeaderTask().setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Persist the placement info into the YB master.
-      createPlacementInfoTask(newMasters, null /* blacklistNodes */);
+      createPlacementInfoTask(
+          newMasters, null /* blacklistNodes */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Start the tservers in the clusters.
-      createStartTServersTasks(newNodesMap.values());
+      createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();

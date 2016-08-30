@@ -222,7 +222,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public void createSetupServerTasks(Collection<NodeDetails> nodes) {
+  public TaskList createSetupServerTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -243,6 +243,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       taskList.addTask(ansibleSetupServer);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
@@ -251,7 +252,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public void createServerInfoTasks(Collection<NodeDetails> nodes) {
+  public TaskList createServerInfoTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("AnsibleUpdateNodeInfo", executor);
     for (NodeDetails node : nodes) {
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
@@ -270,6 +271,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       taskList.addTask(ansibleFindCloudHost);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
@@ -280,8 +282,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    * @param isMasterInShellMode : true if we are configuring a master node in shell mode
    */
-  public void createConfigureServerTasks(Collection<NodeDetails> nodes,
-                                         boolean isMasterInShellMode) {
+  public TaskList createConfigureServerTasks(Collection<NodeDetails> nodes,
+                                             boolean isMasterInShellMode) {
     TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -304,6 +306,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
@@ -313,8 +316,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes   : a collection of nodes that need to be created
    * @param isShell : Determines if the masters should be started in shell mode
    */
-  public void createClusterStartTasks(Collection<NodeDetails> nodes,
-                                      boolean isShell) {
+  public TaskList createClusterStartTasks(Collection<NodeDetails> nodes,
+                                          boolean isShell) {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -336,6 +339,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
@@ -344,7 +348,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be created
    */
-  public void createStartTServersTasks(Collection<NodeDetails> nodes) {
+  public TaskList createStartTServersTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
@@ -366,6 +370,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
@@ -373,7 +378,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes : a collection of nodes that need to be pinged
    */
-  public void createWaitForServerTasks(Collection<NodeDetails> nodes) {
+  public TaskList createWaitForServerTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("WaitForServer", executor);
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
@@ -384,9 +389,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 
-  public void createWaitForMasterLeaderTask() {
+  public TaskList createWaitForMasterLeaderTask() {
     TaskList taskList = new TaskList("WaitForMasterLeader", executor);
     WaitForMasterLeader task = new WaitForMasterLeader();
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
@@ -394,14 +400,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     task.initialize(params);
     taskList.addTask(task);
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
    * Creates a task list to update the placement information by making a call to the master leader
    * of the cluster just created and adds it to the task queue.
    */
-  public void createPlacementInfoTask(Set<NodeDetails> newMasters,
-                                      Collection<NodeDetails> blacklistNodes) {
+  public TaskList createPlacementInfoTask(Set<NodeDetails> newMasters,
+                                          Collection<NodeDetails> blacklistNodes) {
     TaskList taskList = new TaskList("UpdatePlacementInfo", executor);
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
@@ -424,12 +431,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add it to the task list.
     taskList.addTask(task);
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
    * Create a task to mark the change on a universe as success.
    */
-  public void createMarkUniverseUpdateSuccessTasks() {
+  public TaskList createMarkUniverseUpdateSuccessTasks() {
     TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.universeUUID = taskParams().universeUUID;
@@ -437,6 +445,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     task.initialize(params);
     taskList.addTask(task);
     taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**

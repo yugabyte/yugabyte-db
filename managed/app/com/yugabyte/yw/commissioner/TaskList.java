@@ -16,6 +16,14 @@ public class TaskList implements Runnable {
 
   public static final Logger LOG = LoggerFactory.getLogger(TaskList.class);
 
+  // User facing subtask. If this field is 'Invalid', the state of this task list  should
+  // not be exposed to the user. Note that multiple task lists can be combined into a single user
+  // facing entry by providing the same subtask id.
+  private UserTaskDetails.SubTaskType userSubTask = UserTaskDetails.SubTaskType.Invalid;
+
+  // The state of the task to be displayed to the user.
+  private UserTaskDetails.SubTaskState userSubTaskState = UserTaskDetails.SubTaskState.Initializing;
+
   // Task list name.
   private String name;
 
@@ -48,6 +56,22 @@ public class TaskList implements Runnable {
     this.taskList = new LinkedList<ITask>();
     this.futuresList = new LinkedList<Future<?>>();
     this.numTasksCompleted = new AtomicInteger(0);
+  }
+
+  public synchronized void setUserSubTask(UserTaskDetails.SubTaskType userSubTask) {
+    this.userSubTask = userSubTask;
+  }
+
+  public UserTaskDetails.SubTaskType getUserSubTask() {
+    return userSubTask;
+  }
+
+  public synchronized void setUserSubTaskState(UserTaskDetails.SubTaskState userTaskState) {
+    this.userSubTaskState = userTaskState;
+  }
+
+  public synchronized UserTaskDetails.SubTaskState getUserSubTaskState() {
+    return userSubTaskState;
   }
 
   public String getName() {

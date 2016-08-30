@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.models.Universe;
@@ -86,39 +88,42 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       addNodesToUniverse(newNodesMap.values());
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(newNodesMap.values());
+      createSetupServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(newNodesMap.values());
+      createServerInfoTasks(newNodesMap.values()).setUserSubTask(SubTaskType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(newNodesMap.values(), true /* isShell */);
+      createConfigureServerTasks(
+          newNodesMap.values(), true /* isShell */).setUserSubTask(SubTaskType.InstallingSoftware);
 
       // Creates the YB cluster by starting the masters in the shell mode.
-      createClusterStartTasks(newMasters, true /* isShell */);
+      createClusterStartTasks(
+          newMasters, true /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Start the tservers in the clusters.
-      createStartTServersTasks(newNodesMap.values());
+      createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for all servers to be responsive.
-      createWaitForServerTasks(newNodesMap.values());
+      createWaitForServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Now finalize the cluster configuration change tasks.
-      createMoveMastersTasks();
+      createMoveMastersTasks(SubTaskType.WaitForDataMigration);
 
       // Persist the placement info and blacklisted node info into the YB master.
       // This is done after master config change jobs, so that the new master leader can perform
       // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-      createPlacementInfoTask(newMasters, existingNodes);
+      createPlacementInfoTask(
+          newMasters, existingNodes).setUserSubTask(SubTaskType.WaitForDataMigration);
 
       // Wait for %age completion of the tablet move from master.
-      createWaitForDataMoveTask();
+      createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
 
       // TODO: clear blacklist on the yb cluster master.
 
       // Finally send destroy old set of nodes to ansible and remove them from this universe.
-      createDestroyServerTasks(existingNodes);
+      createDestroyServerTasks(existingNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
@@ -140,7 +145,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
    * Fills in the series of steps needed to move the masters using the tag names of the nodes. The
    * actual node details (such as their ip addresses) are found at runtime by querying the database.
    */
-  private void createMoveMastersTasks() {
+  private void createMoveMastersTasks(UserTaskDetails.SubTaskType subTask) {
     // Get the list of node names to add as masters.
     List<String> mastersToAdd = new ArrayList<String>();
     for (NodeDetails node : newMasters) {
@@ -159,22 +164,24 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // task. So we might do multiple leader stepdown's, which happens automatically on in the
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true);
-      createChangeConfigTask(mastersToRemove.get(idx), false);
+      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
 
     // Perform any additions still left.
     for (int idx = numIters; idx < newMasters.size(); idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true);
+      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
     }
     // Perform any removals still left.
     for (int idx = numIters; idx < existingMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
     LOG.info("Change Creation creation done");
   }
 
-  private void createChangeConfigTask(String nodeName, boolean isAdd) {
+  private void createChangeConfigTask(String nodeName,
+                                      boolean isAdd,
+                                      UserTaskDetails.SubTaskType subTask) {
     // Create a new task list for the change config so that it happens one by one.
     String taskListName = "ChangeMasterConfig(" + nodeName + ", " + (isAdd?"add":"remove") + ")";
     TaskList taskList = new TaskList(taskListName, executor);
@@ -196,9 +203,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     taskList.addTask(changeConfig);
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
+    // Configure the user facing subtask for this task list.
+    taskList.setUserSubTask(subTask);
   }
 
-  private void createWaitForDataMoveTask() {
+  private TaskList createWaitForDataMoveTask() {
     TaskList taskList = new TaskList("WaitForDataMove", executor);
     WaitForDataMove.Params params = new WaitForDataMove.Params();
     params.universeUUID = taskParams().universeUUID;
@@ -209,5 +218,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     taskList.addTask(waitForMove);
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
+    return taskList;
   }
 }
