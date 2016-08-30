@@ -5,11 +5,15 @@ package com.yugabyte.yw.commissioner;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 
 import play.libs.Json;
@@ -18,7 +22,14 @@ public abstract class AbstractTaskBase implements ITask {
 
   public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
 
+  // The params for this task.
   protected ITaskParams taskParams;
+
+  // The threadpool on which the tasks are executed.
+  protected ExecutorService executor;
+
+  // The sequence of task lists that should be executed.
+  protected TaskListQueue taskListQueue;
 
   protected ITaskParams taskParams() {
     return taskParams;
@@ -49,9 +60,30 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public int getPercentCompleted() {
-    return 0;
+    if (taskListQueue == null) {
+      return 0;
+    }
+    return taskListQueue.getPercentCompleted();
   }
 
+  @Override
+  public UserTaskDetails getUserTaskDetails() {
+    if (taskListQueue == null) {
+      return null;
+    }
+    return taskListQueue.getUserTaskDetails();
+  }
+
+  public void createThreadpool(int numThreads) {
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
+    executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
+  }
+
+  /**
+   * Execute a system command, and output its STDERR to the process log.
+   * @param command : the command to execute.
+   */
   public void execCommand(String command) {
     LOG.info("Command to run: [" + command + "]");
     try {

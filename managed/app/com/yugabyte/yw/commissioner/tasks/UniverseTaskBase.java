@@ -3,18 +3,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.Collection;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -29,12 +24,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // Flag to indicate if we have locked the universe.
   private boolean universeLocked = false;
 
-  // The threadpool on which the tasks are executed.
-  protected ExecutorService executor;
-
-  // The sequence of task lists that should be executed.
-  protected TaskListQueue taskListQueue;
-
   // The task params.
   @Override
   protected UniverseTaskParams taskParams() {
@@ -45,23 +34,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void initialize(ITaskParams params) {
     super.initialize(params);
     // Create the threadpool for the subtasks to use.
-    int numThreads = 10;
-    ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
+    createThreadpool(10);
   }
 
   @Override
   public String getName() {
     return super.getName() + "(" + taskParams().universeUUID + ")";
-  }
-
-  @Override
-  public int getPercentCompleted() {
-    if (taskListQueue == null) {
-      return 0;
-    }
-    return taskListQueue.getPercentCompleted();
   }
 
   /**
@@ -128,7 +106,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be destroyed
    */
-  public void createDestroyServerTasks(Collection<NodeDetails> nodes) {
+  public TaskList createDestroyServerTasks(Collection<NodeDetails> nodes) {
     TaskList taskList = new TaskList("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
@@ -147,5 +125,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);
+    return taskList;
   }
 }
