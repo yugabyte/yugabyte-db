@@ -12,12 +12,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.google.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 
@@ -102,6 +102,8 @@ public class Commissioner {
       responseJson.put("status", taskRunner.getState());
       // Find out the percentage completion.
       responseJson.put("percent", taskRunner.getPercentCompleted());
+      // Get the details of the task.
+      responseJson.set("details", Json.toJson(taskRunner.getUserTaskDetails()));
       return responseJson;
     }
 

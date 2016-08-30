@@ -36,6 +36,12 @@ public interface ITask extends Runnable {
   public int getPercentCompleted();
 
   /**
+   * User facing task details.
+   * @return a list of UserTaskDetails objects
+   */
+  public UserTaskDetails getUserTaskDetails();
+
+  /**
    * A friendly string representation of the task used for logging.
    * @return string representation of the task.
    */

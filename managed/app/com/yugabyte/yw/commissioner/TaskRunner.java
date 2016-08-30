@@ -167,6 +167,15 @@ public class TaskRunner implements Runnable {
     }
   }
 
+  public UserTaskDetails getUserTaskDetails() {
+    // If the task was just created it is zero percent done.
+    if (taskInfo.getTaskState() == TaskInfo.State.Created) {
+      return null;
+    } else {
+      return task.getUserTaskDetails();
+    }
+  }
+
   /**
    * Updates the task state and saves it to the persistent queue.
    * @param newState
