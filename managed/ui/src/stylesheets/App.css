@@ -59,3 +59,7 @@ ul{
   display: block;
   margin-bottom: 4%;
 }
+
+.ybCodeSnippet {
+    font-family: monospace;
+}

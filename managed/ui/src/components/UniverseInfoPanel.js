@@ -25,8 +25,9 @@ export default class UniverseInfoPanel extends Component {
     ];
 
     return (
-      <Panel header="Universe Info" bsStyle="info">
+      <Panel header="Universe Configuration" bsStyle="info">
         <DescriptionList listItems={universeInfoItems} />
-      </Panel>);
+      </Panel>
+    );
   }
 }
