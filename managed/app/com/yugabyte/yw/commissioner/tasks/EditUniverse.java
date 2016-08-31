@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -120,10 +121,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Wait for %age completion of the tablet move from master.
       createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
 
-      // TODO: clear blacklist on the yb cluster master.
-
-      // Finally send destroy old set of nodes to ansible and remove them from this universe.
+      // Send destroy old set of nodes to ansible and remove them from this universe.
       createDestroyServerTasks(existingNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
+
+      // TODO: Wait for server's to actually be shutdown by checking 'ping' fails.
+
+      // Finally clear the blacklist on the yb cluster master. This is done after destroy so
+      // that the new master leader does not move load to tserver's from the blacklist that might
+      // still be heart beating to it.
+      // TODO: Enable this as part of the above TODO fix.
+      // createModifyBlackListTask(existingNodes, false)
+      //    .setUserSubTask(SubTaskType.RemovingUnusedServers);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
@@ -216,6 +224,30 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     waitForMove.initialize(params);
     // Add it to the task list.
     taskList.addTask(waitForMove);
+    // Add the task list to the task queue.
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Creates a task which modifies the blacklisted servers.
+   * 
+   * @param nodes List of blacklisted nodes to be added or removed.
+   * @param isAdd Boolean that controls if the nodes need to be added/removed to the existing
+   *              list of blacklisted nodes on the master.
+   * @return The newly created task to modify the blacklist.
+   */
+  private TaskList createModifyBlackListTask(Collection<NodeDetails> nodes, boolean isAdd) {
+    TaskList taskList = new TaskList("ModifyBlackList", executor);
+    ModifyBlackList.Params params = new ModifyBlackList.Params();
+    params.universeUUID = taskParams().universeUUID;
+    // Create the task.
+    ModifyBlackList ModifyBlackList = new ModifyBlackList();
+    ModifyBlackList.initialize(params);
+    params.nodes = nodes;
+    params.isAdd = isAdd;
+    // Add it to the task list.
+    taskList.addTask(ModifyBlackList);
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
     return taskList;
