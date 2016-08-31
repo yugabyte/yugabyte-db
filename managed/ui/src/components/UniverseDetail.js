@@ -5,6 +5,7 @@ import { Grid, Row, Col } from 'react-bootstrap';
 import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
+import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
@@ -36,6 +37,10 @@ export default class UniverseDetail extends Component {
           <h3>Universe { currentUniverse.name }</h3>
           <UniverseModalContainer type="Edit" />
           <DeleteUniverseContainer />
+        </Row>
+        <Row>
+          <ConnectStringPanel universeId={this.props.universe.currentUniverse.universeUUID}
+                              customerId={localStorage.getItem("customer_id")} />
         </Row>
         <Row>
           <Col md={6}>
