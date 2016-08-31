@@ -13,8 +13,8 @@ export default class DescriptionList extends Component {
     const descriptionListItems = listItems.map(function(item, idx) {
       return (
         <span key={idx}>
-          <dt>{item.name}</dt>
-          <dd>{item.data}</dd>
+          <dt className={item.nameClass}>{item.name}</dt>
+          <dd className={item.dataClass}>{item.data}</dd>
         </span>);
     });
 
