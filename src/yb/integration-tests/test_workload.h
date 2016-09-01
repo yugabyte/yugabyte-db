@@ -103,7 +103,7 @@ class TestWorkload {
 
   // Sets up the internal client and creates the table which will be used for
   // writing, if it doesn't already exist.
-  void Setup();
+  void Setup(client::YBTableType table_type = client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 
   // Start the write workload.
   void Start();

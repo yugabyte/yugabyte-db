@@ -215,7 +215,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                       last_logged_term,
                       bootstrap_peer_uuid));
     }
-
+    // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
+    superblock_->set_rocksdb_dir(meta_->rocksdb_dir());
     // This will flush to disk, but we set the data state to COPYING above.
     RETURN_NOT_OK_PREPEND(meta_->ReplaceSuperBlock(*superblock_),
                           "Remote bootstrap unable to replace superblock on tablet " +

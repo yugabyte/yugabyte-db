@@ -56,6 +56,7 @@ using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
+using yb::client::YBTableType;
 using yb::client::sp::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::itest::TServerDetails;
@@ -102,6 +103,13 @@ class RemoteBootstrapITest : public YBTest {
                     const vector<string>& extra_master_flags = vector<string>(),
                     int num_tablet_servers = 3);
 
+  void RejectRogueLeader(YBTableType table_type);
+  void DeleteTabletDuringRemoteBootstrap(YBTableType table_type);
+  void RemoteBootstrapFollowerWithHigherTerm(YBTableType table_type);
+  void ConcurrentRemoteBootstraps(YBTableType table_type);
+  void DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType table_type);
+  void DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType table_type);
+
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   shared_ptr<YBClient> client_;
@@ -134,7 +142,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
 // because only one node can be elected leader for a given term.
 //
 // A leader can "go rogue" due to a VM pause, CTRL-z, partition, etc.
-TEST_F(RemoteBootstrapITest, TestRejectRogueLeader) {
+void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // This test pauses for at least 10 seconds. Only run in slow-test mode.
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping test in fast-test mode.";
@@ -151,7 +159,7 @@ TEST_F(RemoteBootstrapITest, TestRejectRogueLeader) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
 
   TestWorkload workload(cluster_.get());
-  workload.Setup();
+  workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -256,14 +264,14 @@ TEST_F(RemoteBootstrapITest, TestRejectRogueLeader) {
 // the relevant files are either read or opened, meaning that an in-progress
 // remote bootstrap can complete even after a tablet is officially "deleted" on
 // the source server. This is also a regression test for KUDU-1009.
-TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrap) {
+void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_type) {
   MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0; // We'll test with the first TS.
   NO_FATALS(StartCluster());
 
   // Populate a tablet with some data.
   TestWorkload workload(cluster_.get());
-  workload.Setup();
+  workload.Setup(table_type);
   workload.Start();
   while (workload.rows_inserted() < 1000) {
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -317,7 +325,7 @@ TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrap) {
 // replica's last-logged opid has the same term (or less) as the leader serving
 // as the remote bootstrap source. When a tablet is tombstoned, its last-logged
 // opid is stored in a field its on-disk superblock.
-TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTerm) {
+void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType table_type) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -330,7 +338,7 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTerm) {
 
   TestWorkload workload(cluster_.get());
   workload.set_num_replicas(2);
-  workload.Setup();
+  workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -375,6 +383,10 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTerm) {
   ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
                                 timeout));
 
+  // Wait until the tablet has been tombstoned on the folower.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id,
+                                                 tablet::TABLET_DATA_TOMBSTONED, timeout));
+
   // Restart the follower's TS so that the leader's TS won't get its queued
   // vote request messages. This is a hack but seems to work.
   cluster_->tablet_server(kFollowerIndex)->Shutdown();
@@ -384,6 +396,10 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTerm) {
   // remotely bootstrapped and proceed to bring it back up to date.
   ASSERT_OK(cluster_->tablet_server(kLeaderIndex)->Resume());
 
+  // Wait for remote botstrap to complete successfully.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id,
+                                                 tablet::TABLET_DATA_READY, timeout));
+
   // Wait for the follower to come back up.
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
 }
@@ -392,7 +408,7 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTerm) {
 // This is a regression test for KUDU-951, in which concurrent sessions on
 // multiple tablets between the same remote bootstrap client host and remote
 // bootstrap source host could corrupt each other.
-TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstraps) {
+void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping test in fast-test mode.";
     return;
@@ -460,7 +476,7 @@ TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstraps) {
   workload.set_timeout_allowed(true);
   workload.set_write_batch_size(10);
   workload.set_num_write_threads(10);
-  workload.Setup();
+  workload.Setup(table_type);
   workload.Start();
   while (workload.rows_inserted() < 20000) {
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -496,7 +512,7 @@ TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstraps) {
 // Test that repeatedly runs a load, tombstones a follower, then tombstones the
 // leader while the follower is remotely bootstrapping. Regression test for
 // KUDU-1047.
-TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTest) {
+void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType table_type) {
   // This test takes a while due to failure detection.
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping test in fast-test mode.";
@@ -514,7 +530,7 @@ TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTest) {
   workload.set_write_timeout_millis(10000);
   workload.set_timeout_allowed(true);
   workload.set_not_found_allowed(true);
-  workload.Setup();
+  workload.Setup(table_type);
 
   // Figure out the tablet id.
   const int kTsIndex = 0;
@@ -631,7 +647,9 @@ int64_t CountLogMessages(ExternalTabletServer* ets) {
 // tight loops after a tablet is deleted. This is a regression test for situation
 // similar to the bug described in KUDU-821: we were previously handling a missing
 // tablet within consensus in such a way that we'd immediately send another RPC.
-TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeleted) {
+void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
+    YBTableType table_type) {
+
   MonoDelta timeout = MonoDelta::FromSeconds(10);
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
@@ -644,7 +662,7 @@ TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDel
   // if the tablet isn't found, rather than giving us this error.
   workload.set_not_found_allowed(true);
   workload.set_write_batch_size(1);
-  workload.Setup();
+  workload.Setup(table_type);
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -688,6 +706,54 @@ TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDel
   EXPECT_LT(update_rpcs_per_second, 20);
   int64_t num_logs_per_second = num_logs_after_sleep - num_logs_initial;
   EXPECT_LT(num_logs_per_second, 20);
+}
+
+TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKuduTableType) {
+  RejectRogueLeader(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKeyValueType) {
+  RejectRogueLeader(YBTableType::KEY_VALUE_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKuduTableType) {
+  DeleteTabletDuringRemoteBootstrap(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKeyValueType) {
+  DeleteTabletDuringRemoteBootstrap(YBTableType::KEY_VALUE_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKuduTableType) {
+  RemoteBootstrapFollowerWithHigherTerm(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKeyValueType) {
+  RemoteBootstrapFollowerWithHigherTerm(YBTableType::KEY_VALUE_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKuduTableType) {
+  ConcurrentRemoteBootstraps(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKeyValueType) {
+  ConcurrentRemoteBootstraps(YBTableType::KEY_VALUE_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKuduTableType) {
+  DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKeyValueType) {
+  DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType::KEY_VALUE_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKuduTableType) {
+  DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKeyValueType) {
+  DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::KEY_VALUE_TABLE_TYPE);
 }
 
 } // namespace yb

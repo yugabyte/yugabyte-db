@@ -45,6 +45,7 @@ using client::YBSchemaFromSchema;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableType;
 using client::YBUpdate;
 using client::sp::shared_ptr;
 
@@ -161,7 +162,7 @@ void TestWorkload::WriteThread() {
   }
 }
 
-void TestWorkload::Setup() {
+void TestWorkload::Setup(YBTableType table_type) {
   CHECK_OK(cluster_->CreateClient(client_builder_, &client_));
 
   bool table_exists;
@@ -197,6 +198,7 @@ void TestWorkload::Setup() {
              // seem to be high enough in some cases (see KUDU-550). We should remove
              // this once that ticket is addressed.
              .timeout(MonoDelta::FromSeconds(20))
+             .table_type(table_type)
              .Create());
   } else {
     LOG(INFO) << "TestWorkload: Skipping table creation because table "
