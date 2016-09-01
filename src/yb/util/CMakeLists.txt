@@ -163,6 +163,7 @@ set(UTIL_SRCS
   string_packer.cc
   bytes_formatter.cc
   shared_lock_manager.cc
+  cross_thread_mutex.cc
   string_trim.cc
   trilean.cc
 )

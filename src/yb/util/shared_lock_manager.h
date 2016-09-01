@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <mutex>
 #include "yb/gutil/spinlock.h"
+#include "yb/util/cross_thread_mutex.h"
 
 namespace yb {
 namespace util {
@@ -21,11 +22,12 @@ enum class LockType {
 // Shared locks don't block each other, but exclusive locks block everything else.
 class SharedLockManager {
  private:
+
   struct LockEntry {
 
     // The mutex is locked by the exclusive locker or the first shared locker.
     // Waiting on the mutex is not allowed while the global mutex is taken.
-    std::mutex mutex;
+    CrossThreadMutex mutex;
 
     // Number of shared locks held.
     // This variable can be modified only if global mutex is taken.
