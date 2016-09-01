@@ -57,8 +57,7 @@ class MultiThreadedAction {
   bool IsStopRequested() { return stop_requested_->load(); }
 
  protected:
-
-  static std::string GetKeyByIndex(int64_t key_index);
+  std::string GetKeyByIndex(int64_t key_index);
 
   // The value returned is compared as a string on read, so having a '\0' will use incorrect size.
   // This also creates a human readable string with hex characters between '0'-'f'.

@@ -50,13 +50,14 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h" // TODO: remove this include - just needed for default port
-#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/oid_generator.h"
 
 using yb::master::AlterTableRequestPB;
 using yb::master::AlterTableRequestPB_Step;
@@ -261,9 +262,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   return Status::OK();
 }
 
-YBClient::YBClient()
-  : data_(new YBClient::Data()) {
-}
+YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {}
 
 YBClient::~YBClient() {
   delete data_;

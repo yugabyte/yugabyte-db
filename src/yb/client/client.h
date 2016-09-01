@@ -306,6 +306,8 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   Status AddClusterPlacementBlock(const master::PlacementBlockPB& placement_block);
 
+  std::string client_id() const { return client_id_; }
+
  private:
   class YB_NO_EXPORT Data;
 
@@ -336,6 +338,11 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
 
   // Owned.
   Data* data_;
+
+  // Unique identifier for this client. This will be constant for the lifetime of this client
+  // instance and is used in cases such as the load tester, for binding reads and writes from the
+  // same client to the same data.
+  const std::string client_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };

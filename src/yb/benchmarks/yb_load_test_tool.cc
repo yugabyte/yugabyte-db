@@ -62,11 +62,10 @@ DEFINE_bool(reads_only, false, "Only read the existing rows from the table.");
 
 DEFINE_bool(writes_only, false, "Writes a new set of rows into an existing table.");
 
-DEFINE_bool(create_table,
-            true,
-            "Whether the table should be created. Its made false when either "
-            "reads_only/writes_only is true. If value is true, existing table will be deleted and "
-            "recreated.");
+DEFINE_bool(drop_table,
+            false,
+            "Whether to drop the table if it already exists. If true, the table is deleted and "
+            "then recreated");
 
 DEFINE_bool(use_kv_table, false, "Use key-value table type backed by RocksDB");
 
@@ -135,41 +134,35 @@ int main(int argc, char* argv[]) {
 
     const string table_name(FLAGS_table_name);
 
-    if (FLAGS_reads_only || FLAGS_writes_only) {
-      FLAGS_create_table = false;
-    }
-
     if (FLAGS_reads_only && FLAGS_writes_only) {
       LOG(FATAL) << "Reads only and Writes only options cannot be set together.";
       return 0;
     }
 
-    if (!FLAGS_reads_only && !FLAGS_writes_only && !FLAGS_create_table) {
-      LOG(FATAL) << "If reads only or writes only option is not set, then table create should be "
-                 << "allowed.";
+    if (FLAGS_drop_table && (FLAGS_reads_only || FLAGS_writes_only)) {
+      LOG(FATAL) << "If reads only or writes only option is set, then we cannot drop the table";
       return 0;
     }
 
+    bool should_create = true;
     LOG(INFO) << "Checking if table '" << table_name << "' already exists";
     {
       YBSchema existing_schema;
       if (client->GetTableSchema(table_name, &existing_schema).ok()) {
-        if (FLAGS_create_table) {
+        if (FLAGS_drop_table) {
           LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
           // Table with the same name already exists, drop it.
           CHECK_OK(client->DeleteTable(table_name));
+        } else {
+          should_create = false;
+          LOG(INFO) << "Table '" << table_name << "' already exists, appending to";
         }
       } else {
         LOG(INFO) << "Table '" << table_name << "' does not exist yet";
-
-        if (!FLAGS_create_table) {
-          LOG(FATAL) << "Exiting as the table was not asked to be created.";
-          return 0;
-        }
       }
     }
 
-    if (FLAGS_create_table) {
+    if (should_create) {
       LOG(INFO) << "Building schema";
       YBSchemaBuilder schemaBuilder;
       schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
@@ -221,13 +214,9 @@ int main(int argc, char* argv[]) {
 
       scanner.CountRows();
     } else if (FLAGS_writes_only) {
-      SingleThreadedScanner scanner(table.get());
-      int64_t  existing_num_rows = scanner.CountRows();
-
       // Adds more keys starting from next index after scanned index
       MultiThreadedWriter writer(
-          FLAGS_num_rows + existing_num_rows + 1,
-          existing_num_rows + 1,
+          FLAGS_num_rows, 0,
           FLAGS_num_writer_threads,
           client.get(),
           table.get(),

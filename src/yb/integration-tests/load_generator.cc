@@ -4,6 +4,7 @@
 
 #include <queue>
 
+#include "yb/common/common.pb.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/atomic.h"
@@ -12,7 +13,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
-#include "yb/common/common.pb.h"
 
 using std::atomic;
 using std::atomic_bool;
@@ -144,14 +144,8 @@ ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
 // ------------------------------------------------------------------------------------------------
 
 MultiThreadedAction::MultiThreadedAction(
-    const string& description,
-    int64_t num_keys,
-    int64_t start_key,
-    int num_action_threads,
-    int num_extra_threads,
-    YBClient* client,
-    YBTable* table,
-    atomic_bool* stop_requested_flag,
+    const string& description, int64_t num_keys, int64_t start_key, int num_action_threads,
+    int num_extra_threads, YBClient* client, YBTable* table, atomic_bool* stop_requested_flag,
     int value_size)
     : description_(description),
       num_keys_(num_keys),
@@ -169,8 +163,9 @@ MultiThreadedAction::MultiThreadedAction(
 
 string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
   string key_index_str(Substitute("key$0", key_index));
-  return Substitute("$0_$1",
-      FormatHexForLoadTestKey(std::hash<string>()(key_index_str)), key_index_str);
+  return Substitute(
+      "$0_$1_$2", FormatHexForLoadTestKey(std::hash<string>()(key_index_str)), key_index_str,
+      client_->client_id());
 }
 
 // Creates a human-readable string with hex characters to be used as a value in our test. This is
