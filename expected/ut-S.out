@@ -13,6 +13,7 @@ SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
+SET max_parallel_workers_per_gather TO 0;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 >= 1;
      QUERY PLAN      
 ---------------------
@@ -2000,7 +2001,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
                    ->  Tid Scan on t1 b2t1
                          TID Cond: (ctid = '(1,1)'::tid)
                          Filter: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 4 (returns $3)
+   InitPlan 4 (returns $4)
      ->  Aggregate
            ->  Tid Scan on t1 b3t1
                  TID Cond: (ctid = '(1,1)'::tid)
@@ -2014,7 +2015,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
                            Join Filter: (bmt1.c1 = bmt2.c1)
                            ->  Tid Scan on t1 bmt1
                                  TID Cond: (ctid = '(1,1)'::tid)
-                                 Filter: (c1 <> $3)
+                                 Filter: (c1 <> $4)
                            ->  Seq Scan on t2 bmt2
                                  Filter: (ctid = '(1,1)'::tid)
                      ->  Tid Scan on t3 bmt3
@@ -5245,17 +5246,21 @@ error hint:
 (7 rows)
 
 -- No. S-3-10-3
-\! psql contrib_regression -c "EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
                         QUERY PLAN                        
 ----------------------------------------------------------
- Append  (cost=0.00..2.75 rows=4 width=10)
-   ->  Seq Scan on p1  (cost=0.00..0.00 rows=1 width=32)
+ Append  (cost=xxx rows=4 width=xxx)
+   ->  Seq Scan on p1  (cost=xxx rows=1 width=xxx)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
-   ->  Seq Scan on p1c1  (cost=0.00..2.75 rows=3 width=2)
+   ->  Seq Scan on p1c1  (cost=xxx rows=3 width=xxx)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
 (5 rows)
 
-\! psql contrib_regression -c "/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 LOG:  available indexes for IndexScan(p1): p1_parent
 LOG:  available indexes for IndexScan(p1c1): p1c1_c4_expr_idx
 LOG:  available indexes for IndexScan(p1c2): p1c2_c4_expr_idx
@@ -5267,17 +5272,20 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/ut-S.tmpout
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Append  (cost=0.12..20.48 rows=4 width=10)
-   ->  Index Scan using p1_parent on p1  (cost=0.12..8.15 rows=1 width=32)
+ Append  (cost=xxx rows=4 width=xxx)
+   ->  Index Scan using p1_parent on p1  (cost=xxx rows=1 width=xxx)
          Filter: ((c2 * 2) < 100)
-   ->  Index Scan using p1c1_c4_expr_idx on p1c1  (cost=0.14..12.34 rows=3 width=2)
+   ->  Index Scan using p1c1_c4_expr_idx on p1c1  (cost=xxx rows=3 width=xxx)
          Filter: ((c2 * 2) < 100)
 (5 rows)
 
 -- No. S-3-10-4
-\! psql contrib_regression -c "/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
 LOG:  available indexes for IndexScan(p1): p1_i2
 LOG:  available indexes for IndexScan(p1c1):
 LOG:  available indexes for IndexScan(p1c2):
@@ -5289,21 +5297,24 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/ut-S.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Append  (cost=0.12..30000000014.89 rows=4 width=4)
-   ->  Index Scan using p1_i2 on p1  (cost=0.12..8.14 rows=1 width=4)
+ Append  (cost=xxx rows=4 width=xxx)
+   ->  Index Scan using p1_i2 on p1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c2 = 1)
-   ->  Seq Scan on p1c1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+   ->  Seq Scan on p1c1  (cost=xxx rows=1 width=xxx)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c2  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+   ->  Seq Scan on p1c2  (cost=xxx rows=1 width=xxx)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c3  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+   ->  Seq Scan on p1c3  (cost=xxx rows=1 width=xxx)
          Filter: (c2 = 1)
 (9 rows)
 
 -- No. S-3-10-5
-\! psql contrib_regression -c "/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
 LOG:  available indexes for IndexScan(p2):
 LOG:  available indexes for IndexScan(p2c1): p2c1_pkey
 LOG:  available indexes for IndexScan(p2c2):
@@ -5321,14 +5332,16 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/ut-S.tmpout
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
- Append  (cost=10000000000.00..20000000009.77 rows=3 width=34)
-   ->  Seq Scan on p2  (cost=10000000000.00..10000000000.00 rows=1 width=44)
+ Append  (cost=xxx rows=3 width=xxx)
+   ->  Seq Scan on p2  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = 1)
-   ->  Index Scan using p2c1_pkey on p2c1  (cost=0.12..8.14 rows=1 width=44)
+   ->  Index Scan using p2c1_pkey on p2c1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = 1)
-   ->  Seq Scan on p2c1c1  (cost=10000000000.00..10000000001.62 rows=1 width=14)
+   ->  Seq Scan on p2c1c1  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = 1)
 (7 rows)
 
@@ -6203,3 +6216,4 @@ SELECT pg_reload_conf();
  t
 (1 row)
 
+\! rm results/ut-S.tmpout

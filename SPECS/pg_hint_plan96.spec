@@ -1,7 +1,7 @@
 # SPEC file for pg_store_plans
 # Copyright(C) 2016 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
-%define _pgdir   /usr/pgsql-9.5
+%define _pgdir   /usr/pgsql-9.6
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
@@ -11,8 +11,8 @@
 %endif
 
 ## Set general information for pg_store_plans.
-Summary:    Optimizer hint on PostgreSQL 9.5
-Name:       pg_hint_plan95
+Summary:    Optimizer hint on PostgreSQL 9.6
+Name:       pg_hint_plan96
 Version:    1.1.3
 Release:    1%{?dist}
 License:    BSD
@@ -23,8 +23,8 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
 Vendor:     NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 ## We use postgresql-devel package
-BuildRequires:  postgresql95-devel
-Requires:  postgresql95-libs
+BuildRequires:  postgresql96-devel
+Requires:  postgresql96-libs
 
 ## Description for "pg_hint_plan"
 %description
@@ -32,11 +32,11 @@ Requires:  postgresql95-libs
 pg_hint_plan provides capability to tweak execution plans to be
 executed on PostgreSQL.
 
-Note that this package is available for only PostgreSQL 9.5.
+Note that this package is available for only PostgreSQL 9.6.
 
 ## pre work for build pg_hint_plan
 %prep
-PATH=/usr/pgsql-9.5/bin:$PATH
+PATH=/usr/pgsql-9.6/bin:$PATH
 if [ "${MAKE_ROOT}" != "" ]; then
   pushd ${MAKE_ROOT}
   make clean %{name}-%{version}.tar.gz
@@ -47,7 +47,7 @@ if [ ! -d %{_rpmdir} ]; then mkdir -p %{_rpmdir}; fi
 
 ## Set variables for build environment
 %build
-PATH=/usr/pgsql-9.5/bin:$PATH
+PATH=/usr/pgsql-9.6/bin:$PATH
 make USE_PGXS=1 %{?_smp_mflags}
 
 ## Set variables for install
@@ -71,7 +71,5 @@ rm -rf %{buildroot}
 
 # History of pg_hint_plan.
 %changelog
-* Fri May 13 2016 Kyotaro Horiguchi
-- Support PostgreSQL 9.5
-
-
+* Thu Jul 21 2016 Kyotaro Horiguchi
+- Support PostgreSQL 9.6

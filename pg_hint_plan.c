@@ -3721,21 +3721,29 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
  *
  * This function was copied and edited from set_plain_rel_pathlist() in
  * src/backend/optimizer/path/allpaths.c
+ *
+ * - removed parallel stuff.
  */
 static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
+	Relids		required_outer;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a seqscan, but
+	 * it could still have required parameterization due to LATERAL refs in
+	 * its tlist.
+	 */
+	required_outer = rel->lateral_relids;
+
 	/* Consider sequential scan */
-	add_path(rel, create_seqscan_path(root, rel, NULL));
+	add_path(rel, create_seqscan_path(root, rel, required_outer, 0));
 
 	/* Consider index scans */
 	create_index_paths(root, rel);
 
 	/* Consider TID scans */
 	create_tidscan_paths(root, rel);
-
-	/* Now find the cheapest of the paths for this rel */
-	set_cheapest(rel);
 }
 
 static void
@@ -4011,6 +4019,9 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		{
 			if (rte->relkind == RELKIND_RELATION)
 			{
+				if(rte->tablesample != NULL)
+					elog(ERROR, "sampled relation is not supported");
+
 				/* Plain relation */
 				set_plain_rel_pathlist(root, rel, rte);
 			}
@@ -4020,6 +4031,17 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		else
 			elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
 	}
+
+	/*
+	 * Allow a plugin to editorialize on the set of Paths for this base
+	 * relation.  It could add new paths (such as CustomPaths) by calling
+	 * add_path(), or delete or modify paths added by the core code.
+	 */
+	if (set_rel_pathlist_hook)
+		(*set_rel_pathlist_hook) (root, rel, rti, rte);
+
+	/* Now find the cheapest of the paths for this rel */
+	set_cheapest(rel);
 }
 
 /*

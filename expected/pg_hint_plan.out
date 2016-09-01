@@ -1,5 +1,6 @@
 SET search_path TO public;
 SET client_min_messages TO log;
+\set SHOW_CONTEXT always
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -953,16 +954,16 @@ error hint:
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Index Only Scan using t1_pkey on t1
-   Index Cond: (id = $2)
-   InitPlan 1 (returns $0)
+   Index Cond: (id = $3)
+   InitPlan 1 (returns $1)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
                  ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
-   InitPlan 3 (returns $2)
+   InitPlan 3 (returns $3)
      ->  Result
-           InitPlan 2 (returns $1)
+           InitPlan 2 (returns $2)
              ->  Limit
                    ->  Index Only Scan Backward using t1_pkey on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
@@ -980,14 +981,14 @@ error hint:
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Index Only Scan using t1_pkey on t1
-   Index Cond: (id = $2)
+   Index Cond: (id = $3)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
                    ->  Index Only Scan Backward using t1_pkey on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-   InitPlan 3 (returns $2)
+   InitPlan 3 (returns $3)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
@@ -1037,14 +1038,14 @@ error hint:
                     QUERY PLAN                    
 --------------------------------------------------
  Index Only Scan using t1_pkey on t1
-   Index Cond: (id = $1)
-   InitPlan 1 (returns $0)
+   Index Cond: (id = $3)
+   InitPlan 1 (returns $1)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
                  ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
-   InitPlan 2 (returns $1)
+   InitPlan 2 (returns $3)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
@@ -1065,21 +1066,21 @@ error hint:
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Bitmap Heap Scan on t1
-   Recheck Cond: (id = $2)
-   InitPlan 1 (returns $0)
+   Recheck Cond: (id = $3)
+   InitPlan 1 (returns $1)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
                  ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
-   InitPlan 3 (returns $2)
+   InitPlan 3 (returns $3)
      ->  Result
-           InitPlan 2 (returns $1)
+           InitPlan 2 (returns $2)
              ->  Limit
                    ->  Index Only Scan Backward using t1_pkey on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    ->  Bitmap Index Scan on t1_pkey
-         Index Cond: (id = $2)
+         Index Cond: (id = $3)
 (16 rows)
 
 /*+BitmapScan(v_2)BitmapScan(t1)*/
@@ -1095,21 +1096,21 @@ error hint:
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Bitmap Heap Scan on t1
-   Recheck Cond: (id = $2)
+   Recheck Cond: (id = $3)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
                    ->  Index Only Scan Backward using t1_pkey on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-   InitPlan 3 (returns $2)
+   InitPlan 3 (returns $3)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
                  ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
    ->  Bitmap Index Scan on t1_pkey
-         Index Cond: (id = $2)
+         Index Cond: (id = $3)
 (16 rows)
 
 /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
@@ -1126,21 +1127,21 @@ error hint:
                     QUERY PLAN                    
 --------------------------------------------------
  Bitmap Heap Scan on t1
-   Recheck Cond: (id = $1)
-   InitPlan 1 (returns $0)
+   Recheck Cond: (id = $3)
+   InitPlan 1 (returns $1)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
                  ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
-   InitPlan 2 (returns $1)
+   InitPlan 2 (returns $3)
      ->  Aggregate
            ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
                  ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
    ->  Bitmap Index Scan on t1_pkey
-         Index Cond: (id = $1)
+         Index Cond: (id = $3)
 (16 rows)
 
 -- full scan hint pattern test

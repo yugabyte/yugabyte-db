@@ -1,7 +1,7 @@
 #
 # pg_hint_plan: Makefile
 #
-# Copyright (c) 2012-2015, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (c) 2012-2016, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 #
 
 MODULES = pg_hint_plan
@@ -23,18 +23,18 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
 STARBALL = pg_dbms_stats-$(DBMSSTATSVER).tar.gz
-STARBALL95 = pg_hint_plan95-$(HINTPLANVER).tar.gz
-STARBALLS = $(STARBALL) $(STARBALL95)
+STARBALL96 = pg_hint_plan96-$(HINTPLANVER).tar.gz
+STARBALLS = $(STARBALL) $(STARBALL96)
 
-TARSOURCES = Makefile *.c  *.h \
+TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	pg_hint_plan--*.sql \
 	pg_hint_plan.control \
-	doc/* expected/*.out sql/*.sql \
-	input/*.source output/*.source SPECS/*.spec
+	doc/* expected/*.out sql/*.sql sql/maskout.sh \
+	data/data.csv input/*.source output/*.source SPECS/*.spec
 
 installcheck: $(REGRESSION_EXPECTED)
 
-rpms: rpm95
+rpms: rpm96
 
 # pg_hint_plan.c includes core.c and make_join_rel.c
 pg_hint_plan.o: core.c make_join_rel.c # pg_stat_statements.c
@@ -49,7 +49,7 @@ $(STARBALLS): $(TARSOURCES)
 	tar -chzf $@ $(addprefix $(subst .tar.gz,,$@)/, $^)
 	rm $(subst .tar.gz,,$@)
 
-rpm95: $(STARBALL95)
-	MAKE_ROOT=`pwd` rpmbuild -bb SPECS/pg_hint_plan95.spec
+rpm96: $(STARBALL96)
+	MAKE_ROOT=`pwd` rpmbuild -bb SPECS/pg_hint_plan96.spec
 
 

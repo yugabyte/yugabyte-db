@@ -38,6 +38,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	List	   *live_childrels = NIL;
 	List	   *subpaths = NIL;
 	bool		subpaths_valid = true;
+	List	   *partial_subpaths = NIL;
+	bool		partial_subpaths_valid = true;
 	List	   *all_child_pathkeys = NIL;
 	List	   *all_child_outers = NIL;
 	ListCell   *l;
@@ -66,6 +68,15 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		childrel = root->simple_rel_array[childRTindex];
 
 		/*
+		 * If set_append_rel_size() decided the parent appendrel was
+		 * parallel-unsafe at some point after visiting this child rel, we
+		 * need to propagate the unsafety marking down to the child, so that
+		 * we don't generate useless partial paths for it.
+		 */
+		if (!rel->consider_parallel)
+			childrel->consider_parallel = false;
+
+		/*
 		 * Compute the child's access paths.
 		 */
 		set_rel_pathlist(root, childrel, childRTindex, childRTE);
@@ -91,6 +102,13 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 											  childrel->cheapest_total_path);
 		else
 			subpaths_valid = false;
+
+		/* Same idea, but for a partial plan. */
+		if (childrel->partial_pathlist != NIL)
+			partial_subpaths = accumulate_append_subpath(partial_subpaths,
+									   linitial(childrel->partial_pathlist));
+		else
+			partial_subpaths_valid = false;
 
 		/*
 		 * Collect lists of all the available path orderings and
@@ -163,7 +181,36 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * if we have zero or one live subpath due to constraint exclusion.)
 	 */
 	if (subpaths_valid)
-		add_path(rel, (Path *) create_append_path(rel, subpaths, NULL));
+		add_path(rel, (Path *) create_append_path(rel, subpaths, NULL, 0));
+
+	/*
+	 * Consider an append of partial unordered, unparameterized partial paths.
+	 */
+	if (partial_subpaths_valid)
+	{
+		AppendPath *appendpath;
+		ListCell   *lc;
+		int			parallel_workers = 0;
+
+		/*
+		 * Decide on the number of workers to request for this append path.
+		 * For now, we just use the maximum value from among the members.  It
+		 * might be useful to use a higher number if the Append node were
+		 * smart enough to spread out the workers, but it currently isn't.
+		 */
+		foreach(lc, partial_subpaths)
+		{
+			Path	   *path = lfirst(lc);
+
+			parallel_workers = Max(parallel_workers, path->parallel_workers);
+		}
+		Assert(parallel_workers > 0);
+
+		/* Generate a partial append path. */
+		appendpath = create_append_path(rel, partial_subpaths, NULL,
+										parallel_workers);
+		add_partial_path(rel, (Path *) appendpath);
+	}
 
 	/*
 	 * Also build unparameterized MergeAppend paths based on the collected
@@ -213,7 +260,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 		if (subpaths_valid)
 			add_path(rel, (Path *)
-					 create_append_path(rel, subpaths, required_outer));
+					 create_append_path(rel, subpaths, required_outer, 0));
 	}
 }
 
@@ -491,11 +538,18 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 		join_search_one_level(root, lev);
 
 		/*
-		 * Do cleanup work on each just-processed rel.
+		 * Run generate_gather_paths() for each just-processed joinrel.  We
+		 * could not do this earlier because both regular and partial paths
+		 * can get added to a particular joinrel at multiple times within
+		 * join_search_one_level.  After that, we're done creating paths for
+		 * the joinrel, so run set_cheapest().
 		 */
 		foreach(lc, root->join_rel_level[lev])
 		{
 			rel = (RelOptInfo *) lfirst(lc);
+
+			/* Create GatherPaths for any useful partial paths for rel */
+			generate_gather_paths(root, rel);
 
 			/* Find and save the cheapest paths for this rel */
 			set_cheapest(rel);
@@ -1213,9 +1267,10 @@ mark_dummy_rel(RelOptInfo *rel)
 
 	/* Evict any previously chosen paths */
 	rel->pathlist = NIL;
+	rel->partial_pathlist = NIL;
 
 	/* Set up the dummy path */
-	add_path(rel, (Path *) create_append_path(rel, NIL, NULL));
+	add_path(rel, (Path *) create_append_path(rel, NIL, NULL, 0));
 
 	/* Set or update cheapest_total_path and related fields */
 	set_cheapest(rel);

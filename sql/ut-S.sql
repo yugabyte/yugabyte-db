@@ -8,6 +8,7 @@ SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
+SET max_parallel_workers_per_gather TO 0;
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 >= 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -961,15 +962,29 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
 -- No. S-3-10-3
-\! psql contrib_regression -c "EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
-\! psql contrib_regression -c "/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
+
+\o results/ut-S.tmpout
+/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
+
 
 -- No. S-3-10-4
-
-\! psql contrib_regression -c "/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
 
 -- No. S-3-10-5
-\! psql contrib_regression -c "/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1" | grep -v "Planning time:"
+\o results/ut-S.tmpout
+/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
+\o
+\! sql/maskout.sh results/ut-S.tmpout
+
 
 ----
 ---- No. S-3-12 specified same table
@@ -1169,3 +1184,4 @@ DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE r
 
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();
+\! rm results/ut-S.tmpout

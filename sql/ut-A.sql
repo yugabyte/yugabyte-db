@@ -16,9 +16,11 @@ CREATE EXTENSION pg_hint_plan;
 DROP EXTENSION pg_hint_plan;
 
 -- No.A-1-1-4
-CREATE EXTENSION pg_hint_plan SCHEMA other_name;
+CREATE SCHEMA other_schema;
+CREATE EXTENSION pg_hint_plan SCHEMA other_schema;
 
 CREATE EXTENSION pg_hint_plan;
+DROP SCHEMA other_schema;
 
 ----
 ---- No. A-5-1 comment pattern

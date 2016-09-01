@@ -3,6 +3,7 @@ SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
+SET max_parallel_workers_per_gather TO 0;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
                    QUERY PLAN                   
 ------------------------------------------------
@@ -2736,7 +2737,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
                    ->  Tid Scan on t1 b2t1
                          TID Cond: (ctid = '(1,1)'::tid)
                          Filter: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 4 (returns $3)
+   InitPlan 4 (returns $4)
      ->  Aggregate
            ->  Tid Scan on t1 b3t1
                  TID Cond: (ctid = '(1,1)'::tid)
@@ -2750,7 +2751,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
                            Join Filter: (bmt1.c1 = bmt2.c1)
                            ->  Tid Scan on t1 bmt1
                                  TID Cond: (ctid = '(1,1)'::tid)
-                                 Filter: (c1 <> $3)
+                                 Filter: (c1 <> $4)
                            ->  Seq Scan on t2 bmt2
                                  Filter: (ctid = '(1,1)'::tid)
                      ->  Tid Scan on t3 bmt3
@@ -2810,7 +2811,7 @@ error hint:
                    ->  Tid Scan on t1 b2t1
                          TID Cond: (ctid = '(1,1)'::tid)
                          Filter: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 4 (returns $3)
+   InitPlan 4 (returns $4)
      ->  Aggregate
            ->  Tid Scan on t1 b3t1
                  TID Cond: (ctid = '(1,1)'::tid)
@@ -2831,7 +2832,7 @@ error hint:
                      Filter: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t1 bmt1
                TID Cond: (ctid = '(1,1)'::tid)
-               Filter: (c1 <> $3)
+               Filter: (c1 <> $4)
 (46 rows)
 
 ----
