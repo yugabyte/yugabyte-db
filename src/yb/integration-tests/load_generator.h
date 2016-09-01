@@ -116,7 +116,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
   void RunInsertionTrackerThread();
 
   // Returns true if the calling writer thread should stop.
-  bool HandleInsertionFailure(int64_t key_index, const char* const reason, Status status);
+  bool HandleInsertionFailure(
+      int64_t key_index, const char* const reason, Status status, client::YBSession* session);
 
   // This is the current key to be inserted by any thread. Each thread does an atomic get and
   // increment operation and inserts the current value.

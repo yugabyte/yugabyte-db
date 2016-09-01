@@ -2,7 +2,6 @@
 
 #include "yb/integration-tests/load_generator.h"
 
-#include <boost/bind.hpp>
 #include <queue>
 
 #include "yb/gutil/strings/join.h"
@@ -35,6 +34,7 @@ using yb::YBPartialRow;
 using yb::TableType;
 
 using yb::client::YBClient;
+using yb::client::YBError;
 using yb::client::YBTable;
 using yb::client::YBInsert;
 using yb::client::YBSession;
@@ -253,10 +253,11 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
         inserted_keys_.Insert(key_index);
         VLOG(2) << "Successfully inserted key #" << key_index << " at timestamp "
                 << client_->GetLatestObservedTimestamp() << " or earlier";
-      } else if (!HandleInsertionFailure(key_index, "Flush() failed", flush_status)) {
+      } else if (!HandleInsertionFailure(
+                     key_index, "Flush() failed", flush_status, session.get())) {
         break;
       }
-    } else if (!HandleInsertionFailure(key_index, "Apply() failed", apply_status)) {
+    } else if (!HandleInsertionFailure(key_index, "Apply() failed", apply_status, session.get())) {
       break;
     }
   }
@@ -293,13 +294,18 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
 }
 
 bool MultiThreadedWriter::HandleInsertionFailure(
-    int64_t key_index,
-    const char* const reason,
-    Status status) {
+    int64_t key_index, const char* const reason, Status status, YBSession* session) {
   string key_str(GetKeyByIndex(key_index));
   LOG(WARNING) << "Error inserting key '" << key_str << "': " << reason
                << " (" << status.ToString() << ")";
   failed_keys_.Insert(key_index);
+  vector<YBError*> errors;
+  bool overflowed;
+  ElementDeleter d(&errors);
+  session->GetPendingErrors(&errors, &overflowed);
+  for (const auto error : errors) {
+    LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
+  }
   if (num_write_errors() > max_num_write_errors_) {
     LOG(ERROR) << "Exceeded the maximum number of write errors " << max_num_write_errors_
                << ", stopping the test.";
