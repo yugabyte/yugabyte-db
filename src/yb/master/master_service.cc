@@ -489,5 +489,16 @@ void MasterServiceImpl::GetLoadMoveCompletion(
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::IsMasterLeaderServiceReady(
+    const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+    return;
+  }
+
+  rpc->RespondSuccess();
+}
+
 } // namespace master
 } // namespace yb

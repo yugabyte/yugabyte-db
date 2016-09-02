@@ -552,7 +552,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
   Consensus* consensus = tablet_peer()->consensus();
-  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
     return Status::IllegalState(
         Substitute("Node $0 not leader. Consensus state: $1",
@@ -566,7 +566,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
 
 void CatalogManager::LoadSysCatalogDataTask() {
   Consensus* consensus = tablet_peer()->consensus();
-  int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED).current_term();
+  int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
       MonoDelta::FromMilliseconds(FLAGS_master_failover_catchup_timeout_ms));
   if (!s.ok()) {
@@ -580,7 +580,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
   }
 
   {
-    int64_t term_after_wait = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED).current_term();
+    int64_t term_after_wait = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
     if (term_after_wait != term) {
       // If we got elected leader again while waiting to catch up then we will
       // get another callback to update state from sys_catalog, so bail now.
@@ -602,6 +602,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
   }
   std::lock_guard<simple_spinlock> l(state_lock_);
   leader_ready_term_ = term;
+  LOG(INFO) << "Completed load of sys catalog in term " << term;
 }
 
 Status CatalogManager::VisitSysCatalog() {
@@ -2131,7 +2132,8 @@ class PickLeaderReplica : public TSPicker {
         return Status::OK();
       }
     }
-    return Status::NotFound("no leader");
+    return Status::NotFound(Substitute("No leader found for tablet $0 with $1 replicas.",
+                                       tablet_.get()->ToString(), replica_locations.size()));
   }
 
  private:
@@ -2163,7 +2165,6 @@ class RetryingTSRpcTask : public MonitoredTask {
   Status Run() {
     Status s = ResetTSProxy();
     if (!s.ok()) {
-      LOG(WARNING) << "Unable to reset TS proxy: " << s.ToString();
       MarkFailed();
       UnregisterAsyncTask(); // May delete this.
       return s.CloneAndPrepend("Failed to reset TS proxy");
@@ -3032,7 +3033,8 @@ void CatalogManager::SendAddServerRequest(
       new AsyncAddServerTask(master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
   tablet->table()->AddTask(task);
   Status status = task->Run();
-  WARN_NOT_OK(status, "Failed to send new AddServer request");
+  WARN_NOT_OK(status, Substitute("Failed to send AddServer of tserver $0 to tablet $1",
+                                 change_config_ts_uuid, tablet.get()->ToString()));
 
   // Need to print this after Run() because that's where it picks the TS which description()
   // needs.
@@ -3934,7 +3936,7 @@ Status CatalogManager::SetClusterConfig(
 }
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
-  LOG(WARNING) << "Blacklist completion check start " << blacklist_tservers_.empty()
+  LOG(INFO) << "Blacklist completion check start " << blacklist_tservers_.empty()
                << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
   int64_t total_pending = 0;
 
@@ -4121,6 +4123,7 @@ INITTED_AND_LEADER_OR_RESPOND(ChangeLoadBalancerStateResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetMasterClusterConfigResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(ChangeMasterClusterConfigResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetLoadMovePercentResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(IsMasterLeaderReadyResponsePB);
 
 #undef INITTED_OR_RESPOND
 #undef INITTED_AND_LEADER_OR_RESPOND

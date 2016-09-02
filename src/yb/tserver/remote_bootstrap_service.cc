@@ -356,7 +356,8 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
     }
     Status s = session->ChangeRole();
     if (!s.ok()) {
-      LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id;
+      LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
+                   << ", error : " << s.ToString();
       // Reset the timer for this session, and don't remove it from sessions_ so it doesn't get
       // destroyed. EndExpiredSessions will call this function again and we will retry ChangeRole.
       ResetSessionExpirationUnlocked(session_id);

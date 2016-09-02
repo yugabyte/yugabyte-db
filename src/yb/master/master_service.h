@@ -110,6 +110,10 @@ class MasterServiceImpl : public MasterServiceIf {
       const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void IsMasterLeaderServiceReady(
+      const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
+      rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   Master* server_;
 

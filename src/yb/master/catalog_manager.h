@@ -831,6 +831,11 @@ private:
   bool getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
                      TabletServerId* leader_uuid);
 
+  int leader_ready_term() {
+    std::lock_guard<simple_spinlock> l(state_lock_);
+    return leader_ready_term_;
+  }
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".

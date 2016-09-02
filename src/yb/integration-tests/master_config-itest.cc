@@ -106,6 +106,11 @@ class MasterChangeConfigTest : public YBTest {
   // Ensure that each non-leader's in-memory state has the expected number of peers.
   void VerifyNonLeaderMastersPeerCount();
 
+  // Waits till the master leader is ready - as deemed by the catalog manager. If the leader never
+  // loads the sys catalog, this api will timeout. If 'master' is not the leader it will surely
+  // timeout. Return status of OK() implies leader is ready.
+  Status WaitForMasterLeaderToBeReady(ExternalMaster* master, int timeout_sec);
+
   int num_masters_;
   int cur_log_index_;
   std::unique_ptr<ExternalMiniCluster> cluster_;
@@ -146,17 +151,39 @@ void MasterChangeConfigTest::VerifyNonLeaderMastersPeerCount() {
   }
 }
 
+Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
+    ExternalMaster* master,
+    int timeout_sec) {
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  MonoTime deadline = now;
+  deadline.AddDelta(MonoDelta::FromSeconds(timeout_sec));
+  Status s;
+
+  for (int i = 1; now.ComesBefore(deadline); ++i) {
+    s = cluster_->GetIsMasterLeaderServiceReady(master);
+    if (!s.ok()) {
+      // Spew out error info only if it is something other than not-the-leader.
+      if (s.ToString().find("NOT_THE_LEADER") == std::string::npos) {
+        LOG(WARNING) << "Hit error '" << s.ToString() << "', in iter " << i;
+      }
+    } else {
+      LOG(INFO) << "Got leader ready in iter " << i;
+      return Status::OK();
+    }
+    SleepFor(MonoDelta::FromMilliseconds(min(i, 10)));
+    now = MonoTime::Now(MonoTime::FINE);
+  }
+
+  return Status::TimedOut(Substitute("Timed out as master leader $0 term not ready.",
+                                     master->bound_rpc_hostport().ToString()));
+}
+
 TEST_F(MasterChangeConfigTest, TestAddMaster) {
   // NOTE: Not using smart pointer as ExternalMaster is derived from a RefCounted base class.
   ExternalMaster* new_master = nullptr;
-  Status s = cluster_->StartNewMaster(&new_master);
-  ASSERT_OK_PREPEND(s, "Unable to start new master : ");
+  cluster_->StartNewMaster(&new_master);
 
-  if (!new_master) {
-    FAIL() << "No new master returned.";
-  }
-
-  s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
+  Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
 
   // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and one
@@ -170,16 +197,11 @@ TEST_F(MasterChangeConfigTest, TestAddMaster) {
 }
 
 TEST_F(MasterChangeConfigTest, TestSlowRemoteBootstrapDoesNotCrashMaster) {
-  // NOTE: Not using smart pointer as ExternalMaster is derived from a RefCounted base class.
   ExternalMaster* new_master = nullptr;
-  Status s = cluster_->StartNewMaster(&new_master);
-  ASSERT_OK_PREPEND(s, "Unable to start new master : ");
-  if (!new_master) {
-    FAIL() << "No new master returned.";
-  }
+  cluster_->StartNewMaster(&new_master);
   cluster_->SetFlag(new_master, "inject_latency_during_remote_bootstrap_secs", "8");
 
-  s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
+  Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
 
   // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and one
@@ -217,14 +239,9 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
 
 TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
   ExternalMaster* new_master = nullptr;
-  Status s = cluster_->StartNewMaster(&new_master);
-  ASSERT_OK_PREPEND(s, "Unable to start new master");
+  cluster_->StartNewMaster(&new_master);
 
-  if (!new_master) {
-    FAIL() << "No new master returned.";
-  }
-
-  s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
+  Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
 
   ++num_masters_;
@@ -237,7 +254,7 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
   VerifyLeaderMasterPeerCount();
   VerifyNonLeaderMastersPeerCount();
 
- // Give time for cmeta to get flushed on all peers - TODO(Bharat) ENG-104
+  // Give time for cmeta to get flushed on all peers - TODO(Bharat) ENG-104
   SleepFor(MonoDelta::FromSeconds(2));
 
   s = RestartCluster();
@@ -245,6 +262,56 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
 
   VerifyLeaderMasterPeerCount();
   VerifyNonLeaderMastersPeerCount();
+}
+
+TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
+  ExternalMaster* new_master = nullptr;
+  cluster_->StartNewMaster(&new_master);
+
+  LOG(INFO) << "New master " << new_master->bound_rpc_hostport().ToString();
+
+  // This will disable new elections on the old masters.
+  vector<ExternalDaemon*> masters = cluster_->master_daemons();
+  for (auto master : masters) {
+    ASSERT_OK(cluster_->SetFlag(master, "do_not_start_election_test_only", "true"));
+    // Do not let the followers commit change role - to keep their opid same as the new master,
+    // and hence will vote for it.
+    ASSERT_OK(cluster_->SetFlag(master, "inject_delay_commit_non_voter_to_voter_secs", "5"));
+  }
+
+  // Wait for 5 seconds on new master to commit voter mode transition. Note that this should be
+  // less than the timeout sent to WaitForMasterLeaderToBeReady() below. We want the pending
+  // config to be preset when the new master is deemed as leader to start the sys catalog load, but
+  // would need to get that pending config committed for load to progress.
+  ASSERT_OK(cluster_->SetFlag(new_master, "inject_delay_commit_non_voter_to_voter_secs", "5"));
+  // And don't let it start an election too soon.
+  ASSERT_OK(cluster_->SetFlag(new_master, "do_not_start_election_test_only", "true"));
+
+  Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
+  ASSERT_OK_PREPEND(s, "Change Config returned error");
+
+  // Wait for addition of the new master as a NON_VOTER to commit on all peers. The CHANGE_ROLE
+  // part is not committed on all the followers, as that might block the new master from becoming
+  // the leader as others would have a opid higher than the new master and will not vote for it.
+  // The new master will become FOLLOWER and can start an election once it has a pending change
+  // that makes it a VOTER.
+  cur_log_index_ += 1;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
+
+  // Leader step down.
+  ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(), "Leader step down failed.");
+
+  // Now the new master should start the election process.
+  ASSERT_OK(cluster_->SetFlag(new_master, "do_not_start_election_test_only", "false"));
+
+  // Ensure that the new leader is the new master we spun up above.
+  ExternalMaster* new_leader = cluster_->GetLeaderMaster();
+  LOG(INFO) << "New leader " << new_leader->bound_rpc_hostport().ToString();
+  ASSERT_EQ(new_master->bound_rpc_addr().port(), new_leader->bound_rpc_addr().port());
+
+  // This check ensures that the sys catalog is loaded into new leader even when it has a
+  // pending config change.
+  ASSERT_OK(WaitForMasterLeaderToBeReady(new_master, 8 /* timeout_sec */));
 }
 
 } // namespace master

@@ -86,6 +86,12 @@ DEFINE_bool(enable_leader_failure_detection, true,
             "made to elect a follower as a new leader when the leader is detected to have failed.");
 TAG_FLAG(enable_leader_failure_detection, unsafe);
 
+DEFINE_bool(do_not_start_election_test_only, false,
+            "Do not start election even if leader failure is detected. To be used only for unit "
+            "testing purposes.");
+TAG_FLAG(do_not_start_election_test_only, unsafe);
+TAG_FLAG(do_not_start_election_test_only, hidden);
+
 DEFINE_bool(evict_failed_followers, true,
             "Whether to evict followers from the Raft config that have fallen "
             "too far behind the leader's log to catch up normally or have been "
@@ -349,6 +355,10 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
+  if (FLAGS_do_not_start_election_test_only) {
+    LOG(INFO) << "Election start skipped as do_not_start_election_test_only flag is set to true.";
+    return Status::OK();
+  }
   scoped_refptr<LeaderElection> election;
   {
     ReplicaState::UniqueLock lock;
@@ -359,7 +369,8 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
       LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- already leader";
       return Status::OK();
     } else if (active_role == RaftPeerPB::LEARNER) {
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- role is LEARNER";
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Not starting election -- role is LEARNER, pending="
+                                     << state_->IsConfigChangePendingUnlocked();
       return Status::OK();
     } else if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
       SnoozeFailureDetectorUnlocked(); // Avoid excessive election noise while in this state.

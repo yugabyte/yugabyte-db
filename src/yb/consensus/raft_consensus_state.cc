@@ -16,6 +16,7 @@
 // under the License.
 
 #include <algorithm>
+#include <gflags/gflags.h>
 
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -25,9 +26,16 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
+
+DEFINE_int32(inject_delay_commit_non_voter_to_voter_secs, 0,
+             "Amount of time to delay commit of a NON_VOTER to VOTER transition. To be used for "
+             "unit testing purposes only.");
+TAG_FLAG(inject_delay_commit_non_voter_to_voter_secs, unsafe);
+TAG_FLAG(inject_delay_commit_non_voter_to_voter_secs, hidden);
 
 namespace yb {
 namespace consensus {
@@ -561,6 +569,19 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
       RaftConfigPB new_config = round->replicate_msg()->change_config_record().new_config();
       DCHECK(old_config.has_opid_index());
       DCHECK(!new_config.has_opid_index());
+
+      if (PREDICT_FALSE(FLAGS_inject_delay_commit_non_voter_to_voter_secs)) {
+        bool is_transit_to_voter =
+          CountVotersInTransition(old_config) > CountVotersInTransition(new_config);
+        if (is_transit_to_voter) {
+          LOG_WITH_PREFIX_UNLOCKED(INFO) << "Commit skipped "
+              << " as inject_delay_commit_non_voter_to_voter_secs flag is set to true.\n"
+              << "  Old config: { " << old_config.ShortDebugString() << " }.\n"
+              << "  New config: { " << new_config.ShortDebugString() << " }";
+          SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_commit_non_voter_to_voter_secs));
+        }
+      }
+
       new_config.set_opid_index(current_id.index());
       // Check if the pending Raft config has an OpId less than the committed
       // config. If so, this is a replay at startup in which the COMMIT

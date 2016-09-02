@@ -73,6 +73,10 @@ using yb::consensus::GetLastOpIdRequestPB;
 using yb::consensus::GetLastOpIdResponsePB;
 using yb::consensus::IsLeaderReadyForChangeConfigRequestPB;
 using yb::consensus::IsLeaderReadyForChangeConfigResponsePB;
+using yb::consensus::LeaderStepDownRequestPB;
+using yb::consensus::LeaderStepDownResponsePB;
+using yb::master::IsMasterLeaderReadyRequestPB;
+using yb::master::IsMasterLeaderReadyResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListMasterRaftPeersRequestPB;
@@ -111,7 +115,7 @@ ExternalMiniClusterOptions::~ExternalMiniClusterOptions() {
 }
 
 ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
-  : opts_(opts) {
+  : opts_(opts), add_new_master_at_(-1) {
 }
 
 ExternalMiniCluster::~ExternalMiniCluster() {
@@ -167,6 +171,7 @@ Status ExternalMiniCluster::Start() {
     RETURN_NOT_OK_PREPEND(StartSingleMaster(),
                           Substitute("Failed to start a single Master"));
   }
+  add_new_master_at_ = opts_.num_masters;
 
   LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
 
@@ -177,7 +182,6 @@ Status ExternalMiniCluster::Start() {
   RETURN_NOT_OK(WaitForTabletServerCount(
                   opts_.num_tablet_servers,
                   MonoDelta::FromSeconds(kTabletServerRegistrationTimeoutSeconds)));
-
   return Status::OK();
 }
 
@@ -284,9 +288,7 @@ Status ExternalMiniCluster::StartSingleMaster() {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
-  int add_at_index = num_masters();
-
+void ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
   uint16_t rpc_port = AllocateFreePort();
   uint16_t http_port = AllocateFreePort();
   LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
@@ -297,22 +299,24 @@ Status ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
   string exe = GetBinaryPath(kMasterBinaryName);
 
   ExternalMaster* master = new ExternalMaster(
-      add_at_index,
+      add_new_master_at_,
       messenger_,
       exe,
-      GetDataPath(Substitute("master-$0", add_at_index)),
+      GetDataPath(Substitute("master-$0", add_new_master_at_)),
       opts_.extra_master_flags,
       addr,
       http_port,
       "");
 
-  RETURN_NOT_OK_PREPEND(
-      master->Start(true),
-      Substitute("Unable to start 'shell' mode master at index $0", add_at_index));
+  Status s = master->Start(true);
 
+  if (!s.ok()) {
+    LOG(FATAL) << Substitute("Unable to start 'shell' mode master at index $0, due to error $1.",
+                             add_new_master_at_, s.ToString());
+  }
+
+  add_new_master_at_++;
   *new_master = master;
-
-  return Status::OK();
 }
 
 Status ExternalMiniClusterOptions::RemovePort(const uint16_t port) {
@@ -435,7 +439,47 @@ Status ExternalMiniCluster::WaitForLeaderToAllowChangeConfig(
     num_attempts++;
 
     rpc.Reset();
-  };
+  }
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::StepDownMasterLeader() {
+  ExternalMaster* leader = GetLeaderMaster();
+  string leader_uuid = leader->uuid();
+  auto host_port = leader->bound_rpc_addr();
+  LeaderStepDownRequestPB lsd_req;
+  lsd_req.set_tablet_id(yb::master::kSysCatalogTabletId);
+  lsd_req.set_dest_uuid(leader_uuid);
+  LeaderStepDownResponsePB lsd_resp;
+  RpcController lsd_rpc;
+  lsd_rpc.set_timeout(opts_.timeout_);
+  std::unique_ptr<ConsensusServiceProxy> proxy(new ConsensusServiceProxy(messenger_, host_port));
+  RETURN_NOT_OK(proxy->LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
+  if (lsd_resp.has_error()) {
+    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
+               << lsd_resp.error().ShortDebugString();
+    return StatusFromPB(lsd_resp.error().status());
+  }
+
+  LOG(INFO) << "Leader at host/port '" << host_port.ToString() << "' step down complete.";
+
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
+  ExternalMaster* leader = GetLeaderMaster();
+  string old_leader_uuid = leader->uuid();
+  string leader_uuid = old_leader_uuid;
+
+  // while loop will not be needed once JIRA ENG-49 is fixed.
+  while (leader_uuid == old_leader_uuid) {
+    RETURN_NOT_OK(StepDownMasterLeader());
+    sleep(3); // TODO: add wait for election api.
+    leader = GetLeaderMaster();
+    leader_uuid = leader->uuid();
+    LOG(INFO) << "Got new leader " << leader->bound_rpc_addr().ToString();
+  }
+
   return Status::OK();
 }
 
@@ -464,6 +508,14 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
     std::unique_ptr<ConsensusServiceProxy>
       leader_proxy(new ConsensusServiceProxy(messenger_, leader->bound_rpc_addr()));
     string leader_uuid = leader->uuid();
+
+    if (type == consensus::REMOVE_SERVER && leader_uuid == req.server().permanent_uuid()) {
+      RETURN_NOT_OK(StepDownMasterLeaderAndWaitForNewLeader());
+      leader = GetLeaderMaster();
+      leader_uuid = leader->uuid();
+      leader_proxy.reset(new ConsensusServiceProxy(messenger_, leader->bound_rpc_addr()));
+    }
+
     RETURN_NOT_OK(WaitForLeaderToAllowChangeConfig(leader_uuid, leader_proxy.get()));
     req.set_dest_uuid(leader_uuid);
     RETURN_NOT_OK(leader_proxy->ChangeConfig(req, &resp, &rpc));
@@ -629,13 +681,39 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
                  opts_.timeout_.ToString()));
 }
 
+Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master) {
+  IsMasterLeaderReadyRequestPB req;
+  IsMasterLeaderReadyResponsePB resp;
+  int index = GetIndexOfMaster(master);
+
+  if (index == -1) {
+    return Status::InvalidArgument(Substitute(
+        "Given master '$0' not in the current list of $1 masters.",
+        master->bound_rpc_hostport().ToString(), masters_.size()));
+  }
+
+  std::shared_ptr<MasterServiceProxy> proxy = master_proxy(index);
+  rpc::RpcController rpc;
+  rpc.set_timeout(opts_.timeout_);
+  RETURN_NOT_OK(proxy->IsMasterLeaderServiceReady(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return Status::RuntimeError(Substitute(
+        "Is master ready RPC response hit error: $0", resp.error().ShortDebugString()));
+  }
+
+  return Status::OK();
+}
+
 Status ExternalMiniCluster::GetLastOpIdForLeader(OpId* opid) {
-  std::shared_ptr<ConsensusServiceProxy> leader_proxy = GetLeaderConsensusProxy();
+  ExternalMaster* leader = GetLeaderMaster();
+  Sockaddr leader_master_sock = leader->bound_rpc_addr();
+  std::shared_ptr<ConsensusServiceProxy> leader_proxy =
+    std::make_shared<ConsensusServiceProxy>(messenger_, leader_master_sock);
 
   RETURN_NOT_OK(itest::GetLastOpIdForMasterReplica(
       leader_proxy,
       yb::master::kSysCatalogTabletId,
-      GetLeaderMaster()->uuid(),
+      leader->uuid(),
       consensus::COMMITTED_OPID,
       opts_.timeout_,
       opid));
@@ -907,6 +985,14 @@ int ExternalMiniCluster::tablet_server_index_by_uuid(const std::string& uuid) co
     }
   }
   return -1;
+}
+
+vector<ExternalDaemon*> ExternalMiniCluster::master_daemons() const {
+  vector<ExternalDaemon*> results;
+  for (const scoped_refptr<ExternalMaster>& master : masters_) {
+    results.push_back(master.get());
+  }
+  return results;
 }
 
 vector<ExternalDaemon*> ExternalMiniCluster::daemons() const {

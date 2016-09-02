@@ -187,10 +187,11 @@ class ExternalMiniCluster {
   // Return a non-leader master index
   Status GetFirstNonLeaderMasterIndex(int* idx);
 
-  // Starts a new master and returns the address of the master object on success.
+  // Starts a new master and returns the handle of the new master object on success.
   // Not thread safe for now. We could move this to a static function outside External Mini Cluster,
   // but keeping it here for now as it is currently used only in conjunction with EMC.
-  Status StartNewMaster(ExternalMaster** new_master);
+  // If there are any errors and if a new master could not be spawned, it will crash internally.
+  void StartNewMaster(ExternalMaster** new_master);
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
   Status ChangeConfig(ExternalMaster* master, ChangeConfigType type);
@@ -241,6 +242,9 @@ class ExternalMiniCluster {
   // Return the index of the ExternalTabletServer that has the given 'uuid', or
   // -1 if no such UUID can be found.
   int tablet_server_index_by_uuid(const std::string& uuid) const;
+
+  // Return all masters.
+  std::vector<ExternalDaemon*> master_daemons() const;
 
   // Return all tablet servers and masters.
   std::vector<ExternalDaemon*> daemons() const;
@@ -305,6 +309,17 @@ class ExternalMiniCluster {
   // array of file locks.
   uint16_t AllocateFreePort();
 
+  // Step down the master leader.
+  Status StepDownMasterLeader();
+
+  // Find out if the master service considers itself ready. Return status OK() implies it is ready.
+  Status GetIsMasterLeaderServiceReady(ExternalMaster* master);
+
+  // Timeout to be used for rpc operations.
+  MonoDelta timeout() {
+    return opts_.timeout_;
+  }
+
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
@@ -344,12 +359,19 @@ class ExternalMiniCluster {
       const string& uuid,
       ConsensusServiceProxy* leader_proxy);
 
+  // Step down the master leader and wait for a new leader to be elected.
+  Status StepDownMasterLeaderAndWaitForNewLeader();
+
   ExternalMiniClusterOptions opts_;
 
   // The root for binaries.
   std::string daemon_bin_path_;
 
   std::string data_root_;
+
+  // This variable is incremented every time a new master is spawned (either in shell mode or create
+  // mode). Avoids reusing an index of a killed/removed master. Useful for master side logging.
+  int add_new_master_at_;
 
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;

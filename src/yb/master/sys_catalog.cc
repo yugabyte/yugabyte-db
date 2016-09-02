@@ -51,6 +51,7 @@
 using std::shared_ptr;
 using std::unique_ptr;
 
+using yb::consensus::CONSENSUS_CONFIG_ACTIVE;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadata;
 using yb::consensus::RaftConfigPB;
@@ -363,9 +364,13 @@ void SysCatalogTable::SysCatalogStateChanged(
                              << tablet_id << ". Reason: " << context->ToString();
     return;
   }
+
+  // We use the active config, in case there is a pending one with this peer becoming the voter,
+  // that allows its role to be determined correctly as the LEADER and so loads the sys catalog.
+  // Done as part of ENG-286.
   consensus::ConsensusStatePB cstate = context->is_config_locked() ?
-      consensus->ConsensusStateUnlocked(CONSENSUS_CONFIG_COMMITTED) :
-      consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+      consensus->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE) :
+      consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   LOG_WITH_PREFIX(INFO) << "SysCatalogTable state changed. Locked=" << context->is_config_locked_
                         << ". Reason: " << context->ToString()
                         << ". Latest consensus state: " << cstate.ShortDebugString();
@@ -373,13 +378,6 @@ void SysCatalogTable::SysCatalogStateChanged(
   LOG_WITH_PREFIX(INFO) << "This master's current role is: "
                         << RaftPeerPB::Role_Name(role);
 
-  // TODO: HACK to work around ENG-286 issue. This could become an assert then.
-  if (context->reason == StateChangeContext::NEW_LEADER_ELECTED &&
-      role == RaftPeerPB::LEARNER &&
-      tablet_peer_->permanent_uuid() == context->new_leader_uuid) {
-    LOG(INFO) << "Changing LEARNER to LEADER";
-    role = RaftPeerPB::LEADER;
-  }
   // For LEADER election case only, load the sysCatalog into memory via the callback.
   // Note that for a *single* master case, the TABLET_PEER_START is being overloaded to imply a
   // leader creation step, as there is no election done per-se.

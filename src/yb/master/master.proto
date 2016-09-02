@@ -702,6 +702,16 @@ message GetLoadMovePercentResponsePB {
   optional double percent = 2;
 }
 
+// Get a master's notion being ready as the leader.
+// NOTE: Should be used only for unit testing purposes.
+message IsMasterLeaderReadyRequestPB {
+}
+
+// When no errors, the master will be deemed ready as per its catalog manager layer.
+message IsMasterLeaderReadyResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -727,6 +737,11 @@ service MasterService {
   rpc ListMasterRaftPeers(ListMasterRaftPeersRequestPB) returns (ListMasterRaftPeersResponsePB);
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
     (GetMasterRegistrationResponsePB);
+
+  // Get the ready status from the catalog manager for this master.
+  // NOTE: Should be used only for unit testing purposes.
+  rpc IsMasterLeaderServiceReady(IsMasterLeaderReadyRequestPB)
+      returns (IsMasterLeaderReadyResponsePB);
 
   // Dump master state from all the peers in the current master's quorum
   rpc DumpState(DumpMasterStateRequestPB) returns (DumpMasterStateResponsePB);
