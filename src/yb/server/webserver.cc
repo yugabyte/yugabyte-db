@@ -408,7 +408,8 @@ static const char* const NAVIGATION_BAR_PREFIX =
 "      <div class='navbar-inner'>"
 "        <div class='container-fluid'>"
 "          <a href='/'>"
-"            <img src=\"/logo.png\" width='61' height='45' alt=\"YugaByte\" style=\"float:left\"/>"
+"            <img src=\"/logo.png\" alt=\"YugaByte\" "
+"                 style=\"float:left; height:30px; width:auto; padding:4px\"/>"
 "          </a>"
 "          <div class='nav-collapse collapse'>"
 "            <ul class='nav'>";
