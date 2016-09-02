@@ -35,7 +35,9 @@ class UniverseModal extends Component {
         readOnlySelect: "disabled",
         universeName: self.props.universe.currentUniverse.name,
         azCheckState: currentMultiAz,
-        regionSelected: items
+        regionSelected: items,
+        buttonType: "universeButton btn btn-default btn-warning"
+
       }
 
       self.props.getRegionListItems(currentProvider, currentMultiAz);
@@ -45,7 +47,9 @@ class UniverseModal extends Component {
         readOnlyInput: "",
         readOnlySelect: "",
         universeName: "",
-        azCheckState: true
+        azCheckState: true,
+        buttonType: "universeButton btn btn-default btn-success"
+
       }
     }
   }
@@ -123,7 +127,7 @@ class UniverseModal extends Component {
     return (
       <div>
         <div>
-          <div className="universeButton btn btn-default" onClick={this.showModal}>
+          <div className={this.state.buttonType} onClick={this.showModal}>
             {this.props.type} Universe
           </div>
         </div>

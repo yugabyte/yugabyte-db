@@ -13,11 +13,11 @@
 
 #page-wrapper {
     position: inherit;
-    margin: 0 0 0 250px;
+    margin: 0 0 0 120px;
     padding: 0 30px;
     border-left: 1px solid #e7e7e7;
     background-color: #fff;
-    min-height: 1191px;
+    min-height: 100%;
 }
 
 #page-wrapper .header-row {
@@ -40,7 +40,7 @@ form a {
   margin-left: 5px;
 }
 
-ul{
+ul {
   list-style: none;
 }
 
@@ -60,6 +60,27 @@ ul{
   margin-bottom: 4%;
 }
 
+.no-border-cell {
+    border:none !important;
+}
+
 .ybCodeSnippet {
     font-family: monospace;
+}
+
+.universeButton {
+  margin-top: 6%;
+}
+
+.universeTableButton {
+  margin-top: 4%;
+}
+
+.universeButton {
+    margin-top: 18px;
+}
+
+.universeTableHeader {
+    margin-top: 1%;
+    margin-left: 1%;
 }
