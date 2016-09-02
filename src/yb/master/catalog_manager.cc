@@ -154,6 +154,11 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
 
+DEFINE_uint64(inject_latency_during_remote_bootstrap_secs, 0,
+              "Number of seconds to sleep during a remote bootstrap. (For testing only!)");
+TAG_FLAG(inject_latency_during_remote_bootstrap_secs, unsafe);
+TAG_FLAG(inject_latency_during_remote_bootstrap_secs, hidden);
+
 namespace yb {
 namespace master {
 
@@ -490,7 +495,7 @@ void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
 CatalogManager::CatalogManager(Master* master)
     : master_(master),
       rng_(GetRandomSeed32()),
-      remote_bootstrap_in_progress_(false),
+      tablet_exists_(false),
       is_initial_blacklist_load_set_(false),
       state_(kConstructed),
       leader_ready_term_(-1),
@@ -1926,11 +1931,12 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
         Substitute("In shell mode: no tablet_id $0 exists in CatalogManager.", tablet_id));
   }
 
-  if (sys_catalog_->tablet_id() == tablet_id) {
+  if (sys_catalog_->tablet_id() == tablet_id && sys_catalog_->tablet_peer().get() != nullptr &&
+      sys_catalog_->tablet_peer()->CheckRunning().ok()) {
     *ret_tablet_peer = tablet_peer();
   } else {
-    return Status::NotFound(Substitute("no SysTable exists with tablet_id $0 in CatalogManager",
-                                       tablet_id));
+    return Status::NotFound(Substitute(
+        "no SysTable in the RUNNING state exists with tablet_id $0 in CatalogManager", tablet_id));
   }
   return Status::OK();
 }
@@ -1974,7 +1980,6 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
     return Status::IllegalState("Cannot bootstrap a master which is not in shell mode.");
   }
 
-  LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
   HostPort bootstrap_peer_addr;
   RETURN_NOT_OK(HostPortFromPB(req.bootstrap_peer_addr(), &bootstrap_peer_addr));
 
@@ -1985,17 +1990,20 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   scoped_refptr<TabletPeer> old_tablet_peer;
   scoped_refptr<TabletMetadata> meta;
   bool replacing_tablet = false;
-  {
-    std::lock_guard<rw_spinlock> lock(lock_);
-    if (remote_bootstrap_in_progress_) {
-      old_tablet_peer = tablet_peer();
-      // Nothing to recover if the remote bootstrap client start failed the last time
-      if (old_tablet_peer) {
-        meta = old_tablet_peer->tablet_metadata();
-        replacing_tablet = true;
-      }
-    } else {
-      remote_bootstrap_in_progress_ = true;
+
+  std::unique_lock<std::mutex> l(remote_bootstrap_mtx_, std::try_to_lock);
+  if (!l.owns_lock()) {
+    return Status::IllegalState(
+        Substitute("Remote bootstrap of tablet $0 already in progress", tablet_id));
+  }
+  LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
+
+  if (tablet_exists_) {
+    old_tablet_peer = tablet_peer();
+    // Nothing to recover if the remote bootstrap client start failed the last time
+    if (old_tablet_peer) {
+      meta = old_tablet_peer->tablet_metadata();
+      replacing_tablet = true;
     }
   }
 
@@ -2022,15 +2030,20 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
     RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
   }
   RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid, bootstrap_peer_addr, &meta));
-
   // This SetupTabletPeer is needed by rb_client to perform the remote bootstrap/fetch.
   // And the SetupTablet below to perform "local bootstrap" cannot be done until the remote fetch
   // has succeeded. So keeping them seperate for now.
   sys_catalog_->SetupTabletPeer(meta);
+  if (PREDICT_FALSE(FLAGS_inject_latency_during_remote_bootstrap_secs)) {
+    LOG(INFO) << "Injecting " << FLAGS_inject_latency_during_remote_bootstrap_secs
+              << " seconds of latency for test";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_inject_latency_during_remote_bootstrap_secs));
+  }
 
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
   // state, and we need to tombstone the tablet if additional steps prior to
   // getting to a TABLET_DATA_READY state fail.
+  tablet_exists_ = true;
 
   // Download all of the remote files.
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer()->status_listener()),
@@ -2057,11 +2070,6 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
 
   RETURN_NOT_OK(EnableBgTasks());
-
-  {
-    std::lock_guard<rw_spinlock> lock(lock_);
-    remote_bootstrap_in_progress_ = false;
-  }
 
   return Status::OK();
 }
@@ -3835,7 +3843,10 @@ Status CatalogManager::GoIntoShellMode() {
     background_tasks_->Shutdown();
     background_tasks_.reset();
   }
-
+  {
+    std::lock_guard<std::mutex> l(remote_bootstrap_mtx_);
+    tablet_exists_ = false;
+  }
 
   LOG(INFO) << "Done going into shell mode.";
 

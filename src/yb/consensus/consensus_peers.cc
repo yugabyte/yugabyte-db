@@ -55,7 +55,6 @@ DEFINE_double(fault_crash_on_leader_request_fraction, 0.0,
               "UpdateConsensus RPC. (For testing only!)");
 TAG_FLAG(fault_crash_on_leader_request_fraction, unsafe);
 
-
 // Allow for disabling remote bootstrap in unit tests where we want to test
 // certain scenarios without triggering bootstrap of a remote peer.
 DEFINE_bool(enable_remote_bootstrap, true,
@@ -159,7 +158,6 @@ Status Peer::SignalRequest(bool even_if_queue_empty) {
       return Status::OK();
     }
   }
-
 
   RETURN_NOT_OK(thread_pool_->SubmitClosure(
                   Bind(&Peer::SendNextRequest, Unretained(this), even_if_queue_empty)));
@@ -353,7 +351,6 @@ void Peer::Close() {
 Peer::~Peer() {
   Close();
 }
-
 
 RpcPeerProxy::RpcPeerProxy(gscoped_ptr<HostPort> hostport,
                            gscoped_ptr<ConsensusServiceProxy> consensus_proxy)

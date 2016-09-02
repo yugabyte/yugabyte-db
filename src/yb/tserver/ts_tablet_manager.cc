@@ -364,31 +364,15 @@ Status HandleReplacingStaleTablet(
       break;
     }
     case TABLET_DATA_READY: {
-      Log* log = old_tablet_peer->log();
-      if (!log) {
-        return Status::IllegalState("Log unavailable. Tablet is not running", tablet_id);
-      }
-      OpId last_logged_opid;
-      log->GetLatestEntryOpId(&last_logged_opid);
-      int64_t last_logged_term = last_logged_opid.term();
-      RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id,
-                                            uuid,
-                                            leader_term,
-                                            last_logged_term));
-
-      // Tombstone the tablet and store the last-logged OpId.
-      old_tablet_peer->Shutdown();
-      // TODO: Because we begin shutdown of the tablet after we check our
-      // last-logged term against the leader's term, there may be operations
-      // in flight and it may be possible for the same check in the remote
-      // bootstrap client Start() method to fail. This will leave the replica in
-      // a tombstoned state, and then the leader with the latest log entries
-      // will simply remote bootstrap this replica again. We could try to
-      // check again after calling Shutdown(), and if the check fails, try to
-      // reopen the tablet. For now, we live with the (unlikely) race.
-      RETURN_NOT_OK_PREPEND(DeleteTabletData(meta, TABLET_DATA_TOMBSTONED, uuid, last_logged_opid),
-                            Substitute("Unable to delete on-disk data from tablet $0", tablet_id));
-      break;
+      // There's a valid race here that can lead us to come here:
+      // 1. Leader sends a second remote bootstrap request as a result of receiving a
+      // TABLET_NOT_FOUND from this tserver while it was in the middle of a remote bootstrap.
+      // 2. The remote bootstrap request arrives after the first one is finished, and it is able to
+      // grab the mutex.
+      // 3. This tserver finds that it already has the metadata for the tablet, and determines that
+      // it needs to replace the tablet setting replacing_tablet to true.
+      // In this case, the master can simply ignore this error.
+      return Status::IllegalState(Substitute("Tablet $0 in TABLET_DATA_READY state", tablet_id));
     }
     default: {
       return Status::IllegalState(

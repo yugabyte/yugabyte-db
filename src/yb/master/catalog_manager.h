@@ -860,8 +860,11 @@ private:
 
   gscoped_ptr<SysCatalogTable> sys_catalog_;
 
-  // Tracks if there is a remote bootstrap in progress.
-  bool remote_bootstrap_in_progress_;
+  // Mutex to avoid concurrent remote bootstrap sessions.
+  std::mutex remote_bootstrap_mtx_;
+
+  // Set to true if this master has received at least the superblock from a remote master.
+  bool tablet_exists_;
 
   // Background thread, used to execute the catalog manager tasks
   // like the assignment and cleaner

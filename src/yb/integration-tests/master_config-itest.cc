@@ -44,6 +44,7 @@ class MasterChangeConfigTest : public YBTest {
     opts.master_rpc_ports = { 0, 0, 0 }; // external mini-cluster Start() gets the free ports.
     opts.num_masters = num_masters_ = static_cast<int>(opts.master_rpc_ports.size());
     opts.num_tablet_servers = 0;
+    opts.timeout_ = MonoDelta::FromSeconds(30);
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
@@ -154,6 +155,29 @@ TEST_F(MasterChangeConfigTest, TestAddMaster) {
   if (!new_master) {
     FAIL() << "No new master returned.";
   }
+
+  s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
+  ASSERT_OK_PREPEND(s, "Change Config returned error : ");
+
+  // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and one
+  // to promote this server to a voter once bootstrapping is finished.
+  cur_log_index_ += 2;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
+  ++num_masters_;
+
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
+}
+
+TEST_F(MasterChangeConfigTest, TestSlowRemoteBootstrapDoesNotCrashMaster) {
+  // NOTE: Not using smart pointer as ExternalMaster is derived from a RefCounted base class.
+  ExternalMaster* new_master = nullptr;
+  Status s = cluster_->StartNewMaster(&new_master);
+  ASSERT_OK_PREPEND(s, "Unable to start new master : ");
+  if (!new_master) {
+    FAIL() << "No new master returned.";
+  }
+  cluster_->SetFlag(new_master, "inject_latency_during_remote_bootstrap_secs", "8");
 
   s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
