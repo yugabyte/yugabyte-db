@@ -47,10 +47,12 @@ create table instance_type (
   instance_type_code            varchar(255) not null,
   active                        boolean default true not null,
   num_cores                     integer not null,
-  mem_size                      double not null,
-  volume_size                   integer not null,
+  mem_size_gb                   double not null,
+  volume_count                  integer not null,
+  volume_size_gb                integer not null,
   volume_type                   varchar(3) not null,
-  constraint ck_instance_type_volume_type check (volume_type in ('SSD','EBS')),
+  instance_type_details_json    LONGTEXT,
+  constraint ck_instance_type_volume_type check (volume_type in ('SSD','EBS','HDD')),
   constraint pk_instance_type primary key (provider_code,instance_type_code)
 );
 
@@ -100,6 +102,15 @@ create table universe (
   constraint pk_universe primary key (universe_uuid)
 );
 
+create table yugaware_property (
+  name                          varchar(255) not null,
+  type                          varchar(7) not null,
+  value                         LONGTEXT,
+  description                   LONGTEXT,
+  constraint ck_yugaware_property_type check (type in ('Dynamic','Static')),
+  constraint pk_yugaware_property primary key (name)
+);
+
 alter table availability_zone add constraint fk_availability_zone_region_uuid foreign key (region_uuid) references region (uuid) on delete restrict on update restrict;
 create index ix_availability_zone_region_uuid on availability_zone (region_uuid);
 
@@ -142,4 +153,6 @@ drop table if exists region;
 drop table if exists task_info;
 
 drop table if exists universe;
+
+drop table if exists yugaware_property;
 

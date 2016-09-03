@@ -1,17 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.models.Provider;
 
 import play.Application;
 import play.Environment;
 import play.Logger;
 import play.libs.Yaml;
-
-import java.util.ArrayList;
-import java.util.List;
 
 
 /**
@@ -34,6 +35,14 @@ public class AppInit {
         );
         Ebean.saveAll(all);
       }
+
+      // Enter all the configuration data. This is the first thing that should be done as the other
+      // init steps may depend on this data.
+      com.yugabyte.yw.common.Configuration.initializeDB();
+
+      // Initialize the cloud engine.
+      AWSInitializer aws = new AWSInitializer();
+      aws.run();
     }
   }
 }
