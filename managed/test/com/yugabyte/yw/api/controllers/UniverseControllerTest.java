@@ -2,12 +2,17 @@
 
 package com.yugabyte.yw.api.controllers;
 
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -16,11 +21,12 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
-import com.yugabyte.yw.models.helpers.UserIntent;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
@@ -34,11 +40,14 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.UniverseDetails;
+import com.yugabyte.yw.models.helpers.UserIntent;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -218,7 +227,8 @@ public class UniverseControllerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
-    InstanceType i = InstanceType.create(p.code, "c3.xlarge", 10, 5.5, 20, InstanceType.VolumeType.EBS);
+    InstanceType i =
+        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
@@ -266,7 +276,8 @@ public class UniverseControllerTest extends FakeDBApplication {
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe universe = Universe.create("Test Universe", customer.customerId);
-    InstanceType i = InstanceType.create(p.code, "c3.xlarge", 10, 5.5, 20, InstanceType.VolumeType.EBS);
+    InstanceType i =
+        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();

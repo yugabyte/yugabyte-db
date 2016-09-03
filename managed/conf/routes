@@ -59,6 +59,9 @@ GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controller
 GET    /api/customers/:cUUID/tasks/:tUUID             com.yugabyte.yw.controllers.CustomerTaskController.status(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /api/customers/:cUUID/universes/:uniUUID/tasks com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
+# Initialize cloud information.
+GET    /clouds/aws/initialize                         com.yugabyte.yw.cloud.AWSInitializer.run()
+
 
 ###################################################################################################
 #

@@ -2,21 +2,24 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.List;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.ui.controllers.AuthenticatedController;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.List;
-import java.util.UUID;
 
 public class InstanceTypeController extends AuthenticatedController {
   @Inject
@@ -67,12 +70,14 @@ public class InstanceTypeController extends AuthenticatedController {
     }
 
     try {
-      InstanceType it = InstanceType.create(formData.get().getProviderCode(),
+      InstanceType it = InstanceType.upsert(formData.get().getProviderCode(),
                                             formData.get().getInstanceTypeCode(),
                                             formData.get().numCores,
-                                            formData.get().memSize,
-                                            formData.get().volumeSize,
-                                            formData.get().volumeType);
+                                            formData.get().memSizeGB,
+                                            formData.get().volumeCount,
+                                            formData.get().volumeSizeGB,
+                                            formData.get().volumeType,
+                                            new InstanceTypeDetails());
       return ok(Json.toJson(it));
     } catch (Exception e) {
       responseJson.put("error", e.getMessage());
