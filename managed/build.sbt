@@ -24,9 +24,10 @@ libraryDependencies ++= Seq(
   "org.webjars" %  "leaflet" % "0.7.7",
   "org.webjars" %  "mousetrap" % "1.5.3-1",
   "org.webjars.bower" % "react" % "15.2.1",
-  "org.webjars" % "select2" % "4.0.2"
+  "org.webjars" % "select2" % "4.0.2",
+  "org.apache.httpcomponents" % "httpcore" % "4.4.5",
+  "org.apache.httpcomponents" % "httpclient" % "4.5.2"
 )
-
 resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
 // resolvers += Resolver.mavenLocal
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"

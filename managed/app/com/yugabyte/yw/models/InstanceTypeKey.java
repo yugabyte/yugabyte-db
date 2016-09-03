@@ -2,9 +2,10 @@
 
 package com.yugabyte.yw.models;
 
+import java.io.Serializable;
+
 import javax.persistence.Embeddable;
 import javax.persistence.Entity;
-import java.io.Serializable;
 
 @Entity
 @Embeddable
@@ -12,6 +13,7 @@ public class InstanceTypeKey implements Serializable {
   public String providerCode;
   public String instanceTypeCode;
 
+  @Override
   public boolean equals(Object object) {
     if(object instanceof InstanceTypeKey) {
       InstanceTypeKey key = (InstanceTypeKey) object;
@@ -22,6 +24,7 @@ public class InstanceTypeKey implements Serializable {
     return false;
   }
 
+  @Override
   public int hashCode() {
     return providerCode.hashCode() + instanceTypeCode.hashCode();
   }
@@ -31,5 +34,10 @@ public class InstanceTypeKey implements Serializable {
     key.providerCode = providerCode;
     key.instanceTypeCode = instanceTypeCode;
     return key;
+  }
+
+  @Override
+  public String toString() {
+    return providerCode + ":" + instanceTypeCode;
   }
 }

@@ -3,20 +3,6 @@
 package com.yugabyte.yw.api.controllers;
 
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import org.hamcrest.CoreMatchers;
-import org.junit.Before;
-import org.junit.Test;
-import play.libs.Json;
-import play.mvc.Result;
-
-import java.util.UUID;
-
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -26,6 +12,22 @@ import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
+
+import java.util.UUID;
+
+import org.hamcrest.CoreMatchers;
+import org.junit.Before;
+import org.junit.Test;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
+
+import play.libs.Json;
+import play.mvc.Result;
 
 public class InstanceTypeControllerTest extends FakeDBApplication {
   Provider provider;
@@ -55,12 +57,13 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID() {
-    InstanceType.create(provider.code, "test-i1", 2, 10.5, 100, InstanceType.VolumeType.EBS);
-    InstanceType.create(provider.code, "test-i2", 3, 9.0, 80, InstanceType.VolumeType.EBS);
+    InstanceType.upsert(provider.code, "test-i1", 2, 10.5, 1, 100,
+                        InstanceType.VolumeType.EBS, null);
+    InstanceType.upsert(provider.code, "test-i2", 3, 9.0, 1, 80, InstanceType.VolumeType.EBS, null);
 
     Result result =
       FakeApiHelper.requestWithAuthToken("GET", "/api/providers/" + provider.uuid + "/instance_types");
-    
+
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(2, json.size());
@@ -97,8 +100,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), CoreMatchers.containsString("\"idKey\":[\"This field is required\"]"));
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"memSize\":[\"This field is required\"]"));
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"volumeSize\":[\"This field is required\"]"));
+    assertThat(contentAsString(result), CoreMatchers.containsString("\"memSizeGB\":[\"This field is required\"]"));
+    assertThat(contentAsString(result), CoreMatchers.containsString("\"volumeSizeGB\":[\"This field is required\"]"));
     assertThat(contentAsString(result), CoreMatchers.containsString("\"volumeType\":[\"This field is required\"]"));
     assertThat(contentAsString(result), CoreMatchers.containsString("\"numCores\":[\"This field is required\"]"));
   }
@@ -110,8 +113,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     idKey.put("instanceTypeCode", "test-i1");
     idKey.put("providerCode", "aws");
     instanceTypeJson.set("idKey", idKey);
-    instanceTypeJson.put("memSize", 10.9);
-    instanceTypeJson.put("volumeSize", 10);
+    instanceTypeJson.put("memSizeGB", 10.9);
+    instanceTypeJson.put("volumeCount", 1);
+    instanceTypeJson.put("volumeSizeGB", 10);
     instanceTypeJson.put("volumeType", "EBS");
     instanceTypeJson.put("numCores", 3);
 
@@ -123,8 +127,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("instanceTypeCode").asText(), allOf(notNullValue(), equalTo("test-i1")));
-    assertThat(json.get("volumeSize").asInt(), allOf(notNullValue(), equalTo(10)));
-    assertThat(json.get("memSize").asDouble(), allOf(notNullValue(), equalTo(10.9)));
+    assertThat(json.get("volumeCount").asInt(), allOf(notNullValue(), equalTo(1)));
+    assertThat(json.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(10)));
+    assertThat(json.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(10.9)));
     assertThat(json.get("numCores").asInt(), allOf(notNullValue(), equalTo(3)));
     assertThat(json.get("volumeType").asText(), allOf(notNullValue(), equalTo("EBS")));
     assertTrue(json.get("active").asBoolean());
