@@ -22,9 +22,8 @@ PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-STARBALL = pg_dbms_stats-$(DBMSSTATSVER).tar.gz
 STARBALL96 = pg_hint_plan96-$(HINTPLANVER).tar.gz
-STARBALLS = $(STARBALL) $(STARBALL96)
+STARBALLS = $(STARBALL96)
 
 TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	pg_hint_plan--*.sql \
