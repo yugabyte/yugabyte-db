@@ -22,7 +22,7 @@ declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 # -------------------------------------------------------------------------------------------------
 
 print_stack_trace() {
-  local -i i=1
+  local -i i=${1:-1}  # Allow the caller to set the line number to start from.
   echo "Stack trace:" >&2
   while [[ $i -lt "${#FUNCNAME[@]}" ]]; do
     echo "  ${BASH_SOURCE[$i]}:${BASH_LINENO[$((i - 1))]} ${FUNCNAME[$i]}" >&2
@@ -38,7 +38,7 @@ fatal() {
   fi
   log "$@"
   if ! "$yb_log_quiet"; then
-    print_stack_trace
+    print_stack_trace 2  # Exclude this line itself from the stack trace (start from 2nd line).
   fi
   exit 1
 }
@@ -53,7 +53,16 @@ get_timestamp_for_filenames() {
 
 log() {
   if [[ "${yb_log_quiet:-}" != "true" ]]; then
-    echo "[$( get_timestamp ) ${FUNCNAME[1]}:${BASH_LINENO[0]}] $*" >&2
+    # Weirdly, when we put $* inside double quotes, that has an effect of making the following log
+    # statement produce multi-line output:
+    #
+    #   log "Some long log statement" \
+    #       "continued on the other line."
+    #
+    # We want that to produce a single line the same way the echo command would. Putting $* by
+    # itself achieves that effect. That has a side effect of passing echo-specific arguments
+    # (e.g. -n or -e) directly to the final echo command.
+    echo "[$( get_timestamp ) ${BASH_SOURCE[0]##*/}:${BASH_LINENO[0]} ${FUNCNAME[1]}]" $* >&2
   fi
 }
 
@@ -97,6 +106,7 @@ readonly VALID_BUILD_TYPES=(
   profile_gen
   release
   tsan
+  tsan_slow
 )
 readonly VALID_BUILD_TYPES_RE=$( regex_from_list "${VALID_BUILD_TYPES[@]}" )
 
@@ -302,6 +312,19 @@ validate_cmake_build_type() {
   fi
 }
 
+ensure_using_clang() {
+  if [[ -n ${YB_COMPILER_TYPE:-} && $YB_COMPILER_TYPE != "clang" ]]; then
+    fatal "ASAN/TSAN builds require clang," \
+          "but YB_COMPILER_TYPE is already set to '$YB_COMPILER_TYPE'"
+  fi
+  YB_COMPILER_TYPE="clang"
+}
+
+enable_tsan() {
+  cmake_opts+=( -DYB_USE_TSAN=1 )
+  ensure_using_clang
+}
+
 # This performs two configuration actions:
 # - Sets cmake_build_type based on build_type. cmake_build_type is what's being passed to CMake
 #   using the CMAKE_BUILD_TYPE variable. CMAKE_BUILD_TYPE can't be "asan" or "tsan".
@@ -321,14 +344,15 @@ set_cmake_build_type_and_compiler_type() {
     asan)
       cmake_opts+=( -DYB_USE_ASAN=1 -DYB_USE_UBSAN=1 )
       cmake_build_type=fastdebug
-      if [[ -n ${YB_COMPILER_TYPE:-} && $YB_COMPILER_TYPE != "clang" ]]; then
-        fatal "ASAN builds require clang," \
-              "but YB_COMPILER_TYPE is already set to '$YB_COMPILER_TYPE'"
-      fi
-      YB_COMPILER_TYPE="clang"
+      ensure_using_clang
     ;;
     tsan)
-      fatal "TSAN builds are not supported yet."
+      enable_tsan
+      cmake_build_type=fastdebug
+    ;;
+    tsan_slow)
+      enable_tsan
+      cmake_build_type=debug
     ;;
     *)
       cmake_build_type=$build_type

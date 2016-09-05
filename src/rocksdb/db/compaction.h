@@ -8,6 +8,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
+
+#include <atomic>
+
 #include "util/arena.h"
 #include "util/autovector.h"
 #include "util/mutable_cf_options.h"
@@ -269,7 +272,7 @@ class Compaction {
   // (grandparent == "output_level_ + 1")
   std::vector<FileMetaData*> grandparents_;
   size_t grandparent_index_;   // Index in grandparent_starts_
-  bool seen_key_;              // Some output key has been seen
+  std::atomic<bool> seen_key_; // Some output key has been seen
   uint64_t overlapped_bytes_;  // Bytes of overlap between current output
                                // and grandparent files
   const double score_;         // score that was used to pick this compaction.

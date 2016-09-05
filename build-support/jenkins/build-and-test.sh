@@ -89,11 +89,6 @@ readonly build_type
 BUILD_TYPE=$build_type
 readonly BUILD_TYPE
 
-if [ "$BUILD_TYPE" = "tsan" ]; then
-  # TODO: move this to cmake_opts in common-build-env.sh.
-  export YB_USE_TSAN=1
-fi
-
 set_cmake_build_type_and_compiler_type
 set_build_root
 
@@ -187,12 +182,10 @@ elif [ "$BUILD_TYPE" = "tsan" ]; then
   time "$enable_devtoolset_script" \
     "$THIRDPARTY_BIN/cmake $cmake_cmd_line -DYB_USE_TSAN=1 $YB_SRC_ROOT"
   log "CMake invocation for TSAN build finished (see timing information above)"
-  BUILD_TYPE=fastdebug
   EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -LE no_tsan"
   BUILD_PYTHON=0
 elif [ "$BUILD_TYPE" = "coverage" ]; then
   DO_COVERAGE=1
-  BUILD_TYPE=debug
   log "Starting coverage build"
   time "$enable_devtoolset_script" "$cmake_cmd_line -DYB_GENERATE_COVERAGE=1 $YB_SRC_ROOT"
   log "CMake invocation for coverage build finished (see timing information above)"

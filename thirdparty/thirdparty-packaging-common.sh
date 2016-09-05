@@ -103,13 +103,13 @@ download_prebuilt_thirdparty_deps() {
   local remote_md5_sum="${s3cmd_ls_output[3]}"
   if [[ ! "$remote_md5_sum" =~ ^[0-9a-f]{32}$ ]]; then
     echo "Expected to see an MD5 sum, found '$remote_md5_sum' in ${FUNCNAME[0]}" >&2
-    exit 1
+    return 1
   fi
   local package_s3_url=${s3cmd_ls_output[4]}
   if [[ ! "$package_s3_url" =~ ^s3://.*[.]tar[.]gz$ ]]; then
     echo "Expected the pre-built third-party dependency package URL obtained via 's3cmd ls'" \
       "to start with s3:// and end with .tar.gz, found: '$package_s3_url'" >&2
-    exit 1
+    return 1
   fi
   local package_name=${package_s3_url##*/}
   local download_dir="$TP_DIR/prebuilt_downloads"

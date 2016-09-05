@@ -41,7 +41,7 @@ class PosixLogger : public Logger {
   const static uint64_t flush_every_seconds_ = 5;
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
-  bool flush_pending_;
+  std::atomic<bool> flush_pending_;
  public:
   PosixLogger(FILE* f, uint64_t (*gettid)(), Env* env,
               const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
@@ -58,9 +58,12 @@ class PosixLogger : public Logger {
   }
   virtual void Flush() override {
     TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
-    if (flush_pending_) {
-      flush_pending_ = false;
-      fflush(file_);
+    {
+      bool expected_flush_pending = true;
+      // TODO: use a weaker memory order?
+      if (flush_pending_.compare_exchange_strong(expected_flush_pending, false)) {
+        fflush(file_);
+      }
     }
     last_flush_micros_ = env_->NowMicros();
   }
@@ -146,7 +149,8 @@ class PosixLogger : public Logger {
 #endif
 
       size_t sz = fwrite(base, 1, write_size, file_);
-      flush_pending_ = true;
+      // TODO: use a weaker memory order?
+      flush_pending_.store(true);
       assert(sz == write_size);
       if (sz > 0) {
         log_size_ += write_size;

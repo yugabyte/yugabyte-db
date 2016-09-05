@@ -426,8 +426,11 @@ ColumnFamilyData::~ColumnFamilyData() {
     column_family_set_->RemoveColumnFamily(this);
   }
 
-  if (current_ != nullptr) {
-    current_->Unref();
+  {
+    Version* const current_version = current();
+    if (current_version != nullptr) {
+      current_version->Unref();
+    }
   }
 
   // It would be wrong if this ColumnFamilyData is in flush_queue_ or
@@ -547,8 +550,9 @@ int GetL0ThresholdSpeedupCompaction(int level0_file_num_compaction_trigger,
 
 void ColumnFamilyData::RecalculateWriteStallConditions(
       const MutableCFOptions& mutable_cf_options) {
-  if (current_ != nullptr) {
-    auto* vstorage = current_->storage_info();
+  Version* current_version = current();
+  if (current_version != nullptr) {
+    auto* vstorage = current_version ->storage_info();
     auto write_controller = column_family_set_->write_controller_;
     uint64_t compaction_needed_bytes =
         vstorage->estimated_compaction_needed_bytes();
@@ -663,7 +667,7 @@ const EnvOptions* ColumnFamilyData::soptions() const {
 }
 
 void ColumnFamilyData::SetCurrent(Version* current_version) {
-  current_ = current_version;
+  current_.store(current_version);
 }
 
 uint64_t ColumnFamilyData::GetNumLiveVersions() const {
@@ -676,7 +680,7 @@ uint64_t ColumnFamilyData::GetTotalSstFilesSize() const {
 
 MemTable* ColumnFamilyData::ConstructNewMemtable(
     const MutableCFOptions& mutable_cf_options, SequenceNumber earliest_seq) {
-  assert(current_ != nullptr);
+  assert(current() != nullptr);
   return new MemTable(internal_comparator_, ioptions_, mutable_cf_options,
                       write_buffer_, earliest_seq);
 }
@@ -691,13 +695,16 @@ void ColumnFamilyData::CreateNewMemtable(
 }
 
 bool ColumnFamilyData::NeedsCompaction() const {
-  return compaction_picker_->NeedsCompaction(current_->storage_info());
+  // TODO: do we need to check if current() is nullptr?
+  return compaction_picker_->NeedsCompaction(current()->storage_info());
 }
 
 Compaction* ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options, LogBuffer* log_buffer) {
+  // TODO: do we need to check if current() is not nullptr here?
+  Version* const current_version = current();
   auto* result = compaction_picker_->PickCompaction(
-      GetName(), mutable_options, current_->storage_info(), log_buffer);
+      GetName(), mutable_options, current_version->storage_info(), log_buffer);
   if (result != nullptr) {
     result->SetInputVersion(current_);
   }
@@ -711,11 +718,13 @@ Compaction* ColumnFamilyData::CompactRange(
     const MutableCFOptions& mutable_cf_options, int input_level,
     int output_level, uint32_t output_path_id, const InternalKey* begin,
     const InternalKey* end, InternalKey** compaction_end, bool* conflict) {
+  Version* const current_version = current();
+  // TODO: do we need to check that current_version is not nullptr?
   auto* result = compaction_picker_->CompactRange(
-      GetName(), mutable_cf_options, current_->storage_info(), input_level,
+      GetName(), mutable_cf_options, current_version->storage_info(), input_level,
       output_level, output_path_id, begin, end, compaction_end, conflict);
   if (result != nullptr) {
-    result->SetInputVersion(current_);
+    result->SetInputVersion(current_version);
   }
   return result;
 }

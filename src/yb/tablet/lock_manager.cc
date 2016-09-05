@@ -17,6 +17,7 @@
 
 #include "yb/tablet/lock_manager.h"
 
+#include <atomic>
 #include <mutex>
 #include <string>
 
@@ -28,6 +29,8 @@
 #include "yb/gutil/hash/city.h"
 #include "yb/util/locks.h"
 #include "yb/util/semaphore.h"
+
+using std::atomic;
 
 namespace yb {
 namespace tablet {
@@ -100,13 +103,14 @@ class LockTable {
   };
 
  public:
-  LockTable() : mask_(0), size_(0), item_count_(0) {
+  LockTable() : mask_(0), size_(0) {
+    item_count_.store(0);
     Resize();
   }
 
   ~LockTable() {
     // Sanity checks: The table shouldn't be destructed when there are any entries in it.
-    DCHECK_EQ(0, NoBarrier_Load(&(item_count_))) << "There are some unreleased locks";
+    DCHECK_EQ(0, item_count_.load()) << "There are some unreleased locks";
     for (size_t i = 0; i < size_; ++i) {
       for (LockEntry *p = buckets_[i].chain_head; p != nullptr; p = p->ht_next_) {
         DCHECK(p == nullptr) << "The entry " << p->ToString() << " was not released";
@@ -157,7 +161,7 @@ class LockTable {
   // table buckets
   gscoped_array<Bucket> buckets_;
   // number of items in the table
-  base::subtle::Atomic64 item_count_;
+  atomic<int64> item_count_;
 };
 
 LockEntry *LockTable::GetLockEntry(const Slice& key) {
@@ -186,9 +190,9 @@ LockEntry *LockTable::GetLockEntry(const Slice& key) {
     return old_entry;
   }
 
-  if (base::subtle::NoBarrier_AtomicIncrement(&item_count_, 1) > size_) {
+  if (item_count_.fetch_add(1) >= size_) {
     std::unique_lock<percpu_rwlock> table_wrlock(lock_, std::try_to_lock);
-    // if we can't take the lock, means that someone else is resizing.
+    // If we can't take the lock, means that someone else is resizing.
     // (The percpu_rwlock try_lock waits for readers to complete)
     if (table_wrlock.owns_lock()) {
       Resize();
@@ -219,14 +223,14 @@ void LockTable::ReleaseLockEntry(LockEntry *entry) {
   }
 
   DCHECK(removed) << "Unable to find LockEntry on release";
-  base::subtle::NoBarrier_AtomicIncrement(&item_count_, -1);
+  item_count_.fetch_add(-1);
   delete entry;
 }
 
 void LockTable::Resize() {
   // Calculate a new table size
   size_t new_size = 16;
-  while (new_size < item_count_) {
+  while (new_size < item_count_.load()) {
     new_size <<= 1;
   }
 

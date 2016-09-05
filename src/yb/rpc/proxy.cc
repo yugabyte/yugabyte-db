@@ -49,8 +49,7 @@ namespace rpc {
 Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
              const Sockaddr& remote, string service_name)
     : service_name_(std::move(service_name)),
-      messenger_(messenger),
-      is_started_(false) {
+      messenger_(messenger) {
   CHECK(messenger != nullptr);
   DCHECK(!service_name_.empty()) << "Proxy service name must not be blank";
 
@@ -65,6 +64,7 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
 
   conn_id_.set_remote(remote);
   conn_id_.mutable_user_credentials()->set_real_user(real_user);
+  is_started_.store(false, std::memory_order_release);
 }
 
 Proxy::~Proxy() {
@@ -76,7 +76,7 @@ void Proxy::AsyncRequest(const string& method,
                          RpcController* controller,
                          const ResponseCallback& callback) const {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
-  base::subtle::NoBarrier_Store(&is_started_, true);
+  is_started_.store(true, std::memory_order_release);
   RemoteMethod remote_method(service_name_, method);
   OutboundCall* call = new OutboundCall(conn_id_, remote_method, response, controller, callback);
   controller->call_.reset(call);
@@ -106,8 +106,8 @@ Status Proxy::SyncRequest(const string& method,
 }
 
 void Proxy::set_user_credentials(const UserCredentials& user_credentials) {
-  CHECK(base::subtle::NoBarrier_Load(&is_started_) == false)
-    << "It is illegal to call set_user_credentials() after request processing has started";
+  CHECK(!is_started_.load(std::memory_order_acquire))
+      << "It is illegal to call set_user_credentials() after request processing has started";
   conn_id_.set_user_credentials(user_credentials);
 }
 

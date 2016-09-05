@@ -1,5 +1,7 @@
 # Copyright (c) YugaByte, Inc.
 
+#@IgnoreInspection BashAddShebang
+
 # Common bash code for test scripts/
 
 if [ "$BASH_SOURCE" == "$0" ]; then
@@ -41,6 +43,10 @@ VALID_TEST_BINARY_DIRS_RE=$( regex_from_list "${VALID_TEST_BINARY_DIRS[@]}" )
 # http://www.commandlinefu.com/commands/view/6004/print-stack-trace-of-a-core-file-without-needing-to-enter-gdb-interactively
 
 GDB_CORE_BACKTRACE_CMD_PREFIX=( gdb -q -n -ex bt -batch )
+
+DEFAULT_TEST_TIMEOUT_SEC=600
+INCREASED_TEST_TIMEOUT_SEC=1200
+
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -209,11 +215,13 @@ collect_gtest_tests() {
 
   local gtest_list_tests_tmp_dir=$( mktemp -t -d "gtest_list_tests_tmp_dir.XXXXXXXXXX" )
   mkdir -p "$gtest_list_tests_tmp_dir"  # on Mac OS X, mktemp does not create the directory
+  local gtest_list_tests_cmd=( "$abs_test_binary_path" --gtest_list_tests )
+
   set +e
   pushd "$gtest_list_tests_tmp_dir" >/dev/null
   local gtest_list_tests_result  # this has to be on a separate line to capture the exit code
   gtest_list_tests_result=$(
-    "$abs_test_binary_path" --gtest_list_tests 2>"$gtest_list_stderr_path"
+    "${gtest_list_tests_cmd[@]}" 2>"$gtest_list_stderr_path"
   )
   gtest_list_tests_exit_code=$?
   popd >/dev/null
@@ -224,8 +232,12 @@ collect_gtest_tests() {
   rm -rf "$gtest_list_tests_tmp_dir"
 
   if [[ -z $gtest_list_tests_result ]]; then
-    fatal "Empty output from: $abs_test_binary_path --gtest_list_tests," \
-          "exit code: $gtest_list_tests_exit_code"
+    if [[ -s $gtest_list_stderr_path ]]; then
+      log "Standard error from ${gtest_list_tests_cmd[@]}:"
+      cat "$gtest_list_stderr_path"
+    fi
+    fatal "Empty output from ${gtest_list_tests_cmd[@]}," \
+          "exit code: $gtest_list_tests_exit_code."
   fi
 
   # https://nixtricks.wordpress.com/2013/01/09/sed-delete-the-lines-lying-in-between-two-patterns/
@@ -265,14 +277,30 @@ collect_gtest_tests() {
   local IFS=$'\n'  # so that we can iterate through lines in $gtest_list_tests_result
   for test_list_item in $gtest_list_tests_result; do
     if [[ "$test_list_item" =~ ^\ \  ]]; then
+      # This is a "test": an individual piece of test code to run, described by TEST or TEST_F
+      # in a Google Test program.
       test=${test_list_item#  }  # Remove two leading spaces
       test=${test%%#*}  # Remove everything after a "#" comment
       test=${test%  }  # Remove two trailing spaces
+      local full_test_name=$test_case$test
+      if [[ -n ${total_num_tests:-} ]]; then
+        let total_num_tests+=1
+      fi
+      if [[ -n ${YB_GTEST_REGEX:-} && ! $full_test_name =~ .*${YB_GTEST_REGEX:-}.* ]]; then
+        log "Skipping test '$full_test_name' in ${rel_test_binary}: does not match the" \
+            "regular expression '${YB_GTEST_REGEX}' (specified with YB_GTEST_REGEX)."
+        if [[ -n ${num_tests_skipped:-} ]]; then
+          let num_tests_skipped+=1
+        fi
+        continue
+      fi
       tests+=( "${rel_test_binary}:::$test_case$test" )
-      if [ -n "${num_tests:-}" ]; then
+      if [[ -n ${num_tests:-} ]]; then
         let num_tests+=1
       fi
     else
+      # This is a "test case", a "container" for a number of tests, as in
+      # TEST(TestCaseName, TestName). There is no executable item here.
       test_case=${test_list_item%%#*}  # Remove everything after a "#" comment
       test_case=${test_case%  }  # Remove two trailing spaces
       if [ -n "${num_test_cases:-}" ]; then
@@ -550,10 +578,10 @@ postprocess_test_log() {
 # Sets test log URL prefix if we're running in Jenkins.
 set_test_log_url_prefix() {
   test_log_url_prefix=""
-  local build_type=${BUILD_ROOT##*/}
+  local build_dir_name=${BUILD_ROOT##*/}
   if [[ -n ${BUILD_URL:-} ]]; then
     build_url_no_trailing_slash=${BUILD_URL%/}
-    test_log_url_prefix="${build_url_no_trailing_slash}/artifact/build/$build_type/yb-test-logs"
+    test_log_url_prefix="${build_url_no_trailing_slash}/artifact/build/$build_dir_name/yb-test-logs"
   fi
 }
 
@@ -564,21 +592,36 @@ run_one_test() {
     TEST_TMPDIR \
     test_cmd_line \
     test_failed \
-    test_log_path
-  if [ "$test_failed" != "false" ]; then
+    rel_test_binary
+
+  # We expect the exact string "false" here for added safety.
+  if [[ $test_failed != "false" ]]; then
     fatal "Expected test_failed to be false before running test, found: $test_failed"
+  fi
+
+  local -i timeout_sec
+  if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
+    timeout_sec=$YB_TEST_TIMEOUT
+  else
+    if [[ $rel_test_binary == "rocksdb-build/compact_on_deletion_collector_test" ]]; then
+      # This test is particularly slow on TSAN, and it has to be run all at once (we cannot use
+      # --gtest_filter) because of dependencies between tests.
+      timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
+    else
+      timeout_sec=$DEFAULT_TEST_TIMEOUT_SEC
+    fi
   fi
 
   pushd "$TEST_TMPDIR" >/dev/null
   set +e
-  "$BUILD_ROOT"/bin/run-with-timeout $(( YB_TEST_TIMEOUT + 1 )) "${test_cmd_line[@]}" \
+  "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}" \
     &>"$test_log_path"
   test_exit_code=$?
   set -e
 
   popd >/dev/null
 
-  if [ "$test_exit_code" -ne 0 ]; then
+  if [[ $test_exit_code -ne 0 ]]; then
     test_failed=true
   fi
 }
@@ -642,8 +685,13 @@ run_test_and_process_results() {
 }
 
 set_asan_tsan_options() {
+  expect_vars_to_be_set BUILD_ROOT
+
   local -r build_root_basename=${BUILD_ROOT##*/}
-  if [[ $build_root_basename =~ ^(asan|tsan)- ]]; then
+
+  # We don't add a hyphen in the end of the following regex, because there is a "tsan_slow" build
+  # type.
+  if [[ $build_root_basename =~ ^(asan|tsan) ]]; then
     # Suppressions require symbolization. We'll default to using the symbolizer in thirdparty.
     # If ASAN_SYMBOLIZER_PATH is already set but that file does not exist, we'll report that and
     # still use the default way to find the symbolizer.
@@ -685,7 +733,8 @@ set_asan_tsan_options() {
     export LSAN_OPTIONS
   fi
 
-  if [[ $build_root_basename =~ ^tsan- ]]; then
+  # Don't add a hyphen after the regex so we can handle both tsan and tsan_slow.
+  if [[ $build_root_basename =~ ^tsan ]]; then
     # Configure TSAN (ignored if this isn't a TSAN build).
     #
     # Deadlock detection (new in clang 3.5) is disabled because:
@@ -759,6 +808,3 @@ if is_mac; then
 else
   STACK_TRACE_FILTER=$YB_SRC_ROOT/build-support/stacktrace_addr2line.pl
 fi
-
-# Set a ten-minute timeout for tests. This keeps our Jenkins builds from hanging.
-YB_TEST_TIMEOUT=${YB_TEST_TIMEOUT:-600}

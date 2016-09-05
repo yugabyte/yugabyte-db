@@ -29,6 +29,8 @@ quoted_perl_command = $(subst ','\'',$(perl_command))
 # DEBUG_LEVEL can have three values:
 # * DEBUG_LEVEL=2; this is the ultimate debug mode. It will compile rocksdb
 # without any optimizations. To compile with level 2, issue `make dbg`
+# * DEBUG_LEVEL=15; this is the "middle ground" between DEBUG_LEVEL=1 and DEBUG_LEVEL=2.
+#                   Uses -O1 optimization.
 # * DEBUG_LEVEL=1; debug level 1 enables all assertions and debug code, but
 # compiles rocksdb with -O2 optimizations. this is the default debug level.
 # `make all` or `make <binary_target>` compile RocksDB with debug level 1.
@@ -101,12 +103,17 @@ endif
 DEBUG_LEVEL=$(AUTO_DEBUG_LEVEL)
 endif
 
+# The "1.5" debug level, corresponding to -O1.
+ifeq ($(DEBUG_LEVEL), 15)
+OPT += -O1 -fno-omit-frame-pointer
+else
 # compile with -O2 if debug level is not 2
 ifneq ($(DEBUG_LEVEL), 2)
 OPT += -O2 -fno-omit-frame-pointer
 # Skip for archs that don't support -momit-leaf-frame-pointer
 ifeq (,$(shell $(CXX) -fsyntax-only -momit-leaf-frame-pointer -xc /dev/null 2>&1))
 OPT += -momit-leaf-frame-pointer
+endif
 endif
 endif
 
@@ -191,7 +198,12 @@ endif
 # TSAN doesn't work well with jemalloc. If we're compiling with TSAN, we should use regular malloc.
 ifdef COMPILE_WITH_TSAN
   DISABLE_JEMALLOC=1
-  EXEC_LDFLAGS += -fsanitize=thread -pie
+
+  # EXEC_LDFLAGS used to have -pie, but that would fail with
+  # "FATAL: ThreadSanitizer: unexpected memory mapping".
+  # Potentially related issue: https://github.com/google/sanitizers/issues/503
+  EXEC_LDFLAGS += -fsanitize=thread
+
   PLATFORM_CCFLAGS += -fsanitize=thread -fPIC -DROCKSDB_TSAN_RUN
   PLATFORM_CXXFLAGS += -fsanitize=thread -fPIC -DROCKSDB_TSAN_RUN
   # Turn off -pg when enabling TSAN testing, because that induces
@@ -337,7 +349,7 @@ TESTS = \
 	user_sequence_number_test
 
 ifneq ($(DEBUG_LEVEL),0)
-# These tests can only be built in debug mode.
+# These tests can only be built in debug mode, so skip them in release mode.
 TESTS += \
 	auto_roll_logger_test \
 	backupable_db_test \

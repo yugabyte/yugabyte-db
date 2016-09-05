@@ -18,6 +18,7 @@
 #ifndef YB_RPC_PROXY_H
 #define YB_RPC_PROXY_H
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -108,7 +109,7 @@ class Proxy {
   const std::string service_name_;
   std::shared_ptr<Messenger> messenger_;
   ConnectionId conn_id_;
-  mutable Atomic32 is_started_;
+  mutable std::atomic<bool> is_started_;
 
   DISALLOW_COPY_AND_ASSIGN(Proxy);
 };

@@ -630,7 +630,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
       } else {
         job_context->log_delete_files.push_back(earliest.number);
       }
-      total_log_size_ -= earliest.size;
+      total_log_size_.fetch_sub(static_cast<int64_t>(earliest.size));
       alive_log_files_.pop_front();
       // Current log should always stay alive since it can't have
       // number < MinLogNumber().
@@ -3410,8 +3410,6 @@ std::vector<Status> DBImpl::MultiGet(
   StopWatch sw(env_, stats_, DB_MULTIGET);
   PERF_TIMER_GUARD(get_snapshot_time);
 
-  SequenceNumber snapshot;
-
   struct MultiGetColumnFamilyData {
     ColumnFamilyData* cfd;
     SuperVersion* super_version;
@@ -3429,6 +3427,7 @@ std::vector<Status> DBImpl::MultiGet(
   }
 
   mutex_.Lock();
+  SequenceNumber snapshot;
   if (read_options.snapshot != nullptr) {
     snapshot = reinterpret_cast<const SnapshotImpl*>(
         read_options.snapshot)->number_;
@@ -4281,13 +4280,13 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
                                     : db_options_.max_total_wal_size;
   if (UNLIKELY(!single_column_family_mode_ &&
                alive_log_files_.begin()->getting_flushed == false &&
-               total_log_size_ > max_total_wal_size)) {
+               total_log_size() > max_total_wal_size)) {
     uint64_t flush_column_family_if_log_file = alive_log_files_.begin()->number;
     alive_log_files_.begin()->getting_flushed = true;
     Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "Flushing all column families with data in WAL number %" PRIu64
         ". Total log size is %" PRIu64 " while max_total_wal_size is %" PRIu64,
-        flush_column_family_if_log_file, total_log_size_, max_total_wal_size);
+        flush_column_family_if_log_file, total_log_size(), max_total_wal_size);
     // no need to refcount because drop is happening in write thread, so can't
     // happen while we're in the write thread
     for (auto cfd : *versions_->GetColumnFamilySet()) {
@@ -4495,7 +4494,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
 
       Slice log_entry = WriteBatchInternal::Contents(merged_batch);
       status = logs_.back().writer->AddRecord(log_entry);
-      total_log_size_ += log_entry.size();
+      total_log_size_.fetch_add(static_cast<int64_t>(log_entry.size()));
       alive_log_files_.back().AddSize(log_entry.size());
       log_empty_ = false;
       log_size = log_entry.size();

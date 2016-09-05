@@ -23,9 +23,28 @@ thirdparty_install_dir=$YB_SRC_DIR/thirdparty/installed/bin
 # This script is invoked through symlinks called "cc" or "c++".
 cc_or_cxx=${0##*/}
 
-stderr_path=$( mktemp "/tmp/yb-$cc_or_cxx-stderr.XXXXXXXXXXXXXXXX" )
+stderr_path=/tmp/yb-$cc_or_cxx-stderr.$RANDOM-$RANDOM-$RANDOM.$$
 
 compiler_args=( "$@" )
+output_file=""
+input_files=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=${2:-}
+      if [[ $# -gt 1 ]]; then
+        shift
+      fi
+    ;;
+    *.cc|*.h|*.o)
+      input_files+=( "$1" )
+    ;;
+    *)
+    ;;
+  esac
+  shift
+done
 
 set_default_compiler_type
 case "$YB_COMPILER_TYPE" in
@@ -72,28 +91,35 @@ fi
 
 exit_handler() {
   local exit_code=$?
-  if [[ "$exit_code" -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     # We output the compiler executable path because the actual command we're running will likely
     # contain ccache instead of the compiler executable.
-    echo "Compiler command failed with exit code $exit_code: ${cmd[@]} ;" \
-         "compiler executable: $compiler_executable ;" \
-         "current directory: $PWD" >&2
-    if [[ -n ${stderr_path:-} && -f ${stderr_path:-} ]]; then
-      if [[ -n ${YB_SHOW_COMPILER_STDERR:-} ]]; then
-        # Useful to see what exactly is included in compiler stderr (as opposed to stdout) when
-        # debugging the build.
-        echo "Compiler standard error:" >&2
-        echo "---------------------------------------------------------------------------------" >&2
-        cat "$stderr_path" >&2
-        echo "---------------------------------------------------------------------------------" >&2
+    (
+      echo "Compiler command failed with exit code $exit_code: ${cmd[@]} ;" \
+           "compiler executable: $compiler_executable ;" \
+           "current directory: $PWD"
+      if [[ -f ${stderr_path:-} ]]; then
+        if [[ -s ${stderr_path:-} ]]; then
+          echo "Compiler standard error:"
+          echo "----------------------------------------------------------------------------------"
+          cat "$stderr_path"
+          echo "----------------------------------------------------------------------------------"
+        else
+          echo "Compiler standard error is empty."
+        fi
       fi
-      rm -f "$stderr_path"
-    fi
+      echo "Output file (from -o): $output_file"
+      echo "Input files:"
+      for input_file in "${input_files[@]}"; do
+        echo "  $input_file"
+      done
+    ) >&2
   fi
+  rm -f "${stderr_path:-}"
   exit "$exit_code"
 }
 
-trap 'exit_handler' EXIT
+trap exit_handler EXIT
 
 set +e
 # Swap stdout and stderr, capture stderr to a file, and swap them again.
@@ -123,7 +149,7 @@ then
   ( rm -f "$PCH_PATH" )
 fi
 
-if [[ "$compiler_exit_code" -ne 0 ]]; then
+if [[ $compiler_exit_code -ne 0 ]]; then
   exit "$compiler_exit_code"
 fi
 

@@ -77,8 +77,9 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
 
     ASSERT_EQ(0, writer.num_write_errors());
     ASSERT_EQ(0, reader.num_read_errors());
-    // Assuming every thread has time to do at least 100 writes.
-    ASSERT_GE(writer.num_writes(), writer_threads * 100);
+    // Assuming every thread has time to do at least 50 writes. Had to lower this from 100 after
+    // enabling TSAN.
+    ASSERT_GE(writer.num_writes(), writer_threads * 50);
     // Assuming reads are at least as fast as writes.
     ASSERT_GE(reader.num_reads(), writer.num_writes());
   }

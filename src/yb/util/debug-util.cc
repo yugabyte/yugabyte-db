@@ -112,6 +112,7 @@ struct SignalCommunication::Lock {
 // Signal handler for our stack trace signal.
 // We expect that the signal is only sent from DumpThreadStack() -- not by a user.
 void HandleStackTraceSignal(int signum) {
+  int old_errno = errno;
   SignalCommunication::Lock l;
 
   // Check that the dumper thread is still interested in our stack trace.
@@ -121,11 +122,13 @@ void HandleStackTraceSignal(int signum) {
   // dump.
   int64_t my_tid = Thread::CurrentThreadId();
   if (g_comm.target_tid != my_tid) {
+    errno = old_errno;
     return;
   }
 
   g_comm.stack.Collect(2);
   base::subtle::Release_Store(&g_comm.result_ready, 1);
+  errno = old_errno;
 }
 
 bool InitSignalHandlerUnlocked(int signum) {
@@ -349,11 +352,11 @@ string StackTrace::Symbolize() const {
     //     Disassembly of section .text:
     //
     //     0000000000400440 <main>:
-    //       400440:	48 83 ec 08          	sub    $0x8,%rsp
-    //       400444:	e8 c7 ff ff ff       	callq  400410 <abort@plt>
+    //       400440:   48 83 ec 08             sub    $0x8,%rsp
+    //       400444:   e8 c7 ff ff ff          callq  400410 <abort@plt>
     //
     //     0000000000400449 <_start>:
-    //       400449:	31 ed                	xor    %ebp,%ebp
+    //       400449:   31 ed                   xor    %ebp,%ebp
     //       ...
     //
     // If we were to take a stack trace while inside 'abort', the return pointer

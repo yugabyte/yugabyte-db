@@ -163,13 +163,13 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       inputs_(std::move(_inputs)),
       grandparents_(std::move(_grandparents)),
       grandparent_index_(0),
-      seen_key_(false),
       overlapped_bytes_(0),
       score_(_score),
       bottommost_level_(IsBottommostLevel(output_level_, vstorage, inputs_)),
       is_full_compaction_(IsFullCompaction(vstorage, inputs_)),
       is_manual_compaction_(_manual_compaction),
       compaction_reason_(_compaction_reason) {
+  seen_key_.store(false, std::memory_order_release);
   MarkFilesBeingCompacted(true);
   if (is_manual_compaction_) {
     compaction_reason_ = CompactionReason::kManualCompaction;
@@ -296,7 +296,7 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
   while (grandparent_index_ < grandparents_.size() &&
       icmp->Compare(internal_key,
                     grandparents_[grandparent_index_]->largest.Encode()) > 0) {
-    if (seen_key_) {
+    if (seen_key_.load(std::memory_order_acquire)) {
       overlapped_bytes_ += grandparents_[grandparent_index_]->fd.GetFileSize();
     }
     assert(grandparent_index_ + 1 >= grandparents_.size() ||
@@ -305,7 +305,7 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
                          < 0);
     grandparent_index_++;
   }
-  seen_key_ = true;
+  seen_key_.store(true, std::memory_order_release);
 
   if (overlapped_bytes_ > max_grandparent_overlap_bytes_) {
     // Too much overlap for current output; start new output

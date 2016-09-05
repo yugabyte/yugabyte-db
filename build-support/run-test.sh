@@ -91,8 +91,20 @@ set_asan_tsan_options
 
 tests=()
 rel_test_binary="$TEST_DIR_BASENAME/$TEST_NAME"
+total_num_tests=0
 num_tests=0
+num_tests_skipped=0
 collect_gtest_tests
+if [[ $total_num_tests -gt 0 && $num_tests_skipped -eq $total_num_tests ]]; then
+  fatal "Skipped all $total_num_tests tests in $rel_test_binary. Invalid regular expression?" \
+        "( YB_GTEST_REGEX=$YB_GTEST_REGEX )."
+fi
+
+set +u  # Don't fail on an empty list.
+if [[ ${#tests[@]} -eq 0 ]]; then
+  fatal "No tests found in $rel_test_binary."
+fi
+set -u
 
 set_test_log_url_prefix
 

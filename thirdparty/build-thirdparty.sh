@@ -316,13 +316,13 @@ if [ -n "$F_TSAN" ]; then
     PREFIX=$PREFIX_LIBSTDCXX
     EXTRA_CFLAGS=
     EXTRA_CXXFLAGS=
-    build_libstdcxx
+    wrap_build_output build_libstdcxx
 
     # Build instrumented libstdxx
     PREFIX=$PREFIX_LIBSTDCXX_TSAN
     EXTRA_CFLAGS="-fsanitize=thread"
     EXTRA_CXXFLAGS="-fsanitize=thread"
-    build_libstdcxx
+    wrap_build_output build_libstdcxx
 
     restore_env
   fi
@@ -339,7 +339,7 @@ if [ -n "$F_TSAN" ]; then
   EXTRA_LDFLAGS="-Wl,-rpath,$PREFIX_LIBSTDCXX_TSAN/lib $EXTRA_LDFLAGS"
 
   if [ -n "$F_ALL" -o -n "$F_PROTOBUF" ]; then
-    build_protobuf
+    wrap_build_output build_protobuf
   fi
   restore_env
 
@@ -352,27 +352,27 @@ if [ -n "$F_TSAN" ]; then
   EXTRA_LDFLAGS="-Wl,-rpath,$PREFIX_LIBSTDCXX/lib $EXTRA_LDFLAGS"
 
   if [ -n "$F_ALL" -o -n "$F_GFLAGS" ]; then
-    build_gflags
+    wrap_build_output build_gflags
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GLOG" ]; then
-    build_glog
+    wrap_build_output build_glog
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GPERFTOOLS" ]; then
-    build_gperftools
+    wrap_build_output build_gperftools
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GMOCK" ]; then
-    build_gmock
+    wrap_build_output build_gmock
   fi
 
   if [ -n "$F_ALL" -o -n "$F_SNAPPY" ]; then
-    build_snappy
+    wrap_build_output build_snappy
   fi
 
   if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
-    build_crcutil
+    wrap_build_output build_crcutil
   fi
 fi
 

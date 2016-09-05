@@ -5,6 +5,7 @@
 
 #ifndef ROCKSDB_LITE
 
+#include <atomic>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,6 +18,7 @@
 #include "util/sync_point.h"
 #include "util/testharness.h"
 
+using std::atomic;
 using std::string;
 
 namespace rocksdb {
@@ -60,11 +62,21 @@ class WriteCallbackTestWriteCallback2 : public WriteCallback {
 class MockWriteCallback : public WriteCallback {
  public:
   bool should_fail_ = false;
-  bool was_called_ = false;
+  atomic<bool> was_called_;
   bool allow_batching_ = false;
 
+  MockWriteCallback() {
+    was_called_.store(false);
+  }
+
+  MockWriteCallback(const MockWriteCallback& other)
+      : should_fail_(other.should_fail_),
+        allow_batching_(other.allow_batching_) {
+    was_called_.store(other.was_called_.load());
+  }
+
   Status Callback(DB* db) override {
-    was_called_ = true;
+    was_called_.store(true);
     if (should_fail_) {
       return Status::Busy();
     } else {
@@ -87,7 +99,7 @@ TEST_F(WriteCallbackTest, WriteWithCallbackTest) {
     void Clear() {
       kvs_.clear();
       write_batch_.Clear();
-      callback_.was_called_ = false;
+      callback_.was_called_.store(false);
     }
 
     MockWriteCallback callback_;
@@ -252,7 +264,7 @@ TEST_F(WriteCallbackTest, WriteWithCallbackTest) {
           // check for keys
           string value;
           for (auto& w : write_group) {
-            ASSERT_TRUE(w.callback_.was_called_);
+            ASSERT_TRUE(w.callback_.was_called_.load());
             for (auto& kvp : w.kvs_) {
               if (w.callback_.should_fail_) {
                 ASSERT_TRUE(

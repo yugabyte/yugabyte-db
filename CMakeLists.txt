@@ -199,8 +199,9 @@ set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -DGFLAGS=gflags")
 set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
 
-# Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], YugaByte's
+# Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
 # generated code (which always uses clang) must be built against the old ABI.
+# (Note: we are not using any LLVM codegen in YugaByte as of 08/2016).
 # There's no recourse for using both ABIs in the same process; gcc's advice [2]
 # is to build everything against the old ABI.
 #
@@ -281,7 +282,9 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_FASTDEBUG})
-  set(ROCKSDB_DEBUG_LEVEL 1)
+  # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
+  # the rest of YB code in the "fastdebug" mode (used for ASAN/TSAN).
+  set(ROCKSDB_DEBUG_LEVEL 15)
   set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
@@ -303,7 +306,7 @@ endif ()
 
 if ("${YB_USE_ASAN}" OR "${YB_USE_TSAN}" OR "${YB_USE_UBSAN}")
   if (NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "" AND
-    NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
+      NOT "$ENV{YB_COMPILER_TYPE}" STREQUAL "clang")
     message(SEND_ERROR "YB_COMPILER_TYPE is set to '$ENV{YB_COMPILER_TYPE}', but it must be 'clang'\
  for ASAN/TSAN/UBSAN builds. YB_USE_ASAN=${YB_USE_ASAN}, YB_USE_TSAN=${YB_USE_TSAN},\
  YB_USE_UBSAN=${YB_USE_UBSAN}")
@@ -331,7 +334,6 @@ if ("${COMPILER_FAMILY}" STREQUAL "clang")
   #
   #   http://petereisentraut.blogspot.com/2011/05/ccache-and-clang.html
   #   http://petereisentraut.blogspot.com/2011/09/ccache-and-clang-part-2.html
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Qunused-arguments")
 
   # Clang generates ambiguous member template warnings when calling the ev++ api.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-ambiguous-member-template")
@@ -339,6 +341,9 @@ if ("${COMPILER_FAMILY}" STREQUAL "clang")
   # Emit warnings (that we then treat as errors in compiler-wrapper.sh) on unannotated fallthrough
   # in switch statements. This applies to both YB and RocksDB parts of the code.
   set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -Wimplicit-fallthrough")
+
+  # Silence the "unused argument" warning.
+  set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -Qunused-arguments")
 
   # Only hardcode -fcolor-diagnostics if stderr is opened on a terminal. Otherwise
   # the color codes show up as noisy artifacts.
@@ -368,12 +373,58 @@ else()
   message(SEND_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
 
+# Flag to enable thread sanitizer (clang or gcc 4.8)
+if (${YB_USE_TSAN})
+  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
+          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
+    message(SEND_ERROR "Cannot use TSAN without clang or gcc >= 4.8")
+  endif()
+
+  add_definitions("-fsanitize=thread")
+
+  # Enables dynamic_annotations.h to actually generate code
+  add_definitions("-DDYNAMIC_ANNOTATIONS_ENABLED")
+
+  # changes atomicops to use the tsan implementations
+  add_definitions("-DTHREAD_SANITIZER")
+
+  # Disables using the precompiled template specializations for std::string, shared_ptr, etc
+  # so that the annotations in the header actually take effect.
+  add_definitions("-D_GLIBCXX_EXTERN_TEMPLATE=0")
+
+  # Compile and link against the thirdparty TSAN instrumented libstdcxx.
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+  if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" AND NOT EXISTS "/etc/redhat-release")
+    message("This looks like a non-CentOS Linux platform. Assuming this is Ubuntu, not using "
+            "TSAN-instrumented libstdc++. This can result in some false positive TSAN test "
+            "failures.")
+  else()
+    message("Using TSAN-instrumented libstdc++")
+    set(TSAN_GCC_DIR "${CMAKE_SOURCE_DIR}/thirdparty/installed-deps-tsan/gcc")
+    set(TSAN_GCC_INCLUDE_DIR "${TSAN_GCC_DIR}/include/c++/4.9.3")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath,${TSAN_GCC_DIR}/lib")
+    set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -nostdinc++ -L${TSAN_GCC_DIR}/lib")
+    set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -isystem ${TSAN_GCC_INCLUDE_DIR}")
+    set(CXX_GLOBAL_COMMON_FLAGS
+        "${CXX_GLOBAL_COMMON_FLAGS} -isystem ${TSAN_GCC_INCLUDE_DIR}/backward")
+  endif()
+
+  # Strictly speaking, TSAN doesn't require dynamic linking. But it does
+  # require all code to be position independent, and the easiest way to
+  # guarantee that is via dynamic linking (not all 3rd party archives are
+  # compiled with -fPIC e.g. boost).
+  if("${YB_LINK}" STREQUAL "a")
+    message("Using dynamic linking for TSAN")
+    set(YB_LINK "d")
+  elseif("${YB_LINK}" STREQUAL "s")
+    message(SEND_ERROR "Cannot use TSAN with static linking")
+  endif()
+endif()
+
 # Add "global" flags (those shared between YB and RocksDB parts of the code) to YB's flags.
-set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} ${CXX_GLOBAL_COMMON_FLAGS}")
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_COMMON_FLAGS}")
-
 # After this point, modifying CXX_GLOBAL_COMMON_FLAGS and CXX_COMMON_FLAGS will have no effect!
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} ${CXX_GLOBAL_COMMON_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_COMMON_FLAGS}")
 
 if (NOT "$ENV{YB_LINK}" STREQUAL "" AND NOT "$ENV{YB_LINK}" STREQUAL "${YB_LINK}")
   if (YB_LINK)
@@ -460,43 +511,6 @@ if (${YB_USE_UBSAN})
     "${CMAKE_CXX_FLAGS} -fno-sanitize-recover -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
 endif ()
 
-# Flag to enable thread sanitizer (clang or gcc 4.8)
-if (${YB_USE_TSAN})
-  if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
-          ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
-    message(SEND_ERROR "Cannot use TSAN without clang or gcc >= 4.8")
-  endif()
-
-  add_definitions("-fsanitize=thread")
-
-  # Enables dynamic_annotations.h to actually generate code
-  add_definitions("-DDYNAMIC_ANNOTATIONS_ENABLED")
-
-  # changes atomicops to use the tsan implementations
-  add_definitions("-DTHREAD_SANITIZER")
-
-  # Disables using the precompiled template specializations for std::string, shared_ptr, etc
-  # so that the annotations in the header actually take effect.
-  add_definitions("-D_GLIBCXX_EXTERN_TEMPLATE=0")
-
-  # Compile and link against the thirdparty TSAN instrumented libstdcxx.
-  set(TSAN_GCC_DIR "${CMAKE_SOURCE_DIR}/thirdparty/installed-deps-tsan/gcc")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath,${TSAN_GCC_DIR}/lib -fsanitize=thread")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -L${TSAN_GCC_DIR}/lib")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${TSAN_GCC_DIR}/include/c++/4.9.3")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${TSAN_GCC_DIR}/include/c++/4.9.3/backward")
-
-  # Strictly speaking, TSAN doesn't require dynamic linking. But it does
-  # require all code to be position independent, and the easiest way to
-  # guarantee that is via dynamic linking (not all 3rd party archives are
-  # compiled with -fPIC e.g. boost).
-  if("${YB_LINK}" STREQUAL "a")
-    message("Using dynamic linking for TSAN")
-    set(YB_LINK "d")
-  elseif("${YB_LINK}" STREQUAL "s")
-    message(SEND_ERROR "Cannot use TSAN with static linking")
-  endif()
-endif()
 
 
 if ("${YB_USE_UBSAN}" OR "${YB_USE_ASAN}" OR "${YB_USE_TSAN}")
@@ -807,6 +821,7 @@ function(ADD_YB_TEST REL_TEST_NAME)
     add_executable(${TEST_NAME} "${REL_TEST_NAME}.cc")
     target_link_libraries(${TEST_NAME} ${YB_TEST_LINK_LIBS})
     POSTPROCESS_LIBRARY_OR_EXECUTABLE(${TEST_NAME})
+    ADD_COMMON_YB_TEST_DEPENDENCIES(${TEST_NAME})
   else()
     # No executable, just invoke the test (probably a script) directly.
     get_filename_component(TEST_NAME_WITH_EXT ${REL_TEST_NAME} NAME)
@@ -817,6 +832,9 @@ function(ADD_YB_TEST REL_TEST_NAME)
     # on an add_custom_command() that copies the test file into place).
     execute_process(COMMAND ln -sf ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME}
       ${EXECUTABLE_OUTPUT_PATH})
+    # Note: we're not calling ADD_COMMON_YB_TEST_DEPENDENCIES here because add_test() does not
+    # produce a target. run-with-timeout might not get build if we're just trying to build/run
+    # one test.
   endif()
 
   add_test(${TEST_NAME}
@@ -834,6 +852,13 @@ function(ADD_YB_TEST_DEPENDENCIES REL_TEST_NAME)
   get_filename_component(TEST_NAME ${REL_TEST_NAME} NAME_WE)
 
   add_dependencies(${TEST_NAME} ${ARGN})
+endfunction()
+
+# Adds dependencies common to all tests, both main YB tests added using ADD_YB_TESTS,
+# and RocksDB tests, which are added in rocksdb/CMakeLists.txt using add_test directly.
+function(ADD_COMMON_YB_TEST_DEPENDENCIES REL_TEST_NAME)
+  # Our ctest-based wrapper, run-test.sh, uses this tool to put a time limit on tests.
+  ADD_YB_TEST_DEPENDENCIES(${REL_TEST_NAME} run-with-timeout)
 endfunction()
 
 enable_testing()

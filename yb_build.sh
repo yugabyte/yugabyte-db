@@ -41,6 +41,15 @@ Options:
     Build and run the given C++ test. We run the test directly (not going through ctest).
   --no-tcmalloc
     Do not use tcmalloc.
+  --no-rebuild-thirdparty
+    Skip building third-party libraries, even if the thirdparty directory has changed in git.
+  --show-compiler-cmd-line
+    Show compiler command line.
+  --no-test-existence-check
+    Don't check that all test binaries referenced by CMakeLists.txt files exist.
+  --gtest-regex
+    Use the given regular expression to filter tests within a gtest-based binary when running them
+    with --cxx-test.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -64,6 +73,9 @@ save_log=false
 make_targets=()
 no_tcmalloc=false
 cxx_test_name=""
+test_existence_check=true
+
+unset YB_GTEST_REGEX
 
 original_args=( "$@" )
 while [ $# -gt 0 ]; do
@@ -131,7 +143,18 @@ while [ $# -gt 0 ]; do
       build_java=false
       shift
     ;;
-    debug|fastdebug|release|profile_gen|profile_build|asan|tsan)
+    --no-rebuild-thirdparty)
+      export NO_REBUILD_THIRDPARTY=1
+    ;;
+    --show-compiler-cmd-line)
+      export YB_SHOW_COMPILER_COMMAND_LINE=1
+    ;;
+    --no-test-existence-check)
+      test_existence_check=false
+    ;;
+    --gtest-regex)
+      export YB_GTEST_REGEX="$2"
+      shift
     ;;
     rocksdb_*)
       # Assume this is a CMake target we've created for RocksDB tests.
@@ -274,20 +297,22 @@ fi
 
 touch "$thirdparty_built_flag_file"
 
-(
-  cd "$BUILD_ROOT"
-  log "Checking if all test binaries referenced by CMakeLists.txt files exist."
-  set +e
-  YB_CHECK_TEST_EXISTENCE_ONLY=1 ctest -j8 2>&1 | grep Failed
-  if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
-    fatal "Some test binaries referenced in CMakeLists.txt files do not exist"
-  fi
-)
+if "$test_existence_check"; then
+  (
+    cd "$BUILD_ROOT"
+    log "Checking if all test binaries referenced by CMakeLists.txt files exist."
+    set +e
+    YB_CHECK_TEST_EXISTENCE_ONLY=1 ctest -j8 2>&1 | grep Failed
+    if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+      fatal "Some test binaries referenced in CMakeLists.txt files do not exist"
+    fi
+  )
+fi
 
 if [[ -n $cxx_test_name ]]; then
-  # TODO: also fix this to work with RocksDB tests.
   set_asan_tsan_options
-  "$BUILD_ROOT/bin/$cxx_test_name"
+  cd "$BUILD_ROOT"
+  ctest -R ^"$cxx_test_name"$ --output-on-failure
 fi
 
 # Check if the java build is needed. And skip java unit test runs if specified - time taken

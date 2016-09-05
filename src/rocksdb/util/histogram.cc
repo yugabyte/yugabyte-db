@@ -12,7 +12,9 @@
 #include <cassert>
 #include <math.h>
 #include <stdio.h>
+
 #include "port/port.h"
+#include "yb/gutil/port.h"
 
 namespace rocksdb {
 
@@ -20,8 +22,8 @@ HistogramBucketMapper::HistogramBucketMapper()
     :
       // Add newer bucket index here.
       // Should be always added in sorted order.
-      // If you change this, you also need to change
-      // size of array buckets_ in HistogramImpl
+      // If you change this, you also need to change the size of array buckets_ and the initial
+      // value of min_ in HistogramImpl.
       bucketValues_(
           {1,         2,         3,         4,         5,         6,
            7,         8,         9,         10,        12,        14,
@@ -48,6 +50,7 @@ HistogramBucketMapper::HistogramBucketMapper()
            500000000, 600000000, 700000000, 800000000, 900000000, 1000000000}),
       maxBucketValue_(bucketValues_.back()),
       minBucketValue_(bucketValues_.front()) {
+  assert(kHistogramNumBuckets == BucketCount());
   for (size_t i =0; i < bucketValues_.size(); ++i) {
     valueIndexMap_[bucketValues_[i]] = i;
   }
@@ -74,8 +77,8 @@ namespace {
 }
 
 void HistogramImpl::Clear() {
-  min_ = static_cast<double>(bucketMapper.LastValue());
-  max_ = 0;
+  set_min(static_cast<double>(bucketMapper.LastValue()));
+  set_max(0);
   num_ = 0;
   sum_ = 0;
   sum_squares_ = 0;
@@ -85,23 +88,26 @@ void HistogramImpl::Clear() {
 bool HistogramImpl::Empty() { return num_ == 0; }
 
 void HistogramImpl::Add(uint64_t value) {
-  const size_t index = bucketMapper.IndexForValue(value);
-  buckets_[index] += 1;
-  if (min_ > value) min_ = static_cast<double>(value);
-  if (max_ < value) max_ = static_cast<double>(value);
-  num_++;
-  sum_ += value;
-  sum_squares_ += (value * value);
+  update_min(value);
+  update_max(value);
+
+  add_to_num(1);
+  add_to_sum(value);
+  add_to_sum_squares(value * value);
+
+  // TODO: maybe we should use int for IndexForValue's return value?
+  // There are only 200 or so buckets.
+  add_to_bucket(static_cast<int>(bucketMapper.IndexForValue(value)), 1);
 }
 
 void HistogramImpl::Merge(const HistogramImpl& other) {
-  if (other.min_ < min_) min_ = other.min_;
-  if (other.max_ > max_) max_ = other.max_;
-  num_ += other.num_;
-  sum_ += other.sum_;
-  sum_squares_ += other.sum_squares_;
+  update_min(other.min());
+  update_max(other.max());
+  add_to_num(other.num_);
+  add_to_sum(other.sum_);
+  add_to_sum_squares(other.sum_squares_);
   for (unsigned int b = 0; b < bucketMapper.BucketCount(); b++) {
-    buckets_[b] += other.buckets_[b];
+    add_to_bucket(b, other.bucket(b));
   }
 }
 
@@ -112,6 +118,8 @@ double HistogramImpl::Median() const {
 double HistogramImpl::Percentile(double p) const {
   double threshold = num_ * (p / 100.0);
   double sum = 0;
+  const double current_min = min();
+  const double current_max = max();
   for (unsigned int b = 0; b < bucketMapper.BucketCount(); b++) {
     sum += buckets_[b];
     if (sum >= threshold) {
@@ -120,7 +128,7 @@ double HistogramImpl::Percentile(double p) const {
         static_cast<double>((b == 0) ? 0 : bucketMapper.BucketLimit(b-1));
       double right_point =
         static_cast<double>(bucketMapper.BucketLimit(b));
-      double left_sum = sum - buckets_[b];
+      double left_sum = sum - bucket(b);
       double right_sum = sum;
       double pos = 0;
       double right_left_diff = right_sum - left_sum;
@@ -128,12 +136,12 @@ double HistogramImpl::Percentile(double p) const {
        pos = (threshold - left_sum) / (right_sum - left_sum);
       }
       double r = left_point + (right_point - left_point) * pos;
-      if (r < min_) r = min_;
-      if (r > max_) r = max_;
+      if (r < current_min) r = current_min;
+      if (r > current_max) r = current_max;
       return r;
     }
   }
-  return max_;
+  return current_max;
 }
 
 double HistogramImpl::Average() const {
@@ -150,13 +158,14 @@ double HistogramImpl::StandardDeviation() const {
 std::string HistogramImpl::ToString() const {
   std::string r;
   char buf[200];
+  auto current_num = num();
   snprintf(buf, sizeof(buf),
            "Count: %.0f  Average: %.4f  StdDev: %.2f\n",
-           num_, Average(), StandardDeviation());
+           static_cast<double>(current_num), Average(), StandardDeviation());
   r.append(buf);
   snprintf(buf, sizeof(buf),
            "Min: %.4f  Median: %.4f  Max: %.4f\n",
-           (num_ == 0.0 ? 0.0 : min_), Median(), max_);
+           (current_num == 0.0 ? 0.0 : min()), Median(), max());
   r.append(buf);
   snprintf(buf, sizeof(buf),
            "Percentiles: "
@@ -165,23 +174,23 @@ std::string HistogramImpl::ToString() const {
            Percentile(99.99));
   r.append(buf);
   r.append("------------------------------------------------------\n");
-  const double mult = 100.0 / num_;
+  const double mult = 100.0 / current_num;
   double sum = 0;
   for (unsigned int b = 0; b < bucketMapper.BucketCount(); b++) {
-    if (buckets_[b] <= 0.0) continue;
-    sum += buckets_[b];
+    const auto bucket_value = bucket(b);
+    if (bucket_value <= 0) continue;
+    sum += bucket_value;
     snprintf(buf, sizeof(buf),
-             "[ %7lu, %7lu ) %8lu %7.3f%% %7.3f%% ",
-             // left
-             (unsigned long)((b == 0) ? 0 : bucketMapper.BucketLimit(b-1)),
-             (unsigned long)bucketMapper.BucketLimit(b), // right
-             (unsigned long)buckets_[b],                 // count
-             (mult * buckets_[b]),        // percentage
-             (mult * sum));               // cumulative percentage
+             "[ %7" PRIu64 ", %7" PRIu64 " ) %8" PRIu64 " %7.3f%% %7.3f%% ",
+             b == 0 ? 0 : bucketMapper.BucketLimit(b - 1),  // left
+             bucketMapper.BucketLimit(b),                   // right
+             bucket_value,         // count
+             mult * bucket_value,  // percentage
+             mult * sum);          // cumulative percentage
     r.append(buf);
 
     // Add hash marks based on percentage; 20 marks for 100%.
-    int marks = static_cast<int>(20*(buckets_[b] / num_) + 0.5);
+    int marks = static_cast<int>(20*(bucket_value / current_num) + 0.5);
     r.append(marks, '#');
     r.push_back('\n');
   }
@@ -192,8 +201,8 @@ void HistogramImpl::Data(HistogramData * const data) const {
   assert(data);
   data->count = num_;
   data->sum = sum_;
-  data->min = min_;
-  data->max = max_;
+  data->min = min();
+  data->max = max();
   data->median = Median();
   data->percentile95 = Percentile(95);
   data->percentile99 = Percentile(99);

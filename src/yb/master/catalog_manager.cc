@@ -37,6 +37,7 @@
 #include "yb/master/catalog_manager.h"
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <mutex>
 #include <set>
@@ -156,6 +157,7 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
 namespace yb {
 namespace master {
 
+using std::atomic;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -355,7 +357,7 @@ class CatalogManagerBgTasks {
 
   void Wait(int msec) {
     MutexLock lock(lock_);
-    if (closing_) return;
+    if (closing_.load()) return;
     if (!pending_updates_) {
       cond_.TimedWait(MonoDelta::FromMilliseconds(msec));
     }
@@ -373,7 +375,7 @@ class CatalogManagerBgTasks {
   void Run();
 
  private:
-  Atomic32 closing_;
+  atomic<bool> closing_;
   bool pending_updates_;
   mutable Mutex lock_;
   ConditionVariable cond_;
@@ -388,9 +390,12 @@ Status CatalogManagerBgTasks::Init() {
 }
 
 void CatalogManagerBgTasks::Shutdown() {
-  if (Acquire_CompareAndSwap(&closing_, false, true) != false) {
-    VLOG(2) << "CatalogManagerBgTasks already shut down";
-    return;
+  {
+    bool closing_expected = false;
+    if (!closing_.compare_exchange_strong(closing_expected, true)) {
+      VLOG(2) << "CatalogManagerBgTasks already shut down";
+      return;
+    }
   }
 
   Wake();
@@ -400,7 +405,7 @@ void CatalogManagerBgTasks::Shutdown() {
 }
 
 void CatalogManagerBgTasks::Run() {
-  while (!NoBarrier_Load(&closing_)) {
+  while (!closing_.load()) {
     // Perform assignment processing.
     CatalogManager::ScopedLeaderSharedLock l(catalog_manager_);
     if (!l.catalog_status().ok()) {

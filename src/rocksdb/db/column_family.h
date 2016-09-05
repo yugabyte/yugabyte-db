@@ -228,7 +228,7 @@ class ColumnFamilyData {
 
   MemTableList* imm() { return &imm_; }
   MemTable* mem() { return mem_; }
-  Version* current() { return current_; }
+  Version* current() const { return current_.load(); }
   Version* dummy_versions() { return dummy_versions_; }
   void SetCurrent(Version* _current);
   uint64_t GetNumLiveVersions() const;  // REQUIRE: DB mutex held
@@ -331,7 +331,7 @@ class ColumnFamilyData {
   uint32_t id_;
   const std::string name_;
   Version* dummy_versions_;  // Head of circular doubly-linked list of versions.
-  Version* current_;         // == dummy_versions->prev_
+  std::atomic<Version*> current_; // == dummy_versions->prev_
 
   std::atomic<int> refs_;      // outstanding references to ColumnFamilyData
   bool dropped_;               // true if client dropped it

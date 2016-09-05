@@ -202,7 +202,9 @@ bool ContentionStacks::CollectSample(uint64_t* iterator, StackTrace* s, int64_t*
   return false;
 }
 
-
+// Disable TSAN on this function.
+// https://yugabyte.atlassian.net/browse/ENG-354
+ATTRIBUTE_NO_SANITIZE_THREAD
 void SubmitSpinLockProfileData(const void *contendedlock, int64 wait_cycles) {
   bool profiling_enabled = base::subtle::Acquire_Load(&g_profiling_enabled);
   bool long_wait_time = wait_cycles > FLAGS_lock_contention_trace_threshold_cycles;

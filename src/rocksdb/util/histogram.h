@@ -10,6 +10,7 @@
 #pragma once
 #include "rocksdb/statistics.h"
 
+#include <atomic>
 #include <cassert>
 #include <string>
 #include <vector>
@@ -18,6 +19,8 @@
 #include <string.h>
 
 namespace rocksdb {
+
+static constexpr int kHistogramNumBuckets = 138;
 
 class HistogramBucketMapper {
  public:
@@ -50,11 +53,35 @@ class HistogramBucketMapper {
   const uint64_t maxBucketValue_;
   const uint64_t minBucketValue_;
   std::map<uint64_t, uint64_t> valueIndexMap_;
+
 };
 
 class HistogramImpl {
  public:
-  HistogramImpl() { memset(buckets_, 0, sizeof(buckets_)); }
+  HistogramImpl() {
+    // Original comment from RocksDB: "this is BucketMapper:LastValue()".
+    // TODO: is there a cleaner way to set it here?
+    set_min(1000000000);
+    set_max(0);
+    set_num(0);
+    set_sum(0);
+    set_sum_squares(0);
+    for (int i = 0; i < kHistogramNumBuckets; ++i) {
+      set_bucket(i, 0);
+    }
+  }
+
+  HistogramImpl(const HistogramImpl& other) {
+    set_min(other.min());
+    set_max(other.max());
+    set_num(other.num());
+    set_sum(other.sum());
+    set_sum_squares(other.sum_squares());
+    for (int i = 0; i < kHistogramNumBuckets; ++i) {
+      set_bucket(i, other.bucket(i));
+    }
+  }
+
   virtual void Clear();
   virtual bool Empty();
   virtual void Add(uint64_t value);
@@ -71,14 +98,68 @@ class HistogramImpl {
   virtual ~HistogramImpl() {}
 
  private:
-  // To be able to use HistogramImpl as thread local variable, its constructor
-  // has to be static. That's why we're using manually values from BucketMapper
-  double min_ = 1000000000;  // this is BucketMapper:LastValue()
-  double max_ = 0;
-  double num_ = 0;
-  double sum_ = 0;
-  double sum_squares_ = 0;
-  uint64_t buckets_[138];  // this is BucketMapper::BucketCount()
+  std::atomic<double> min_;
+  std::atomic<double> max_;
+  std::atomic<uint64_t> num_;
+  std::atomic<double> sum_;
+  std::atomic<double> sum_squares_;
+  std::atomic<uint64_t> buckets_[kHistogramNumBuckets];
+
+  // We don't use any synchronization because that's what RocksDB has been doing, and we need to
+  // measure the performance impact before using a stronger memory order.
+  static constexpr auto kMemoryOrder = std::memory_order_relaxed;
+
+  double min() const { return min_.load(kMemoryOrder); }
+
+  void set_min(double new_min) { min_.store(new_min, kMemoryOrder); }
+
+  void update_min(double value) {
+    double previous_min = min();
+    if (value < previous_min) {
+      // This has a race condition. We need to do a compare-and-swap loop here to if we want a
+      // precise statistic.
+      set_min(value);
+    }
+  }
+
+  double max() const { return max_.load(kMemoryOrder); }
+
+  void set_max(double new_max) { max_.store(new_max, kMemoryOrder); }
+
+  void update_max(double value) {
+    double previous_max = max();
+    if (value > previous_max) {
+      set_max(value);
+    }
+  }
+
+  uint64_t num() const { return num_.load(kMemoryOrder); }
+  void add_to_num(uint64_t delta) { num_.fetch_add(delta, kMemoryOrder); }
+  void set_num(int64_t new_num) { num_.store(new_num, kMemoryOrder); }
+
+  double sum() const { return sum_.load(kMemoryOrder); }
+  void set_sum(double value) { sum_.store(value, kMemoryOrder); }
+
+  void add_to_sum(double delta) {
+    sum_.store(sum_.load(kMemoryOrder) + delta, kMemoryOrder);
+  }
+
+  void add_to_sum_squares(double delta) {
+    sum_squares_.store(sum_squares_.load(kMemoryOrder) + delta, kMemoryOrder);
+  }
+
+  double sum_squares() const { return sum_squares_.load(kMemoryOrder); }
+  void set_sum_squares(double value) { sum_squares_.store(value, kMemoryOrder); }
+
+  uint64_t bucket(int b) const { return buckets_[b].load(kMemoryOrder); }
+  void add_to_bucket(int b, uint64_t delta) {
+    buckets_[b].fetch_add(delta, kMemoryOrder);
+  }
+  void set_bucket(int b, uint64_t value) {
+    buckets_[b].store(value, kMemoryOrder);
+  }
+
+
 };
 
 }  // namespace rocksdb

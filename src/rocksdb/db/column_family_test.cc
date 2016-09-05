@@ -8,6 +8,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <algorithm>
+#include <atomic>
 #include <vector>
 #include <string>
 #include <thread>
@@ -24,6 +25,8 @@
 #include "util/testutil.h"
 #include "utilities/merge_operators.h"
 
+using std::atomic;
+
 namespace rocksdb {
 
 namespace {
@@ -38,18 +41,21 @@ std::string RandomString(Random* rnd, int len) {
 class EnvCounter : public EnvWrapper {
  public:
   explicit EnvCounter(Env* base)
-      : EnvWrapper(base), num_new_writable_file_(0) {}
+      : EnvWrapper(base) {
+    num_new_writable_file_.store(0);
+  }
+
   int GetNumberOfNewWritableFileCalls() {
-    return num_new_writable_file_;
+    return num_new_writable_file_.load();
   }
   Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
                          const EnvOptions& soptions) override {
-    ++num_new_writable_file_;
+    num_new_writable_file_.fetch_add(1);
     return EnvWrapper::NewWritableFile(f, r, soptions);
   }
 
  private:
-  int num_new_writable_file_;
+  atomic<int> num_new_writable_file_;
 };
 
 class ColumnFamilyTest : public testing::Test {

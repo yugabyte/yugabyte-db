@@ -268,6 +268,7 @@ void TransactionDriver::HandleFailure(const Status& s) {
 }
 
 void TransactionDriver::ReplicationFinished(const Status& status) {
+  consensus::OpId op_id_local;
   {
     std::lock_guard<simple_spinlock> op_id_lock(opid_lock_);
     // TODO: it's a bit silly that we have three copies of the opid:
@@ -275,12 +276,16 @@ void TransactionDriver::ReplicationFinished(const Status& status) {
 
     op_id_copy_ = DCHECK_NOTNULL(mutable_state()->consensus_round())->id();
     DCHECK(op_id_copy_.IsInitialized());
-    mutable_state()->mutable_op_id()->CopyFrom(op_id_copy_);
+    // We can't update mutable_state()->mutable_op_id() here, because it is guarded by a different
+    // lock. Instead, we save it in a local variable and write it to the other location when
+    // holding the other lock.
+    op_id_local = op_id_copy_;
   }
 
   PrepareState prepare_state_copy;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
+    mutable_state()->mutable_op_id()->CopyFrom(op_id_local);
     CHECK_EQ(replication_state_, REPLICATING);
     if (status.ok()) {
       replication_state_ = REPLICATED;

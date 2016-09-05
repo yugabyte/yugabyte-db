@@ -80,3 +80,24 @@ race:kudu::consensus::LocalTestPeerProxy::~LocalTestPeerProxy
 # GetBoundAddresses()
 race:kudu::Webserver::GetBoundAddresses
 race:kudu::RpcServer::GetBoundAddresses
+
+# https://yugabyte.atlassian.net/browse/ENG-354
+race:gutil::SubmitSpinLockProfileData
+
+# Setting width on a stream is not thread-safe, but some of our tests do it:
+# https://jenkins.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/42/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__alter_table-randomized-test/AlterTableRandomized_TestRandomSequence.log
+race:std::ios_base::width
+
+# ------------------------------------------------------------------------------------------------
+# Bugs in Kudu's MemoRowSet and related code (which we need to get rid of):
+
+# https://jenkins.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/42/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__alter_table-test/AlterTableTest_TestAlterUnderWriteLoad.log
+race:yb::tablet::MemRowSet::Iterator::FetchRows
+
+# Another race condition in Kudu's MemRowSet:
+# https://detective.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/48/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__tablet_random_access-test/TestRandomAccess_Test.log
+race:yb::tablet::MemRowSet::MutateRow
+
+# And another one:
+# https://detective.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/66/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__mt-tablet-test/MultiThreadedTabletTest__4_DeleteAndReinsert.log
+race:yb::tablet::MemRowSet::Reinsert

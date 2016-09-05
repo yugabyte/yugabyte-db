@@ -138,6 +138,11 @@ class faststring {
     len_++;
   }
 
+  // Return true if the string is empty.
+  bool empty() const {
+    return len_ == 0;
+  }
+
   // Return the valid length of this string.
   size_t length() const {
     return len_;
@@ -196,6 +201,11 @@ class faststring {
   void assign_copy(const std::string &str) {
     assign_copy(reinterpret_cast<const uint8_t *>(str.c_str()),
                 str.size());
+  }
+
+  void CopyFrom(const faststring& other) {
+    clear();
+    append(other.data(), other.size());
   }
 
   // Return a copy of this string as a std::string.

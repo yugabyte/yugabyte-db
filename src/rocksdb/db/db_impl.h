@@ -8,6 +8,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <limits>
@@ -668,7 +669,18 @@ class DBImpl : public DB {
   std::deque<LogWriterNumber> logs_;
   // Signaled when getting_synced becomes false for some of the logs_.
   InstrumentedCondVar log_sync_cv_;
-  uint64_t total_log_size_;
+
+  uint64_t total_log_size() {
+    // TODO: use a weaker memory order for higher performance?
+    const int64_t total_log_size_signed = total_log_size_.load();
+    assert(total_log_size_signed >= 0);
+    if (total_log_size_signed < 0)  // Just in case, for release builds.
+      return 0;
+    return static_cast<uint64_t>(total_log_size_signed);
+  }
+
+  // We are using a signed int for the total log size to avoid weird effects in case of underflow.
+  std::atomic<int64_t> total_log_size_;
   // only used for dynamically adjusting max_total_wal_size. it is a sum of
   // [write_buffer_size * max_write_buffer_number] over all column families
   uint64_t max_total_in_memory_state_;

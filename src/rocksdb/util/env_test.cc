@@ -40,6 +40,16 @@
 
 namespace rocksdb {
 
+namespace {
+
+// Use a global variable to avoid the failure in
+// https://detective.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/48/artifact/build/tsan-clang-dynamic/yb-test-logs/rocksdb-build__env_test/EnvPosixTest_UnSchedule.log
+// When this was a local variable, it looked like the stack memory was reused for something else,
+// and TSAN considered that a data race.
+std::atomic<bool> called;
+
+}
+
 static const int kDelayMicros = 100000;
 
 class EnvPosixTest : public testing::Test {
@@ -58,14 +68,15 @@ static void SetBool(void* ptr) {
 }
 
 TEST_F(EnvPosixTest, RunImmediately) {
-  std::atomic<bool> called(false);
+  called.store(false);
   env_->Schedule(&SetBool, &called);
   Env::Default()->SleepForMicroseconds(kDelayMicros);
   ASSERT_TRUE(called.load(std::memory_order_relaxed));
 }
 
 TEST_F(EnvPosixTest, UnSchedule) {
-  std::atomic<bool> called(false);
+  called.store(false);
+
   env_->SetBackgroundThreads(1, Env::LOW);
 
   /* Block the low priority queue */

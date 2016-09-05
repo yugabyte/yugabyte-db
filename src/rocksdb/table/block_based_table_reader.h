@@ -132,7 +132,6 @@ class BlockBasedTable : public TableReader {
 
   struct Rep;
   Rep* rep_;
-  bool compaction_optimized_;
 
   class BlockEntryIteratorState;
   // input_iter: if it is not null, update this one and return it as Iterator
@@ -210,7 +209,8 @@ class BlockBasedTable : public TableReader {
   static void SetupCacheKeyPrefix(Rep* rep);
 
   explicit BlockBasedTable(Rep* rep)
-      : rep_(rep), compaction_optimized_(false) {}
+      : rep_(rep) {
+  }
 
   // Generate a cache key prefix from the file
   static void GenerateCachePrefix(Cache* cc,

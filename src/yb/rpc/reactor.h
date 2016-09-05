@@ -128,7 +128,7 @@ class ReactorThread {
   friend class RedisConnection;
 
   // Client-side connection map.
-  typedef std::unordered_map<ConnectionId, scoped_refptr<Connection>,
+  typedef std::unordered_map<const ConnectionId, scoped_refptr<Connection>,
                              ConnectionIdHash, ConnectionIdEqual> conn_map_t;
 
   ReactorThread(Reactor *reactor, const MessengerBuilder &bld);

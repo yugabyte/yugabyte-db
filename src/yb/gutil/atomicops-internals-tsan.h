@@ -28,7 +28,11 @@ BASE_EXPORT extern struct AtomicOps_x86CPUFeatureStruct
 
 #define ATOMICOPS_COMPILER_BARRIER() __asm__ __volatile__("" : : : "memory")
 
+#ifdef __llvm__
 #include <sanitizer/tsan_interface_atomic.h>
+#else
+#include <tsan/tsan_interface_atomic.h>
+#endif
 
 typedef int32_t Atomic32;
 typedef int64_t Atomic64;
