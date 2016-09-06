@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
+import { Field, reduxForm } from 'redux-form';
+import YBInputField from './YBInputField';
 
 class RegisterForm extends Component {
   static contextTypes = {
@@ -18,10 +20,7 @@ class RegisterForm extends Component {
   }
 
   render() {
-    const {
-      asyncValidating, error, handleSubmit, submitting,
-      fields: { name, email, password, confirmPassword }
-    } = this.props;
+    const { handleSubmit, submitting } = this.props;
     return (
       <div className="container">
         <div className="col-sm-6 col-sm-offset-3">
@@ -30,42 +29,17 @@ class RegisterForm extends Component {
               <h3 className="panel-title">Register Customer</h3>
             </div>
             <div className="panel-body">
-              <div className={`alert alert-danger form-error-alert ${error ? '': 'hide'}`}>
-                {error}
+              <div className={`alert alert-danger form-error-alert
+                ${this.props.customer.error ? '': 'hide'}`}>
+                  {<strong>{this.props.customer.error}</strong>}
               </div>
               <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
-                <div className={`form-group ${name.touched && name.invalid ? 'has-error' : ''}`}>
-                  <label className="control-label">Full Name*</label>
-                  <input type="text" className="form-control" {...name} />
-                  <div className="help-block">
-                    {name.touched ? name.error : ''}
-                  </div>
-                </div>
-                <div className={`form-group ${email.touched && email.invalid ? 'has-error' : ''}`}>
-                  <label className="control-label">Email*</label>
-                  <input type="email" className="form-control" {...email} />
-                  <div className="help-block">
-                    {email.touched ? email.error : ''}
-                  </div>
-                  <div className="help-block">
-                    {asyncValidating === 'email' ? 'validating..': ''}
-                  </div>
-                </div>
-                <div className={`form-group ${password.touched && password.invalid ? 'has-error' : ''}`}>
-                  <label className="control-label">Password*</label>
-                  <input type="password" className="form-control" {...password} />
-                  <div className="help-block">
-                    {password.touched ? password.error : ''}
-                  </div>
-                </div>
-                <div className={`form-group ${confirmPassword.touched && confirmPassword.invalid ? 'has-error' : ''}`}>
-                  <label className="control-label">Confirm Password*</label>
-                  <input type="password" className="form-control" {...confirmPassword} />
-                  <div className="help-block">
-                    {confirmPassword.touched ? confirmPassword.error : ''}
-                  </div>
-                </div>
-                <button type="submit" className="btn btn-lg btn-success btn-block"  disabled={submitting} >Submit</button>
+                <Field name="name" type="text" component={YBInputField} label="Full Name"/>
+                <Field name="email" type="email" component={YBInputField} label="Email"/>
+                <Field name="password" type="password" component={YBInputField} label="Password"/>
+                <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password"/>
+                <button type="submit" className="btn btn-lg btn-success btn-block"
+                        disabled={submitting} >Submit</button>
               </form>
             </div>
           </div>

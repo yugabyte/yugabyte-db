@@ -29,7 +29,6 @@ export default class DeleteUniverse extends Component {
     this.props.deleteUniverse(this.props.universe.currentUniverse.universeUUID);
   }
 
-
   render() {
     return (
       <div>

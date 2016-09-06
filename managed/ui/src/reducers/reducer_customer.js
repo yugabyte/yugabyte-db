@@ -23,14 +23,22 @@ export default function(state = INITIAL_STATE, action) {
     case REGISTER_SUCCESS://return user, status = authenticated and make loading = false
       return { ...state, customer: action.payload.data.authToken, status: 'authenticated', error: null, loading: false}; //<-- authenticated
     case REGISTER_FAILURE:// return error and make loading = false
-      error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors      
+      if (typeof action.payload.data.error === 'string'){
+        error = action.payload.data.error;
+      } else {
+        error = action.payload.data.error.password[0];
+      }
       return { ...state, customer: null, status: 'register', error: error, loading: false};
     case LOGIN:// sign in user,  set loading = true and status = login
       return { ...state, customer: null, status: 'login', error: null, loading: true};
     case LOGIN_SUCCESS://return authenticated user,  make loading = false and status = authenticated
       return { ...state, customer: action.payload.data.authToken, status: 'authenticated', error:null, loading: false}; //<-- authenticated
     case LOGIN_FAILURE:// return error and make loading = false
-    error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors      
+      if (typeof action.payload.data.error === 'string'){
+        error = action.payload.data.error;
+      } else {
+        error = action.payload.data.error.password[0];
+       }
       return { ...state, customer: null, status: 'login', error: error, loading: false};
     case LOGOUT:
       return {...state, status: 'logout', error: null, loading: true};
