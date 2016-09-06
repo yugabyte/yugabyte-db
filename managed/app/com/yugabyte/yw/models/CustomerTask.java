@@ -65,6 +65,13 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @JsonBackReference
+  @ManyToOne
+  private Universe universe;
+  public UUID getUniverseUUID() { return universe.universeUUID; }
+
+  @Constraints.Required
+  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd hh:mm:ss")
   private Date createTime;
   public Date getCreateTime() { return createTime; }
@@ -80,9 +87,10 @@ public class CustomerTask extends Model {
 
   public static final Find<Long, CustomerTask> find = new Find<Long, CustomerTask>(){};
 
-  public static CustomerTask create(Customer customer, UUID taskUUID, TargetType targetType, TaskType type, String targetName) {
+  public static CustomerTask create(Customer customer, Universe universe, UUID taskUUID, TargetType targetType, TaskType type, String targetName) {
     CustomerTask th = new CustomerTask();
     th.customer = customer;
+    th.universe = universe;
     th.taskUUID = taskUUID;
     th.targetType = targetType;
     th.type = type;

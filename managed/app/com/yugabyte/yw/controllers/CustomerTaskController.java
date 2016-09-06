@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.avaje.ebean.Query;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,11 +25,9 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
 
-import com.yugabyte.yw.ui.views.html.*;
-import static com.yugabyte.yw.ui.controllers.TokenAuthenticator.COOKIE_AUTH_TOKEN;
+import static com.yugabyte.yw.ui.controllers.TokenAuthenticator.API_AUTH_TOKEN;
 
 public class CustomerTaskController extends AuthenticatedController {
   @Inject
@@ -48,20 +48,47 @@ public class CustomerTaskController extends AuthenticatedController {
       return badRequest(responseJson);
     }
 
-    Set<CustomerTask> pendingTasks = CustomerTask.find.where()
-      .eq("customer_uuid", customer.uuid)
+    List<CustomerTaskFormData> taskList = fetchTasks(customerUUID, null);
+    return ApiResponse.success(taskList);
+  }
+
+  public Result universeTasks(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.find.byId(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    try {
+      Universe universe = Universe.get(universeUUID);
+      List<CustomerTaskFormData> taskList = fetchTasks(customerUUID, universe.universeUUID);
+
+      return ApiResponse.success(taskList);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+    }
+  }
+
+  private List<CustomerTaskFormData> fetchTasks(UUID customerUUID,  UUID universeUUID) {
+    Query<CustomerTask> taskQuery = CustomerTask.find.where()
+      .eq("customer_uuid", customerUUID)
       .orderBy("create_time desc")
-      .setMaxRows(TASK_HISTORY_LIMIT)
-      .findSet();
+      .setMaxRows(TASK_HISTORY_LIMIT);
+
+    if (universeUUID != null) {
+      taskQuery.where().eq("universe_universe_uuid", universeUUID);
+    }
+
+
+    Set<CustomerTask> pendingTasks = taskQuery.findSet();
 
     List<CustomerTaskFormData> taskList = new ArrayList<>();
     String customerTaskBaseUrl =
-      "http://" + ctx().request().host() + "/api/customers/" + customer.uuid + "/tasks/";
+      "http://" + ctx().request().host() + "/api/customers/" + customerUUID + "/tasks/";
+
     for (CustomerTask task : pendingTasks) {
       CustomerTaskFormData taskData = new CustomerTaskFormData();
-
-      JsonNode taskProgress = apiHelper.getRequest(customerTaskBaseUrl + task.getTaskUUID(),
-        ImmutableMap.of("X-AUTH-TOKEN", ctx().request().cookie(COOKIE_AUTH_TOKEN).value()));
+      JsonNode taskProgress = apiHelper.getRequest(
+        customerTaskBaseUrl + task.getTaskUUID(),
+        ImmutableMap.of("X-AUTH-TOKEN", ctx().request().headers().get(API_AUTH_TOKEN)[0]));
 
       // If the task progress API returns error, we will log it and not add that task to
       // to the task list for UI rendering.
@@ -78,14 +105,7 @@ public class CustomerTaskController extends AuthenticatedController {
         taskList.add(taskData);
       }
     }
-
-    if (request().accepts(Http.MimeTypes.HTML)) {
-      return ok(customerTask.render(taskList));
-    } else if (request().accepts(Http.MimeTypes.JSON)) {
-      return ok(Json.toJson(taskList));
-    } else {
-      return badRequest();
-    }
+    return taskList;
   }
 
   public Result status(UUID customerUUID, UUID taskUUID) {
