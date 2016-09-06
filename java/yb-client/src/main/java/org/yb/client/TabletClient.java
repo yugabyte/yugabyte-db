@@ -28,6 +28,7 @@ package org.yb.client;
 
 import com.stumbleupon.async.Deferred;
 
+import org.jboss.netty.channel.ConnectTimeoutException;
 import org.jboss.netty.handler.timeout.ReadTimeoutException;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
@@ -462,11 +463,16 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     if (error.getCode() == Tserver.TabletServerErrorPB.Code.TABLET_NOT_FOUND) {
       ybClient.handleTabletNotFound(rpc, ex, this);
       // we're not calling rpc.callback() so we rely on the client to retry that RPC
-    } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE) {
+    } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE ||
+               error.getCode() ==
+                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_CHANGE_CONFIG ||
+               error.getCode() ==
+                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN) {
       ybClient.handleRetryableError(rpc, ex);
-      // The following two error codes are an indication that the tablet isn't a leader.
+      // The following error codes are an indication that the tablet isn't a leader.
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
-        code == WireProtocol.AppStatusPB.ErrorCode.ABORTED) {
+               code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
+               error.getCode() == Tserver.TabletServerErrorPB.Code.NOT_THE_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);
     } else {
       return ex;

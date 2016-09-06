@@ -622,17 +622,6 @@ bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
   return opid.term() == term;
 }
 
-Status ReplicaState::CheckHasCommittedOpInCurrentTermUnlocked() const {
-  int64_t term = GetCurrentTermUnlocked();
-  const OpId& opid = GetCommittedOpIdUnlocked();
-  if (opid.term() != term) {
-    return STATUS(IllegalState,
-      Substitute("Latest committed opid $0 is different from current term $1",
-        OpIdToString(opid), term));
-  }
-  return Status::OK();
-}
-
 void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
   DCHECK(update_lock_.is_locked());
   DCHECK_LE(OpIdCompare(last_received_op_id_, op_id), 0)

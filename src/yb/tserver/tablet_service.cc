@@ -100,8 +100,6 @@ using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
-using consensus::IsLeaderReadyForChangeConfigRequestPB;
-using consensus::IsLeaderReadyForChangeConfigResponsePB;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
 using consensus::RunLeaderElectionRequestPB;
@@ -835,38 +833,6 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
                          context);
     return;
   }
-  context->RespondSuccess();
-}
-
-void ConsensusServiceImpl::IsLeaderReadyForChangeConfig(
-    const IsLeaderReadyForChangeConfigRequestPB* req,
-    IsLeaderReadyForChangeConfigResponsePB* resp,
-    RpcContext* context) {
-  VLOG(1) << "Received IsLeaderReadyForChangeConfig RPC: " << req->ShortDebugString();
-  // TODO: Note that this can be removed once Java YBClient will reset IsLeaderReady request's
-  // uuid correctly after leader step down.
-  if (req->dest_uuid() != "" &&
-      !CheckUuidMatchOrRespond(
-          tablet_manager_, "IsLeaderReadyForChangeConfig", req, resp, context)) {
-    return;
-  }
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context,
-                                 &tablet_peer)) {
-    return;
-  }
-
-  scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
-  bool is_ready = false;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  Status status = consensus->IsLeaderReadyForChangeConfig(&is_ready, &error_code);
-  if (PREDICT_FALSE(!status.ok())) {
-    HandleErrorResponse(req, resp, context, error_code, status);
-    return;
-  }
-  resp->set_is_ready(is_ready);
-  VLOG(1) << "Done IsLeaderReadyForChangeConfig RPC: " << req->ShortDebugString();
   context->RespondSuccess();
 }
 

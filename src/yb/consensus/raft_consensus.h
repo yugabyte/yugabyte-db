@@ -384,11 +384,9 @@ class RaftConsensus : public Consensus,
   MonoDelta LeaderElectionExpBackoffDeltaUnlocked();
 
   // Checks if the leader is ready to process a change config request (one requirement for this is
-  // for it to have at least one committed op in the current term). error_code is set when return
-  // status is not ok, and is used to return it in the error fields of TabletServerErrorPB proto.
-  Status IsLeaderReadyForChangeConfig(
-      bool* is_ready,
-      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) OVERRIDE;
+  // for it to have at least one committed op in the current term). Also checks that there are no
+  // voters in transition in the active config state. Status OK() implies leader is ready.
+  Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type);
 
   // Increment the term to the next term, resetting the current leader, etc.
   Status IncrementTermUnlocked();

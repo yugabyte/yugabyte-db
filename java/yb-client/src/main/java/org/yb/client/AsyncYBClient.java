@@ -435,45 +435,6 @@ public class AsyncYBClient implements AutoCloseable {
     }
   }
 
-  // TODO: Move these wait/blocking API's to YBClient.
-  // Check if the new leader master is ready to serve config changes after an old leader was stepped
-  // down. If the wait times out or on errors, we throw exception. Note that this API should only
-  // be called after leader step down as it uses special uuid for leader readiness check.
-  private void waitAfterStepDownForNewLeaderForChangeConfig(long timeoutMs) throws Exception {
-    Deferred<IsLeaderReadyForChangeConfigResponse> d;
-    IsLeaderReadyForChangeConfigResponse readyResp;
-    long start = System.currentTimeMillis();
-    String errorMsg = null;
-    do {
-      // Sending empty uuid for the new leader, as the sendRpcToTablet in this api will try first
-      // with old leader and internally will retry to get the new leader. Seemed very intrusive to
-      // change the request's uuid contents during rpc retry. This can be removed once a "proxy"
-      // like concept is added to java client.
-      d = isMasterLeaderReadyForChangeConfig("", getMasterTabletId());
-      readyResp = d.join(getDefaultAdminOperationTimeoutMs());
-      if (readyResp.hasError()) {
-        errorMsg = "Leader ready response error: " + readyResp.errorMessage();
-        break;
-      }
-
-      if (readyResp.isReady()) {
-        LOG.info("New leader at host/port={} with uuid {} is ready for config change.",
-                 getLeaderMasterHostAndPort().toString(), getLeaderMasterUUID());
-        return;
-      }
-
-      Thread.sleep(SLEEP_TIME);
-    } while (System.currentTimeMillis() < start + timeoutMs);
-
-    if (errorMsg == null) {
-      // Here if there was a timeout.
-      errorMsg = "Timed out waiting for leader to be ready for change config.";
-    }
-
-    LOG.error(errorMsg);
-    throw new RuntimeException(errorMsg);
-  }
-
   /**
    * Helper API to wait and get current leader's UUID. This takes care of waiting for election.
    *
@@ -529,11 +490,11 @@ public class AsyncYBClient implements AutoCloseable {
       String newLeader = leaderUuid;
 
       int numIters = 0;
-      int maxNumIters = 10;
+      int maxNumIters = 25;
       String errorMsg = null;
       try {
         // TODO: This while loop will not be needed once JIRA ENG-49 is fixed.
-        while (newLeader.equals(leaderUuid)) {
+        do {
           Deferred<LeaderStepDownResponse> d = masterLeaderStepDown(leaderUuid, tabletId);
           LeaderStepDownResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
           if (resp.hasError()) {
@@ -546,6 +507,11 @@ public class AsyncYBClient implements AutoCloseable {
             break;
           }
 
+          // Done if we found a new leader.
+          if (!newLeader.equals(leaderUuid)) {
+            break;
+          }
+
           numIters++;
           LOG.info("Try step down {}, new master {}, iter {}.", leaderUuid, newLeader, numIters);
           if (numIters >= maxNumIters) {
@@ -553,7 +519,9 @@ public class AsyncYBClient implements AutoCloseable {
                        "leader master with uuid " + leaderUuid;
             break;
           }
-        }
+
+          Thread.sleep(SLEEP_TIME);
+        } while (true);
       } catch (Exception e) {
         LOG.error("Error trying to step down {}. Error: .", leaderUuid, e);
         throw new RuntimeException("Could not step down leader master " + leaderUuid, e);
@@ -570,8 +538,6 @@ public class AsyncYBClient implements AutoCloseable {
       // not use it.
       leaderUuid = newLeader;
       didStepDown = true;
-
-      waitAfterStepDownForNewLeaderForChangeConfig(getDefaultAdminOperationTimeoutMs());
     }
 
     LOG.info("Sending changeConfig to leader {}: Target host/port={}/{} at uuid={}, add={}, " +
@@ -599,23 +565,6 @@ public class AsyncYBClient implements AutoCloseable {
     }
 
     LeaderStepDownRequest rpc = new LeaderStepDownRequest(this.masterTable, leaderUuid, tabletId);
-    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-    return sendRpcToTablet(rpc);
-  }
-
-  /**
-   * Check if the master leader is ready to accept change config operations.
-   * @return a deferred object that yields a leader ready response.
-   */
-  public Deferred<IsLeaderReadyForChangeConfigResponse> isMasterLeaderReadyForChangeConfig(
-      String leaderUuid, String tabletId) throws Exception {
-    if (leaderUuid == null || tabletId == null) {
-      throw new IllegalArgumentException("Invalid leader/tablet argument during leader ready check " +
-                                         "request. Leader = " + leaderUuid);
-    }
-    checkIsClosed();
-    IsLeaderReadyForChangeConfigRequest rpc =
-      new IsLeaderReadyForChangeConfigRequest(this.masterTable, leaderUuid, tabletId);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }

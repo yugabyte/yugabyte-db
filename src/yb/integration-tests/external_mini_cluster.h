@@ -23,12 +23,13 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
@@ -309,8 +310,8 @@ class ExternalMiniCluster {
   // array of file locks.
   uint16_t AllocateFreePort();
 
-  // Step down the master leader.
-  Status StepDownMasterLeader();
+  // Step down the master leader. error_code tracks rpc error info that can be used by the caller.
+  Status StepDownMasterLeader(tserver::TabletServerErrorPB::Code* error_code);
 
   // Find out if the master service considers itself ready. Return status OK() implies it is ready.
   Status GetIsMasterLeaderServiceReady(ExternalMaster* master);

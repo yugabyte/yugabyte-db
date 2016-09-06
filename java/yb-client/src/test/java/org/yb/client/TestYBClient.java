@@ -99,34 +99,36 @@ public class TestYBClient extends BaseYBTest {
     return new Schema(columns);
   }
 
-  // Check if the leader master is ready to serve config changes.
-  // If it times out, we return false.
-  private boolean leaderReadyForChangeConfig(long timeoutMs) throws Exception {
-    IsLeaderReadyForChangeConfigResponse readyResp;
-    long start = System.currentTimeMillis();
-    long now = -1;
-    do {
-      if (now > 0) {
-        Thread.sleep(AsyncYBClient.SLEEP_TIME);
-      }
-      now = System.currentTimeMillis();
-      readyResp = syncClient.isMasterLeaderReadyForChangeConfig();
-      assertFalse(readyResp.hasError());
-
-      // If 'now' regresses due to some timing system issues, then fail fast.
-      if (now < start) {
-        LOG.warn("Time regressed from {} to {}.", start, now);
-        return false;
-      }
-    } while (!readyResp.isReady() && now < start + timeoutMs);
-
-    // Here if the leader is ready or if there was no timeout.
-    if (now >= start + timeoutMs) {
-      LOG.warn("Timed out waiting for leader to be ready for change config.");
-      return false;
-    } else {
-      return true;
+  /**
+   * Test Master Configuration Change operation going from A,B,C to D,E,F.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testAllMasterChangeConfig() throws Exception {
+    syncClient.waitForMasterLeader(10000);
+    LOG.info("Starting testAllChangeMasterConfig");
+    int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    ListMastersResponse listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore);
+    HostAndPort[] newHp = new HostAndPort[3];
+    for (int i = 0; i < 3; i++) {
+      newHp[i] = BaseYBTest.miniCluster().startShellMaster();
     }
+
+    ChangeConfigResponse resp;
+    HostAndPort oldHp;
+    for (int i = 0; i < 3; i++) {
+      LOG.info("Add server {}", newHp[i].toString());
+      resp = syncClient.changeMasterConfig(newHp[i].getHostText(), newHp[i].getPort(), true);
+      assertFalse(resp.hasError());
+      oldHp = BaseYBTest.miniCluster().getMasterHostPort(i);
+      LOG.info("Remove server {}", oldHp.toString());
+      resp = syncClient.changeMasterConfig(oldHp.getHostText(), oldHp.getPort(), false);
+      assertFalse(resp.hasError());
+    }
+    
+    listResp = syncClient.listMasters();
+    assertEquals(listResp.getMasters().size(), numBefore);
   }
 
   /**
@@ -142,7 +144,6 @@ public class TestYBClient extends BaseYBTest {
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
     HostAndPort newHp = BaseYBTest.miniCluster().startShellMaster();
-    assertTrue(leaderReadyForChangeConfig(10000));
     ChangeConfigResponse resp = syncClient.changeMasterConfig(
         newHp.getHostText(), newHp.getPort(), true);
     assertFalse(resp.hasError());
@@ -163,7 +164,6 @@ public class TestYBClient extends BaseYBTest {
     int numBefore = BaseYBTest.miniCluster().getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
-    assertTrue(leaderReadyForChangeConfig(10000));
     HostAndPort leaderHp = BaseYBTest.findLeaderMasterHostPort();
     ChangeConfigResponse resp = syncClient.changeMasterConfig(
         leaderHp.getHostText(), leaderHp.getPort(), false);

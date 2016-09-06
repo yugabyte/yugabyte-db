@@ -2462,7 +2462,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
                                  tablet_servers_[cluster_->tablet_server(1)->uuid()],
                                  boost::none, timeout);
   ASSERT_TRUE(!s.ok()) << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "is different from current term");
+  ASSERT_STR_CONTAINS(s.ToString(), "Leader is not ready for Config Change");
 }
 
 // Test that if for some reason none of the transactions can be prepared, that it will come
@@ -2564,8 +2564,8 @@ TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenVoterInTransition) {
   LOG(INFO) << "Removing tserver with uuid " << tservers[1]->uuid();
   auto status = RemoveServer(initial_leader, tablet_id_, tservers[1], boost::none,
                   MonoDelta::FromSeconds(10));
-  ASSERT_TRUE(status.IsRuntimeError());
-  ASSERT_STR_CONTAINS(status.ToString(), "Current configuration contains at least one peer that");
+  ASSERT_TRUE(status.IsIllegalState());
+  ASSERT_STR_CONTAINS(status.ToString(), "Leader is not ready for Config Change");
 
 }
 

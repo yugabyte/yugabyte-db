@@ -26,6 +26,7 @@ using yb::consensus::ChangeConfigRequestPB;
 using yb::consensus::ChangeConfigResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
+using yb::tserver::TabletServerErrorPB;
 
 namespace yb {
 namespace master {
@@ -297,9 +298,9 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   // that makes it a VOTER.
   cur_log_index_ += 1;
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
-
+  TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
   // Leader step down.
-  ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(), "Leader step down failed.");
+  ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(&dummy_err), "Leader step down failed.");
 
   // Now the new master should start the election process.
   ASSERT_OK(cluster_->SetFlag(new_master, "do_not_start_election_test_only", "false"));
@@ -312,6 +313,33 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   // This check ensures that the sys catalog is loaded into new leader even when it has a
   // pending config change.
   ASSERT_OK(WaitForMasterLeaderToBeReady(new_master, 8 /* timeout_sec */));
+}
+
+TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
+  ExternalMaster* new_masters[3] = { nullptr, nullptr, nullptr };
+  ExternalMaster* remove_master = nullptr;
+
+  // Create all new masters before to avoid rpc port reuse.
+  for (int idx = 0; idx <= 2; idx++) {
+    cluster_->StartNewMaster(&new_masters[idx]);
+  }
+
+  for (int idx = 0; idx <= 2; idx++) {
+    LOG(INFO) << "LOOP " << idx << " start.";
+    LOG(INFO) << "ADD " << new_masters[idx]->bound_rpc_hostport().ToString();
+    ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_masters[idx], consensus::ADD_SERVER),
+                      "Add Change Config returned error");
+    ++num_masters_;
+    remove_master = cluster_->master(0);
+    LOG(INFO) << "REMOVE " << remove_master->bound_rpc_hostport().ToString();
+    ASSERT_OK_PREPEND(cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER),
+                      "Remove Change Config returned error");
+    --num_masters_;
+    LOG(INFO) << "LOOP " << idx << " end.";
+  }
+
+  // Followers might not be up to speed as we did not wait, so just check leader.
+  VerifyLeaderMasterPeerCount();
 }
 
 } // namespace master

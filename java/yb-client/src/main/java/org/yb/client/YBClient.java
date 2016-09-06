@@ -41,7 +41,7 @@ import com.stumbleupon.async.Deferred;
 @InterfaceStability.Evolving
 public class YBClient implements AutoCloseable {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AsyncYBClient.class);
+  public static final Logger LOG = LoggerFactory.getLogger(YBClient.class);
 
   private final AsyncYBClient asyncClient;
 
@@ -206,18 +206,6 @@ public class YBClient implements AutoCloseable {
     if (!resp.hasError()) {
       asyncClient.updateMasterAdresses(host, port, isAdd);
     }
-    return resp;
-  }
-
-  /**
-   * Check if the master leader is ready for change configuration operation.
-   * @return response with info on master leader being ready.
-   */
-  public IsLeaderReadyForChangeConfigResponse isMasterLeaderReadyForChangeConfig()
-      throws Exception {
-    Deferred<IsLeaderReadyForChangeConfigResponse> d =
-      asyncClient.isMasterLeaderReadyForChangeConfig(getLeaderMasterUUID(), getMasterTabletId());
-    IsLeaderReadyForChangeConfigResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
     return resp;
   }
 

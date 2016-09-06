@@ -415,6 +415,14 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Returns the master address host and port at the given index.
+   * @return the master address host/port, if it exists.
+   */
+  public HostAndPort getMasterHostPort(int index) throws Exception {
+    return masterHostPorts.get(index);
+  }
+
+  /**
    * Returns the current number of masters.
    * @return count of masters
    */

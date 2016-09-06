@@ -85,6 +85,12 @@ message TabletServerErrorPB {
 
     // The compare-and-swap specified by an atomic RPC operation failed.
     CAS_FAILED = 17;
+
+    // This server leader is not ready for the change configuration operation.
+    LEADER_NOT_READY_CHANGE_CONFIG = 18;
+
+    // This server leader is not ready to step down.
+    LEADER_NOT_READY_TO_STEP_DOWN = 19;
   }
 
   // The error code.

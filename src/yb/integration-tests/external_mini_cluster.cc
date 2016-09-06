@@ -35,7 +35,6 @@
 #include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/rpc/messenger.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
@@ -63,6 +62,7 @@ using yb::master::MasterServiceProxy;
 using yb::server::ServerStatusPB;
 using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
+using yb::tserver::TabletServerErrorPB;
 using yb::tserver::TabletServerServiceProxy;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftPeerPB;
@@ -71,8 +71,6 @@ using yb::consensus::ChangeConfigResponsePB;
 using yb::consensus::ChangeConfigType;
 using yb::consensus::GetLastOpIdRequestPB;
 using yb::consensus::GetLastOpIdResponsePB;
-using yb::consensus::IsLeaderReadyForChangeConfigRequestPB;
-using yb::consensus::IsLeaderReadyForChangeConfigResponsePB;
 using yb::consensus::LeaderStepDownRequestPB;
 using yb::consensus::LeaderStepDownResponsePB;
 using yb::master::IsMasterLeaderReadyRequestPB;
@@ -408,42 +406,7 @@ std::shared_ptr<ConsensusServiceProxy> ExternalMiniCluster::GetConsensusProxy(
   return std::make_shared<ConsensusServiceProxy>(messenger_, master_sock);
 }
 
-Status ExternalMiniCluster::WaitForLeaderToAllowChangeConfig(
-    const string& uuid,
-    ConsensusServiceProxy* leader_proxy) {
-  IsLeaderReadyForChangeConfigRequestPB req;
-  IsLeaderReadyForChangeConfigResponsePB resp;
-  rpc::RpcController rpc;
-  rpc.set_timeout(opts_.timeout_);
-  req.set_tablet_id(yb::master::kSysCatalogTabletId);
-  req.set_dest_uuid(uuid);
-  int num_attempts = 1;
-  while (true) {
-    RETURN_NOT_OK(leader_proxy->IsLeaderReadyForChangeConfig(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(RuntimeError,
-          Substitute("IsLeaderReadyForConfigChange RPC response hit error: $0",
-                     resp.error().ShortDebugString()));
-    }
-
-    if (resp.is_ready()) {
-      break;
-    }
-
-    if (num_attempts >= kMaxRetryIterations) {
-      return STATUS(RuntimeError, "Timed out waiting for leader to be ready for ChangeConfig.");
-    }
-
-    SleepFor(MonoDelta::FromMilliseconds(num_attempts * 10));
-
-    num_attempts++;
-
-    rpc.Reset();
-  }
-  return Status::OK();
-}
-
-Status ExternalMiniCluster::StepDownMasterLeader() {
+Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* error_code) {
   ExternalMaster* leader = GetLeaderMaster();
   string leader_uuid = leader->uuid();
   auto host_port = leader->bound_rpc_addr();
@@ -458,6 +421,7 @@ Status ExternalMiniCluster::StepDownMasterLeader() {
   if (lsd_resp.has_error()) {
     LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
                << lsd_resp.error().ShortDebugString();
+    *error_code = lsd_resp.error().code();
     return StatusFromPB(lsd_resp.error().status());
   }
 
@@ -470,14 +434,22 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
   ExternalMaster* leader = GetLeaderMaster();
   string old_leader_uuid = leader->uuid();
   string leader_uuid = old_leader_uuid;
+  TabletServerErrorPB::Code error_code = TabletServerErrorPB::UNKNOWN_ERROR;
+  LOG(INFO) << "Starting step down of leader " << leader->bound_rpc_addr().ToString();
 
   // while loop will not be needed once JIRA ENG-49 is fixed.
+  int iter = 1;
   while (leader_uuid == old_leader_uuid) {
-    RETURN_NOT_OK(StepDownMasterLeader());
+    Status s = StepDownMasterLeader(&error_code);
+    // If step down hits any error except not-ready, exit.
+    if (!s.ok() && error_code != TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+      return s;
+    }
     sleep(3); // TODO: add wait for election api.
     leader = GetLeaderMaster();
     leader_uuid = leader->uuid();
-    LOG(INFO) << "Got new leader " << leader->bound_rpc_addr().ToString();
+    LOG(INFO) << "Got new leader " << leader->bound_rpc_addr().ToString() << ", iter=" << iter;
+    iter++;
   }
 
   return Status::OK();
@@ -516,22 +488,31 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
       leader_proxy.reset(new ConsensusServiceProxy(messenger_, leader->bound_rpc_addr()));
     }
 
-    RETURN_NOT_OK(WaitForLeaderToAllowChangeConfig(leader_uuid, leader_proxy.get()));
     req.set_dest_uuid(leader_uuid);
     RETURN_NOT_OK(leader_proxy->ChangeConfig(req, &resp, &rpc));
-    if (resp.has_error() &&
-        resp.error().code() != TabletServerErrorPB::NOT_THE_LEADER) {
-      return STATUS(RuntimeError, Substitute(
-          "Change Config RPC to leader hit error: $0", resp.error().ShortDebugString()));
+    if (resp.has_error()) {
+      if (resp.error().code() != TabletServerErrorPB::NOT_THE_LEADER &&
+          resp.error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
+        return STATUS(RuntimeError, Substitute("Change Config RPC to leader hit error: $0",
+                                               resp.error().ShortDebugString()));
+      }
     } else {
       break;
     }
 
     // Need to retry as we come here with NOT_THE_LEADER.
     if (num_attempts >= kMaxRetryIterations) {
-      return STATUS(IllegalState, "Failed to send ChangeConfig rpc even after maximum "
-                                  "number of attempts.");
+      return STATUS(IllegalState,
+                    Substitute("Failed to complete ChangeConfig request '$0' even after maximum "
+                               "number of attempts. Last error '$1'",
+                               req.ShortDebugString(), resp.error().ShortDebugString()));
     }
+
+    SleepFor(MonoDelta::FromSeconds(1));
+
+    LOG(INFO) << "Resp error '" << resp.error().ShortDebugString() << "', num=" << num_attempts
+              << ", retrying...";
+
     rpc.Reset();
     num_attempts++;
   }

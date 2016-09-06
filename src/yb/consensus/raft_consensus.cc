@@ -447,6 +447,20 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
     // We return OK so that the tablet service won't overwrite the error code.
     return Status::OK();
   }
+
+  // The leader needs to be ready to perform a step down.
+  const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+  int voters_in_transition = CountVotersInTransition(active_config);
+  if (voters_in_transition != 0) {
+    LOG(INFO) << "Step down found non voters " << voters_in_transition;
+    resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+    StatusToPB(STATUS(IllegalState, Substitute("Leader not ready as there are $0 non_voters",
+                                               voters_in_transition)),
+               resp->mutable_error()->mutable_status());
+    // We return OK so that the tablet service won't overwrite the error code.
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(BecomeReplicaUnlocked());
 
   return Status::OK();
@@ -1387,23 +1401,31 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   return RequestVoteRespondVoteGranted(request, response);
 }
 
-Status RaftConsensus::IsLeaderReadyForChangeConfig(
-    bool* is_ready,
-    boost::optional<TabletServerErrorPB::Code>* error_code) {
-  *is_ready = false;
-  {
-    ReplicaState::UniqueLock lock;
-    RETURN_NOT_OK(state_->LockForRead(&lock));
-    Status s = state_->CheckActiveLeaderUnlocked();
-    if (!s.ok()) {
-      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
-      return s;
-    }
-    const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-    // Make sure that there are no peers that are being bootstrapped (in the process of becoming
-    // voters).
-    *is_ready = state_->AreCommittedAndCurrentTermsSameUnlocked() &&
-        CountVotersInTransition(active_config) == 0;
+Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type) {
+  const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+  int voters_in_transition = 0;
+  if (type != CHANGE_ROLE) {
+    voters_in_transition = CountVotersInTransition(active_config);
+  }
+
+  // Check that all the following requirements are met:
+  // 1. We are required by Raft to reject config change operations until we have
+  //    committed at least one operation in our current term as leader.
+  //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
+  // 2. Ensure there is no other pending change config.
+  // 3. There are no peers that are in the process of becoming voters.
+  if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
+      state_->IsConfigChangePendingUnlocked() ||
+      voters_in_transition != 0) {
+    return STATUS(IllegalState, Substitute("Leader is not ready for Config Change, can try again. "
+                                           "Num peers in transit = $0. Type=$1. Has opid=$2.\n"
+                                           "  Committed config: $3.\n  Pending config: $4.",
+                                           voters_in_transition, type,
+                                           active_config.has_opid_index(),
+                                           state_->GetCommittedConfigUnlocked().ShortDebugString(),
+                                           state_->IsConfigChangePendingUnlocked() ?
+                                             state_->GetPendingConfigUnlocked().ShortDebugString() :
+                                             ""));
   }
 
   return Status::OK();
@@ -1425,6 +1447,10 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
   ChangeConfigType type = req.type();
   RaftPeerPB* new_peer = nullptr;
   const RaftPeerPB& server = req.server();
+  if (!server.has_permanent_uuid()) {
+    return STATUS(InvalidArgument, Substitute("server must have permanent_uuid specified",
+                                              req.ShortDebugString()));
+  }
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
@@ -1433,16 +1459,14 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
       *error_code = TabletServerErrorPB::NOT_THE_LEADER;
       return s;
     }
-    RETURN_NOT_OK(state_->CheckNoConfigChangePendingUnlocked());
 
-    // We are required by Raft to reject config change operations until we have
-    // committed at least one operation in our current term as leader.
-    // See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
-    RETURN_NOT_OK(state_->CheckHasCommittedOpInCurrentTermUnlocked());
-    if (!server.has_permanent_uuid()) {
-      return STATUS(InvalidArgument, "server must have permanent_uuid specified",
-                                     req.ShortDebugString());
+    s = IsLeaderReadyForChangeConfigUnlocked(type);
+    if (!s.ok()) {
+      LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type);
+      *error_code = TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG ;
+      return s;
     }
+
     const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
 
     // Support atomic ChangeConfig requests.

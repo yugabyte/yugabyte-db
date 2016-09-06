@@ -255,9 +255,6 @@ class ReplicaState {
   // This must be called under a lock.
   const OpId& GetCommittedOpIdUnlocked() const;
 
-  // Returns OK iff an op from the current term has been committed.
-  Status CheckHasCommittedOpInCurrentTermUnlocked() const;
-
   // Returns true iff an op from the current term has been committed.
   bool AreCommittedAndCurrentTermsSameUnlocked() const;
 

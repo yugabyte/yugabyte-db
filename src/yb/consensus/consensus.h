@@ -225,13 +225,6 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     return STATUS(NotSupported, "Not implemented.");
   }
 
-  // Check if a (new) leader is ready to accept config change requests.
-  virtual Status IsLeaderReadyForChangeConfig(
-     bool* is_ready,
-     boost::optional<tserver::TabletServerErrorPB::Code>* error_code) {
-    return STATUS(NotSupported, "Not implemented.");
-  }
-
   // Returns the current Raft role of this instance.
   virtual RaftPeerPB::Role role() const = 0;
 
