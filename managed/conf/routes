@@ -57,6 +57,7 @@ GET     /api/tablet-servers                           com.yugabyte.yw.controller
 # Task History API
 GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
 GET    /api/customers/:cUUID/tasks/:tUUID             com.yugabyte.yw.controllers.CustomerTaskController.status(cUUID: java.util.UUID, tUUID: java.util.UUID)
+GET    /api/customers/:cUUID/universes/:uniUUID/tasks com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 
 ###################################################################################################
