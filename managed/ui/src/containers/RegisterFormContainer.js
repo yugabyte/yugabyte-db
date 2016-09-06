@@ -3,6 +3,7 @@
 import RegisterForm from '../components/RegisterForm.js';
 import {register, registerSuccess, registerFailure } from '../actions/customers';
 import { reduxForm } from 'redux-form';
+import { connect } from 'react-redux';
 
 //Client side validation
 function validate(values) {
@@ -74,11 +75,10 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-
-// connect: first argument is mapStateToProps, 2nd is mapDispatchToProps
-// reduxForm: 1st is form config, 2nd is mapStateToProps, 3rd is mapDispatchToProps
-export default reduxForm({
+var registerForm = reduxForm({
   form: 'RegisterForm',
   fields: ['name', 'email', 'password', 'confirmPassword'],
   validate
-}, mapStateToProps, mapDispatchToProps)(RegisterForm);
+});
+
+module.exports = connect(mapStateToProps, mapDispatchToProps)(registerForm(RegisterForm));

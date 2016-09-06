@@ -3,6 +3,7 @@
 import LoginForm from '../components/LoginForm.js';
 import {login, loginSuccess, loginFailure } from '../actions/customers';
 import { reduxForm } from 'redux-form';
+import { connect } from 'react-redux';
 
 //Client side validation
 function validate(values) {
@@ -18,7 +19,6 @@ function validate(values) {
   }
   return hasErrors && errors;
 }
-
 
 //For any field errors upon submission (i.e. not instant check)
 const validateAndLogInCustomer = (values, dispatch) => {
@@ -59,10 +59,14 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-// connect: first argument is mapStateToProps, 2nd is mapDispatchToProps
-// reduxForm: 1st is form config, 2nd is mapStateToProps, 3rd is mapDispatchToProps
-export default reduxForm({
+
+var loginForm = reduxForm({
   form: 'LoginForm',
   fields: ['email', 'password'],
   validate
-}, mapStateToProps, mapDispatchToProps)(LoginForm);
+})
+
+
+module.exports = connect(mapStateToProps, mapDispatchToProps)(loginForm(LoginForm));
+
+
