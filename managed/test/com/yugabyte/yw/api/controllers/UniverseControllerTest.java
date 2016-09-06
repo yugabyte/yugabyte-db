@@ -322,5 +322,4 @@ public class UniverseControllerTest extends FakeDBApplication {
 
     assertTrue(customer.getUniverseUUIDs().isEmpty());
   }
-
 }
