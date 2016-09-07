@@ -9,6 +9,7 @@ import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
+import TaskProgessPanelContainer from '../containers/TaskProgressPanelContainer.js';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -17,6 +18,7 @@ export default class UniverseDetail extends Component {
 
   componentWillUnmount() {
     this.props.resetUniverseInfo();
+    this.props.resetUniverseTasks();
   }
 
   componentDidMount() {
@@ -27,6 +29,7 @@ export default class UniverseDetail extends Component {
       uuid = this.props.uuid;
     }
     this.props.getUniverseInfo(uuid);
+    this.props.fetchUniverseTasks(uuid);
   }
 
   render() {
@@ -37,6 +40,7 @@ export default class UniverseDetail extends Component {
       return <span />;
     }
     const { universeDetails } = currentUniverse;
+
     return (
       <Grid id="page-wrapper">
         <Row className="header-row">
@@ -62,6 +66,7 @@ export default class UniverseDetail extends Component {
           </Col>
           <Col md={5} lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse} />
+            <TaskProgessPanelContainer />
           </Col>
         </Row>
         <Row>

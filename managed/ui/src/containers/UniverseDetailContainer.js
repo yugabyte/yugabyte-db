@@ -2,7 +2,10 @@
 
 import UniverseDetail from '../components/UniverseDetail.js';
 import { connect } from 'react-redux';
-import {fetchUniverseInfo, fetchUniverseInfoSuccess, fetchUniverseInfoFailure, resetUniverseInfo } from '../actions/universe';
+import {fetchUniverseInfo, fetchUniverseInfoSuccess,
+        fetchUniverseInfoFailure, resetUniverseInfo,
+        fetchUniverseTasks, fetchUniverseTasksSuccess,
+        fetchUniverseTasksFailure, resetUniverseTasks } from '../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -18,6 +21,19 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseInfo: () => {
       dispatch(resetUniverseInfo());
+    },
+    fetchUniverseTasks: (uuid) => {
+      dispatch(fetchUniverseTasks(uuid))
+      .then((response) => {
+        if (!response.error) {
+          dispatch(fetchUniverseTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchUniverseTasksFailure(response.payload));
+        }
+      });
+    },
+    resetUniverseTasks: () => {
+      dispatch(resetUniverseTasks());
     }
   }
 }
