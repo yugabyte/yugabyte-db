@@ -11,15 +11,27 @@ export default class DescriptionList extends Component {
     const { listItems } = this.props;
 
     const descriptionListItems = listItems.map(function(item, idx) {
+      var itemData = item.data;
+
+      if (Array.isArray(item.data)) {
+        var arrData = item.data.map(function(data, dataIdx) {
+          return (
+            <span key={dataIdx}>
+              <dd key={dataIdx}>{data.name}</dd>
+            </span>
+          )
+        });
+        itemData = <dl className="dl-nested">{arrData}</dl>;
+      }
       return (
         <span key={idx}>
           <dt className={item.nameClass}>{item.name}</dt>
-          <dd className={item.dataClass}>{item.data}</dd>
+          <dd className={item.dataClass}>{itemData}</dd>
         </span>);
     });
 
     return (
-      <dl className="dl-horizontal">
+      <dl className="dl-normal">
         {descriptionListItems}
       </dl>);
   }

@@ -18,18 +18,16 @@ export default class TopNavBar extends Component {
 	render() {
 		return (
 			<ul className="nav navbar-top-links navbar-right">
-				<NavDropdown eventKey="4" title=
-					{<div className='fa fa-user top-nav-menu-button'></div>} id="nav-dropdown">
-				  <MenuItem eventKey="4.1" href="/profile"><i className="fa fa-user fa-fw"></i>
-						&nbsp;Profile
+				<NavDropdown eventKey="2" title={<i className="fa fa-user fa-fw"></i>} id="profile-dropdown">
+					<MenuItem eventKey="2.1" href="/profile">
+						<i className="fa fa-user fa-fw"></i>Profile
 					</MenuItem>
-				  <MenuItem divider />
-				  <MenuItem eventKey="4.2" href="/login" id="logoutLink" onClick={this.handleLogout}>
-						<i className="fa fa-sign-out fa-fw"></i>
-						Logout
+					<MenuItem divider />
+					<MenuItem eventKey="2.2" href="/login" id="logoutLink" onClick={this.handleLogout}>
+						<i className="fa fa-sign-out fa-fw"></i>Logout
 					</MenuItem>
-			  </NavDropdown>
-      </ul>
+				</NavDropdown>
+			</ul>
 		);
 	}
 }

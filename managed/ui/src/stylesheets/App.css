@@ -104,6 +104,7 @@ ul {
     background-color: #fff;
 }
 
+<<<<<<< 5779662ce34e61165caaeaeb1c21a82c3b78af5b
 .progess-gauge {
   vertical-align: top;
   background: #fff;
@@ -136,4 +137,37 @@ ul.progress-list li {
 ul.progress-list li i {
   padding-right: 10px;
   color: #757679;
+}
+
+@media (min-width: 768px) {
+  .dl-normal {
+    margin-top: 0px;
+    margin-bottom: 20px;
+  }
+
+  .dl-normal dt {
+      float: left;
+      overflow: hidden;
+      clear: left;
+      text-align: right;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+  }
+
+  .dl-normal dd {
+    margin-left: 120px;
+    line-height: 20px;
+  }
+
+  .dl-nested {
+    margin-bottom: 0px;
+  }
+
+  .dl-nested dl {
+  }
+  .dl-nested dd {
+    margin: 0px;
+    overflow: visible;
+    white-space: normal;
+  }
 }
