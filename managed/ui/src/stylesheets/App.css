@@ -91,9 +91,15 @@ ul {
     margin-bottom: 4%;
 }
 
-.universeTableHeader {
+.universe-table-header {
     margin-top: 1%;
     margin-left: 1%;
+}
+
+.universe-table-header-action .universe-button {
+  width: auto;
+  font-size: 14px;
+  padding: 6px 12px;
 }
 
 .top-nav-menu-button {
@@ -104,7 +110,6 @@ ul {
     background-color: #fff;
 }
 
-<<<<<<< 5779662ce34e61165caaeaeb1c21a82c3b78af5b
 .progess-gauge {
   vertical-align: top;
   background: #fff;
@@ -170,4 +175,14 @@ ul.progress-list li i {
     overflow: visible;
     white-space: normal;
   }
+}
+
+.graph-panel {
+  margin: 0 20px;
+}
+
+.header-row .btn-group > div {
+  display: inline-block;
+  margin-right: 10px;
+  float: right;
 }

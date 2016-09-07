@@ -30,7 +30,7 @@ export default class GraphPanel extends Component {
       var panelUrl = grafanaUrl + "?panelId=" + panelId +
         "&from=" + fromTimestampMs + "&to=" + toTimestampMs +
         "&var-host=" + nodePrefix + "&fullscreen";
-      return (<InlineFrame key={panelId} src={panelUrl} />);
+      return (<InlineFrame key={panelId} src={panelUrl} className="graph-panel" />);
     });
     return (
       <YBPanelItem name="Graph Panels">
