@@ -18,6 +18,6 @@ export default class InlineFrame extends Component {
     const { src, height, width } = this.props;
 
     return (
-      <iframe src={src} width={width} height={height} />);
+      <iframe src={src} width={width} height={height} {...this.props} />);
   }
 }

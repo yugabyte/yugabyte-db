@@ -13,7 +13,9 @@ export default class TaskProgessPanel extends Component {
 
   componentDidMount() {
     const { universe: { universeTasks } } = this.props;
-    if (!this.props.universe.loading && universeTasks !== undefined) {
+    if (!this.props.universe.loading &&
+        universeTasks !== undefined &&
+        universeTasks.length > 0) {
       // TODO, currently we only show on of the tasks, we need to
       // implement a way to show all the tasks against a universe
       this.props.fetchTaskProgress(universeTasks[0].id);
@@ -27,7 +29,7 @@ export default class TaskProgessPanel extends Component {
   render() {
     const { universe: { universeTasks }, tasks: { taskProgressData} } = this.props;
     if (this.props.universe.loading || universeTasks === undefined ||
-        this.props.tasks.loading || taskProgressData.length === 0 ) {
+        this.props.tasks.loading || taskProgressData.length === 0) {
       return <div className="container">Loading...</div>;
     } else if (taskProgressData.status === "Success" ||
                taskProgressData.status === "Failure") {

@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Grid, Row, Col } from 'react-bootstrap';
+import { Grid, Row, Col, ButtonGroup } from 'react-bootstrap';
 import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
@@ -44,15 +44,13 @@ export default class UniverseDetail extends Component {
     return (
       <Grid id="page-wrapper">
         <Row className="header-row">
-          <Col lg={6} lgOffset={1}>
+          <Col lg={9} >
             <h3>Universe { currentUniverse.name }</h3>
           </Col>
-          <Col lg={1}>
+          <ButtonGroup>
             <UniverseModalContainer type="Edit" />
-          </Col>
-          <Col lg={1}>
             <DeleteUniverseContainer uuid={this.props.universe.currentUniverse.universeUUID} />
-          </Col>
+          </ButtonGroup>
         </Row>
         <Row>
           <Col lg={11}>
@@ -75,7 +73,7 @@ export default class UniverseDetail extends Component {
           </Col>
         </Row>
         <Row>
-          <Col lg={9}>
+          <Col lg={11}>
             <GraphPanelContainer nodePrefix={universeDetails.nodePrefix} />
           </Col>
         </Row>

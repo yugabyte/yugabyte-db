@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
+import { Link } from 'react-router';
 import * as moment from 'moment'
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
@@ -77,13 +78,13 @@ export default class UniverseTable extends Component {
 
     function statusStringFormatter(cell, row){
       if (cell === "failure" ) {
-        return "<div class='universe-button btn btn-xs btn-danger'>" +
+        return "<div class='universe-button btn-xs btn-danger'>" +
                "Failure</div>";
       } else if (cell === "success") {
-        return "<div class='universe-button btn btn-success btn-xs'>" +
+        return "<div class='universe-button btn-xs btn-success btn-xs'>" +
                "Success</div>";
       } else {
-        return "<div class='universe-button btn btn-default btn-warning'>" +
+        return "<div class='universe-button btn-xs btn-default btn-warning'>" +
                "Pending</div>";
       }
     }
