@@ -32,8 +32,9 @@ export default class SideNavBar extends Component {
       <div className="col-md-3 left_col">
         <div className="left_col scroll-view">
           <div className="navbar nav_title">
-            <Link to={`/home`} className="site_title">
-              <i className="fa fa-database"></i> <span>YugaByte</span>
+            <Link to="/dashboard" className="site_title">
+              <i className="fa fa-database"></i>
+                <span>YugaByte</span>
             </Link>
           </div>
           <div className="clearfix"></div>
@@ -42,12 +43,14 @@ export default class SideNavBar extends Component {
             <div className="menu_section">
               <ul className="nav side-menu">
                 <li className={this.isActive('')} onClick={this.setFilter.bind(this, '')}>
-                  <Link to={`/home`}><i className="fa fa-home"></i> Home
+                  <Link to="/dashboard" ><i className="fa fa-home"></i> Home
                     <span className="label label-success"></span>
                   </Link>
                 </li>
                 <li className={this.isActive('universe')} onClick={this.setFilter.bind(this, 'universe')}>
-                  <Link to={`/universes`}><i className="fa fa-globe"></i> Universes <span className="label label-success"></span></Link>
+                  <Link to="/universes"><i className="fa fa-globe"></i> Universes
+                    <span className="label label-success"></span>
+                  </Link>
                 </li>
                 <li className={this.isActive('alerts')} onClick={this.setFilter.bind(this, 'alerts')}>
                   <a href="#"><i className="fa fa-bell-o"></i> Alerts <span className="label label-success"></span></a>

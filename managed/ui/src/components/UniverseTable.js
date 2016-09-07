@@ -93,7 +93,7 @@ export default class UniverseTable extends Component {
   }
 
   componentWillUnmount() {
-    this.props.resetUniverseInfo();
+    this.props.resetUniverseList();
   }
 
   render() {
