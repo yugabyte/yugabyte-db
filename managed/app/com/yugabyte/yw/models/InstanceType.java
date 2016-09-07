@@ -17,6 +17,7 @@ import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.SqlUpdate;
 import com.avaje.ebean.annotation.EnumValue;
+import com.yugabyte.yw.cloud.AWSConstants;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -159,13 +160,17 @@ public class InstanceType extends Model {
   }
 
   public static class InstanceTypeDetails {
-    public Map<String, InstanceTypeRegionDetails> regionCode;
+    public Map<String, List<InstanceTypeRegionDetails>> regionCodeToDetailsMap;
 
     public InstanceTypeDetails() {
-      regionCode = new HashMap<String, InstanceTypeRegionDetails>();
+      regionCodeToDetailsMap = new HashMap<String, List<InstanceTypeRegionDetails>>();
     }
   }
 
+  /**
+   * Each of these objects captures price details of an instance type in a region, for a given
+   * value of tenancy and the operating system.
+   */
   public static class InstanceTypeRegionDetails {
     // This should be "AmazonEC2". Present for debugging/verification.
     public String servicecode;
@@ -175,7 +180,7 @@ public class InstanceType extends Model {
     public String productFamily;
 
     // The valid values here are "Host", "Dedicated" and "Shared".
-    public String tenancy;
+    public AWSConstants.Tenancy tenancy;
 
     // Known values are "Linux", "RHEL", "SUSE", "Windows", "NA".
     public String operatingSystem;
