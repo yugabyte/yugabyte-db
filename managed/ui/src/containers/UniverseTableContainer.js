@@ -1,7 +1,6 @@
 import UniverseTable from '../components/UniverseTable.js';
 import { fetchUniverseList, fetchUniverseListSuccess,
-         fetchUniverseListFailure, resetUniverseList }
-       from '../actions/universe';
+  fetchUniverseListFailure, resetUniverseList} from '../actions/universe';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
