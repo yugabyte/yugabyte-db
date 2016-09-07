@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.cloud;
 
 import java.io.IOException;
@@ -338,7 +340,7 @@ public class AWSInitializer extends Controller {
       regionDetails.operatingSystem = productAttrs.get("operatingSystem");
       regionDetails.productFamily = productAttrs.get("productFamily");
       regionDetails.servicecode = productAttrs.get("servicecode");
-      regionDetails.tenancy = productAttrs.get("tenancy");
+      regionDetails.tenancy = AWSConstants.Tenancy.valueOf(productAttrs.get("tenancy"));
 
       // Fill up the price details, using the sku to lookup.
       regionDetails.priceDetailsList = ec2SkuToPriceDetails.get(productAttrs.get("sku"));
@@ -360,9 +362,15 @@ public class AWSInitializer extends Controller {
       if (instanceType.instanceTypeDetails == null) {
         instanceType.instanceTypeDetails = new InstanceTypeDetails();
       }
+      List<InstanceTypeRegionDetails> detailsList =
+          instanceType.instanceTypeDetails.regionCodeToDetailsMap.get(regionCode);
+      if (detailsList == null) {
+        detailsList = new ArrayList<InstanceTypeRegionDetails>();
+      }
+      detailsList.add(regionDetails);
 
       // Fill up the instance type details.
-      instanceType.instanceTypeDetails.regionCode.put(regionCode, regionDetails);
+      instanceType.instanceTypeDetails.regionCodeToDetailsMap.put(regionCode, detailsList);
 
       // Update the object.
       InstanceType.upsert(providerCode,

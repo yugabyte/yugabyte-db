@@ -43,12 +43,13 @@ GET     /api/customers/:cUUID                         com.yugabyte.yw.controller
 PUT     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 
 # Universe, table, etc management API
-POST    /api/customers/:cUUID/universes               com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
-PUT     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /api/customers/:cUUID/universes               com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
-GET     /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.index(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-DELETE  /api/customers/:cUUID/universes/:uniUUID      com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /api/customers/:cUUID/universes/:uniUUID/masters com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
+PUT     /api/customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.index(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.destroy(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID/cost     com.yugabyte.yw.controllers.UniverseController.universeCost(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID/masters  com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Table Management API
 GET     /api/tables                                   com.yugabyte.yw.controllers.TablesController.list()
