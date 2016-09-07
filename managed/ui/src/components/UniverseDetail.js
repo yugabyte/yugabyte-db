@@ -20,7 +20,13 @@ export default class UniverseDetail extends Component {
   }
 
   componentDidMount() {
-    this.props.getUniverseInfo(this.props.uuid);
+    var uuid ;
+    if (typeof this.props.universeSelectionId !== "undefined") {
+      uuid = this.props.universeUUID;
+    } else {
+      uuid = this.props.uuid;
+    }
+    this.props.getUniverseInfo(uuid);
   }
 
   render() {
@@ -36,7 +42,7 @@ export default class UniverseDetail extends Component {
         <Row className="header-row">
           <h3>Universe { currentUniverse.name }</h3>
           <UniverseModalContainer type="Edit" />
-          <DeleteUniverseContainer />
+          <DeleteUniverseContainer uuid={this.props.universe.currentUniverse.universeUUID} />
         </Row>
         <Row>
           <ConnectStringPanel universeId={this.props.universe.currentUniverse.universeUUID}

@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { Link } from 'react-router';
 import '../stylesheets/SideNavBar.css'
 
 export default class SideNavBar extends Component {
@@ -31,7 +32,9 @@ export default class SideNavBar extends Component {
       <div className="col-md-3 left_col">
         <div className="left_col scroll-view">
           <div className="navbar nav_title">
-            <a href="index.html" className="site_title"><i className="fa fa-database"></i> <span>YugaByte</span></a>
+            <Link to={`/home`} className="site_title">
+              <i className="fa fa-database"></i> <span>YugaByte</span>
+            </Link>
           </div>
           <div className="clearfix"></div>
           <br />
@@ -39,12 +42,12 @@ export default class SideNavBar extends Component {
             <div className="menu_section">
               <ul className="nav side-menu">
                 <li className={this.isActive('')} onClick={this.setFilter.bind(this, '')}>
-                  <a href="#" ><i className="fa fa-home"></i> Home
+                  <Link to={`/home`}><i className="fa fa-home"></i> Home
                     <span className="label label-success"></span>
-                  </a>
+                  </Link>
                 </li>
                 <li className={this.isActive('universe')} onClick={this.setFilter.bind(this, 'universe')}>
-                  <a href="#"><i className="fa fa-globe"></i> Universes <span className="label label-success"></span></a>
+                  <Link to={`/universes`}><i className="fa fa-globe"></i> Universes <span className="label label-success"></span></Link>
                 </li>
                 <li className={this.isActive('alerts')} onClick={this.setFilter.bind(this, 'alerts')}>
                   <a href="#"><i className="fa fa-bell-o"></i> Alerts <span className="label label-success"></span></a>

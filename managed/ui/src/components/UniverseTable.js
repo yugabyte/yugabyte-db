@@ -1,11 +1,90 @@
-
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
 import * as moment from 'moment'
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import {isValidArray,isValidObject} from '../utils/ObjectUtils';
+import { isValidArray, isValidObject } from '../utils/ObjectUtils';
+import UniverseModalContainer from '../containers/UniverseModalContainer';
+import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
+import { ListGroup } from 'react-bootstrap';
+
+class ProviderComponent extends Component {
+  render() {
+    return (
+      <li>Provider:&nbsp;{this.props.provider}</li>
+    )
+  }
+}
+
+class RegionComponent extends Component {
+  render() {
+    return (
+      <div>
+        Regions:
+        <ul>
+           {
+             this.props.regions.map(function (regionItem, idx) {
+               return <li key={regionItem + idx}>{regionItem.name.toString()}</li>;
+             })
+           }
+        </ul>
+      </div>
+    )
+  }
+}
+
+class NumNodesComponent extends Component {
+  render() {
+    return (
+      <li>Number Of Nodes:&nbsp;{this.props.numNodes}</li>
+    )
+  }
+}
+
+class RFComponent extends Component {
+  render() {
+    return (
+      <li>Replication Factor&nbsp;{this.props.numRF}</li>
+    )
+  }
+}
+
+class UniverseDetailsCell extends Component {
+  render() {
+    return (
+      <ListGroup componentClass="ul">
+        <ProviderComponent provider={this.props.providerString} />
+        <RegionComponent regions={this.props.regionString} />
+        <NumNodesComponent numNodes={this.props.numNodes} />
+        <RFComponent numRF={this.props.numRF} />
+      </ListGroup>
+    )
+  }
+}
+
+
+class UniverseButtonGroupCell extends Component {
+  render() {
+    return (
+      <div className="row">
+        <div className="col-lg-3">
+          <a href={'/universes/' + this.props.uuid}
+            className='universe-button btn
+            btn-xs btn-primary '>
+            <i className='fa fa-eye'></i>&nbsp;View&nbsp;
+          </a>
+        </div>
+        <div className="col-lg-3">
+          <UniverseModalContainer type={'Edit'} uuid={this.props.uuid} />
+        </div>
+        <div className="col-lg-3">
+          <DeleteUniverseContainer uuid={this.props.uuid} />
+        </div>
+      </div>
+    )
+  }
+}
 
 export default class UniverseTable extends Component {
 
@@ -18,31 +97,37 @@ export default class UniverseTable extends Component {
   }
 
   render() {
-    var universeDisplay=[];
+    var self = this;
+    var universeDisplay = [];
+
     function detailStringFormatter(cell, row) {
-      var detailItem = cell.split("|");
-      return "<ul><li>Provider: " + detailItem[0] + "</li><li></li>Regions: " +
-             detailItem[1] + "</li><li>Nodes: " + detailItem[2] +
-             "</li><li>Replication Factor: " + detailItem[3] + "</li></ul>";
+      return <UniverseDetailsCell providerString={cell.provider}
+                                  regionString={cell.regions}
+                                  numNodes={cell.nodes}
+                                  numRF={cell.rf} />;
     }
 
     function universeNameTypeFormatter(cell, row) {
-      var uniName = cell.split("|")[0];
-      var uniDate = cell.split("|")[1];
-      return "<a>"+uniName+"</a><br/><small>Created On :" +uniDate+"</small>"
+      var universeName = cell.split("|")[0];
+      var universeCreationDate = cell.split("|")[1];
+      return "<div><a>" + universeName + "</a></div><small>Created:<br />"
+             + universeCreationDate + "</small>"
     }
 
     function actionStringFormatter(cell, row) {
-      return cell;
+      return <UniverseButtonGroupCell uuid={cell} />
     }
 
     function statusStringFormatter(cell, row){
       if (cell === "failure" ) {
-        return "<div class='btn btn-default btn-danger universeTableButton'>Failure</div>";
+        return "<div class='universe-button btn btn-xs btn-danger'>" +
+               "Failure</div>";
       } else if (cell === "success") {
-        return "<div class='btn btn-default btn-success universeTableButton'>Success</div>";
+        return "<div class='universe-button btn btn-success btn-xs'>" +
+               "Success</div>";
       } else {
-        return "<div class='btn btn-default btn-warning universeTableButton'>Pending</div>";
+        return "<div class='universe-button btn btn-default btn-warning'>" +
+               "Pending</div>";
       }
     }
 
@@ -50,7 +135,9 @@ export default class UniverseTable extends Component {
       universeDisplay = this.props.universe.universeList.map(function (item, idx) {
         var regionNames = "";
         if (typeof(item.regions) !== "undefined") {
-          regionNames = item.regions.map(function(region) { return region.name }).join(" ");
+          regionNames = item.regions.map(function(region, idx) {
+            return {"idx": idx, "name": region.name};
+          });
         }
 
         var providerName = "";
@@ -68,7 +155,8 @@ export default class UniverseTable extends Component {
           replicationFactor = item.universeDetails.userIntent.replicationFactor;
         }
 
-        var universeDetailString = providerName + "|"+regionNames + "|" + numNodes + "|" + replicationFactor;
+        var universeDetailString={"provider": providerName, "regions": regionNames.length>0 ? regionNames: [],
+                                 "nodes":numNodes, "rf":replicationFactor};
         var updateProgressStatus = false;
         var updateSuccessStatus = false;
         var status = "";
@@ -85,14 +173,7 @@ export default class UniverseTable extends Component {
         } else {
           status = "pending";
         }
-
-        var actionString="<a class='btn btn-default btn-primary universeTableButton'>" +
-                         "<i class='fa fa-folder'></i>View </a><a href='#'" +
-                         "class='btn btn-default btn-info universeTableButton'>" +
-                         "<i class='fa fa-pencil'></i> Edit </a><a href='#'" +
-                         "class='btn btn-default btn-danger universeTableButton'>" +
-                         "<i class='fa fa-trash-o'></i> Delete </a>";
-
+        var actionString = item.universeUUID;
         return {
           id: item.universeUUID,
           name: item.name + "|" + moment.default(item.creationDate).format('MMMM DD, YYYY HH:MM a'),
@@ -105,34 +186,25 @@ export default class UniverseTable extends Component {
       });
     }
 
-    function universeDetailsPage (row) {
-      window.location.href = '/universes/' + row.id;
-    }
+    const tableBodyStyle = {"height": 500,"marginBottom": "1%","paddingBottom": "1%"};
 
     const selectRowProp = {
-      bgColor: "rgb(211,211,211)",
-      mode: "radio",
-      clickToSelect: true,
-      onSelect: universeDetailsPage,
-      hideSelectColumn: true
+      bgColor: "rgb(211,211,211)"
     };
 
     return (
       <div className="row">
         <BootstrapTable data={universeDisplay}
                         striped={true}
-                        hover={true}
-                        selectRow={selectRowProp} trClassName="no-border-cell" height="600"
-                        tableStyle="table table-striped projects">
+                        hover={true} selectRow={selectRowProp}
+                        trClassName="no-border-cell" bodyStyle={tableBodyStyle}>
           <TableHeaderColumn dataField="name"
-                             dataSort={true}
                              isKey={true}
                              dataFormat={universeNameTypeFormatter} columnClassName="no-border-cell"
-                             className="no-border-cell">Universe Name</TableHeaderColumn>
+                             className="no-border-cell" dataAlign="left" >Universe Name</TableHeaderColumn>
           <TableHeaderColumn dataField="details"
-                             dataAlign="start"
                              dataFormat={detailStringFormatter} columnClassName="no-border-cell"
-                             className="no-border-cell">Details</TableHeaderColumn>
+                             className="no-border-cell" dataAlign="left">Details</TableHeaderColumn>
           <TableHeaderColumn columnClassName="no-border-cell"
                              className="no-border-cell">
           </TableHeaderColumn>
@@ -141,7 +213,7 @@ export default class UniverseTable extends Component {
             Status
           </TableHeaderColumn>
           <TableHeaderColumn dataField="action" dataFormat={actionStringFormatter}
-                             columnClassName="no-border-cell" className="no-border-cell">
+                             columnClassName="no-border-cell table-button-col" className="no-border-cell">
             Actions
           </TableHeaderColumn>
         </BootstrapTable>
