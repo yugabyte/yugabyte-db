@@ -236,6 +236,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Pick one of the subnets in a round robin fashion.
       params.subnetId = node.subnet_id;
+      // Set the instance type.
+      params.instanceType = taskParams().userIntent.instanceType;
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = new AnsibleSetupServer();
       ansibleSetupServer.initialize(params);

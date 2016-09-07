@@ -16,6 +16,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     // The VPC into which the node is to be provisioned.
     public String subnetId;
+
+    // The instance type that needs to be provisioned.
+    public String instanceType;
   }
 
   @Override
@@ -34,7 +37,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
       // TODO: remove the hardcoded one from here and use it from nodeTaskParams?
       command += " --region " + taskParams().getRegion().code;
       command += " --aws_image " + taskParams().getRegion().ybImage;
-      command += " --aws_instance_type " + "c3.xlarge";
+      command += " --aws_instance_type " + taskParams().instanceType;
     }
     // Execute the ansible command.
     execCommand(command);
