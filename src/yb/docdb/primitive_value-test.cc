@@ -3,12 +3,14 @@
 #include "yb/docdb/primitive_value.h"
 
 #include <limits>
+#include <map>
 
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/gutil/strings/substitute.h"
 
+using std::map;
 using std::string;
 using std::numeric_limits;
 using strings::Substitute;
@@ -94,6 +96,39 @@ TEST(PrimitiveValueTest, TestEncoding) {
       PrimitiveValue(std::numeric_limits<int64_t>::min()));
   TestEncoding(R"#("\x05\xff\xff\xff\xff\xff\xff\xff\xff")#",
       PrimitiveValue(std::numeric_limits<int64_t>::max()));
+}
+
+TEST(PrimitiveValueTest, TestCompareStringsWithEmbeddedZeros) {
+  const auto zero_char = PrimitiveValue(string("\x00", 1));
+  const auto two_zero_chars = PrimitiveValue(string("\x00\x00", 2));
+
+  ASSERT_EQ(zero_char, zero_char);
+  ASSERT_EQ(two_zero_chars, two_zero_chars);
+
+  ASSERT_LT(zero_char, two_zero_chars);
+  ASSERT_GT(two_zero_chars, zero_char);
+  ASSERT_NE(zero_char, two_zero_chars);
+  ASSERT_NE(two_zero_chars, zero_char);
+
+  ASSERT_FALSE(zero_char < zero_char);
+  ASSERT_FALSE(zero_char > zero_char);
+  ASSERT_FALSE(two_zero_chars < two_zero_chars);
+  ASSERT_FALSE(two_zero_chars > two_zero_chars);
+  ASSERT_FALSE(two_zero_chars < zero_char);
+  ASSERT_FALSE(zero_char > two_zero_chars);
+}
+
+
+TEST(PrimitiveValueTest, TestPrimitiveValuesAsMapKeys) {
+  map<PrimitiveValue, string> m;
+  const PrimitiveValue key2("key2");
+  const PrimitiveValue key1("key1");
+  ASSERT_TRUE(m.emplace(key2, "value2").second);
+  ASSERT_EQ(1, m.count(key2));
+  ASSERT_NE(m.find(key2), m.end());
+  ASSERT_TRUE(m.emplace(key1, "value1").second);
+  ASSERT_EQ(1, m.count(key1));
+  ASSERT_NE(m.find(key1), m.end());
 }
 
 }

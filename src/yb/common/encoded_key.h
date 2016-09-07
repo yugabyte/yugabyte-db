@@ -102,8 +102,6 @@ class EncodedKeyBuilder {
 
   EncodedKey *BuildEncodedKey();
 
-  void AssignCopy(const EncodedKeyBuilder &other);
-
  private:
   DISALLOW_COPY_AND_ASSIGN(EncodedKeyBuilder);
 

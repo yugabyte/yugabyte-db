@@ -19,11 +19,14 @@ namespace docdb {
 class KeyBytes {
  public:
 
-  std::string ToString() {
+  KeyBytes() {}
+  KeyBytes(const std::string& data) : data_(data) {}
+
+  std::string ToString() const {
     return yb::util::FormatBytesAsStr(data_);
   }
 
-  std::string data() {
+  const std::string data() const {
     return data_;
   }
 
@@ -63,22 +66,31 @@ class KeyBytes {
     AppendTimestamp(timestamp);
   }
 
-  size_t size() { return data_.size(); }
+  size_t size() const { return data_.size(); }
 
   bool IsPrefixOf(const rocksdb::Slice& slice) const {
     return slice.starts_with(data_);
   }
 
-  // Checks whether the given slice starts with this sequence of key bytes, excluding the timestamp
-  // at the end of this sequence of key bytes that is assumed to exist.
-  bool SharesPrefixWithoutTimestampWith(const rocksdb::Slice& slice) {
-    assert(size() >= kBytesPerTimestamp);
+  // Checks whether the given slice starts with this sequence of key bytes.
+  bool OnlyDiffersByLastTimestampFrom(const rocksdb::Slice& other_slice) {
+    if (size() != other_slice.size() || size() < kBytesPerTimestamp) {
+      return false;
+    }
+
     auto this_as_slice = AsSlice();
     this_as_slice.remove_suffix(kBytesPerTimestamp);
-    return slice.starts_with(this_as_slice);
+    return other_slice.starts_with(this_as_slice);
   }
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
+
+  rocksdb::Slice AsSliceWithoutTimestamp() const {
+    assert(data_.size() >= kBytesPerTimestamp);
+    auto slice = AsSlice();
+    slice.remove_suffix(kBytesPerTimestamp);
+    return slice;
+  }
 
   // @return This key prefix as a string reference. Assumes the reference won't be used beyond
   //         the lifetime of this object.
@@ -96,12 +108,22 @@ class KeyBytes {
     return data_.compare(other.data_);
   }
 
+  int CompareTo(const rocksdb::Slice& other) const {
+    return rocksdb::Slice(data_).compare(other);
+  }
+
   bool operator <(const KeyBytes& other) {
     return data_ < other.data_;
   }
 
   bool operator >(const KeyBytes& other) {
     return data_ > other.data_;
+  }
+
+  // Increments this key to the smallest key that is greater than it.
+  KeyBytes& Increment() {
+    data_.push_back('\0');
+    return *this;
   }
 
  private:

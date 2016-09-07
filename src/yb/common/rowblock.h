@@ -18,9 +18,11 @@
 #define YB_COMMON_ROWBLOCK_H
 
 #include <vector>
+
 #include "yb/common/columnblock.h"
 #include "yb/common/schema.h"
 #include "yb/common/row.h"
+#include "yb/common/types.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/memory/arena.h"
@@ -205,18 +207,6 @@ class RowBlock {
  private:
   DISALLOW_COPY_AND_ASSIGN(RowBlock);
 
-  static size_t RowBlockSize(const Schema& schema, size_t nrows) {
-    size_t block_size = schema.num_columns() * sizeof(size_t);
-    size_t bitmap_size = BitmapSize(nrows);
-    for (size_t col = 0; col < schema.num_columns(); col++) {
-      const ColumnSchema& col_schema = schema.column(col);
-      block_size += nrows * col_schema.type_info()->size();
-      if (col_schema.is_nullable())
-        block_size += bitmap_size;
-    }
-    return block_size;
-  }
-
   Schema schema_;
   std::vector<uint8_t *> columns_data_;
   std::vector<uint8_t *> column_null_bitmaps_;
@@ -254,10 +244,6 @@ class RowBlockRow {
     row_block_ = row_block;
     row_index_ = row_index;
     return this;
-  }
-
-  const RowBlock* row_block() const {
-    return row_block_;
   }
 
   size_t row_index() const {
@@ -299,6 +285,17 @@ class RowBlockRow {
     SelectionVector *vec = const_cast<SelectionVector *>(row_block_->selection_vector());
     vec->SetRowUnselected(row_index_);
   }
+
+  // Returns the value at the given column index, assuming it has the supplied type. If data_type
+  // does not match the type specified by the schema, or the value is null, an assertion fails in
+  // debug mode, and the behavior is undefined in release mode.
+  template<DataType data_type>
+  typename TypeTraits<data_type>::cpp_type get_field(size_t col_idx) const {
+    assert(!is_null(col_idx));
+    assert(row_block_->schema().column(col_idx).type_info()->type() == data_type);
+    return *reinterpret_cast<const typename TypeTraits<data_type>::cpp_type*>(cell(col_idx).ptr());
+  }
+
 
 #ifndef NDEBUG
   void OverwriteWithPattern(StringPiece pattern) {

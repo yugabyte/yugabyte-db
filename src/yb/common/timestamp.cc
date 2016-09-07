@@ -19,10 +19,11 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/memcmpable_varint.h"
-#include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/mathlimits.h"
+
+using strings::Substitute;
 
 namespace yb {
 
@@ -43,6 +44,10 @@ string Timestamp::ToString() const {
   return strings::Substitute("$0", v);
 }
 
+string Timestamp::ToDebugString() const {
+  return Substitute("$0($1)", kTimestampDebugStrPrefix, ToString());
+}
+
 uint64_t Timestamp::ToUint64() const {
   return v;
 }
@@ -51,5 +56,7 @@ Status Timestamp::FromUint64(uint64_t value) {
   v = value;
   return Status::OK();
 }
+
+const char* const Timestamp::kTimestampDebugStrPrefix = "TS";
 
 }  // namespace yb

@@ -3,12 +3,13 @@
 #ifndef YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_
 #define YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_
 
-#include <unordered_set>
+#include <unordered_map>
 #include <string>
 
 #include <boost/optional.hpp>
 
 #include "yb/common/timestamp.h"
+#include "yb/docdb/key_bytes.h"
 #include "yb/docdb/value_type.h"
 
 namespace yb {
@@ -21,29 +22,27 @@ namespace docdb {
 // This class is not thread-safe.
 class DocWriteBatchCache {
  public:
-  using Entry = std::pair<yb::Timestamp, ValueType>;
+  using Entry = std::pair<Timestamp, ValueType>;
 
   // Records the generation timestamp corresponding to the given encoded key prefix, which is
   // assumed not to include the timestamp at the end.
-  void Put(const std::string& encoded_key_prefix, yb::Timestamp gen_ts, ValueType value_type) {
-    prefix_to_gen_ts_[encoded_key_prefix] = std::make_pair(gen_ts, value_type);
-  }
+  void Put(const KeyBytes& encoded_key_prefix, Timestamp gen_ts, ValueType value_type);
 
   // Returns the latest generation timestamp for the document/subdocument identified by the given
   // encoded key prefix.
   // TODO: switch to taking a slice as an input to avoid making a copy on lookup.
-  boost::optional<Entry> Get(const std::string& encoded_key_prefix) {
-    std::string slice_as_str = encoded_key_prefix;
-    auto iter = prefix_to_gen_ts_.find(encoded_key_prefix);
-    return iter == prefix_to_gen_ts_.end() ? boost::optional<Entry>() : iter->second;
-  };
+  boost::optional<Entry> Get(const KeyBytes& encoded_key_prefix);
+
+  std::string ToDebugString();
+
+  static std::string EntryToStr(const Entry& entry);
 
  private:
   std::unordered_map<std::string, Entry> prefix_to_gen_ts_;
 };
 
 
-};
+}
 }
 
 #endif

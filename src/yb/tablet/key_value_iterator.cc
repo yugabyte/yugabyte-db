@@ -9,10 +9,8 @@ namespace tablet {
 
 KeyValueIterator::KeyValueIterator(
     const Schema* projection,
-    MvccSnapshot mvcc_snap,
     rocksdb::DB* db)
   : projection_(projection),
-    mvcc_snap_(std::move(mvcc_snap)),
     db_(db),
     has_upper_bound_key_(false),
     exclusive_upper_bound_key_(""),
@@ -55,7 +53,7 @@ bool KeyValueIterator::HasNext() const {
   if (db_iter_->Valid()) {
     if (has_upper_bound_key_) {
       // TODO: there must be a reusable way to compare two byte arrays.
-      rocksdb::Slice rocksdb_key(db_iter_->key());
+      const rocksdb::Slice rocksdb_key(db_iter_->key());
       const char* const upper_bound_data = exclusive_upper_bound_key_.data();
       size_t upper_bound_size = exclusive_upper_bound_key_.size();
       int memcmp_result = memcmp(rocksdb_key.data(), upper_bound_data,

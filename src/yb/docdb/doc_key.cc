@@ -10,6 +10,9 @@
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/yb_rocksdb.h"
+
+using std::ostringstream;
 
 using strings::Substitute;
 
@@ -142,6 +145,26 @@ string DocKey::ToString() const {
   return result;
 }
 
+DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &schema) {
+  DocKey new_doc_key;
+  for (int i = 0; i < encoded_key.num_key_columns(); ++i) {
+    const auto& type_info = *schema.column(i).type_info();
+    const void* const raw_key = encoded_key.raw_keys()[i];
+    switch (type_info.type()) {
+      case DataType::INT64:
+        new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int64_t*>(raw_key));
+        break;
+      case DataType::STRING:
+        new_doc_key.range_group_.emplace_back(reinterpret_cast<const Slice*>(raw_key)->ToString());
+        break;
+
+      default:
+        LOG(FATAL) << "Don't know how to decode Kudu data type " << type_info.name();
+    }
+  }
+  return new_doc_key;
+}
+
 // ------------------------------------------------------------------------------------------------
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
@@ -173,10 +196,10 @@ Status SubDocKey::DecodeFrom(const rocksdb::Slice& key_bytes) {
 
 string SubDocKey::ToString() const {
   std::stringstream result;
-  result << "SubDocKey(" << doc_key_.ToString() << ", ["  << TimestampToPrefixedStr(doc_gen_ts_);
+  result << "SubDocKey(" << doc_key_.ToString() << ", ["  << doc_gen_ts_.ToDebugString();
 
   for (const auto& subkey_and_ts : subkeys_) {
-    result << ", " << subkey_and_ts.first << ", " << TimestampToPrefixedStr(subkey_and_ts.second);
+    result << ", " << subkey_and_ts.first << ", " << subkey_and_ts.second.ToDebugString();
   }
   result << "])";
   return result.str();
@@ -222,6 +245,29 @@ int SubDocKey::CompareTo(const SubDocKey& other) const {
 
   // We specify reverse_second_component = true to implement inverse timestamp ordering.
   return ComparePairVectors<PrimitiveValue, Timestamp, true>(subkeys_, other.subkeys_);
+}
+
+string BestEffortKeyBytesToStr(const KeyBytes& key_bytes) {
+  SubDocKey subdoc_key;
+  Status subdoc_key_decode_status = subdoc_key.FullyDecodeFrom(key_bytes.AsSlice());
+  if (subdoc_key_decode_status.ok()) {
+    return subdoc_key.ToString();
+  }
+  DocKey doc_key;
+
+  // Try to decode as a DocKey with some trailing bytes.
+  rocksdb::Slice mutable_slice = key_bytes.AsSlice();
+  if (doc_key.DecodeFrom(&mutable_slice).ok()) {
+    ostringstream ss;
+    ss << doc_key.ToString();
+    if (mutable_slice.size() > 0) {
+      ss << " followed by raw bytes " << FormatRocksDBSliceAsStr(mutable_slice);
+      // Can append the above status of why we could not decode a SubDocKey, if needed.
+    }
+    return ss.str();
+  }
+
+  return key_bytes.ToString();
 }
 
 }

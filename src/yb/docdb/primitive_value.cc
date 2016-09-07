@@ -29,14 +29,6 @@ using yb::util::FormatBytesAsStr;
 namespace yb {
 namespace docdb {
 
-extern const char* const kTimestampConstantPrefixStr = "TS";
-
-const PrimitiveValue PrimitiveValue::kNull(PrimitiveValue::FromValueType(ValueType::kNull));
-const PrimitiveValue PrimitiveValue::kTrue(PrimitiveValue::FromValueType(ValueType::kTrue));
-const PrimitiveValue PrimitiveValue::kFalse(PrimitiveValue::FromValueType(ValueType::kFalse));
-const PrimitiveValue PrimitiveValue::kTombstone(
-    PrimitiveValue::FromValueType(ValueType::kTombstone));
-
 string PrimitiveValue::ToString() const {
   switch (type_) {
     case ValueType::kNull:
@@ -68,9 +60,7 @@ string PrimitiveValue::ToString() const {
       return Substitute("ArrayIndex($0)", int64_val_);
     case ValueType::kTimestamp:
       // TODO: print out timestamps in a human-readable way?
-      return Substitute("$0($1)",
-                        kTimestampConstantPrefixStr,
-                        Timestamp(timestamp_val_).ToString());
+      return timestamp_val_.ToDebugString();
     case ValueType::kUInt32Hash:
       return Substitute("UInt32Hash($0)", uint32_val_);
     case ValueType::kObject:
@@ -321,23 +311,25 @@ KeyBytes PrimitiveValue::ToKeyBytes() const {
   return kb;
 }
 
-bool operator== (const PrimitiveValue& a, const PrimitiveValue& b) {
-  if (a.type_ != b.type_) {
+bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
+  if (type_ != other.type_) {
     return false;
   }
-  switch (a.type_) {
+  switch (type_) {
     case ValueType::kNull: return true;
     case ValueType::kFalse: return true;
     case ValueType::kTrue: return true;
-    case ValueType::kString: return a.str_val_ == b.str_val_;
+    case ValueType::kString: return str_val_ == other.str_val_;
+
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
-    case ValueType::kArrayIndex: return a.int64_val_ == b.int64_val_;
-    case ValueType::kDouble: return a.double_val_ == b.double_val_;
-    case ValueType::kUInt32Hash: return a.uint32_val_ == b.uint32_val_;
-    case ValueType::kTimestamp: return a.timestamp_val_.CompareTo(b.timestamp_val_) == 0;
+    case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
+
+    case ValueType::kDouble: return double_val_ == other.double_val_;
+    case ValueType::kUInt32Hash: return uint32_val_ == other.uint32_val_;
+    case ValueType::kTimestamp: return timestamp_val_.CompareTo(other.timestamp_val_) == 0;
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  LOG(FATAL) << "Comparing invalid PrimitiveValues: a=" << a << ", b=" << b ;
+  LOG(FATAL) << "Trying to test equality of wrong PrimitiveValue type: " << ValueTypeToStr(type_);
 }
 
 int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
@@ -350,8 +342,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kFalse: return 0;
     case ValueType::kTrue: return 0;
     case ValueType::kString:
-      // TODO: avoid doing two comparisons, use a memcmp-style implementation instead.
-      return GenericCompare(str_val_, other.str_val_);
+      return str_val_.compare(other.str_val_);
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return GenericCompare(int64_val_, other.int64_val_);
@@ -368,14 +359,11 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
 }
 
 // This is used to initialize kNull, kTrue, kFalse constants.
-PrimitiveValue PrimitiveValue::FromValueType(ValueType value_type) {
-  PrimitiveValue primitive_value;
-  primitive_value.type_ = value_type;
-  return primitive_value;
-}
-
-string TimestampToPrefixedStr(Timestamp ts) {
-  return Substitute("$0($1)", kTimestampConstantPrefixStr, ts.ToString());
+PrimitiveValue::PrimitiveValue(ValueType value_type)
+    : type_(value_type) {
+  if (value_type == ValueType::kString) {
+    new(&str_val_) std::string();
+  }
 }
 
 }

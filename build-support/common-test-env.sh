@@ -730,6 +730,10 @@ set_asan_tsan_options() {
 
     # Set up suppressions for LeakSanitizer
     LSAN_OPTIONS="${LSAN_OPTIONS:-} suppressions=$YB_SRC_ROOT/build-support/lsan-suppressions.txt"
+
+    # If we print out object addresses somewhere else, we can match them to LSAN-reported
+    # addresses of leaked objects.
+    LSAN_OPTIONS+=" report_objects=1"
     export LSAN_OPTIONS
   fi
 

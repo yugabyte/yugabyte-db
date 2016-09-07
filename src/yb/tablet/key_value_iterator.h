@@ -16,7 +16,7 @@ namespace tablet {
 class KeyValueIterator : public RowwiseIterator {
  public:
 
-  KeyValueIterator(const Schema* projection, MvccSnapshot mvcc_snap, rocksdb::DB* db);
+  KeyValueIterator(const Schema* projection, rocksdb::DB* db);
   virtual ~KeyValueIterator();
 
   virtual Status Init(ScanSpec *spec) OVERRIDE;
@@ -35,7 +35,6 @@ class KeyValueIterator : public RowwiseIterator {
 
  private:
   const Schema* const projection_;
-  const MvccSnapshot mvcc_snap_;
   rocksdb::DB* db_;
   std::unique_ptr<rocksdb::Iterator> db_iter_;
 

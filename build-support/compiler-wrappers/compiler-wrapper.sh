@@ -108,11 +108,13 @@ exit_handler() {
           echo "Compiler standard error is empty."
         fi
       fi
-      echo "Output file (from -o): $output_file"
+      echo
       echo "Input files:"
       for input_file in "${input_files[@]}"; do
         echo "  $input_file"
       done
+      echo "Output file (from -o): $output_file"
+      echo
     ) >&2
   fi
   rm -f "${stderr_path:-}"

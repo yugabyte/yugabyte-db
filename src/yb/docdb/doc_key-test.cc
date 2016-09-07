@@ -2,21 +2,19 @@
 
 #include "yb/docdb/doc_key.h"
 
-#include <random>
+#include <memory>
 
+#include "yb/docdb/docdb_test_util.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/gutil/strings/substitute.h"
 
+using std::unique_ptr;
 using strings::Substitute;
-using yb::util::FormatBytesAsStr;
 using yb::util::ApplyEagerLineContinuation;
+using yb::util::FormatBytesAsStr;
 
-using RandomNumberGenerator = std::mt19937_64;
-
-static constexpr int kMaxNumDocKeyParts = 10;
-static constexpr int kMaxNumSubKeys = 10;
 static constexpr int kNumDocOrSubDocKeysPerBatch = 1000;
 static constexpr int kNumTestDocOrSubDocKeyComparisons = 10000;
 
@@ -39,84 +37,30 @@ int Sign(int x) {
   return 0;
 }
 
-// Note: test data generator methods below are using a non-const reference for the random number
-// generator for simplicity, even though it is against Google C++ Style Guide. If we used a pointer,
-// we would have to invoke the RNG as (*rng)().
-
-PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator& rng) {
-  switch (rng() % 5) {
-    case 0:
-      return PrimitiveValue(static_cast<int64_t>(rng()));
-    case 1: {
-      string s;
-      for (int j = 0; j < rng() % 50; ++j) {
-        s.push_back(rng() & 0xff);
-      }
-      return PrimitiveValue(s);
-    }
-    case 2: return PrimitiveValue::kNull;
-    case 3: return PrimitiveValue::kTrue;
-    case 4: return PrimitiveValue::kFalse;
-  }
-  LOG(FATAL) << "Should never get here";
-  return PrimitiveValue(); // to make the compiler happy
-}
-
-// Generate a vector of random primitive values.
-vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator& rng) {
-  vector<PrimitiveValue> result;
-  for (int i = 0; i < rng() % (kMaxNumDocKeyParts + 1); ++i) {
-    result.push_back(GenRandomPrimitiveValue(rng));
-  }
-  return result;
-}
-
-DocKey GenRandomDocKey(RandomNumberGenerator& rng, bool use_hash) {
-  if (use_hash) {
-    return DocKey(
-        static_cast<uint32_t>(rng()),  // this is just a random value, not a hash function result
-        GenRandomPrimitiveValues(rng),
-        GenRandomPrimitiveValues(rng));
-  } else {
-    return GenRandomPrimitiveValues(rng);
-  }
-}
-
-DocKey CreateMinimalDocKey(RandomNumberGenerator& rng, bool use_hash) {
-  return use_hash ? DocKey(static_cast<DocKeyHash>(rng()), {}, {}) : DocKey();
-}
-
 template<typename T>
-vector<T> GenRandomDocOrSubDocKeys(RandomNumberGenerator& rng, bool use_hash);
+std::vector<T> GenRandomDocOrSubDocKeys(RandomNumberGenerator& rng, bool use_hash, int num_keys);
 
 template<>
-vector<DocKey> GenRandomDocOrSubDocKeys<DocKey>(RandomNumberGenerator& rng, bool use_hash) {
-  vector<DocKey> result;
-  result.push_back(CreateMinimalDocKey(rng, use_hash));
-  for (int iteration = 0; iteration < 1000; ++iteration) {
-    result.push_back(GenRandomDocKey(rng, use_hash));
-  }
-  return result;
+std::vector<DocKey> GenRandomDocOrSubDocKeys<DocKey>(RandomNumberGenerator& rng,
+                                                     bool use_hash,
+                                                     int num_keys) {
+  return GenRandomDocKeys(rng, use_hash, num_keys);
 }
 
 template<>
-vector<SubDocKey> GenRandomDocOrSubDocKeys<SubDocKey>(RandomNumberGenerator& rng, bool use_hash) {
-  vector<SubDocKey> result;
-  result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), Timestamp(rng())));
-  for (int iteration = 0; iteration < kNumDocOrSubDocKeysPerBatch; ++iteration) {
-    result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash), Timestamp(rng())));
-    for (int i = 0; i < rng() % (kMaxNumSubKeys + 1); ++i) {
-      result.back().AppendSubKeysAndTimestamps(GenRandomPrimitiveValue(rng), Timestamp(rng()));
-    }
-  }
-  return result;
+std::vector<SubDocKey> GenRandomDocOrSubDocKeys<SubDocKey>(RandomNumberGenerator& rng,
+                                                           bool use_hash,
+                                                           int num_keys) {
+  return GenRandomSubDocKeys(rng, use_hash, num_keys);
 }
+
 
 template <typename DocOrSubDocKey>
 void TestRoundTripDocOrSubDocKeyEncodingDecoding() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   for (int use_hash = 0; use_hash <= 1; ++use_hash) {
-    auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(rng, use_hash);
+    auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
+        rng, use_hash, kNumDocOrSubDocKeysPerBatch);
     for (const auto& key : keys) {
       KeyBytes encoded_key = key.Encode();
       DocOrSubDocKey decoded_key;
@@ -132,7 +76,8 @@ template <typename DocOrSubDocKey>
 void TestDocOrSubDocKeyComparison() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   for (int use_hash = 0; use_hash <= 1; ++use_hash) {
-    auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(rng, use_hash);
+    auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
+        rng, use_hash, kNumDocOrSubDocKeysPerBatch);
     for (int k = 0; k < kNumTestDocOrSubDocKeyComparisons; ++k) {
       const auto& a = keys[rng() % keys.size()];
       const auto& b = keys[rng() % keys.size()];
@@ -240,6 +185,32 @@ TEST(DocKeyTest, TestDocKeyComparison) {
 
 TEST(DocKeyTest, TestSubDocKeyComparison) {
   TestDocOrSubDocKeyComparison<SubDocKey>();
+}
+
+TEST(DocKeyTest, TestFromKuduKey) {
+  Schema schema({ ColumnSchema("number1", DataType::INT64),
+                  ColumnSchema("string1", DataType::STRING),
+                  ColumnSchema("number2", DataType::INT64),
+                  ColumnSchema("string2", DataType::STRING) }, 4);
+  EncodedKeyBuilder builder(&schema);
+
+  int64_t number1 = 123123123;
+  Slice string1("mystring1");
+  int64_t number2 = -100020003000;
+  Slice string2("mystring2");
+
+  builder.AddColumnKey(&number1);
+  builder.AddColumnKey(&string1);
+  builder.AddColumnKey(&number2);
+  builder.AddColumnKey(&string2);
+
+  auto encoded_key = unique_ptr<EncodedKey>(builder.BuildEncodedKey());
+  ASSERT_EQ("(123123123,mystring1,-100020003000,mystring2)",
+            encoded_key->Stringify(schema));
+
+  auto doc_key = DocKey::FromKuduEncodedKey(*encoded_key, schema);
+  ASSERT_EQ("DocKey([], [123123123, \"mystring1\", -100020003000, \"mystring2\"])",
+            doc_key.ToString());
 }
 
 }

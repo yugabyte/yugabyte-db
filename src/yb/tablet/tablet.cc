@@ -731,10 +731,8 @@ void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
   rocksdb::WriteOptions write_options;
-  write_options.sync = false;
-  // We disable the WAL in RocksDB because we already have the Raft log and we should
-  // replay it during recovery.
-  write_options.disableWAL = true;
+  InitRocksDBWriteOptions(&write_options);
+
   auto rocksdb_write_status = rocksdb_->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
     LOG(FATAL) << "Failed to write a batch with " << write_batch->Count() << " operations"
@@ -1759,7 +1757,7 @@ Status Tablet::KeyValueCaptureConsistentIterators(
     const ScanSpec *spec,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
   iters->clear();
-  iters->push_back(std::make_shared<KeyValueIterator>(projection, snap, rocksdb_.get()));
+  iters->push_back(std::make_shared<KeyValueIterator>(projection, rocksdb_.get()));
   return Status::OK();
 }
 

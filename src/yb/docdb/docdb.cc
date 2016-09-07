@@ -11,6 +11,7 @@
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/internal_doc_iterator.h"
+#include "yb/docdb/docdb-internal.h"
 
 using std::endl;
 using std::string;
@@ -21,6 +22,7 @@ using yb::Timestamp;
 using yb::util::FormatBytesAsStr;
 using yb::FormatRocksDBSliceAsStr;
 using strings::Substitute;
+
 
 namespace yb {
 namespace docdb {
@@ -38,6 +40,9 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
 // This codepath is used to handle both primitive upserts and deletions.
 Status DocWriteBatch::SetPrimitive(
     const DocPath& doc_path, const PrimitiveValue& value, const Timestamp timestamp) {
+  // TODO: add a check that this method is always being called with non-decreasing timestamps.
+  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, timestamp=$2",
+      doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
   const int num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.value_type() == ValueType::kTombstone;
@@ -48,9 +53,11 @@ Status DocWriteBatch::SetPrimitive(
     // Navigate to the root of the document, not including the generation timestamp. We don't yet
     // know whether the document exists or when it was last updated.
     doc_iter.SeekToDocument(encoded_doc_key);
+    DOCDB_DEBUG_LOG("Top-level document exists: $0", doc_iter.subdoc_exists());
     if (!doc_iter.subdoc_exists()) {
       if (is_deletion) {
-        // We're performing a deletion, and the document is not present. Nothing to do.
+        DOCDB_DEBUG_LOG("We're performing a deletion, and the document is not present. "
+                        "Nothing to do.");
         return Status::OK();
       }
       // Record the fact that we're adding this subdocument in the DocWriteBatchCache, so that we
@@ -80,6 +87,8 @@ Status DocWriteBatch::SetPrimitive(
       if (subkey_index == num_subkeys - 1 && !is_deletion) {
         // We don't need to perform a RocksDB read at the last level for upserts, we just
         // overwrite the value within the last subdocument with what we're trying to write.
+        // We still perform the read for deletions, because we try to avoid writing a new tombstone
+        // if the data is not there anyway.
         doc_iter.AppendSubkeyInExistingSubDoc(subkey);
         doc_iter.AppendTimestampToPrefix(timestamp);
       } else {
@@ -87,6 +96,10 @@ Status DocWriteBatch::SetPrimitive(
         doc_iter.SeekToSubDocument(subkey);
         if (is_deletion) {
           if (!doc_iter.subdoc_exists()) {
+            // A parent subdocument of the value we're trying to delete, or that value itself,
+            // does not exist, nothing to do.
+            DOCDB_DEBUG_LOG("Subdocument does not exist at subkey level $0 (subkey: $1)",
+                            subkey_index, subkey.ToString());
             return Status::OK();
           }
           if (subkey_index == num_subkeys - 1) {
@@ -110,20 +123,28 @@ Status DocWriteBatch::SetPrimitive(
 
       // Record the fact that we're adding this subdocument in our local cache so that future
       // operations in this document write batch don't have to add it or look for it in RocksDB.
-      cache_.Put(doc_iter.key_prefix().AsStringRef(), timestamp, ValueType::kObject);
+      // Note that the key we're using in the cache does not have the timestamp at the end.
+      cache_.Put(doc_iter.key_prefix().AsSliceWithoutTimestamp().ToString(),
+                 timestamp, ValueType::kObject);
 
       doc_iter.AppendToPrefix(subkey);
       doc_iter.AppendTimestampToPrefix(timestamp);
     }
   }
 
+
   write_batch_.Put(doc_iter.key_prefix().AsSlice(), value.ToValue());
+
+  // The key we use in the DocWriteBatchCache does not have a final timestamp, because that's the
+  // key we expect to look up.
+  cache_.Put(doc_iter.key_prefix().AsSliceWithoutTimestamp().ToString(),
+      timestamp, value.value_type());
 
   return Status::OK();
 }
 
 Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const Timestamp timestamp) {
-  return SetPrimitive(doc_path, PrimitiveValue::kTombstone, timestamp);
+  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), timestamp);
 }
 
 string DocWriteBatch::ToDebugString() {

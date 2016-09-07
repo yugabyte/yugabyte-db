@@ -39,6 +39,8 @@ Options:
     Pass the given target to make.
   --cxx-test <test_name>
     Build and run the given C++ test. We run the test directly (not going through ctest).
+  --gtest_filter <filter>
+    This will be passed to the C++ test specified by --cxx-test.
   --no-tcmalloc
     Do not use tcmalloc.
   --no-rebuild-thirdparty

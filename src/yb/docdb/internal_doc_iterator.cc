@@ -5,8 +5,9 @@
 #include <string>
 #include <sstream>
 
-#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/docdb-internal.h"
 
 using std::endl;
 using std::string;
@@ -38,6 +39,8 @@ void InternalDocIterator::SeekToDocument(const KeyBytes& encoded_doc_key) {
 }
 
 void InternalDocIterator::SeekToSubDocument(const PrimitiveValue& subkey) {
+  DOCDB_DEBUG_LOG("Called with subkey=$0", subkey.ToString());
+  assert(key_prefix_ends_with_ts_);
   AppendSubkeyInExistingSubDoc(subkey);
   SeekToKeyPrefix();
 }
@@ -61,17 +64,24 @@ void InternalDocIterator::ReplaceTimestampInPrefix(Timestamp timestamp) {
 
 void InternalDocIterator::AppendUpdateTimestampIfNotFound(Timestamp update_timestamp) {
   if (subdoc_exists()) {
-    // We can only add updates at a later timestamp.
-    assert(update_timestamp.CompareTo(subdoc_gen_ts_) > 0);
+    // We can only add updates at a later timestamp, or at the same timestamp if they are part of
+    // the same DocWriteBatch.
+    assert(update_timestamp.CompareTo(subdoc_gen_ts_) >= 0);
+    DOCDB_DEBUG_LOG("Subdocument for key_prefix=$0 already exists, not appending timestamp $1",
+                    BestEffortKeyBytesToStr(key_prefix_),
+                    update_timestamp.ToDebugString());
   } else {
+    DOCDB_DEBUG_LOG("Subdocument for key_prefix=$0 does not exist, appending timestamp $1",
+                    BestEffortKeyBytesToStr(key_prefix_),
+                    update_timestamp.ToDebugString());
     AppendTimestampToPrefix(update_timestamp);
   }
 }
 
 string InternalDocIterator::ToDebugString() {
   stringstream ss;
-  ss << "DocIterator:" << endl;
-  ss << "  key_prefix: " << key_prefix_.ToString() << endl;
+  ss << "InternalDocIterator:" << endl;
+  ss << "  key_prefix: " << BestEffortKeyBytesToStr(key_prefix_) << endl;
   ss << "  key_prefix_ends_with_ts: " << key_prefix_ends_with_ts_ << endl;
   if (subdoc_exists_ == Trilean::kTrue || subdoc_deleted()) {
     ss << "  subdoc_type: " << ValueTypeToStr(subdoc_type_) << endl;
@@ -86,6 +96,7 @@ void InternalDocIterator::SeekToKeyPrefix() {
   subdoc_exists_ = ToTrilean(false);
   subdoc_type_ = ValueType::kInvalidValueType;
 
+  DOCDB_DEBUG_LOG("key_prefix=$0", BestEffortKeyBytesToStr(key_prefix_));
   boost::optional<DocWriteBatchCache::Entry> previous_entry = doc_write_batch_cache_->Get(
       key_prefix_.AsStringRef());
   if (previous_entry) {
@@ -106,15 +117,25 @@ void InternalDocIterator::SeekToKeyPrefix() {
         subdoc_gen_ts_ = DecodeTimestampFromKey(key, key_prefix_.size());
         // Cache the results of reading from RocksDB so that we don't have to read again in a later
         // operation in the same DocWriteBatch.
-        doc_write_batch_cache_->Put(key_prefix_.AsStringRef(), subdoc_gen_ts_, subdoc_type_);
+        DOCDB_DEBUG_LOG("About to write to DocWriteBatchCache: $0",
+                        BestEffortKeyBytesToStr(key_prefix_));
+        doc_write_batch_cache_->Put(key_prefix_, subdoc_gen_ts_, subdoc_type_);
         if (subdoc_type_ != ValueType::kTombstone) {
           subdoc_exists_ = ToTrilean(true);
           key_prefix_.AppendRawBytes(key.data() + key_prefix_.size(), kBytesPerTimestamp);
           key_prefix_ends_with_ts_ = true;
         }
+      } else {
+        DOCDB_DEBUG_LOG("Actual RocksDB key found ($0) does not start with $1",
+                        BestEffortKeyBytesToStr(KeyBytes(key.ToString())),
+                        BestEffortKeyBytesToStr(key_prefix_));
       }
+    } else {
+      DOCDB_DEBUG_LOG("No more data found in RocksDB when trying to seek at prefix $0",
+                      BestEffortKeyBytesToStr(key_prefix_));
     }
   }
+  DOCDB_DEBUG_LOG("New InternalDocIterator state: $0", ToDebugString());
 }
 
 }

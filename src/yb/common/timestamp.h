@@ -54,6 +54,8 @@ class Timestamp {
 
   std::string ToString() const;
 
+  std::string ToDebugString() const;
+
   // Returns this Timestamp as an uint64_t
   uint64_t ToUint64() const;
 
@@ -75,7 +77,11 @@ class Timestamp {
   // The minimum timestamp.
   static const Timestamp kMin;
 
+  // Timestamps are converted to debug strings as <this_string_constant>(<timestamp_value>).
+  static const char* const kTimestampDebugStrPrefix;
+
  private:
+
   val_type v;
 };
 
@@ -90,6 +96,10 @@ inline int Timestamp::CompareTo(const Timestamp &other) const {
     return 1;
   }
   return 0;
+}
+
+inline int operator <(const Timestamp& a, const Timestamp& b) {
+  return a.CompareTo(b) < 0;
 }
 
 } // namespace yb

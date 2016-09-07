@@ -62,6 +62,10 @@ inline std::string EncodeValueType(const ValueType value_type) {
   return s;
 }
 
+inline std::ostream& operator<<(std::ostream& out, const ValueType value_type) {
+  return out << ValueTypeToStr(value_type);
+}
+
 }
 }
 

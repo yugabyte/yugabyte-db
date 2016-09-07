@@ -7,6 +7,9 @@
 #include <vector>
 
 #include "rocksdb/slice.h"
+
+#include "yb/common/encoded_key.h"
+#include "yb/common/schema.h"
 #include "yb/docdb/primitive_value.h"
 
 namespace yb {
@@ -100,11 +103,11 @@ class DocKey {
 
   // Decodes a document key from the given RocksDB key.
   // slice (in/out) - a slice corresponding to a RocksDB key. Any consumed bytes are removed.
-  yb::Status DecodeFrom(rocksdb::Slice *slice);
+  Status DecodeFrom(rocksdb::Slice* slice);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
-  yb::Status FullyDecodeFrom(const rocksdb::Slice& slice);
+  Status FullyDecodeFrom(const rocksdb::Slice& slice);
 
   // Converts the document key to a human-readable representation.
   std::string ToString() const;
@@ -143,6 +146,11 @@ class DocKey {
     return CompareTo(other) > 0;
   }
 
+  // Converts the given Kudu encoded key to a DocKey. It looks like Kudu's EncodedKey assumes all
+  // fields are non-null, so we have the same assumption here. In fact, there does not seem to
+  // even be a way to encode null fields in an EncodedKey.
+  static DocKey FromKuduEncodedKey(const EncodedKey& encoded_key, const Schema& schema);
+
  private:
 
   bool hash_present_;
@@ -154,8 +162,8 @@ class DocKey {
 // Consume a group of document key components, ending with ValueType::kGroupEnd.
 // @param slice - the current point at which we are decoding a key
 // @param result - vector to append decoded values to.
-yb::Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
-                                         std::vector<PrimitiveValue>* result);
+Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
+                                     std::vector<PrimitiveValue>* result);
 
 inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
   out << doc_key.ToString();
@@ -176,6 +184,12 @@ class SubDocKey {
   SubDocKey(const DocKey& doc_key,
             Timestamp doc_gen_ts)
       : doc_key_(doc_key),
+        doc_gen_ts_(doc_gen_ts) {
+  }
+
+  SubDocKey(DocKey&& doc_key,
+            Timestamp doc_gen_ts)
+      : doc_key_(std::move(doc_key)),
         doc_gen_ts_(doc_gen_ts) {
   }
 
@@ -203,18 +217,23 @@ class SubDocKey {
     AppendSubKeysAndTimestamps(subkeys_and_timestamps...);
   }
 
+  void RemoveLastSubKeyAndTimestamp() {
+    assert(!subkeys_.empty());
+    subkeys_.pop_back();
+  }
+
   void Clear();
 
   KeyBytes Encode() const;
 
   // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key. All bytes
   // of the slice have to be successfully decoded.
-  yb::Status DecodeFrom(const rocksdb::Slice& slice);
+  Status DecodeFrom(const rocksdb::Slice& slice);
 
   // Unlike the DocKey case, this is the same as DecodeFrom, because a "subdocument key" occupies
-  // the entire RocksDB key. This is here for compatibilty with templates that can operate both on
+  // the entire RocksDB key. This is here for compatibility with templates that can operate both on
   // DocKeys and SubDocKeys.
-  yb::Status FullyDecodeFrom(const rocksdb::Slice& slice) { return DecodeFrom(slice); }
+  Status FullyDecodeFrom(const rocksdb::Slice& slice) { return DecodeFrom(slice); }
 
   std::string ToString() const;
 
@@ -245,9 +264,12 @@ class SubDocKey {
 
   int CompareTo(const SubDocKey& other) const;
 
+  Timestamp doc_gen_ts() const { return doc_gen_ts_; }
+  void set_doc_gen_ts(yb::Timestamp new_doc_gen_ts) { doc_gen_ts_ = new_doc_gen_ts; }
+
  private:
   DocKey doc_key_;
-  yb::Timestamp doc_gen_ts_;
+  Timestamp doc_gen_ts_;
   std::vector<std::pair<PrimitiveValue, yb::Timestamp>> subkeys_;
 };
 
@@ -255,6 +277,9 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
   out << subdoc_key.ToString();
   return out;
 }
+
+// A best-effort to decode the given sequence of key bytes as either a DocKey or a SubDocKey.
+std::string BestEffortKeyBytesToStr(const KeyBytes& key_bytes);
 
 }
 }
