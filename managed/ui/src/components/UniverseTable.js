@@ -1,69 +1,29 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, PropTypes } from 'react';
 import * as moment from 'moment'
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isValidArray, isValidObject } from '../utils/ObjectUtils';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
-import { ListGroup } from 'react-bootstrap';
-import { Link } from 'react-router';
-
-class ProviderComponent extends Component {
-  render() {
-    return (
-      <li>Provider:&nbsp;{this.props.provider}</li>
-    )
-  }
-}
-
-class RegionComponent extends Component {
-  render() {
-    return (
-      <div>
-        Regions:
-        <ul>
-           {
-             this.props.regions.map(function (regionItem, idx) {
-               return <li key={regionItem + idx}>{regionItem.name.toString()}</li>;
-             })
-           }
-        </ul>
-      </div>
-    )
-  }
-}
-
-class NumNodesComponent extends Component {
-  render() {
-    return (
-      <li>Number Of Nodes:&nbsp;{this.props.numNodes}</li>
-    )
-  }
-}
-
-class RFComponent extends Component {
-  render() {
-    return (
-      <li>Replication Factor&nbsp;{this.props.numRF}</li>
-    )
-  }
-}
+import DescriptionList from './DescriptionList';
 
 class UniverseDetailsCell extends Component {
+  static propTypes = {
+    cell: PropTypes.object.isRequired
+  };
+
   render() {
+    const { cell } = this.props;
+    var universeDetailsItems = Object.keys(cell).map(function(key, index) {
+      return {name: key, data: cell[key]}
+    });
     return (
-      <ListGroup componentClass="ul">
-        <ProviderComponent provider={this.props.providerString} />
-        <RegionComponent regions={this.props.regionString} />
-        <NumNodesComponent numNodes={this.props.numNodes} />
-        <RFComponent numRF={this.props.numRF} />
-      </ListGroup>
+      <DescriptionList listItems={universeDetailsItems} />
     )
   }
 }
-
 
 class UniverseButtonGroupCell extends Component {
   render() {
@@ -101,10 +61,7 @@ export default class UniverseTable extends Component {
     var universeDisplay = [];
 
     function detailStringFormatter(cell, row) {
-      return <UniverseDetailsCell providerString={cell.provider}
-                                  regionString={cell.regions}
-                                  numNodes={cell.nodes}
-                                  numRF={cell.rf} />;
+      return <UniverseDetailsCell cell={cell} />;
     }
 
     function universeNameTypeFormatter(cell, row) {
@@ -155,8 +112,13 @@ export default class UniverseTable extends Component {
           replicationFactor = item.universeDetails.userIntent.replicationFactor;
         }
 
-        var universeDetailString={"provider": providerName, "regions": regionNames.length>0 ? regionNames: [],
-                                 "nodes":numNodes, "rf":replicationFactor};
+        var universeDetailString= {
+          "Provider": providerName,
+          "Regions": regionNames.length > 0 ? regionNames: [],
+          "Num of Nodes": numNodes,
+          "Replication Factor": replicationFactor
+        };
+
         var updateProgressStatus = false;
         var updateSuccessStatus = false;
         var status = "";
