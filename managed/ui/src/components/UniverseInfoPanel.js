@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Panel } from 'react-bootstrap';
 import * as moment from 'moment';
 import DescriptionList from './DescriptionList';
+import YBPanelItem from './YBPanelItem';
 
 export default class UniverseInfoPanel extends Component {
   static propTypes = {
@@ -25,9 +25,9 @@ export default class UniverseInfoPanel extends Component {
     ];
 
     return (
-      <Panel header="Universe Configuration" bsStyle="info">
+      <YBPanelItem name="Universe Configuration">
         <DescriptionList listItems={universeInfoItems} />
-      </Panel>
+      </YBPanelItem>
     );
   }
 }

@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Field, reduxForm } from 'redux-form';
+import { Field } from 'redux-form';
 import  YBInputField  from './YBInputField';
 
 class LoginForm extends Component {

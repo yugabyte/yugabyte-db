@@ -40,28 +40,41 @@ export default class UniverseDetail extends Component {
     return (
       <Grid id="page-wrapper">
         <Row className="header-row">
-          <h3>Universe { currentUniverse.name }</h3>
-          <UniverseModalContainer type="Edit" />
-          <DeleteUniverseContainer uuid={this.props.universe.currentUniverse.universeUUID} />
+          <Col lg={6} lgOffset={1}>
+            <h3>Universe { currentUniverse.name }</h3>
+          </Col>
+          <Col lg={1}>
+            <UniverseModalContainer type="Edit" />
+          </Col>
+          <Col lg={1}>
+            <DeleteUniverseContainer uuid={this.props.universe.currentUniverse.universeUUID} />
+          </Col>
         </Row>
         <Row>
-          <ConnectStringPanel universeId={this.props.universe.currentUniverse.universeUUID}
-                              customerId={localStorage.getItem("customer_id")} />
+          <Col lg={11}>
+            <ConnectStringPanel universeId={this.props.universe.currentUniverse.universeUUID}
+                                customerId={localStorage.getItem("customer_id")} />
+          </Col>
         </Row>
         <Row>
           <Col md={6}>
             <RegionMap regions={currentUniverse.regions}/>
           </Col>
-          <Col md={6}>
+          <Col md={5} lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse} />
           </Col>
         </Row>
         <Row>
-          <NodeDetails nodeDetails={universeDetails.nodeDetailsMap}/>
+          <Col lg={11}>
+            <NodeDetails nodeDetails={universeDetails.nodeDetailsMap}/>
+          </Col>
         </Row>
         <Row>
-          <GraphPanelContainer nodePrefix={universeDetails.nodePrefix} />
+          <Col lg={9}>
+            <GraphPanelContainer nodePrefix={universeDetails.nodePrefix} />
+          </Col>
         </Row>
-      </Grid>);
+      </Grid>
+    );
   }
 }

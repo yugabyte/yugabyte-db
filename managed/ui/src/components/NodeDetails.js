@@ -3,6 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import YBPanelItem from './YBPanelItem';
 
 export default class NodeDetails extends Component {
   static propTypes = {
@@ -23,7 +24,7 @@ export default class NodeDetails extends Component {
     });
 
     return (
-      <div className="row">
+      <YBPanelItem name="Node Details">
         <BootstrapTable data={nodeDetailRows}>
           <TableHeaderColumn dataField="name" isKey={true}>Instance Name</TableHeaderColumn>
           <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
@@ -31,7 +32,7 @@ export default class NodeDetails extends Component {
           <TableHeaderColumn dataField="isTServer">TServer</TableHeaderColumn>
           <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
         </BootstrapTable>
-      </div>
+      </YBPanelItem>
     )
   }
 }

@@ -3,6 +3,7 @@
 import DeleteUniverse from '../components/DeleteUniverse.js';
 import { connect } from 'react-redux';
 import { deleteUniverse, deleteUniverseSuccess, deleteUniverseFailure, resetUniverseInfo } from '../actions/universe';
+import { browserHistory } from 'react-router'
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -11,7 +12,8 @@ const mapDispatchToProps = (dispatch) => {
         .then((response) => {
           if (!response.error) {
             dispatch(deleteUniverseSuccess(response.payload));
-            window.location.href = '/home';
+            browserHistory.push('/universes')
+
           } else {
             dispatch(deleteUniverseFailure(response.payload));
           }

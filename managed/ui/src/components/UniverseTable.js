@@ -8,6 +8,7 @@ import { isValidArray, isValidObject } from '../utils/ObjectUtils';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import { ListGroup } from 'react-bootstrap';
+import { Link } from 'react-router';
 
 class ProviderComponent extends Component {
   render() {
@@ -69,11 +70,11 @@ class UniverseButtonGroupCell extends Component {
     return (
       <div className="row">
         <div className="col-lg-3">
-          <a href={'/universes/' + this.props.uuid}
+          <Link to={'/universes/' + this.props.uuid}
             className='universe-button btn
             btn-xs btn-primary '>
             <i className='fa fa-eye'></i>&nbsp;View&nbsp;
-          </a>
+          </Link>
         </div>
         <div className="col-lg-3">
           <UniverseModalContainer type={'Edit'} uuid={this.props.uuid} />
@@ -97,7 +98,6 @@ export default class UniverseTable extends Component {
   }
 
   render() {
-    var self = this;
     var universeDisplay = [];
 
     function detailStringFormatter(cell, row) {
