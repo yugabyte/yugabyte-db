@@ -29,7 +29,7 @@ const mapDispatchToProps = (dispatch) => {
         });
     },
 
-    getRegionListItems: (provider,isMultiAz) => {
+    getRegionListItems: (provider, isMultiAz) => {
       dispatch(getRegionList(provider, isMultiAz))
         .then((response) => {
           if(response.payload.status !== 200) {

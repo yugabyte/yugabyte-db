@@ -3,40 +3,54 @@
 import React, { Component } from 'react';
 import { Modal } from 'react-bootstrap';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
-import $ from 'jquery';
 
 export default class DeleteUniverse extends Component {
 
   constructor(props) {
     super(props);
-    this.showModal = this.showModal.bind(this);
-    this.closeModal = this.closeModal.bind(this);
+    this.showDeleteModal = this.showDeleteModal.bind(this);
+    this.closeDeleteModal = this.closeDeleteModal.bind(this);
     this.confirmDelete = this.confirmDelete.bind(this);
     this.state = {
-      showModal: false
+      deleteModalShown: false
     };
   }
-  
-  showModal() {
-    this.setState({showModal: true});
+
+  showDeleteModal() {
+    this.setState({deleteModalShown: true});
   }
 
-  closeModal() {
-    this.setState({showModal: false});
+  closeDeleteModal() {
+    this.setState({deleteModalShown: false});
   }
 
   confirmDelete() {
-    this.props.deleteUniverse(this.props.universe.currentUniverse.universeUUID);
+    
+    this.props.deleteUniverse(this.props.uuid);
   }
 
   render() {
     return (
       <div>
-        <div className="btn btn-default" onClick={this.showModal}> Delete </div>
-        <Modal show={this.state.showModal} onHide={this.closeModal}>
-          Are you sure you want to continue ?<br/>
-          <div className="btn btn-default " onClick={this.confirmDelete}> Yes </div>
-          <div className="btn btn-default"> No </div>
+        <div className="universe-button btn btn-xs btn-danger " onClick={this.showDeleteModal}>
+          <i className='fa fa-trash-o' onClick={this.closeDeleteModal}></i>
+            &nbsp;Delete
+        </div>
+        <Modal show={this.state.deleteModalShown} onHide={this.closeDeleteModal}>
+          <Modal.Header closeButton>
+            <Modal.Title>Delete Universe </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="delete-title">Delete Universe ?</div>
+              <div className="delete-btn-group">
+                <div className="btn btn-sm btn-default" onClick={this.confirmDelete}>
+                  Yes
+                </div>
+                <div className="btn btn-sm btn-default">
+                  No
+                </div>
+              </div>
+           </Modal.Body>
         </Modal>
       </div>
     )
