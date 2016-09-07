@@ -68,16 +68,27 @@ ul {
     font-family: monospace;
 }
 
-.universeButton {
-  margin-top: 6%;
-}
-
-.universeTableButton {
-  margin-top: 4%;
-}
-
-.universeButton {
+.universe-button {
     margin-top: 18px;
+    width:60px;
+}
+
+
+.detail-string-cell {
+    padding-left: 0;
+}
+
+.delete-title {
+    margin-top: 10px;
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 1.2em;
+}
+
+.delete-btn-group {
+    width: 33%;
+    margin-left: 40%;
+    margin-bottom: 4%;
 }
 
 .universeTableHeader {
@@ -88,3 +99,4 @@ ul {
 .top-nav-menu-button {
     width: 30px;
 }
+

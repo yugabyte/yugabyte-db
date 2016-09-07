@@ -1,10 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import { Modal } from 'react-bootstrap';
 import Select from 'react-select';
 import 'react-select/dist/react-select.css';
 import $ from 'jquery';
+import { isValidObject } from '../utils/ObjectUtils';
 
 class UniverseModal extends Component {
   constructor(props) {
@@ -25,31 +26,36 @@ class UniverseModal extends Component {
   componentDidMount() {
     var self = this;
     if (this.props.type === "Edit") {
-      var currentProvider = self.props.universe.currentUniverse.provider.uuid;
-      var currentMultiAz = self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
-      var items = self.props.universe.currentUniverse.regions.map(function(item, idx){
-        return {'value': item.uuid, 'name': item.name, "label": item.name}
-      });
+      var currentProvider = "";
+      var currentMultiAz = "";
+      var universeName = "";
+      if(isValidObject(self.props.universe.currentUniverse)) {
+        currentProvider = self.props.universe.currentUniverse.provider.uuid;
+        currentMultiAz = self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
+        universeName = self.props.universe.currentUniverse.name;
+        var items = self.props.universe.currentUniverse.regions.map(function (item, idx) {
+          return {'value': item.uuid, 'name': item.name, "label": item.name}
+        });
+        self.props.getRegionListItems(currentProvider, currentMultiAz);
+        self.props.getInstanceTypeListItems(currentProvider);
+      }
       this.state = {
         readOnlyInput: "readonly",
         readOnlySelect: "disabled",
-        universeName: self.props.universe.currentUniverse.name,
+        universeName: universeName,
         azCheckState: currentMultiAz,
         regionSelected: items,
-        buttonType: "universeButton btn btn-default btn-warning"
-
+        buttonType: "universe-button btn btn-xs btn-info ",
+        buttonIcon: "fa fa-pencil"
       }
-
-      self.props.getRegionListItems(currentProvider, currentMultiAz);
-      self.props.getInstanceTypeListItems(currentProvider);
     } else {
       this.state = {
         readOnlyInput: "",
         readOnlySelect: "",
         universeName: "",
         azCheckState: true,
-        buttonType: "universeButton btn btn-default btn-success"
-
+        buttonType: "universe-button btn btn-xs btn-success ",
+        buttonIcon: "fa fa-database"
       }
     }
   }
@@ -87,7 +93,8 @@ class UniverseModal extends Component {
     if (this.props.type === "Create") {
       self.props.createNewUniverse($('#universeForm').serialize());
     } else {
-      self.props.editUniverse(this.props.universe.currentUniverse.universeUUID, $('#universeForm').serialize());
+      self.props.editUniverse(this.props.universe.currentUniverse.universeUUID,
+        $('#universeForm').serialize());
     }
     self.closeModal();
   }
@@ -97,17 +104,19 @@ class UniverseModal extends Component {
       readOnlyInput: "",
       readOnlySelect: "",
       universeName: "",
-      azCheckState: true
-    })
+      azCheckState: true,
+      buttonType: ""
+    });
   }
+
   render(){
-    const { cloud: { providers, regions, instanceTypes}} = this.props;
+
     var universeProviderList = this.props.cloud.providers.map(function(providerItem,idx) {
       return <option key={providerItem.uuid} value={providerItem.uuid}>
         {providerItem.name}
       </option>;
     });
-
+    
     if (this.props.type === "Create") {
       universeProviderList.unshift(<option key="" value=""></option>);
     }
@@ -128,13 +137,14 @@ class UniverseModal extends Component {
       <div>
         <div>
           <div className={this.state.buttonType} onClick={this.showModal}>
-            {this.props.type} Universe
+            <i className={this.state.buttonIcon}></i>&nbsp;
+            {this.props.type}
           </div>
         </div>
         <Modal show={this.state.showModal} onHide={this.closeModal}>
           <form id="universeForm" onSubmit={this.universeAction}>
             <Modal.Header closeButton>
-              <Modal.Title>Edit Universe </Modal.Title>
+              <Modal.Title>{this.props.type} Universe </Modal.Title>
             </Modal.Header>
             <Modal.Body>
               <label className="form-item-label">
@@ -147,7 +157,8 @@ class UniverseModal extends Component {
               </label>
               <label className="form-item-label">
                 Cloud Provider
-                <select name="provider" className="form-control" disabled={this.state.readOnlySelect}
+                <select name="provider" className="form-control"
+                        disabled={this.state.readOnlySelect}
                         onChange={this.providerChanged}>
                         {universeProviderList}
                 </select>
@@ -157,7 +168,8 @@ class UniverseModal extends Component {
                 <Select
                   name="regionList[]"
                   options={universeRegionList}
-                  multi={this.state.azCheckState} value={this.state.regionSelected}
+                  multi={this.state.azCheckState}
+                  value={this.state.regionSelected}
                   onChange={this.regionChanged}
                 />
               </label>
@@ -170,7 +182,8 @@ class UniverseModal extends Component {
                        name="isMultiAZ"
                        id="isMultiAZ"
                        defaultChecked={this.state.azCheckState}
-                       onChange={this.multiAZChanged} value={this.state.azCheckState}
+                       onChange={this.multiAZChanged}
+                       value={this.state.azCheckState}
                       />
               </label>
               <label className="form-item-label">

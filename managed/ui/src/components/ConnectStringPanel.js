@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import { Panel } from 'react-bootstrap';
 import DescriptionList from './DescriptionList';
 import { ROOT_URL } from '../config';
