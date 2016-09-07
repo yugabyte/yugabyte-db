@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Panel } from 'react-bootstrap';
 import DescriptionList from './DescriptionList';
 import { ROOT_URL } from '../config';
+import YBPanelItem from './YBPanelItem';
 
 export default class UniverseInfoPanel extends Component {
   render() {
@@ -17,11 +17,10 @@ export default class UniverseInfoPanel extends Component {
       {name: "Load Test", data: connect_string, dataClass: "ybCodeSnippet well well-sm"}
     ];
     return (
-      <Panel header="Basic Details" bsStyle="info">
-        <div>
-          <DescriptionList listItems={connectStringPanelItems} />
-        </div>
-      </Panel>);
+      <YBPanelItem name="Basic Details">
+        <DescriptionList listItems={connectStringPanelItems} />
+      </YBPanelItem>
+    );
   }
 }
 

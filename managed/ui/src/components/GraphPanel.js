@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Panel } from 'react-bootstrap';
 import InlineFrame from './InlineFrame';
-import GraphPanelHeaderContainer from '../containers/GraphPanelHeaderContainer';
+import YBPanelItem from './YBPanelItem';
 
 export default class GraphPanel extends Component {
   static propTypes = {
@@ -33,13 +32,10 @@ export default class GraphPanel extends Component {
         "&var-host=" + nodePrefix + "&fullscreen";
       return (<InlineFrame key={panelId} src={panelUrl} />);
     });
-
-    var title = <GraphPanelHeaderContainer />;
-
     return (
-      <Panel header={title} bsStyle="info">
+      <YBPanelItem name="Graph Panels">
         {panelFrames}
-      </Panel>
+      </YBPanelItem>
     );
   }
 }
