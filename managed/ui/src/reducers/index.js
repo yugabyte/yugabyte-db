@@ -5,6 +5,8 @@ import CustomerReducer from './reducer_customer';
 import CloudReducer from './reducer_cloud';
 import UniverseReducer from './reducer_universe';
 import GraphReducer from './reducer_graph';
+import TasksReducer from './reducer_tasks';
+
 import { reducer as formReducer } from 'redux-form';
 
 const rootReducer = combineReducers({
@@ -12,7 +14,8 @@ const rootReducer = combineReducers({
   cloud: CloudReducer,
   universe: UniverseReducer,
   form: formReducer,
-  graph: GraphReducer
+  graph: GraphReducer,
+  tasks: TasksReducer
 });
 
 export default rootReducer;

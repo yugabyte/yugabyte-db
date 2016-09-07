@@ -4,24 +4,24 @@
 # --- !Ups
 
 create table availability_zone (
-  uuid                          uuid not null,
+  uuid                          varchar(40) not null,
   code                          varchar(25) not null,
   name                          varchar(100) not null,
-  region_uuid                   uuid,
+  region_uuid                   varchar(40),
   active                        boolean default true not null,
   subnet                        varchar(50) not null,
   constraint pk_availability_zone primary key (uuid)
 );
 
 create table customer (
-  uuid                          uuid not null,
+  uuid                          varchar(40) not null,
   customer_id                   integer,
   email                         varchar(256) not null,
   password_hash                 varchar(256) not null,
   name                          varchar(256) not null,
-  creation_date                 timestamp not null,
+  creation_date                 datetime(6) not null,
   auth_token                    varchar(255),
-  auth_token_issue_date         timestamp,
+  auth_token_issue_date         datetime(6),
   universe_uuids                LONGTEXT not null,
   constraint uq_customer_email unique (email),
   constraint pk_customer primary key (uuid)
@@ -29,14 +29,14 @@ create table customer (
 
 create table customer_task (
   id                            bigint auto_increment not null,
-  customer_uuid                 uuid,
-  task_uuid                     uuid not null,
+  customer_uuid                 varchar(40),
+  task_uuid                     varchar(40) not null,
   target_type                   varchar(8) not null,
   target_name                   varchar(255) not null,
   type                          varchar(6) not null,
-  universe_universe_uuid        uuid,
-  create_time                   timestamp not null,
-  completion_time               timestamp,
+  universe_universe_uuid        varchar(40),
+  create_time                   datetime(6) not null,
+  completion_time               datetime(6),
   constraint ck_customer_task_target_type check (target_type in ('Table','Universe')),
   constraint ck_customer_task_type check (type in ('Delete','Create','Update')),
   constraint pk_customer_task primary key (id)
@@ -57,7 +57,7 @@ create table instance_type (
 );
 
 create table provider (
-  uuid                          uuid not null,
+  uuid                          varchar(40) not null,
   code                          varchar(255) not null,
   name                          varchar(255) not null,
   active                        boolean default true not null,
@@ -66,35 +66,35 @@ create table provider (
 );
 
 create table region (
-  uuid                          uuid not null,
+  uuid                          varchar(40) not null,
   code                          varchar(25) not null,
   name                          varchar(100) not null,
   yb_image                      varchar(255),
   longitude                     double,
   latitude                      double,
-  provider_uuid                 uuid,
+  provider_uuid                 varchar(40),
   active                        boolean default true not null,
   constraint pk_region primary key (uuid)
 );
 
 create table task_info (
-  uuid                          uuid not null,
+  uuid                          varchar(40) not null,
   task_type                     varchar(15) not null,
   task_state                    varchar(7) not null,
   percent_done                  integer default 0,
-  details                       clob not null,
+  details                       longtext not null,
   owner                         varchar(255) not null,
-  create_time                   timestamp not null,
-  update_time                   timestamp not null,
+  create_time                   datetime(6) not null,
+  update_time                   datetime(6) not null,
   constraint ck_task_info_task_type check (task_type in ('CreateUniverse','DestroyUniverse','EditUniverse')),
   constraint ck_task_info_task_state check (task_state in ('Running','Success','Failure','Created')),
   constraint pk_task_info primary key (uuid)
 );
 
 create table universe (
-  universe_uuid                 uuid not null,
+  universe_uuid                 varchar(40) not null,
   version                       integer not null,
-  creation_date                 timestamp not null,
+  creation_date                 datetime(6) not null,
   name                          varchar(255),
   customer_id                   integer,
   universe_details_json         LONGTEXT not null,
@@ -126,17 +126,17 @@ create index ix_region_provider_uuid on region (provider_uuid);
 
 # --- !Downs
 
-alter table availability_zone drop constraint if exists fk_availability_zone_region_uuid;
-drop index if exists ix_availability_zone_region_uuid;
+alter table availability_zone drop foreign key fk_availability_zone_region_uuid;
+drop index ix_availability_zone_region_uuid on availability_zone;
 
-alter table customer_task drop constraint if exists fk_customer_task_customer_uuid;
-drop index if exists ix_customer_task_customer_uuid;
+alter table customer_task drop foreign key fk_customer_task_customer_uuid;
+drop index ix_customer_task_customer_uuid on customer_task;
 
-alter table customer_task drop constraint if exists fk_customer_task_universe_universe_uuid;
-drop index if exists ix_customer_task_universe_universe_uuid;
+alter table customer_task drop foreign key fk_customer_task_universe_universe_uuid;
+drop index ix_customer_task_universe_universe_uuid on customer_task;
 
-alter table region drop constraint if exists fk_region_provider_uuid;
-drop index if exists ix_region_provider_uuid;
+alter table region drop foreign key fk_region_provider_uuid;
+drop index ix_region_provider_uuid on region;
 
 drop table if exists availability_zone;
 
