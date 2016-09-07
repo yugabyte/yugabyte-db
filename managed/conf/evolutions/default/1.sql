@@ -104,10 +104,10 @@ create table universe (
 
 create table yugaware_property (
   name                          varchar(255) not null,
-  type                          varchar(7) not null,
+  type                          varchar(6) not null,
   value                         LONGTEXT,
   description                   LONGTEXT,
-  constraint ck_yugaware_property_type check (type in ('Dynamic','Static')),
+  constraint ck_yugaware_property_type check (type in ('Config','System')),
   constraint pk_yugaware_property primary key (name)
 );
 

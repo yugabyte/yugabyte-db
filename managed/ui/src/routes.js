@@ -10,6 +10,7 @@ import Register from './pages/Register';
 import DashboardWrapper from './pages/DashboardWrapper';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
+import Universes from './pages/Universes';
 
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
@@ -43,7 +44,8 @@ export default (store) => {
       <Route path="/register" component={Register} />
       <Route onEnter={authenticatedSession} component={DashboardWrapper}>
         <IndexRoute component={Dashboard} />
-        <Route path="/home" component={Dashboard} />
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/universes" component={Universes}/>
         <Route path="/universes/:uuid" component={UniverseDetail} />
       </Route>
     </Route>
