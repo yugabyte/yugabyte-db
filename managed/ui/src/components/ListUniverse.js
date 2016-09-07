@@ -10,11 +10,10 @@ export default class ListUniverse extends Component {
     return (
       <div id="page-wrapper">
         <div className="row header-row">
-          <div className="col-lg-9 universeTableHeader">
-            <span className="h3">Universes</span>
-            <small> Status And Details</small>
+          <div className="col-lg-10 universe-table-header">
+            <h3>Universes<small> Status and details</small></h3>
           </div>
-        <div className="col-lg-2">
+        <div className="col-lg-1 universe-table-header-action">
           <UniverseModalContainer type="Create" />
         </div>
         </div>
