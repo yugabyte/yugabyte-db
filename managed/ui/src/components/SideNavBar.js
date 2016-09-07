@@ -28,8 +28,9 @@ export default class SideNavBar extends Component {
   }
 
 	render() {
+    const leftColStyle = {position: "fixed"};
     return (
-      <div className="col-md-3 left_col">
+      <div className="col-md-3 left_col" style={leftColStyle}>
         <div className="left_col scroll-view">
           <div className="navbar nav_title">
             <Link to="/dashboard" className="site_title">

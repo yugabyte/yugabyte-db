@@ -16,7 +16,7 @@
     margin: 0 0 0 120px;
     padding: 0 30px;
     border-left: 1px solid #e7e7e7;
-    background-color: #fff;
+    background-color: transparent;
     min-height: 100%;
 }
 
@@ -98,5 +98,9 @@ ul {
 
 .top-nav-menu-button {
     width: 30px;
+}
+
+.yb-nav-bar {
+    background-color: #fff;
 }
 

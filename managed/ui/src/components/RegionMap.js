@@ -4,6 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { Map, TileLayer } from 'react-leaflet';
 import MapMarker from './MapMarker';
 import 'leaflet/dist/leaflet.css';
+import YBPanelItem from './YBPanelItem';
 
 export default class RegionMap extends Component {
   static propTypes = {
@@ -32,11 +33,14 @@ export default class RegionMap extends Component {
       '&mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
     return (
-      <Map bounds={this.state.bounds} center={[-1, 0]} zoom={this.state.zoom} zoomControl={false}>
-        <TileLayer
-          attribution={attribution}
-          url='http://korona.geog.uni-heidelberg.de/tiles/roads/x={x}&y={y}&z={z}'/>
-        {regionMarkers}
-      </Map>);
+      <YBPanelItem name="Region Placement">
+        <Map bounds={this.state.bounds} center={[-1, 0]} zoom={this.state.zoom} zoomControl={false}>
+          <TileLayer
+            attribution={attribution}
+            url='http://korona.geog.uni-heidelberg.de/tiles/roads/x={x}&y={y}&z={z}'/>
+          {regionMarkers}
+        </Map>
+      </YBPanelItem>
+    );
   }
 }
