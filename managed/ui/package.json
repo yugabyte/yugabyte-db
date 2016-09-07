@@ -43,6 +43,7 @@
     "react-bootstrap": "^0.30.2",
     "react-bootstrap-table": "^2.4.2",
     "react-dom": "^15.3.0",
+    "react-gauge": "0.0.5",
     "react-leaflet": "^0.12.1",
     "react-modal": "^1.4.0",
     "react-redux": "^4.0.0",

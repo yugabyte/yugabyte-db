@@ -29,6 +29,12 @@ export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_SUCCESS = 'DELETE_UNIVERSE_SUCCESS';
 export const DELETE_UNIVERSE_FAILURE = 'DELETE_UNIVERSE_FAILURE';
 
+// Commissioner Tasks for Universe
+export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
+export const FETCH_UNIVERSE_TASKS_SUCCESS = 'FETCH_UNIVERSE_TASKS_SUCCESS';
+export const FETCH_UNIVERSE_TASKS_FAILURE = 'FETCH_UNIVERSE_TASKS_FAILURE';
+export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
+
 const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 
@@ -157,5 +163,35 @@ export function editUniverseFailure(error) {
   return {
     type: EDIT_UNIVERSE_FAILURE,
     payload: error
+  }
+}
+
+export function fetchUniverseTasks(universeUUID) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request =
+    axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`);
+  return {
+    type: FETCH_UNIVERSE_TASKS,
+    payload: request
+  };
+}
+
+export function fetchUniverseTasksSuccess(result) {
+  return {
+    type: FETCH_UNIVERSE_TASKS_SUCCESS,
+    payload: result
+  };
+}
+
+export function fetchUniverseTasksFailure(error) {
+  return {
+    type: FETCH_UNIVERSE_TASKS_FAILURE,
+    payload: error
+  }
+}
+
+export function resetUniverseTasks(error) {
+  return {
+    type: RESET_UNIVERSE_TASKS
   }
 }
