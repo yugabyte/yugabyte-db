@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -12,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.AWSConstants;
+import com.yugabyte.yw.cloud.AWSCostUtil;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
@@ -26,6 +29,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -236,6 +240,50 @@ public class UniverseController extends AuthenticatedController {
 
     ObjectNode response = Json.newObject();
     response.put("taskUUID", taskUUID.toString());
+    return ApiResponse.success(response);
+  }
+
+  public Result universeCost(UUID customerUUID, UUID universeUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.find.byId(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    Universe universe;
+    // Make sure the universe exists, this method will throw an exception if it does not.
+    try {
+      universe = Universe.get(universeUUID);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
+    }
+
+    // Get the node list for the universe.
+    Collection<NodeDetails> nodes = universe.getNodes();
+
+    double costPerDay = 0;
+
+    // TODO: only pick the newly configured nodes in case of the universe being edited.
+    for (NodeDetails node : nodes) {
+      // Get the region code for this node.
+      String regionCode = AvailabilityZone.find.byId(node.azUuid).region.code;
+      // Get the price.
+      // TODO: we do not currently store tenancy for the node.
+      try {
+        double instanceCostPerDay = AWSCostUtil.getCostPerHour(node.instance_type,
+                                                               regionCode,
+                                                               AWSConstants.Tenancy.Shared) * 24;
+        LOG.info("Computed cost per day for instance {}, type {}, region {} as {}",
+                 node.instance_name, node.instance_type, node.region, instanceCostPerDay);
+        costPerDay += instanceCostPerDay;
+      } catch (Exception e) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR,
+                                 "Error getting cost for universe " + universeUUID);
+      }
+    }
+
+    ObjectNode response = Json.newObject();
+    response.put("costPerDay", costPerDay);
     return ApiResponse.success(response);
   }
 
