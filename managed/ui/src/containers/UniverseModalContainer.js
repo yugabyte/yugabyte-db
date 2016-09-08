@@ -6,8 +6,10 @@ import { getRegionList, getRegionListSuccess, getRegionListFailure, getProviderL
          getProviderListSuccess, getProviderListFailure,
          getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure }
          from '../actions/cloud';
-import { createUniverse, createUniverseSuccess, createUniverseFailure } from '../actions/universe';
-import { editUniverse, editUniverseSuccess, editUniverseFailure } from '../actions/universe';
+import { createUniverse, createUniverseSuccess, createUniverseFailure,
+         editUniverse, editUniverseSuccess, editUniverseFailure,
+         fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure }
+         from '../actions/universe';
 
 const mapStateToProps = (state) => {
   return {
@@ -57,6 +59,14 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(createUniverseFailure(response.payload));
         } else {
           dispatch(createUniverseSuccess(response.payload));
+          dispatch(fetchUniverseList())
+              .then((response) => {
+                if (response.payload.status !== 200) {
+                  dispatch(fetchUniverseListFailure(response.payload));
+                } else {
+                  dispatch(fetchUniverseListSuccess(response.payload));
+                }
+              });
         }
       });
     },
@@ -67,6 +77,14 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(editUniverseFailure(response.payload));
         } else {
           dispatch(editUniverseSuccess(response.payload));
+          dispatch(fetchUniverseList())
+            .then((response) => {
+              if (response.payload.status !== 200) {
+                dispatch(fetchUniverseListFailure(response.payload));
+              } else {
+                dispatch(fetchUniverseListSuccess(response.payload));
+              }
+            });
         }
       });
     }
