@@ -4,7 +4,7 @@
 
 show_usage() {
   cat <<-EOT
-Usage: ${0##*/} [<build_type>] <test_executable_name> <test_filter> [<options>]
+Usage: ${0##*/} <build_type> <test_binary_name> <test_filter> [<options>]
 Runs the given test in a loop locally, collects statistics about successes/failures, and saves
 logs.
 
@@ -98,15 +98,16 @@ declare -i -r num_pos_args=${#positional_args[@]}
 if [[ $num_pos_args -ne 2 ]]; then
   show_usage >&2
   fatal "Expected exactly two positional arguments other than build type:" \
-        "<test_executable_name> <test_filter>"
+        "<test_binary_name> <test_filter>"
 fi
 
-test_executable_name=${positional_args[0]}
+test_binary_name=${positional_args[0]}
 test_filter=${positional_args[1]}
 
-test_executable=$BUILD_ROOT/bin/$test_executable_name
+test_binary=$( find_test_binary "$test_binary_name" )
+
 if [[ -z $log_dir ]]; then
-  log_dir=$HOME/logs/$script_name_no_ext/$test_executable_name/$test_filter/$(
+  log_dir=$HOME/logs/$script_name_no_ext/$test_binary_name/$test_filter/$(
     get_timestamp_for_filenames
   )
   mkdir -p "$log_dir"
@@ -116,7 +117,8 @@ if [[ $iteration -gt 0 ]]; then
   log_path=$log_dir/$iteration.log
   # One iteration
   set +e
-  "$test_executable" --gtest_filter="$test_filter" $more_test_args &>"$log_path"
+  export TEST_TMPDIR=/tmp/yb__${0##*/}__$RANDOM.$RANDOM.$RANDOM.$$
+  "$test_binary" --gtest_filter="$test_filter" $more_test_args &>"$log_path"
   exit_code=$?
   set -e
   if ! did_test_succeed "$exit_code" "$log_path"; then
@@ -129,6 +131,7 @@ if [[ $iteration -gt 0 ]]; then
     echo "PASSED: iteration $iteration"
     rm -f "$log_path"
   fi
+  rm -rf "$TEST_TMPDIR"
 else
   # Parallel execution of many iterations
   seq 1 $num_iter | \

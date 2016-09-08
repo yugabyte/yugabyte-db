@@ -157,7 +157,7 @@ is_known_non_gtest_test() {
 is_known_non_gtest_test_by_rel_path() {
   if [[ $# -ne 1 ]]; then
     fatal "is_known_non_gtest_test_by_rel_path takes exactly one argument" \
-         "(test executable path relative to the build directory)"
+         "(test binary path relative to the build directory)"
   fi
   local rel_test_path=$1
   validate_relative_test_binary_path "$rel_test_path"
@@ -505,7 +505,7 @@ handle_xml_output() {
 
   if [[ ! -f "$xml_output_file" ]]; then
     if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
-      echo "$rel_test_binary is a known non-gtest executable, OK that it did not produce XML" \
+      echo "$rel_test_binary is a known non-gtest binary, OK that it did not produce XML" \
            "output" >&2
     else
       echo "$rel_test_binary failed to produce an XML output file at $xml_output_file" >&2
@@ -715,7 +715,7 @@ set_asan_tsan_options() {
       log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' still does not exist."
       ( set -x; ls -l "$ASAN_SYMBOLIZER_PATH" )
     elif [[ ! -x $ASAN_SYMBOLIZER_PATH ]]; then
-      log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' is not executable, updating permissions."
+      log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' is not binary, updating permissions."
       ( set -x; chmod a+x "$ASAN_SYMBOLIZER_PATH" )
     fi
 
@@ -799,6 +799,27 @@ did_test_succeed() {
   fi
 
   return 0
+}
+
+find_test_binary() {
+  expect_num_args 1 "$@"
+  local binary_name=$1
+  expect_vars_to_be_set BUILD_ROOT
+  local dirs_tried=""
+  local rel_dir
+  for rel_dir in "${VALID_TEST_BINARY_DIRS[@]}"; do
+    local binary_dir=$BUILD_ROOT/$rel_dir
+    local candidate=$binary_dir/$binary_name
+    if [[ -f "$candidate" ]]; then
+      echo "$candidate"
+      return
+    fi
+    if [[ -n $dirs_tried ]]; then
+      dirs_tried+=", "
+    fi
+    dirs_tried+="$binary_dir"
+  done
+  fatal "Could not find binary $binary_name in any of the directories: $dirs_tried"
 }
 
 # -------------------------------------------------------------------------------------------------

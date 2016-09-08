@@ -75,13 +75,30 @@ void LogMessage(const InfoLogLevel log_level, Logger* logger,
 }  // namespace
 
 namespace {
-void GetFileCreateTime(const std::string& fname, uint64_t* file_ctime) {
+
+uint64_t GetFileCreateTime(const std::string& fname) {
   struct stat s;
-  if (stat(fname.c_str(), &s) != 0) {
-    *file_ctime = (uint64_t)0;
+  if (stat(fname.c_str(), &s) == 0) {
+    return static_cast<uint64_t>(s.st_ctime);
+  } else {
+    const string error_str(strerror(errno));
+    std::cerr << "Failed to get creation time of '" << fname << "': " << error_str << std::endl;
+    return 0;
   }
-  *file_ctime = static_cast<uint64_t>(s.st_ctime);
 }
+
+// Get the inode of the given file as a signed 64-bit integer, or -1 in case of failure.
+int64_t GetFileInode(const std::string& fname) {
+  struct stat s;
+  if (stat(fname.c_str(), &s) == 0) {
+    return int64_t(s.st_ino);
+  } else {
+    const string error_str(strerror(errno));
+    std::cerr << "Failed to get inode of '" << fname << "': " << error_str << std::endl;
+    return -1;
+  }
+}
+
 }  // namespace
 
 void AutoRollLoggerTest::RollLogFileBySizeTest(AutoRollLogger* logger,
@@ -112,24 +129,21 @@ void AutoRollLoggerTest::RollLogFileBySizeTest(AutoRollLogger* logger,
 
 uint64_t AutoRollLoggerTest::RollLogFileByTimeTest(
     AutoRollLogger* logger, size_t time, const string& log_message) {
-  uint64_t expected_create_time;
-  uint64_t actual_create_time;
-  uint64_t total_log_size;
+  uint64_t total_log_size = 0;
   EXPECT_OK(env->GetFileSize(kLogFile, &total_log_size));
-  GetFileCreateTime(kLogFile, &expected_create_time);
+  const int64_t expected_inode = GetFileInode(kLogFile);
   logger->SetCallNowMicrosEveryNRecords(0);
+  const uint64_t initial_create_time = GetFileCreateTime(kLogFile);
 
   // -- Write to the log for several times, which is supposed
   // to be finished before time.
   for (int i = 0; i < 10; ++i) {
      LogMessage(logger, log_message.c_str());
      EXPECT_OK(logger->GetStatus());
-     // Make sure we always write to the same log file (by
-     // checking the create time);
-     GetFileCreateTime(kLogFile, &actual_create_time);
+     // Make sure we always write to the same log file (by checking the inode).
+     EXPECT_EQ(expected_inode, GetFileInode(kLogFile));
 
      // Also make sure the log size is increasing.
-     EXPECT_EQ(expected_create_time, actual_create_time);
      EXPECT_GT(logger->GetLogFileSize(), total_log_size);
      total_log_size = logger->GetLogFileSize();
   }
@@ -143,12 +157,12 @@ uint64_t AutoRollLoggerTest::RollLogFileByTimeTest(
   LogMessage(logger, log_message.c_str());
 
   // At this time, the new log file should be created.
-  GetFileCreateTime(kLogFile, &actual_create_time);
-  EXPECT_GT(actual_create_time, expected_create_time);
-  EXPECT_LT(logger->GetLogFileSize(), total_log_size);
-  expected_create_time = actual_create_time;
 
-  return expected_create_time;
+  const uint64_t actual_create_time = GetFileCreateTime(kLogFile);
+  EXPECT_GT(actual_create_time, initial_create_time);
+  EXPECT_LT(logger->GetLogFileSize(), total_log_size);
+
+  return actual_create_time;
 }
 
 TEST_F(AutoRollLoggerTest, RollLogFileBySize) {
