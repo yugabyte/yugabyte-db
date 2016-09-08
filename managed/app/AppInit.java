@@ -34,7 +34,6 @@ public class AppInit {
             application.classloader()
         );
         Ebean.saveAll(all);
-      }
 
       // Enter all the configuration data. This is the first thing that should be done as the other
       // init steps may depend on this data.
@@ -43,6 +42,7 @@ public class AppInit {
       // Initialize the cloud engine.
       AWSInitializer aws = new AWSInitializer();
       aws.run();
+      }
     }
   }
 }
