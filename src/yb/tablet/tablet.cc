@@ -29,12 +29,20 @@
 
 #include <boost/bind.hpp>
 #include <boost/thread/shared_mutex.hpp>
+
+#include "rocksdb/db.h"
+#include "rocksdb/include/rocksdb/options.h"
+#include "rocksdb/statistics.h"
+#include "rocksdb/utilities/checkpoint.h"
+#include "rocksdb/write_batch.h"
+
 #include "yb/cfile/cfile_writer.h"
 #include "yb/common/iterator.h"
 #include "yb/common/row_changelist.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
+#include "yb/common/timestamp.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -67,16 +75,17 @@
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/slice.h"
 #include "yb/util/string_packer.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/primitive_value.h"
 
-#include "rocksdb/db.h"
-#include "rocksdb/include/rocksdb/options.h"
-#include "rocksdb/statistics.h"
-#include "rocksdb/utilities/checkpoint.h"
-#include "rocksdb/write_batch.h"
+
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
@@ -126,6 +135,12 @@ using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
 using strings::Substitute;
 using base::subtle::Barrier_AtomicIncrement;
+
+using docdb::DocKey;
+using docdb::PrimitiveValue;
+using docdb::DocWriteBatch;
+using docdb::DocPath;
+using docdb::DocRowwiseIterator;
 
 static CompactionPolicy *CreateCompactionPolicy() {
   return new BudgetedCompactionPolicy(FLAGS_tablet_compaction_budget_mb);
@@ -780,23 +795,33 @@ Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_req
 
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
                                               WriteBatch* write_batch) {
+  const Timestamp timestamp = clock_->Now();
+  DocWriteBatch doc_write_batch(rocksdb_.get());
   for (DecodedRowOperation row_op : row_ops) {
     switch (row_op.type) {
       case RowOperationsPB_Type_INSERT: {
         ConstContiguousRow r(schema(), row_op.row_data);
 
-        assert(schema()->num_key_columns() == 1);
-
         const string primary_key = r.CellSlice(0).ToString();
 
+        EncodedKeyBuilder key_builder(schema());
+
+        for (int i = 0; i < schema()->num_key_columns(); i++) {
+          key_builder.AddColumnKey(r.cell_ptr(i));
+        }
+
+        unique_ptr<EncodedKey> encoded_key(key_builder.BuildEncodedKey());
+
+        const DocKey dockey = DocKey::FromKuduEncodedKey(*encoded_key, *schema());
+
         for (int i = 0; i < schema()->num_columns(); i++) {
-          const string column_key = schema()->column_id(i).ToString();
-          string key = yb::util::PackZeroEncoded({primary_key, column_key});
+          const PrimitiveValue column_key(schema()->column_id(i));
+          const DocPath doc_path(dockey.Encode(), column_key);
           const Slice value_slice = r.CellSlice(i);
-          write_batch->Put(
-              rocksdb::Slice(key), rocksdb::Slice(
-                  reinterpret_cast<const char *>(value_slice.data()), value_slice.size())
-          );
+          const DataType data_type = schema()->column(i).type_info()->type();
+          const PrimitiveValue column_value =
+              PrimitiveValue::FromKuduValue(data_type, value_slice);
+          doc_write_batch.SetPrimitive(doc_path, column_value, timestamp);
         }
 
         break;
@@ -806,6 +831,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
                    << " for key-value tables";
     }
   }
+  *write_batch = std::move(*doc_write_batch.write_batch());
   return Status::OK();
 }
 
@@ -1757,7 +1783,8 @@ Status Tablet::KeyValueCaptureConsistentIterators(
     const ScanSpec *spec,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
   iters->clear();
-  iters->push_back(std::make_shared<KeyValueIterator>(projection, rocksdb_.get()));
+  iters->push_back(std::make_shared<DocRowwiseIterator>(
+      *projection, *schema(), rocksdb_.get(), clock_->Now()));
   return Status::OK();
 }
 

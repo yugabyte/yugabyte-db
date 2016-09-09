@@ -366,5 +366,21 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
   }
 }
 
+PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
+  switch (data_type) {
+    case DataType::INT64:
+      return PrimitiveValue(*reinterpret_cast<const int64_t*>(slice.data()));
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::STRING:
+      return PrimitiveValue(slice.ToString());
+    case DataType::INT32:
+      // TODO: fix cast when variable length integer encoding is implemented.
+      return PrimitiveValue(*reinterpret_cast<const int32_t*>(slice.data()));
+    default:
+      LOG(FATAL) << "Converting Kudu value of type " << data_type
+                 << " to docdb PrimitiveValue is currently not supported";
+    }
+}
+
 }
 }

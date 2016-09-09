@@ -60,9 +60,6 @@ Status DocWriteBatch::SetPrimitive(
                         "Nothing to do.");
         return Status::OK();
       }
-      // Record the fact that we're adding this subdocument in the DocWriteBatchCache, so that we
-      // don't try to create it multiple times in the same DocWriteBatch.
-      cache_.Put(doc_iter.key_prefix().AsStringRef(), timestamp, ValueType::kObject);
     }
     doc_iter.AppendUpdateTimestampIfNotFound(timestamp);
   } else {

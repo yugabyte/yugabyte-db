@@ -14,6 +14,7 @@
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/common/timestamp.h"
+#include "yb/common/common.pb.h"
 
 namespace yb {
 namespace docdb {
@@ -79,6 +80,9 @@ class PrimitiveValue {
       : type_(ValueType::kTimestamp) {
     timestamp_val_ = timestamp;
   }
+
+  // Construct a primitive value from a Slice containing a Kudu value.
+  static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
   ValueType value_type() const { return type_; }
 
@@ -216,11 +220,6 @@ inline std::vector<PrimitiveValue> PrimitiveValues(T... args) {
   AppendPrimitiveValues(&v, args...);
   return v;
 }
-
-// Convert the given timestamp to string, putting it in parentheses prefixed by
-// kTimestampConstantPrefixStr.
-// TODO: should this be in timestamp.h?
-std::string TimestampToPrefixedStr(Timestamp ts);
 
 }
 }

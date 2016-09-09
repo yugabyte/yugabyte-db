@@ -168,9 +168,14 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 
     if (!db_iter_->Valid() ||
         !key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
+      if (!dst->column_block(i).is_nullable()) {
+        return STATUS(IllegalState,
+                      Substitute("Column $0 is not nullable, but no data is found", i));
+      }
       dst->column_block(i).SetCellIsNull(0, true);
     } else {
-      dst->column_block(i).SetCellIsNull(0, false);
+      if (dst->column_block(i).is_nullable())
+        dst->column_block(i).SetCellIsNull(0, false);
 
       // TODO: we are doing a lot of unnecessary buffer copies here.
       PrimitiveValue value;
@@ -182,7 +187,8 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
       void* dest_ptr = dst_row.cell(i).mutable_ptr();
 
       switch (column_data_type) {
-        case DataType::BINARY: {
+        case DataType::BINARY: FALLTHROUGH_INTENDED;
+        case DataType::STRING: {
           Slice cell_copy;
           RETURN_NOT_OK(ExpectValueType(ValueType::kString, projection_.column(i), value));
           if (PREDICT_FALSE(!dst->arena()->RelocateSlice(value.GetStringAsSlice(), &cell_copy))) {
@@ -197,6 +203,13 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
           RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, projection_.column(i), value));
           // TODO: double-check that we can just assign the 64-bit integer here.
           *(reinterpret_cast<int64_t*>(dst_row.cell(i).mutable_ptr())) = value.GetInt64();
+          break;
+        }
+        case DataType::INT32: {
+          // TODO: correct these casts when all data types are supported in docdb
+          RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, projection_.column(i), value));
+          *(reinterpret_cast<int32_t*>(dst_row.cell(i).mutable_ptr())) =
+              static_cast<int32_t>(value.GetInt64());
           break;
         }
         default:
