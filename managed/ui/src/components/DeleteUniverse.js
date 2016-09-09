@@ -25,8 +25,8 @@ export default class DeleteUniverse extends Component {
   }
 
   confirmDelete() {
-    
     this.props.deleteUniverse(this.props.uuid);
+    this.setState({deleteModalShown: false});
   }
 
   render() {
@@ -46,7 +46,7 @@ export default class DeleteUniverse extends Component {
                 <div className="btn btn-sm btn-default" onClick={this.confirmDelete}>
                   Yes
                 </div>
-                <div className="btn btn-sm btn-default">
+                <div className="btn btn-sm btn-default" onClick={this.closeDeleteModal}>
                   No
                 </div>
               </div>

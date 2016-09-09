@@ -2,8 +2,9 @@
 
 import DeleteUniverse from '../components/DeleteUniverse.js';
 import { connect } from 'react-redux';
-import { deleteUniverse, deleteUniverseSuccess, deleteUniverseFailure, resetUniverseInfo } from '../actions/universe';
-import { browserHistory } from 'react-router'
+import { deleteUniverse, deleteUniverseSuccess, deleteUniverseFailure, resetUniverseInfo,
+         fetchUniverseList,fetchUniverseListSuccess, fetchUniverseListFailure } from '../actions/universe';
+import { browserHistory } from 'react-router';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -12,8 +13,15 @@ const mapDispatchToProps = (dispatch) => {
         .then((response) => {
           if (!response.error) {
             dispatch(deleteUniverseSuccess(response.payload));
-            browserHistory.push('/universes')
-
+            dispatch(fetchUniverseList())
+              .then((response) => {
+                if (response.payload.status !== 200) {
+                  dispatch(fetchUniverseListFailure(response.payload));
+                } else {
+                  dispatch(fetchUniverseListSuccess(response.payload));
+                }
+              });
+            browserHistory.push('/universes');
           } else {
             dispatch(deleteUniverseFailure(response.payload));
           }
