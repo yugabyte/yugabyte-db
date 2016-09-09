@@ -237,7 +237,7 @@ class TypeEncodingResolver {
     }
     const TypeEncodingInfo *type_info = mapping_[make_pair(t, e)].get();
     if (PREDICT_FALSE(type_info == nullptr)) {
-      return Status::NotSupported(
+      return STATUS(NotSupported,
           strings::Substitute("Unsupported type/encoding pair: $0, $1",
                               DataType_Name(t),
                               EncodingType_Name(e)));

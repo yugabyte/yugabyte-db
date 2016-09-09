@@ -48,7 +48,7 @@ Status SerializeMessage(const MessageLite& message, faststring* param_buf,
                         int additional_size, bool use_cached_size) {
 
   if (PREDICT_FALSE(!message.IsInitialized())) {
-    return Status::InvalidArgument("RPC argument missing required fields",
+    return STATUS(InvalidArgument, "RPC argument missing required fields",
         message.InitializationErrorString());
   }
   int pb_size = use_cached_size ? message.GetCachedSize() : message.ByteSize();
@@ -77,7 +77,7 @@ Status SerializeHeader(const MessageLite& header,
 
   if (PREDICT_FALSE(!header.IsInitialized())) {
     LOG(DFATAL) << "Uninitialized RPC header";
-    return Status::InvalidArgument("RPC header missing required fields",
+    return STATUS(InvalidArgument, "RPC header missing required fields",
                                   header.InitializationErrorString());
   }
 
@@ -112,7 +112,7 @@ Status ParseYBMessage(const Slice& buf,
 
   // First grab the total length
   if (PREDICT_FALSE(buf.size() < kMsgLengthPrefixLength)) {
-    return Status::Corruption("Invalid packet: not enough bytes for length header",
+    return STATUS(Corruption, "Invalid packet: not enough bytes for length header",
                               buf.ToDebugString());
   }
 
@@ -125,32 +125,32 @@ Status ParseYBMessage(const Slice& buf,
 
   uint32_t header_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&header_len))) {
-    return Status::Corruption("Invalid packet: missing header delimiter",
+    return STATUS(Corruption, "Invalid packet: missing header delimiter",
                               buf.ToDebugString());
   }
 
   CodedInputStream::Limit l;
   l = in.PushLimit(header_len);
   if (PREDICT_FALSE(!parsed_header->ParseFromCodedStream(&in))) {
-    return Status::Corruption("Invalid packet: header too short",
+    return STATUS(Corruption, "Invalid packet: header too short",
                               buf.ToDebugString());
   }
   in.PopLimit(l);
 
   uint32_t main_msg_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&main_msg_len))) {
-    return Status::Corruption("Invalid packet: missing main msg length",
+    return STATUS(Corruption, "Invalid packet: missing main msg length",
                               buf.ToDebugString());
   }
 
   if (PREDICT_FALSE(!in.Skip(main_msg_len))) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         StringPrintf("Invalid packet: data too short, expected %d byte main_msg", main_msg_len),
         buf.ToDebugString());
   }
 
   if (PREDICT_FALSE(in.BytesUntilLimit() > 0)) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("Invalid packet: %d extra bytes at end of packet", in.BytesUntilLimit()),
       buf.ToDebugString());
   }
@@ -182,7 +182,7 @@ Status ValidateConnHeader(const Slice& slice) {
 
   // validate actual magic
   if (!slice.starts_with(kMagicNumber)) {
-    return Status::InvalidArgument("Connection must begin with magic number", kMagicNumber);
+    return STATUS(InvalidArgument, "Connection must begin with magic number", kMagicNumber);
   }
 
   const uint8_t *data = slice.data();
@@ -190,7 +190,7 @@ Status ValidateConnHeader(const Slice& slice) {
 
   // validate version
   if (data[kHeaderPosVersion] != kCurrentRpcVersion) {
-    return Status::InvalidArgument("Unsupported RPC version",
+    return STATUS(InvalidArgument, "Unsupported RPC version",
         StringPrintf("Received: %d, Supported: %d",
             data[kHeaderPosVersion], kCurrentRpcVersion));
   }

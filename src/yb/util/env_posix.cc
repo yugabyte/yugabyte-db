@@ -153,11 +153,11 @@ class ScopedFdCloser {
 static Status IOError(const std::string& context, int err_number) {
   switch (err_number) {
     case ENOENT:
-      return Status::NotFound(context, ErrnoToString(err_number), err_number);
+      return STATUS(NotFound, context, ErrnoToString(err_number), err_number);
     case EEXIST:
-      return Status::AlreadyPresent(context, ErrnoToString(err_number), err_number);
+      return STATUS(AlreadyPresent, context, ErrnoToString(err_number), err_number);
     case EOPNOTSUPP:
-      return Status::NotSupported(context, ErrnoToString(err_number), err_number);
+      return STATUS(NotSupported, context, ErrnoToString(err_number), err_number);
     case EIO:
       if (FLAGS_suicide_on_eio) {
         // TODO: This is very, very coarse-grained. A more comprehensive
@@ -165,7 +165,7 @@ static Status IOError(const std::string& context, int err_number) {
         LOG(FATAL) << "Fatal I/O error, context: " << context;
       }
   }
-  return Status::IOError(context, ErrnoToString(err_number), err_number);
+  return STATUS(IOError, context, ErrnoToString(err_number), err_number);
 }
 
 static Status DoSync(int fd, const string& filename) {
@@ -196,7 +196,7 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd) {
     case Env::OPEN_EXISTING:
       break;
     default:
-      return Status::NotSupported(Substitute("Unknown create mode $0", mode));
+      return STATUS(NotSupported, Substitute("Unknown create mode $0", mode));
   }
   const int f = open(filename.c_str(), flags, 0644);
   if (f < 0) {
@@ -445,7 +445,7 @@ class PosixWritableFile : public WritableFile {
     filesize_ += written;
 
     if (PREDICT_FALSE(written != nbytes)) {
-      return Status::IOError(
+      return STATUS(IOError,
           Substitute("pwritev error: expected to write $0 bytes, wrote $1 bytes instead",
                      nbytes, written));
     }
@@ -461,7 +461,7 @@ class PosixWritableFile : public WritableFile {
       filesize_ += written;
 
       if (PREDICT_FALSE(written != data.size())) {
-        return Status::IOError(
+        return STATUS(IOError,
             Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
                        data.size(), written));
       }
@@ -510,7 +510,7 @@ class PosixRWFile : public RWFile {
       DCHECK_LE(this_result.size(), rem);
       if (this_result.size() == 0) {
         // EOF
-        return Status::IOError(Substitute("EOF trying to read $0 bytes at offset $1",
+        return STATUS(IOError, Substitute("EOF trying to read $0 bytes at offset $1",
                                           length, offset));
       }
       dst += this_result.size();
@@ -532,7 +532,7 @@ class PosixRWFile : public RWFile {
     }
 
     if (PREDICT_FALSE(written != data.size())) {
-      return Status::IOError(
+      return STATUS(IOError,
           Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
                      data.size(), written));
     }
@@ -565,7 +565,7 @@ class PosixRWFile : public RWFile {
     }
     return Status::OK();
 #else
-    return Status::NotSupported("Hole punching not supported on this platform");
+    return STATUS(NotSupported, "Hole punching not supported on this platform");
 #endif
   }
 
@@ -991,7 +991,7 @@ class PosixEnv : public Env {
 #if defined(__linux__)
       int rc = readlink("/proc/self/exe", buf.get(), size);
       if (rc == -1) {
-        return Status::IOError("Unable to determine own executable path", "", errno);
+        return STATUS(IOError, "Unable to determine own executable path", "", errno);
       } else if (rc >= size) {
         // The buffer wasn't large enough
         size *= 2;
@@ -1091,7 +1091,7 @@ class PosixEnv : public Env {
     }
 
     if (had_errors) {
-      return Status::IOError(root, "One or more errors occurred");
+      return STATUS(IOError, root, "One or more errors occurred");
     }
     return Status::OK();
   }

@@ -232,7 +232,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
     master_sock_addrs.push_back(addrs[0]);
   }
   if (master_sock_addrs.empty()) {
-    return Status::NotFound("unable to resolve any of the master addresses!");
+    return STATUS(NotFound, "unable to resolve any of the master addresses!");
   }
   Synchronizer sync;
   scoped_refptr<GetLeaderMasterRpc> rpc(new GetLeaderMasterRpc(
@@ -312,7 +312,7 @@ int Heartbeater::Thread::GetMillisUntilNextHeartbeat() const {
 
 Status Heartbeater::Thread::DoHeartbeat() {
   if (PREDICT_FALSE(server_->fail_heartbeats_for_tests())) {
-    return Status::IOError("failing all heartbeats for tests");
+    return STATUS(IOError, "failing all heartbeats for tests");
   }
 
   CHECK(IsCurrentThread());
@@ -362,7 +362,7 @@ Status Heartbeater::Thread::DoHeartbeat() {
     // determine the master and attempt to heartbeat during in the
     // next heartbeat interval.
     proxy_.reset();
-    return Status::ServiceUnavailable("master is no longer the leader");
+    return STATUS(ServiceUnavailable, "master is no longer the leader");
   }
   last_hb_response_.Swap(&resp);
 

@@ -24,7 +24,7 @@ namespace yb {
 
 Status Slice::check_size(size_t expected_size) const {
   if (PREDICT_FALSE(size() != expected_size)) {
-    return Status::Corruption(StringPrintf("Unexpected Slice size. "
+    return STATUS(Corruption, StringPrintf("Unexpected Slice size. "
         "Expected %zu but got %zu.", expected_size, size()), ToDebugString(100));
   }
   return Status::OK();

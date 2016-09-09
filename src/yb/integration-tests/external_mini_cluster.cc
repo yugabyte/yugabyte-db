@@ -323,7 +323,7 @@ Status ExternalMiniClusterOptions::RemovePort(const uint16_t port) {
   auto iter = std::find(master_rpc_ports.begin(), master_rpc_ports.end(), port);
 
   if (iter == master_rpc_ports.end()) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Port to be removed '$0' not found in existing list of $1 masters.",
         port, num_masters));
   }
@@ -338,7 +338,7 @@ Status ExternalMiniClusterOptions::AddPort(const uint16_t port) {
   auto iter = std::find(master_rpc_ports.begin(), master_rpc_ports.end(), port);
 
   if (iter != master_rpc_ports.end()) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Port to be added '$0' already found in the existing list of $1 masters.",
         port, num_masters));
   }
@@ -365,7 +365,7 @@ Status ExternalMiniCluster::AddMaster(ExternalMaster* master) {
   auto iter = std::find_if(masters_.begin(), masters_.end(), MasterComparator(master));
 
   if (iter != masters_.end()) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Master to be added '$0' already found in existing list of $1 masters.",
         master->bound_rpc_hostport().ToString(), opts_.num_masters));
   }
@@ -382,7 +382,7 @@ Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
   auto iter = std::find_if(masters_.begin(), masters_.end(), MasterComparator(master));
 
   if (iter == masters_.end()) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Master to be removed '$0' not found in existing list of $1 masters.",
         master->bound_rpc_hostport().ToString(), opts_.num_masters));
   }
@@ -421,7 +421,7 @@ Status ExternalMiniCluster::WaitForLeaderToAllowChangeConfig(
   while (true) {
     RETURN_NOT_OK(leader_proxy->IsLeaderReadyForChangeConfig(req, &resp, &rpc));
     if (resp.has_error()) {
-      return Status::RuntimeError(
+      return STATUS(RuntimeError,
           Substitute("IsLeaderReadyForConfigChange RPC response hit error: $0",
                      resp.error().ShortDebugString()));
     }
@@ -431,7 +431,7 @@ Status ExternalMiniCluster::WaitForLeaderToAllowChangeConfig(
     }
 
     if (num_attempts >= kMaxRetryIterations) {
-      return Status::RuntimeError("Timed out waiting for leader to be ready for ChangeConfig.");
+      return STATUS(RuntimeError, "Timed out waiting for leader to be ready for ChangeConfig.");
     }
 
     SleepFor(MonoDelta::FromMilliseconds(num_attempts * 10));
@@ -485,7 +485,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
 
 Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigType type) {
   if (type != consensus::ADD_SERVER && type != consensus::REMOVE_SERVER) {
-    return Status::InvalidArgument(Substitute("Invalid Change Config type $0", type));
+    return STATUS(InvalidArgument, Substitute("Invalid Change Config type $0", type));
   }
 
   ChangeConfigRequestPB req;
@@ -521,7 +521,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
     RETURN_NOT_OK(leader_proxy->ChangeConfig(req, &resp, &rpc));
     if (resp.has_error() &&
         resp.error().code() != TabletServerErrorPB::NOT_THE_LEADER) {
-      return Status::RuntimeError(Substitute(
+      return STATUS(RuntimeError, Substitute(
           "Change Config RPC to leader hit error: $0", resp.error().ShortDebugString()));
     } else {
       break;
@@ -529,7 +529,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
 
     // Need to retry as we come here with NOT_THE_LEADER.
     if (num_attempts >= kMaxRetryIterations) {
-      return Status::IllegalState("Failed to send ChangeConfig rpc even after maximum "
+      return STATUS(IllegalState, "Failed to send ChangeConfig rpc even after maximum "
                                   "number of attempts.");
     }
     rpc.Reset();
@@ -550,7 +550,7 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
   LOG(FATAL) << err_msg;
 
   // Satisfy the compiler with a return from here
-  return Status::RuntimeError(err_msg);
+  return STATUS(RuntimeError, err_msg);
 }
 
 // We look for the exact master match. Since it is possible to stop/restart master on
@@ -570,7 +570,7 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
   int index = GetIndexOfMaster(master);
 
   if (index == -1) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Given master '$0' not in the current list of $1 masters.",
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
@@ -580,7 +580,7 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
   rpc.set_timeout(opts_.timeout_);
   RETURN_NOT_OK(proxy->ListMasters(list_req, &list_resp, &rpc));
   if (list_resp.has_error()) {
-    return Status::RuntimeError(Substitute(
+    return STATUS(RuntimeError, Substitute(
         "List Masters RPC response hit error: $0", list_resp.error().ShortDebugString()));
   }
 
@@ -618,7 +618,7 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
     now = MonoTime::Now(MonoTime::FINE);
   }
 
-  return Status::TimedOut(Substitute("Term did not advance from $0.", start_opid.term()));
+  return STATUS(TimedOut, Substitute("Term did not advance from $0.", start_opid.term()));
 }
 
 Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
@@ -675,7 +675,7 @@ Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int target_index) {
     now = MonoTime::Now(MonoTime::COARSE);
   }
 
-  return Status::TimedOut(
+  return STATUS(TimedOut,
       Substitute("Index $0 not available on all replicas after $1. ",
                  target_index,
                  opts_.timeout_.ToString()));
@@ -687,7 +687,7 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
   int index = GetIndexOfMaster(master);
 
   if (index == -1) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Given master '$0' not in the current list of $1 masters.",
         master->bound_rpc_hostport().ToString(), masters_.size()));
   }
@@ -697,7 +697,7 @@ Status ExternalMiniCluster::GetIsMasterLeaderServiceReady(ExternalMaster* master
   rpc.set_timeout(opts_.timeout_);
   RETURN_NOT_OK(proxy->IsMasterLeaderServiceReady(req, &resp, &rpc));
   if (resp.has_error()) {
-    return Status::RuntimeError(Substitute(
+    return STATUS(RuntimeError, Substitute(
         "Is master ready RPC response hit error: $0", resp.error().ShortDebugString()));
   }
 
@@ -810,7 +810,7 @@ Status ExternalMiniCluster::WaitForTabletServerCount(int count, const MonoDelta&
   while (true) {
     MonoDelta remaining = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
     if (remaining.ToSeconds() < 0) {
-      return Status::TimedOut(Substitute("$0 TS(s) never registered with master", count));
+      return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));
     }
 
     for (int i = 0; i < masters_.size(); i++) {
@@ -880,7 +880,7 @@ Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  return Status::TimedOut(resp.DebugString());
+  return STATUS(TimedOut, resp.DebugString());
 }
 
 namespace {
@@ -1046,7 +1046,7 @@ Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,
   RETURN_NOT_OK_PREPEND(proxy.SetFlag(req, &resp, &controller),
                         "rpc failed");
   if (resp.result() != server::SetFlagResponsePB::SUCCESS) {
-    return Status::RemoteError("failed to set flag",
+    return STATUS(RemoteError, "failed to set flag",
                                resp.ShortDebugString());
   }
   return Status::OK();
@@ -1151,14 +1151,14 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
       continue;
     }
     RETURN_NOT_OK_PREPEND(s, Substitute("Failed waiting on $0", exe_));
-    return Status::RuntimeError(
+    return STATUS(RuntimeError,
       Substitute("Process exited with rc=$0", rc),
       exe_);
   }
 
   if (!success) {
     ignore_result(p->Kill(SIGKILL));
-    return Status::TimedOut(
+    return STATUS(TimedOut,
         Substitute("Timed out after $0s waiting for process ($1) to write info file ($2)",
                    kProcessStartTimeoutSeconds, exe_, info_path));
   }
@@ -1243,7 +1243,7 @@ void ExternalDaemon::FlushCoverage() {
   rpc.set_timeout(MonoDelta::FromMilliseconds(100));
   Status s = proxy.FlushCoverage(req, &resp, &rpc);
   if (s.ok() && !resp.success()) {
-    s = Status::RemoteError("Server does not appear to be running a coverage build");
+    s = STATUS(RemoteError, "Server does not appear to be running a coverage build");
   }
   WARN_NOT_OK(s, Substitute("Unable to flush coverage on $0 pid $1", exe_, process_->pid()));
 #endif
@@ -1358,7 +1358,7 @@ Status ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
     msg = Substitute("Could not find metric $0.$1",
                      entity_proto->name(), metric_proto->name());
   }
-  return Status::NotFound(msg);
+  return STATUS(NotFound, msg);
 }
 
 //------------------------------------------------------------
@@ -1414,7 +1414,7 @@ Status ExternalMaster::Start(bool shell_mode) {
 Status ExternalMaster::Restart() {
   // We store the addresses on shutdown so make sure we did that first.
   if (bound_rpc_.port() == 0) {
-    return Status::IllegalState("Master cannot be restarted. Must call Shutdown() first.");
+    return STATUS(IllegalState, "Master cannot be restarted. Must call Shutdown() first.");
   }
   vector<string> flags;
   flags.push_back("--fs_wal_dir=" + data_dir_);
@@ -1462,7 +1462,7 @@ Status ExternalTabletServer::Start() {
 Status ExternalTabletServer::Restart() {
   // We store the addresses on shutdown so make sure we did that first.
   if (bound_rpc_.port() == 0) {
-    return Status::IllegalState("Tablet server cannot be restarted. Must call Shutdown() first.");
+    return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
   vector<string> flags;
   flags.push_back("--fs_wal_dir=" + data_dir_);

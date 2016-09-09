@@ -694,7 +694,7 @@ class Schema {
         // Column present in the Base Schema...
         if (!col_schema.EqualsType(base_col_schema)) {
           // ...but with a different type, (TODO: try with an adaptor)
-          return Status::InvalidArgument("The column '" + col_schema.name() +
+          return STATUS(InvalidArgument, "The column '" + col_schema.name() +
                                          "' must have type " +
                                          base_col_schema.TypeToString() +
                                          " found " + col_schema.TypeToString());

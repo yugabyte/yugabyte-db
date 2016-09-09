@@ -52,7 +52,7 @@ bool ServiceIf::ParseParam(InboundCall *call, google::protobuf::Message *message
                             message->InitializationErrorString().c_str());
     LOG(WARNING) << err;
     call->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
-                         Status::InvalidArgument(err));
+                         STATUS(InvalidArgument, err));
     return false;
   }
   return true;
@@ -71,7 +71,7 @@ void ServiceIf::RespondBadMethod(InboundCall *call) {
                           call->remote_method().method_name());
   LOG(WARNING) << err;
   call->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
-                       Status::InvalidArgument(err));
+                       STATUS(InvalidArgument, err));
 }
 
 } // namespace rpc

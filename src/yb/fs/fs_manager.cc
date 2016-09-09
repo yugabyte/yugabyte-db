@@ -132,7 +132,7 @@ Status FsManager::Init() {
 
   // The wal root must be set.
   if (wal_fs_root_.empty()) {
-    return Status::IOError("Write-ahead log directory (fs_wal_dir) not provided");
+    return STATUS(IOError, "Write-ahead log directory (fs_wal_dir) not provided");
   }
 
   // Deduplicate all of the roots.
@@ -148,17 +148,17 @@ Status FsManager::Init() {
   RootMap canonicalized_roots;
   for (const string& root : all_roots) {
     if (root.empty()) {
-      return Status::IOError("Empty string provided for filesystem root");
+      return STATUS(IOError, "Empty string provided for filesystem root");
     }
     if (root[0] != '/') {
-      return Status::IOError(
+      return STATUS(IOError,
           Substitute("Relative path $0 provided for filesystem root", root));
     }
     {
       string root_copy = root;
       StripWhiteSpace(&root_copy);
       if (root != root_copy) {
-        return Status::IOError(
+        return STATUS(IOError,
                   Substitute("Filesystem root $0 contains illegal whitespace", root));
       }
     }
@@ -224,7 +224,7 @@ Status FsManager::Open() {
     if (!metadata_) {
       metadata_.reset(pb.release());
     } else if (pb->uuid() != metadata_->uuid()) {
-      return Status::Corruption(Substitute(
+      return STATUS(Corruption, Substitute(
           "Mismatched UUIDs across filesystem roots: $0 vs. $1",
           metadata_->uuid(), pb->uuid()));
     }
@@ -251,7 +251,7 @@ Status FsManager::CreateInitialFileSystemLayout() {
     RETURN_NOT_OK_PREPEND(IsDirectoryEmpty(root, &is_empty),
                           "Unable to check if FSManager root is empty");
     if (!is_empty) {
-      return Status::AlreadyPresent("FSManager root is not empty", root);
+      return STATUS(AlreadyPresent, "FSManager root is not empty", root);
     }
   }
 

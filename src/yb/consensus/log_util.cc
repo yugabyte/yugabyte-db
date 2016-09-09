@@ -249,7 +249,7 @@ Status ReadableLogSegment::ReadHeader() {
   }
 
   if (header_size > kLogSegmentMaxHeaderOrFooterSize) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         Substitute("File is corrupted. "
                    "Parsed header size: $0 is zero or bigger than max header size: $1",
                    header_size, kLogSegmentMaxHeaderOrFooterSize));
@@ -334,7 +334,7 @@ Status ReadableLogSegment::ParseHeaderMagicAndHeaderLength(const Slice &data,
       return Status::OK();
     }
     // If no magic and not uninitialized, the file is considered corrupt.
-    return Status::Corruption(Substitute("Invalid log segment file $0: Bad magic. $1",
+    return STATUS(Corruption, Substitute("Invalid log segment file $0: Bad magic. $1",
                                          path(), data.ToDebugString()));
   }
 
@@ -347,14 +347,14 @@ Status ReadableLogSegment::ReadFooter() {
   RETURN_NOT_OK(ReadFooterMagicAndFooterLength(&footer_size));
 
   if (footer_size == 0 || footer_size > kLogSegmentMaxHeaderOrFooterSize) {
-    return Status::NotFound(
+    return STATUS(NotFound,
         Substitute("File is corrupted. "
                    "Parsed header size: $0 is zero or bigger than max header size: $1",
                    footer_size, kLogSegmentMaxHeaderOrFooterSize));
   }
 
   if (footer_size > (file_size() - first_entry_offset_)) {
-    return Status::NotFound("Footer not found. File corrupted. "
+    return STATUS(NotFound, "Footer not found. File corrupted. "
         "Decoded footer length pointed at a footer before the first entry.");
   }
 
@@ -401,7 +401,7 @@ Status ReadableLogSegment::ParseFooterMagicAndFooterLength(const Slice &data,
 
   if (memcmp(kLogSegmentFooterMagicString, data.data(),
              strlen(kLogSegmentFooterMagicString)) != 0) {
-    return Status::NotFound("Footer not found. Footer magic doesn't match");
+    return STATUS(NotFound, "Footer not found. Footer magic doesn't match");
   }
 
   *parsed_len = DecodeFixed32(data.data() + strlen(kLogSegmentFooterMagicString));
@@ -445,7 +445,7 @@ Status ReadableLogSegment::ReadEntries(vector<LogEntryPB*>* entries,
     if (offset + kEntryHeaderSize < read_up_to) {
       s = ReadEntryHeaderAndBatch(&offset, &tmp_buf, &current_batch);
     } else {
-      s = Status::Corruption(Substitute("Truncated log entry at offset $0", offset));
+      s = STATUS(Corruption, Substitute("Truncated log entry at offset $0", offset));
     }
 
     if (PREDICT_FALSE(!s.ok())) {
@@ -504,7 +504,7 @@ Status ReadableLogSegment::ReadEntries(vector<LogEntryPB*>* entries,
   }
 
   if (footer_.IsInitialized() && footer_.num_entries() != num_entries_read) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       Substitute("Read $0 log entries from $1, but expected $2 based on the footer",
                  num_entries_read, path_, footer_.num_entries()));
   }
@@ -610,7 +610,7 @@ Status ReadableLogSegment::ReadEntryHeader(int64_t *offset, EntryHeader* header)
                         "Could not read log entry header");
 
   if (PREDICT_FALSE(!DecodeEntryHeader(slice, header))) {
-    return Status::Corruption("CRC mismatch in log entry header");
+    return STATUS(Corruption, "CRC mismatch in log entry header");
   }
   *offset += slice.size();
   return Status::OK();
@@ -638,12 +638,12 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                    *offset, header.msg_length));
 
   if (header.msg_length == 0) {
-    return Status::Corruption("Invalid 0 entry length");
+    return STATUS(Corruption, "Invalid 0 entry length");
   }
   int64_t limit = readable_up_to();
   if (PREDICT_FALSE(header.msg_length + *offset > limit)) {
     // The log was likely truncated during writing.
-    return Status::Corruption(
+    return STATUS(Corruption,
         Substitute("Could not read $0-byte log entry from offset $1 in $2: "
                    "log only readable up to offset $3",
                    header.msg_length, *offset, path_, limit));
@@ -658,13 +658,13 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                                     &entry_batch_slice,
                                     tmp_buf->data());
 
-  if (!s.ok()) return Status::IOError(Substitute("Could not read entry. Cause: $0",
+  if (!s.ok()) return STATUS(IOError, Substitute("Could not read entry. Cause: $0",
                                                  s.ToString()));
 
   // Verify the CRC.
   uint32_t read_crc = crc::Crc32c(entry_batch_slice.data(), entry_batch_slice.size());
   if (PREDICT_FALSE(read_crc != header.msg_crc)) {
-    return Status::Corruption(Substitute("Entry CRC mismatch in byte range $0-$1: "
+    return STATUS(Corruption, Substitute("Entry CRC mismatch in byte range $0-$1: "
                                          "expected CRC=$2, computed=$3",
                                          *offset, *offset + header.msg_length,
                                          header.msg_crc, read_crc));
@@ -676,7 +676,7 @@ Status ReadableLogSegment::ReadEntryBatch(int64_t *offset,
                               entry_batch_slice.data(),
                               header.msg_length);
 
-  if (!s.ok()) return Status::Corruption(Substitute("Could parse PB. Cause: $0",
+  if (!s.ok()) return STATUS(Corruption, Substitute("Could parse PB. Cause: $0",
                                                     s.ToString()));
 
   *offset += entry_batch_slice.size();
@@ -704,7 +704,7 @@ Status WritableLogSegment::WriteHeaderAndOpen(const LogSegmentHeaderPB& new_head
   PutFixed32(&buf, new_header.ByteSize());
   // Then Serialize the PB.
   if (!pb_util::AppendToString(new_header, &buf)) {
-    return Status::Corruption("unable to encode header");
+    return STATUS(Corruption, "unable to encode header");
   }
   RETURN_NOT_OK(writable_file()->Append(Slice(buf)));
 
@@ -726,7 +726,7 @@ Status WritableLogSegment::WriteFooterAndClose(const LogSegmentFooterPB& footer)
   faststring buf;
 
   if (!pb_util::AppendToString(footer, &buf)) {
-    return Status::Corruption("unable to encode header");
+    return STATUS(Corruption, "unable to encode header");
   }
 
   buf.append(kLogSegmentFooterMagicString);

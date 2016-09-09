@@ -509,13 +509,13 @@ void Batcher::Abort() {
 
   for (InFlightOp* op : to_abort) {
     VLOG(1) << "Aborting op: " << op->ToString();
-    MarkInFlightOpFailedUnlocked(op, Status::Aborted("Batch aborted"));
+    MarkInFlightOpFailedUnlocked(op, STATUS(Aborted, "Batch aborted"));
   }
 
   if (flush_callback_) {
     l.unlock();
 
-    flush_callback_->Run(Status::Aborted(""));
+    flush_callback_->Run(STATUS(Aborted, ""));
   }
 }
 
@@ -574,7 +574,7 @@ void Batcher::CheckForFinishedFlush() {
   Status s;
   if (had_errors_) {
     // User is responsible for fetching errors from the error collector.
-    s = Status::IOError("Some errors occurred");
+    s = STATUS(IOError, "Some errors occurred");
   }
 
   flush_callback_->Run(s);
@@ -621,7 +621,7 @@ Status Batcher::Add(YBWriteOperation* write_op) {
   if (PREDICT_FALSE(size_after_adding > max_buffer_size_)) {
     buffer_bytes_used_.IncrementBy(-required_size);
     int64_t size_before_adding = size_after_adding - required_size;
-    return Status::Incomplete(Substitute(
+    return STATUS(Incomplete, Substitute(
         "not enough space remaining in buffer for op (required $0, "
         "$1 already used",
         HumanReadableNumBytes::ToString(required_size),
@@ -698,7 +698,7 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
 
   if (IsAbortedUnlocked()) {
     VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->write_op->ToString();
-    MarkInFlightOpFailedUnlocked(op, Status::Aborted("Batch aborted"));
+    MarkInFlightOpFailedUnlocked(op, STATUS(Aborted, "Batch aborted"));
     // 'op' is deleted by above function.
     return;
   }

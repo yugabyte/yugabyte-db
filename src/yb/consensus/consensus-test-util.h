@@ -304,7 +304,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
       if (OpIdLessThan(last_received_, request->preceding_id())) {
         ConsensusErrorPB* error = response->mutable_status()->mutable_error();
         error->set_code(ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
-        StatusToPB(Status::IllegalState(""), error->mutable_status());
+        StatusToPB(STATUS(IllegalState, ""), error->mutable_status());
       } else if (request->ops_size() > 0) {
         last_received_.CopyFrom(request->ops(request->ops_size() - 1).id());
       }
@@ -381,7 +381,7 @@ class TestPeerMapManager {
                        scoped_refptr<RaftConsensus>* peer_out) const {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (!FindCopy(peers_, peer_uuid, peer_out)) {
-      return Status::NotFound("Other consensus instance was destroyed");
+      return STATUS(NotFound, "Other consensus instance was destroyed");
     }
     return Status::OK();
   }
@@ -467,7 +467,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
     }
     if (PREDICT_FALSE(miss_comm_copy)) {
       VLOG(2) << this << ": injecting fault on " << request->ShortDebugString();
-      SetResponseError(Status::IOError("Artificial error caused by communication "
+      SetResponseError(STATUS(IOError, "Artificial error caused by communication "
           "failure injection."), final_response);
     } else {
       final_response->CopyFrom(response_temp);

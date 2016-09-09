@@ -585,7 +585,7 @@ static Status TestWalkErrorCb(int* num_calls,
                               Env::FileType type,
                               const string& dirname, const string& basename) {
   (*num_calls)++;
-  return Status::Aborted("Returning abort status");
+  return STATUS(Aborted, "Returning abort status");
 }
 
 TEST_F(TestEnv, TestWalkCbReturnsError) {

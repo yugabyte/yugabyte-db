@@ -89,7 +89,7 @@ void EnsureSigPipeDisabled() {
 Status OpenProcFdDir(DIR** dir) {
   *dir = opendir(kProcSelfFd);
   if (PREDICT_FALSE(dir == nullptr)) {
-    return Status::IOError(Substitute("opendir(\"$0\") failed", kProcSelfFd),
+    return STATUS(IOError, Substitute("opendir(\"$0\") failed", kProcSelfFd),
                            ErrnoToString(errno), errno);
   }
   return Status::OK();
@@ -100,7 +100,7 @@ Status OpenProcFdDir(DIR** dir) {
 void CloseProcFdDir(DIR* dir) {
   if (PREDICT_FALSE(closedir(dir) == -1)) {
     LOG(WARNING) << "Unable to close fd dir: "
-                 << Status::IOError(Substitute("closedir(\"$0\") failed", kProcSelfFd),
+                 << STATUS(IOError, Substitute("closedir(\"$0\") failed", kProcSelfFd),
                                     ErrnoToString(errno), errno).ToString();
   }
 }
@@ -242,7 +242,7 @@ Status Subprocess::Start() {
   EnsureSigPipeDisabled();
 
   if (argv_.size() < 1) {
-    return Status::InvalidArgument("argv must have at least one elem");
+    return STATUS(InvalidArgument, "argv must have at least one elem");
   }
 
   vector<char*> argv_ptrs;
@@ -276,7 +276,7 @@ Status Subprocess::Start() {
 
   int ret = fork();
   if (ret == -1) {
-    return Status::RuntimeError("Unable to fork", ErrnoToString(errno), errno);
+    return STATUS(RuntimeError, "Unable to fork", ErrnoToString(errno), errno);
   }
   if (ret == 0) { // We are the child
     // Send the child a SIGTERM when the parent dies. This is done as early
@@ -348,7 +348,7 @@ Status Subprocess::DoWait(int* ret, int options) {
       return Status::OK();
     }
     if (state_ != kRunning) {
-      return Status::IllegalState("DoWait called on a process that is not running");
+      return STATUS(IllegalState, "DoWait called on a process that is not running");
     }
     child_pid = child_pid_;
   }
@@ -357,12 +357,12 @@ Status Subprocess::DoWait(int* ret, int options) {
 
   int waitpid_ret_val = waitpid(child_pid, ret, options);
   if (waitpid_ret_val == -1) {
-    return Status::RuntimeError("Unable to wait on child",
+    return STATUS(RuntimeError, "Unable to wait on child",
                                 ErrnoToString(errno),
                                 errno);
   }
   if ((options & WNOHANG) && waitpid_ret_val == 0) {
-    return Status::TimedOut("");
+    return STATUS(TimedOut, "");
   }
 
   unique_lock<mutex> l(state_lock_);
@@ -387,14 +387,14 @@ Status Subprocess::KillInternal(int signal, bool must_be_running) {
   if (must_be_running) {
     CHECK_EQ(state_, kRunning);
   } else if (state_ == kNotStarted) {
-    return Status::IllegalState("Child process has not been started, cannot send signal");
+    return STATUS(IllegalState, "Child process has not been started, cannot send signal");
   } else if (state_ == kExited) {
-    return Status::IllegalState("Child process has exited, cannot send signal");
+    return STATUS(IllegalState, "Child process has exited, cannot send signal");
   }
   CHECK_NE(child_pid_, 0);
 
   if (kill(child_pid_, signal) != 0) {
-    return Status::RuntimeError("Unable to kill",
+    return STATUS(RuntimeError, "Unable to kill",
                                 ErrnoToString(errno),
                                 errno);
   }
@@ -425,7 +425,7 @@ Status Subprocess::Call(const vector<string>& argv) {
   if (retcode == 0) {
     return Status::OK();
   } else {
-    return Status::RuntimeError(Substitute(
+    return STATUS(RuntimeError, Substitute(
         "Subprocess '$0' terminated with non-zero exit status $1",
         argv[0],
         retcode));
@@ -438,7 +438,7 @@ Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
   RETURN_NOT_OK_PREPEND(p.Start(), "Unable to fork " + argv[0]);
   int err = close(p.ReleaseChildStdinFd());
   if (PREDICT_FALSE(err != 0)) {
-    return Status::IOError("Unable to close child process stdin", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to close child process stdin", ErrnoToString(errno), errno);
   }
 
   stdout_out->clear();
@@ -451,7 +451,7 @@ Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
     }
     if (n < 0) {
       if (errno == EINTR) continue;
-      return Status::IOError("IO error reading from " + argv[0], ErrnoToString(errno), errno);
+      return STATUS(IOError, "IO error reading from " + argv[0], ErrnoToString(errno), errno);
     }
 
     stdout_out->append(buf, n);
@@ -461,7 +461,7 @@ Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
   RETURN_NOT_OK_PREPEND(p.Wait(&retcode), "Unable to wait() for " + argv[0]);
 
   if (PREDICT_FALSE(retcode != 0)) {
-    return Status::RuntimeError(Substitute(
+    return STATUS(RuntimeError, Substitute(
         "Subprocess '$0' terminated with non-zero exit status $1",
         argv[0],
         retcode));

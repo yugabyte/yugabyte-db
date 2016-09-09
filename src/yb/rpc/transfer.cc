@@ -88,12 +88,12 @@ Status YBInboundTransfer::ReceiveBuffer(Socket &socket) {
     // add that back in.
     total_length_ = NetworkByteOrder::Load32(&buf_[0]) + kMsgLengthPrefixLength;
     if (total_length_ > FLAGS_rpc_max_message_size) {
-      return Status::NetworkError(StringPrintf("the frame had a "
+      return STATUS(NetworkError, StringPrintf("the frame had a "
                "length of %d, but we only support messages up to %d bytes "
                "long.", total_length_, FLAGS_rpc_max_message_size));
     }
     if (total_length_ <= kMsgLengthPrefixLength) {
-      return Status::NetworkError(StringPrintf("the frame had a "
+      return STATUS(NetworkError, StringPrintf("the frame had a "
                "length of %d, which is invalid", total_length_));
     }
     buf_.resize(total_length_);
@@ -159,7 +159,7 @@ OutboundTransfer::OutboundTransfer(const std::vector<Slice> &payload,
 OutboundTransfer::~OutboundTransfer() {
   if (!TransferFinished() && !aborted_) {
     callbacks_->NotifyTransferAborted(
-      Status::RuntimeError("RPC transfer destroyed before it finished sending"));
+      STATUS(RuntimeError, "RPC transfer destroyed before it finished sending"));
   }
 }
 

@@ -76,7 +76,7 @@ void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
   Status s = result_status;
 
   if (s.ok() && addrs->empty()) {
-    s = Status::NotFound("No addresses for " + hp.ToString());
+    s = STATUS(NotFound, "No addresses for " + hp.ToString());
   }
 
   if (!s.ok()) {
@@ -421,7 +421,7 @@ void LookupRpc::SendRpc() {
   }
   if (!has_permit_) {
     // Couldn't get a permit, try again in a little while.
-    mutable_retrier()->DelayedRetry(this, Status::TimedOut(
+    mutable_retrier()->DelayedRetry(this, STATUS(TimedOut,
         "client has too many outstanding requests to the master"));
     return;
   }
@@ -436,7 +436,7 @@ void LookupRpc::SendRpc() {
   // See YBClient::Data::SyncLeaderMasterRpc().
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   if (retrier().deadline().ComesBefore(now)) {
-    SendRpcCb(Status::TimedOut("timed out after deadline expired"));
+    SendRpcCb(STATUS(TimedOut, "timed out after deadline expired"));
     return;
   }
   MonoTime rpc_deadline = now;
@@ -527,7 +527,7 @@ void LookupRpc::SendRpcCb(const Status& status) {
 
   // Prefer response failures over no tablets found.
   if (new_status.ok() && resp_.tablet_locations_size() == 0) {
-    new_status = Status::NotFound("No such tablet found");
+    new_status = STATUS(NotFound, "No such tablet found");
   }
 
   if (new_status.ok()) {

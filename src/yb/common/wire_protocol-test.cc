@@ -64,7 +64,7 @@ TEST_F(WireProtocolTest, TestOKStatus) {
 }
 
 TEST_F(WireProtocolTest, TestBadStatus) {
-  Status s = Status::NotFound("foo", "bar");
+  Status s = STATUS(NotFound, "foo", "bar");
   AppStatusPB pb;
   StatusToPB(s, &pb);
   EXPECT_EQ(AppStatusPB::NOT_FOUND, pb.code());
@@ -74,11 +74,11 @@ TEST_F(WireProtocolTest, TestBadStatus) {
 
   Status s2 = StatusFromPB(pb);
   EXPECT_TRUE(s2.IsNotFound());
-  EXPECT_EQ(s.ToString(), s2.ToString());
+  EXPECT_EQ(s.ToString(/* no file/line */ false), s2.ToString(/* no file/line */ false));
 }
 
 TEST_F(WireProtocolTest, TestBadStatusWithPosixCode) {
-  Status s = Status::NotFound("foo", "bar", 1234);
+  Status s = STATUS(NotFound, "foo", "bar", 1234);
   AppStatusPB pb;
   StatusToPB(s, &pb);
   EXPECT_EQ(AppStatusPB::NOT_FOUND, pb.code());
@@ -90,7 +90,7 @@ TEST_F(WireProtocolTest, TestBadStatusWithPosixCode) {
   Status s2 = StatusFromPB(pb);
   EXPECT_TRUE(s2.IsNotFound());
   EXPECT_EQ(1234, s2.posix_code());
-  EXPECT_EQ(s.ToString(), s2.ToString());
+  EXPECT_EQ(s.ToString(/* no file/line */ false), s2.ToString(/* no file/line */ false));
 }
 
 TEST_F(WireProtocolTest, TestSchemaRoundTrip) {
@@ -177,7 +177,8 @@ TEST_F(WireProtocolTest, TestBadSchema_DuplicateColumnName) {
 
   Schema schema;
   Status s = ColumnPBsToSchema(pbs, &schema);
-  ASSERT_EQ("Invalid argument: Duplicate column name: c0", s.ToString());
+  ASSERT_EQ("Invalid argument: Duplicate column name: c0",
+            s.ToString(/* no file/line */ false));
 }
 
 // Create a block of rows in columnar layout and ensure that it can be
@@ -240,14 +241,15 @@ TEST_F(WireProtocolTest, TestInvalidRowBlock) {
   pb.set_num_rows(1);
   Slice direct = shortstr;
   Status s = ExtractRowsFromRowBlockPB(schema, pb, Slice(), &direct, &row_ptrs);
-  ASSERT_STR_CONTAINS(s.ToString(), "Corruption: Row block has 1 bytes of data");
+  ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
+                      "Corruption: Row block has 1 bytes of data");
 
   // Bad pointer into indirect data.
   shortstr = "xxxxxxxxxxxxxxxx";
   pb.set_num_rows(1);
   direct = Slice(shortstr);
   s = ExtractRowsFromRowBlockPB(schema, pb, Slice(), &direct, &row_ptrs);
-  ASSERT_STR_CONTAINS(s.ToString(),
+  ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
                       "Corruption: Row #0 contained bad indirect slice");
 }
 

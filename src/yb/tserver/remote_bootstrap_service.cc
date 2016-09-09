@@ -237,7 +237,7 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   } else {
     auto msg = Substitute("Invalid request type $0", data_id.type());
     RPC_RETURN_APP_ERROR(RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST, msg,
-                         Status::InvalidArgument(msg));
+                         STATUS(InvalidArgument, msg));
   }
 
   data_chunk->set_total_data_length(total_data_length);
@@ -288,7 +288,7 @@ Status RemoteBootstrapServiceImpl::FindSessionUnlocked(
         scoped_refptr<RemoteBootstrapSession>* session) const {
   if (!FindCopy(sessions_, session_id, session)) {
     *app_error = RemoteBootstrapErrorPB::NO_SESSION;
-    return Status::NotFound(
+    return STATUS(NotFound,
         Substitute("Remote bootstrap session with Session ID \"$0\" not found", session_id));
   }
   return Status::OK();
@@ -302,7 +302,7 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
       data_id.has_file_name();
   if (PREDICT_FALSE(num_set == 0 || num_set > 1)) {
     *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("Only one of BlockId, segment sequence number, and file name can be specified. "
                    "DataTypeID: $0", data_id.ShortDebugString()));
   }
@@ -310,26 +310,26 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
   switch (data_id.type()) {
     case DataIdPB::BLOCK:
       if (PREDICT_FALSE(!data_id.has_block_id())) {
-        return Status::InvalidArgument("block_id must be specified for type == BLOCK",
+        return STATUS(InvalidArgument, "block_id must be specified for type == BLOCK",
                                        data_id.ShortDebugString());
       }
       return Status::OK();
     case DataIdPB::LOG_SEGMENT:
       if (PREDICT_FALSE(!data_id.wal_segment_seqno())) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "segment sequence number must be specified for type == LOG_SEGMENT",
             data_id.ShortDebugString());
       }
       return Status::OK();
     case DataIdPB::ROCKSDB_FILE:
       if (PREDICT_FALSE(data_id.file_name().empty())) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "file name must be specified for type == ROCKSDB_FILE",
             data_id.ShortDebugString());
       }
       return Status::OK();
     case DataIdPB::UNKNOWN:
-      return Status::InvalidArgument("Type UNKNOWN not supported", data_id.ShortDebugString());
+      return STATUS(InvalidArgument, "Type UNKNOWN not supported", data_id.ShortDebugString());
   }
   LOG(FATAL) << "Invalid data id type: " << data_id.type();
 }

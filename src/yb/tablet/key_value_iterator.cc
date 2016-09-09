@@ -78,7 +78,7 @@ Status KeyValueIterator::NextBlock(RowBlock *dst) {
   // The following checks are similar to MemRowSet::Iterator::NextBlock.
   if (PREDICT_FALSE(!db_iter_->Valid())) {
     dst->Resize(0);
-    return Status::NotFound("end of iter");
+    return STATUS(NotFound, "end of iter");
   }
   if (PREDICT_FALSE(dst->row_capacity() == 0)) {
     return Status::OK();
@@ -106,7 +106,7 @@ Status KeyValueIterator::NextBlock(RowBlock *dst) {
       if (projection_->column(i).type_info()->physical_type() == BINARY) {
         Slice cell_copy;
         if (PREDICT_FALSE(!dst->arena()->RelocateSlice(cell_value, &cell_copy))) {
-          return Status::IOError("out of memory");
+          return STATUS(IOError, "out of memory");
         }
         *(reinterpret_cast<Slice*>(dst_row.cell(i).mutable_ptr())) = cell_copy;
       } else {

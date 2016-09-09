@@ -256,7 +256,7 @@ Status TSTabletManager::CreateNewTablet(
   for (int i = 0; i < config.peers_size(); ++i) {
     auto config_peer = config.mutable_peers(i);
     if (config_peer->has_member_type()) {
-      return Status::IllegalState(Substitute("member_type shouldn't be set for config: { $0 }",
+      return STATUS(IllegalState, Substitute("member_type shouldn't be set for config: { $0 }",
                                              config.ShortDebugString()));
     }
     config_peer->set_member_type(RaftPeerPB::VOTER);
@@ -282,7 +282,7 @@ Status TSTabletManager::CreateNewTablet(
     // Sanity check that the tablet isn't already registered.
     scoped_refptr<TabletPeer> junk;
     if (LookupTabletUnlocked(tablet_id, &junk)) {
-      return Status::AlreadyPresent("Tablet already registered", tablet_id);
+      return STATUS(AlreadyPresent, "Tablet already registered", tablet_id);
     }
 
     // Sanity check that the tablet's creation isn't already in progress
@@ -332,7 +332,7 @@ Status CheckLeaderTermNotLower(
     int64_t leader_term,
     int64_t last_logged_term) {
   if (PREDICT_FALSE(leader_term < last_logged_term)) {
-    Status s = Status::InvalidArgument(
+    Status s = STATUS(InvalidArgument,
         Substitute("Leader has replica of tablet $0 with term $1 lower than last "
                    "logged term $2 on local replica. Rejecting remote bootstrap request",
                    tablet_id, leader_term, last_logged_term));
@@ -372,10 +372,10 @@ Status HandleReplacingStaleTablet(
       // 3. This tserver finds that it already has the metadata for the tablet, and determines that
       // it needs to replace the tablet setting replacing_tablet to true.
       // In this case, the master can simply ignore this error.
-      return Status::IllegalState(Substitute("Tablet $0 in TABLET_DATA_READY state", tablet_id));
+      return STATUS(IllegalState, Substitute("Tablet $0 in TABLET_DATA_READY state", tablet_id));
     }
     default: {
-      return Status::IllegalState(
+      return STATUS(IllegalState,
           Substitute("Found tablet $0 in unexpected state $1 for remote bootstrap.",
                      tablet_id, TabletDataState_Name(data_state)));
     }
@@ -482,7 +482,7 @@ Status TSTabletManager::DeleteTablet(
     boost::optional<TabletServerErrorPB::Code>* error_code) {
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
-    return Status::InvalidArgument("DeleteTablet() requires an argument that is one of "
+    return STATUS(InvalidArgument, "DeleteTablet() requires an argument that is one of "
                                    "TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED",
                                    Substitute("Given: $0 ($1)",
                                               TabletDataState_Name(delete_type), delete_type));
@@ -501,7 +501,7 @@ Status TSTabletManager::DeleteTablet(
 
     if (!LookupTabletUnlocked(tablet_id, &tablet_peer)) {
       *error_code = TabletServerErrorPB::TABLET_NOT_FOUND;
-      return Status::NotFound("Tablet not found", tablet_id);
+      return STATUS(NotFound, "Tablet not found", tablet_id);
     }
     // Sanity check that the tablet's deletion isn't already in progress
     Status s = StartTabletStateTransitionUnlocked(tablet_id, "deleting tablet", &deleter);
@@ -525,12 +525,12 @@ Status TSTabletManager::DeleteTablet(
     scoped_refptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
     if (!consensus) {
       *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-      return Status::IllegalState("Consensus not available. Tablet shutting down");
+      return STATUS(IllegalState, "Consensus not available. Tablet shutting down");
     }
     RaftConfigPB committed_config = consensus->CommittedConfig();
     if (committed_config.opid_index() > *cas_config_opid_index_less_or_equal) {
       *error_code = TabletServerErrorPB::CAS_FAILED;
-      return Status::IllegalState(Substitute("Request specified cas_config_opid_index_less_or_equal"
+      return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index_less_or_equal"
                                              " of $0 but the committed config has opid_index of $1",
                                              *cas_config_opid_index_less_or_equal,
                                              committed_config.opid_index()));
@@ -576,7 +576,7 @@ Status TSTabletManager::CheckRunningUnlocked(
     return Status::OK();
   }
   *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-  return Status::ServiceUnavailable(Substitute("Tablet Manager is not running: $0",
+  return STATUS(ServiceUnavailable, Substitute("Tablet Manager is not running: $0",
                                                TSTabletManagerStatePB_Name(state_)));
 }
 
@@ -586,7 +586,7 @@ Status TSTabletManager::StartTabletStateTransitionUnlocked(
     scoped_refptr<TransitionInProgressDeleter>* deleter) {
   DCHECK(lock_.is_write_locked());
   if (!InsertIfNotPresent(&transition_in_progress_, tablet_id, reason)) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         Substitute("State transition of tablet $0 already in progress: $1",
                     tablet_id, transition_in_progress_[tablet_id]));
   }
@@ -771,11 +771,11 @@ bool TSTabletManager::LookupTabletUnlocked(const string& tablet_id,
 Status TSTabletManager::GetTabletPeer(const string& tablet_id,
                                       scoped_refptr<tablet::TabletPeer>* tablet_peer) const {
   if (!LookupTablet(tablet_id, tablet_peer)) {
-    return Status::NotFound("Tablet not found", tablet_id);
+    return STATUS(NotFound, "Tablet not found", tablet_id);
   }
   TabletDataState data_state = (*tablet_peer)->tablet_metadata()->tablet_data_state();
   if (data_state != TABLET_DATA_READY) {
-    return Status::IllegalState("Tablet data state not TABLET_DATA_READY: " +
+    return STATUS(IllegalState, "Tablet data state not TABLET_DATA_READY: " +
                                 TabletDataState_Name(data_state),
                                 tablet_id);
   }

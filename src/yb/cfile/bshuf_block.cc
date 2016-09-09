@@ -95,7 +95,7 @@ Status BShufBlockDecoder<UINT32>::Expand() {
     if (PREDICT_FALSE(bytes < 0)) {
       // Ideally, this should not happen.
       AbortWithBitShuffleError(bytes);
-      return Status::RuntimeError("Unshuffle Process failed");
+      return STATUS(RuntimeError, "Unshuffle Process failed");
     }
   }
 
@@ -140,7 +140,7 @@ Status BShufBlockDecoder<UINT32>::SeekAtOrAfterValue(const void* value_void, boo
   *exact = false;
   cur_idx_ = left;
   if (cur_idx_ == num_elems_) {
-    return Status::NotFound("after last key in block");
+    return STATUS(NotFound, "after last key in block");
   }
   return Status::OK();
 }

@@ -230,7 +230,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidSessionId) {
     data_id.mutable_block_id()->set_id(1);
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
-                        Status::NotFound("").CodeAsString());
+                        STATUS(NotFound, "").CodeAsString());
   }
 
   // End a non-existent session.
@@ -239,7 +239,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidSessionId) {
     RpcController controller;
     Status status = DoEndRemoteBootstrapSession(session_id, true, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
-                        Status::NotFound("").CodeAsString());
+                        STATUS(NotFound, "").CodeAsString());
   }
 }
 
@@ -250,7 +250,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidTabletId) {
   Status status =
       DoBeginRemoteBootstrapSession("some-unknown-tablet", GetLocalUUID(), &resp, &controller);
   ASSERT_REMOTE_ERROR(status, controller.error_response(), RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
-                      Status::NotFound("").CodeAsString());
+                      STATUS(NotFound, "").CodeAsString());
 }
 
 // Test DataIdPB validation.
@@ -268,7 +268,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(),
                         RemoteBootstrapErrorPB::BLOCK_NOT_FOUND,
-                        Status::NotFound("").CodeAsString());
+                        STATUS(NotFound, "").CodeAsString());
   }
 
   // Invalid Segment Sequence Number for log fetch.
@@ -281,7 +281,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(),
                         RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND,
-                        Status::NotFound("").CodeAsString());
+                        STATUS(NotFound, "").CodeAsString());
   }
 
   // Empty data type with BlockId.
@@ -304,7 +304,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(),
                         RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
-                        Status::InvalidArgument("").CodeAsString());
+                        STATUS(InvalidArgument, "").CodeAsString());
   }
 
   // Both BlockId and Segment Sequence Number in the same "union" PB (illegal).
@@ -318,7 +318,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
     Status status = DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller);
     ASSERT_REMOTE_ERROR(status, controller.error_response(),
                         RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
-                        Status::InvalidArgument("").CodeAsString());
+                        STATUS(InvalidArgument, "").CodeAsString());
   }
 }
 
@@ -336,7 +336,7 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchInvalidBlockOffset) {
                               &offset, nullptr, &resp, &controller);
   ASSERT_REMOTE_ERROR(status, controller.error_response(),
                       RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST,
-                      Status::InvalidArgument("").CodeAsString());
+                      STATUS(InvalidArgument, "").CodeAsString());
 }
 
 // Test that we are able to fetch an entire block.

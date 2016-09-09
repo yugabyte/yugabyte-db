@@ -84,7 +84,7 @@ Status WaitUntilLeaderForTests(RaftConsensus* raft) {
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  return Status::TimedOut("Timed out waiting to become leader");
+  return STATUS(TimedOut, "Timed out waiting to become leader");
 }
 
 // Test suite for tests that focus on multiple peer interaction, but

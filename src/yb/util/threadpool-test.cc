@@ -112,7 +112,7 @@ TEST(TestThreadPool, TestSubmitAfterShutdown) {
   thread_pool->Shutdown();
   Status s = thread_pool->SubmitFunc(&IssueTraceStatement);
   ASSERT_EQ("Service unavailable: The pool has been shut down.",
-            s.ToString());
+            s.ToString(/* no file/line */ false));
 }
 
 class SlowTask : public Runnable {

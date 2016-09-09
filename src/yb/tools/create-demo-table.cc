@@ -78,7 +78,7 @@ Status GetDemoSchema(const string& table_name, YBSchema* schema) {
   } else if (table_name == kYCSBTabletId) {
     *schema = yb::CreateYCSBSchema();
   } else {
-    return Status::InvalidArgument("Invalid demo table name", table_name);
+    return STATUS(InvalidArgument, "Invalid demo table name", table_name);
   }
   return Status::OK();
 }

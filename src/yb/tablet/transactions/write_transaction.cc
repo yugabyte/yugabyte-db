@@ -77,7 +77,7 @@ Status WriteTransaction::Prepare() {
   if (client_schema.has_column_ids()) {
     // TODO: we have this kind of code a lot - add a new SchemaFromPB variant which
     // does this check inline.
-    Status s = Status::InvalidArgument("User requests should not have Column IDs");
+    Status s = STATUS(InvalidArgument, "User requests should not have Column IDs");
     state_->completion_callback()->set_error(s, TabletServerErrorPB::INVALID_SCHEMA);
     return s;
   }

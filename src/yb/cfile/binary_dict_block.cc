@@ -183,7 +183,7 @@ Status BinaryDictBlockDecoder::ParseHeader() {
   CHECK(!parsed_);
 
   if (data_.size() < kMinHeaderSize) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       strings::Substitute("not enough bytes for header: dictionary block header "
         "size ($0) less than minimum possible header length ($1)",
         data_.size(), kMinHeaderSize));
@@ -191,7 +191,7 @@ Status BinaryDictBlockDecoder::ParseHeader() {
 
   bool valid = tight_enum_test_cast<DictEncodingMode>(DecodeFixed32(&data_[0]), &mode_);
   if (PREDICT_FALSE(!valid)) {
-    return Status::Corruption("header Mode information corrupted");
+    return STATUS(Corruption, "header Mode information corrupted");
   }
   Slice content(data_.data() + 4, data_.size() - 4);
 
@@ -199,7 +199,7 @@ Status BinaryDictBlockDecoder::ParseHeader() {
     data_decoder_.reset(new BShufBlockDecoder<UINT32>(content));
   } else {
     if (mode_ != kPlainBinaryMode) {
-      return Status::Corruption("Unrecognized Dictionary encoded data block header");
+      return STATUS(Corruption, "Unrecognized Dictionary encoded data block header");
     }
     data_decoder_.reset(new BinaryPlainBlockDecoder(content));
   }

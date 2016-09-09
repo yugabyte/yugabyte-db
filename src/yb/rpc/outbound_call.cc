@@ -82,7 +82,7 @@ OutboundCall::~OutboundCall() {
 Status OutboundCall::SerializeTo(vector<Slice>* slices) {
   size_t param_len = request_buf_.size();
   if (PREDICT_FALSE(param_len == 0)) {
-    return Status::InvalidArgument("Must call SetRequestParam() before SerializeTo()");
+    return STATUS(InvalidArgument, "Must call SetRequestParam() before SerializeTo()");
   }
 
   const MonoDelta &timeout = controller_->timeout();
@@ -199,7 +199,7 @@ void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
     // which isn't great, since it would block processing of other RPCs in parallel.
     // Should look into a way to avoid this.
     if (!response_->ParseFromArray(r.data(), r.size())) {
-      SetFailed(Status::IOError("Invalid response, missing fields",
+      SetFailed(STATUS(IOError, "Invalid response, missing fields",
                                 response_->InitializationErrorString()));
       return;
     }
@@ -209,12 +209,12 @@ void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
     // Error
     gscoped_ptr<ErrorStatusPB> err(new ErrorStatusPB());
     if (!err->ParseFromArray(r.data(), r.size())) {
-      SetFailed(Status::IOError("Was an RPC error but could not parse error response",
+      SetFailed(STATUS(IOError, "Was an RPC error but could not parse error response",
                                 err->InitializationErrorString()));
       return;
     }
     ErrorStatusPB* err_raw = err.release();
-    SetFailed(Status::RemoteError(err_raw->message()), err_raw);
+    SetFailed(STATUS(RemoteError, err_raw->message()), err_raw);
   }
 }
 
@@ -256,7 +256,7 @@ void OutboundCall::SetFailed(const Status &status,
 void OutboundCall::SetTimedOut() {
   {
     std::lock_guard<simple_spinlock> l(lock_);
-    status_ = Status::TimedOut(Substitute(
+    status_ = STATUS(TimedOut, Substitute(
         "$0 RPC to $1 timed out after $2",
         remote_method_.method_name(),
         conn_id_.remote().ToString(),
@@ -432,7 +432,7 @@ CallResponse::CallResponse()
 Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   DCHECK(parsed_);
   if (idx < 0 || idx >= header_.sidecar_offsets_size()) {
-    return Status::InvalidArgument(strings::Substitute(
+    return STATUS(InvalidArgument, strings::Substitute(
         "Index $0 does not reference a valid sidecar", idx));
   }
   *sidecar = sidecar_slices_[idx];
@@ -449,7 +449,7 @@ Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
   int last = header_.sidecar_offsets_size() - 1;
 
   if (last >= OutboundTransfer::kMaxPayloadSlices) {
-    return Status::Corruption(strings::Substitute(
+    return STATUS(Corruption, strings::Substitute(
         "Received $0 additional payload slices, expected at most %d",
         last, OutboundTransfer::kMaxPayloadSlices));
   }
@@ -461,7 +461,7 @@ Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
       uint32_t next_offset = header_.sidecar_offsets(i);
       int32_t len = header_.sidecar_offsets(i + 1) - next_offset;
       if (next_offset + len > entire_message.size() || len < 0) {
-        return Status::Corruption(strings::Substitute(
+        return STATUS(Corruption, strings::Substitute(
             "Invalid sidecar offsets; sidecar $0 apparently starts at $1,"
             " has length $2, but the entire message has length $3",
             i, next_offset, len, entire_message.size()));
@@ -470,7 +470,7 @@ Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
     }
     uint32_t next_offset = header_.sidecar_offsets(last);
     if (next_offset > entire_message.size()) {
-        return Status::Corruption(strings::Substitute(
+        return STATUS(Corruption, strings::Substitute(
             "Invalid sidecar offsets; the last sidecar ($0) apparently starts "
             "at $1, but the entire message has length $3",
             last, next_offset, entire_message.size()));

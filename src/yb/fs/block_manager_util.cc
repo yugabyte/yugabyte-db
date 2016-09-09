@@ -90,13 +90,13 @@ Status PathInstanceMetadataFile::LoadFromDisk() {
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(env_, filename_, pb.get()));
 
   if (pb->block_manager_type() != block_manager_type_) {
-    return Status::IOError("Wrong block manager type", pb->block_manager_type());
+    return STATUS(IOError, "Wrong block manager type", pb->block_manager_type());
   }
 
   uint64_t block_size;
   RETURN_NOT_OK(env_->GetBlockSize(filename_, &block_size));
   if (pb->filesystem_block_size_bytes() != block_size) {
-    return Status::IOError("Wrong filesystem block size", Substitute(
+    return STATUS(IOError, "Wrong filesystem block size", Substitute(
         "Expected $0 but was $1", pb->filesystem_block_size_bytes(), block_size));
   }
 
@@ -134,7 +134,7 @@ Status PathInstanceMetadataFile::CheckIntegrity(
     PathInstanceMetadataFile** other =
         InsertOrReturnExisting(&uuids, path_set.uuid(), instance);
     if (other) {
-      return Status::IOError(Substitute(
+      return STATUS(IOError, Substitute(
           "File $0 claimed uuid $1 already claimed by file $2",
           instance->filename_, path_set.uuid(), (*other)->filename_));
     }
@@ -144,14 +144,14 @@ Status PathInstanceMetadataFile::CheckIntegrity(
                                    path_set.all_uuids().end());
     string all_uuids_str = JoinStrings(path_set.all_uuids(), ",");
     if (deduplicated_uuids.size() != path_set.all_uuids_size()) {
-      return Status::IOError(Substitute(
+      return STATUS(IOError, Substitute(
           "File $0 has duplicate uuids: $1",
           instance->filename_, all_uuids_str));
     }
 
     // Check that this instance's UUID is a member of all_uuids.
     if (!ContainsKey(deduplicated_uuids, path_set.uuid())) {
-      return Status::IOError(Substitute(
+      return STATUS(IOError, Substitute(
           "File $0 claimed uuid $1 which is not in all_uuids ($2)",
           instance->filename_, path_set.uuid(), all_uuids_str));
     }
@@ -161,7 +161,7 @@ Status PathInstanceMetadataFile::CheckIntegrity(
       first_all_uuids.first = all_uuids_str;
       first_all_uuids.second = instance;
     } else if (first_all_uuids.first != all_uuids_str) {
-      return Status::IOError(Substitute(
+      return STATUS(IOError, Substitute(
           "File $0 claimed all_uuids $1 but file $2 claimed all_uuids $3",
           instance->filename_, all_uuids_str,
           first_all_uuids.second->filename_, first_all_uuids.first));

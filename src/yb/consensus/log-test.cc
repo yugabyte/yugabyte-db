@@ -328,12 +328,12 @@ TEST_F(LogTest, TestTruncateLogInHeader) {
 // a Corruption instead of an OK, because we still have a valid footer in
 // the file (indicating that all of the entries should be valid as well).
 TEST_F(LogTest, TestCorruptLogInEntry) {
-  DoCorruptionTest(FLIP_BYTE, IN_ENTRY, Status::Corruption(""), 3);
+  DoCorruptionTest(FLIP_BYTE, IN_ENTRY, STATUS(Corruption, ""), 3);
 }
 
 // Same, but corrupt in the middle of the header of that entry.
 TEST_F(LogTest, TestCorruptLogInHeader) {
-  DoCorruptionTest(FLIP_BYTE, IN_HEADER, Status::Corruption(""), 3);
+  DoCorruptionTest(FLIP_BYTE, IN_HEADER, STATUS(Corruption, ""), 3);
 }
 
 // Tests that segments roll over when max segment size is reached

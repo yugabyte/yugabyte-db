@@ -92,7 +92,7 @@ Status IndexBlockBuilder::GetFirstKey(Slice *key) const {
   // for slices, which need to copy
 
   if (entry_offsets_.empty()) {
-    return Status::NotFound("no keys in builder");
+    return STATUS(NotFound, "no keys in builder");
   }
 
   bool success = nullptr != SliceDecode(buffer_.data(),buffer_.data() + buffer_.size(),key);
@@ -100,7 +100,7 @@ Status IndexBlockBuilder::GetFirstKey(Slice *key) const {
   if (success) {
     return Status::OK();
   } else {
-    return Status::Corruption("Unable to decode first key");
+    return STATUS(Corruption, "Unable to decode first key");
   }
 }
 
@@ -135,7 +135,7 @@ Status IndexBlockReader::Parse(const Slice &data) {
 
 
   if (data_.size() < sizeof(uint32_t)) {
-    return Status::Corruption("index block too small");
+    return STATUS(Corruption, "index block too small");
   }
 
   const uint8_t *trailer_size_ptr =
@@ -147,14 +147,14 @@ Status IndexBlockReader::Parse(const Slice &data) {
       trailer_size > max_size) {
     string err = "invalid index block trailer size: " +
       boost::lexical_cast<string>(trailer_size);
-    return Status::Corruption(err);
+    return STATUS(Corruption, err);
   }
 
   const uint8_t *trailer_ptr = trailer_size_ptr - trailer_size;
 
   bool success = trailer_.ParseFromArray(trailer_ptr, trailer_size);
   if (!success) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       "unable to parse trailer",
       trailer_.InitializationErrorString());
   }
@@ -197,7 +197,7 @@ int IndexBlockReader::CompareKey(int idx_in_block,
 
 Status IndexBlockReader::ReadEntry(size_t idx, Slice *key, BlockPointer *block_ptr) const {
   if (idx >= trailer_.num_entries()) {
-    return Status::NotFound("Invalid index");
+    return STATUS(NotFound, "Invalid index");
   }
 
   // At 'ptr', data is encoded as follows:
@@ -208,7 +208,7 @@ Status IndexBlockReader::ReadEntry(size_t idx, Slice *key, BlockPointer *block_p
 
   ptr = SliceDecode(ptr, limit, key);
   if (ptr == nullptr) {
-    return Status::Corruption("Invalid key in index");
+    return STATUS(Corruption, "Invalid key in index");
   }
 
   return block_ptr->DecodeFrom(ptr, data_.data() + data_.size());
@@ -279,7 +279,7 @@ Status IndexBlockIterator::SeekAtOrBefore(const Slice &search_key) {
     // The last midpoint was still greather then the
     // provided key, which implies that the key is
     // lower than the lowest in the block.
-    return Status::NotFound("key not present");
+    return STATUS(NotFound, "key not present");
   }
 
   return SeekToIndex(left);

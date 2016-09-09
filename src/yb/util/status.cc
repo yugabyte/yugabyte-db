@@ -20,8 +20,14 @@ const char* Status::CopyState(const char* state) {
   return result;
 }
 
-Status::Status(Code code, const Slice& msg, const Slice& msg2,
-               int16_t posix_code) {
+Status::Status(Code code,
+               const Slice& msg,
+               const Slice& msg2,
+               int16_t posix_code,
+               const char* file_name,
+               int line_number)
+    : file_name_(file_name),
+      line_number_(line_number) {
   assert(code != kOk);
   const uint32_t len1 = msg.size();
   const uint32_t len2 = msg2.size();
@@ -110,12 +116,27 @@ std::string Status::CodeAsString() const {
   return std::string(type);
 }
 
-std::string Status::ToString() const {
+std::string Status::ToString(bool include_file_and_line) const {
   std::string result(CodeAsString());
   if (state_ == nullptr) {
     return result;
   }
 
+  if (include_file_and_line && file_name_ != nullptr && line_number_ != 0) {
+    result.append(" (");
+
+    // Try to only include file path starting from source root directory. We are assuming that all
+    // C++ code is located in $YB_SRC_ROOT/src, where $YB_SRC_ROOT is the repository root. Note that
+    // this will break if the repository itself is located in a parent directory named "src".
+    // However, neither Jenkins, nor our standard code location on a developer workstation
+    // (~/code/yugabyte) should have that problem.
+    const char* src_subpath = strstr(file_name_, "/src/");
+    result.append(src_subpath != nullptr ? src_subpath + 1 : file_name_);
+
+    result.append(":");
+    result.append(std::to_string(line_number_));
+    result.append(")");
+  }
   result.append(": ");
   Slice msg = message();
   result.append(reinterpret_cast<const char*>(msg.data()), msg.size());
@@ -148,11 +169,11 @@ int16_t Status::posix_code() const {
 }
 
 Status Status::CloneAndPrepend(const Slice& msg) const {
-  return Status(code(), msg, message(), posix_code());
+  return Status(code(), msg, message(), posix_code(), file_name_, line_number_);
 }
 
 Status Status::CloneAndAppend(const Slice& msg) const {
-  return Status(code(), message(), msg, posix_code());
+  return Status(code(), message(), msg, posix_code(), file_name_, line_number_);
 }
 
 size_t Status::memory_footprint_excluding_this() const {

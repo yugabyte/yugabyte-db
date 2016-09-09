@@ -83,7 +83,7 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
 
   // Verify that no existing tablet exists with the same ID.
   if (fs_manager->env()->FileExists(fs_manager->GetTabletMetadataPath(tablet_id))) {
-    return Status::AlreadyPresent("Tablet already exists", tablet_id);
+    return STATUS(AlreadyPresent, "Tablet already exists", tablet_id);
   }
 
   string rocksdb_dir;
@@ -132,7 +132,7 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
   Status s = Load(fs_manager, tablet_id, metadata);
   if (s.ok()) {
     if (!(*metadata)->schema().Equals(schema)) {
-      return Status::Corruption(Substitute("Schema on disk ($0) does not "
+      return STATUS(Corruption, Substitute("Schema on disk ($0) does not "
         "match expected schema ($1)", (*metadata)->schema().ToString(),
         schema.ToString()));
     }
@@ -221,12 +221,12 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 Status TabletMetadata::DeleteSuperBlock() {
   std::lock_guard<LockType> l(data_lock_);
   if (!orphaned_blocks_.empty()) {
-    return Status::InvalidArgument("The metadata for tablet " + tablet_id_ +
+    return STATUS(InvalidArgument, "The metadata for tablet " + tablet_id_ +
                                    " still references orphaned blocks. "
                                    "Call DeleteTabletData() first");
   }
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
                    "Call DeleteTabletData(TABLET_DATA_DELETED) first. "
                    "Tablet data state: $1 ($2)",
@@ -312,7 +312,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
 
     // Verify that the tablet id matches with the one in the protobuf
     if (superblock.tablet_id() != tablet_id_) {
-      return Status::Corruption("Expected id=" + tablet_id_ +
+      return STATUS(Corruption, "Expected id=" + tablet_id_ +
                                 " found " + superblock.tablet_id(),
                                 superblock.DebugString());
     }
@@ -343,7 +343,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
       RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), *schema_, &partition_schema_));
       PartitionPB partition;
       if (!superblock.has_start_key() || !superblock.has_end_key()) {
-        return Status::Corruption(
+        return STATUS(Corruption,
             "tablet superblock must contain either a partition or start and end primary keys",
             superblock.ShortDebugString());
       }

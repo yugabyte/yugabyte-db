@@ -416,7 +416,7 @@ class ClientTest : public YBTest {
       }
     }
     if (!ts_found) {
-      return Status::InvalidArgument(strings::Substitute("Could not find tablet server $1", uuid));
+      return STATUS(InvalidArgument, strings::Substitute("Could not find tablet server $1", uuid));
     }
 
     return Status::OK();
@@ -743,13 +743,13 @@ TEST_F(ClientTest, TestProjectInvalidColumn) {
   YBScanner scanner(client_table_.get());
   Status s = scanner.SetProjectedColumns({ "column-doesnt-exist" });
   ASSERT_EQ("Not found: Column: \"column-doesnt-exist\" was not found in the table schema.",
-            s.ToString());
+            s.ToString(/* no file/line */ false));
 
   // Test trying to use a projection where a column is used multiple times.
   // TODO: consider fixing this to support returning the column multiple
   // times, even though it's not very useful.
   s = scanner.SetProjectedColumns({ "key", "key" });
-  ASSERT_EQ("Invalid argument: Duplicate column name: key", s.ToString());
+  ASSERT_EQ("Invalid argument: Duplicate column name: key", s.ToString(/* no file/line */ false));
 }
 
 // Test a scan where we have a predicate on a key column that is not
@@ -834,21 +834,22 @@ TEST_F(ClientTest, TestInvalidPredicates) {
   Status s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate("this-does-not-exist",
                                             YBPredicate::EQUAL, YBValue::FromInt(5)));
-  EXPECT_EQ("Not found: column not found: this-does-not-exist", s.ToString());
+  EXPECT_EQ("Not found: column not found: this-does-not-exist",
+            s.ToString(/* no file/line */ false));
 
   // Int predicate on a string column.
   s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate("string_val",
                                             YBPredicate::EQUAL, YBValue::FromInt(5)));
   EXPECT_EQ("Invalid argument: non-string value for string column string_val",
-            s.ToString());
+            s.ToString(false));
 
   // String predicate on an int column.
   s = scanner.AddConjunctPredicate(
       client_table_->NewComparisonPredicate("int_val",
                                             YBPredicate::EQUAL, YBValue::CopyString("x")));
   EXPECT_EQ("Invalid argument: non-int value for int column int_val",
-            s.ToString());
+            s.ToString(false));
 
   // Out-of-range int predicate on an int column.
   s = scanner.AddConjunctPredicate(
@@ -857,7 +858,7 @@ TEST_F(ClientTest, TestInvalidPredicates) {
           YBPredicate::EQUAL,
           YBValue::FromInt(static_cast<int64_t>(MathLimits<int32_t>::kMax) + 10)));
   EXPECT_EQ("Invalid argument: value 2147483657 out of range for "
-            "32-bit signed integer column 'int_val'", s.ToString());
+            "32-bit signed integer column 'int_val'", s.ToString(false));
 }
 
 
@@ -1077,7 +1078,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 
   // Make sure none of the modes work when all nodes are dead.
   for (internal::RemoteTabletServer* rt : tservers) {
-    client_->data_->meta_cache_->MarkTSFailed(rt, Status::NetworkError("test"));
+    client_->data_->meta_cache_->MarkTSFailed(rt, STATUS(NetworkError, "test"));
   }
   blacklist.clear();
   for (YBClient::ReplicaSelection selection : selections) {
@@ -1400,7 +1401,7 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
   Status s = session->Apply(insert.release());
   ASSERT_EQ("Illegal state: Key not specified: "
             "INSERT int32 int_val=54321, string string_val=hello world",
-            s.ToString());
+            s.ToString(false));  // No file or line number.
 
   // Get error
   ASSERT_EQ(session->CountPendingErrors(), 1) << "Should report bad key to error container";

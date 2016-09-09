@@ -59,12 +59,12 @@ class BlockPointer {
   Status DecodeFrom(const uint8_t *data, const uint8_t *limit) {
     data = GetVarint64Ptr(data, limit, &offset_);
     if (!data) {
-      return Status::Corruption("bad block pointer");
+      return STATUS(Corruption, "bad block pointer");
     }
 
     data = GetVarint32Ptr(data, limit, &size_);
     if (!data) {
-      return Status::Corruption("bad block pointer");
+      return STATUS(Corruption, "bad block pointer");
     }
 
     return Status::OK();

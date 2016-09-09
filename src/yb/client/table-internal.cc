@@ -51,7 +51,7 @@ static Status PBToClientTableType(
       return Status::OK();
     default:
       *client_table_type = YBTableType::UNKNOWN_TABLE_TYPE;
-      return Status::InvalidArgument(strings::Substitute(
+      return STATUS(InvalidArgument, strings::Substitute(
         "Invalid table type from master response: $0", table_type_from_pb));
   }
 }
@@ -95,7 +95,7 @@ Status YBTable::Data::Open() {
     if (deadline.ComesBefore(now)) {
       const char* msg = "OpenTable timed out after deadline expired";
       LOG(ERROR) << msg;
-      return Status::TimedOut(msg);
+      return STATUS(TimedOut, msg);
     }
 
     // See YBClient::Data::SyncLeaderMasterRpc().

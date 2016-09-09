@@ -73,13 +73,13 @@ Status ParseStat(const std::string& buffer, std::string* name, ThreadStats* stat
       close_paren == string::npos ||      // ')' must exist
       open_paren >= close_paren   ||      // '(' must come before ')'
       close_paren + 2 == buffer.size()) { // there must be at least two chars after ')'
-    return Status::IOError("Unrecognised /proc format");
+    return STATUS(IOError, "Unrecognised /proc format");
   }
   string extracted_name = buffer.substr(open_paren + 1, close_paren - (open_paren + 1));
   string rest = buffer.substr(close_paren + 2);
   vector<string> splits = Split(rest, " ", strings::SkipEmpty());
   if (splits.size() < MAX_OFFSET) {
-    return Status::IOError("Unrecognised /proc format");
+    return STATUS(IOError, "Unrecognised /proc format");
   }
 
   int64 tmp;
@@ -102,14 +102,14 @@ Status ParseStat(const std::string& buffer, std::string* name, ThreadStats* stat
 Status GetThreadStats(int64_t tid, ThreadStats* stats) {
   DCHECK(stats != nullptr);
   if (TICKS_PER_SEC <= 0) {
-    return Status::NotSupported("ThreadStats not supported");
+    return STATUS(NotSupported, "ThreadStats not supported");
   }
 
   stringstream proc_path;
   proc_path << "/proc/self/task/" << tid << "/stat";
   ifstream proc_file(proc_path.str().c_str());
   if (!proc_file.is_open()) {
-    return Status::IOError("Could not open ifstream");
+    return STATUS(IOError, "Could not open ifstream");
   }
 
   string buffer((istreambuf_iterator<char>(proc_file)),

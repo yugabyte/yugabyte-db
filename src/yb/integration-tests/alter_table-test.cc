@@ -178,7 +178,7 @@ class AlterTableTest : public YBTest {
       wait_time = std::min(wait_time * 5 / 4, 1000000);
     }
 
-    return Status::TimedOut("AlterTable not completed within the timeout");
+    return STATUS(TimedOut, "AlterTable not completed within the timeout");
   }
 
   Status AddNewI32Column(const string& table_name,

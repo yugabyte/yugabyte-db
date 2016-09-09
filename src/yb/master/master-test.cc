@@ -373,7 +373,7 @@ TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
     YBPartialRow split2(&kTableSchema);
     Status s = CreateTable(kTableName, kTableSchema, { split1, split2 });
     ASSERT_TRUE(s.IsInvalidArgument());
-    ASSERT_STR_CONTAINS(s.ToString(),
+    ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
                         "Invalid argument: Split rows must contain a value for at "
                         "least one range partition column");
   }
@@ -385,7 +385,7 @@ TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
     ASSERT_OK(split.SetInt32("val", 1));
     Status s = CreateTable(kTableName, kTableSchema, { split });
     ASSERT_TRUE(s.IsInvalidArgument());
-    ASSERT_STR_CONTAINS(s.ToString(),
+    ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
                         "Invalid argument: Split rows may only contain values "
                         "for range partitioned columns: val");
   }

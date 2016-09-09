@@ -36,11 +36,11 @@ Status InMemDocDB::SetPrimitive(const DocPath& doc_path, const PrimitiveValue& v
   for (int subkey_index = 0; subkey_index < num_subkeys - 1; ++subkey_index) {
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
     if (subkey.value_type() == ValueType::kArrayIndex) {
-      return Status::NotSupported("Setting values at a given array index is not supported yet.");
+      return STATUS(NotSupported, "Setting values at a given array index is not supported yet.");
     }
 
     if (current_subdoc->value_type() != ValueType::kObject) {
-      return Status::IllegalState(Substitute(
+      return STATUS(IllegalState, Substitute(
           "Cannot set or delete values inside a subdocument of type $0",
           ValueTypeToStr(current_subdoc->value_type())));
     }

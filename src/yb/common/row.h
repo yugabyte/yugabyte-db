@@ -70,7 +70,7 @@ Status CopyCellData(const SrcCellType &src, DstCellType* dst, ArenaType *dst_are
     Slice *dst_slice = reinterpret_cast<Slice *>(dst->mutable_ptr());
     if (dst_arena != NULL) {
       if (PREDICT_FALSE(!dst_arena->RelocateSlice(*src_slice, dst_slice))) {
-        return Status::IOError("out of memory copying slice", src_slice->ToString());
+        return STATUS(IOError, "out of memory copying slice", src_slice->ToString());
       }
     } else {
       // Just copy the slice without relocating.
@@ -219,7 +219,7 @@ class RowProjector {
   }
 
   Status ProjectExtraColumn(size_t proj_col_idx) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       "The column '" + projection_->column(proj_col_idx).name() +
       "' does not exist in the projection, and it does not have a "
       "default value or a nullable type");
@@ -345,7 +345,7 @@ class DeltaProjector {
   }
 
   Status ProjectExtraColumn(size_t proj_col_idx) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       "The column '" + delta_schema_->column(proj_col_idx).name() +
       "' does not exist in the projection, and it does not have a "
       "default value or a nullable type");
@@ -384,7 +384,7 @@ inline Status RelocateIndirectDataToArena(RowType *row, ArenaType *dst_arena) {
 
       Slice *slice = reinterpret_cast<Slice *>(cell.mutable_ptr());
       if (!dst_arena->RelocateSlice(*slice, slice)) {
-        return Status::IOError("Unable to relocate slice");
+        return STATUS(IOError, "Unable to relocate slice");
       }
     }
   }

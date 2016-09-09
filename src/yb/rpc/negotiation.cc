@@ -76,13 +76,13 @@ static Status RecvConnectionContext(YBConnection* conn, const MonoTime& deadline
   DCHECK(header.IsInitialized());
 
   if (header.call_id() != kConnectionContextCallId) {
-    return Status::IllegalState("Expected ConnectionContext callid, received",
+    return STATUS(IllegalState, "Expected ConnectionContext callid, received",
         Substitute("$0", header.call_id()));
   }
 
   ConnectionContextPB conn_context;
   if (!conn_context.ParseFromArray(param_buf.data(), param_buf.size())) {
-    return Status::InvalidArgument("Invalid ConnectionContextPB message, missing fields",
+    return STATUS(InvalidArgument, "Invalid ConnectionContextPB message, missing fields",
         conn_context.InitializationErrorString());
   }
 
@@ -91,7 +91,7 @@ static Status RecvConnectionContext(YBConnection* conn, const MonoTime& deadline
     // Validate real user against SASL impl.
     if (conn->sasl_server().negotiated_mechanism() == SaslMechanism::PLAIN) {
       if (conn->sasl_server().plain_auth_user() != conn_context.user_info().real_user()) {
-        return Status::NotAuthorized(
+        return STATUS(NotAuthorized,
             "ConnectionContextPB specified different real user than sent in SASL negotiation",
             StringPrintf("\"%s\" vs. \"%s\"",
                 conn_context.user_info().real_user().c_str(),
@@ -128,7 +128,7 @@ static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline)
       DVLOG(4) << "Client waiting to connect for negotiation, time remaining until timeout deadline: "
                << remaining.ToString();
       if (PREDICT_FALSE(remaining.ToNanoseconds() <= 0)) {
-        return Status::TimedOut("Timeout exceeded waiting to connect");
+        return STATUS(TimedOut, "Timeout exceeded waiting to connect");
       }
     }
 #if defined(__linux__)
@@ -155,7 +155,7 @@ static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline)
         // We were interrupted by a signal, let's go again.
         continue;
       } else {
-        return Status::NetworkError("Error from ppoll() while waiting to connect",
+        return STATUS(NetworkError, "Error from ppoll() while waiting to connect",
             ErrnoToString(err), err);
       }
     } else if (ready == 0) {
@@ -173,12 +173,12 @@ static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline)
   socklen_t socklen = sizeof(so_error);
   int rc = getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &socklen);
   if (rc != 0) {
-    return Status::NetworkError("Unable to check connected socket for errors",
+    return STATUS(NetworkError, "Unable to check connected socket for errors",
                                 ErrnoToString(errno),
                                 errno);
   }
   if (so_error != 0) {
-    return Status::NetworkError("connect", ErrnoToString(so_error), so_error);
+    return STATUS(NetworkError, "connect", ErrnoToString(so_error), so_error);
   }
 
   return Status::OK();

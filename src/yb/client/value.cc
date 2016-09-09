@@ -126,7 +126,7 @@ Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
       break;
 
     default:
-      return Status::InvalidArgument(Substitute("cannot determine value for column $0 (type $1)",
+      return STATUS(InvalidArgument, Substitute("cannot determine value for column $0 (type $1)",
                                                 col_name, ti->name()));
   }
   return Status::OK();
@@ -136,7 +136,7 @@ Status YBValue::Data::CheckValType(const string& col_name,
                                      YBValue::Data::Type type,
                                      const char* type_str) const {
   if (type_ != type) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("non-$0 value for $0 column $1", type_str, col_name));
   }
   return Status::OK();
@@ -147,7 +147,7 @@ Status YBValue::Data::CheckAndPointToBool(const string& col_name,
   RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::INT, "bool"));
   int64_t int_val = int_val_;
   if (int_val != 0 && int_val != 1) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("value $0 out of range for boolean column '$1'",
                    int_val, col_name));
   }
@@ -172,7 +172,7 @@ Status YBValue::Data::CheckAndPointToInt(const string& col_name,
 
   int64_t int_val = int_val_;
   if (int_val < int_min || int_val > int_max) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("value $0 out of range for $1-bit signed integer column '$2'",
                    int_val, int_size * 8, col_name));
   }

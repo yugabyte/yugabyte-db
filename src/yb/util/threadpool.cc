@@ -108,7 +108,7 @@ ThreadPool::ThreadPool(const ThreadPoolBuilder& builder)
     max_threads_(builder.max_threads_),
     max_queue_size_(builder.max_queue_size_),
     idle_timeout_(builder.idle_timeout_),
-    pool_status_(Status::Uninitialized("The pool was not initialized.")),
+    pool_status_(STATUS(Uninitialized, "The pool was not initialized.")),
     idle_cond_(&lock_),
     no_threads_cond_(&lock_),
     not_empty_(&lock_),
@@ -124,7 +124,7 @@ ThreadPool::~ThreadPool() {
 Status ThreadPool::Init() {
   MutexLock unique_lock(lock_);
   if (!pool_status_.IsUninitialized()) {
-    return Status::NotSupported("The thread pool is already initialized");
+    return STATUS(NotSupported, "The thread pool is already initialized");
   }
   pool_status_ = Status::OK();
   for (int i = 0; i < min_threads_; i++) {
@@ -149,7 +149,7 @@ void ThreadPool::ClearQueue() {
 
 void ThreadPool::Shutdown() {
   MutexLock unique_lock(lock_);
-  pool_status_ = Status::ServiceUnavailable("The pool has been shut down.");
+  pool_status_ = STATUS(ServiceUnavailable, "The pool has been shut down.");
   ClearQueue();
   not_empty_.Broadcast();
 
@@ -180,7 +180,7 @@ Status ThreadPool::Submit(const std::shared_ptr<Runnable>& task) {
 
   // Size limit check.
   if (queue_size_ == max_queue_size_) {
-    return Status::ServiceUnavailable(Substitute("Thread pool queue is full ($0 items)",
+    return STATUS(ServiceUnavailable, Substitute("Thread pool queue is full ($0 items)",
                                                  queue_size_));
   }
 

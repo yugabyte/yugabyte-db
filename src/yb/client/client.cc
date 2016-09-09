@@ -388,7 +388,7 @@ Status YBClient::SetMasterLeaderSocket(Sockaddr* leader_socket) {
   vector<Sockaddr> leader_addrs;
   RETURN_NOT_OK(leader_hostport.ResolveAddresses(&leader_addrs));
   if (leader_addrs.empty() || leader_addrs.size() > 1) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
       strings::Substitute("Unexpected master leader address size $0, expected only 1 leader "
         "address.", leader_addrs.size()));
   }
@@ -453,7 +453,7 @@ Status YBClient::GetMasterUUID(const string& host,
   RETURN_NOT_OK(MasterUtil::GetMasterEntryForHost(data_->messenger_, hp, timeout_ms, &server));
 
   if (server.has_error()) {
-    return Status::RuntimeError(
+    return STATUS(RuntimeError,
         strings::Substitute("Error $0 while getting uuid of $1:$2.",
                             "", host, port));
   }
@@ -654,10 +654,10 @@ YBTableCreator& YBTableCreator::wait(bool wait) {
 
 Status YBTableCreator::Create() {
   if (!data_->table_name_.length()) {
-    return Status::InvalidArgument("Missing table name");
+    return STATUS(InvalidArgument, "Missing table name");
   }
   if (!data_->schema_) {
-    return Status::InvalidArgument("Missing schema");
+    return STATUS(InvalidArgument, "Missing schema");
   }
 
   // Build request.
@@ -778,7 +778,7 @@ YBPredicate* YBTable::NewComparisonPredicate(const Slice& col_name,
     // This makes the API more "fluent".
     delete value; // we always take ownership of 'value'.
     return new YBPredicate(new ErrorPredicateData(
-                                 Status::NotFound("column not found", col_name)));
+                                 STATUS(NotFound, "column not found", col_name)));
   }
 
   return new YBPredicate(new ComparisonPredicateData(s->column(col_idx), op, value));
@@ -835,16 +835,16 @@ Status YBSession::Close() {
 
 Status YBSession::SetFlushMode(FlushMode m) {
   if (m == AUTO_FLUSH_BACKGROUND) {
-    return Status::NotSupported("AUTO_FLUSH_BACKGROUND has not been implemented in the"
+    return STATUS(NotSupported, "AUTO_FLUSH_BACKGROUND has not been implemented in the"
         " c++ client (see KUDU-456).");
   }
   if (data_->batcher_->HasPendingOperations()) {
     // TODO: there may be a more reasonable behavior here.
-    return Status::IllegalState("Cannot change flush mode when writes are buffered");
+    return STATUS(IllegalState, "Cannot change flush mode when writes are buffered");
   }
   if (!tight_enum_test<FlushMode>(m)) {
     // Be paranoid in client code.
-    return Status::InvalidArgument("Bad flush mode");
+    return STATUS(InvalidArgument, "Bad flush mode");
   }
 
   data_->flush_mode_ = m;
@@ -854,12 +854,12 @@ Status YBSession::SetFlushMode(FlushMode m) {
 Status YBSession::SetExternalConsistencyMode(ExternalConsistencyMode m) {
   if (data_->batcher_->HasPendingOperations()) {
     // TODO: there may be a more reasonable behavior here.
-    return Status::IllegalState("Cannot change external consistency mode when writes are "
+    return STATUS(IllegalState, "Cannot change external consistency mode when writes are "
         "buffered");
   }
   if (!tight_enum_test<ExternalConsistencyMode>(m)) {
     // Be paranoid in client code.
-    return Status::InvalidArgument("Bad external consistency mode");
+    return STATUS(InvalidArgument, "Bad external consistency mode");
   }
 
   data_->external_consistency_mode_ = m;
@@ -912,7 +912,7 @@ bool YBSession::HasPendingOperations() const {
 
 Status YBSession::Apply(YBWriteOperation* write_op) {
   if (!write_op->row().IsKeySet()) {
-    Status status = Status::IllegalState("Key not specified", write_op->ToString());
+    Status status = STATUS(IllegalState, "Key not specified", write_op->ToString());
     data_->error_collector_->AddError(gscoped_ptr<YBError>(
         new YBError(write_op, status)));
     return status;
@@ -1036,7 +1036,7 @@ Status YBScanner::SetProjectedColumns(const vector<string>& col_names) {
 
 Status YBScanner::SetProjectedColumnNames(const vector<string>& col_names) {
   if (data_->open_) {
-    return Status::IllegalState("Projection must be set before Open()");
+    return STATUS(IllegalState, "Projection must be set before Open()");
   }
 
   const Schema* table_schema = data_->table_->schema().schema_;
@@ -1045,7 +1045,7 @@ Status YBScanner::SetProjectedColumnNames(const vector<string>& col_names) {
   for (const string& col_name : col_names) {
     int idx = table_schema->find_column(col_name);
     if (idx == Schema::kColumnNotFound) {
-      return Status::NotFound(strings::Substitute("Column: \"$0\" was not found in the "
+      return STATUS(NotFound, strings::Substitute("Column: \"$0\" was not found in the "
           "table schema.", col_name));
     }
     col_indexes.push_back(idx);
@@ -1056,7 +1056,7 @@ Status YBScanner::SetProjectedColumnNames(const vector<string>& col_names) {
 
 Status YBScanner::SetProjectedColumnIndexes(const vector<int>& col_indexes) {
   if (data_->open_) {
-    return Status::IllegalState("Projection must be set before Open()");
+    return STATUS(IllegalState, "Projection must be set before Open()");
   }
 
   const Schema* table_schema = data_->table_->schema().schema_;
@@ -1064,7 +1064,7 @@ Status YBScanner::SetProjectedColumnIndexes(const vector<int>& col_indexes) {
   cols.reserve(col_indexes.size());
   for (const int col_index : col_indexes) {
     if (col_index >= table_schema->columns().size()) {
-      return Status::NotFound(strings::Substitute("Column: \"$0\" was not found in the "
+      return STATUS(NotFound, strings::Substitute("Column: \"$0\" was not found in the "
           "table schema.", col_index));
     }
     cols.push_back(table_schema->column(col_index));
@@ -1084,10 +1084,10 @@ Status YBScanner::SetBatchSizeBytes(uint32_t batch_size) {
 
 Status YBScanner::SetReadMode(ReadMode read_mode) {
   if (data_->open_) {
-    return Status::IllegalState("Read mode must be set before Open()");
+    return STATUS(IllegalState, "Read mode must be set before Open()");
   }
   if (!tight_enum_test<ReadMode>(read_mode)) {
-    return Status::InvalidArgument("Bad read mode");
+    return STATUS(InvalidArgument, "Bad read mode");
   }
   data_->read_mode_ = read_mode;
   return Status::OK();
@@ -1095,10 +1095,10 @@ Status YBScanner::SetReadMode(ReadMode read_mode) {
 
 Status YBScanner::SetOrderMode(OrderMode order_mode) {
   if (data_->open_) {
-    return Status::IllegalState("Order mode must be set before Open()");
+    return STATUS(IllegalState, "Order mode must be set before Open()");
   }
   if (!tight_enum_test<OrderMode>(order_mode)) {
-    return Status::InvalidArgument("Bad order mode");
+    return STATUS(InvalidArgument, "Bad order mode");
   }
   data_->is_fault_tolerant_ = order_mode == ORDERED;
   return Status::OK();
@@ -1106,7 +1106,7 @@ Status YBScanner::SetOrderMode(OrderMode order_mode) {
 
 Status YBScanner::SetFaultTolerant() {
   if (data_->open_) {
-    return Status::IllegalState("Fault-tolerance must be set before Open()");
+    return STATUS(IllegalState, "Fault-tolerance must be set before Open()");
   }
   RETURN_NOT_OK(SetReadMode(READ_AT_SNAPSHOT));
   data_->is_fault_tolerant_ = true;
@@ -1115,7 +1115,7 @@ Status YBScanner::SetFaultTolerant() {
 
 Status YBScanner::SetSnapshotMicros(uint64_t snapshot_timestamp_micros) {
   if (data_->open_) {
-    return Status::IllegalState("Snapshot timestamp must be set before Open()");
+    return STATUS(IllegalState, "Snapshot timestamp must be set before Open()");
   }
   // Shift the HT timestamp bits to get well-formed HT timestamp with the logical
   // bits zeroed out.
@@ -1125,7 +1125,7 @@ Status YBScanner::SetSnapshotMicros(uint64_t snapshot_timestamp_micros) {
 
 Status YBScanner::SetSnapshotRaw(uint64_t snapshot_timestamp) {
   if (data_->open_) {
-    return Status::IllegalState("Snapshot timestamp must be set before Open()");
+    return STATUS(IllegalState, "Snapshot timestamp must be set before Open()");
   }
   data_->snapshot_timestamp_ = snapshot_timestamp;
   return Status::OK();
@@ -1133,7 +1133,7 @@ Status YBScanner::SetSnapshotRaw(uint64_t snapshot_timestamp) {
 
 Status YBScanner::SetSelection(YBClient::ReplicaSelection selection) {
   if (data_->open_) {
-    return Status::IllegalState("Replica selection must be set before Open()");
+    return STATUS(IllegalState, "Replica selection must be set before Open()");
   }
   data_->selection_ = selection;
   return Status::OK();
@@ -1141,7 +1141,7 @@ Status YBScanner::SetSelection(YBClient::ReplicaSelection selection) {
 
 Status YBScanner::SetTimeoutMillis(int millis) {
   if (data_->open_) {
-    return Status::IllegalState("Timeout must be set before Open()");
+    return STATUS(IllegalState, "Timeout must be set before Open()");
   }
   data_->timeout_ = MonoDelta::FromMilliseconds(millis);
   return Status::OK();
@@ -1151,7 +1151,7 @@ Status YBScanner::AddConjunctPredicate(YBPredicate* pred) {
   // Take ownership even if we return a bad status.
   data_->pool_.Add(pred);
   if (data_->open_) {
-    return Status::IllegalState("Predicate must be set before Open()");
+    return STATUS(IllegalState, "Predicate must be set before Open()");
   }
   return pred->data_->AddToScanSpec(&data_->spec_);
 }
@@ -1204,7 +1204,7 @@ Status YBScanner::AddExclusiveUpperBoundPartitionKeyRaw(const Slice& partition_k
 
 Status YBScanner::SetCacheBlocks(bool cache_blocks) {
   if (data_->open_) {
-    return Status::IllegalState("Block caching must be set before Open()");
+    return STATUS(IllegalState, "Block caching must be set before Open()");
   }
   data_->spec_.set_cache_blocks(cache_blocks);
   return Status::OK();
@@ -1444,7 +1444,7 @@ Status YBScanner::GetCurrentServer(YBTabletServer** server) {
   vector<HostPort> host_ports;
   rts->GetHostPorts(&host_ports);
   if (host_ports.empty()) {
-    return Status::IllegalState(strings::Substitute("No HostPort found for RemoteTabletServer $0",
+    return STATUS(IllegalState, strings::Substitute("No HostPort found for RemoteTabletServer $0",
                                                     rts->ToString()));
   }
   *server = new YBTabletServer();

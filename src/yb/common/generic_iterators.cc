@@ -327,7 +327,7 @@ Status UnionIterator::Init(ScanSpec *spec) {
   schema_.reset(new Schema(iters_.front()->schema()));
   for (const shared_ptr<RowwiseIterator> &iter : iters_) {
     if (!iter->schema().Equals(*schema_)) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
         string("Schemas do not match: ") + schema_->ToString()
         + " vs " + iter->schema().ToString());
     }
@@ -443,7 +443,7 @@ Status MaterializingIterator::Init(ScanSpec *spec) {
       const string &col_name = pred.column().name();
       int idx = schema().find_column(col_name);
       if (idx == -1) {
-        return Status::InvalidArgument("No such column", col_name);
+        return STATUS(InvalidArgument, "No such column", col_name);
       }
 
       VLOG(1) << "Pushing down predicate " << pred.ToString();

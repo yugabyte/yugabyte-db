@@ -38,7 +38,7 @@ inline Status FindColumn(const Schema& schema, const Slice& col_name, int* idx) 
   StringPiece sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
   *idx = schema.find_column(sp);
   if (PREDICT_FALSE(*idx == -1)) {
-    return Status::NotFound("No such column", col_name);
+    return STATUS(NotFound, "No such column", col_name);
   }
   return Status::OK();
 }
@@ -120,7 +120,7 @@ Status YBPartialRow::Set(int col_idx,
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
     // TODO: at some point we could allow type coercion here.
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       Substitute("invalid type $0 provided for column '$1' (expected $2)",
                  T::name(),
                  col.name(), col.type_info()->name()));
@@ -191,7 +191,7 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       break;
     };
     default: {
-      return Status::InvalidArgument("Unknown column type in schema",
+      return STATUS(InvalidArgument, "Unknown column type in schema",
                                      column_schema.ToString());
     };
   }
@@ -330,7 +330,7 @@ Status YBPartialRow::SetNull(const Slice& col_name) {
 Status YBPartialRow::SetNull(int col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(!col.is_nullable())) {
-    return Status::InvalidArgument("column not nullable", col.ToString());
+    return STATUS(InvalidArgument, "column not nullable", col.ToString());
   }
 
   if (col.type_info()->physical_type() == BINARY) DeallocateStringIfSet(col_idx, col);
@@ -584,17 +584,17 @@ Status YBPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
     // TODO: at some point we could allow type coercion here.
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       Substitute("invalid type $0 provided for column '$1' (expected $2)",
                  T::name(),
                  col.name(), col.type_info()->name()));
   }
 
   if (PREDICT_FALSE(!IsColumnSet(col_idx))) {
-    return Status::NotFound("column not set");
+    return STATUS(NotFound, "column not set");
   }
   if (col.is_nullable() && IsNull(col_idx)) {
-    return Status::NotFound("column is NULL");
+    return STATUS(NotFound, "column is NULL");
   }
 
   ContiguousRow row(schema_, row_data_);
@@ -612,7 +612,7 @@ Status YBPartialRow::EncodeRowKey(string* encoded_key) const {
   // fill the rest with minimum values.
   for (int i = 0; i < schema_->num_key_columns(); i++) {
     if (PREDICT_FALSE(!IsColumnSet(i))) {
-      return Status::InvalidArgument("All key columns must be set",
+      return STATUS(InvalidArgument, "All key columns must be set",
                                      schema_->column(i).name());
     }
   }

@@ -412,7 +412,7 @@ void Connection::ReadHandler(ev::io &watcher, int revents) {
 
   DVLOG(3) << ToString() << " ReadHandler(revents=" << revents << ")";
   if (revents & EV_ERROR) {
-    reactor_thread_->DestroyConnection(this, Status::NetworkError(ToString() +
+    reactor_thread_->DestroyConnection(this, STATUS(NetworkError, ToString() +
                                      ": ReadHandler encountered an error"));
     return;
   }
@@ -486,7 +486,7 @@ void Connection::WriteHandler(ev::io &watcher, int revents) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
   if (revents & EV_ERROR) {
-    reactor_thread_->DestroyConnection(this, Status::NetworkError(ToString() +
+    reactor_thread_->DestroyConnection(this, STATUS(NetworkError, ToString() +
           ": writeHandler encountered an error"));
     return;
   }
@@ -651,7 +651,7 @@ void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> trans
     LOG(WARNING) << ToString() << ": received call ID " << call->call_id()
                  << " but was already processing this ID! Ignoring";
     reactor_thread_->DestroyConnection(
-        this, Status::RuntimeError("Received duplicate call id",
+        this, STATUS(RuntimeError, "Received duplicate call id",
                                    Substitute("$0", call->call_id())));
     return;
   }

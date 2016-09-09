@@ -163,7 +163,7 @@ Status CFileWriter::Start() {
   // Then Length-prefixed header.
   PutFixed32(&buf, pb_size);
   if (!pb_util::AppendToString(header, &buf)) {
-    return Status::Corruption("unable to encode header");
+    return STATUS(Corruption, "unable to encode header");
   }
 
   RETURN_NOT_OK_PREPEND(block_->Append(Slice(buf)), "Couldn't write header");
@@ -232,7 +232,7 @@ Status CFileWriter::FinishAndReleaseBlock(ScopedWritableBlockCloser* closer) {
 
   faststring footer_str;
   if (!pb_util::SerializeToString(footer, &footer_str)) {
-    return Status::Corruption("unable to serialize footer");
+    return STATUS(Corruption, "unable to serialize footer");
   }
 
   footer_str.append(kMagicString);

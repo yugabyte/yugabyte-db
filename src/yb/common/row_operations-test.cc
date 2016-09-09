@@ -321,7 +321,7 @@ string TestProjection(RowOperationsPB::Type type,
   Status s = dec.DecodeOperations(&ops);
 
   if (!s.ok()) {
-    return "error: " + s.ToString();
+    return "error: " + s.ToString(/* no file/line */ false);
   }
   CHECK_EQ(1, ops.size());
   return ops[0].ToString(server_schema);

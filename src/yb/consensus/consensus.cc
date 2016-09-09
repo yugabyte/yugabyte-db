@@ -63,7 +63,7 @@ void ConsensusRound::NotifyReplicationFinished(const Status& status) {
 Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
   if (PREDICT_FALSE(bound_term_ != -1 &&
                     bound_term_ != current_term)) {
-    return Status::Aborted(
+    return STATUS(Aborted,
       strings::Substitute(
         "Transaction submitted in term $0 cannot be replicated in term $1",
         bound_term_, current_term));

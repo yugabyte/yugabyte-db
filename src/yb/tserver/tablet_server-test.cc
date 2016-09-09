@@ -2046,7 +2046,7 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
     ASSERT_EQ(TabletServerErrorPB::UNKNOWN_ERROR, resp.error().code());
     Status s = StatusFromPB(resp.error().status());
     EXPECT_TRUE(s.IsNotFound());
-    ASSERT_STR_CONTAINS(s.ToString(),
+    ASSERT_STR_CONTAINS(s.ToString(/* no file/line */ false),
                         "Not found: Row not in tablet partition");
     data->Clear();
     controller.Reset();

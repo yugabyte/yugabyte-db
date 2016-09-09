@@ -163,13 +163,13 @@ TEST_F(TestRowChangeList, TestInvalid_EmptySlice) {
 
 TEST_F(TestRowChangeList, TestInvalid_BadTypeEnum) {
   RowChangeListDecoder decoder(RowChangeList(Slice("\xff", 1)));
-  ASSERT_STR_CONTAINS(decoder.Init().ToString(),
+  ASSERT_STR_CONTAINS(decoder.Init().ToString(/* no file/line */ false),
                       "Corruption: bad type enum value: 255 in \\xff");
 }
 
 TEST_F(TestRowChangeList, TestInvalid_TooLongDelete) {
   RowChangeListDecoder decoder(RowChangeList(Slice("\x02""blahblah")));
-  ASSERT_STR_CONTAINS(decoder.Init().ToString(),
+  ASSERT_STR_CONTAINS(decoder.Init().ToString(false),
                       "Corruption: DELETE changelist too long");
 }
 
@@ -177,7 +177,7 @@ TEST_F(TestRowChangeList, TestInvalid_TooShortReinsert) {
   RowChangeListDecoder decoder(RowChangeList(Slice("\x03")));
   ASSERT_OK(decoder.Init());
   Slice s;
-  ASSERT_STR_CONTAINS(decoder.GetReinsertedRowSlice(schema_, &s).ToString(),
+  ASSERT_STR_CONTAINS(decoder.GetReinsertedRowSlice(schema_, &s).ToString(false),
                       "Corruption: REINSERT changelist wrong length");
 }
 

@@ -76,11 +76,11 @@ Status DocWriteBatch::SetPrimitive(
     assert(doc_iter.key_prefix_ends_with_ts());
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
     if (subkey.value_type() == ValueType::kArrayIndex) {
-      return Status::NotSupported("Setting values at a given array index is not supported yet");
+      return STATUS(NotSupported, "Setting values at a given array index is not supported yet");
     }
     if (doc_iter.subdoc_exists()) {
       if (doc_iter.subdoc_type() != ValueType::kObject) {
-        return Status::IllegalState(Substitute(
+        return STATUS(IllegalState, Substitute(
             "Cannot set values inside a subdocument of type $0",
             ValueTypeToStr(doc_iter.subdoc_type())));
       }
@@ -189,7 +189,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
     return Status::OK();
   }
 
-  return Status::Corruption(Substitute("Invalid value type at the top level of a document: $0",
+  return STATUS(Corruption, Substitute("Invalid value type at the top level of a document: $0",
       ValueTypeToStr(top_level_value.value_type())));
 }
 
@@ -211,7 +211,7 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
       DLOG(WARNING) << Substitute(
           "$0. Got parent subdocument key: $1, subdocument key: $2.",
           kErrorMsgPrefix, higher_level_key.ToString(), subdoc_key.ToString());
-      return Status::Corruption(kErrorMsgPrefix);
+      return STATUS(Corruption, kErrorMsgPrefix);
     }
 
     if (DecodeValueType(rocksdb_iter->value()) != ValueType::kTombstone) {
@@ -237,7 +237,7 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
   SubDocKey doc_key;
   RETURN_NOT_OK(doc_key.DecodeFrom(rocksdb_iter->key()));
   if (doc_key.num_subkeys() > 0) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         Substitute("A top-level document key is not supposed to contain any sub-keys: $0",
                    doc_key.ToString()));
   }

@@ -21,6 +21,7 @@
 
 #include <google/protobuf/repeated_field.h>
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 
 #include "yb/fs/fs.pb.h"
 #include "yb/gutil/stl_util.h"
@@ -119,7 +120,7 @@ static void RunCheckIntegrityTest(Env* env,
   }
 
   EXPECT_EQ(expected_status_string,
-            PathInstanceMetadataFile::CheckIntegrity(instances).ToString());
+            PathInstanceMetadataFile::CheckIntegrity(instances).ToString(/* no file/line */ false));
 }
 
 TEST_F(YBTest, CheckIntegrity) {

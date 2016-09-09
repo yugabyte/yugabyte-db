@@ -75,7 +75,7 @@ class MasterChangeConfigTest : public YBTest {
 
   Status CheckNumMastersWithCluster(string msg) {
     if (num_masters_ != cluster_->num_masters()) {
-      return Status::IllegalState(Substitute(
+      return STATUS(IllegalState, Substitute(
           "$0 : expected to have $1 masters but our cluster has $2 masters.",
           msg, num_masters_, cluster_->num_masters()));
     }
@@ -85,7 +85,7 @@ class MasterChangeConfigTest : public YBTest {
 
   Status RestartCluster() {
     if (!cluster_) {
-      return Status::IllegalState("Cluster was not initialized, cannot restart.");
+      return STATUS(IllegalState, "Cluster was not initialized, cannot restart.");
     }
 
     RETURN_NOT_OK(CheckNumMastersWithCluster("Pre Restart"));
@@ -174,7 +174,7 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
     now = MonoTime::Now(MonoTime::FINE);
   }
 
-  return Status::TimedOut(Substitute("Timed out as master leader $0 term not ready.",
+  return STATUS(TimedOut, Substitute("Timed out as master leader $0 term not ready.",
                                      master->bound_rpc_hostport().ToString()));
 }
 

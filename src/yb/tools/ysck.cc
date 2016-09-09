@@ -132,7 +132,7 @@ Status Ysck::CheckTabletServersRunning() {
   VLOG(1) << Substitute("List of $0 Tablet Servers retrieved", servers_count);
 
   if (servers_count == 0) {
-    return Status::NotFound("No tablet servers found");
+    return STATUS(NotFound, "No tablet servers found");
   }
 
   int bad_servers = 0;
@@ -149,7 +149,7 @@ Status Ysck::CheckTabletServersRunning() {
   } else {
     Warn() << Substitute("Connected to $0 Tablet Servers, $1 weren't reachable",
                          servers_count - bad_servers, bad_servers) << endl;
-    return Status::NetworkError("Not all Tablet Servers are reachable");
+    return STATUS(NetworkError, "Not all Tablet Servers are reachable");
   }
 }
 
@@ -188,7 +188,7 @@ Status Ysck::CheckTablesConsistency() {
   } else {
     Warn() << Substitute("$0 out of $1 tables are not in a healthy state",
                          bad_tables_count, tables_count) << endl;
-    return Status::Corruption(Substitute("$0 tables are bad", bad_tables_count));
+    return STATUS(Corruption, Substitute("$0 tables are bad", bad_tables_count));
   }
 }
 
@@ -311,7 +311,7 @@ Status Ysck::ChecksumData(const vector<string>& tables,
         msg += "tablets=" + JoinStrings(tablets, ",") + ".";
       }
     }
-    return Status::NotFound(msg);
+    return STATUS(NotFound, msg);
   }
 
   // Map of tablet servers to tablet queue.
@@ -416,16 +416,16 @@ Status Ysck::ChecksumData(const vector<string>& tables,
   if (num_results != num_tablet_replicas) {
     CHECK(timed_out) << Substitute("Unexpected error: only got $0 out of $1 replica results",
                                    num_results, num_tablet_replicas);
-    return Status::TimedOut(Substitute("Checksum scan did not complete within the timeout of $0: "
+    return STATUS(TimedOut, Substitute("Checksum scan did not complete within the timeout of $0: "
                                        "Received results for $1 out of $2 expected replicas",
                                        options.timeout.ToString(), num_results,
                                        num_tablet_replicas));
   }
   if (num_mismatches != 0) {
-    return Status::Corruption(Substitute("$0 checksum mismatches were detected", num_mismatches));
+    return STATUS(Corruption, Substitute("$0 checksum mismatches were detected", num_mismatches));
   }
   if (num_errors != 0) {
-    return Status::Aborted(Substitute("$0 errors were detected", num_errors));
+    return STATUS(Aborted, Substitute("$0 errors were detected", num_errors));
   }
 
   return Status::OK();
@@ -491,7 +491,7 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_repl
 
 Status Ysck::CheckAssignments() {
   // TODO
-  return Status::NotSupported("CheckAssignments hasn't been implemented");
+  return STATUS(NotSupported, "CheckAssignments hasn't been implemented");
 }
 
 } // namespace tools

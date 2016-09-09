@@ -131,11 +131,11 @@ Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
   CHECK(data_state == TABLET_DATA_TOMBSTONED || data_state == TABLET_DATA_DELETED) << data_state;
   // There should be no WALs and no cmeta.
   if (inspect_->CountWALSegmentsForTabletOnTS(index, tablet_id) > 0) {
-    return Status::IllegalState("WAL segments exist for tablet", tablet_id);
+    return STATUS(IllegalState, "WAL segments exist for tablet", tablet_id);
   }
   if (is_cmeta_expected == CMETA_EXPECTED &&
       !inspect_->DoesConsensusMetaExistForTabletOnTS(index, tablet_id)) {
-    return Status::IllegalState("Expected cmeta for tablet " + tablet_id + " but it doesn't exist");
+    return STATUS(IllegalState, "Expected cmeta for tablet " + tablet_id + " but it doesn't exist");
   }
   if (is_superblock_expected == SUPERBLOCK_EXPECTED) {
     RETURN_NOT_OK(inspect_->CheckTabletDataStateOnTS(index, tablet_id, data_state));
@@ -143,7 +143,7 @@ Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
     TabletSuperBlockPB superblock_pb;
     Status s = inspect_->ReadTabletSuperBlockOnTS(index, tablet_id, &superblock_pb);
     if (!s.IsNotFound()) {
-      return Status::IllegalState("Found unexpected superblock for tablet " + tablet_id);
+      return STATUS(IllegalState, "Found unexpected superblock for tablet " + tablet_id);
     }
   }
   return Status::OK();

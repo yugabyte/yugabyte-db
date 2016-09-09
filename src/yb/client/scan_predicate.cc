@@ -78,7 +78,7 @@ Status ComparisonPredicateData::AddToScanSpec(ScanSpec* spec) {
       lower_bound = upper_bound = val_void;
       break;
     default:
-      return Status::InvalidArgument(Substitute("invalid comparison op: $0", op_));
+      return STATUS(InvalidArgument, Substitute("invalid comparison op: $0", op_));
   }
 
   ColumnRangePredicate p(col_, lower_bound, upper_bound);

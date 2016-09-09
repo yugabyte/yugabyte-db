@@ -104,7 +104,7 @@ TEST_F(MetadataTest, RSMD_TestReplaceDeltas_Bad_NonContiguous) {
   EXPECT_EQ(Substitute("Invalid argument: Cannot find subsequence <$0> in <$1>",
                        BlockId::JoinStrings(to_replace),
                        BlockId::JoinStrings(all_blocks_)),
-            s.ToString());
+            s.ToString(/* no file/line */ false));
 
   // Should be unchanged
   EXPECT_EQ(all_blocks_, meta_->redo_delta_blocks());
@@ -121,7 +121,7 @@ TEST_F(MetadataTest, RSMD_TestReplaceDeltas_Bad_DoesntExist) {
   EXPECT_EQ(Substitute("Invalid argument: Cannot find subsequence <$0> in <$1>",
                        BlockId::JoinStrings(to_replace),
                        BlockId::JoinStrings(all_blocks_)),
-            s.ToString());
+            s.ToString(/* no file/line */ false));
 
   // Should be unchanged
   EXPECT_EQ(all_blocks_, meta_->redo_delta_blocks());

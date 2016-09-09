@@ -81,7 +81,7 @@ void RpcRetrier::DelayedRetryCb(Rpc* rpc, const Status& status) {
         if (!last_error_.ok()) {
           SubstituteAndAppend(&err_str, ": $0", last_error_.ToString());
         }
-        new_status = Status::TimedOut(err_str);
+        new_status = STATUS(TimedOut, err_str);
       }
     }
   }

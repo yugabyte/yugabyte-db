@@ -84,7 +84,7 @@ class PlainBitMapBlockBuilder : public BlockBuilder {
 
   // TODO Implement this method
   virtual Status GetFirstKey(void* key) const OVERRIDE {
-    return Status::NotSupported("BOOL keys not supported");
+    return STATUS(NotSupported, "BOOL keys not supported");
   }
 
  private:
@@ -111,7 +111,7 @@ class PlainBitMapBlockDecoder : public BlockDecoder {
     CHECK(!parsed_);
 
     if (data_.size() < kHeaderSize) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           "not enough bytes for header in PlainBitMapBlockDecoder");
     }
 
@@ -119,7 +119,7 @@ class PlainBitMapBlockDecoder : public BlockDecoder {
     ordinal_pos_base_ = DecodeFixed32(&data_[4]);
 
     if (data_.size() != kHeaderSize + BitmapSize(num_elems_))  {
-      return Status::Corruption(
+      return STATUS(Corruption,
           strings::Substitute(
               "unexpected data size (expected $0 bytes got $1 bytes).\100 bytes: $2",
               data_.size(), kHeaderSize + BitmapSize(num_elems_),
@@ -154,7 +154,7 @@ class PlainBitMapBlockDecoder : public BlockDecoder {
   // TODO : Support BOOL keys
   virtual Status SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) OVERRIDE {
-    return Status::NotSupported("BOOL keys are not supported!");
+    return STATUS(NotSupported, "BOOL keys are not supported!");
   }
 
   virtual Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {

@@ -94,7 +94,7 @@ void ServicePool::Shutdown() {
   }
 
   // Now we must drain the service queue.
-  Status status = Status::ServiceUnavailable("Service is shutting down");
+  Status status = STATUS(ServiceUnavailable, "Service is shutting down");
   gscoped_ptr<InboundCall> incoming;
   while (service_queue_.BlockingGet(&incoming)) {
     incoming.release()->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
@@ -125,16 +125,16 @@ Status ServicePool::QueueInboundCall(gscoped_ptr<InboundCall> call) {
         service_->service_name(),
         c->remote_address().ToString(),
         service_queue_.max_size());
-    status = Status::ServiceUnavailable(err_msg);
+    status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
     c->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, status);
     DLOG(INFO) << err_msg << " Contents of service queue:\n"
                << service_queue_.ToString();
   } else if (queue_status == QUEUE_SHUTDOWN) {
-    status = Status::ServiceUnavailable("Service is shutting down");
+    status = STATUS(ServiceUnavailable, "Service is shutting down");
     c->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
   } else {
-    status = Status::RuntimeError(Substitute("Unknown error from BlockingQueue: $0", queue_status));
+    status = STATUS(RuntimeError, Substitute("Unknown error from BlockingQueue: $0", queue_status));
     c->RespondFailure(ErrorStatusPB::FATAL_UNKNOWN, status);
   }
   return status;
@@ -159,7 +159,7 @@ void ServicePool::RunThread() {
       // the response anyway.
       incoming->RespondFailure(
         ErrorStatusPB::ERROR_SERVER_TOO_BUSY,
-        Status::TimedOut("Call waited in the queue past client deadline"));
+        STATUS(TimedOut, "Call waited in the queue past client deadline"));
 
       // Must release since RespondFailure above ends up taking ownership
       // of the object.

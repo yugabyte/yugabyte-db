@@ -174,7 +174,7 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
 
 Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length) {
   if (!msg->ParseFromArray(data, length)) {
-    return Status::Corruption("Error parsing msg", InitializationErrorMessage("parse", *msg));
+    return STATUS(Corruption, "Error parsing msg", InitializationErrorMessage("parse", *msg));
   }
   return Status::OK();
 }
@@ -192,7 +192,7 @@ Status WritePBToPath(Env* env, const std::string& path,
   WritableFileOutputStream ostream(file.get());
   bool res = msg.SerializeToZeroCopyStream(&ostream);
   if (!res || !ostream.Flush()) {
-    return Status::IOError("Unable to serialize PB to file");
+    return STATUS(IOError, "Unable to serialize PB to file");
   }
 
   if (sync == pb_util::SYNC) {
@@ -211,7 +211,7 @@ Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg) {
   shared_ptr<SequentialFile> rfile;
   RETURN_NOT_OK(env_util::OpenFileForSequential(env, path, &rfile));
   if (!ParseFromSequentialFile(msg, rfile.get())) {
-    return Status::IOError("Unable to parse PB from path", path);
+    return STATUS(IOError, "Unable to parse PB from path", path);
   }
   return Status::OK();
 }
@@ -356,7 +356,7 @@ Status WritablePBContainerFile::AppendMsgToBuffer(const Message& msg, faststring
 
   // Serialize the data.
   if (PREDICT_FALSE(!msg.SerializeWithCachedSizesToArray(dst + offset))) {
-    return Status::IOError("Failed to serialize PB to array");
+    return STATUS(IOError, "Failed to serialize PB to array");
   }
   offset += data_size;
 
@@ -430,7 +430,7 @@ Status ReadablePBContainerFile::Init() {
   // Validate magic number.
   if (PREDICT_FALSE(!strings::memeq(kPBContainerMagic, header.data(), kPBContainerMagicLen))) {
     string file_magic(reinterpret_cast<const char*>(header.data()), kPBContainerMagicLen);
-    return Status::Corruption("Invalid magic number",
+    return STATUS(Corruption, "Invalid magic number",
                               Substitute("Expected: $0, found: $1",
                                          Utf8SafeCEscape(kPBContainerMagic),
                                          Utf8SafeCEscape(file_magic)));
@@ -440,7 +440,7 @@ Status ReadablePBContainerFile::Init() {
   uint32_t version = DecodeFixed32(header.data() + kPBContainerMagicLen);
   if (PREDICT_FALSE(version != kPBContainerVersion)) {
     // We only support version 1.
-    return Status::NotSupported(
+    return STATUS(NotSupported,
         Substitute("Protobuf container has version $0, we only support version $1",
                    version, kPBContainerVersion));
   }
@@ -494,7 +494,7 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   crc32c->Compute(size.data(), size.size(), &actual_checksum);
   crc32c->Compute(body.data(), body.size(), &actual_checksum);
   if (PREDICT_FALSE(actual_checksum != expected_checksum)) {
-    return Status::Corruption(Substitute("Incorrect checksum of file $0: actually $1, expected $2",
+    return STATUS(Corruption, Substitute("Incorrect checksum of file $0: actually $1, expected $2",
                                          reader_->filename(), actual_checksum, expected_checksum));
   }
 
@@ -513,7 +513,7 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   CodedInputStream cis(&ais);
   cis.SetTotalBytesLimit(512 * 1024 * 1024, -1);
   if (PREDICT_FALSE(!msg->ParseFromCodedStream(&cis))) {
-    return Status::IOError("Unable to parse PB from path", reader_->filename());
+    return STATUS(IOError, "Unable to parse PB from path", reader_->filename());
   }
 
   return Status::OK();
@@ -529,7 +529,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
   SimpleDescriptorDatabase db;
   for (int i = 0; i < protos()->file_size(); i++) {
     if (!db.Add(protos()->file(i))) {
-      return Status::Corruption("Descriptor not loaded", Substitute(
+      return STATUS(Corruption, "Descriptor not loaded", Substitute(
           "Could not load descriptor for PB type $0 referenced in container file",
           pb_type()));
     }
@@ -537,14 +537,14 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
   DescriptorPool pool(&db);
   const Descriptor* desc = pool.FindMessageTypeByName(pb_type());
   if (!desc) {
-    return Status::NotFound("Descriptor not found", Substitute(
+    return STATUS(NotFound, "Descriptor not found", Substitute(
         "Could not find descriptor for PB type $0 referenced in container file",
         pb_type()));
   }
   DynamicMessageFactory factory;
   const Message* prototype = factory.GetPrototype(desc);
   if (!prototype) {
-    return Status::NotSupported("Descriptor not supported", Substitute(
+    return STATUS(NotSupported, "Descriptor not supported", Substitute(
         "Descriptor $0 referenced in container file not supported",
         pb_type()));
   }
@@ -582,9 +582,9 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
   if (offset_ + length > file_size) {
     switch (eofOK) {
       case EOF_OK:
-        return Status::EndOfFile("Reached end of file");
+        return STATUS(EndOfFile, "Reached end of file");
       case EOF_NOT_OK:
-        return Status::Corruption("File size not large enough to be valid",
+        return STATUS(Corruption, "File size not large enough to be valid",
                                   Substitute("Proto container file $0: "
                                       "tried to read $0 bytes at offset "
                                       "$1 but file size is only $2",
@@ -602,7 +602,7 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
 
   // Sanity check the result.
   if (PREDICT_FALSE(s.size() < length)) {
-    return Status::Corruption("Unexpected short read", Substitute(
+    return STATUS(Corruption, "Unexpected short read", Substitute(
         "Proto container file $0: tried to read $1 bytes; got $2 bytes",
         reader_->filename(), length, s.size()));
   }
@@ -633,7 +633,7 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                "msg_type", msg.GetTypeName());
 
   if (create == NO_OVERWRITE && env->FileExists(path)) {
-    return Status::AlreadyPresent(Substitute("File $0 already exists", path));
+    return STATUS(AlreadyPresent, Substitute("File $0 already exists", path));
   }
 
   const string tmp_template = path + kTmpTemplateSuffix;

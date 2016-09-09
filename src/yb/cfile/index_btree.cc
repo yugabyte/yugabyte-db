@@ -205,7 +205,7 @@ Status IndexTreeIterator::Next() {
   // If we're now empty, then the root block was exhausted,
   // so we're entirely out of data.
   if (seeked_indexes_.empty()) {
-    return Status::NotFound("end of iterator");
+    return STATUS(NotFound, "end of iterator");
   }
 
   // Otherwise, the last layer points to the valid

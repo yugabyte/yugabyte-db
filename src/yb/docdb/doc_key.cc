@@ -22,7 +22,7 @@ namespace docdb {
 Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValue>* result) {
   while (true) {
     if (slice->empty()) {
-      return Status::Corruption("Unexpected end of key when decoding document key");
+      return STATUS(Corruption, "Unexpected end of key when decoding document key");
     }
     ValueType current_value_type = static_cast<ValueType>(*slice->data());
     if (current_value_type == ValueType::kGroupEnd) {
@@ -85,12 +85,12 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
   Clear();
 
   if (slice->empty()) {
-    return Status::Corruption("Document key is empty");
+    return STATUS(Corruption, "Document key is empty");
   }
   const ValueType first_value_type = static_cast<ValueType>(*slice->data());
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
-    return Status::Corruption(Substitute(
+    return STATUS(Corruption, Substitute(
         "Expected first value type to be primitive or GroupEnd, got $0",
         ValueTypeToStr(first_value_type)));
   }
@@ -104,7 +104,7 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
       hash_present_ = true;
       slice->remove_prefix(sizeof(DocKeyHash) + 1);
     } else {
-      return Status::Corruption(Substitute(
+      return STATUS(Corruption, Substitute(
           "Could not decode a 32-bit hash component of a document key: only $0 bytes left",
           slice->size()));
     }
@@ -124,7 +124,7 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
   rocksdb::Slice mutable_slice = slice;
   Status status = DecodeFrom(&mutable_slice);
   if (!mutable_slice.empty()) {
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes",
         mutable_slice.size()));
   }

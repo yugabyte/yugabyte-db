@@ -61,16 +61,16 @@ static const size_t kBlockSizeLimit = 16 * 1024 * 1024; // 16MB
 static Status ParseMagicAndLength(const Slice &data,
                                   uint32_t *parsed_len) {
   if (data.size() != kMagicAndLengthSize) {
-    return Status::Corruption("Bad size data");
+    return STATUS(Corruption, "Bad size data");
   }
 
   if (memcmp(kMagicString, data.data(), strlen(kMagicString)) != 0) {
-    return Status::Corruption("bad magic");
+    return STATUS(Corruption, "bad magic");
   }
 
   *parsed_len = DecodeFixed32(data.data() + strlen(kMagicString));
   if (*parsed_len <= 0 || *parsed_len > kMaxHeaderFooterPBSize) {
-    return Status::Corruption("invalid data size");
+    return STATUS(Corruption, "invalid data size");
   }
 
   return Status::OK();
@@ -168,7 +168,7 @@ Status CFileReader::ReadAndParseHeader() {
   RETURN_NOT_OK(block_->Read(kMagicAndLengthSize, header_size,
                              &header_slice, header_space));
   if (!header_->ParseFromArray(header_slice.data(), header_size)) {
-    return Status::Corruption("Invalid cfile pb header");
+    return STATUS(Corruption, "Invalid cfile pb header");
   }
 
   VLOG(2) << "Read header: " << header_->DebugString();
@@ -198,7 +198,7 @@ Status CFileReader::ReadAndParseFooter() {
   RETURN_NOT_OK(block_->Read(off, footer_size,
                              &footer_slice, footer_space));
   if (!footer_->ParseFromArray(footer_slice.data(), footer_size)) {
-    return Status::Corruption("Invalid cfile pb footer");
+    return STATUS(Corruption, "Invalid cfile pb footer");
   }
 
   // Verify if the compression codec is available
@@ -340,7 +340,7 @@ Status CFileReader::ReadBlock(const BlockPointer &ptr, CacheControl cache_contro
   RETURN_NOT_OK(block_->Read(ptr.offset(), ptr.size(), &block, scratch.get()));
 
   if (block.size() != ptr.size()) {
-    return Status::IOError("Could not read full block length");
+    return STATUS(IOError, "Could not read full block length");
   }
 
   // Decompress the block
@@ -485,7 +485,7 @@ Status DefaultColumnValueIterator::Scan(ColumnBlock *dst)  {
       const Slice *src_slice = reinterpret_cast<const Slice *>(value_);
       Slice dst_slice;
       if (PREDICT_FALSE(!dst->arena()->RelocateSlice(*src_slice, &dst_slice))) {
-        return Status::IOError("out of memory copying slice", src_slice->ToString());
+        return STATUS(IOError, "out of memory copying slice", src_slice->ToString());
       }
       for (size_t i = 0; i < dst->nrows(); ++i) {
         dst->SetCellValue(i, &dst_slice);
@@ -523,7 +523,7 @@ CFileIterator::~CFileIterator() {
 Status CFileIterator::SeekToOrdinal(rowid_t ord_idx) {
   RETURN_NOT_OK(PrepareForNewSeek());
   if (PREDICT_FALSE(posidx_iter_ == nullptr)) {
-    return Status::NotSupported("no positional index in file");
+    return STATUS(NotSupported, "no positional index in file");
   }
 
   tmp_buf_.clear();
@@ -541,7 +541,7 @@ Status CFileIterator::SeekToOrdinal(rowid_t ord_idx) {
   // TODO: could assert that each of the index layers is
   // at its last entry (ie HasNext() is false for each)
   if (PREDICT_FALSE(ord_idx > b->last_row_idx())) {
-    return Status::NotFound("trying to seek past highest ordinal in file");
+    return STATUS(NotFound, "trying to seek past highest ordinal in file");
   }
 
   // Seek data block to correct index
@@ -596,7 +596,7 @@ Status CFileIterator::SeekToFirst() {
     RETURN_NOT_OK(validx_iter_->SeekToFirst());
     idx_iter = validx_iter_.get();
   } else {
-    return Status::NotSupported("no value or positional index present");
+    return STATUS(NotSupported, "no value or positional index present");
   }
 
   pblock_pool_scoped_ptr b = prepared_block_pool_.make_scoped_ptr(
@@ -620,7 +620,7 @@ Status CFileIterator::SeekAtOrAfter(const EncodedKey &key,
   DCHECK_EQ(reader_->is_nullable(), false);
 
   if (PREDICT_FALSE(validx_iter_ == nullptr)) {
-    return Status::NotSupported("no value index present");
+    return STATUS(NotSupported, "no value index present");
   }
 
   Status s = validx_iter_->SeekAtOrBefore(key.encoded_key());
@@ -656,7 +656,7 @@ Status CFileIterator::SeekAtOrAfter(const EncodedKey &key,
   if (PREDICT_FALSE(dblk_seek_status.IsNotFound())) {
     *exact_match = false;
     if (PREDICT_FALSE(!validx_iter_->HasNext())) {
-      return Status::NotFound("key after last block in file",
+      return STATUS(NotFound, "key after last block in file",
                               key.encoded_key().ToDebugString());
     }
     RETURN_NOT_OK(validx_iter_->Next());
@@ -730,12 +730,12 @@ string CFileIterator::PreparedBlock::ToString() const {
 // Decode the null header in the beginning of the data block
 Status DecodeNullInfo(Slice *data_block, uint32_t *num_rows_in_block, Slice *null_bitmap) {
   if (!GetVarint32(data_block, num_rows_in_block)) {
-    return Status::Corruption("bad null header, num elements in block");
+    return STATUS(Corruption, "bad null header, num elements in block");
   }
 
   uint32_t null_bitmap_size;
   if (!GetVarint32(data_block, &null_bitmap_size)) {
-    return Status::Corruption("bad null header, bitmap size");
+    return STATUS(Corruption, "bad null header, bitmap size");
   }
 
   *null_bitmap = Slice(data_block->data(), null_bitmap_size);
@@ -920,7 +920,7 @@ Status CFileIterator::Scan(ColumnBlock *dst) {
         size_t nblock = pb->rle_decoder_.GetNextRun(&not_null, count);
         DCHECK_LE(nblock, count);
         if (PREDICT_FALSE(nblock == 0)) {
-          return Status::Corruption(
+          return STATUS(Corruption,
             Substitute("Unexpected EOF on NULL bitmap read. Expected at least $0 more rows",
                        count));
         }

@@ -47,16 +47,16 @@ Status GetLoggedInUser(string* user_name) {
 
   gscoped_ptr<char[], FreeDeleter> buf(static_cast<char *>(malloc(bufsize)));
   if (buf.get() == nullptr) {
-    return Status::RuntimeError("Malloc failed", ErrnoToString(errno), errno);
+    return STATUS(RuntimeError, "Malloc failed", ErrnoToString(errno), errno);
   }
 
   int ret = getpwuid_r(getuid(), &pwd, buf.get(), bufsize, &result);
   if (result == nullptr) {
     if (ret == 0) {
-      return Status::NotFound("Current logged-in user not found! This is an unexpected error.");
+      return STATUS(NotFound, "Current logged-in user not found! This is an unexpected error.");
     } else {
       // Errno in ret
-      return Status::RuntimeError("Error calling getpwuid_r()", ErrnoToString(ret), ret);
+      return STATUS(RuntimeError, "Error calling getpwuid_r()", ErrnoToString(ret), ret);
     }
   }
 

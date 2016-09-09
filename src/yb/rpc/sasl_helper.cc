@@ -131,7 +131,7 @@ int SaslHelper::GetOptionCb(const char* plugin_name, const char* option,
 Status SaslHelper::EnableAnonymous() {
   if (PREDICT_FALSE(!ContainsKey(GlobalMechs(), kSaslMechAnonymous))) {
     LOG(DFATAL) << tag_ << ": Unable to find ANONYMOUS SASL plugin";
-    return Status::InvalidArgument("Client unable to find ANONYMOUS SASL plugin");
+    return STATUS(InvalidArgument, "Client unable to find ANONYMOUS SASL plugin");
   }
   AddToLocalMechList(kSaslMechAnonymous);
   anonymous_enabled_ = true;
@@ -145,7 +145,7 @@ bool SaslHelper::IsAnonymousEnabled() const {
 Status SaslHelper::EnablePlain() {
   if (PREDICT_FALSE(!ContainsKey(GlobalMechs(), kSaslMechPlain))) {
     LOG(DFATAL) << tag_ << ": Unable to find PLAIN SASL plugin";
-    return Status::InvalidArgument("Unable to find PLAIN SASL plugin");
+    return STATUS(InvalidArgument, "Unable to find PLAIN SASL plugin");
   }
   AddToLocalMechList(kSaslMechPlain);
   plain_enabled_ = true;
@@ -158,7 +158,7 @@ bool SaslHelper::IsPlainEnabled() const {
 
 Status SaslHelper::SanityCheckSaslCallId(int32_t call_id) const {
   if (call_id != kSaslCallId) {
-    Status s = Status::IllegalState(StringPrintf("Non-SASL request during negotiation. "
+    Status s = STATUS(IllegalState, StringPrintf("Non-SASL request during negotiation. "
           "Expected callId: %d, received callId: %d", kSaslCallId, call_id));
     LOG(DFATAL) << tag_ << ": " << s.ToString();
     return s;
@@ -168,7 +168,7 @@ Status SaslHelper::SanityCheckSaslCallId(int32_t call_id) const {
 
 Status SaslHelper::ParseSaslMessage(const Slice& param_buf, SaslMessagePB* msg) {
   if (!msg->ParseFromArray(param_buf.data(), param_buf.size())) {
-    return Status::IOError(tag_ + ": Invalid SASL message, missing fields",
+    return STATUS(IOError, tag_ + ": Invalid SASL message, missing fields",
         msg->InitializationErrorString());
   }
   return Status::OK();

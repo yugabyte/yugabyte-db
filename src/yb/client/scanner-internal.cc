@@ -117,7 +117,7 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
     MonoTime now = MonoTime::Now(MonoTime::FINE);
     now.AddDelta(sleep);
     if (deadline.ComesBefore(now)) {
-      Status ret = Status::TimedOut("unable to retry before timeout",
+      Status ret = STATUS(TimedOut, "unable to retry before timeout",
                                     rpc_status.ToString());
       return last_error_.ok() ?
           ret : ret.CloneAndAppend(last_error_.ToString());
@@ -318,7 +318,7 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
 
     MonoTime now = MonoTime::Now(MonoTime::FINE);
     if (deadline.ComesBefore(now)) {
-      Status ret = Status::TimedOut("Scan timed out, deadline expired");
+      Status ret = STATUS(TimedOut, "Scan timed out, deadline expired");
       return last_error_.ok() ?
           ret : ret.CloneAndAppend(last_error_.ToString());
     }
@@ -385,7 +385,7 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
 }
 
 Status YBScanner::Data::KeepAlive() {
-  if (!open_) return Status::IllegalState("Scanner was not open.");
+  if (!open_) return STATUS(IllegalState, "Scanner was not open.");
   // If there is no scanner to keep alive, we still return Status::OK().
   if (!last_response_.IsInitialized() || !last_response_.has_more_results() ||
       !next_req_.has_scanner_id()) {
@@ -488,11 +488,11 @@ Status YBScanBatch::Data::Reset(RpcController* controller,
 
   // First, rewrite the relative addresses into absolute ones.
   if (PREDICT_FALSE(!resp_data_.has_rows_sidecar())) {
-    return Status::Corruption("Server sent invalid response: no row data");
+    return STATUS(Corruption, "Server sent invalid response: no row data");
   } else {
     Status s = controller_.GetSidecar(resp_data_.rows_sidecar(), &direct_data_);
     if (!s.ok()) {
-      return Status::Corruption("Server sent invalid response: row data "
+      return STATUS(Corruption, "Server sent invalid response: row data "
                                 "sidecar index corrupt", s.ToString());
     }
   }
@@ -501,7 +501,7 @@ Status YBScanBatch::Data::Reset(RpcController* controller,
     Status s = controller_.GetSidecar(resp_data_.indirect_data_sidecar(),
                                       &indirect_data_);
     if (!s.ok()) {
-      return Status::Corruption("Server sent invalid response: indirect data "
+      return STATUS(Corruption, "Server sent invalid response: indirect data "
                                 "sidecar index corrupt", s.ToString());
     }
   }

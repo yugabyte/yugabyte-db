@@ -44,7 +44,7 @@ class FileState : public RefCountedThreadSafe<FileState> {
 
   Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
     if (offset > size_) {
-      return Status::IOError("Offset greater than file size.");
+      return STATUS(IOError, "Offset greater than file size.");
     }
     const uint64_t available = size_ - offset;
     if (n > available) {
@@ -181,7 +181,7 @@ class SequentialFileImpl : public SequentialFile {
 
   virtual Status Skip(uint64_t n) OVERRIDE {
     if (pos_ > file_->Size()) {
-      return Status::IOError("pos_ > file_->Size()");
+      return STATUS(IOError, "pos_ > file_->Size()");
     }
     const size_t available = file_->Size() - pos_;
     if (n > available) {
@@ -293,8 +293,7 @@ class RWFileImpl : public RWFile {
     uint64_t file_size = file_->Size();
     // TODO: Modify FileState to allow rewriting.
     if (offset < file_size) {
-      return Status::NotSupported(
-          "In-memory RW file does not support random writing");
+      return STATUS(NotSupported, "In-memory RW file does not support random writing");
     } else if (offset > file_size) {
       // Fill in the space between with zeroes.
       uint8_t zeroes[offset - file_size];
@@ -350,7 +349,7 @@ class InMemoryEnv : public EnvWrapper {
                                    gscoped_ptr<SequentialFile>* result) OVERRIDE {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     result->reset(new SequentialFileImpl(file_map_[fname]));
@@ -367,7 +366,7 @@ class InMemoryEnv : public EnvWrapper {
                                      gscoped_ptr<RandomAccessFile>* result) OVERRIDE {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     result->reset(new RandomAccessFileImpl(file_map_[fname]));
@@ -411,7 +410,7 @@ class InMemoryEnv : public EnvWrapper {
     while (true) {
       string stripped;
       if (!TryStripSuffixString(name_template, "XXXXXX", &stripped)) {
-        return Status::InvalidArgument("Name template must end with the string XXXXXX",
+        return STATUS(InvalidArgument, "Name template must end with the string XXXXXX",
                                        name_template);
       }
       uint32_t num = random.Next() % 999999; // Ensure it's <= 6 digits long.
@@ -452,7 +451,7 @@ class InMemoryEnv : public EnvWrapper {
   virtual Status DeleteFile(const std::string& fname) OVERRIDE {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     DeleteFileInternal(fname);
@@ -497,7 +496,7 @@ class InMemoryEnv : public EnvWrapper {
   virtual Status GetFileSize(const std::string& fname, uint64_t* file_size) OVERRIDE {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     *file_size = file_map_[fname]->Size();
@@ -518,7 +517,7 @@ class InMemoryEnv : public EnvWrapper {
                             const std::string& target) OVERRIDE {
     MutexLock lock(mutex_);
     if (file_map_.find(src) == file_map_.end()) {
-      return Status::IOError(src, "File not found");
+      return STATUS(IOError, src, "File not found");
     }
 
     DeleteFileInternal(target);
@@ -587,16 +586,16 @@ class InMemoryEnv : public EnvWrapper {
           DeleteFileInternal(fname);
           break; // creates a new file below
         case CREATE_NON_EXISTING:
-          return Status::AlreadyPresent(fname, "File already exists");
+          return STATUS(AlreadyPresent, fname, "File already exists");
         case OPEN_EXISTING:
           result->reset(new Type(file_map_[fname]));
           return Status::OK();
         default:
-          return Status::NotSupported(Substitute("Unknown create mode $0",
+          return STATUS(NotSupported, Substitute("Unknown create mode $0",
                                                  mode));
       }
     } else if (mode == OPEN_EXISTING) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     CreateAndRegisterNewWritableFileUnlocked<Type, Type>(fname, result);

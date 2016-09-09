@@ -53,7 +53,7 @@ Status Sockaddr::ParseString(const std::string& s, uint16_t default_port) {
   RETURN_NOT_OK(hp.ParseString(s, default_port));
 
   if (inet_pton(AF_INET, hp.host().c_str(), &addr_.sin_addr) != 1) {
-    return Status::InvalidArgument("Invalid IP address", hp.host());
+    return STATUS(InvalidArgument, "Invalid IP address", hp.host());
   }
   set_port(hp.port());
   return Status::OK();
@@ -124,10 +124,10 @@ Status Sockaddr::LookupHostname(string* hostname) const {
   if (PREDICT_FALSE(rc != 0)) {
     if (rc == EAI_SYSTEM) {
       int errno_saved = errno;
-      return Status::NetworkError(Substitute("getnameinfo: $0", gai_strerror(rc)),
+      return STATUS(NetworkError, Substitute("getnameinfo: $0", gai_strerror(rc)),
                                   strerror(errno_saved), errno_saved);
     }
-    return Status::NetworkError("getnameinfo", gai_strerror(rc), rc);
+    return STATUS(NetworkError, "getnameinfo", gai_strerror(rc), rc);
   }
   *hostname = host;
   return Status::OK();

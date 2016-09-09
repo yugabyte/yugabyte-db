@@ -140,14 +140,14 @@ static void DoSaslInit(void* app_name_char_array) {
 
   int result = sasl_client_init(&callbacks[0]);
   if (result != SASL_OK) {
-    sasl_init_data->status = Status::RuntimeError("Could not initialize SASL client",
+    sasl_init_data->status = STATUS(RuntimeError, "Could not initialize SASL client",
         sasl_errstring(result, nullptr, nullptr));
     return;
   }
 
   result = sasl_server_init(&callbacks[0], sasl_init_data->app_name.c_str());
   if (result != SASL_OK) {
-    sasl_init_data->status = Status::RuntimeError("Could not initialize SASL server",
+    sasl_init_data->status = STATUS(RuntimeError, "Could not initialize SASL server",
         sasl_errstring(result, nullptr, nullptr));
     return;
   }
@@ -164,7 +164,7 @@ Status SaslInit(const char* const app_name) {
                     // This is a bit ugly, but Clang 3.4 UBSAN complains otherwise.
                     reinterpret_cast<void*>(const_cast<char*>(app_name)));
   if (PREDICT_FALSE(sasl_init_data->app_name != app_name)) {
-    return Status::InvalidArgument("SaslInit called successively with different arguments",
+    return STATUS(InvalidArgument, "SaslInit called successively with different arguments",
         StringPrintf("Previous: %s, current: %s", sasl_init_data->app_name.c_str(), app_name));
   }
   return sasl_init_data->status;

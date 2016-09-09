@@ -54,7 +54,7 @@ Status EncodedKey::DecodeEncodedString(const Schema& schema,
                                        gscoped_ptr<EncodedKey>* result) {
   uint8_t* raw_key_buf = static_cast<uint8_t*>(arena->AllocateBytes(schema.key_byte_size()));
   if (PREDICT_FALSE(!raw_key_buf)) {
-    return Status::RuntimeError("OOM");
+    return STATUS(RuntimeError, "OOM");
   }
 
   RETURN_NOT_OK(schema.DecodeRowKey(encoded, raw_key_buf, arena));
@@ -78,7 +78,7 @@ Status EncodedKey::IncrementEncodedKey(const Schema& tablet_schema,
   uint8_t* new_row_key = static_cast<uint8_t*>(
       arena->AllocateBytes(tablet_schema.key_byte_size()));
   if (PREDICT_FALSE(!new_row_key)) {
-    return Status::RuntimeError("Out of memory allocating row key");
+    return STATUS(RuntimeError, "Out of memory allocating row key");
   }
 
   vector<const void*> new_raw_keys(tablet_schema.num_key_columns());
@@ -95,7 +95,7 @@ Status EncodedKey::IncrementEncodedKey(const Schema& tablet_schema,
   // Increment the new key
   ContiguousRow new_row(&tablet_schema, new_row_key);
   if (!row_key_util::IncrementKey(&new_row, arena)) {
-    return Status::IllegalState("No lexicographically greater key exists");
+    return STATUS(IllegalState, "No lexicographically greater key exists");
   }
 
   // Re-encode it.

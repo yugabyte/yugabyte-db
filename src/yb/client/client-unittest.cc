@@ -38,7 +38,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
   YBSchema s;
   YBSchemaBuilder b;
   ASSERT_EQ("Invalid argument: no primary key specified",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
@@ -47,7 +47,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
   b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull();
   b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull();
   ASSERT_EQ("Invalid argument: no primary key specified",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
@@ -57,7 +57,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
   b.AddColumn("x")->Type(YBColumnSchema::INT32);
   b.AddColumn("x")->Type(YBColumnSchema::INT32);
   ASSERT_EQ("Invalid argument: Duplicate column name: x",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_KeyNotFirstColumn) {
@@ -67,7 +67,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_KeyNotFirstColumn) {
   b.AddColumn("x")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();;
   b.AddColumn("x")->Type(YBColumnSchema::INT32);
   ASSERT_EQ("Invalid argument: primary key column must be the first column",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_TwoPrimaryKeys) {
@@ -76,7 +76,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_TwoPrimaryKeys) {
   b.AddColumn("a")->Type(YBColumnSchema::INT32)->PrimaryKey();
   b.AddColumn("b")->Type(YBColumnSchema::INT32)->PrimaryKey();
   ASSERT_EQ("Invalid argument: multiple columns specified for primary key: a, b",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
@@ -87,7 +87,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("Invalid argument: primary key specified by both "
             "SetPrimaryKey() and on a specific column: a",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
@@ -141,7 +141,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("Invalid argument: primary key columns must be listed "
             "first in the schema: a",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
@@ -151,14 +151,14 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
   b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull();
   b.SetPrimaryKey({ "foo" });
   ASSERT_EQ("Invalid argument: primary key column not defined: foo",
-            b.Build(&s).ToString());
+            b.Build(&s).ToString(/* no file/line */ false));
 }
 
 namespace {
 Status TestFunc(const MonoTime& deadline, bool* retry, int* counter) {
   (*counter)++;
   *retry = true;
-  return Status::RuntimeError("x");
+  return STATUS(RuntimeError, "x");
 }
 } // anonymous namespace
 

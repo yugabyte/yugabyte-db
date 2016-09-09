@@ -202,7 +202,7 @@ TEST_F(YsckTest, TestMasterOk) {
 }
 
 TEST_F(YsckTest, TestMasterUnavailable) {
-  Status error = Status::NetworkError("Network failure");
+  Status error = STATUS(NetworkError, "Network failure");
   master_->connect_status_ = error;
   ASSERT_TRUE(ysck_->CheckMasterRunning().IsNetworkError());
 }
@@ -215,7 +215,7 @@ TEST_F(YsckTest, TestTabletServersOk) {
 
 TEST_F(YsckTest, TestBadTabletServer) {
   ASSERT_OK(ysck_->CheckMasterRunning());
-  Status error = Status::NetworkError("Network failure");
+  Status error = STATUS(NetworkError, "Network failure");
   static_pointer_cast<MockYsckTabletServer>(master_->tablet_servers_.begin()->second)
       ->connect_status_ = error;
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());

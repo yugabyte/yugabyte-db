@@ -30,7 +30,7 @@ inline Status TranslateError(CURLcode code) {
   if (code == CURLE_OK) {
     return Status::OK();
   }
-  return Status::NetworkError("curl error", curl_easy_strerror(code));
+  return STATUS(NetworkError, "curl error", curl_easy_strerror(code));
 }
 
 extern "C" {
@@ -81,7 +81,7 @@ Status EasyCurl::DoRequest(const std::string& url,
   long rc; // NOLINT(runtime/int) curl wants a long
   RETURN_NOT_OK(TranslateError(curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &rc)));
   if (rc != 200) {
-    return Status::RemoteError(strings::Substitute("HTTP $0", rc));
+    return STATUS(RemoteError, strings::Substitute("HTTP $0", rc));
   }
 
   return Status::OK();

@@ -176,15 +176,15 @@ Status GzClose(gzFile f) {
     case Z_OK:
       return Status::OK();
     case Z_STREAM_ERROR:
-      return Status::InvalidArgument("Stream not valid");
+      return STATUS(InvalidArgument, "Stream not valid");
     case Z_ERRNO:
-      return Status::IOError("IO Error closing stream");
+      return STATUS(IOError, "IO Error closing stream");
     case Z_MEM_ERROR:
-      return Status::RuntimeError("Out of memory");
+      return STATUS(RuntimeError, "Out of memory");
     case Z_BUF_ERROR:
-      return Status::IOError("read ended in the middle of a stream");
+      return STATUS(IOError, "read ended in the middle of a stream");
     default:
-      return Status::IOError("Unknown zlib error", SimpleItoa(err));
+      return STATUS(IOError, "Unknown zlib error", SimpleItoa(err));
   }
 }
 
@@ -222,7 +222,7 @@ Status RollingLog::CompressFile(const std::string& path) const {
   string gz_path = path + ".gz";
   gzFile gzf = gzopen(gz_path.c_str(), "w");
   if (!gzf) {
-    return Status::IOError("Unable to open gzip stream");
+    return STATUS(IOError, "Unable to open gzip stream");
   }
 
   ScopedGzipCloser closer(gzf);
@@ -239,7 +239,7 @@ Status RollingLog::CompressFile(const std::string& path) const {
     int n = gzwrite(gzf, result.data(), result.size());
     if (n == 0) {
       int errnum;
-      return Status::IOError("Unable to write to gzip output",
+      return STATUS(IOError, "Unable to write to gzip output",
                              gzerror(gzf, &errnum));
     }
   }

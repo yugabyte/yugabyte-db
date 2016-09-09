@@ -140,13 +140,13 @@ Status CFileSet::OpenBloomReader() {
 Status CFileSet::LoadMinMaxKeys() {
   CFileReader *key_reader = key_index_reader();
   if (!key_reader->GetMetadataEntry(DiskRowSet::kMinKeyMetaEntryName, &min_encoded_key_)) {
-    return Status::Corruption("No min key found", ToString());
+    return STATUS(Corruption, "No min key found", ToString());
   }
   if (!key_reader->GetMetadataEntry(DiskRowSet::kMaxKeyMetaEntryName, &max_encoded_key_)) {
-    return Status::Corruption("No max key found", ToString());
+    return STATUS(Corruption, "No max key found", ToString());
   }
   if (Slice(min_encoded_key_).compare(max_encoded_key_) > 0) {
-    return Status::Corruption(StringPrintf("Min key %s > max key %s",
+    return STATUS(Corruption, StringPrintf("Min key %s > max key %s",
                                            Slice(min_encoded_key_).ToDebugString().c_str(),
                                            Slice(max_encoded_key_).ToDebugString().c_str()),
                               ToString());
@@ -207,7 +207,7 @@ Status CFileSet::FindRow(const RowSetKeyProbe &probe, rowid_t *idx,
     bool present;
     Status s = bloom_reader_->CheckKeyPresent(probe.bloom_probe(), &present);
     if (s.ok() && !present) {
-      return Status::NotFound("not present in bloom filter");
+      return STATUS(NotFound, "not present in bloom filter");
     } else if (!s.ok()) {
       LOG(WARNING) << "Unable to query bloom: " << s.ToString()
                    << " (disabling bloom for this rowset from this point forward)";
@@ -225,7 +225,7 @@ Status CFileSet::FindRow(const RowSetKeyProbe &probe, rowid_t *idx,
   bool exact;
   RETURN_NOT_OK(key_iter->SeekAtOrAfter(probe.encoded_key(), &exact));
   if (!exact) {
-    return Status::NotFound("not present in storefile (failed seek)");
+    return STATUS(NotFound, "not present in storefile (failed seek)");
   }
 
   *idx = key_iter->GetCurrentOrdinal();
@@ -280,7 +280,7 @@ Status CFileSet::Iterator::CreateColumnIterators(const ScanSpec* spec) {
       // that it is either NULLable, or has a "read-default". Otherwise, consider it a corruption.
       const ColumnSchema& col_schema = projection_->column(proj_col_idx);
       if (PREDICT_FALSE(!col_schema.is_nullable() && !col_schema.has_read_default())) {
-        return Status::Corruption(Substitute("column $0 has no data in rowset $1",
+        return STATUS(Corruption, Substitute("column $0 has no data in rowset $1",
                                              col_schema.ToString(), base_data_->ToString()));
       }
       ret_iters.push_back(new DefaultColumnValueIterator(col_schema.type_info(),
@@ -427,7 +427,7 @@ Status CFileSet::Iterator::PrepareColumn(size_t idx) {
   }
 
   if (n != prepared_count_) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("Column %zd (%s) didn't yield enough rows at offset %zd: expected "
                    "%zd but only got %zd", idx, projection_->column(idx).ToString().c_str(),
                    cur_idx_, prepared_count_, n));

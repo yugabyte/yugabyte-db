@@ -192,16 +192,16 @@ Status TpchRealWorld::CreateFifos() {
         if (mkfifo(path_to_lineitem.c_str(), 0644) != 0) {
           string msg = Substitute("Could not create the named pipe for the dbgen output at $0",
                                   path_to_lineitem);
-          return Status::InvalidArgument(msg);
+          return STATUS(InvalidArgument, msg);
         }
       } else {
-        return Status::IOError(path_to_lineitem, ErrnoToString(errno), errno);
+        return STATUS(IOError, path_to_lineitem, ErrnoToString(errno), errno);
       }
     } else {
       if (!S_ISFIFO(sbuf.st_mode)) {
         string msg = Substitute("Please remove the current lineitem file at $0",
                                 path_to_lineitem);
-        return Status::InvalidArgument(msg);
+        return STATUS(InvalidArgument, msg);
       }
     }
     // We get here if the file was already a fifo or if we created it.

@@ -99,7 +99,7 @@ Status PstackWatcher::HasProgram(const char* progname) {
   if ((WIFEXITED(wait_status)) && (0 == WEXITSTATUS(wait_status))) {
     return Status::OK();
   }
-  return Status::NotFound(Substitute("can't find $0: exited?=$1, status=$2",
+  return STATUS(NotFound, Substitute("can't find $0: exited?=$1, status=$2",
                                      progname,
                                      static_cast<bool>(WIFEXITED(wait_status)),
                                      WEXITSTATUS(wait_status)));
@@ -125,7 +125,7 @@ Status PstackWatcher::DumpPidStacks(pid_t pid, int flags) {
   }
 
   if (!progname) {
-    return Status::ServiceUnavailable("Neither gdb, pstack, nor gstack appears to be installed.");
+    return STATUS(ServiceUnavailable, "Neither gdb, pstack, nor gstack appears to be installed.");
   }
   return RunPstack(progname, pid);
 }
@@ -168,21 +168,21 @@ Status PstackWatcher::RunPstack(const std::string& progname, pid_t pid) {
 Status PstackWatcher::RunStackDump(const string& prog, const vector<string>& argv) {
   printf("************************ BEGIN STACKS **************************\n");
   if (fflush(stdout) == EOF) {
-    return Status::IOError("Unable to flush stdout", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to flush stdout", ErrnoToString(errno), errno);
   }
   Subprocess pstack_proc(prog, argv);
   RETURN_NOT_OK_PREPEND(pstack_proc.Start(), "RunStackDump proc.Start() failed");
   if (::close(pstack_proc.ReleaseChildStdinFd()) == -1) {
-    return Status::IOError("Unable to close child stdin", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to close child stdin", ErrnoToString(errno), errno);
   }
   int ret;
   RETURN_NOT_OK_PREPEND(pstack_proc.Wait(&ret), "RunStackDump proc.Wait() failed");
   if (ret == -1) {
-    return Status::RuntimeError("RunStackDump proc.Wait() error", ErrnoToString(errno), errno);
+    return STATUS(RuntimeError, "RunStackDump proc.Wait() error", ErrnoToString(errno), errno);
   }
   printf("************************* END STACKS ***************************\n");
   if (fflush(stdout) == EOF) {
-    return Status::IOError("Unable to flush stdout", ErrnoToString(errno), errno);
+    return STATUS(IOError, "Unable to flush stdout", ErrnoToString(errno), errno);
   }
 
   return Status::OK();

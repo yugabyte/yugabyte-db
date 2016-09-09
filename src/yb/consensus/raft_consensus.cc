@@ -374,7 +374,7 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
       return Status::OK();
     } else if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
       SnoozeFailureDetectorUnlocked(); // Avoid excessive election noise while in this state.
-      return Status::IllegalState("Not starting election: Node is currently "
+      return STATUS(IllegalState, "Not starting election: Node is currently "
                                   "a non-participant in the raft config",
                                   state_->GetActiveConfigUnlocked().ShortDebugString());
     }
@@ -442,7 +442,7 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
   RETURN_NOT_OK(state_->LockForConfigChange(&lock));
   if (state_->GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
     resp->mutable_error()->set_code(TabletServerErrorPB::NOT_THE_LEADER);
-    StatusToPB(Status::IllegalState("Not currently leader"),
+    StatusToPB(STATUS(IllegalState, "Not currently leader"),
                resp->mutable_error()->mutable_status());
     // We return OK so that the tablet service won't overwrite the error code.
     return Status::OK();
@@ -691,7 +691,7 @@ Status RaftConsensus::Update(const ConsensusRequestPB* request,
                              ConsensusResponsePB* response) {
 
   if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests)) {
-    return Status::IllegalState("Rejected: --follower_reject_update_consensus_requests "
+    return STATUS(IllegalState, "Rejected: --follower_reject_update_consensus_requests "
                                 "is set to true.");
   }
 
@@ -731,7 +731,7 @@ Status RaftConsensus::StartReplicaTransactionUnlocked(const ReplicateRefPtr& msg
   }
 
   if (PREDICT_FALSE(FLAGS_follower_fail_all_prepare)) {
-    return Status::IllegalState("Rejected: --follower_fail_all_prepare "
+    return STATUS(IllegalState, "Rejected: --follower_fail_all_prepare "
                                 "is set to true.");
   }
 
@@ -834,7 +834,7 @@ Status RaftConsensus::HandleLeaderRequestTermUnlocked(const ConsensusRequestPB* 
       LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
       FillConsensusResponseError(response,
                                  ConsensusErrorPB::INVALID_TERM,
-                                 Status::IllegalState(msg));
+                                 STATUS(IllegalState, msg));
       return Status::OK();
     } else {
       RETURN_NOT_OK(HandleTermAdvanceUnlocked(request->caller_term()));
@@ -860,7 +860,7 @@ Status RaftConsensus::EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequ
 
   FillConsensusResponseError(response,
                              ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH,
-                             Status::IllegalState(error_msg));
+                             STATUS(IllegalState, error_msg));
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Refusing update from remote peer "
                         << req.leader_uuid << ": " << error_msg;
@@ -1128,7 +1128,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
           YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
                                      << THROTTLE_MSG;
         }
-        return Status::ServiceUnavailable(msg);
+        return STATUS(ServiceUnavailable, msg);
       }
     }
 
@@ -1167,7 +1167,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
                                 prepare_status.ToString());
         LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
         FillConsensusResponseError(response, ConsensusErrorPB::CANNOT_PREPARE,
-                                   Status::IllegalState(msg));
+                                   STATUS(IllegalState, msg));
         FillConsensusResponseOKUnlocked(response);
         return Status::OK();
       }
@@ -1413,12 +1413,12 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                                    const StatusCallback& client_cb,
                                    boost::optional<TabletServerErrorPB::Code>* error_code) {
   if (PREDICT_FALSE(!req.has_type())) {
-    return Status::InvalidArgument("Must specify 'type' argument to ChangeConfig()",
+    return STATUS(InvalidArgument, "Must specify 'type' argument to ChangeConfig()",
                                    req.ShortDebugString());
   }
   if (PREDICT_FALSE(!req.has_server())) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
-    return Status::InvalidArgument("Must specify 'server' argument to ChangeConfig()",
+    return STATUS(InvalidArgument, "Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
   }
   LOG(INFO) << "Received ChangeConfig request " << req.ShortDebugString();
@@ -1440,7 +1440,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     // See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
     RETURN_NOT_OK(state_->CheckHasCommittedOpInCurrentTermUnlocked());
     if (!server.has_permanent_uuid()) {
-      return Status::InvalidArgument("server must have permanent_uuid specified",
+      return STATUS(InvalidArgument, "server must have permanent_uuid specified",
                                      req.ShortDebugString());
     }
     const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
@@ -1449,7 +1449,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     if (req.has_cas_config_opid_index()) {
       if (committed_config.opid_index() != req.cas_config_opid_index()) {
         *error_code = TabletServerErrorPB::CAS_FAILED;
-        return Status::IllegalState(Substitute("Request specified cas_config_opid_index "
+        return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index "
                                                "of $0 but the committed config has opid_index "
                                                "of $1",
                                                req.cas_config_opid_index(),
@@ -1464,16 +1464,16 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
       case ADD_SERVER:
         // Ensure the server we are adding is not already a member of the configuration.
         if (IsRaftConfigMember(server_uuid, committed_config)) {
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               Substitute("Server with UUID $0 is already a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
         if (server.has_member_type()) {
-          return Status::InvalidArgument("server must not have member_type specified",
+          return STATUS(InvalidArgument, "server must not have member_type specified",
                                          req.ShortDebugString());
         }
         if (!server.has_last_known_addr()) {
-          return Status::InvalidArgument("server must have last_known_addr specified",
+          return STATUS(InvalidArgument, "server must have last_known_addr specified",
                                          req.ShortDebugString());
         }
         new_peer = new_config.add_peers();
@@ -1483,7 +1483,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
       case REMOVE_SERVER:
         if (server_uuid == peer_uuid()) {
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               Substitute("Cannot remove peer $0 from the config because it is the leader. "
                          "Force another leader to be elected to remove this server. "
                          "Active consensus state: $1",
@@ -1492,11 +1492,11 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                             .ShortDebugString()));
         }
         if (CountVotersInTransition(committed_config) != 0) {
-          return Status::RuntimeError("Current configuration contains at least one peer that is "
+          return STATUS(RuntimeError, "Current configuration contains at least one peer that is "
                                       "transitioning to VOTER role");
         }
         if (!RemoveFromRaftConfig(&new_config, server_uuid)) {
-          return Status::NotFound(
+          return STATUS(NotFound,
               Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
@@ -1504,7 +1504,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
       case CHANGE_ROLE:
         if (server_uuid == peer_uuid()) {
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               Substitute("Cannot change role of  peer $0 from the config because it is the leader. "
                          "Force another leader to be elected to change the role of this server. "
                          "Active consensus state: $1",
@@ -1515,7 +1515,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         VLOG(3) << "config before CHANGE_ROLE: " << new_config.DebugString();
 
         if(!GetMutableRaftConfigMember(new_config, server_uuid, &new_peer).ok()) {
-          return Status::NotFound(
+          return STATUS(NotFound,
             Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                        server_uuid, new_config.ShortDebugString()));
         }
@@ -1523,7 +1523,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         VLOG(3) << "config after CHANGE_ROLE: " << new_config.DebugString();
         break;
       default:
-        return Status::InvalidArgument(Substitute("Unsupported type $0",
+        return STATUS(InvalidArgument, Substitute("Unsupported type $0",
                                                   ChangeConfigType_Name(type)));
     }
 
@@ -1667,7 +1667,7 @@ Status RaftConsensus::RequestVoteRespondInvalidTerm(const VoteRequestPB* request
                           request->candidate_term(),
                           state_->GetCurrentTermUnlocked());
   LOG(INFO) << msg;
-  StatusToPB(Status::InvalidArgument(msg), response->mutable_consensus_error()->mutable_status());
+  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
 }
 
@@ -1692,7 +1692,7 @@ Status RaftConsensus::RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB
                           state_->GetCurrentTermUnlocked(),
                           state_->GetVotedForCurrentTermUnlocked());
   LOG(INFO) << msg;
-  StatusToPB(Status::InvalidArgument(msg), response->mutable_consensus_error()->mutable_status());
+  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
 }
 
@@ -1709,7 +1709,7 @@ Status RaftConsensus::RequestVoteRespondLastOpIdTooOld(const OpId& local_last_lo
                           local_last_logged_opid.ShortDebugString(),
                           request->candidate_status().last_received().ShortDebugString());
   LOG(INFO) << msg;
-  StatusToPB(Status::InvalidArgument(msg), response->mutable_consensus_error()->mutable_status());
+  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
 }
 
@@ -1723,7 +1723,7 @@ Status RaftConsensus::RequestVoteRespondLeaderIsAlive(const VoteRequestPB* reque
                           request->candidate_uuid(),
                           request->candidate_term());
   LOG(INFO) << msg;
-  StatusToPB(Status::InvalidArgument(msg), response->mutable_consensus_error()->mutable_status());
+  StatusToPB(STATUS(InvalidArgument, msg), response->mutable_consensus_error()->mutable_status());
   return Status::OK();
 }
 
@@ -1737,7 +1737,7 @@ Status RaftConsensus::RequestVoteRespondIsBusy(const VoteRequestPB* request,
                           request->candidate_uuid(),
                           request->candidate_term());
   LOG(INFO) << msg;
-  StatusToPB(Status::ServiceUnavailable(msg),
+  StatusToPB(STATUS(ServiceUnavailable, msg),
              response->mutable_consensus_error()->mutable_status());
   return Status::OK();
 }
@@ -1951,7 +1951,7 @@ Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
   } else if (type == COMMITTED_OPID) {
     *DCHECK_NOTNULL(id) = state_->GetCommittedOpIdUnlocked();
   } else {
-    return Status::InvalidArgument("Unsupported OpIdType", OpIdType_Name(type));
+    return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
   }
   return Status::OK();
 }
@@ -2091,7 +2091,7 @@ Status RaftConsensus::IncrementTermUnlocked() {
 
 Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   if (new_term <= state_->GetCurrentTermUnlocked()) {
-    return Status::IllegalState(Substitute("Can't advance term to: $0 current term: $1 is higher.",
+    return STATUS(IllegalState, Substitute("Can't advance term to: $0 current term: $1 is higher.",
                                            new_term, state_->GetCurrentTermUnlocked()));
   }
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {

@@ -341,7 +341,7 @@ bool AbstractHistogramIterator::HasNext() const {
 
 Status AbstractHistogramIterator::Next(HistogramIterationValue* value) {
   if (histogram_->TotalCount() != histogram_total_count_) {
-    return Status::IllegalState("Concurrently modified histogram while traversing it");
+    return STATUS(IllegalState, "Concurrently modified histogram while traversing it");
   }
 
   // Move through the sub buckets and buckets until we hit the next reporting level:
@@ -379,7 +379,7 @@ Status AbstractHistogramIterator::Next(HistogramIterationValue* value) {
     }
     IncrementSubBucket();
   }
-  return Status::IllegalState("Histogram array index out of bounds while traversing");
+  return STATUS(IllegalState, "Histogram array index out of bounds while traversing");
 }
 
 double AbstractHistogramIterator::PercentileIteratedTo() const {

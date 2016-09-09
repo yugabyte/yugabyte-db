@@ -193,7 +193,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Sockaddr& node_
         // network or other errors encountered), but haven't found a
         // leader (which means that SendRpcCb() above can perform a
         // delayed retry).
-        new_status = Status::NotFound("no leader found: " + ToString());
+        new_status = STATUS(NotFound, "no leader found: " + ToString());
       } else {
         // We've found a leader.
         leader_master_ = HostPort(node_addr);

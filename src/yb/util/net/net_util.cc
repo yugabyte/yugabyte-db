@@ -108,7 +108,7 @@ Status HostPort::RemoveAndGetHostPortList(
     }
     LOG(ERROR) << out.str();
 
-    return Status::NotFound(Substitute("Cannot find $0 in master addresses.",
+    return STATUS(NotFound, Substitute("Cannot find $0 in master addresses.",
       remove.ToString()));
   }
 
@@ -128,7 +128,7 @@ Status HostPort::ParseString(const string& str, uint16_t default_port) {
     port = default_port;
   } else if (!SimpleAtoi(p.second, &port) ||
              port > 65535) {
-    return Status::InvalidArgument("Invalid port", str);
+    return STATUS(InvalidArgument, "Invalid port", str);
   }
 
   host_.swap(p.first);
@@ -150,7 +150,7 @@ Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
     rc = getaddrinfo(host_.c_str(), nullptr, &hints, &res);
   }
   if (rc != 0) {
-    return Status::NetworkError(
+    return STATUS(NetworkError,
       StringPrintf("Unable to resolve address '%s'", host_.c_str()),
       gai_strerror(rc));
   }
@@ -229,7 +229,7 @@ Status GetHostname(string* hostname) {
   char name[HOST_NAME_MAX];
   int ret = gethostname(name, HOST_NAME_MAX);
   if (ret != 0) {
-    return Status::NetworkError("Unable to determine local hostname",
+    return STATUS(NetworkError, "Unable to determine local hostname",
                                 ErrnoToString(errno),
                                 errno);
   }
@@ -253,7 +253,7 @@ Status GetFQDN(string* hostname) {
     TRACE_EVENT0("net", "getaddrinfo");
     int rc = getaddrinfo(hostname->c_str(), nullptr, &hints, &result);
     if (rc != 0) {
-      return Status::NetworkError("Unable to lookup FQDN", ErrnoToString(errno), errno);
+      return STATUS(NetworkError, "Unable to lookup FQDN", ErrnoToString(errno), errno);
     }
   }
 
@@ -266,7 +266,7 @@ Status SockaddrFromHostPort(const HostPort& host_port, Sockaddr* addr) {
   vector<Sockaddr> addrs;
   RETURN_NOT_OK(host_port.ResolveAddresses(&addrs));
   if (addrs.empty()) {
-    return Status::NetworkError("Unable to resolve address", host_port.ToString());
+    return STATUS(NetworkError, "Unable to resolve address", host_port.ToString());
   }
   *addr = addrs[0];
   if (addrs.size() > 1) {

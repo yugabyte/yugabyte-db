@@ -251,7 +251,7 @@ void Log::SegmentAllocationTask() {
 }
 
 const Status Log::kLogShutdownStatus(
-    Status::ServiceUnavailable("WAL is shutting down", "", ESHUTDOWN));
+    STATUS(ServiceUnavailable, "WAL is shutting down", "", ESHUTDOWN));
 
 Status Log::Open(const LogOptions &options,
                  FsManager *fs_manager,
@@ -826,7 +826,7 @@ Status Log::Close() {
       return Status::OK();
 
     default:
-      return Status::IllegalState(Substitute("Bad state for Close() $0", log_state_));
+      return STATUS(IllegalState, Substitute("Bad state for Close() $0", log_state_));
   }
 }
 
@@ -997,7 +997,7 @@ Status LogEntryBatch::Serialize() {
   buffer_.reserve(total_size_bytes_);
 
   if (!pb_util::AppendToString(*entry_batch_pb_, &buffer_)) {
-    return Status::IOError(Substitute("unable to serialize the entry batch, contents: $1",
+    return STATUS(IOError, Substitute("unable to serialize the entry batch, contents: $1",
                                       entry_batch_pb_->DebugString()));
   }
 

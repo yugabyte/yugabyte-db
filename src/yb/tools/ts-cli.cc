@@ -223,9 +223,9 @@ Status TsAdminClient::SetFlag(const string& flag, const string& val,
     case server::SetFlagResponsePB::SUCCESS:
       return Status::OK();
     case server::SetFlagResponsePB::NOT_SAFE:
-      return Status::RemoteError(resp.msg() + " (use --force flag to allow anyway)");
+      return STATUS(RemoteError, resp.msg() + " (use --force flag to allow anyway)");
     default:
-      return Status::RemoteError(resp.ShortDebugString());
+      return STATUS(RemoteError, resp.ShortDebugString());
   }
 }
 
@@ -240,7 +240,7 @@ Status TsAdminClient::GetTabletSchema(const std::string& tablet_id,
       return Status::OK();
     }
   }
-  return Status::NotFound("Cannot find tablet", tablet_id);
+  return STATUS(NotFound, "Cannot find tablet", tablet_id);
 }
 
 Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
@@ -270,7 +270,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
                           "Scan() failed");
 
     if (resp.has_error()) {
-      return Status::IOError("Failed to read: ", resp.error().ShortDebugString());
+      return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
     }
 
     rows.clear();
@@ -316,7 +316,7 @@ Status TsAdminClient::DeleteTablet(const string& tablet_id,
                         "DeleteTablet() failed");
 
   if (resp.has_error()) {
-    return Status::IOError("Failed to delete tablet: ",
+    return STATUS(IOError, "Failed to delete tablet: ",
                            resp.error().ShortDebugString());
   }
   return Status::OK();

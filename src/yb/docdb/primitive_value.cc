@@ -162,7 +162,7 @@ string PrimitiveValue::ToValue() const {
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
   if (slice->empty()) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         "Cannot decode a primitive value in the key encoding format from an empty slice");
   }
   ValueType value_type = ConsumeValueType(slice);
@@ -191,7 +191,7 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       if (slice->size() < sizeof(int64_t)) {
-        return Status::Corruption(Substitute("Not enough bytes to decode a 64-bit integer: $0",
+        return STATUS(Corruption, Substitute("Not enough bytes to decode a 64-bit integer: $0",
             slice->size()));
       }
       int64_val_ = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
@@ -201,7 +201,7 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
 
     case ValueType::kUInt32Hash:
       if (slice->size() < sizeof(int32_t)) {
-        return Status::Corruption(Substitute("Not enough bytes to decode a 32-bit hash: $0",
+        return STATUS(Corruption, Substitute("Not enough bytes to decode a 32-bit hash: $0",
             slice->size()));
       }
       uint32_val_ = BigEndian::Load32(slice->data());
@@ -211,7 +211,7 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
 
     case ValueType::kTimestamp:
       if (slice->size() < kBytesPerTimestamp) {
-        return Status::Corruption(
+        return STATUS(Corruption,
             Substitute("Not enough bytes to decode a timestamp: $0, need $1",
                 slice->size(), kBytesPerTimestamp));
       }
@@ -226,7 +226,7 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
-  return Status::Corruption(
+  return STATUS(Corruption,
       Substitute("Cannot decode value type $0 from the key encoding format",
           ValueTypeToStr(value_type)));
 }
@@ -234,7 +234,7 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
 Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {
   rocksdb::Slice slice(rocksdb_value);
   if (slice.empty()) {
-    return Status::Corruption("Cannot decode a value from an empty slice");
+    return STATUS(Corruption, "Cannot decode a value from an empty slice");
   }
   auto value_type = ConsumeValueType(&slice);
   this->~PrimitiveValue();
@@ -262,7 +262,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {
     case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
     case ValueType::kDouble:
       if (slice.size() != sizeof(int64_t)) {
-        return Status::Corruption(
+        return STATUS(Corruption,
             Substitute("Invalid number of bytes for a $0: $1",
                 ValueTypeToStr(value_type), slice.size()));
       }
@@ -271,13 +271,13 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {
       return Status::OK();
 
     case ValueType::kArray:
-      return Status::IllegalState("Arrays are currently not supported");
+      return STATUS(IllegalState, "Arrays are currently not supported");
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
-      return Status::Corruption(
+      return STATUS(Corruption,
           Substitute("$0 is not allowed in a RocksDB value", ValueTypeToStr(value_type)));
   }
   LOG(FATAL) << "Invalid value type: " << ValueTypeToStr(value_type);

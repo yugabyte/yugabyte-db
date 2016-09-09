@@ -64,7 +64,7 @@ inline Status FindColumn(const Schema& schema, const Slice& col_name, int* idx) 
   StringPiece sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
   *idx = schema.find_column(sp);
   if (PREDICT_FALSE(*idx == -1)) {
-    return Status::NotFound("No such column", col_name);
+    return STATUS(NotFound, "No such column", col_name);
   }
   return Status::OK();
 }
@@ -199,14 +199,14 @@ Status YBScanBatch::RowPtr::Get(int col_idx, typename T::cpp_type* val) const {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
     // TODO: at some point we could allow type coercion here.
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("invalid type $0 provided for column '$1' (expected $2)",
                    T::name(),
                    col.name(), col.type_info()->name()));
   }
 
   if (col.is_nullable() && IsNull(col_idx)) {
-    return Status::NotFound("column is NULL");
+    return STATUS(NotFound, "column is NULL");
   }
 
   memcpy(val, row_data_ + schema_->column_offset(col_idx), sizeof(*val));

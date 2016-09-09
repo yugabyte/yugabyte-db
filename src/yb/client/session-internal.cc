@@ -73,7 +73,7 @@ void YBSession::Data::FlushFinished(Batcher* batcher) {
 
 Status YBSession::Data::Close(bool force) {
   if (batcher_->HasPendingOperations() && !force) {
-    return Status::IllegalState("Could not close. There are pending operations.");
+    return STATUS(IllegalState, "Could not close. There are pending operations.");
   }
   batcher_->Abort();
   return Status::OK();

@@ -133,10 +133,10 @@ RowOperationsPBDecoder::~RowOperationsPBDecoder() {
 
 Status RowOperationsPBDecoder::ReadOpType(RowOperationsPB::Type* type) {
   if (PREDICT_FALSE(src_.empty())) {
-    return Status::Corruption("Cannot find operation type");
+    return STATUS(Corruption, "Cannot find operation type");
   }
   if (PREDICT_FALSE(!RowOperationsPB_Type_IsValid(src_[0]))) {
-    return Status::Corruption(Substitute("Unknown operation type: $0", src_[0]));
+    return STATUS(Corruption, Substitute("Unknown operation type: $0", src_[0]));
   }
   *type = static_cast<RowOperationsPB::Type>(src_[0]);
   src_.remove_prefix(1);
@@ -146,7 +146,7 @@ Status RowOperationsPBDecoder::ReadOpType(RowOperationsPB::Type* type) {
 Status RowOperationsPBDecoder::ReadIssetBitmap(const uint8_t** bitmap) {
   if (PREDICT_FALSE(src_.size() < bm_size_)) {
     *bitmap = nullptr;
-    return Status::Corruption("Cannot find isset bitmap");
+    return STATUS(Corruption, "Cannot find isset bitmap");
   }
   *bitmap = src_.data();
   src_.remove_prefix(bm_size_);
@@ -156,7 +156,7 @@ Status RowOperationsPBDecoder::ReadIssetBitmap(const uint8_t** bitmap) {
 Status RowOperationsPBDecoder::ReadNullBitmap(const uint8_t** null_bm) {
   if (PREDICT_FALSE(src_.size() < bm_size_)) {
     *null_bm = nullptr;
-    return Status::Corruption("Cannot find null bitmap");
+    return STATUS(Corruption, "Cannot find null bitmap");
   }
   *null_bm = src_.data();
   src_.remove_prefix(bm_size_);
@@ -166,7 +166,7 @@ Status RowOperationsPBDecoder::ReadNullBitmap(const uint8_t** null_bm) {
 Status RowOperationsPBDecoder::GetColumnSlice(const ColumnSchema& col, Slice* slice) {
   int size = col.type_info()->size();
   if (PREDICT_FALSE(src_.size() < size)) {
-    return Status::Corruption("Not enough data for column", col.ToString());
+    return STATUS(Corruption, "Not enough data for column", col.ToString());
   }
   // Find the data
   if (col.type_info()->physical_type() == BINARY) {
@@ -177,7 +177,7 @@ Status RowOperationsPBDecoder::GetColumnSlice(const ColumnSchema& col, Slice* sl
     bool overflowed = false;
     size_t max_offset = AddWithOverflowCheck(offset_in_indirect, ptr_slice->size(), &overflowed);
     if (PREDICT_FALSE(overflowed || max_offset > pb_->indirect_data().size())) {
-      return Status::Corruption("Bad indirect slice");
+      return STATUS(Corruption, "Bad indirect slice");
     }
 
     *slice = Slice(&pb_->indirect_data()[offset_in_indirect], ptr_slice->size());
@@ -254,7 +254,7 @@ class ClientServerMapping {
   }
 
   Status ProjectExtraColumn(size_t client_col_idx) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       Substitute("Client provided column $0 not present in tablet",
                  client_schema_->column(client_col_idx).ToString()));
   }
@@ -281,7 +281,7 @@ class ClientServerMapping {
           !col.is_nullable()) {
         // All clients must pass this column.
         if (!saw_tablet_col_[tablet_col_idx]) {
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
             "Client missing required column", col.ToString());
         }
       }
@@ -314,7 +314,7 @@ Status RowOperationsPBDecoder::DecodeInsert(const uint8_t* prototype_row_storage
   uint8_t* tablet_row_storage = reinterpret_cast<uint8_t*>(
     dst_arena_->AllocateBytesAligned(tablet_row_size_, 8));
   if (PREDICT_FALSE(!tablet_row_storage)) {
-    return Status::RuntimeError("Out of memory");
+    return STATUS(RuntimeError, "Out of memory");
   }
 
   // Initialize the new row from the 'prototype' row which has been set
@@ -355,7 +355,7 @@ Status RowOperationsPBDecoder::DecodeInsert(const uint8_t* prototype_row_storage
       if (PREDICT_FALSE(!(col.is_nullable() || col.has_write_default()))) {
         // TODO: change this to return per-row errors. Otherwise if one row in a batch
         // is missing a field for some reason, the whole batch will fail.
-        return Status::InvalidArgument("No value provided for required column",
+        return STATUS(InvalidArgument, "No value provided for required column",
                                        col.ToString());
       }
     }
@@ -382,7 +382,7 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
   uint8_t* rowkey_storage = reinterpret_cast<uint8_t*>(
     dst_arena_->AllocateBytesAligned(rowkey_size, 8));
   if (PREDICT_FALSE(!rowkey_storage)) {
-    return Status::RuntimeError("Out of memory");
+    return STATUS(RuntimeError, "Out of memory");
   }
 
   // We're passing the full schema instead of the key schema here.
@@ -402,14 +402,14 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
 
     const ColumnSchema& col = tablet_schema_->column(tablet_col_idx);
     if (PREDICT_FALSE(!BitmapTest(client_isset_map, client_col_idx))) {
-      return Status::InvalidArgument("No value provided for key column",
+      return STATUS(InvalidArgument, "No value provided for key column",
                                      col.ToString());
     }
 
     bool client_set_to_null = client_schema_->has_nullables() &&
       BitmapTest(client_null_map, client_col_idx);
     if (PREDICT_FALSE(client_set_to_null)) {
-      return Status::InvalidArgument("NULL values not allowed for key column",
+      return STATUS(InvalidArgument, "NULL values not allowed for key column",
                                      col.ToString());
     }
 
@@ -442,7 +442,7 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
         } else {
 
           if (PREDICT_FALSE(!col.is_nullable())) {
-            return Status::InvalidArgument("NULL value not allowed for non-nullable column",
+            return STATUS(InvalidArgument, "NULL value not allowed for non-nullable column",
                                            col.ToString());
           }
           val_to_add = nullptr;
@@ -453,7 +453,7 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
 
     if (PREDICT_FALSE(buf.size() == 0)) {
       // No actual column updates specified!
-      return Status::InvalidArgument("No fields updated, key is",
+      return STATUS(InvalidArgument, "No fields updated, key is",
                                      tablet_schema_->DebugRowKey(rowkey));
     }
 
@@ -461,7 +461,7 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
     uint8_t* rcl_in_arena = reinterpret_cast<uint8_t*>(
       dst_arena_->AllocateBytesAligned(buf.size(), 8));
     if (PREDICT_FALSE(rcl_in_arena == nullptr)) {
-      return Status::RuntimeError("Out of memory allocating RCL");
+      return STATUS(RuntimeError, "Out of memory allocating RCL");
     }
     memcpy(rcl_in_arena, buf.data(), buf.size());
     op->changelist = RowChangeList(Slice(rcl_in_arena, buf.size()));
@@ -474,7 +474,7 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
         DCHECK_GE(tablet_col_idx, 0);
         const ColumnSchema& col = tablet_schema_->column(tablet_col_idx);
 
-        return Status::InvalidArgument("DELETE should not have a value for column",
+        return STATUS(InvalidArgument, "DELETE should not have a value for column",
                                        col.ToString());
       }
     }
@@ -555,7 +555,7 @@ Status RowOperationsPBDecoder::DecodeOperations(vector<DecodedRowOperation>* ops
 
     switch (type) {
       case RowOperationsPB::UNKNOWN:
-        return Status::NotSupported("Unknown row operation type");
+        return STATUS(NotSupported, "Unknown row operation type");
       case RowOperationsPB::INSERT:
         RETURN_NOT_OK(DecodeInsert(prototype_row_storage, mapping, &op));
         break;

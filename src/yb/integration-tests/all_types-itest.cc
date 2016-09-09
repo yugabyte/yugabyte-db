@@ -86,7 +86,7 @@ struct SliceKeysTestSetup {
     Slice row_key;
     RETURN_NOT_OK(result.Get<TypeTraits<KeyTypeWrapper::type> >(0, &row_key));
     if (expected_row_key_slice.compare(row_key) != 0) {
-      return Status::Corruption(strings::Substitute("Keys didn't match. Expected: $0 Got: $1",
+      return STATUS(Corruption, strings::Substitute("Keys didn't match. Expected: $0 Got: $1",
                                                     expected_row_key_slice.ToDebugString(),
                                                     row_key.ToDebugString()));
     }
@@ -157,7 +157,7 @@ struct IntKeysTestSetup {
     RETURN_NOT_OK(result.Get<TypeTraits<KeyTypeWrapper::type> >(0, &val));
     int expected = (split_idx * increment_) + row_idx;
     if (val != expected) {
-      return Status::Corruption(strings::Substitute("Keys didn't match. Expected: $0 Got: $1",
+      return STATUS(Corruption, strings::Substitute("Keys didn't match. Expected: $0 Got: $1",
                                                     expected, val));
     }
     return Status::OK();

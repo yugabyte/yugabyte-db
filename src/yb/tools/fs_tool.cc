@@ -116,7 +116,7 @@ Status FsTool::ListAllLogSegments() {
 
   string wals_dir = fs_manager_->GetWalsRootDir();
   if (!fs_manager_->Exists(wals_dir)) {
-    return Status::Corruption(Substitute(
+    return STATUS(Corruption, Substitute(
         "root log directory '$0' does not exist", wals_dir));
   }
 
@@ -147,7 +147,7 @@ Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
 
   string tablet_wal_dir = fs_manager_->GetTabletWalDir(tablet_id);
   if (!fs_manager_->Exists(tablet_wal_dir)) {
-    return Status::NotFound(Substitute("tablet '$0' has no logs in wals dir '$1'",
+    return STATUS(NotFound, Substitute("tablet '$0' has no logs in wals dir '$1'",
                                        tablet_id, tablet_wal_dir));
   }
   std::cout << "Tablet WAL dir found: " << tablet_wal_dir << std::endl;
@@ -362,7 +362,7 @@ Status FsTool::DumpRowSet(const string& tablet_id,
     }
   }
 
-  return Status::InvalidArgument(
+  return STATUS(InvalidArgument,
       Substitute("Could not find rowset $0 in tablet id $1", rowset_id, tablet_id));
 }
 
@@ -429,12 +429,12 @@ Status FsTool::DumpCFileBlock(const std::string& block_id_str,
   uint64_t numeric_id;
   if (!safe_strtou64(block_id_str, &numeric_id) &&
       !safe_strtou64_base(block_id_str, &numeric_id, 16)) {
-    return Status::InvalidArgument(Substitute("block '$0' could not be parsed",
+    return STATUS(InvalidArgument, Substitute("block '$0' could not be parsed",
                                               block_id_str));
   }
   BlockId block_id(numeric_id);
   if (!fs_manager_->BlockExists(block_id)) {
-    return Status::NotFound(Substitute("block '$0' does not exist", block_id_str));
+    return STATUS(NotFound, Substitute("block '$0' does not exist", block_id_str));
   }
   return DumpCFileBlockInternal(block_id, opts, indent);
 }

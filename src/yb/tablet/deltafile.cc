@@ -154,7 +154,7 @@ Status DeltaFileWriter::WriteDeltaStats(const DeltaStats& stats) {
 
   faststring buf;
   if (!pb_util::SerializeToString(delta_stats_pb, &buf)) {
-    return Status::IOError("Unable to serialize DeltaStatsPB", delta_stats_pb.DebugString());
+    return STATUS(IOError, "Unable to serialize DeltaStatsPB", delta_stats_pb.DebugString());
   }
 
   writer_->AddMetadataPair(DeltaFileReader::kDeltaStatsEntryName, buf.ToString());
@@ -215,7 +215,7 @@ Status DeltaFileReader::InitOnce() {
   RETURN_NOT_OK(reader_->Init());
 
   if (!reader_->has_validx()) {
-    return Status::Corruption("file does not have a value index!");
+    return STATUS(Corruption, "file does not have a value index!");
   }
 
   // Initialize delta file stats
@@ -226,12 +226,12 @@ Status DeltaFileReader::InitOnce() {
 Status DeltaFileReader::ReadDeltaStats() {
   string filestats_pb_buf;
   if (!reader_->GetMetadataEntry(kDeltaStatsEntryName, &filestats_pb_buf)) {
-    return Status::Corruption("missing delta stats from the delta file metadata");
+    return STATUS(Corruption, "missing delta stats from the delta file metadata");
   }
 
   DeltaStatsPB deltastats_pb;
   if (!deltastats_pb.ParseFromString(filestats_pb_buf)) {
-    return Status::Corruption("unable to parse the delta stats protobuf");
+    return STATUS(Corruption, "unable to parse the delta stats protobuf");
   }
   gscoped_ptr<DeltaStats>stats(new DeltaStats());
   RETURN_NOT_OK(stats->InitFromPB(deltastats_pb));
@@ -284,7 +284,7 @@ Status DeltaFileReader::NewDeltaIterator(const Schema *projection,
     VLOG(2) << "Culling "
             << ((delta_type_ == REDO) ? "REDO":"UNDO")
             << " delta " << ToString() << " for " << snap.ToString();
-    return Status::NotFound("MvccSnapshot outside the range of this delta.");
+    return STATUS(NotFound, "MvccSnapshot outside the range of this delta.");
   }
 }
 

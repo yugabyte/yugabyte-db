@@ -292,7 +292,7 @@ Status TabletPeer::CheckRunning() const {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (state_ != RUNNING) {
-      return Status::IllegalState(Substitute("The tablet is not in a running state: $0",
+      return STATUS(IllegalState, Substitute("The tablet is not in a running state: $0",
                                              TabletStatePB_Name(state_)));
     }
   }
@@ -315,7 +315,7 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
       }
     }
     if (cached_state == QUIESCING || cached_state == SHUTDOWN) {
-      return Status::IllegalState(
+      return STATUS(IllegalState,
           Substitute("The tablet is already shutting down or shutdown. State: $0",
                      TabletStatePB_Name(cached_state)));
     }
@@ -325,7 +325,7 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
     MonoTime now(MonoTime::Now(MonoTime::FINE));
     MonoDelta elapsed(now.GetDeltaSince(start));
     if (elapsed.MoreThan(timeout)) {
-      return Status::TimedOut(Substitute("Consensus is not running after waiting for $0. State; $1",
+      return STATUS(TimedOut, Substitute("Consensus is not running after waiting for $0. State; $1",
                                          elapsed.ToString(), TabletStatePB_Name(cached_state)));
     }
     SleepFor(MonoDelta::FromMilliseconds(1 << backoff_exp));
@@ -487,7 +487,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (state_ != RUNNING && state_ != BOOTSTRAPPING) {
-      return Status::IllegalState(TabletStatePB_Name(state_));
+      return STATUS(IllegalState, TabletStatePB_Name(state_));
     }
   }
 

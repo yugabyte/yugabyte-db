@@ -23,7 +23,7 @@ Status ExpectValueType(ValueType expected_value_type,
   if (expected_value_type == actual_value.value_type()) {
     return Status::OK();
   } else {
-    return Status::Corruption(Substitute(
+    return STATUS(Corruption, Substitute(
         "Expected a internal value type $0 for column $1 of physical SQL type $2, got $3",
         ValueTypeToStr(expected_value_type),
         column.name(),
@@ -95,7 +95,7 @@ bool DocRowwiseIterator::HasNext() const {
 
     if (subdoc_key_.num_subkeys() > 0) {
       // Defer error reporting to NextBlock.
-      status_ = Status::Corruption("A top-level document key must not have any subkeys");
+      status_ = STATUS(Corruption, "A top-level document key must not have any subkeys");
       return true;
     }
 
@@ -120,7 +120,7 @@ bool DocRowwiseIterator::HasNext() const {
     }
     if (value_type != ValueType::kTombstone) {
       // Defer error reporting to NextBlock.
-      status_ = Status::Corruption(Substitute(
+      status_ = STATUS(Corruption, Substitute(
           "Invalid value type at the top of a document, object or tombstone expected: $0",
           ValueTypeToStr(value_type)));
       return true;
@@ -148,7 +148,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 
   if (PREDICT_FALSE(done_)) {
     dst->Resize(0);
-    return Status::NotFound("end of iter");
+    return STATUS(NotFound, "end of iter");
   }
   if (PREDICT_FALSE(dst->row_capacity() == 0)) {
     return Status::OK();
@@ -186,7 +186,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
           Slice cell_copy;
           RETURN_NOT_OK(ExpectValueType(ValueType::kString, projection_.column(i), value));
           if (PREDICT_FALSE(!dst->arena()->RelocateSlice(value.GetStringAsSlice(), &cell_copy))) {
-            return Status::IOError("out of memory");
+            return STATUS(IOError, "out of memory");
           }
           // Kudu represents variable-size values as Slices pointing to memory allocated from an
           // associated Arena.
@@ -200,7 +200,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
           break;
         }
         default:
-          return Status::IllegalState(
+          return STATUS(IllegalState,
               Substitute("Unsupported column data type $0", column_data_type));
       }
     }

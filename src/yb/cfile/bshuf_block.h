@@ -98,7 +98,7 @@ class BShufBlockBuilder : public BlockBuilder {
 
   Status GetFirstKey(void* key) const OVERRIDE {
     if (count_ == 0) {
-      return Status::NotFound("no keys in data block");
+      return STATUS(NotFound, "no keys in data block");
     }
     memcpy(key, &data_[0], size_of_type);
     return Status::OK();
@@ -186,7 +186,7 @@ class BShufBlockDecoder : public BlockDecoder {
   Status ParseHeader() OVERRIDE {
     CHECK(!parsed_);
     if (data_.size() < kHeaderSize) {
-      return Status::Corruption(
+      return STATUS(Corruption,
         strings::Substitute("not enough bytes for header: bitshuffle block header "
           "size ($0) less than expected header length ($1)",
           data_.size(), kHeaderSize));
@@ -196,11 +196,11 @@ class BShufBlockDecoder : public BlockDecoder {
     num_elems_         = DecodeFixed32(&data_[4]);
     compressed_size_   = DecodeFixed32(&data_[8]);
     if (compressed_size_ != data_.size()) {
-      return Status::Corruption("Size Information unmatched");
+      return STATUS(Corruption, "Size Information unmatched");
     }
     num_elems_after_padding_ = DecodeFixed32(&data_[12]);
     if (num_elems_after_padding_ != num_elems_ + NumOfPaddingNeeded()) {
-      return Status::Corruption("num of element information corrupted");
+      return STATUS(Corruption, "num of element information corrupted");
     }
     size_of_elem_ = DecodeFixed32(&data_[16]);
     switch (size_of_elem_) {
@@ -210,16 +210,16 @@ class BShufBlockDecoder : public BlockDecoder {
       case 8:
         break;
       default:
-        return Status::Corruption(strings::Substitute("invalid size_of_elem: $0", size_of_elem_));
+        return STATUS(Corruption, strings::Substitute("invalid size_of_elem: $0", size_of_elem_));
     }
 
     // Currently, only the UINT32 block encoder supports expanding size:
     if (PREDICT_FALSE(Type != UINT32 && size_of_elem_ != size_of_type)) {
-      return Status::Corruption(strings::Substitute("size_of_elem $0 != size_of_type $1",
+      return STATUS(Corruption, strings::Substitute("size_of_elem $0 != size_of_type $1",
                                                     size_of_elem_, size_of_type));
     }
     if (PREDICT_FALSE(size_of_elem_ > size_of_type)) {
-      return Status::Corruption(strings::Substitute("size_of_elem $0 > size_of_type $1",
+      return STATUS(Corruption, strings::Substitute("size_of_elem $0 > size_of_type $1",
                                                     size_of_elem_, size_of_type));
     }
 
@@ -262,7 +262,7 @@ class BShufBlockDecoder : public BlockDecoder {
     *exact = false;
     cur_idx_ = left;
     if (cur_idx_ == num_elems_) {
-      return Status::NotFound("after last key in block");
+      return STATUS(NotFound, "after last key in block");
     }
     return Status::OK();
   }
@@ -333,7 +333,7 @@ class BShufBlockDecoder : public BlockDecoder {
       if (PREDICT_FALSE(bytes < 0)) {
         // Ideally, this should not happen.
         AbortWithBitShuffleError(bytes);
-        return Status::RuntimeError("Unshuffle Process failed");
+        return STATUS(RuntimeError, "Unshuffle Process failed");
       }
     }
     return Status::OK();

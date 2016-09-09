@@ -189,9 +189,10 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   RpcController controller;
   Status s = p.SyncRequest("Add", req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s.ToString();
+  // Remote error messages always contain file name and line number.
+  ASSERT_STR_CONTAINS(s.ToString(), "Invalid argument (");
   ASSERT_STR_CONTAINS(s.ToString(),
-                      "Invalid argument: Invalid parameter for call "
-                      "yb.rpc_test.CalculatorService.Add: y");
+                      "Invalid parameter for call yb.rpc_test.CalculatorService.Add: y");
 }
 
 // Wrapper around AtomicIncrement, since AtomicIncrement returns the 'old'

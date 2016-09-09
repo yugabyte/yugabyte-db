@@ -707,7 +707,7 @@ Status LinkedListTester::WaitAndVerify(
         //
         // Together these conditions mean that if we don't get the expected rows back something
         // is wrong with the read path or with the write path and we should fail immediately.
-        return Status::Corruption(strings::Substitute("Got wrong row count on snapshot. "
+        return STATUS(Corruption, strings::Substitute("Got wrong row count on snapshot. "
             "Expected: $0, Got:$1", (*iter).second, seen));
       }
 
@@ -732,7 +732,7 @@ Status LinkedListTester::WaitAndVerify(
       if (last_attempt) {
         // We'll give it an equal amount of time to re-load the data as it took
         // to write it in. Typically it completes much faster than that.
-        return Status::TimedOut("Timed out waiting for table to be accessible again",
+        return STATUS(TimedOut, "Timed out waiting for table to be accessible again",
                                 s.ToString());
       }
 
@@ -845,11 +845,11 @@ Status LinkedListVerifier::VerifyData(int64_t* verified_count, bool log_errors) 
   }
 
   if (errors_ > 0) {
-    return Status::Corruption("Had one or more errors during verification (see log)");
+    return STATUS(Corruption, "Had one or more errors during verification (see log)");
   }
 
   if (expected_ != *verified_count) {
-    return Status::IllegalState(strings::Substitute(
+    return STATUS(IllegalState, strings::Substitute(
         "Missing rows, but with no broken link in the chain. This means that "
         "a suffix of the inserted rows went missing. Expected=$0, seen=$1.",
         expected_, *verified_count));

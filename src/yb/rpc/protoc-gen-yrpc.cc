@@ -75,7 +75,7 @@ class FileSubstitutions : public Substituter {
     // Initialize path_
     // If path = /foo/bar/baz_stuff.proto, path_ = /foo/bar/baz_stuff
     if (!TryStripSuffixString(path, PROTO_EXTENSION, &path_no_extension_)) {
-      return Status::InvalidArgument("file name " + path +
+      return STATUS(InvalidArgument, "file name " + path +
                                      " did not end in " + PROTO_EXTENSION);
     }
     map_["path_no_extension"] = path_no_extension_;

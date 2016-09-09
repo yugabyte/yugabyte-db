@@ -125,7 +125,7 @@ TEST_F(TransactionTrackerTest, TestGetPending) {
   ASSERT_EQ(driver.get(), pending_transactions.front().get());
 
   // And mark the transaction as failed, which will cause it to unregister itself.
-  driver->Abort(Status::Aborted(""));
+  driver->Abort(STATUS(Aborted, ""));
 
   ASSERT_EQ(0, tracker_.GetNumPendingForTests());
 }
@@ -147,7 +147,7 @@ void TransactionTrackerTest::RunTransactionsThread(CountDownLatch* finish_latch)
   // Finish all the transactions
   for (const scoped_refptr<TransactionDriver>& driver : drivers) {
     // And mark the transaction as failed, which will cause it to unregister itself.
-    driver->Abort(Status::Aborted(""));
+    driver->Abort(STATUS(Aborted, ""));
   }
 }
 
@@ -196,11 +196,11 @@ TEST_F(TransactionTrackerTest, TestMetrics) {
   ASSERT_OK(AddDrivers(3, &drivers));
   NO_FATALS(CheckMetrics(entity_, 3, 0, 0));
 
-  drivers[0]->Abort(Status::Aborted(""));
+  drivers[0]->Abort(STATUS(Aborted, ""));
   NO_FATALS(CheckMetrics(entity_, 2, 0, 0));
 
-  drivers[1]->Abort(Status::Aborted(""));
-  drivers[2]->Abort(Status::Aborted(""));
+  drivers[1]->Abort(STATUS(Aborted, ""));
+  drivers[2]->Abort(STATUS(Aborted, ""));
   NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
 }
 
@@ -243,7 +243,7 @@ TEST_F(TransactionTrackerTest, TestTooManyTransactions) {
   NO_FATALS(CheckMemTracker(t));
 
   // If we abort one transaction, we should be able to add one more.
-  drivers.back()->Abort(Status::Aborted(""));
+  drivers.back()->Abort(STATUS(Aborted, ""));
   drivers.pop_back();
   NO_FATALS(CheckMemTracker(t));
   ASSERT_OK(AddDrivers(1, &drivers));
@@ -251,7 +251,7 @@ TEST_F(TransactionTrackerTest, TestTooManyTransactions) {
 
   // Clean up.
   for (const scoped_refptr<TransactionDriver>& driver : drivers) {
-    driver->Abort(Status::Aborted(""));
+    driver->Abort(STATUS(Aborted, ""));
   }
 }
 

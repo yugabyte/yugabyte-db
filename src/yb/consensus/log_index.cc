@@ -92,7 +92,7 @@ namespace  {
 Status CheckError(int rc, const char* operation) {
   if (PREDICT_FALSE(rc < 0)) {
     int err = errno;
-    return Status::IOError(operation, ErrnoToString(err), err);
+    return STATUS(IOError, operation, ErrnoToString(err), err);
   }
   return Status::OK();
 }
@@ -123,7 +123,7 @@ Status LogIndex::IndexChunk::Open() {
                                         MAP_SHARED, fd_, 0));
   if (mapping_ == nullptr) {
     int err = errno;
-    return Status::IOError("Unable to mmap()", ErrnoToString(err), err);
+    return STATUS(IOError, "Unable to mmap()", ErrnoToString(err), err);
   }
 
   return Status::OK();
@@ -178,7 +178,7 @@ Status LogIndex::GetChunkForIndex(int64_t log_index, bool create,
   }
 
   if (!create) {
-    return Status::NotFound("chunk not found");
+    return STATUS(NotFound, "chunk not found");
   }
 
   RETURN_NOT_OK_PREPEND(OpenChunk(chunk_idx, chunk),
@@ -226,7 +226,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
   // We never write any real entries to offset 0, because there's a header
   // in each log segment. So, this indicates an entry that was never written.
   if (phys.offset_in_segment == 0) {
-    return Status::NotFound("entry not found");
+    return STATUS(NotFound, "entry not found");
   }
 
   entry->op_id = consensus::MakeOpId(phys.term, index);

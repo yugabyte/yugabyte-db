@@ -168,7 +168,7 @@ Status RowSetMetadata::CommitUpdate(const RowSetMetadataUpdate& update) {
       auto end_it = start_it;
       for (const BlockId& b : rep.to_remove) {
         if (end_it == redo_delta_blocks_.end() || *end_it != b) {
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               Substitute("Cannot find subsequence <$0> in <$1>",
                          BlockId::JoinStrings(rep.to_remove),
                          BlockId::JoinStrings(redo_delta_blocks_)));

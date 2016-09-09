@@ -187,7 +187,7 @@ Status RpcServerBase::DumpServerInfo(const string& path,
     RETURN_NOT_OK(pb_util::WritePBToPath(options_.env, path, status,
                                          pb_util::NO_SYNC)); // durability doesn't matter
   } else {
-    return Status::InvalidArgument("bad format", format);
+    return STATUS(InvalidArgument, "bad format", format);
   }
 
   LOG(INFO) << "Dumped server information to " << path;

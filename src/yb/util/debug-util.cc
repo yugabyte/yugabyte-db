@@ -185,7 +185,7 @@ bool InitSignalHandlerUnlocked(int signum) {
 Status SetStackTraceSignal(int signum) {
   base::SpinLockHolder h(&g_dumper_thread_lock);
   if (!InitSignalHandlerUnlocked(signum)) {
-    return Status::InvalidArgument("unable to install signal handler");
+    return STATUS(InvalidArgument, "unable to install signal handler");
   }
   return Status::OK();
 }
@@ -255,7 +255,7 @@ Status ListThreads(vector<pid_t> *tids) {
 #if defined(__linux__)
   DIR *dir = opendir("/proc/self/task/");
   if (dir == NULL) {
-    return Status::IOError("failed to open task dir", ErrnoToString(errno), errno);
+    return STATUS(IOError, "failed to open task dir", ErrnoToString(errno), errno);
   }
   struct dirent *d;
   while ((d = readdir(dir)) != NULL) {

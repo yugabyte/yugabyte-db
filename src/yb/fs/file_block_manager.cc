@@ -531,7 +531,7 @@ Status FileBlockManager::Create() {
   ElementDeleter d(&delete_on_failure);
 
   if (root_paths_.size() > kMaxPaths) {
-    return Status::NotSupported(
+    return STATUS(NotSupported,
         Substitute("File block manager supports a maximum of $0 paths", kMaxPaths));
   }
 
@@ -586,7 +586,7 @@ Status FileBlockManager::Open() {
 
   for (const string& root_path : root_paths_) {
     if (!env_->FileExists(root_path)) {
-      return Status::NotFound(Substitute(
+      return STATUS(NotFound, Substitute(
           "FileBlockManager at $0 not found", root_path));
     }
     string instance_filename = JoinPathSegments(
@@ -630,7 +630,7 @@ Status FileBlockManager::Open() {
     }
     DCHECK_NE(idx, -1); // Guaranteed by CheckIntegrity().
     if (idx > kMaxPaths) {
-      return Status::NotSupported(
+      return STATUS(NotSupported,
           Substitute("File block manager supports a maximum of $0 paths", kMaxPaths));
     }
     InsertOrDie(&instances_by_idx, idx, instance);
@@ -708,7 +708,7 @@ Status FileBlockManager::OpenBlock(const BlockId& block_id,
                                    gscoped_ptr<ReadableBlock>* block) {
   string path;
   if (!FindBlockPath(block_id, &path)) {
-    return Status::NotFound(
+    return STATUS(NotFound,
         Substitute("Block $0 not found", block_id.ToString()));
   }
 
@@ -725,7 +725,7 @@ Status FileBlockManager::DeleteBlock(const BlockId& block_id) {
 
   string path;
   if (!FindBlockPath(block_id, &path)) {
-    return Status::NotFound(
+    return STATUS(NotFound,
         Substitute("Block $0 not found", block_id.ToString()));
   }
   RETURN_NOT_OK(env_->DeleteFile(path));

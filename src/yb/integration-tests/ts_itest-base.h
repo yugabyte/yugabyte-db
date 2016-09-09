@@ -222,7 +222,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
       attempts++;
       SleepFor(MonoDelta::FromMilliseconds(100 * attempts));
     }
-    return Status::NotFound("Leader replica not found");
+    return STATUS(NotFound, "Leader replica not found");
   }
 
   Status GetTabletLeaderUUIDFromMaster(const std::string& tablet_id, std::string* leader_uuid) {
@@ -243,7 +243,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
         }
       }
     }
-    return Status::NotFound("Unable to find leader for tablet", tablet_id);
+    return STATUS(NotFound, "Unable to find leader for tablet", tablet_id);
   }
 
   TServerDetails* GetReplicaWithUuidOrNull(const std::string& tablet_id,
@@ -352,7 +352,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
         return Status::OK();
       }
     }
-    return Status::NotFound("Unable to find server with UUID", uuid);
+    return STATUS(NotFound, "Unable to find server with UUID", uuid);
   }
 
   Status RestartServerWithUUID(const std::string& uuid) {
@@ -366,7 +366,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
         return Status::OK();
       }
     }
-    return Status::NotFound("Unable to find server with UUID", uuid);
+    return STATUS(NotFound, "Unable to find server with UUID", uuid);
   }
 
   // Since we're fault-tolerant we might mask when a tablet server is
@@ -390,7 +390,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
       live_count++;
     }
     if (live_count < num_tablet_servers) {
-      return Status::IllegalState(error);
+      return STATUS(IllegalState, error);
     }
     return Status::OK();
   }

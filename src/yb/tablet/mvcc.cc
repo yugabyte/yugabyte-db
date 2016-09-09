@@ -78,12 +78,12 @@ Timestamp MvccManager::StartTransactionAtLatest() {
 Status MvccManager::StartTransactionAtTimestamp(Timestamp timestamp) {
   std::lock_guard<LockType> l(lock_);
   if (PREDICT_FALSE(cur_snap_.IsCommitted(timestamp))) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         strings::Substitute("Timestamp: $0 is already committed. Current Snapshot: $1",
                             timestamp.value(), cur_snap_.ToString()));
   }
   if (!InitTransactionUnlocked(timestamp)) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         strings::Substitute("There is already a transaction with timestamp: $0 in flight.",
                             timestamp.value()));
   }
@@ -319,7 +319,7 @@ Status MvccManager::WaitUntil(WaitFor wait_for, Timestamp ts,
   }
 
   waiters_.erase(std::find(waiters_.begin(), waiters_.end(), &waiting_state));
-  return Status::TimedOut(strings::Substitute(
+  return STATUS(TimedOut, strings::Substitute(
       "Timed out waiting for all transactions with ts < $0 to $1",
       clock_->Stringify(ts),
       wait_for == ALL_COMMITTED ? "commit" : "finish applying"));

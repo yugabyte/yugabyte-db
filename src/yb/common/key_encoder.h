@@ -96,7 +96,7 @@ struct KeyEncoderTraits<Type,
                                  Arena* arena,
                                  uint8_t* cell_ptr) {
     if (PREDICT_FALSE(encoded_key->size() < sizeof(cpp_type))) {
-      return Status::InvalidArgument("key too short", encoded_key->ToDebugString());
+      return STATUS(InvalidArgument, "key too short", encoded_key->ToDebugString());
     }
 
     unsigned_cpp_type val;
@@ -195,7 +195,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
     if (is_last) {
       Slice* dst_slice = reinterpret_cast<Slice *>(cell_ptr);
       if (PREDICT_FALSE(!arena->RelocateSlice(*encoded_key, dst_slice))) {
-        return Status::RuntimeError("OOM");
+        return STATUS(RuntimeError, "OOM");
       }
       encoded_key->remove_prefix(encoded_key->size());
       return Status::OK();
@@ -204,7 +204,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
     uint8_t* separator = static_cast<uint8_t*>(memmem(encoded_key->data(), encoded_key->size(),
                                                       "\0\0", 2));
     if (PREDICT_FALSE(separator == NULL)) {
-      return Status::InvalidArgument("Missing separator after composite key string component",
+      return STATUS(InvalidArgument, "Missing separator after composite key string component",
                                      encoded_key->ToDebugString());
     }
 

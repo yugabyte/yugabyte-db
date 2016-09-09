@@ -356,7 +356,7 @@ class TabletServerTestBase : public YBTest {
     RETURN_NOT_OK(mini_server_->WaitStarted());
 
     if (!mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet_peer_)) {
-      return Status::NotFound("Tablet was not found");
+      return STATUS(NotFound, "Tablet was not found");
     }
     // Connect to it.
     ResetClientProxies();

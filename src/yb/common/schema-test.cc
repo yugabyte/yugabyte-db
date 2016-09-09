@@ -45,7 +45,7 @@ static Status CopyRowToArena(const Slice &row,
 
   // Copy the direct row data to arena
   if (!dst_arena->RelocateSlice(row, &row_data)) {
-    return Status::IOError("no space for row data in arena");
+    return STATUS(IOError, "no space for row data in arena");
   }
 
   copied->Reset(row_data.mutable_data());
@@ -381,7 +381,7 @@ TEST(TestSchema, TestCreateProjection) {
 
   // By names, with missing names.
   Status s = schema.CreateProjectionByNames({ "foobar" }, &partial_schema);
-  EXPECT_EQ("Not found: column not found: foobar", s.ToString());
+  EXPECT_EQ("Not found: column not found: foobar", s.ToString(/* no file/line */ false));
 
   // By IDs
   ASSERT_OK(schema_with_ids.CreateProjectionByIdsIgnoreMissing({ schema_with_ids.column_id(0),

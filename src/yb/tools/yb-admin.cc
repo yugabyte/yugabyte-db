@@ -327,7 +327,7 @@ Status ClusterAdminClient::ParseChangeType(
   ToUpperCase(change_type, &uppercase_change_type);
   if (!consensus::ChangeConfigType_Parse(uppercase_change_type, &cctype) ||
     cctype == consensus::UNKNOWN_CHANGE) {
-    return Status::InvalidArgument("Unsupported change_type", change_type);
+    return STATUS(InvalidArgument, "Unsupported change_type", change_type);
   }
 
   *cc_type = cctype;
@@ -354,13 +354,13 @@ Status ClusterAdminClient::ChangeConfig(
     string uppercase_member_type;
     ToUpperCase(*member_type, &uppercase_member_type);
     if (!RaftPeerPB::MemberType_Parse(uppercase_member_type, &member_type_val)) {
-      return Status::InvalidArgument("Unrecognized member_type", *member_type);
+      return STATUS(InvalidArgument, "Unrecognized member_type", *member_type);
     }
   }
 
   // Validate the existence of the optional fields.
   if (!member_type && (cc_type == consensus::ADD_SERVER || cc_type == consensus::CHANGE_ROLE)) {
-    return Status::InvalidArgument("Must specify member_type when adding "
+    return STATUS(InvalidArgument, "Must specify member_type when adding "
                                    "a server or changing a role");
   }
 
@@ -387,7 +387,8 @@ Status ClusterAdminClient::ChangeConfig(
     sleep(5); // TODO, election completion timing is not known accurately
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
     if (leader_uuid != old_leader_uuid) {
-      return Status::ConfigurationError("Old tablet server leader same as new even after re-election!");
+      return STATUS(ConfigurationError,
+                    "Old tablet server leader same as new even after re-election!");
     }
     consensus_proxy.reset(new ConsensusServiceProxy(messenger_, leader_addr));
   }
@@ -478,7 +479,7 @@ Status ClusterAdminClient::ChangeMasterConfig(
   string leader_uuid;
   GetMasterLeaderInfo(&leader_uuid);
   if (leader_uuid.empty()) {
-    return Status::ConfigurationError("Could not locate master leader!");
+    return STATUS(ConfigurationError, "Could not locate master leader!");
   }
 
   // If removing the leader master, then first make it step down and that
@@ -495,10 +496,10 @@ Status ClusterAdminClient::ChangeMasterConfig(
     leader_uuid = ""; // reset so it can be set to new leader in the GetMasterLeaderInfo call below
     GetMasterLeaderInfo(&leader_uuid);
     if (leader_uuid.empty()) {
-      return Status::ConfigurationError("Could not locate new master leader!");
+      return STATUS(ConfigurationError, "Could not locate new master leader!");
     }
     if (leader_uuid == old_leader_uuid) {
-      return Status::ConfigurationError(
+      return STATUS(ConfigurationError,
         Substitute("Old master leader uuid $0 same as new one even after stepdown!", leader_uuid));
     }
     // Go ahead below and send the actual config change message to the new master
@@ -587,7 +588,7 @@ Status ClusterAdminClient::GetTabletPeer(
   }
 
   if (!found) {
-    return Status::NotFound(
+    return STATUS(NotFound,
       Substitute("No peer replica found in $0 mode for tablet $1", mode, tablet_id));
   }
 
@@ -625,7 +626,7 @@ Status ClusterAdminClient::GetFirstRpcAddressForTS(
     }
   }
 
-  return Status::NotFound(Substitute("Server with UUID $0 has no RPC address "
+  return STATUS(NotFound, Substitute("Server with UUID $0 has no RPC address "
                                      "registered with the Master", uuid));
 }
 
@@ -673,7 +674,7 @@ Status ClusterAdminClient::ListAllMasters() {
   rpc.Reset();
   RETURN_NOT_OK(master_proxy_->ListMasterRaftPeers(r_req, &r_resp, &rpc));
   if (r_resp.has_error()) {
-    return Status::RuntimeError(Substitute(
+    return STATUS(RuntimeError, Substitute(
         "List Raft Masters RPC response hit error: $0", r_resp.error().ShortDebugString()));
   }
 
@@ -735,7 +736,8 @@ Status ClusterAdminClient::ListTables() {
 
 Status ClusterAdminClient::ListTablets(const string& table_name, const int max_tablets) {
   vector<string> tablet_uuids, range_starts, range_ends;
-  RETURN_NOT_OK(yb_client_->GetTablets(table_name, max_tablets, &tablet_uuids, &range_starts, &range_ends));
+  RETURN_NOT_OK(yb_client_->GetTablets(
+      table_name, max_tablets, &tablet_uuids, &range_starts, &range_ends));
   const string header = "Tablet UUID\t\t\t\tKey range start\t\t\tKey range end";
   std::cout << header << std::endl;
   for (int i = 0; i < tablet_uuids.size(); i++) {
@@ -772,7 +774,7 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
       }
       std::cerr << std::endl;
     }
-    return Status::IllegalState(Substitute("Incorrect number of locations $0 for tablet $1.",
+    return STATUS(IllegalState, Substitute("Incorrect number of locations $0 for tablet $1.",
       resp.tablet_locations_size(), tablet_id));
   }
 
@@ -800,11 +802,11 @@ Status ClusterAdminClient::GetSockAddrForHostPort(const HostPort& hp, Sockaddr* 
   vector<Sockaddr> sock_addrs;
   RETURN_NOT_OK(hp.ResolveAddresses(&sock_addrs));
   if (sock_addrs.empty()) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         Substitute("Unable to resolve IP address for host: $0", hp.ToString()));
   }
   if (sock_addrs.size() != 1) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         Substitute("Expected only one IP for host, but got : $0", hp.ToString()));
   }
 
@@ -893,7 +895,8 @@ static void SetUsage(const char* argv0) {
                 << "[VOTER|NON_VOTER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
-      << " 4. " << kListTabletsOp << " <table_name>"  << " [max_tablets]" << " (default 10, set 0 for max)" << std::endl
+      << " 4. " << kListTabletsOp << " <table_name>"  << " [max_tablets]"
+                << " (default 10, set 0 for max)" << std::endl
       << " 5. " << kDeleteTableOp << " <table_name>" << std::endl
       << " 6. " << kListAllTabletServersOp << std::endl
       << " 7. " << kListAllMastersOp << std::endl
@@ -991,8 +994,8 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     string tablet_id = argv[2];
     Status s = client.ListPerTabletTabletServers(tablet_id);
     if (!s.ok()) {
-      std::cerr << "Unable to list tablet servers of tablet " << tablet_id << ": " << s.ToString() <<
-        std::endl;
+      std::cerr << "Unable to list tablet servers of tablet " << tablet_id << ": " << s.ToString()
+                << std::endl;
       return 1;
     }
   } else if (op == kDeleteTableOp) {

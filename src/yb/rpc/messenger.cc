@@ -187,7 +187,7 @@ Status Messenger::RegisterService(const string& service_name,
   if (InsertIfNotPresent(&rpc_services_, service_name, service)) {
     return Status::OK();
   } else {
-    return Status::AlreadyPresent("This service is already present");
+    return STATUS(AlreadyPresent, "This service is already present");
   }
 }
 
@@ -203,7 +203,7 @@ Status Messenger::UnregisterService(const string& service_name) {
   if (rpc_services_.erase(service_name)) {
     return Status::OK();
   } else {
-    return Status::ServiceUnavailable(Substitute("service $0 not registered on $1",
+    return STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
                  service_name, name_));
   }
 }
@@ -218,7 +218,7 @@ void Messenger::QueueInboundCall(gscoped_ptr<InboundCall> call) {
   scoped_refptr<RpcService>* service = FindOrNull(rpc_services_,
                                                   call->remote_method().service_name());
   if (PREDICT_FALSE(!service)) {
-    Status s =  Status::ServiceUnavailable(Substitute("service $0 not registered on $1",
+    Status s =  STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
                                                       call->remote_method().service_name(), name_));
     LOG(INFO) << s.ToString();
     call.release()->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_SERVICE, s);

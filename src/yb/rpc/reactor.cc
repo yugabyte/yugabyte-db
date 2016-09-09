@@ -78,8 +78,8 @@ namespace {
 Status ShutdownError(bool aborted) {
   const char* msg = "reactor is shutting down";
   return aborted ?
-      Status::Aborted(msg, "", ESHUTDOWN) :
-      Status::ServiceUnavailable(msg, "", ESHUTDOWN);
+      STATUS(Aborted, msg, "", ESHUTDOWN) :
+      STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
 }
 
 Connection* MakeNewConnection(ConnectionType connection_type,
@@ -310,7 +310,7 @@ void ReactorThread::ScanIdleConnections() {
     MonoTime last_activity_time = conn->last_activity_time();
     MonoDelta connection_delta(cur_time_.GetDeltaSince(last_activity_time));
     if (connection_delta.MoreThan(connection_keepalive_time_)) {
-      conn->Shutdown(Status::NetworkError(
+      conn->Shutdown(STATUS(NetworkError,
                        StringPrintf("connection timed out after %s seconds",
                                     connection_keepalive_time_.ToString().c_str())));
       VLOG(1) << "Timing out connection " << conn->ToString() << " - it has been idle for "
@@ -391,7 +391,7 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
   if (s.IsIllegalState()) {
     // Return a nicer error message to the user indicating -- if we just
     // forward the status we'd get something generic like "ThreadPool is closing".
-    return Status::ServiceUnavailable("Client RPC Messenger shutting down");
+    return STATUS(ServiceUnavailable, "Client RPC Messenger shutting down");
   }
   // Propagate any other errors as-is.
   RETURN_NOT_OK_PREPEND(s, "Unable to start connection negotiation thread");
@@ -516,7 +516,7 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   if (EV_ERROR & revents) {
     string msg = "Delayed task got an error in its timer handler";
     LOG(WARNING) << msg;
-    Abort(Status::Aborted(msg)); // Will delete 'this'.
+    Abort(STATUS(Aborted, msg)); // Will delete 'this'.
   } else {
     func_(Status::OK());
     delete this;

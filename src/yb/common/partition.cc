@@ -92,7 +92,7 @@ Status ExtractColumnIds(const RepeatedPtrField<PartitionSchemaPB_ColumnIdentifie
         case PartitionSchemaPB_ColumnIdentifierPB::kId: {
           ColumnId column_id(identifier.id());
           if (schema.find_column_by_id(column_id) == Schema::kColumnNotFound) {
-            return Status::InvalidArgument("unknown column id", identifier.DebugString());
+            return STATUS(InvalidArgument, "unknown column id", identifier.DebugString());
           }
           column_ids->push_back(column_id);
           continue;
@@ -100,12 +100,12 @@ Status ExtractColumnIds(const RepeatedPtrField<PartitionSchemaPB_ColumnIdentifie
         case PartitionSchemaPB_ColumnIdentifierPB::kName: {
           int32_t column_idx = schema.find_column(identifier.name());
           if (column_idx == Schema::kColumnNotFound) {
-            return Status::InvalidArgument("unknown column", identifier.DebugString());
+            return STATUS(InvalidArgument, "unknown column", identifier.DebugString());
           }
           column_ids->push_back(schema.column_id(column_idx));
           continue;
         }
-        default: return Status::InvalidArgument("unknown column", identifier.DebugString());
+        default: return STATUS(InvalidArgument, "unknown column", identifier.DebugString());
       }
     }
     return Status::OK();
@@ -220,11 +220,11 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
   for (ColumnId column_id : range_schema_.column_ids) {
     int column_idx = schema.find_column_by_id(column_id);
     if (column_idx == Schema::kColumnNotFound) {
-      return Status::InvalidArgument(Substitute("Range partition column ID $0 "
+      return STATUS(InvalidArgument, Substitute("Range partition column ID $0 "
                                                 "not found in table schema.", column_id));
     }
     if (!InsertIfNotPresent(&range_column_idxs, column_idx)) {
-      return Status::InvalidArgument("Duplicate column in range partition",
+      return STATUS(InvalidArgument, "Duplicate column in range partition",
                                      schema.column(column_idx).name());
     }
   }
@@ -240,7 +240,7 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
         if (ContainsKey(range_column_idxs, column_idx)) {
           column_count++;
         } else {
-          return Status::InvalidArgument("Split rows may only contain values for "
+          return STATUS(InvalidArgument, "Split rows may only contain values for "
                                          "range partitioned columns", column.name());
         }
       }
@@ -248,7 +248,7 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
 
     // Check for an empty split row.
     if (column_count == 0) {
-    return Status::InvalidArgument("Split rows must contain a value for at "
+    return STATUS(InvalidArgument, "Split rows must contain a value for at "
                                    "least one range partition column");
     }
 
@@ -257,7 +257,7 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
 
     // Check for a duplicate split row.
     if (!InsertIfNotPresent(&start_keys, start_key)) {
-      return Status::InvalidArgument("Duplicate split row", row.ToString());
+      return STATUS(InvalidArgument, "Duplicate split row", row.ToString());
     }
   }
 
@@ -392,7 +392,7 @@ Status PartitionSchema::DecodeRangeKey(Slice* encoded_key,
     BitmapSet(row->isset_bitmap_, column_idx);
   }
   if (!encoded_key->empty()) {
-    return Status::InvalidArgument("unable to fully decode partition key range components");
+    return STATUS(InvalidArgument, "unable to fully decode partition key range components");
   }
   return Status::OK();
 }
@@ -403,7 +403,7 @@ Status PartitionSchema::DecodeHashBuckets(Slice* encoded_key,
                                           vector<int32_t>* buckets) const {
   size_t hash_components_size = kEncodedBucketSize * hash_bucket_schemas_.size();
   if (encoded_key->size() < hash_components_size) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("expected encoded hash key to be at least $0 bytes (only found $1)",
                    hash_components_size, encoded_key->size()));
   }
@@ -736,24 +736,24 @@ Status PartitionSchema::Validate(const Schema& schema) const {
   set<ColumnId> hash_columns;
   for (const PartitionSchema::HashBucketSchema& hash_schema : hash_bucket_schemas_) {
     if (hash_schema.num_buckets < 2) {
-      return Status::InvalidArgument("must have at least two hash buckets");
+      return STATUS(InvalidArgument, "must have at least two hash buckets");
     }
 
     if (hash_schema.column_ids.size() < 1) {
-      return Status::InvalidArgument("must have at least one hash column");
+      return STATUS(InvalidArgument, "must have at least one hash column");
     }
 
     for (ColumnId hash_column : hash_schema.column_ids) {
       if (!hash_columns.insert(hash_column).second) {
-        return Status::InvalidArgument("hash bucket schema components must not "
+        return STATUS(InvalidArgument, "hash bucket schema components must not "
                                        "contain columns in common");
       }
       int32_t column_idx = schema.find_column_by_id(hash_column);
       if (column_idx == Schema::kColumnNotFound) {
-        return Status::InvalidArgument("must specify existing columns for hash "
+        return STATUS(InvalidArgument, "must specify existing columns for hash "
                                        "bucket partition components");
       } else if (column_idx >= schema.num_key_columns()) {
-        return Status::InvalidArgument("must specify only primary key columns for "
+        return STATUS(InvalidArgument, "must specify only primary key columns for "
                                        "hash bucket partition components");
       }
     }
@@ -762,10 +762,10 @@ Status PartitionSchema::Validate(const Schema& schema) const {
   for (ColumnId column_id : range_schema_.column_ids) {
     int32_t column_idx = schema.find_column_by_id(column_id);
     if (column_idx == Schema::kColumnNotFound) {
-      return Status::InvalidArgument("must specify existing columns for range "
+      return STATUS(InvalidArgument, "must specify existing columns for range "
                                      "partition component");
     } else if (column_idx >= schema.num_key_columns()) {
-      return Status::InvalidArgument("must specify only primary key columns for "
+      return STATUS(InvalidArgument, "must specify only primary key columns for "
                                      "range partition component");
     }
   }

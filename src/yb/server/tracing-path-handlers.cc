@@ -64,12 +64,12 @@ Status ParseBase64JsonRequest(const string& json_base64,
                               rapidjson::Document* doc) {
   string json_str;
   if (!Base64Unescape(json_base64, &json_str)) {
-    return Status::InvalidArgument("Invalid base64-encoded JSON");
+    return STATUS(InvalidArgument, "Invalid base64-encoded JSON");
   }
 
   doc->Parse<0>(json_str.c_str());
   if (!doc->IsObject()) {
-    return Status::InvalidArgument("Invalid JSON", json_str);
+    return STATUS(InvalidArgument, "Invalid JSON", json_str);
   }
   return Status::OK();
 }
@@ -85,7 +85,7 @@ Status GetTracingOptions(const std::string& json_base64,
 
   if (!doc.HasMember("categoryFilter") ||
       !doc["categoryFilter"].IsString()) {
-    return Status::InvalidArgument("missing categoryFilter");
+    return STATUS(InvalidArgument, "missing categoryFilter");
   }
   *category_filter_string = doc["categoryFilter"].GetString();
 
@@ -132,7 +132,7 @@ Status EndRecording(const Webserver::WebRequest& req,
 Status CaptureMonitoring(stringstream* out) {
   TraceLog* tl = TraceLog::GetInstance();
   if (!tl->IsEnabled()) {
-    return Status::IllegalState("monitoring not enabled");
+    return STATUS(IllegalState, "monitoring not enabled");
   }
   *out << TraceResultBuffer::FlushTraceLogToStringButLeaveBufferIntact();
   return Status::OK();

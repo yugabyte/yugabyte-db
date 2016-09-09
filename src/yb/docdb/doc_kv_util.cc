@@ -44,7 +44,7 @@ Timestamp DecodeTimestampFromKey(const rocksdb::Slice& key, const int pos) {
 
 Status ConsumeTimestampFromKey(rocksdb::Slice* slice, Timestamp* timestamp) {
   if (slice->size() < kBytesPerTimestamp) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         Substitute("$0 bytes is not enough to decode a timestamp, need $1: $2",
             slice->size(),
             kBytesPerTimestamp,
@@ -79,7 +79,7 @@ Status DecodeZeroEncodedStr(rocksdb::Slice* slice, string* result) {
     if (*p == '\0') {
       ++p;
       if (p == end) {
-        return Status::Corruption("Zero-encoded string ends with only one zero");
+        return STATUS(Corruption, "Zero-encoded string ends with only one zero");
       }
       if (*p == '\0') {
         // Found two zero characters, this is the end of the encoded string.
@@ -91,7 +91,7 @@ Status DecodeZeroEncodedStr(rocksdb::Slice* slice, string* result) {
         result->push_back('\0');
         ++p;
       } else {
-        return Status::Corruption(StringPrintf(
+        return STATUS(Corruption, StringPrintf(
             "Invalid sequence in a zero-encoded string: \\0x00\\0x%02x "
             "(must be either \\0x00\\x00 or \\0x00\\0x01)", *p));
       }

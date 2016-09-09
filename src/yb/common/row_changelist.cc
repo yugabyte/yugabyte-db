@@ -38,7 +38,7 @@ string RowChangeList::ToString(const Schema &schema) const {
 
   Status s = decoder.Init();
   if (!s.ok()) {
-    return "[invalid: " + s.ToString() + "]";
+    return "[invalid: " + s.ToString(/* no file/line */ false) + "]";
   }
 
   if (decoder.is_delete()) {
@@ -68,7 +68,8 @@ string RowChangeList::ToString(const Schema &schema) const {
     }
 
     if (!s.ok()) {
-      return "[invalid update: " + s.ToString() + ", before corruption: " + ret + "]";
+      return "[invalid update: " + s.ToString(/* no file/line */ false) + ", before corruption: " +
+          ret + "]";
     }
 
     if (col_idx == Schema::kColumnNotFound) {
@@ -133,17 +134,17 @@ void RowChangeListEncoder::AddColumnUpdate(const ColumnSchema& col_schema,
 
 Status RowChangeListDecoder::Init() {
   if (PREDICT_FALSE(remaining_.empty())) {
-    return Status::Corruption("empty changelist - expected type");
+    return STATUS(Corruption, "empty changelist - expected type");
   }
 
   bool was_valid = tight_enum_test_cast<RowChangeList::ChangeType>(remaining_[0], &type_);
   if (PREDICT_FALSE(!was_valid || type_ == RowChangeList::kUninitialized)) {
-    return Status::Corruption(Substitute("bad type enum value: $0 in $1",
+    return STATUS(Corruption, Substitute("bad type enum value: $0 in $1",
                                          static_cast<int>(remaining_[0]),
                                          remaining_.ToDebugString()));
   }
   if (PREDICT_FALSE(is_delete() && remaining_.size() != 1)) {
-    return Status::Corruption("DELETE changelist too long",
+    return STATUS(Corruption, "DELETE changelist too long",
                               remaining_.ToDebugString());
   }
 
@@ -156,7 +157,7 @@ Status RowChangeListDecoder::GetReinsertedRowSlice(const Schema& schema, Slice* 
 
   int expected_size = ContiguousRowHelper::row_size(schema);
   if (remaining_.size() != expected_size) {
-    return Status::Corruption(Substitute("REINSERT changelist wrong length (expected $0)",
+    return STATUS(Corruption, Substitute("REINSERT changelist wrong length (expected $0)",
                                          expected_size,
                                          remaining_.ToDebugString()));
   }
@@ -293,13 +294,13 @@ Status RowChangeListDecoder::DecodeNext(DecodedUpdate* dec) {
   // Decode the column id.
   uint32_t id;
   if (PREDICT_FALSE(!GetVarint32(&remaining_, &id))) {
-    return Status::Corruption("Invalid column ID varint in delta");
+    return STATUS(Corruption, "Invalid column ID varint in delta");
   }
   dec->col_id = id;
 
   uint32_t size;
   if (PREDICT_FALSE(!GetVarint32(&remaining_, &size))) {
-    return Status::Corruption("Invalid size varint in delta");
+    return STATUS(Corruption, "Invalid size varint in delta");
   }
 
   dec->null = size == 0;
@@ -310,7 +311,7 @@ Status RowChangeListDecoder::DecodeNext(DecodedUpdate* dec) {
   size--;
 
   if (PREDICT_FALSE(remaining_.size() < size)) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         Substitute("truncated value for column id $0, expected $1 bytes, only $2 remaining",
                    id, size, remaining_.size()));
   }
@@ -333,7 +334,7 @@ Status RowChangeListDecoder::DecodedUpdate::Validate(const Schema& schema,
 
   if (null) {
     if (!col.is_nullable()) {
-      return Status::Corruption("decoded set-to-NULL for non-nullable column",
+      return STATUS(Corruption, "decoded set-to-NULL for non-nullable column",
                                 col.ToString());
     }
     *value = nullptr;
@@ -346,7 +347,7 @@ Status RowChangeListDecoder::DecodedUpdate::Validate(const Schema& schema,
   }
 
   if (PREDICT_FALSE(col.type_info()->size() != this->raw_value.size())) {
-    return Status::Corruption(Substitute(
+    return STATUS(Corruption, Substitute(
                                   "invalid value $0 for column $1",
                                   this->raw_value.ToDebugString(), col.ToString()));
   }

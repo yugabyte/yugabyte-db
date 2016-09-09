@@ -62,7 +62,7 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
   CHECK_EQ(instance.permanent_uuid(), permanent_uuid_);
 
   if (instance.instance_seqno() < latest_seqno_) {
-    return Status::AlreadyPresent(
+    return STATUS(AlreadyPresent,
       strings::Substitute("Cannot register with sequence number $0:"
                           " Already have a registration from sequence number $1",
                           instance.instance_seqno(),
@@ -201,7 +201,7 @@ Status TSDescriptor::ResolveSockaddr(Sockaddr* addr) const {
   }
 
   if (addrs.size() == 0) {
-    return Status::NetworkError("Unable to find the TS address: ", registration_->DebugString());
+    return STATUS(NetworkError, "Unable to find the TS address: ", registration_->DebugString());
   }
 
   if (addrs.size() > 1) {

@@ -155,12 +155,12 @@ RaftPeerPB::Role LocalConsensus::role() const {
 
 Status LocalConsensus::Update(const ConsensusRequestPB* request,
                               ConsensusResponsePB* response) {
-  return Status::NotSupported("LocalConsensus does not support Update() calls.");
+  return STATUS(NotSupported, "LocalConsensus does not support Update() calls.");
 }
 
 Status LocalConsensus::RequestVote(const VoteRequestPB* request,
                                    VoteResponsePB* response) {
-  return Status::NotSupported("LocalConsensus does not support RequestVote() calls.");
+  return STATUS(NotSupported, "LocalConsensus does not support RequestVote() calls.");
 }
 
 ConsensusStatePB LocalConsensus::ConsensusState(ConsensusConfigType type) const {

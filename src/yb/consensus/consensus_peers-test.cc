@@ -307,7 +307,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   // Set up the peer to respond with an error.
   ConsensusResponsePB error_resp;
   error_resp.mutable_error()->set_code(tserver::TabletServerErrorPB::UNKNOWN_ERROR);
-  StatusToPB(Status::NotFound("fake error"), error_resp.mutable_error()->mutable_status());
+  StatusToPB(STATUS(NotFound, "fake error"), error_resp.mutable_error()->mutable_status());
   mock_proxy->set_update_response(error_resp);
 
   // Add a bunch of messages to the queue.

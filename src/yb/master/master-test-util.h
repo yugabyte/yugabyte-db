@@ -67,7 +67,7 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
 
   // Unreachable.
   LOG(FATAL) << "Reached unreachable section";
-  return Status::RuntimeError("Unreachable statement"); // Suppress compiler warnings.
+  return STATUS(RuntimeError, "Unreachable statement"); // Suppress compiler warnings.
 }
 
 void CreateTabletForTesting(MiniMaster* mini_master,

@@ -73,7 +73,7 @@ size_t GVIntBlockBuilder::Count() const {
 
 Status GVIntBlockBuilder::GetFirstKey(void *key) const {
   if (ints_.empty()) {
-    return Status::NotFound("no keys in data block");
+    return STATUS(NotFound, "no keys in data block");
   }
 
   *reinterpret_cast<uint32_t *>(key) = ints_[0];
@@ -133,7 +133,7 @@ Status GVIntBlockDecoder::ParseHeader() {
     &ordinal_pos_base_, &unused);
 
   if (num_elems_ > 0 && num_elems_ * 5 / 4 > data_.size()) {
-    return Status::Corruption("bad number of elems in int block");
+    return STATUS(Corruption, "bad number of elems in int block");
   }
 
   parsed_ = true;
@@ -263,7 +263,7 @@ Status GVIntBlockDecoder::SeekAtOrAfterValue(const void *value_void,
   if (cur_idx_ == num_elems_) {
     // If it wasn't in the block, and this was the last block,
     // mark as not found
-    return Status::NotFound("not in block");
+    return STATUS(NotFound, "not in block");
   }
 
   return Status::OK();

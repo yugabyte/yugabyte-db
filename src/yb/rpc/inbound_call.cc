@@ -114,7 +114,7 @@ Status InboundCall::AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx) {
   // slices that are free (two are used up by the header and main message
   // protobufs).
   if (sidecars_.size() + 2 > OutboundTransfer::kMaxPayloadSlices) {
-    return Status::ServiceUnavailable("All available sidecars already used");
+    return STATUS(ServiceUnavailable, "All available sidecars already used");
   }
   sidecars_.push_back(car.release());
   *idx = sidecars_.size() - 1;
@@ -230,10 +230,10 @@ Status YBInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
 
   // Adopt the service/method info from the header as soon as it's available.
   if (PREDICT_FALSE(!header_.has_remote_method())) {
-    return Status::Corruption("Non-connection context request header must specify remote_method");
+    return STATUS(Corruption, "Non-connection context request header must specify remote_method");
   }
   if (PREDICT_FALSE(!header_.remote_method().IsInitialized())) {
-    return Status::Corruption("remote_method in request header is not initialized",
+    return STATUS(Corruption, "remote_method in request header is not initialized",
                               header_.remote_method().InitializationErrorString());
   }
   remote_method_.FromPB(header_.remote_method());

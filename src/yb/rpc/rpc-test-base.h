@@ -92,7 +92,7 @@ class GenericCalculatorService : public ServiceIf {
       DoSendTwoStrings(incoming);
     } else {
       incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
-                               Status::InvalidArgument("bad method"));
+                               STATUS(InvalidArgument, "bad method"));
     }
   }
 
@@ -146,7 +146,7 @@ class GenericCalculatorService : public ServiceIf {
     SleepRequestPB req;
     if (!req.ParseFromArray(param.data(), param.size())) {
       incoming->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
-        Status::InvalidArgument("Couldn't parse pb",
+        STATUS(InvalidArgument, "Couldn't parse pb",
                                 req.InitializationErrorString()));
       return;
     }

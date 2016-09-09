@@ -111,7 +111,7 @@ Status TransactionTracker::Add(TransactionDriver* driver) {
 
     YB_LOG_EVERY_N_SECS(WARNING, 1) << msg << THROTTLE_MSG;
 
-    return Status::ServiceUnavailable(msg);
+    return STATUS(ServiceUnavailable, msg);
   }
 
   IncrementCounters(*driver);
@@ -215,7 +215,7 @@ Status TransactionTracker::WaitForAllToFinish(const MonoDelta& timeout) const {
 
     MonoDelta diff = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time);
     if (diff.MoreThan(timeout)) {
-      return Status::TimedOut(Substitute("Timed out waiting for all transactions to finish. "
+      return STATUS(TimedOut, Substitute("Timed out waiting for all transactions to finish. "
                                          "$0 transactions pending. Waited for $1",
                                          txns.size(), diff.ToString()));
     }

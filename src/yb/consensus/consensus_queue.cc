@@ -284,7 +284,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
     peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == NON_LEADER)) {
-      return Status::NotFound("Peer not tracked or queue not in leader mode.");
+      return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
     // Clear the requests without deleting the entries, as they may be in use by other peers.
@@ -395,12 +395,12 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
     peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == NON_LEADER)) {
-      return Status::NotFound("Peer not tracked or queue not in leader mode.");
+      return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
   }
 
   if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
-    return Status::IllegalState("Peer does not need to remotely bootstrap", uuid);
+    return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
   }
   req->Clear();
   req->set_dest_uuid(uuid);
@@ -751,7 +751,7 @@ Status PeerMessageQueue::UnRegisterObserver(PeerMessageQueueObserver* observer) 
   std::lock_guard<simple_spinlock> lock(queue_lock_);
   auto iter = std::find(observers_.begin(), observers_.end(), observer);
   if (iter == observers_.end()) {
-    return Status::NotFound("Can't find observer.");
+    return STATUS(NotFound, "Can't find observer.");
   }
   observers_.erase(iter);
   return Status::OK();

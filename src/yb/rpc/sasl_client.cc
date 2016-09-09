@@ -69,14 +69,14 @@ static int SaslClientSecretCb(sasl_conn_t* conn, void *sasl_client, int id,
 static Status StatusFromRpcError(const ErrorStatusPB& error) {
   DCHECK(error.IsInitialized()) << "Error status PB must be initialized";
   if (PREDICT_FALSE(!error.has_code())) {
-    return Status::RuntimeError(error.message());
+    return STATUS(RuntimeError, error.message());
   }
   string code_name = ErrorStatusPB::RpcErrorCodePB_Name(error.code());
   switch (error.code()) {
     case ErrorStatusPB_RpcErrorCodePB_FATAL_UNAUTHORIZED:
-      return Status::NotAuthorized(code_name, error.message());
+      return STATUS(NotAuthorized, code_name, error.message());
     default:
-      return Status::RuntimeError(code_name, error.message());
+      return STATUS(RuntimeError, code_name, error.message());
   }
 }
 
@@ -144,7 +144,7 @@ Status SaslClient::Init(const string& service_type) {
 
   // Ensure we are not called more than once.
   if (client_state_ != SaslNegotiationState::NEW) {
-    return Status::IllegalState("Init() may only be called once per SaslClient object.");
+    return STATUS(IllegalState, "Init() may only be called once per SaslClient object.");
   }
 
   // TODO: Support security flags.
@@ -161,7 +161,7 @@ Status SaslClient::Init(const string& service_type) {
       &sasl_conn);
 
   if (PREDICT_FALSE(result != SASL_OK)) {
-    return Status::RuntimeError("Unable to create new SASL client",
+    return STATUS(RuntimeError, "Unable to create new SASL client",
         SaslErrDesc(result, sasl_conn));
   }
   sasl_conn_.reset(sasl_conn);
@@ -175,9 +175,9 @@ Status SaslClient::Negotiate() {
 
   // Ensure we called exactly once, and in the right order.
   if (client_state_ == SaslNegotiationState::NEW) {
-    return Status::IllegalState("SaslClient: Init() must be called before calling Negotiate()");
+    return STATUS(IllegalState, "SaslClient: Init() must be called before calling Negotiate()");
   } else if (client_state_ == SaslNegotiationState::NEGOTIATED) {
-    return Status::IllegalState("SaslClient: Negotiate() may only be called once per object.");
+    return STATUS(IllegalState, "SaslClient: Negotiate() may only be called once per object.");
   }
 
   // Ensure we can use blocking calls on the socket during negotiation.
@@ -220,7 +220,7 @@ Status SaslClient::Negotiate() {
       // Client sent us some unsupported SASL response.
       default:
         LOG(ERROR) << "SASL Client: Received unsupported response from server";
-        return Status::InvalidArgument("RPC client doesn't support SASL state in response",
+        return STATUS(InvalidArgument, "RPC client doesn't support SASL state in response",
             SaslMessagePB::SaslState_Name(response.state()));
     }
   }
@@ -292,7 +292,7 @@ Status SaslClient::DoSaslStep(const string& in, const char** out, unsigned* out_
     nego_ok_ = true;
   }
   if (PREDICT_FALSE(res != SASL_OK && res != SASL_CONTINUE)) {
-    return Status::NotAuthorized("Unable to negotiate SASL connection",
+    return STATUS(NotAuthorized, "Unable to negotiate SASL connection",
         SaslErrDesc(res, sasl_conn_.get()));
   }
   return Status::OK();
@@ -342,14 +342,14 @@ Status SaslClient::HandleNegotiateResponse(const SaslMessagePB& response) {
   if (PREDICT_FALSE(result == SASL_OK)) {
     nego_ok_ = true;
   } else if (PREDICT_FALSE(result != SASL_CONTINUE)) {
-    return Status::NotAuthorized("Unable to negotiate SASL connection",
+    return STATUS(NotAuthorized, "Unable to negotiate SASL connection",
         SaslErrDesc(result, sasl_conn_.get()));
   }
 
   // The server matched one of our mechanisms.
   SaslMessagePB::SaslAuth* auth = FindOrNull(mech_auth_map, negotiated_mech);
   if (PREDICT_FALSE(auth == nullptr)) {
-    return Status::IllegalState("Unable to find auth in map, unexpected error", negotiated_mech);
+    return STATUS(IllegalState, "Unable to find auth in map, unexpected error", negotiated_mech);
   }
   negotiated_mech_ = SaslMechanism::value_of(negotiated_mech);
 
@@ -372,7 +372,7 @@ Status SaslClient::HandleChallengeResponse(const SaslMessagePB& response) {
   }
 
   if (PREDICT_FALSE(!response.has_token())) {
-    return Status::InvalidArgument("No token in CHALLENGE response from server");
+    return STATUS(InvalidArgument, "No token in CHALLENGE response from server");
   }
 
   const char* out = nullptr;
@@ -392,11 +392,11 @@ Status SaslClient::HandleSuccessResponse(const SaslMessagePB& response) {
     int result = 0;
     RETURN_NOT_OK(DoSaslStep(response.token(), &out, &out_len, &result));
     if (out_len > 0) {
-      return Status::IllegalState("SASL client library generated spurious token after SUCCESS",
+      return STATUS(IllegalState, "SASL client library generated spurious token after SUCCESS",
           string(out, out_len));
     }
     if (PREDICT_FALSE(result != SASL_OK)) {
-      return Status::NotAuthorized("Unable to negotiate SASL connection",
+      return STATUS(NotAuthorized, "Unable to negotiate SASL connection",
           SaslErrDesc(result, sasl_conn_.get()));
     }
   }
@@ -408,7 +408,7 @@ Status SaslClient::HandleSuccessResponse(const SaslMessagePB& response) {
 Status SaslClient::ParseError(const Slice& err_data) {
   ErrorStatusPB error;
   if (!error.ParseFromArray(err_data.data(), err_data.size())) {
-    return Status::IOError("Invalid error response, missing fields",
+    return STATUS(IOError, "Invalid error response, missing fields",
         error.InitializationErrorString());
   }
   Status s = StatusFromRpcError(error);

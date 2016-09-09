@@ -170,7 +170,7 @@ Status Webserver::Start() {
     if (!Env::Default()->FileExists(opts_.password_file)) {
       stringstream ss;
       ss << "Webserver: Password file does not exist: " << opts_.password_file;
-      return Status::InvalidArgument(ss.str());
+      return STATUS(InvalidArgument, ss.str());
     }
     LOG(INFO) << "Webserver: Password file is " << opts_.password_file;
     options.push_back("global_passwords_file");
@@ -215,7 +215,7 @@ Status Webserver::Start() {
     Sockaddr addr;
     addr.set_port(opts_.port);
     TryRunLsof(addr);
-    return Status::NetworkError(error_msg.str());
+    return STATUS(NetworkError, error_msg.str());
   }
 
   PathHandlerCallback default_callback =
@@ -246,14 +246,14 @@ void Webserver::Stop() {
 
 Status Webserver::GetBoundAddresses(std::vector<Sockaddr>* addrs) const {
   if (!context_) {
-    return Status::IllegalState("Not started");
+    return STATUS(IllegalState, "Not started");
   }
 
   struct sockaddr_in** sockaddrs;
   int num_addrs;
 
   if (sq_get_bound_addresses(context_, &sockaddrs, &num_addrs)) {
-    return Status::NetworkError("Unable to get bound addresses from Mongoose");
+    return STATUS(NetworkError, "Unable to get bound addresses from Mongoose");
   }
 
   addrs->reserve(num_addrs);

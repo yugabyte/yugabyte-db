@@ -131,7 +131,7 @@ Status DuplicatingRowSet::MutateRow(Timestamp timestamp,
   }
 
   if (!updated) {
-    return Status::NotFound("not found in any compaction input");
+    return STATUS(NotFound, "not found in any compaction input");
   }
 
   // If it succeeded there, we also need to mirror into the new rowset.

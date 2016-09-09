@@ -51,12 +51,12 @@ Status TSManager::LookupTS(const NodeInstancePB& instance,
   const shared_ptr<TSDescriptor>* found_ptr =
     FindOrNull(servers_by_id_, instance.permanent_uuid());
   if (!found_ptr) {
-    return Status::NotFound("unknown tablet server ID", instance.ShortDebugString());
+    return STATUS(NotFound, "unknown tablet server ID", instance.ShortDebugString());
   }
   const shared_ptr<TSDescriptor>& found = *found_ptr;
 
   if (instance.instance_seqno() != found->latest_seqno()) {
-    return Status::NotFound("mismatched instance sequence number", instance.ShortDebugString());
+    return STATUS(NotFound, "mismatched instance sequence number", instance.ShortDebugString());
   }
 
   *ts_desc = found;

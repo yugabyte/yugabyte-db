@@ -179,11 +179,11 @@ Status BloomFileReader::InitOnce() {
   RETURN_NOT_OK(reader_->Init());
 
   if (reader_->is_compressed()) {
-    return Status::Corruption("bloom file is compressed (compression not supported)",
+    return STATUS(Corruption, "bloom file is compressed (compression not supported)",
                               reader_->ToString());
   }
   if (!reader_->has_validx()) {
-    return Status::Corruption("bloom file missing value index",
+    return STATUS(Corruption, "bloom file missing value index",
                               reader_->ToString());
   }
 
@@ -210,20 +210,20 @@ Status BloomFileReader::ParseBlockHeader(const Slice &block,
                                          Slice *bloom_data) const {
   Slice data(block);
   if (PREDICT_FALSE(data.size() < 4)) {
-    return Status::Corruption("Invalid bloom block header: not enough bytes");
+    return STATUS(Corruption, "Invalid bloom block header: not enough bytes");
   }
 
   uint32_t header_len = DecodeFixed32(data.data());
   data.remove_prefix(sizeof(header_len));
 
   if (header_len > data.size()) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("Header length %d doesn't fit in buffer of size %ld",
                    header_len, data.size()));
   }
 
   if (!hdr->ParseFromArray(data.data(), header_len)) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       string("Invalid bloom block header: ") +
       hdr->InitializationErrorString() +
       "\nHeader:" + HexDump(Slice(data.data(), header_len)));

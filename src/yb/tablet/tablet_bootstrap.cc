@@ -414,7 +414,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
   // successfully.
   TabletDataState tablet_data_state = meta_->tablet_data_state();
   if (tablet_data_state != TABLET_DATA_READY) {
-    return Status::Corruption("Unable to locally bootstrap tablet " + tablet_id + ": " +
+    return STATUS(Corruption, "Unable to locally bootstrap tablet " + tablet_id + ": " +
                               "TabletMetadata bootstrap state is " +
                               TabletDataState_Name(tablet_data_state));
   }
@@ -460,7 +460,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
   // by Raft, since we always need to know the term and index of the last
   // logged op in order to vote, know how to respond to AppendEntries(), etc.
   if (has_blocks && !needs_recovery) {
-    return Status::IllegalState(Substitute("Tablet $0: Found rowsets but no log "
+    return STATUS(IllegalState, Substitute("Tablet $0: Found rowsets but no log "
                                            "segments could be found.",
                                            tablet_id));
   }
@@ -689,7 +689,7 @@ struct ReplayState {
       string op_desc = Substitute("$0 REPLICATE (Type: $1)",
                                   OpIdToString(msg.id()),
                                   OperationType_Name(msg.op_type()));
-      return Status::Corruption(
+      return STATUS(Corruption,
         Substitute("Unexpected opid following opid $0. Operation: $1",
                    OpIdToString(prev_op_id),
                    op_desc));
@@ -798,7 +798,7 @@ Status TabletBootstrap::HandleEntry(ReplayState* state, LogEntryPB* entry) {
       }
       break;
     default:
-      return Status::Corruption(Substitute("Unexpected log entry type: $0", entry->type()));
+      return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry->type()));
   }
   MAYBE_FAULT(FLAGS_fault_crash_during_log_replay);
   return Status::OK();
@@ -914,7 +914,7 @@ Status TabletBootstrap::HandleCommitMessage(ReplayState* state, LogEntryPB* comm
   // replicates set we keep it to apply later...
   if ((*state->pending_replicates.begin()).first != committed_op_id.index()) {
     if (!ContainsKey(state->pending_replicates, committed_op_id.index())) {
-      return Status::Corruption(Substitute("Could not find replicate for commit: $0",
+      return STATUS(Corruption, Substitute("Could not find replicate for commit: $0",
                                            commit_entry->ShortDebugString()));
     }
     VLOG_WITH_PREFIX(2) << "Adding pending commit for " << committed_op_id;
@@ -968,7 +968,7 @@ Status TabletBootstrap::CheckOrphanedCommitAlreadyFlushed(const CommitMsg& commi
   if (!AreAllStoresAlreadyFlushed(commit)) {
     TabletSuperBlockPB super;
     WARN_NOT_OK(meta_->ToSuperBlock(&super), LogPrefix() + "Couldn't build TabletSuperBlockPB");
-    return Status::Corruption(Substitute("CommitMsg was orphaned but it referred to "
+    return STATUS(Corruption, Substitute("CommitMsg was orphaned but it referred to "
         "unflushed stores. Commit: $0. TabletMetadata: $1", commit.ShortDebugString(),
         super.ShortDebugString()));
   }
@@ -997,7 +997,7 @@ Status TabletBootstrap::ApplyCommitMessage(ReplayState* state, LogEntryPB* commi
           pending_replicate_entry->replicate().ShortDebugString(),
           commit_entry->commit().ShortDebugString());
       LOG_WITH_PREFIX(DFATAL) << error_msg;
-      return Status::Corruption(error_msg);
+      return STATUS(Corruption, error_msg);
     }
     RETURN_NOT_OK(HandleEntryPair(pending_replicate_entry.get(), commit_entry));
     stats_.ops_committed++;
@@ -1043,7 +1043,7 @@ Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry, LogEntryPB*
       break;
 
     default:
-      return Status::IllegalState(Substitute("Unsupported commit entry type: $0", op_type));
+      return STATUS(IllegalState, Substitute("Unsupported commit entry type: $0", op_type));
   }
 
 #undef RETURN_NOT_OK_REPLAY
@@ -1167,7 +1167,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     // entry-by-entry iterator-like API instead? Seems better to avoid
     // exposing the idea of segments to callers.
     if (PREDICT_FALSE(!read_status.ok())) {
-      return Status::Corruption(Substitute("Error reading Log Segment of tablet $0: $1 "
+      return STATUS(Corruption, Substitute("Error reading Log Segment of tablet $0: $1 "
                                            "(Read up to entry $2 of segment $3, in path $4)",
                                            tablet_->tablet_id(),
                                            read_status.ToString(),
@@ -1194,14 +1194,14 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       if (!ContainsKey(state.pending_replicates, entry.first)) {
         LOG(INFO) << "Dumping replay state to log";
         DumpReplayStateToLog(state);
-        return Status::Corruption("Had orphaned commits at the end of replay.");
+        return STATUS(Corruption, "Had orphaned commits at the end of replay.");
       }
       if (AreAnyStoresAlreadyFlushed(entry.second->commit())) {
         LOG(INFO) << "Dumping replay state to log";
         DumpReplayStateToLog(state);
         TabletSuperBlockPB super;
         WARN_NOT_OK(meta_->ToSuperBlock(&super), "Couldn't build TabletSuperBlockPB.");
-        return Status::Corruption(Substitute("CommitMsg was pending but it referred to "
+        return STATUS(Corruption, Substitute("CommitMsg was pending but it referred to "
             "flushed stores. Commit: $0. TabletMetadata: $1",
             entry.second->commit().ShortDebugString(), super.ShortDebugString()));
       }
@@ -1475,7 +1475,7 @@ Status TabletBootstrap::FilterAndApplyOperations(WriteTransactionState* tx_state
     // restarted. If it doesn't succeed, something is wrong and we are
     // diverging from our prior state, so bail.
     if (op->result->has_failed_status()) {
-      return Status::Corruption("Operation which previously succeeded failed "
+      return STATUS(Corruption, "Operation which previously succeeded failed "
                                 "during log replay",
                                 Substitute("Op: $0\nFailure: $1",
                                            op->ToString(*tablet_->schema()),
@@ -1493,7 +1493,7 @@ Status TabletBootstrap::FilterInsert(WriteTransactionState* tx_state,
 
   if (PREDICT_FALSE(op_result->mutated_stores_size() != 1 ||
                     !op_result->mutated_stores(0).has_mrs_id())) {
-    return Status::Corruption(Substitute("Insert operation result must have an mrs_id: $0",
+    return STATUS(Corruption, Substitute("Insert operation result must have an mrs_id: $0",
                                          op_result->ShortDebugString()));
   }
   // check if the insert is already flushed
@@ -1522,7 +1522,7 @@ Status TabletBootstrap::FilterMutate(WriteTransactionState* tx_state,
 
   int num_mutated_stores = op_result->mutated_stores_size();
   if (PREDICT_FALSE(num_mutated_stores == 0 || num_mutated_stores > 2)) {
-    return Status::Corruption(Substitute("Mutations must have one or two mutated_stores: $0",
+    return STATUS(Corruption, Substitute("Mutations must have one or two mutated_stores: $0",
                                          op_result->ShortDebugString()));
   }
 
@@ -1544,7 +1544,7 @@ Status TabletBootstrap::FilterMutate(WriteTransactionState* tx_state,
 
   if (num_unflushed_stores == 0) {
     // The mutation was fully flushed.
-    op->SetFailed(Status::AlreadyPresent("Update was already flushed."));
+    op->SetFailed(STATUS(AlreadyPresent, "Update was already flushed."));
     stats_.mutations_ignored++;
     return Status::OK();
   }
@@ -1580,7 +1580,7 @@ Status FlushedStoresSnapshot::InitFrom(const TabletMetadata& meta) {
   for (const shared_ptr<RowSetMetadata>& rsmd : meta.rowsets()) {
     if (!InsertIfNotPresent(&flushed_dms_by_drs_id_, rsmd->id(),
                             rsmd->last_durable_redo_dms_id())) {
-      return Status::Corruption(Substitute(
+      return STATUS(Corruption, Substitute(
           "Duplicate DRS ID $0 in tablet metadata. "
           "Found DRS $0 with last durable redo DMS ID $1 while trying to "
           "initialize DRS $0 with last durable redo DMS ID $2",

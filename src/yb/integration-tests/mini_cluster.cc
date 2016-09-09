@@ -191,7 +191,7 @@ Status MiniCluster::StartSingleMaster() {
 
 Status MiniCluster::AddTabletServer() {
   if (mini_masters_.empty()) {
-    return Status::IllegalState("Master not yet initialized");
+    return STATUS(IllegalState, "Master not yet initialized");
   }
   int new_idx = mini_tablet_servers_.size();
 
@@ -288,7 +288,7 @@ Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
 
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
-  return Status::TimedOut(Substitute("Tablet $0 never reached expected replica count $1",
+  return STATUS(TimedOut, Substitute("Tablet $0 never reached expected replica count $1",
                                      tablet_id, expected_count));
 }
 
@@ -327,7 +327,7 @@ Status MiniCluster::WaitForTabletServerCount(int count,
     }
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
-  return Status::TimedOut(Substitute("$0 TS(s) never registered with master", count));
+  return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));
 }
 
 Status MiniCluster::CreateClient(YBClientBuilder* builder,

@@ -95,16 +95,16 @@ void CurlDeleter<curl_slist>::DoFree() {
 
 Status TwitterStreamer::Init() {
   if (FLAGS_twitter_consumer_key.empty()) {
-    return Status::InvalidArgument("Missing flag", "--twitter_consumer_key");
+    return STATUS(InvalidArgument, "Missing flag", "--twitter_consumer_key");
   }
   if (FLAGS_twitter_consumer_secret.empty()) {
-    return Status::InvalidArgument("Missing flag", "--twitter_consumer_secret");
+    return STATUS(InvalidArgument, "Missing flag", "--twitter_consumer_secret");
   }
   if (FLAGS_twitter_token_key.empty()) {
-    return Status::InvalidArgument("Missing flag", "--twitter_token_key");
+    return STATUS(InvalidArgument, "Missing flag", "--twitter_token_key");
   }
   if (FLAGS_twitter_token_secret.empty()) {
-    return Status::InvalidArgument("Missing flag", "--twitter_token_secret");
+    return STATUS(InvalidArgument, "Missing flag", "--twitter_token_secret");
   }
   return Status::OK();
 }
@@ -148,7 +148,7 @@ Status TwitterStreamer::DoStreaming() {
   CURL* curl = curl_easy_init();
   CurlDeleter<CURL> delete_curl(curl);
   if (!curl) {
-    return Status::NetworkError("curl_easy_init failed");
+    return STATUS(NetworkError, "curl_easy_init failed");
   }
   CHECK(curl);
 
@@ -167,7 +167,7 @@ Status TwitterStreamer::DoStreaming() {
 
   CURLcode res = curl_easy_perform(curl);
   if (res != CURLE_OK) {
-    return Status::NetworkError("curl_easy_perfom failed", curl_easy_strerror(res));
+    return STATUS(NetworkError, "curl_easy_perfom failed", curl_easy_strerror(res));
   }
 
   return Status::OK();

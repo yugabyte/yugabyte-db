@@ -208,7 +208,7 @@ Status DiskRowSetWriter::FinishAndReleaseBlocks(ScopedWritableBlockCloser* close
 
   if (written_count_ == 0) {
     finished_ = true;
-    return Status::Aborted("no data written");
+    return STATUS(Aborted, "no data written");
   }
 
   // Save the last encoded (max) key
@@ -609,7 +609,7 @@ Status DiskRowSet::MutateRow(Timestamp timestamp,
   bool deleted;
   RETURN_NOT_OK(delta_tracker_->CheckRowDeleted(row_idx, &deleted, stats));
   if (deleted) {
-    return Status::NotFound("row not found");
+    return STATUS(NotFound, "row not found");
   }
 
   RETURN_NOT_OK(delta_tracker_->Update(timestamp, row_idx, update, op_id, result));

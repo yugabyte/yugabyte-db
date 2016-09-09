@@ -101,7 +101,7 @@ Status RetryFunc(
 
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   if (deadline.ComesBefore(now)) {
-    return Status::TimedOut(timeout_msg);
+    return STATUS(TimedOut, timeout_msg);
   }
 
   double wait_secs = 0.001;
@@ -137,7 +137,7 @@ Status RetryFunc(
 
   }
 
-  return Status::TimedOut(timeout_msg);
+  return STATUS(TimedOut, timeout_msg);
 }
 
 template <class ReqClass, class RespClass>
@@ -154,7 +154,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     // Have we already exceeded our deadline?
     MonoTime now = MonoTime::Now(MonoTime::FINE);
     if (deadline.ComesBefore(now)) {
-      return Status::TimedOut(Substitute("$0 timed out after deadline expired",
+      return STATUS(TimedOut, Substitute("$0 timed out after deadline expired",
                                          func_name));
     }
 
@@ -331,7 +331,7 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
     if (!blacklist.empty()) {
       blacklist_string = Substitute("(blacklist replicas $0)", JoinStrings(blacklist, ", "));
     }
-    return Status::ServiceUnavailable(
+    return STATUS(ServiceUnavailable,
         Substitute("No $0 for tablet $1 $2",
                    selection == LEADER_ONLY ? "LEADER" : "replicas",
                    rt->tablet_id(),
@@ -376,7 +376,7 @@ Status YBClient::Data::CreateTable(
             "schema. Requested schema was: $1, actual schema is: $2",
             req.name(), schema.schema_->ToString(), actual_schema.schema_->ToString());
         LOG(ERROR) << msg;
-        return Status::AlreadyPresent(msg);
+        return STATUS(AlreadyPresent, msg);
       } else {
         PartitionSchema partition_schema;
         RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(),
@@ -387,7 +387,7 @@ Status YBClient::Data::CreateTable(
               req.name(), partition_schema.DebugString(*schema.schema_),
               actual_partition_schema.DebugString(*actual_schema.schema_));
           LOG(ERROR) << msg;
-          return Status::AlreadyPresent(msg);
+          return STATUS(AlreadyPresent, msg);
         } else {
           return Status::OK();
         }
@@ -628,7 +628,7 @@ GetTableSchemaRpc::~GetTableSchemaRpc() {
 void GetTableSchemaRpc::SendRpc() {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   if (retrier().deadline().ComesBefore(now)) {
-    SendRpcCb(Status::TimedOut("GetTableSchema timed out after deadline expired"));
+    SendRpcCb(STATUS(TimedOut, "GetTableSchema timed out after deadline expired"));
     return;
   }
 
@@ -808,7 +808,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
       return;
     }
     if (addrs.empty()) {
-      cb.Run(Status::InvalidArgument(Substitute("No master address specified by '$0'",
+      cb.Run(STATUS(InvalidArgument, Substitute("No master address specified by '$0'",
                                                 master_server_addr)));
       return;
     }
@@ -855,7 +855,7 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
       out.str(" ");
     }
     LOG(ERROR) << out.str();
-    return Status::InvalidArgument("master addresses cannot be empty");
+    return STATUS(InvalidArgument, "master addresses cannot be empty");
   }
 
   master_server_addrs_.clear();
@@ -893,7 +893,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
   } else if (!master_server_addrs_file_.empty()) {
     LOG(INFO) << "Reinitialize master addresses from file: " << master_server_addrs_file_;
     // TODO: implement file based reading.
-    return Status::NotSupported("Reading master addresses from file not yet implemented.");
+    return STATUS(NotSupported, "Reading master addresses from file not yet implemented.");
   } else {
     LOG(INFO) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
   }

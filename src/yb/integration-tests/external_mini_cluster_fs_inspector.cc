@@ -142,13 +142,13 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
 Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
   string data_dir = cluster_->tablet_server(index)->data_dir();
   if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName)) > 0) {
-    return Status::IllegalState("tablet metadata blocks still exist", data_dir);
+    return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
   }
   if (CountWALSegmentsOnTS(index) > 0) {
-    return Status::IllegalState("wals still exist", data_dir);
+    return STATUS(IllegalState, "wals still exist", data_dir);
   }
   if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName)) > 0) {
-    return Status::IllegalState("consensus metadata still exists", data_dir);
+    return STATUS(IllegalState, "consensus metadata still exists", data_dir);
   }
   return Status::OK();;
 }
@@ -176,7 +176,7 @@ Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
   string cmeta_dir = JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName);
   string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
   if (!env_->FileExists(cmeta_file)) {
-    return Status::NotFound("Consensus metadata file not found", cmeta_file);
+    return STATUS(NotFound, "Consensus metadata file not found", cmeta_file);
   }
   return pb_util::ReadPBContainerFromPath(env_, cmeta_file, cmeta_pb);
 }
@@ -187,7 +187,7 @@ Status ExternalMiniClusterFsInspector::CheckTabletDataStateOnTS(int index,
   TabletSuperBlockPB sb;
   RETURN_NOT_OK(ReadTabletSuperBlockOnTS(index, tablet_id, &sb));
   if (PREDICT_FALSE(sb.tablet_data_state() != state)) {
-    return Status::IllegalState("Tablet data state != " + TabletDataState_Name(state),
+    return STATUS(IllegalState, "Tablet data state != " + TabletDataState_Name(state),
                                 TabletDataState_Name(sb.tablet_data_state()));
   }
   return Status::OK();
@@ -205,7 +205,7 @@ Status ExternalMiniClusterFsInspector::WaitForNoData(const MonoDelta& timeout) {
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  return Status::TimedOut("Timed out waiting for no data", s.ToString());
+  return STATUS(TimedOut, "Timed out waiting for no data", s.ToString());
 }
 
 Status ExternalMiniClusterFsInspector::WaitForNoDataOnTS(int index, const MonoDelta& timeout) {
@@ -220,7 +220,7 @@ Status ExternalMiniClusterFsInspector::WaitForNoDataOnTS(int index, const MonoDe
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  return Status::TimedOut("Timed out waiting for no data", s.ToString());
+  return STATUS(TimedOut, "Timed out waiting for no data", s.ToString());
 }
 
 Status ExternalMiniClusterFsInspector::WaitForMinFilesInTabletWalDirOnTS(int index,
@@ -238,7 +238,7 @@ Status ExternalMiniClusterFsInspector::WaitForMinFilesInTabletWalDirOnTS(int ind
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  return Status::TimedOut(Substitute("Timed out waiting for number of WAL segments on tablet $0 "
+  return STATUS(TimedOut, Substitute("Timed out waiting for number of WAL segments on tablet $0 "
                                      "on TS $1 to be $2. Found $3",
                                      tablet_id, index, count, seen));
 }
@@ -257,7 +257,7 @@ Status ExternalMiniClusterFsInspector::WaitForReplicaCount(int expected, const M
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
-  return Status::TimedOut(Substitute("Timed out waiting for a total replica count of $0. "
+  return STATUS(TimedOut, Substitute("Timed out waiting for a total replica count of $0. "
                                      "Found $2 replicas",
                                      expected, found));
 }
@@ -276,7 +276,7 @@ Status ExternalMiniClusterFsInspector::WaitForTabletDataStateOnTS(int index,
     if (deadline.ComesBefore(MonoTime::Now(MonoTime::FINE))) break;
     SleepFor(MonoDelta::FromMilliseconds(5));
   }
-  return Status::TimedOut(Substitute("Timed out after $0 waiting for tablet data state $1: $2",
+  return STATUS(TimedOut, Substitute("Timed out after $0 waiting for tablet data state $1: $2",
                                      MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToString(),
                                      TabletDataState_Name(expected), s.ToString()));
 }
@@ -339,7 +339,7 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  return Status::TimedOut(Substitute("Timed out waiting for file pattern on "
+  return STATUS(TimedOut, Substitute("Timed out waiting for file pattern on "
                                      "tablet $0 on TS $1 in directory $2",
                                      tablet_id, ts_index, tablet_wal_dir),
                           error_msg + "entries: " + JoinStrings(entries, ", "));

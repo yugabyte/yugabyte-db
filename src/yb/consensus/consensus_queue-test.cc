@@ -146,7 +146,7 @@ class ConsensusQueueTest : public YBTest {
     status->mutable_last_received_current_leader()->CopyFrom(last_received_current_leader);
     ConsensusErrorPB* error = status->mutable_error();
     error->set_code(ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
-    StatusToPB(Status::IllegalState("LMP failed."), error->mutable_status());
+    StatusToPB(STATUS(IllegalState, "LMP failed."), error->mutable_status());
   }
 
   void WaitForLocalPeerToAckIndex(int index) {
@@ -576,7 +576,7 @@ TEST_F(ConsensusQueueTest, TestQueueHandlesOperationOverwriting) {
   status->set_last_committed_idx(5);
   ConsensusErrorPB* error = status->mutable_error();
   error->set_code(ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
-  StatusToPB(Status::IllegalState("LMP failed."), error->mutable_status());
+  StatusToPB(STATUS(IllegalState, "LMP failed."), error->mutable_status());
 
   queue_->ResponseFromPeer(response.responder_uuid(), response, &more_pending);
   request.Clear();
@@ -793,7 +793,7 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
 
   // Peer responds with tablet not found.
   response.mutable_error()->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
-  StatusToPB(Status::NotFound("No such tablet"), response.mutable_error()->mutable_status());
+  StatusToPB(STATUS(NotFound, "No such tablet"), response.mutable_error()->mutable_status());
   bool more_pending = false;
   queue_->ResponseFromPeer(kPeerUuid, response, &more_pending);
 

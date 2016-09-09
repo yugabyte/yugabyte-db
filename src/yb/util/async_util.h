@@ -55,7 +55,7 @@ class Synchronizer {
   }
   Status WaitFor(const MonoDelta& delta) {
     if (PREDICT_FALSE(!l.WaitFor(delta))) {
-      return Status::TimedOut("Timed out while waiting for the callback to be called.");
+      return STATUS(TimedOut, "Timed out while waiting for the callback to be called.");
     }
     return s;
   }

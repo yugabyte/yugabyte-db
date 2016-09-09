@@ -142,7 +142,7 @@ Status MemRowSet::Insert(Timestamp timestamp,
       // row is deleted.
       MRSRow ms_row(this, mutation.current_mutable_value());
       if (!ms_row.IsGhost()) {
-        return Status::AlreadyPresent("entry already present in memrowset");
+        return STATUS(AlreadyPresent, "entry already present in memrowset");
       }
 
       // Insert a "reinsert" mutation.
@@ -206,7 +206,7 @@ Status MemRowSet::MutateRow(Timestamp timestamp,
     mutation.Prepare(&tree_);
 
     if (!mutation.exists()) {
-      return Status::NotFound("not in memrowset");
+      return STATUS(NotFound, "not in memrowset");
     }
 
     MRSRow row(this, mutation.current_mutable_value());
@@ -215,7 +215,7 @@ Status MemRowSet::MutateRow(Timestamp timestamp,
     // that's been deleted. If that's the case, we should treat it as
     // NotFound.
     if (row.IsGhost()) {
-      return Status::NotFound("not in memrowset (ghost)");
+      return STATUS(NotFound, "not in memrowset (ghost)");
     }
 
     // Append to the linked list of mutations for this row.
@@ -293,7 +293,7 @@ Status MemRowSet::NewCompactionInput(const Schema* projection,
 
 Status MemRowSet::GetBounds(Slice *min_encoded_key,
                             Slice *max_encoded_key) const {
-  return Status::NotSupported("");
+  return STATUS(NotSupported, "");
 }
 
 // Virtual interface allows two possible row projector implementations
@@ -417,7 +417,7 @@ Status MemRowSet::Iterator::SeekAtOrAfter(const Slice &key, bool *exact) {
       key.size() == 0) {
     return Status::OK();
   } else {
-    return Status::NotFound("no match in memrowset");
+    return STATUS(NotFound, "no match in memrowset");
   }
 }
 
@@ -428,7 +428,7 @@ Status MemRowSet::Iterator::NextBlock(RowBlock *dst) {
   DCHECK_NE(state_, kUninitialized) << "not initted";
   if (PREDICT_FALSE(!iter_->IsValid())) {
     dst->Resize(0);
-    return Status::NotFound("end of iter");
+    return STATUS(NotFound, "end of iter");
   }
   if (PREDICT_FALSE(state_ != kScanning)) {
     dst->Resize(0);

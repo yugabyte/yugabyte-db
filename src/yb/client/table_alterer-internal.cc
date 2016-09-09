@@ -51,7 +51,7 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
 
   if (!rename_to_.is_initialized() &&
       steps_.empty()) {
-    return Status::InvalidArgument("No alter steps provided");
+    return STATUS(InvalidArgument, "No alter steps provided");
   }
 
   req->Clear();
@@ -90,12 +90,12 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
             s.spec->data_->has_default ||
             s.spec->data_->default_val ||
             s.spec->data_->remove_default) {
-          return Status::NotSupported("cannot support AlterColumn of this type",
+          return STATUS(NotSupported, "cannot support AlterColumn of this type",
                                       s.spec->data_->name);
         }
         // We only support rename column
         if (!s.spec->data_->has_rename_to) {
-          return Status::InvalidArgument("no alter operation specified",
+          return STATUS(InvalidArgument, "no alter operation specified",
                                          s.spec->data_->name);
         }
         pb_step->mutable_rename_column()->set_old_name(s.spec->data_->name);

@@ -166,7 +166,7 @@ Status DeltaTracker::AtomicUpdateStores(const SharedDeltaStoreVector& to_remove,
     auto end_it = start_it;
     for (const shared_ptr<DeltaStore>& ds : to_remove) {
       if (end_it == stores_to_update->end() || *end_it != ds) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             strings::Substitute("Cannot find deltastore sequence <$0> in <$1>",
                                 JoinDeltaStoreStrings(to_remove),
                                 JoinDeltaStoreStrings(*stores_to_update)));

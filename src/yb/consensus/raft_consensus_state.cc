@@ -105,7 +105,7 @@ Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg)
   DCHECK(!msg.has_id()) << "Should not have an ID yet: " << msg.ShortDebugString();
   UniqueLock l(update_lock_);
   if (PREDICT_FALSE(state_ != kRunning)) {
-    return Status::IllegalState("Replica not in running state");
+    return STATUS(IllegalState, "Replica not in running state");
   }
 
   RETURN_NOT_OK(CheckActiveLeaderUnlocked());
@@ -119,11 +119,11 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
   UniqueLock l(update_lock_);
 
   if (PREDICT_FALSE(state_ != kRunning)) {
-    return Status::IllegalState("Replica not in running state");
+    return STATUS(IllegalState, "Replica not in running state");
   }
 
   if (PREDICT_FALSE(GetActiveRoleUnlocked() != RaftPeerPB::LEADER)) {
-    return Status::IllegalState("Replica not LEADER");
+    return STATUS(IllegalState, "Replica not LEADER");
   }
   lock->swap(l);
   return Status::OK();
@@ -136,7 +136,7 @@ Status ReplicaState::CheckActiveLeaderUnlocked() const {
       return Status::OK();
     default:
       ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
-      return Status::IllegalState(Substitute("Replica $0 is not leader of this config. Role: $1. "
+      return STATUS(IllegalState, Substitute("Replica $0 is not leader of this config. Role: $1. "
                                              "Consensus state: $2",
                                              peer_uuid_,
                                              RaftPeerPB::Role_Name(role),
@@ -151,7 +151,7 @@ Status ReplicaState::LockForConfigChange(UniqueLock* lock) const {
   UniqueLock l(update_lock_);
   // Can only change the config on running replicas.
   if (PREDICT_FALSE(state_ != kRunning)) {
-    return Status::IllegalState("Unable to lock ReplicaState for config change",
+    return STATUS(IllegalState, "Unable to lock ReplicaState for config change",
                                 Substitute("State = $0", state_));
   }
   lock->swap(l);
@@ -163,7 +163,7 @@ Status ReplicaState::LockForUpdate(UniqueLock* lock) const {
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   if (PREDICT_FALSE(state_ != kRunning)) {
-    return Status::IllegalState("Replica not in running state");
+    return STATUS(IllegalState, "Replica not in running state");
   }
   if (!IsRaftConfigVoter(peer_uuid_, ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE).config())) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Allowing update even though not a member of the config";
@@ -203,7 +203,7 @@ bool ReplicaState::IsConfigChangePendingUnlocked() const {
 Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
   DCHECK(update_lock_.is_locked());
   if (IsConfigChangePendingUnlocked()) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         Substitute("RaftConfig change currently pending. Only one is allowed at a time.\n"
                    "  Committed config: $0.\n  Pending config: $1",
                    GetCommittedConfigUnlocked().ShortDebugString(),
@@ -296,7 +296,7 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
                "term", new_term);
   DCHECK(update_lock_.is_locked());
   if (PREDICT_FALSE(new_term <= GetCurrentTermUnlocked())) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
         Substitute("Cannot change term to a term that is lower than or equal to the current one. "
                    "Current: $0, Proposed: $1", GetCurrentTermUnlocked(), new_term));
   }
@@ -360,7 +360,7 @@ Status ReplicaState::CancelPendingTransactions() {
    ThreadRestrictions::AssertWaitAllowed();
    UniqueLock lock(update_lock_);
    if (state_ != kShuttingDown) {
-     return Status::IllegalState("Can only wait for pending commits on kShuttingDown state.");
+     return STATUS(IllegalState, "Can only wait for pending commits on kShuttingDown state.");
    }
    if (pending_txns_.empty()) {
      return Status::OK();
@@ -373,7 +373,7 @@ Status ReplicaState::CancelPendingTransactions() {
      // We cancel only transactions whose applies have not yet been triggered.
      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting transaction as it isn't in flight: "
                                     << txn.second->replicate_msg()->ShortDebugString();
-     round->NotifyReplicationFinished(Status::Aborted("Transaction aborted"));
+     round->NotifyReplicationFinished(STATUS(Aborted, "Transaction aborted"));
    }
  }
  return Status::OK();
@@ -409,7 +409,7 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     const scoped_refptr<ConsensusRound>& round = (*iter).second;
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting uncommitted operation due to leader change: "
                                    << round->replicate_msg()->id();
-    round->NotifyReplicationFinished(Status::Aborted("Transaction aborted by new leader"));
+    round->NotifyReplicationFinished(STATUS(Aborted, "Transaction aborted by new leader"));
     // Erase the entry from pendings.
     pending_txns_.erase(iter++);
   }
@@ -424,7 +424,7 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     // everything else.
     // TODO: Don't require a NO_OP to get to kRunning state
     if (round->replicate_msg()->op_type() != NO_OP) {
-      return Status::IllegalState("Cannot trigger prepare. Replica is not in kRunning state.");
+      return STATUS(IllegalState, "Cannot trigger prepare. Replica is not in kRunning state.");
     }
   }
 
@@ -478,10 +478,10 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
   DCHECK(majority_replicated.IsInitialized());
   DCHECK(last_committed_index_.IsInitialized());
   if (PREDICT_FALSE(state_ == kShuttingDown || state_ == kShutDown)) {
-    return Status::ServiceUnavailable("Cannot trigger apply. Replica is shutting down.");
+    return STATUS(ServiceUnavailable, "Cannot trigger apply. Replica is shutting down.");
   }
   if (PREDICT_FALSE(state_ != kRunning)) {
-    return Status::IllegalState("Cannot trigger apply. Replica is not in kRunning state.");
+    return STATUS(IllegalState, "Cannot trigger apply. Replica is not in kRunning state.");
   }
 
   // If the last committed operation was in the current term (the normal case)
@@ -626,7 +626,7 @@ Status ReplicaState::CheckHasCommittedOpInCurrentTermUnlocked() const {
   int64_t term = GetCurrentTermUnlocked();
   const OpId& opid = GetCommittedOpIdUnlocked();
   if (opid.term() != term) {
-    return Status::IllegalState(
+    return STATUS(IllegalState,
       Substitute("Latest committed opid $0 is different from current term $1",
         OpIdToString(opid), term));
   }
@@ -732,11 +732,11 @@ string ReplicaState::ToStringUnlocked() const {
 
 Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current) {
   if (current.term() < previous.term()) {
-    return Status::Corruption(Substitute("New operation's term is not >= than the previous "
+    return STATUS(Corruption, Substitute("New operation's term is not >= than the previous "
         "op's term. Current: $0. Previous: $1", OpIdToString(current), OpIdToString(previous)));
   }
   if (current.index() != previous.index() + 1) {
-    return Status::Corruption(Substitute("New operation's index does not follow the previous"
+    return STATUS(Corruption, Substitute("New operation's index does not follow the previous"
         " op's index. Current: $0. Previous: $1", OpIdToString(current), OpIdToString(previous)));
   }
   return Status::OK();

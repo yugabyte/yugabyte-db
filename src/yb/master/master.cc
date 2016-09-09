@@ -155,7 +155,7 @@ void Master::InitCatalogManagerTask() {
 
 Status Master::InitCatalogManager() {
   if (catalog_manager_->IsInitialized()) {
-    return Status::IllegalState("Catalog manager is already initialized");
+    return STATUS(IllegalState, "Catalog manager is already initialized");
   }
   RETURN_NOT_OK_PREPEND(catalog_manager_->Init(is_first_run_),
                         "Unable to initialize catalog manager");
@@ -181,7 +181,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
     SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
     backoff_ms = min(backoff_ms << 1, kMaxBackoffMs);
   } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).LessThan(timeout));
-  return Status::TimedOut("Maximum time exceeded waiting for master leadership",
+  return STATUS(TimedOut, "Maximum time exceeded waiting for master leadership",
                           s.ToString());
 }
 
@@ -199,7 +199,7 @@ void Master::Shutdown() {
 
 Status Master::GetMasterRegistration(ServerRegistrationPB* reg) const {
   if (!registration_initialized_.load(std::memory_order_acquire)) {
-    return Status::ServiceUnavailable("Master startup not complete");
+    return STATUS(ServiceUnavailable, "Master startup not complete");
   }
   reg->CopyFrom(registration_);
   return Status::OK();
@@ -252,7 +252,7 @@ Status Master::ListRaftConfigMasters(std::vector<RaftPeerPB>* masters) const {
     }
     return Status::OK();
   } else {
-    return Status::NotFound("No raft config found.");
+    return STATUS(NotFound, "No raft config found.");
   }
 }
 

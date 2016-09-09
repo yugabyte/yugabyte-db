@@ -131,7 +131,7 @@ Status Peer::SignalRequest(bool even_if_queue_empty) {
 
     if (PREDICT_FALSE(state_ == kPeerClosed)) {
       sem_.Release();
-      return Status::IllegalState("Peer was closed.");
+      return STATUS(IllegalState, "Peer was closed.");
     }
 
     // For the first request sent by the peer, we send it even if the queue is empty,
@@ -279,7 +279,7 @@ void Peer::DoProcessResponse() {
 Status Peer::SendRemoteBootstrapRequest() {
   if (!FLAGS_enable_remote_bootstrap) {
     failed_attempts_++;
-    return Status::NotSupported("remote bootstrap is disabled");
+    return STATUS(NotSupported, "remote bootstrap is disabled");
   }
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Sending request to remotely bootstrap";
@@ -445,7 +445,7 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
       LOG(INFO) << "Retrying to get permanent uuid for remote peer: "
           << remote_peer->ShortDebugString() << " attempt: " << attempt++;
     } else {
-      s = Status::TimedOut(Substitute("Getting permanent uuid from $0 timed out after $1 ms.",
+      s = STATUS(TimedOut, Substitute("Getting permanent uuid from $0 timed out after $1 ms.",
                                       hostport.ToString(),
                                       FLAGS_raft_get_node_instance_timeout_ms),
                            s.ToString());

@@ -428,7 +428,7 @@ ThreadJoiner& ThreadJoiner::give_up_after_ms(int ms) {
 Status ThreadJoiner::Join() {
   if (Thread::current_thread() &&
       Thread::current_thread()->tid() == thread_->tid()) {
-    return Status::InvalidArgument("Can't join on own thread", thread_->name_);
+    return STATUS(InvalidArgument, "Can't join on own thread", thread_->name_);
   }
 
   // Early exit: double join is a no-op.
@@ -471,7 +471,7 @@ Status ThreadJoiner::Join() {
     }
     waited_ms += wait_for;
   }
-  return Status::Aborted(strings::Substitute("Timed out after $0ms joining on $1",
+  return STATUS(Aborted, strings::Substitute("Timed out after $0ms joining on $1",
                                              waited_ms, thread_->name_));
 }
 
@@ -503,7 +503,7 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
     SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "creating pthread");
     int ret = pthread_create(&t->thread_, NULL, &Thread::SuperviseThread, t.get());
     if (ret) {
-      return Status::RuntimeError("Could not create thread", strerror(ret), ret);
+      return STATUS(RuntimeError, "Could not create thread", strerror(ret), ret);
     }
   }
 

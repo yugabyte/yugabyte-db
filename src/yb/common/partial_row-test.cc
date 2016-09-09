@@ -51,7 +51,7 @@ TEST_F(PartialRowTest, UnitTest) {
 
   // Encoding the key when it is not set should give an error.
   EXPECT_EQ("Invalid argument: All key columns must be set: key",
-            row.EncodeRowKey(&enc_key).ToString());
+            row.EncodeRowKey(&enc_key).ToString(/* no file/line */ false));
 
   // Set just the key.
   EXPECT_OK(row.SetInt32("key", 12345));
@@ -89,16 +89,16 @@ TEST_F(PartialRowTest, UnitTest) {
   // Try to set an entry with the wrong type
   Status s = row.SetStringCopy("int_val", "foo");
   EXPECT_EQ("Invalid argument: invalid type string provided for column 'int_val' (expected int32)",
-            s.ToString());
+            s.ToString(/* no file/line */ false));
 
   // Try to get an entry with the wrong type
   s = row.GetString("int_val", &slice);
   EXPECT_EQ("Invalid argument: invalid type string provided for column 'int_val' (expected int32)",
-            s.ToString());
+            s.ToString(false));
 
   // Try to set a non-nullable entry to NULL
   s = row.SetNull("key");
-  EXPECT_EQ("Invalid argument: column not nullable: key[int32 NOT NULL]", s.ToString());
+  EXPECT_EQ("Invalid argument: column not nullable: key[int32 NOT NULL]", s.ToString(false));
 
   // Set the NULL string back to non-NULL
   EXPECT_OK(row.SetStringCopy("string_val", "goodbye world"));

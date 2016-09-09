@@ -106,7 +106,7 @@ class SysCatalogWriter {
     faststring metadata_buf;
     if (is_write) {
       if (!pb_util::SerializeToString(item->metadata().dirty().pb, &metadata_buf)) {
-        return Status::Corruption(Substitute(
+        return STATUS(Corruption, Substitute(
             "Unable to serialize SysCatalog entry of type $0 for id $1.",
             PersistentDataEntryClass::type(), item->id()));
       }
@@ -174,7 +174,7 @@ Status SysCatalogTable::ConvertConfigToMasterAddresses(
   }
 
   if (has_missing_uuids) {
-    return Status::IllegalState("Trying to load distributed config, but had missing uuids.");
+    return STATUS(IllegalState, "Trying to load distributed config, but had missing uuids.");
   }
 
   master_->SetMasterAddresses(loaded_master_addresses);
@@ -201,7 +201,7 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
 Status SysCatalogTable::Load(FsManager* fs_manager) {
   LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
   if (master_->opts().IsClusterCreationMode()) {
-    return Status::IllegalState(Substitute(
+    return STATUS(IllegalState, Substitute(
         "In cluster creation mode for ($0), but found local consensus metadata",
         HostPort::ToCommaSeparatedString(*master_->opts().GetMasterAddresses())));
   }
@@ -212,7 +212,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // Verify that the schema is the current one
   if (!metadata->schema().Equals(BuildTableSchema())) {
     // TODO: In this case we probably should execute the migration step.
-    return(Status::Corruption("Unexpected schema", metadata->schema().ToString()));
+    return(STATUS(Corruption, "Unexpected schema", metadata->schema().ToString()));
   }
 
   // TODO(bogdan) we should revisit this as well as next step to understand what happens if you
@@ -235,7 +235,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   DCHECK(!loaded_config.peers().empty()) << "Loaded consensus metadata, but had no peers!";
 
   if (loaded_config.peers().empty()) {
-    return Status::IllegalState("Trying to load distributed config, but contains no peers.");
+    return STATUS(IllegalState, "Trying to load distributed config, but contains no peers.");
   }
 
   if (loaded_config.peers().size() > 1) {
@@ -246,10 +246,10 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
     // We know we have exactly one peer.
     const auto& peer = loaded_config.peers().Get(0);
     if (!peer.has_permanent_uuid()) {
-      return Status::IllegalState("Loaded consesnsus metadata, but peer did not have a uuid");
+      return STATUS(IllegalState, "Loaded consesnsus metadata, but peer did not have a uuid");
     }
     if (peer.permanent_uuid() != fs_manager->uuid()) {
-      return Status::IllegalState(Substitute(
+      return STATUS(IllegalState, Substitute(
           "Loaded consensus metadata, but peer uuid ($0) was different than our uuid ($1)",
           peer.permanent_uuid(), fs_manager->uuid()));
     }
@@ -262,7 +262,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   if (!master_->opts().IsClusterCreationMode()) {
-    return Status::IllegalState("Need to create data, but am not in cluster creation mode!");
+    return STATUS(IllegalState, "Need to create data, but am not in cluster creation mode!");
   }
   // Create the new Metadata
   scoped_refptr<tablet::TabletMetadata> metadata;
@@ -570,7 +570,7 @@ Status SysCatalogTable::SyncWrite(const WriteRequestPB *req, WriteResponsePB *re
     for (const WriteResponsePB::PerRowErrorPB& error : resp->per_row_errors()) {
       LOG(WARNING) << "row " << error.row_index() << ": " << StatusFromPB(error.error()).ToString();
     }
-    return Status::Corruption("One or more rows failed to write");
+    return STATUS(Corruption, "One or more rows failed to write");
   }
   return Status::OK();
 }

@@ -128,24 +128,24 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   num_key_columns_ = key_columns;
 
   if (PREDICT_FALSE(key_columns > cols_.size())) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       "Bad schema", "More key columns than columns");
   }
 
   if (PREDICT_FALSE(key_columns < 0)) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
       "Bad schema", "Cannot specify a negative number of key columns");
   }
 
   if (PREDICT_FALSE(!ids.empty() && ids.size() != cols_.size())) {
-    return Status::InvalidArgument("Bad schema",
+    return STATUS(InvalidArgument, "Bad schema",
       "The number of ids does not match with the number of columns");
   }
 
   // Verify that the key columns are not nullable
   for (int i = 0; i < key_columns; ++i) {
     if (PREDICT_FALSE(cols_[i].is_nullable())) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Nullable key columns are not "
                                           "supported: $0", cols_[i].name()));
     }
@@ -159,7 +159,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   for (const ColumnSchema &col : cols_) {
     // The map uses the 'name' string from within the ColumnSchema object.
     if (!InsertIfNotPresent(&name_to_index_, col.name(), i++)) {
-      return Status::InvalidArgument("Duplicate column name", col.name());
+      return STATUS(InvalidArgument, "Duplicate column name", col.name());
     }
 
     col_offsets_.push_back(off);
@@ -200,7 +200,7 @@ Status Schema::CreateProjectionByNames(const std::vector<StringPiece>& col_names
   for (const StringPiece& name : col_names) {
     int idx = find_column(name);
     if (idx == -1) {
-      return Status::NotFound("column not found", name);
+      return STATUS(NotFound, "column not found", name);
     }
     if (has_column_ids()) {
       ids.push_back(column_id(idx));
@@ -243,7 +243,7 @@ Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
   DCHECK(has_column_ids()) "The server schema must have IDs";
 
   if (projection.has_column_ids()) {
-    return Status::InvalidArgument("User requests should not have Column IDs");
+    return STATUS(InvalidArgument, "User requests should not have Column IDs");
   }
 
   vector<string> missing_columns;
@@ -253,13 +253,13 @@ Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
       missing_columns.push_back(pcol.name());
     } else if (!pcol.EqualsType(cols_[index])) {
       // TODO: We don't support query with type adaptors yet
-      return Status::InvalidArgument("The column '" + pcol.name() + "' must have type " +
+      return STATUS(InvalidArgument, "The column '" + pcol.name() + "' must have type " +
                                      cols_[index].TypeToString() + " found " + pcol.TypeToString());
     }
   }
 
   if (!missing_columns.empty()) {
-    return Status::InvalidArgument("Some columns are not present in the current schema",
+    return STATUS(InvalidArgument, "Some columns are not present in the current schema",
                                    JoinStrings(missing_columns, ", "));
   }
   return Status::OK();
@@ -342,7 +342,7 @@ string Schema::DebugEncodedRowKey(Slice encoded_key, StartOrEnd start_or_end) co
   uint8_t* buf = reinterpret_cast<uint8_t*>(arena.AllocateBytes(key_byte_size()));
   Status s = DecodeRowKey(encoded_key, buf, &arena);
   if (!s.ok()) {
-    return "<invalid key: " + s.ToString() + ">";
+    return "<invalid key: " + s.ToString(/* no file/line */ false) + ">";
   }
   ConstContiguousRow row(this, buf);
   return DebugRowKey(row);
@@ -419,7 +419,7 @@ Status SchemaBuilder::AddColumn(const string& name,
 Status SchemaBuilder::RemoveColumn(const string& name) {
   unordered_set<string>::const_iterator it_names;
   if ((it_names = col_names_.find(name)) == col_names_.end()) {
-    return Status::NotFound("The specified column does not exist", name);
+    return STATUS(NotFound, "The specified column does not exist", name);
   }
 
   col_names_.erase(it_names);
@@ -435,7 +435,7 @@ Status SchemaBuilder::RemoveColumn(const string& name) {
   }
 
   LOG(FATAL) << "Should not reach here";
-  return Status::Corruption("Unable to remove existing column");
+  return STATUS(Corruption, "Unable to remove existing column");
 }
 
 Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_name) {
@@ -443,12 +443,12 @@ Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_nam
 
   // check if 'new_name' is already in use
   if ((it_names = col_names_.find(new_name)) != col_names_.end()) {
-    return Status::AlreadyPresent("The column already exists", new_name);
+    return STATUS(AlreadyPresent, "The column already exists", new_name);
   }
 
   // check if the 'old_name' column exists
   if ((it_names = col_names_.find(old_name)) == col_names_.end()) {
-    return Status::NotFound("The specified column does not exist", old_name);
+    return STATUS(NotFound, "The specified column does not exist", old_name);
   }
 
   col_names_.erase(it_names);   // TODO: Should this one stay and marked as alias?
@@ -462,12 +462,12 @@ Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_nam
   }
 
   LOG(FATAL) << "Should not reach here";
-  return Status::IllegalState("Unable to rename existing column");
+  return STATUS(IllegalState, "Unable to rename existing column");
 }
 
 Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {
   if (ContainsKey(col_names_, column.name())) {
-    return Status::AlreadyPresent("The column already exists", column.name());
+    return STATUS(AlreadyPresent, "The column already exists", column.name());
   }
 
   col_names_.insert(column.name());

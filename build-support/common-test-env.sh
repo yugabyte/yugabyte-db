@@ -641,20 +641,26 @@ handle_test_failure() {
   fi
 
   if "$test_failed"; then
-    echo >&2
-
-    echo "TEST FAILURE" >&2
-    echo "Test command: ${test_cmd_line[@]}" >&2
-    echo "Test exit status: $test_exit_code" >&2
-    echo "Log path: $test_log_path" >&2
-    if [ -n "${BUILD_URL:-}" ]; then
-      if [ -z "${test_log_url_prefix:-}" ]; then
-        fatal "Expected test_log_url_prefix to be set if BUILD_URL is defined"
+    (
+      echo
+      echo "TEST FAILURE"
+      echo "Test command: ${test_cmd_line[@]}"
+      echo "Test exit status: $test_exit_code"
+      echo "Log path: $test_log_path"
+      if [ -n "${BUILD_URL:-}" ]; then
+        if [ -z "${test_log_url_prefix:-}" ]; then
+          fatal "Expected test_log_url_prefix to be set if BUILD_URL is defined"
+        fi
+        # Produce a URL like
+        # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
+        echo "Log URL: $test_log_url_prefix/$rel_test_log_path_prefix.log"
       fi
-      # Produce a URL like
-      # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
-      echo "Log URL: $test_log_url_prefix/$rel_test_log_path_prefix.log" >&2
-    fi
+      if [[ -f "$test_log_path" ]]; then
+        echo "Relevant log lines:"
+        egrep "^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|: Failure$" \
+              "$test_log_path"
+      fi
+    ) >&2
     core_dir=$TEST_TMPDIR
     process_core_file
     unset core_dir

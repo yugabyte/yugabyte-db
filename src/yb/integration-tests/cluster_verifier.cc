@@ -125,10 +125,10 @@ Status ClusterVerifier::DoCheckRowCount(const std::string& table_name,
   }
 
   if (mode == AT_LEAST && count < expected_row_count) {
-    return Status::Corruption(Substitute("row count $0 is not at least expected value $1",
+    return STATUS(Corruption, Substitute("row count $0 is not at least expected value $1",
                                          count, expected_row_count));
   } else if (mode == EXACTLY && count != expected_row_count) {
-    return Status::Corruption(Substitute("row count $0 is not exactly expected value $1",
+    return STATUS(Corruption, Substitute("row count $0 is not exactly expected value $1",
                                          count, expected_row_count));
   }
   return Status::OK();

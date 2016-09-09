@@ -65,7 +65,7 @@ Status VoteCounter::RegisterVote(const std::string& voter_uuid, ElectionVote vot
       string msg = Substitute("Peer $0 voted a different way twice in the same election. "
                               "First vote: $1, second vote: $2.",
                               voter_uuid, prior_vote, vote);
-      return Status::InvalidArgument(msg);
+      return STATUS(InvalidArgument, msg);
     }
 
     // This was just a duplicate. Allow the caller to log it but don't change
@@ -77,7 +77,7 @@ Status VoteCounter::RegisterVote(const std::string& voter_uuid, ElectionVote vot
   // Sanity check to ensure we did not exceed the allowed number of voters.
   if (PREDICT_FALSE(yes_votes_ + no_votes_ == num_voters_)) {
     // More unique voters than allowed!
-    return Status::InvalidArgument(Substitute(
+    return STATUS(InvalidArgument, Substitute(
         "Vote from peer $0 would cause the number of votes to exceed the expected number of "
         "voters, which is $1. Votes already received from the following peers: {$2}",
         voter_uuid,
@@ -113,7 +113,7 @@ Status VoteCounter::GetDecision(ElectionVote* decision) const {
     *decision = VOTE_DENIED;
     return Status::OK();
   }
-  return Status::IllegalState("Vote not yet decided");
+  return STATUS(IllegalState, "Vote not yet decided");
 }
 
 int VoteCounter::GetTotalVotesCounted() const {

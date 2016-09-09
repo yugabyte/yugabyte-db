@@ -87,7 +87,7 @@ Status Socket::Close() {
   fd_ = -1;
   if (::close(fd) < 0) {
     err = errno;
-    return Status::NetworkError(std::string("close error: ") +
+    return STATUS(NetworkError, std::string("close error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   fd = -1;
@@ -106,7 +106,7 @@ Status Socket::Shutdown(bool shut_read, bool shut_write) {
   }
   if (::shutdown(fd_, flags) < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("shutdown error: ") +
+    return STATUS(NetworkError, std::string("shutdown error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   return Status::OK();
@@ -127,7 +127,7 @@ Status Socket::Init(int flags) {
   Reset(::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | nonblocking_flag, 0));
   if (fd_ < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("error opening socket: ") +
+    return STATUS(NetworkError, std::string("error opening socket: ") +
                                 ErrnoToString(err), Slice(), err);
   }
 
@@ -140,7 +140,7 @@ Status Socket::Init(int flags) {
   Reset(::socket(AF_INET, SOCK_STREAM, 0));
   if (fd_ < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("error opening socket: ") +
+    return STATUS(NetworkError, std::string("error opening socket: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   RETURN_NOT_OK(SetNonBlocking(flags & FLAG_NONBLOCKING));
@@ -150,7 +150,7 @@ Status Socket::Init(int flags) {
   int set = 1;
   if (setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &set, sizeof(set)) == -1) {
     int err = errno;
-    return Status::NetworkError(std::string("failed to set SO_NOSIGPIPE: ") +
+    return STATUS(NetworkError, std::string("failed to set SO_NOSIGPIPE: ") +
                                 ErrnoToString(err), Slice(), err);
   }
 
@@ -163,7 +163,7 @@ Status Socket::SetNoDelay(bool enabled) {
   int flag = enabled ? 1 : 0;
   if (setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag)) == -1) {
     int err = errno;
-    return Status::NetworkError(std::string("failed to set TCP_NODELAY: ") +
+    return STATUS(NetworkError, std::string("failed to set TCP_NODELAY: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   return Status::OK();
@@ -173,7 +173,7 @@ Status Socket::SetNonBlocking(bool enabled) {
   int curflags = ::fcntl(fd_, F_GETFL, 0);
   if (curflags == -1) {
     int err = errno;
-    return Status::NetworkError(
+    return STATUS(NetworkError,
         StringPrintf("Failed to get file status flags on fd %d", fd_),
         ErrnoToString(err), err);
   }
@@ -181,11 +181,11 @@ Status Socket::SetNonBlocking(bool enabled) {
   if (::fcntl(fd_, F_SETFL, newflags) == -1) {
     int err = errno;
     if (enabled) {
-      return Status::NetworkError(
+      return STATUS(NetworkError,
           StringPrintf("Failed to set O_NONBLOCK on fd %d", fd_),
           ErrnoToString(err), err);
     } else {
-      return Status::NetworkError(
+      return STATUS(NetworkError,
           StringPrintf("Failed to clear O_NONBLOCK on fd %d", fd_),
           ErrnoToString(err), err);
     }
@@ -197,7 +197,7 @@ Status Socket::IsNonBlocking(bool* is_nonblock) const {
   int curflags = ::fcntl(fd_, F_GETFL, 0);
   if (curflags == -1) {
     int err = errno;
-    return Status::NetworkError(
+    return STATUS(NetworkError,
         StringPrintf("Failed to get file status flags on fd %d", fd_),
         ErrnoToString(err), err);
   }
@@ -210,13 +210,13 @@ Status Socket::SetCloseOnExec() {
   if (curflags == -1) {
     int err = errno;
     Reset(-1);
-    return Status::NetworkError(std::string("fcntl(F_GETFD) error: ") +
+    return STATUS(NetworkError, std::string("fcntl(F_GETFD) error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   if (fcntl(fd_, F_SETFD, curflags | FD_CLOEXEC) == -1) {
     int err = errno;
     Reset(-1);
-    return Status::NetworkError(std::string("fcntl(F_SETFD) error: ") +
+    return STATUS(NetworkError, std::string("fcntl(F_SETFD) error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   return Status::OK();
@@ -235,7 +235,7 @@ Status Socket::SetReuseAddr(bool flag) {
   int int_flag = flag ? 1 : 0;
   if (setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &int_flag, sizeof(int_flag)) == -1) {
     err = errno;
-    return Status::NetworkError(std::string("failed to set SO_REUSEADDR: ") +
+    return STATUS(NetworkError, std::string("failed to set SO_REUSEADDR: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   return Status::OK();
@@ -252,7 +252,7 @@ Status Socket::BindAndListen(const Sockaddr &sockaddr,
 Status Socket::Listen(int listen_queue_size) {
   if (listen(fd_, listen_queue_size)) {
     int err = errno;
-    return Status::NetworkError("listen() error", ErrnoToString(err));
+    return STATUS(NetworkError, "listen() error", ErrnoToString(err));
   }
   return Status::OK();
 }
@@ -263,7 +263,7 @@ Status Socket::GetSocketAddress(Sockaddr *cur_addr) const {
   DCHECK_GE(fd_, 0);
   if (::getsockname(fd_, (struct sockaddr *)&sin, &len) == -1) {
     int err = errno;
-    return Status::NetworkError(string("getsockname error: ") +
+    return STATUS(NetworkError, string("getsockname error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   *cur_addr = sin;
@@ -276,7 +276,7 @@ Status Socket::GetPeerAddress(Sockaddr *cur_addr) const {
   DCHECK_GE(fd_, 0);
   if (::getpeername(fd_, (struct sockaddr *)&sin, &len) == -1) {
     int err = errno;
-    return Status::NetworkError(string("getpeername error: ") +
+    return STATUS(NetworkError, string("getpeername error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   *cur_addr = sin;
@@ -289,7 +289,7 @@ Status Socket::Bind(const Sockaddr& bind_addr, bool explain_addr_in_use) {
   DCHECK_GE(fd_, 0);
   if (PREDICT_FALSE(::bind(fd_, (struct sockaddr*) &addr, sizeof(addr)))) {
     int err = errno;
-    Status s = Status::NetworkError(
+    Status s = STATUS(NetworkError,
         strings::Substitute("error binding socket to $0: $1",
                             bind_addr.ToString(), ErrnoToString(err)),
         Slice(), err);
@@ -318,14 +318,14 @@ Status Socket::Accept(Socket *new_conn, Sockaddr *remote, int flags) {
                   &olen, accept_flags));
   if (new_conn->GetFd() < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("accept4(2) error: ") +
+    return STATUS(NetworkError, std::string("accept4(2) error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
 #else
   new_conn->Reset(::accept(fd_, (struct sockaddr*)&addr, &olen));
   if (new_conn->GetFd() < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("accept(2) error: ") +
+    return STATUS(NetworkError, std::string("accept(2) error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   RETURN_NOT_OK(new_conn->SetNonBlocking(flags & FLAG_NONBLOCKING));
@@ -361,7 +361,7 @@ Status Socket::Connect(const Sockaddr &remote) {
   DCHECK_GE(fd_, 0);
   if (::connect(fd_, (const struct sockaddr*)&addr, sizeof(addr)) < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("connect(2) error: ") +
+    return STATUS(NetworkError, std::string("connect(2) error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   return Status::OK();
@@ -374,18 +374,18 @@ Status Socket::GetSockError() const {
   ret = ::getsockopt(fd_, SOL_SOCKET, SO_ERROR, &val, &val_len);
   if (ret) {
     int err = errno;
-    return Status::NetworkError(std::string("getsockopt(SO_ERROR) failed: ") +
+    return STATUS(NetworkError, std::string("getsockopt(SO_ERROR) failed: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   if (val != 0) {
-    return Status::NetworkError(ErrnoToString(val), Slice(), val);
+    return STATUS(NetworkError, ErrnoToString(val), Slice(), val);
   }
   return Status::OK();
 }
 
 Status Socket::Write(const uint8_t *buf, int32_t amt, int32_t *nwritten) {
   if (amt <= 0) {
-    return Status::NetworkError(
+    return STATUS(NetworkError,
               StringPrintf("invalid send of %" PRId32 " bytes",
                            amt), Slice(), EINVAL);
   }
@@ -393,7 +393,7 @@ Status Socket::Write(const uint8_t *buf, int32_t amt, int32_t *nwritten) {
   int res = ::send(fd_, buf, amt, MSG_NOSIGNAL);
   if (res < 0) {
     int err = errno;
-    return Status::NetworkError(std::string("write error: ") +
+    return STATUS(NetworkError, std::string("write error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   *nwritten = res;
@@ -403,7 +403,7 @@ Status Socket::Write(const uint8_t *buf, int32_t amt, int32_t *nwritten) {
 Status Socket::Writev(const struct ::iovec *iov, int iov_len,
                       int32_t *nwritten) {
   if (PREDICT_FALSE(iov_len <= 0)) {
-    return Status::NetworkError(
+    return STATUS(NetworkError,
                 StringPrintf("writev: invalid io vector length of %d",
                              iov_len),
                 Slice(), EINVAL);
@@ -417,7 +417,7 @@ Status Socket::Writev(const struct ::iovec *iov, int iov_len,
   int res = ::sendmsg(fd_, &msg, MSG_NOSIGNAL);
   if (PREDICT_FALSE(res < 0)) {
     int err = errno;
-    return Status::NetworkError(std::string("sendmsg error: ") +
+    return STATUS(NetworkError, std::string("sendmsg error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
 
@@ -437,7 +437,7 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
     int32_t num_to_write = buflen - tot_written;
     MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
     if (PREDICT_FALSE(timeout.ToNanoseconds() <= 0)) {
-      return Status::TimedOut("BlockingWrite timed out");
+      return STATUS(TimedOut, "BlockingWrite timed out");
     }
     RETURN_NOT_OK(SetSendTimeout(timeout));
     Status s = Write(buf, num_to_write, &inc_num_written);
@@ -451,7 +451,7 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
         continue;
       }
       if (s.posix_code() == EAGAIN) {
-        return Status::TimedOut("");
+        return STATUS(TimedOut, "");
       }
       return s.CloneAndPrepend("BlockingWrite error");
     }
@@ -462,7 +462,7 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
   }
 
   if (tot_written < buflen) {
-    return Status::IOError("Wrote zero bytes on a BlockingWrite() call",
+    return STATUS(IOError, "Wrote zero bytes on a BlockingWrite() call",
         StringPrintf("Transferred %zu of %zu bytes", tot_written, buflen));
   }
   return Status::OK();
@@ -470,7 +470,7 @@ Status Socket::BlockingWrite(const uint8_t *buf, size_t buflen, size_t *nwritten
 
 Status Socket::Recv(uint8_t *buf, int32_t amt, int32_t *nread) {
   if (amt <= 0) {
-    return Status::NetworkError(
+    return STATUS(NetworkError,
           StringPrintf("invalid recv of %d bytes", amt), Slice(), EINVAL);
   }
 
@@ -487,10 +487,10 @@ Status Socket::Recv(uint8_t *buf, int32_t amt, int32_t *nread) {
   int res = ::recv(fd_, buf, amt, 0);
   if (res <= 0) {
     if (res == 0) {
-      return Status::NetworkError("Recv() got EOF from remote", Slice(), ESHUTDOWN);
+      return STATUS(NetworkError, "Recv() got EOF from remote", Slice(), ESHUTDOWN);
     }
     int err = errno;
-    return Status::NetworkError(std::string("recv error: ") +
+    return STATUS(NetworkError, std::string("recv error: ") +
                                 ErrnoToString(err), Slice(), err);
   }
   *nread = res;
@@ -508,7 +508,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
     int32_t num_to_read = amt - tot_read;
     MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
     if (PREDICT_FALSE(timeout.ToNanoseconds() <= 0)) {
-      return Status::TimedOut("");
+      return STATUS(TimedOut, "");
     }
     RETURN_NOT_OK(SetRecvTimeout(timeout));
     Status s = Recv(buf, num_to_read, &inc_num_read);
@@ -522,7 +522,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
         continue;
       }
       if (s.posix_code() == EAGAIN) {
-        return Status::TimedOut("");
+        return STATUS(TimedOut, "");
       }
       return s.CloneAndPrepend("BlockingRecv error");
     }
@@ -533,7 +533,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
   }
 
   if (PREDICT_FALSE(tot_read < amt)) {
-    return Status::IOError("Read zero bytes on a blocking Recv() call",
+    return STATUS(IOError, "Read zero bytes on a blocking Recv() call",
         StringPrintf("Transferred %zu of %zu bytes", tot_read, amt));
   }
   return Status::OK();
@@ -541,7 +541,7 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
 
 Status Socket::SetTimeout(int opt, std::string optname, const MonoDelta& timeout) {
   if (PREDICT_FALSE(timeout.ToNanoseconds() < 0)) {
-    return Status::InvalidArgument("Timeout specified as negative to SetTimeout",
+    return STATUS(InvalidArgument, "Timeout specified as negative to SetTimeout",
                                    timeout.ToString());
   }
   struct timeval tv;
@@ -549,7 +549,7 @@ Status Socket::SetTimeout(int opt, std::string optname, const MonoDelta& timeout
   socklen_t optlen = sizeof(tv);
   if (::setsockopt(fd_, SOL_SOCKET, opt, &tv, optlen) == -1) {
     int err = errno;
-    return Status::NetworkError(
+    return STATUS(NetworkError,
         StringPrintf("Failed to set %s to %s", optname.c_str(), timeout.ToString().c_str()),
         ErrnoToString(err), err);
   }

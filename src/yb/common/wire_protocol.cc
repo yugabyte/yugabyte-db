@@ -108,45 +108,45 @@ Status StatusFromPB(const AppStatusPB& pb) {
     case AppStatusPB::OK:
       return Status::OK();
     case AppStatusPB::NOT_FOUND:
-      return Status::NotFound(pb.message(), "", posix_code);
+      return STATUS(NotFound, pb.message(), "", posix_code);
     case AppStatusPB::CORRUPTION:
-      return Status::Corruption(pb.message(), "", posix_code);
+      return STATUS(Corruption, pb.message(), "", posix_code);
     case AppStatusPB::NOT_SUPPORTED:
-      return Status::NotSupported(pb.message(), "", posix_code);
+      return STATUS(NotSupported, pb.message(), "", posix_code);
     case AppStatusPB::INVALID_ARGUMENT:
-      return Status::InvalidArgument(pb.message(), "", posix_code);
+      return STATUS(InvalidArgument, pb.message(), "", posix_code);
     case AppStatusPB::IO_ERROR:
-      return Status::IOError(pb.message(), "", posix_code);
+      return STATUS(IOError, pb.message(), "", posix_code);
     case AppStatusPB::ALREADY_PRESENT:
-      return Status::AlreadyPresent(pb.message(), "", posix_code);
+      return STATUS(AlreadyPresent, pb.message(), "", posix_code);
     case AppStatusPB::RUNTIME_ERROR:
-      return Status::RuntimeError(pb.message(), "", posix_code);
+      return STATUS(RuntimeError, pb.message(), "", posix_code);
     case AppStatusPB::NETWORK_ERROR:
-      return Status::NetworkError(pb.message(), "", posix_code);
+      return STATUS(NetworkError, pb.message(), "", posix_code);
     case AppStatusPB::ILLEGAL_STATE:
-      return Status::IllegalState(pb.message(), "", posix_code);
+      return STATUS(IllegalState, pb.message(), "", posix_code);
     case AppStatusPB::NOT_AUTHORIZED:
-      return Status::NotAuthorized(pb.message(), "", posix_code);
+      return STATUS(NotAuthorized, pb.message(), "", posix_code);
     case AppStatusPB::ABORTED:
-      return Status::Aborted(pb.message(), "", posix_code);
+      return STATUS(Aborted, pb.message(), "", posix_code);
     case AppStatusPB::REMOTE_ERROR:
-      return Status::RemoteError(pb.message(), "", posix_code);
+      return STATUS(RemoteError, pb.message(), "", posix_code);
     case AppStatusPB::SERVICE_UNAVAILABLE:
-      return Status::ServiceUnavailable(pb.message(), "", posix_code);
+      return STATUS(ServiceUnavailable, pb.message(), "", posix_code);
     case AppStatusPB::TIMED_OUT:
-      return Status::TimedOut(pb.message(), "", posix_code);
+      return STATUS(TimedOut, pb.message(), "", posix_code);
     case AppStatusPB::UNINITIALIZED:
-      return Status::Uninitialized(pb.message(), "", posix_code);
+      return STATUS(Uninitialized, pb.message(), "", posix_code);
     case AppStatusPB::CONFIGURATION_ERROR:
-      return Status::ConfigurationError(pb.message(), "", posix_code);
+      return STATUS(ConfigurationError, pb.message(), "", posix_code);
     case AppStatusPB::INCOMPLETE:
-      return Status::Incomplete(pb.message(), "", posix_code);
+      return STATUS(Incomplete, pb.message(), "", posix_code);
     case AppStatusPB::END_OF_FILE:
-      return Status::EndOfFile(pb.message(), "", posix_code);
+      return STATUS(EndOfFile, pb.message(), "", posix_code);
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();
-      return Status::RuntimeError("(unknown error code)", pb.message(), posix_code);
+      return STATUS(RuntimeError, "(unknown error code)", pb.message(), posix_code);
   }
 }
 
@@ -270,7 +270,7 @@ Status ColumnPBsToSchema(const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
     columns.push_back(ColumnSchemaFromPB(pb));
     if (pb.is_key()) {
       if (!is_handling_key) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
           "Got out-of-order key column", pb.ShortDebugString());
       }
       num_key_columns++;
@@ -327,7 +327,7 @@ Status RewriteRowBlockPointers(const Schema& schema, const RowwiseRowBlockPB& ro
   size_t expected_data_size = rowblock_pb.num_rows() * row_size;
 
   if (PREDICT_FALSE(row_data_slice->size() != expected_data_size)) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("Row block has %zd bytes of data but expected %zd for %" PRIu32 " rows",
                    row_data_slice->size(), expected_data_size, rowblock_pb.num_rows()));
   }
@@ -354,7 +354,7 @@ Status RewriteRowBlockPointers(const Schema& schema, const RowwiseRowBlockPB& ro
         bool overflowed = false;
         size_t max_offset = AddWithOverflowCheck(offset_in_indirect, slice->size(), &overflowed);
         if (PREDICT_FALSE(overflowed || max_offset > indirect_data_slice.size())) {
-          return Status::Corruption(
+          return STATUS(Corruption,
             StringPrintf("Row #%d contained bad indirect slice for column %s: (%zd, %zd)",
                          row_idx, col.ToString().c_str(),
                          reinterpret_cast<uintptr_t>(slice->data()),
@@ -410,7 +410,7 @@ Status FindLeaderHostPort(const RepeatedPtrField<ServerEntryPB>& entries,
       continue;
     }
     if (!entry.has_role()) {
-      return Status::IllegalState(
+      return STATUS(IllegalState,
           strings::Substitute("Every server in must have a role, but entry ($0) has no role.",
                               entry.ShortDebugString()));
     }
@@ -418,7 +418,7 @@ Status FindLeaderHostPort(const RepeatedPtrField<ServerEntryPB>& entries,
       return HostPortFromPB(entry.registration().rpc_addresses(0), leader_hostport);
     }
   }
-  return Status::NotFound("No leader found.");
+  return STATUS(NotFound, "No leader found.");
 }
 
 template<class RowType>

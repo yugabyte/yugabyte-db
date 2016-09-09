@@ -81,7 +81,7 @@ Status RemoteBootstrapClientTest::CompareFileContents(const string& path1, const
   RETURN_NOT_OK(file1->Size(&size1));
   RETURN_NOT_OK(file2->Size(&size2));
   if (size1 != size2) {
-    return Status::Corruption("Sizes of files don't match",
+    return STATUS(Corruption, "Sizes of files don't match",
                               strings::Substitute("$0 vs $1 bytes", size1, size2));
   }
 
@@ -93,7 +93,7 @@ Status RemoteBootstrapClientTest::CompareFileContents(const string& path1, const
   RETURN_NOT_OK(env_util::ReadFully(file2.get(), 0, size2, &slice2, scratch2.data()));
   int result = strings::fastmemcmp_inlined(slice1.data(), slice2.data(), size1);
   if (result != 0) {
-    return Status::Corruption("Files do not match");
+    return STATUS(Corruption, "Files do not match");
   }
   return Status::OK();
 }

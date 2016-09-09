@@ -42,7 +42,7 @@ Status EnsureBlockingMode(const Socket* const sock) {
   bool is_nonblocking;
   RETURN_NOT_OK(sock->IsNonBlocking(&is_nonblocking));
   if (is_nonblocking) {
-    return Status::IllegalState("Underlying socket is not set to blocking mode!");
+    return STATUS(IllegalState, "Underlying socket is not set to blocking mode!");
   }
   return Status::OK();
 }
@@ -96,7 +96,7 @@ Status ReceiveFramedMessageBlocking(Socket* sock, faststring* recv_buf,
   // Verify that the payload size isn't out of bounds.
   // This can happen because of network corruption, or a naughty client.
   if (PREDICT_FALSE(payload_len > FLAGS_rpc_max_message_size)) {
-    return Status::IOError(
+    return STATUS(IOError,
         strings::Substitute(
             "Received invalid message of size $0 which exceeds"
             " the rpc_max_message_size of $1 bytes",

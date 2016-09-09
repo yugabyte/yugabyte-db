@@ -76,7 +76,7 @@ Status GetClockModes(timex* timex) {
   timex->modes = 0;
   int rc = ntp_adjtime(timex);
   if (PREDICT_FALSE(rc == TIME_ERROR)) {
-    return Status::ServiceUnavailable(
+    return STATUS(ServiceUnavailable,
         Substitute("Error reading clock. Clock considered unsynchronized. Return code: $0", rc));
   }
   // TODO what to do about leap seconds? see KUDU-146
@@ -93,10 +93,10 @@ yb::Status GetClockTime(ntptimeval* timeval) {
     case TIME_OK:
       return Status::OK();
     case -1: // generic error
-      return Status::ServiceUnavailable("Error reading clock. ntp_gettime() failed",
+      return STATUS(ServiceUnavailable, "Error reading clock. ntp_gettime() failed",
                                         ErrnoToString(errno));
     case TIME_ERROR:
-      return Status::ServiceUnavailable("Error reading clock. Clock considered unsynchronized");
+      return STATUS(ServiceUnavailable, "Error reading clock. Clock considered unsynchronized");
     default:
       // TODO what to do about leap seconds? see KUDU-146
       YB_LOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency issues "
@@ -114,7 +114,7 @@ Status CheckDeadlineNotWithinMicros(const MonoTime& deadline, int64_t wait_for_u
   int64_t us_until_deadline = deadline.GetDeltaSince(
       MonoTime::Now(MonoTime::FINE)).ToMicroseconds();
   if (us_until_deadline <= wait_for_usec) {
-    return Status::TimedOut(Substitute(
+    return STATUS(TimedOut, Substitute(
         "specified time is $0us in the future, but deadline expires in $1us",
         wait_for_usec, us_until_deadline));
   }
@@ -288,7 +288,7 @@ Status HybridClock::Update(const Timestamp& to_update) {
   // into the future as it might have been corrupted or originated from an out-of-sync
   // server.
   if ((to_update_physical - now_physical) > FLAGS_max_clock_sync_error_usec) {
-    return Status::InvalidArgument("Tried to update clock beyond the max. error.");
+    return STATUS(InvalidArgument, "Tried to update clock beyond the max. error.");
   }
 
   last_usec_ = to_update_physical;
@@ -409,7 +409,7 @@ yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_us
   // If the clock is synchronized but has max_error beyond max_clock_sync_error_usec
   // we also return a non-ok status.
   if (*error_usec > FLAGS_max_clock_sync_error_usec) {
-    return Status::ServiceUnavailable(Substitute("Error: Clock synchronized but error was"
+    return STATUS(ServiceUnavailable, Substitute("Error: Clock synchronized but error was"
         "too high ($0 us).", *error_usec));
   }
 #endif // defined(__APPLE__)

@@ -76,7 +76,7 @@ TEST_F(ReactorTest, TestFunctionIsCalledAtTheRightTime) {
 
 TEST_F(ReactorTest, TestFunctionIsCalledIfReactorShutdown) {
   messenger_->ScheduleOnReactor(
-      std::bind(&ReactorTest::ScheduledTask, this, _1, Status::Aborted("doesn't matter")),
+      std::bind(&ReactorTest::ScheduledTask, this, _1, STATUS(Aborted, "doesn't matter")),
       MonoDelta::FromSeconds(60));
   messenger_->Shutdown();
   latch_.Wait();

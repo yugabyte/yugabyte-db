@@ -161,7 +161,7 @@ class MockMemRowSet : public MockRowSet {
  public:
   virtual Status GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const OVERRIDE {
-    return Status::NotSupported("");
+    return STATUS(NotSupported, "");
   }
 
  private:

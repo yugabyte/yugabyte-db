@@ -59,7 +59,7 @@ class Clock : public RefCountedThreadSafe<Clock> {
   //
   // NOTE: this is not a very tight bound.
   virtual Status GetGlobalLatest(Timestamp* t) {
-    return Status::NotSupported("clock does not support global properties");
+    return STATUS(NotSupported, "clock does not support global properties");
   }
 
   // Indicates whether this clock supports the required external consistency mode.

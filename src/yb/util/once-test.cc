@@ -44,7 +44,7 @@ struct Thing {
 
   Status InitOnce() {
     if (should_fail_) {
-      return Status::IllegalState("Whoops!");
+      return STATUS(IllegalState, "Whoops!");
     }
     value_ = 1;
     return Status::OK();

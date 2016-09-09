@@ -149,7 +149,7 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
   // Check RUNNING state.
   tablet::TabletStatePB state = (*peer)->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = Status::IllegalState("Tablet not RUNNING",
+    Status s = STATUS(IllegalState, "Tablet not RUNNING",
                                     tablet::TabletStatePB_Name(state));
     if (state == tablet::FAILED) {
       s = s.CloneAndAppend((*peer)->error().ToString());
@@ -180,7 +180,7 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
     return true;
   }
   if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {
-    Status s = Status::InvalidArgument(Substitute("$0: Wrong destination UUID requested. "
+    Status s = STATUS(InvalidArgument, Substitute("$0: Wrong destination UUID requested. "
                                                   "Local UUID: $1. Requested UUID: $2",
                                                   method_name, local_uuid, req->dest_uuid()));
     LOG(WARNING) << s.ToString() << ": from " << context->requestor_string()
@@ -199,7 +199,7 @@ bool GetConsensusOrRespond(const scoped_refptr<TabletPeer>& tablet_peer,
                            scoped_refptr<Consensus>* consensus) {
   *consensus = tablet_peer->shared_consensus();
   if (!*consensus) {
-    Status s = Status::ServiceUnavailable("Consensus unavailable. Tablet not running");
+    Status s = STATUS(ServiceUnavailable, "Consensus unavailable. Tablet not running");
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::TABLET_NOT_RUNNING, context);
     return false;
@@ -213,7 +213,7 @@ Status GetTabletRef(const scoped_refptr<TabletPeer>& tablet_peer,
   *DCHECK_NOTNULL(tablet) = tablet_peer->shared_tablet();
   if (PREDICT_FALSE(!*tablet)) {
     *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-    return Status::IllegalState("Tablet is not running");
+    return STATUS(IllegalState, "Tablet is not running");
   }
   return Status::OK();
 }
@@ -539,7 +539,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
                  << " request-schema=" << req_schema.ToString()
                  << " (corruption)";
       SetupErrorAndRespond(resp->mutable_error(),
-                           Status::Corruption("got a different schema for the same version number"),
+                           STATUS(Corruption, "got a different schema for the same version number"),
                            TabletServerErrorPB::MISMATCHED_SCHEMA, context);
       return;
     }
@@ -548,7 +548,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
   // If the current schema is newer than the one in the request reject the request.
   if (schema_version > req->schema_version()) {
     SetupErrorAndRespond(resp->mutable_error(),
-                         Status::InvalidArgument("Tablet has a newer schema"),
+                         STATUS(InvalidArgument, "Tablet has a newer schema"),
                          TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA, context);
     return;
   }
@@ -584,7 +584,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   DCHECK(schema.has_column_ids());
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(),
-                         Status::InvalidArgument("Invalid Schema."),
+                         STATUS(InvalidArgument, "Invalid Schema."),
                          TabletServerErrorPB::INVALID_SCHEMA, context);
     return;
   }
@@ -593,7 +593,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   s = PartitionSchema::FromPB(req->partition_schema(), schema, &partition_schema);
   if (!s.ok()) {
     SetupErrorAndRespond(resp->mutable_error(),
-                         Status::InvalidArgument("Invalid PartitionSchema."),
+                         STATUS(InvalidArgument, "Invalid PartitionSchema."),
                          TabletServerErrorPB::INVALID_SCHEMA, context);
     return;
   }
@@ -692,14 +692,14 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
     }
-    SetupErrorAndRespond(resp->mutable_error(), Status::ServiceUnavailable(msg),
+    SetupErrorAndRespond(resp->mutable_error(), STATUS(ServiceUnavailable, msg),
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          context);
     return;
   }
 
   if (!server_->clock()->SupportsExternalConsistencyMode(req->external_consistency_mode())) {
-    Status s = Status::NotSupported("The configured clock does not support the"
+    Status s = STATUS(NotSupported, "The configured clock does not support the"
         " required consistency mode.");
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::UNKNOWN_ERROR,
@@ -721,7 +721,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   if (PREDICT_FALSE(req->has_write_batch())) {
-    Status s = Status::NotSupported("Write Request contains write batch. This field should be "
+    Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
                                     "used only for post-processed write requests during "
                                     "Raft replication.");
     SetupErrorAndRespond(resp->mutable_error(), s,
@@ -972,14 +972,14 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
 
   if (tablet_peer->state() != tablet::RUNNING) {
     SetupErrorAndRespond(resp->mutable_error(),
-                         Status::ServiceUnavailable("Tablet Peer not in RUNNING state"),
+                         STATUS(ServiceUnavailable, "Tablet Peer not in RUNNING state"),
                          TabletServerErrorPB::TABLET_NOT_RUNNING, context);
     return;
   }
   scoped_refptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
   if (PREDICT_FALSE(req->opid_type() == consensus::UNKNOWN_OPID_TYPE)) {
-    HandleUnknownError(Status::InvalidArgument("Invalid opid_type specified to GetLastOpId()"),
+    HandleUnknownError(STATUS(InvalidArgument, "Invalid opid_type specified to GetLastOpId()"),
                        resp, context);
     return;
   }
@@ -1010,7 +1010,7 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
   ConsensusConfigType type = req->type();
   if (PREDICT_FALSE(type != CONSENSUS_CONFIG_ACTIVE && type != CONSENSUS_CONFIG_COMMITTED)) {
     HandleUnknownError(
-        Status::InvalidArgument(Substitute("Unsupported ConsensusConfigType $0 ($1)",
+        STATUS(InvalidArgument, Substitute("Unsupported ConsensusConfigType $0 ($1)",
                                            ConsensusConfigType_Name(type), type)),
         resp, context);
     return;
@@ -1042,7 +1042,7 @@ void TabletServiceImpl::ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
   SharedScanner scanner;
   if (!server_->scanner_manager()->LookupScanner(req->scanner_id(), &scanner)) {
       resp->mutable_error()->set_code(TabletServerErrorPB::SCANNER_EXPIRED);
-      StatusToPB(Status::NotFound("Scanner not found"),
+      StatusToPB(STATUS(NotFound, "Scanner not found"),
                  resp->mutable_error()->mutable_status());
       return;
   }
@@ -1058,7 +1058,7 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
   // a scanner ID, but not both.
   if (PREDICT_FALSE(req->has_scanner_id() &&
                     req->has_new_scan_request())) {
-    context->RespondFailure(Status::InvalidArgument(
+    context->RespondFailure(STATUS(InvalidArgument,
                             "Must not pass both a scanner_id and new_scan_request"));
     return;
   }
@@ -1102,7 +1102,7 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
       return;
     }
   } else {
-    context->RespondFailure(Status::InvalidArgument(
+    context->RespondFailure(STATUS(InvalidArgument,
                               "Must pass either a scanner_id or new_scan_request"));
     return;
   }
@@ -1193,7 +1193,7 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
   // a scanner ID, but not both.
   if (PREDICT_FALSE(req->has_new_request() &&
                     req->has_continue_request())) {
-    context->RespondFailure(Status::InvalidArgument(
+    context->RespondFailure(STATUS(InvalidArgument,
                             "Must not pass both a scanner_id and new_scan_request"));
     return;
   }
@@ -1239,7 +1239,7 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
       return;
     }
   } else {
-    context->RespondFailure(Status::InvalidArgument(
+    context->RespondFailure(STATUS(InvalidArgument,
                             "Must pass either new_request or continue_request"));
     return;
   }
@@ -1275,7 +1275,7 @@ static Status ExtractPredicateValue(const ColumnSchema& schema,
     // TODO: add test case for this invalid request
     size_t expected_size = schema.type_info()->size();
     if (pb_value.size() != expected_size) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
         StringPrintf("Bad predicate on %s. Expected value size %zd, got %zd",
                      schema.ToString().c_str(), expected_size, pb_value.size()));
     }
@@ -1306,7 +1306,7 @@ static Status DecodeEncodedKeyRange(const NewScanRequestPB& scan_pb,
 
   if (scan_pb.order_mode() == ORDERED && scan_pb.has_last_primary_key()) {
     if (start) {
-      return Status::InvalidArgument("Cannot specify both a start key and a last key");
+      return STATUS(InvalidArgument, "Cannot specify both a start key and a last key");
     }
     // Set the start key to the last key from a previous scan result.
     RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(tablet_schema, scanner->arena(),
@@ -1343,7 +1343,7 @@ static Status SetupScanSpec(const NewScanRequestPB& scan_pb,
   // First the column range predicates.
   for (const ColumnRangePredicatePB& pred_pb : scan_pb.range_predicates()) {
     if (!pred_pb.has_lower_bound() && !pred_pb.has_upper_bound()) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
         string("Invalid predicate ") + pred_pb.ShortDebugString() +
         ": has no lower or upper bound.");
     }
@@ -1440,7 +1440,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
 
   if (projection.has_column_ids()) {
     *error_code = TabletServerErrorPB::INVALID_SCHEMA;
-    return Status::InvalidArgument("User requests should not have Column IDs");
+    return STATUS(InvalidArgument, "User requests should not have Column IDs");
   }
 
   if (scan_pb.order_mode() == ORDERED) {
@@ -1448,7 +1448,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     // resumed). Otherwise, this would be read committed isolation, which is not resumable.
     if (scan_pb.read_mode() != READ_AT_SNAPSHOT) {
       *error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
-          return Status::InvalidArgument("Cannot do an ordered scan that is not a snapshot read");
+          return STATUS(InvalidArgument, "Cannot do an ordered scan that is not a snapshot read");
     }
   }
 
@@ -1493,7 +1493,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     switch (scan_pb.read_mode()) {
       case UNKNOWN_READ_MODE: {
         *error_code = TabletServerErrorPB::INVALID_SCAN_SPEC;
-        s = Status::NotSupported("Unknown read mode.");
+        s = STATUS(NotSupported, "Unknown read mode.");
         return s;
       }
       case READ_LATEST: {
@@ -1581,7 +1581,7 @@ Status TabletServiceImpl::HandleContinueScanRequest(const ScanRequestPB* req,
       return Status::OK();
     } else {
       *error_code = TabletServerErrorPB::SCANNER_EXPIRED;
-      return Status::NotFound("Scanner not found");
+      return STATUS(NotFound, "Scanner not found");
     }
   }
 
@@ -1599,7 +1599,7 @@ Status TabletServiceImpl::HandleContinueScanRequest(const ScanRequestPB* req,
 
   if (req->call_seq_id() != scanner->call_seq_id()) {
     *error_code = TabletServerErrorPB::INVALID_SCAN_CALL_SEQ_ID;
-    return Status::InvalidArgument("Invalid call sequence ID in scan request");
+    return STATUS(InvalidArgument, "Invalid call sequence ID in scan request");
   }
   scanner->IncrementCallSeqId();
   scanner->UpdateAccessTime();
@@ -1737,11 +1737,11 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
     Timestamp max_allowed_ts;
     Status s = server_->clock()->GetGlobalLatest(&max_allowed_ts);
     if (!s.ok()) {
-      return Status::NotSupported("Snapshot scans not supported on this server",
+      return STATUS(NotSupported, "Snapshot scans not supported on this server",
                                   s.ToString());
     }
     if (tmp_snap_timestamp.CompareTo(max_allowed_ts) > 0) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           Substitute("Snapshot time $0 in the future. Max allowed timestamp is $1",
                      server_->clock()->Stringify(tmp_snap_timestamp),
                      server_->clock()->Stringify(max_allowed_ts)));

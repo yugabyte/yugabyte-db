@@ -125,7 +125,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
   Env* env = fs_manager_->env();
 
   if (!fs_manager_->Exists(tablet_wal_path)) {
-    return Status::IllegalState("Cannot find wal location at", tablet_wal_path);
+    return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
   }
 
   VLOG(1) << "Parsing segments from path: " << tablet_wal_path;
@@ -170,7 +170,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
       VLOG(1) << " Log Reader Indexed: " << entry->footer().ShortDebugString();
       // Check that the log segments are in sequence.
       if (previous_seg_seqno != -1 && entry->header().sequence_number() != previous_seg_seqno + 1) {
-        return Status::Corruption(Substitute("Segment sequence numbers are not consecutive. "
+        return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
             "Previous segment: seqno $0, path $1; Current segment: seqno $2, path $3",
             previous_seg_seqno, previous_seg_path,
             entry->header().sequence_number(), entry->path()));
@@ -285,7 +285,7 @@ Status LogReader::ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
   scoped_refptr<ReadableLogSegment> segment = GetSegmentBySequenceNumber(
     index_entry.segment_sequence_number);
   if (PREDICT_FALSE(!segment)) {
-    return Status::NotFound(Substitute("Segment $0 which contained index $1 has been GCed",
+    return STATUS(NotFound, Substitute("Segment $0 which contained index $1 has been GCed",
                                        index_entry.segment_sequence_number,
                                        index));
   }

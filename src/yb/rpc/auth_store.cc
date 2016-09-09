@@ -39,10 +39,10 @@ Status AuthStore::Add(const string& user, const string& pass) {
 Status AuthStore::Authenticate(const string& user, const string& pass) const {
   auto it = user_cred_map_.find(user);
   if (it == user_cred_map_.end()) {
-    return Status::NotFound("Unknown user", user);
+    return STATUS(NotFound, "Unknown user", user);
   }
   if (it->second != pass) {
-    return Status::NotAuthorized("Invalid credentials for user", user);
+    return STATUS(NotAuthorized, "Invalid credentials for user", user);
   }
   return Status::OK();
 }

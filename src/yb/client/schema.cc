@@ -206,16 +206,16 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   if (data_->has_rename_to) {
     // TODO(KUDU-861): adjust these errors as this method will also be used for
     // ALTER TABLE ADD COLUMN support.
-    return Status::NotSupported("cannot rename a column during CreateTable",
+    return STATUS(NotSupported, "cannot rename a column during CreateTable",
                                 data_->name);
   }
   if (data_->remove_default) {
-    return Status::NotSupported("cannot remove default during CreateTable",
+    return STATUS(NotSupported, "cannot remove default during CreateTable",
                                 data_->name);
   }
 
   if (!data_->has_type) {
-    return Status::InvalidArgument("no type provided for column", data_->name);
+    return STATUS(InvalidArgument, "no type provided for column", data_->name);
   }
   DataType internal_type = ToInternalDataType(data_->type);
 
@@ -319,7 +319,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     for (int i = 0; i < cols.size(); i++) {
       if (data_->specs[i]->data_->primary_key) {
         if (single_key_col_idx != -1) {
-          return Status::InvalidArgument("multiple columns specified for primary key",
+          return STATUS(InvalidArgument, "multiple columns specified for primary key",
                                          Substitute("$0, $1",
                                                     cols[single_key_col_idx].name(),
                                                     cols[i].name()));
@@ -329,12 +329,12 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     }
 
     if (single_key_col_idx == -1) {
-      return Status::InvalidArgument("no primary key specified");
+      return STATUS(InvalidArgument, "no primary key specified");
     }
 
     // TODO: eventually allow primary keys which aren't the first column
     if (single_key_col_idx != 0) {
-      return Status::InvalidArgument("primary key column must be the first column");
+      return STATUS(InvalidArgument, "primary key column must be the first column");
     }
 
     num_key_cols = 1;
@@ -346,7 +346,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
       // If they did pass the key column names, then we should not have explicitly
       // set it on any columns.
       if (spec->data_->primary_key) {
-        return Status::InvalidArgument("primary key specified by both SetPrimaryKey() and on a "
+        return STATUS(InvalidArgument, "primary key specified by both SetPrimaryKey() and on a "
                                        "specific column", spec->data_->name);
       }
       // If we have a duplicate column name, the Schema::Reset() will catch it later,
@@ -359,7 +359,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     for (const string& key_col_name : data_->key_col_names) {
       int idx;
       if (!FindCopy(name_to_idx_map, key_col_name, &idx)) {
-        return Status::InvalidArgument("primary key column not defined", key_col_name);
+        return STATUS(InvalidArgument, "primary key column not defined", key_col_name);
       }
       key_col_indexes.push_back(idx);
     }
@@ -369,7 +369,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // flexible user-facing API.
     for (int i = 0; i < key_col_indexes.size(); i++) {
       if (key_col_indexes[i] != i) {
-        return Status::InvalidArgument("primary key columns must be listed first in the schema",
+        return STATUS(InvalidArgument, "primary key columns must be listed first in the schema",
                                        data_->key_col_names[i]);
       }
     }

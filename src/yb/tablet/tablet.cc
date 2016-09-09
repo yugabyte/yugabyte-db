@@ -242,7 +242,7 @@ Status Tablet::OpenKeyValueTablet() {
     if (db != nullptr) {
       delete db;
     }
-    return Status::IllegalState(rocksdb_open_status.ToString());
+    return STATUS(IllegalState, rocksdb_open_status.ToString());
   }
   rocksdb_.reset(db);
   LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
@@ -453,7 +453,7 @@ Status Tablet::CheckRowInTablet(const ConstContiguousRow& row) const {
                                                                    &contains_row));
 
   if (PREDICT_FALSE(!contains_row)) {
-    return Status::NotFound(
+    return STATUS(NotFound,
         Substitute("Row not in tablet partition. Partition: '$0', row: '$1'.",
                    metadata_->partition_schema().PartitionDebugString(metadata_->partition(),
                                                                       *schema()),
@@ -529,7 +529,7 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
     default:
       LOG(FATAL) << "Cannot perform an unlocked insert for table type " << table_type_;
   }
-  return Status::IllegalState("This cannot happen");
+  return STATUS(IllegalState, "This cannot happen");
 }
 
 Status Tablet::KuduColumnarInsertUnlocked(
@@ -548,7 +548,7 @@ Status Tablet::KuduColumnarInsertUnlocked(
       bool present = false;
       RETURN_NOT_OK(rowset->CheckRowPresent(*insert->key_probe, &present, stats));
       if (PREDICT_FALSE(present)) {
-        Status s = Status::AlreadyPresent("key already present");
+        Status s = STATUS(AlreadyPresent, "key already present");
         if (metrics_) {
           metrics_->insertions_failed_dup_key->Increment();
         }
@@ -594,7 +594,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
   if (rcl_decoder.is_reinsert()) {
     // REINSERT mutations are the byproduct of an INSERT on top of a ghost
     // row, not something the user is allowed to specify on their own.
-    s = Status::InvalidArgument("User may not specify REINSERT mutations");
+    s = STATUS(InvalidArgument, "User may not specify REINSERT mutations");
   }
   if (!s.ok()) {
     mutate->SetFailed(s);
@@ -648,7 +648,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
     }
   }
 
-  s = Status::NotFound("key not found");
+  s = STATUS(NotFound, "key not found");
   mutate->SetFailed(s);
   return s;
 }
@@ -689,7 +689,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
     rocksdb::Checkpoint* checkpoint_raw_ptr = nullptr;
     status = rocksdb::Checkpoint::Create(rocksdb_.get(), &checkpoint_raw_ptr);
     if (!status.ok()) {
-      return Status::IllegalState(Substitute("Unable to create checkpoint object: $0",
+      return STATUS(IllegalState, Substitute("Unable to create checkpoint object: $0",
                                              status.ToString()));
     }
     checkpoint.reset(checkpoint_raw_ptr);
@@ -699,14 +699,14 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 
   if (!status.ok()) {
     LOG(WARNING) << "Create checkpoint status: " << status.ToString();
-    return Status::IllegalState(Substitute("Unable to create checkpoint: $0", status.ToString()));
+    return STATUS(IllegalState, Substitute("Unable to create checkpoint: $0", status.ToString()));
   }
   LOG(INFO) << "Checkpoint created in " << dir;
 
   vector<rocksdb::Env::FileAttributes> files_attrs;
   status = rocksdb_->GetEnv()->GetChildrenFileAttributes(dir, &files_attrs);
   if (!status.ok()) {
-    return Status::IllegalState(Substitute("Unable to get RocksDB files in dir $0: $1", dir,
+    return STATUS(IllegalState, Substitute("Unable to get RocksDB files in dir $0: $1", dir,
                                            status.ToString()));
   }
 
@@ -987,13 +987,13 @@ Status Tablet::FlushInternal(const RowSetsInCompaction& input,
 Status Tablet::CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
                                          const Schema* schema) {
   if (!key_schema_.KeyEquals(*schema)) {
-    return Status::InvalidArgument("Schema keys cannot be altered",
+    return STATUS(InvalidArgument, "Schema keys cannot be altered",
                                    schema->CreateKeyProjection().ToString());
   }
 
   if (!schema->has_column_ids()) {
     // this probably means that the request is not from the Master
-    return Status::InvalidArgument("Missing Column IDs");
+    return STATUS(InvalidArgument, "Missing Column IDs");
   }
 
   // Alter schema must run when no reads/writes are in progress.
@@ -1748,7 +1748,7 @@ Status Tablet::CaptureConsistentIterators(
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
   }
-  return Status::IllegalState("This should never happen");
+  return STATUS(IllegalState, "This should never happen");
 }
 
 Status Tablet::KeyValueCaptureConsistentIterators(

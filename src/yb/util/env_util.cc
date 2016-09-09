@@ -75,7 +75,7 @@ Status ReadFully(RandomAccessFile* file, uint64_t offset, size_t n,
     DCHECK_LE(this_result.size(), rem);
     if (this_result.size() == 0) {
       // EOF
-      return Status::IOError(Substitute("EOF trying to read $0 bytes at offset $1",
+      return STATUS(IOError, Substitute("EOF trying to read $0 bytes at offset $1",
                                         n, offset));
     }
 

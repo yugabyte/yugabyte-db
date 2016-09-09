@@ -34,31 +34,31 @@ namespace yb {
 TEST(StatusTest, TestPosixCode) {
   Status ok = Status::OK();
   ASSERT_EQ(0, ok.posix_code());
-  Status file_error = Status::IOError("file error", Slice(), ENOTDIR);
+  Status file_error = STATUS(IOError, "file error", Slice(), ENOTDIR);
   ASSERT_EQ(ENOTDIR, file_error.posix_code());
 }
 
 TEST(StatusTest, TestToString) {
-  Status file_error = Status::IOError("file error", Slice(), ENOTDIR);
-  ASSERT_EQ(string("IO error: file error (error 20)"), file_error.ToString());
+  Status file_error = STATUS(IOError, "file error", Slice(), ENOTDIR);
+  ASSERT_EQ(string("IO error: file error (error 20)"), file_error.ToString(false));
 }
 
 TEST(StatusTest, TestClonePrepend) {
-  Status file_error = Status::IOError("file error", "msg2", ENOTDIR);
+  Status file_error = STATUS(IOError, "file error", "msg2", ENOTDIR);
   Status appended = file_error.CloneAndPrepend("Heading");
-  ASSERT_EQ(string("IO error: Heading: file error: msg2 (error 20)"), appended.ToString());
+  ASSERT_EQ(string("IO error: Heading: file error: msg2 (error 20)"), appended.ToString(false));
 }
 
 TEST(StatusTest, TestCloneAppend) {
-  Status remote_error = Status::RemoteError("Application error");
-  Status appended = remote_error.CloneAndAppend(Status::NotFound("Unknown tablet").ToString());
+  Status remote_error = STATUS(RemoteError, "Application error");
+  Status appended = remote_error.CloneAndAppend(STATUS(NotFound, "Unknown tablet").ToString(false));
   ASSERT_EQ(string("Remote error: Application error: Not found: Unknown tablet"),
-            appended.ToString());
+            appended.ToString(false));
 }
 
 TEST(StatusTest, TestMemoryUsage) {
   ASSERT_EQ(0, Status::OK().memory_footprint_excluding_this());
-  ASSERT_GT(Status::IOError(
+  ASSERT_GT(STATUS(IOError,
       "file error", "some other thing", ENOTDIR).memory_footprint_excluding_this(), 0);
 }
 
@@ -74,10 +74,10 @@ TEST(StatusTest, TestMoveConstructor) {
   // Moving a not-OK status into a new one should make the moved status
   // "OK".
   {
-    Status src = Status::NotFound("foo");
+    Status src = STATUS(NotFound, "foo");
     Status dst = std::move(src);
     ASSERT_OK(src);
-    ASSERT_EQ("Not found: foo", dst.ToString());
+    ASSERT_EQ("Not found: foo", dst.ToString(false));
   }
 }
 
@@ -86,7 +86,7 @@ TEST(StatusTest, TestMoveAssignment) {
   // destination status OK.
   {
     Status src = Status::OK();
-    Status dst = Status::NotFound("orig dst");
+    Status dst = STATUS(NotFound, "orig dst");
     dst = std::move(src);
     ASSERT_OK(src);
     ASSERT_OK(dst);
@@ -94,20 +94,20 @@ TEST(StatusTest, TestMoveAssignment) {
 
   // Bad->Bad move.
   {
-    Status src = Status::NotFound("orig src");
-    Status dst = Status::NotFound("orig dst");
+    Status src = STATUS(NotFound, "orig src");
+    Status dst = STATUS(NotFound, "orig dst");
     dst = std::move(src);
     ASSERT_OK(src);
-    ASSERT_EQ("Not found: orig src", dst.ToString());
+    ASSERT_EQ("Not found: orig src", dst.ToString(false));
   }
 
   // Bad->OK move
   {
-    Status src = Status::NotFound("orig src");
+    Status src = STATUS(NotFound, "orig src");
     Status dst = Status::OK();
     dst = std::move(src);
     ASSERT_OK(src);
-    ASSERT_EQ("Not found: orig src", dst.ToString());
+    ASSERT_EQ("Not found: orig src", dst.ToString(false));
   }
 }
 

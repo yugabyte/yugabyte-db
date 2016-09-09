@@ -116,7 +116,7 @@ class PlainBlockDecoder : public BlockDecoder {
     CHECK(!parsed_);
 
     if (data_.size() < kPlainBlockHeaderSize) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           "not enough bytes for header in PlainBlockDecoder");
     }
 
@@ -124,7 +124,7 @@ class PlainBlockDecoder : public BlockDecoder {
     ordinal_pos_base_ = DecodeFixed32(&data_[4]);
 
     if (data_.size() != kPlainBlockHeaderSize + num_elems_ * size_of_type) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           string("unexpected data size. ") + "\nFirst 100 bytes: "
               + HexDump(
                   Slice(data_.data(),
@@ -176,7 +176,7 @@ class PlainBlockDecoder : public BlockDecoder {
     *exact_match = false;
     cur_idx_ = left;
     if (cur_idx_ == num_elems_) {
-      return Status::NotFound("after last key in block");
+      return STATUS(NotFound, "after last key in block");
     }
 
     return Status::OK();

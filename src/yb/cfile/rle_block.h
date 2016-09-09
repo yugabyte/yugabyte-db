@@ -87,7 +87,7 @@ class RleBitMapBlockBuilder : public BlockBuilder {
 
   // TODO Implement this method
   virtual Status GetFirstKey(void* key) const OVERRIDE {
-    return Status::NotSupported("BOOL keys not supported");
+    return STATUS(NotSupported, "BOOL keys not supported");
   }
 
  private:
@@ -113,7 +113,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
     CHECK(!parsed_);
 
     if (data_.size() < kRleBitmapBlockHeaderSize) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           "not enough bytes for header in RleBitMapBlockDecoder");
     }
 
@@ -179,7 +179,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
 
   virtual Status SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) OVERRIDE {
-    return Status::NotSupported("BOOL keys are not supported!");
+    return STATUS(NotSupported, "BOOL keys are not supported!");
   }
 
   virtual bool HasNext() const OVERRIDE { return cur_idx_ < num_elems_; }
@@ -250,7 +250,7 @@ class RleIntBlockBuilder : public BlockBuilder {
       *reinterpret_cast<CppType*>(key) = first_key_;
       return Status::OK();
     }
-    return Status::NotFound("No keys in the block");
+    return STATUS(NotFound, "No keys in the block");
   }
 
  private:
@@ -288,7 +288,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     CHECK(!parsed_);
 
     if (data_.size() < kRleBitmapBlockHeaderSize) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           "not enough bytes for header in RleIntBlockDecoder");
     }
 
@@ -358,7 +358,7 @@ class RleIntBlockDecoder : public BlockDecoder {
       cur_idx_++;
     }
 
-    return Status::NotFound("not in block");
+    return STATUS(NotFound, "not in block");
   }
 
   virtual Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {

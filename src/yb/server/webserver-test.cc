@@ -135,7 +135,7 @@ TEST_F(WebserverTest, TestPostTooBig) {
   string req(10000, 'c');
   Status s = curl_.PostToURL(strings::Substitute("http://$0/pprof/symbol", addr_.ToString()),
                              req, &buf_);
-  ASSERT_EQ("Remote error: HTTP 413", s.ToString());
+  ASSERT_EQ("Remote error: HTTP 413", s.ToString(/* no file/line */ false));
 }
 
 // Test that static files are served and that directory listings are
@@ -144,7 +144,7 @@ TEST_F(WebserverTest, TestStaticFiles) {
   // Fetch a non-existent static file.
   Status s = curl_.FetchURL(strings::Substitute("http://$0/foo.txt", addr_.ToString()),
                             &buf_);
-  ASSERT_EQ("Remote error: HTTP 404", s.ToString());
+  ASSERT_EQ("Remote error: HTTP 404", s.ToString(/* no file/line */ false));
 
   // Create the file and fetch again. This time it should succeed.
   ASSERT_OK(WriteStringToFile(env_.get(), "hello world",
@@ -157,7 +157,7 @@ TEST_F(WebserverTest, TestStaticFiles) {
   ASSERT_OK(env_->CreateDir(strings::Substitute("$0/dir", static_dir_)));
   s = curl_.FetchURL(strings::Substitute("http://$0/dir/", addr_.ToString()),
                      &buf_);
-  ASSERT_EQ("Remote error: HTTP 403", s.ToString());
+  ASSERT_EQ("Remote error: HTTP 403", s.ToString(/* no file/line */ false));
 }
 
 } // namespace yb

@@ -94,7 +94,7 @@ Status DeltaMemStore::Update(Timestamp timestamp,
       << "for rowid " << row_idx << " at timestamp " << timestamp;
   }
   if (PREDICT_FALSE(!mutation.Insert(update.slice()))) {
-    return Status::IOError("Unable to insert into tree");
+    return STATUS(IOError, "Unable to insert into tree");
   }
 
   anchorer_.AnchorIfMinimum(op_id.index());
@@ -353,7 +353,7 @@ Status DMSIterator::FilterColumnIdsAndCollectDeltas(const vector<ColumnId>& col_
                                                     vector<DeltaKeyAndUpdate>* out,
                                                     Arena* arena) {
   LOG(DFATAL) << "Attempt to call FilterColumnIdsAndCollectDeltas on DMS" << GetStackTrace();
-  return Status::InvalidArgument("FilterColumsAndAppend() is not supported by DMSIterator");
+  return STATUS(InvalidArgument, "FilterColumsAndAppend() is not supported by DMSIterator");
 }
 
 bool DMSIterator::HasNext() {

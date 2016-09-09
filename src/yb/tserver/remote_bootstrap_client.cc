@@ -113,7 +113,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
   CHECK_EQ(tablet_id_, meta->tablet_id());
   TabletDataState data_state = meta->tablet_data_state();
   if (data_state != tablet::TABLET_DATA_TOMBSTONED) {
-    return Status::IllegalState(Substitute("Tablet $0 not in tombstoned state: $1 ($2)",
+    return STATUS(IllegalState, Substitute("Tablet $0 not in tombstoned state: $1 ($2)",
                                            tablet_id_,
                                            TabletDataState_Name(data_state),
                                            data_state));
@@ -124,7 +124,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
 
   int64_t last_logged_term = meta->tombstone_last_logged_opid().term();
   if (last_logged_term > caller_term) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("Leader has term $0 but the last log entry written by the tombstoned replica "
                    "for tablet $1 has higher term $2. Refusing remote bootstrap from leader",
                    caller_term, tablet_id_, last_logged_term));
@@ -153,7 +153,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   Sockaddr addr;
   RETURN_NOT_OK(SockaddrFromHostPort(bootstrap_peer_addr, &addr));
   if (addr.IsWildcard()) {
-    return Status::InvalidArgument("Invalid wildcard address to remote bootstrap from",
+    return STATUS(InvalidArgument, "Invalid wildcard address to remote bootstrap from",
                                    Substitute("$0 (resolved to $1)",
                                               bootstrap_peer_addr.host(), addr.host()));
   }
@@ -178,7 +178,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                "Unable to begin remote bootstrap session");
 
   if (resp.superblock().tablet_data_state() != tablet::TABLET_DATA_READY) {
-    Status s = Status::IllegalState("Remote peer (" + bootstrap_peer_uuid + ")" +
+    Status s = STATUS(IllegalState, "Remote peer (" + bootstrap_peer_uuid + ")" +
                                     " is currently remotely bootstrapping itself!",
                                     resp.superblock().ShortDebugString());
     LOG_WITH_PREFIX(WARNING) << s.ToString();
@@ -206,7 +206,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     // SetTabletToReplace().
     int64_t last_logged_term = meta_->tombstone_last_logged_opid().term();
     if (last_logged_term > remote_committed_cstate_->current_term()) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           Substitute("Tablet $0: Bootstrap source has term $1 but "
                      "tombstoned replica has last-logged opid with higher term $2. "
                       "Refusing remote bootstrap from source peer $3",
@@ -304,7 +304,7 @@ Status RemoteBootstrapClient::ExtractRemoteError(const rpc::ErrorStatusPB& remot
     return StatusFromPB(error.status()).CloneAndPrepend("Received error code " +
               RemoteBootstrapErrorPB::Code_Name(error.code()) + " from remote service");
   } else {
-    return Status::InvalidArgument("Unable to decode remote bootstrap RPC error message",
+    return STATUS(InvalidArgument, "Unable to decode remote bootstrap RPC error message",
                                    remote_error.ShortDebugString());
   }
 }
@@ -578,14 +578,14 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
 Status RemoteBootstrapClient::VerifyData(uint64_t offset, const DataChunkPB& chunk) {
   // Verify the offset is what we expected.
   if (offset != chunk.offset()) {
-    return Status::InvalidArgument("Offset did not match what was asked for",
+    return STATUS(InvalidArgument, "Offset did not match what was asked for",
         Substitute("$0 vs $1", offset, chunk.offset()));
   }
 
   // Verify the checksum.
   uint32_t crc32 = crc::Crc32c(chunk.data().data(), chunk.data().length());
   if (PREDICT_FALSE(crc32 != chunk.crc32())) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         Substitute("CRC32 does not match at offset $0 size $1: $2 vs $3",
           offset, chunk.data().size(), crc32, chunk.crc32()));
   }

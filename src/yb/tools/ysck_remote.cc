@@ -313,7 +313,7 @@ Status RemoteYsckMaster::GetTabletsBatch(const string& table_name,
   if (resp.tablet_locations_size() != 0) {
     *last_partition_key = (resp.tablet_locations().end() - 1)->partition().partition_key_end();
   } else {
-    return Status::NotFound(Substitute(
+    return STATUS(NotFound, Substitute(
       "The Master returned 0 tablets for GetTableLocations of table $0 at start key $1",
       table_name, *(last_partition_key)));
   }

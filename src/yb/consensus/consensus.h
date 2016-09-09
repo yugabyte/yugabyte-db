@@ -132,7 +132,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
 
   // Implement a LeaderStepDown() request.
   virtual Status StepDown(LeaderStepDownResponsePB* resp) {
-    return Status::NotSupported("Not implemented.");
+    return STATUS(NotSupported, "Not implemented.");
   }
 
   // Creates a new ConsensusRound, the entity that owns all the data
@@ -222,14 +222,14 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   virtual Status ChangeConfig(const ChangeConfigRequestPB& req,
                               const StatusCallback& client_cb,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error) {
-    return Status::NotSupported("Not implemented.");
+    return STATUS(NotSupported, "Not implemented.");
   }
 
   // Check if a (new) leader is ready to accept config change requests.
   virtual Status IsLeaderReadyForChangeConfig(
      bool* is_ready,
      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) {
-    return Status::NotSupported("Not implemented.");
+    return STATUS(NotSupported, "Not implemented.");
   }
 
   // Returns the current Raft role of this instance.
@@ -264,7 +264,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // 'type' argument) that the Consensus implementation knows about.
   // Primarily used for testing purposes.
   virtual Status GetLastOpId(OpIdType type, OpId* id) {
-    return Status::NotFound("Not implemented.");
+    return STATUS(NotFound, "Not implemented.");
   }
 
  protected:

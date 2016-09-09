@@ -86,7 +86,7 @@ Status RemoteBootstrapSession::ChangeRole() {
   // null.
   if (!consensus) {
     tablet::TabletStatePB tablet_state = tablet_peer_->state();
-    return Status::IllegalState(Substitute("Unable to change role for server $0 for tablet $1."
+    return STATUS(IllegalState, Substitute("Unable to change role for server $0 for tablet $1."
                                            "Consensus is not available. Tablet state: $2 ($3)",
                                            requestor_uuid_, tablet_peer_->tablet_id(),
                                            tablet::TabletStatePB_Name(tablet_state), tablet_state));
@@ -184,7 +184,7 @@ Status RemoteBootstrapSession::Init() {
   scoped_refptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   if (!consensus) {
     tablet::TabletStatePB tablet_state = tablet_peer_->state();
-    return Status::IllegalState(Substitute("Unable to initialize remote bootstrap session "
+    return STATUS(IllegalState, Substitute("Unable to initialize remote bootstrap session "
                                 "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
                                 tablet_id, tablet::TabletStatePB_Name(tablet_state), tablet_state));
   }
@@ -205,7 +205,7 @@ Status RemoteBootstrapSession::Init() {
   assert(tablet_superblock_.table_type() == TableType::KEY_VALUE_TABLE_TYPE);
   auto tablet = tablet_peer_->shared_tablet();
   if (PREDICT_FALSE(!tablet)) {
-    return Status::IllegalState("Tablet is not running");
+    return STATUS(IllegalState, "Tablet is not running");
   }
 
   MonoTime now = MonoTime::Now(MonoTime::FINE);
@@ -255,7 +255,7 @@ static Status GetResponseDataSize(int64_t total_size,
   // If requested offset is off the end of the data, bail.
   if (offset >= total_size) {
     *error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         Substitute("Requested offset ($0) is beyond the data size ($1)",
                    offset, total_size));
   }
@@ -357,7 +357,7 @@ Status RemoteBootstrapSession::GetFilePiece(const std::string file_name,
   auto file_path = JoinPathSegments(checkpoint_dir_, file_name);
   if (!fs_manager_->env()->FileExists(file_path)) {
     *error_code = RemoteBootstrapErrorPB::ROCKSDB_FILE_NOT_FOUND;
-    return Status::NotFound(Substitute("Unable to find RocksDB file $0 in checkpoint directory $1",
+    return STATUS(NotFound, Substitute("Unable to find RocksDB file $0 in checkpoint directory $1",
                                        file_name, checkpoint_dir_));
   }
 
@@ -395,7 +395,7 @@ static Status AddImmutableFileToMap(Collection* const cache,
                                     uint64_t size) {
   // Sanity check for 0-length files.
   if (size == 0) {
-    return Status::Corruption("Found 0-length object");
+    return STATUS(Corruption, "Found 0-length object");
   }
 
   // Looks good, add it to the cache.
@@ -441,7 +441,7 @@ Status RemoteBootstrapSession::FindBlock(const BlockId& block_id,
   boost::lock_guard<simple_spinlock> l(session_lock_);
   if (!FindCopy(blocks_, block_id, block_info)) {
     *error_code = RemoteBootstrapErrorPB::BLOCK_NOT_FOUND;
-    s = Status::NotFound("Block not found", block_id.ToString());
+    s = STATUS(NotFound, "Block not found", block_id.ToString());
   }
   return s;
 }
@@ -455,7 +455,7 @@ Status RemoteBootstrapSession::OpenLogSegmentUnlocked(uint64_t segment_seqno) {
     position = segment_seqno - log_segments_[0]->header().sequence_number();
   }
   if (position < 0 || position >= log_segments_.size()) {
-    return Status::NotFound(Substitute("Segment with sequence number $0 not found",
+    return STATUS(NotFound, Substitute("Segment with sequence number $0 not found",
                                        segment_seqno));
   }
   log_segment = log_segments_[position];
@@ -478,7 +478,7 @@ Status RemoteBootstrapSession::FindLogSegment(uint64_t segment_seqno,
   boost::lock_guard<simple_spinlock> l(session_lock_);
   if (!FindCopy(logs_, segment_seqno, file_info)) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
-    return Status::NotFound(Substitute("Segment with sequence number $0 not found",
+    return STATUS(NotFound, Substitute("Segment with sequence number $0 not found",
                                        segment_seqno));
   }
   return Status::OK();

@@ -102,8 +102,9 @@ namespace yb {
 
 class YB_EXPORT Status {
  public:
+  Status() {}
+
   // Create a success status.
-  Status() : state_(NULL) { }
   ~Status() { delete[] state_; }
 
   // Copy the specified status.
@@ -120,81 +121,135 @@ class YB_EXPORT Status {
   static Status OK() { return Status(); }
 
   // Return error status of an appropriate type.
-  static Status NotFound(const Slice& msg, const Slice& msg2 = Slice(),
+  static Status NotFound(const char* file_name,
+                         int line_number,
+                         const Slice& msg,
+                         const Slice& msg2 = Slice(),
                          int16_t posix_code = -1) {
-    return Status(kNotFound, msg, msg2, posix_code);
+    return Status(kNotFound, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status Corruption(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kCorruption, msg, msg2, posix_code);
+  static Status Corruption(const char* file_name,
+                           int line_number,
+                           const Slice& msg,
+                           const Slice& msg2 = Slice(),
+                           int16_t posix_code = -1) {
+    return Status(kCorruption, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status NotSupported(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kNotSupported, msg, msg2, posix_code);
+  static Status NotSupported(const char* file_name,
+                             int line_number,
+                             const Slice& msg,
+                             const Slice& msg2 = Slice(),
+                             int16_t posix_code = -1) {
+    return Status(kNotSupported, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status InvalidArgument(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kInvalidArgument, msg, msg2, posix_code);
+  static Status InvalidArgument(const char* file_name,
+                                int line_number,
+                                const Slice& msg,
+                                const Slice& msg2 = Slice(),
+                                int16_t posix_code = -1) {
+    return Status(kInvalidArgument, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status IOError(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kIOError, msg, msg2, posix_code);
+  static Status IOError(const char* file_name,
+                        int line_number,
+                        const Slice& msg,
+                        const Slice& msg2 = Slice(),
+                        int16_t posix_code = -1) {
+    return Status(kIOError, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status AlreadyPresent(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kAlreadyPresent, msg, msg2, posix_code);
+  static Status AlreadyPresent(const char* file_name,
+                               int line_number,
+                               const Slice& msg,
+                               const Slice& msg2 = Slice(),
+                               int16_t posix_code = -1) {
+    return Status(kAlreadyPresent, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status RuntimeError(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kRuntimeError, msg, msg2, posix_code);
+  static Status RuntimeError(const char* file_name,
+                             int line_number,
+                             const Slice& msg,
+                             const Slice& msg2 = Slice(),
+                             int16_t posix_code = -1) {
+    return Status(kRuntimeError, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status NetworkError(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kNetworkError, msg, msg2, posix_code);
+  static Status NetworkError(const char* file_name,
+                             int line_number,
+                             const Slice& msg,
+                             const Slice& msg2 = Slice(),
+                             int16_t posix_code = -1) {
+    return Status(kNetworkError, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status IllegalState(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kIllegalState, msg, msg2, posix_code);
+  static Status IllegalState(const char* file_name,
+                             int line_number,
+                             const Slice& msg,
+                             const Slice& msg2 = Slice(),
+                             int16_t posix_code = -1) {
+    return Status(kIllegalState, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status NotAuthorized(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kNotAuthorized, msg, msg2, posix_code);
-  }
-  static Status Aborted(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kAborted, msg, msg2, posix_code);
-  }
-  static Status RemoteError(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kRemoteError, msg, msg2, posix_code);
-  }
-  static Status ServiceUnavailable(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kServiceUnavailable, msg, msg2, posix_code);
-  }
-  static Status TimedOut(const Slice& msg, const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kTimedOut, msg, msg2, posix_code);
-  }
-  static Status Uninitialized(const Slice& msg, const Slice& msg2 = Slice(),
+  static Status NotAuthorized(const char* file_name,
+                              int line_number,
+                              const Slice& msg,
+                              const Slice& msg2 = Slice(),
                               int16_t posix_code = -1) {
-    return Status(kUninitialized, msg, msg2, posix_code);
+    return Status(kNotAuthorized, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status ConfigurationError(const Slice& msg, const Slice& msg2 = Slice(),
+  static Status Aborted(const char* file_name,
+                        int line_number,
+                        const Slice& msg,
+                        const Slice& msg2 = Slice(),
+                        int16_t posix_code = -1) {
+    return Status(kAborted, msg, msg2, posix_code, file_name, line_number);
+  }
+  static Status RemoteError(const char* file_name,
+                            int line_number,
+                            const Slice& msg,
+                            const Slice& msg2 = Slice(),
+                            int16_t posix_code = -1) {
+    return Status(kRemoteError, msg, msg2, posix_code, file_name, line_number);
+  }
+  static Status ServiceUnavailable(const char* file_name,
+                                   int line_number,
+                                   const Slice& msg,
+                                   const Slice& msg2 = Slice(),
                                    int16_t posix_code = -1) {
-    return Status(kConfigurationError, msg, msg2, posix_code);
+    return Status(kServiceUnavailable, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status Incomplete(const Slice& msg, const Slice& msg2 = Slice(),
+  static Status TimedOut(const char* file_name,
+                         int line_number,
+                         const Slice& msg,
+                         const Slice& msg2 = Slice(),
+                         int16_t posix_code = -1) {
+    return Status(kTimedOut, msg, msg2, posix_code, file_name, line_number);
+  }
+  static Status Uninitialized(const char* file_name,
+                              int line_number,
+                              const Slice& msg,
+                              const Slice& msg2 = Slice(),
+                              int16_t posix_code = -1) {
+    return Status(kUninitialized, msg, msg2, posix_code, file_name, line_number);
+  }
+  static Status ConfigurationError(const char* file_name,
+                                   int line_number,
+                                   const Slice& msg,
+                                   const Slice& msg2 = Slice(),
+                                   int16_t posix_code = -1) {
+    return Status(kConfigurationError, msg, msg2, posix_code, file_name, line_number);
+  }
+  static Status Incomplete(const char* file_name,
+                           int line_number,
+                           const Slice& msg,
+                           const Slice& msg2 = Slice(),
                            int64_t posix_code = -1) {
-    return Status(kIncomplete, msg, msg2, posix_code);
+    return Status(kIncomplete, msg, msg2, posix_code, file_name, line_number);
   }
-  static Status EndOfFile(const Slice& msg, const Slice& msg2 = Slice(),
+  static Status EndOfFile(const char* file_name,
+                          int line_number,
+                          const Slice& msg,
+                          const Slice& msg2 = Slice(),
                           int64_t posix_code = -1) {
-    return Status(kEndOfFile, msg, msg2, posix_code);
+    return Status(kEndOfFile, msg, msg2, posix_code, file_name, line_number);
   }
 
   // Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   // Returns true iff the status indicates a NotFound error.
   bool IsNotFound() const { return code() == kNotFound; }
@@ -252,7 +307,7 @@ class YB_EXPORT Status {
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
-  std::string ToString() const;
+  std::string ToString(bool include_file_and_line = true) const;
 
   // Return a string representation of the status code, without the message
   // text or posix code information.
@@ -291,7 +346,11 @@ class YB_EXPORT Status {
   //    state_[4]    == code
   //    state_[5..6] == posix_code
   //    state_[7..]  == message
-  const char* state_;
+  const char* state_ = nullptr;
+
+  // This must always be a pointer to a constant string. The status object does not own this string.
+  const char* file_name_ = nullptr;
+  int line_number_ = 0;
 
   enum Code {
     kOk = 0,
@@ -324,13 +383,21 @@ class YB_EXPORT Status {
     return (state_ == NULL) ? kOk : static_cast<Code>(state_[4]);
   }
 
-  Status(Code code, const Slice& msg, const Slice& msg2, int16_t posix_code);
+  Status(Code code,
+         const Slice& msg,
+         const Slice& msg2,
+         int16_t posix_code,
+         const char* file_name,
+         int line_number);
   static const char* CopyState(const char* s);
 };
 
-inline Status::Status(const Status& s) {
+inline Status::Status(const Status& s)
+    : file_name_(s.file_name_),
+      line_number_(s.line_number_) {
   state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);
 }
+
 inline void Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
@@ -341,7 +408,10 @@ inline void Status::operator=(const Status& s) {
 }
 
 #if __cplusplus >= 201103L
-inline Status::Status(Status&& s) : state_(s.state_) {
+inline Status::Status(Status&& s)
+    : state_(s.state_),
+      file_name_(s.file_name_),
+      line_number_(s.line_number_)  {
   s.state_ = nullptr;
 }
 
@@ -351,9 +421,14 @@ inline void Status::operator=(Status&& s) {
     state_ = s.state_;
     s.state_ = nullptr;
   }
+  file_name_ = s.file_name_;
+  line_number_ = s.line_number_;
 }
 #endif
 
 }  // namespace yb
+
+#define STATUS(status_type, ...) (Status::status_type(__FILE__, __LINE__, __VA_ARGS__))
+
 
 #endif  // YB_UTIL_STATUS_H_

@@ -68,7 +68,7 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
   Status NewProxy(const RaftPeerPB& peer_pb,
                   gscoped_ptr<PeerProxy>* proxy) override {
     PeerProxy* proxy_ptr = FindPtrOrNull(*proxy_map_, peer_pb.permanent_uuid());
-    if (!proxy_ptr) return Status::NotFound("No proxy for peer.");
+    if (!proxy_ptr) return STATUS(NotFound, "No proxy for peer.");
     proxy->reset(proxy_ptr);
     return Status::OK();
   }
@@ -178,7 +178,7 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithHighTermVoter
   response.set_responder_term(election_term + 1);
   response.set_vote_granted(false);
   response.mutable_consensus_error()->set_code(ConsensusErrorPB::INVALID_TERM);
-  StatusToPB(Status::InvalidArgument("Bad term"),
+  StatusToPB(STATUS(InvalidArgument, "Bad term"),
       response.mutable_consensus_error()->mutable_status());
   down_cast<DelayablePeerProxy<MockedPeerProxy>*>(proxies_[voter_uuids_[0]])
       ->proxy()->set_vote_response(response);
@@ -229,12 +229,12 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithGrantDenyErro
       response.set_responder_term(election_term);
       response.set_vote_granted(false);
       response.mutable_consensus_error()->set_code(ConsensusErrorPB::LAST_OPID_TOO_OLD);
-      StatusToPB(Status::InvalidArgument("Last OpId"),
+      StatusToPB(STATUS(InvalidArgument, "Last OpId"),
           response.mutable_consensus_error()->mutable_status());
       --num_deny;
     } else if (num_error > 0) {
       response.mutable_error()->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
-      StatusToPB(Status::NotFound("Unknown Tablet"),
+      StatusToPB(STATUS(NotFound, "Unknown Tablet"),
           response.mutable_error()->mutable_status());
       --num_error;
     } else {

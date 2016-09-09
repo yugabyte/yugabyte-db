@@ -180,14 +180,14 @@ size_t BinaryPrefixBlockBuilder::Count() const {
 
 Status BinaryPrefixBlockBuilder::GetFirstKey(void *key) const {
   if (val_count_ == 0) {
-    return Status::NotFound("no keys in data block");
+    return STATUS(NotFound, "no keys in data block");
   }
 
   const uint8_t *p = &buffer_[kHeaderReservedLength];
   uint32_t shared, non_shared;
   p = DecodeEntryLengths(p, &buffer_[buffer_.size()], &shared, &non_shared);
   if (p == nullptr) {
-    return Status::Corruption("Could not decode first entry in string block");
+    return STATUS(Corruption, "Could not decode first entry in string block");
   }
 
   CHECK(shared == 0) << "first entry in string block had a non-zero 'shared': "
@@ -256,7 +256,7 @@ Status BinaryPrefixBlockDecoder::ParseHeader() {
   // Make sure the Slice we are referring to is at least the size of the
   // minimum possible header
   if (PREDICT_FALSE(data_.size() < kMinHeaderSize)) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       strings::Substitute("not enough bytes for header: string block header "
         "size ($0) less than minimum possible header length ($1)",
         data_.size(), kMinHeaderSize));
@@ -267,7 +267,7 @@ Status BinaryPrefixBlockDecoder::ParseHeader() {
   // referring to is as big as it claims to be
   size_t header_size = coding::DecodeGroupVarInt32_GetGroupSize(data_.data());
   if (PREDICT_FALSE(data_.size() < header_size)) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       strings::Substitute("string block header size ($0) less than length "
         "from in header ($1)", data_.size(), header_size));
     // TODO include hexdump
@@ -288,7 +288,7 @@ Status BinaryPrefixBlockDecoder::ParseHeader() {
   // sanity check the restarts size
   uint32_t restarts_size = num_restarts_ * sizeof(uint32_t);
   if (restarts_size > data_.size()) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("restart count %d too big to fit in block size %d",
                    num_restarts_, static_cast<int>(data_.size())));
   }
@@ -374,7 +374,7 @@ Status BinaryPrefixBlockDecoder::SeekAtOrAfterValue(const void *value_void,
       string err =
         StringPrintf("bad entry restart=%d shared=%d\n", mid, shared) +
         HexDump(Slice(entry, 16));
-      return Status::Corruption(err);
+      return STATUS(Corruption, err);
     }
     Slice mid_key(key_ptr, non_shared);
     if (mid_key.compare(target) < 0) {
@@ -429,7 +429,7 @@ Status BinaryPrefixBlockDecoder::CopyNextValues(size_t *n, ColumnDataView *dst) 
   // Grab the first row, which we've cached from the last call or seek.
   const uint8_t *out_data = out_arena->AddSlice(cur_val_);
   if (PREDICT_FALSE(out_data == nullptr)) {
-    return Status::IOError(
+    return STATUS(IOError,
       "Out of memory",
       StringPrintf("Failed to allocate %d bytes in output arena",
                    static_cast<int>(cur_val_.size())));
@@ -508,7 +508,7 @@ Status BinaryPrefixBlockDecoder::CheckNextPtr() {
 
   if (PREDICT_FALSE(next_ptr_ == reinterpret_cast<const uint8_t *>(restarts_))) {
     DCHECK_EQ(cur_idx_, num_elems_ - 1);
-    return Status::NotFound("Trying to parse past end of array");
+    return STATUS(NotFound, "Trying to parse past end of array");
   }
   return Status::OK();
 }
@@ -520,7 +520,7 @@ inline Status BinaryPrefixBlockDecoder::ParseNextIntoArena(Slice prev_val,
   uint32_t shared, non_shared;
   const uint8_t *val_delta = DecodeEntryLengths(next_ptr_, &shared, &non_shared);
   if (val_delta == nullptr) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("Could not decode value length data at idx %d",
                    cur_idx_));
   }
@@ -546,7 +546,7 @@ inline Status BinaryPrefixBlockDecoder::ParseNextValue() {
   uint32_t shared, non_shared;
   const uint8_t *val_delta = DecodeEntryLengths(next_ptr_, &shared, &non_shared);
   if (val_delta == nullptr) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("Could not decode value length data at idx %d",
                    cur_idx_));
   }

@@ -116,7 +116,7 @@ Status BinaryPlainBlockBuilder::GetFirstKey(void *key_void) const {
   Slice *slice = reinterpret_cast<Slice *>(key_void);
 
   if (offsets_.empty()) {
-    return Status::NotFound("no keys in data block");
+    return STATUS(NotFound, "no keys in data block");
   }
 
   if (PREDICT_FALSE(offsets_.size() == 1)) {
@@ -145,7 +145,7 @@ Status BinaryPlainBlockDecoder::ParseHeader() {
   CHECK(!parsed_);
 
   if (data_.size() < kMinHeaderSize) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       strings::Substitute("not enough bytes for header: string block header "
         "size ($0) less than minimum possible header length ($1)",
         data_.size(), kMinHeaderSize));
@@ -158,7 +158,7 @@ Status BinaryPlainBlockDecoder::ParseHeader() {
 
   // Sanity check.
   if (offsets_pos > data_.size()) {
-    return Status::Corruption(
+    return STATUS(Corruption,
       StringPrintf("offsets_pos %ld > block size %ld in plain string block",
                    offsets_pos, data_.size()));
   }
@@ -180,7 +180,7 @@ Status BinaryPlainBlockDecoder::ParseHeader() {
     }
     if (p > limit) {
       LOG(WARNING) << "bad block: " << HexDump(data_);
-      return Status::Corruption(
+      return STATUS(Corruption,
         StringPrintf("unable to decode offsets in block"));
     }
 
@@ -196,7 +196,7 @@ Status BinaryPlainBlockDecoder::ParseHeader() {
     p = coding::DecodeGroupVarInt32_SlowButSafe(p, &ints[0], &ints[1], &ints[2], &ints[3]);
     if (p > limit) {
       LOG(WARNING) << "bad block: " << HexDump(data_);
-      return Status::Corruption(
+      return STATUS(Corruption,
         StringPrintf("unable to decode offsets in block"));
     }
 
@@ -249,7 +249,7 @@ Status BinaryPlainBlockDecoder::SeekAtOrAfterValue(const void *value_void, bool 
   *exact = false;
   cur_idx_ = left;
   if (cur_idx_ == num_elems_) {
-    return Status::NotFound("after last key in block");
+    return STATUS(NotFound, "after last key in block");
   }
 
   return Status::OK();

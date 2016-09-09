@@ -150,7 +150,7 @@ static Status InsertRows(const shared_ptr<YBTable>& table, int num_rows) {
   vector<YBError*> errors;
   bool overflow;
   session->GetPendingErrors(&errors, &overflow);
-  s = overflow ? Status::IOError("Overflowed pending errors in session") :
+  s = overflow ? STATUS(IOError, "Overflowed pending errors in session") :
       errors.front()->status();
   while (!errors.empty()) {
     delete errors.back();
@@ -194,7 +194,7 @@ static Status ScanRows(const shared_ptr<YBTable>& table) {
         stringstream out;
         out << "Scan returned the wrong results. Expected key "
             << next_row << " but got " << val;
-        return Status::IOError(out.str());
+        return STATUS(IOError, out.str());
       }
     }
     results.clear();
@@ -207,7 +207,7 @@ static Status ScanRows(const shared_ptr<YBTable>& table) {
     stringstream out;
     out << "Scan returned the wrong results. Expected last row to be "
         << kUpperBound << " rows but got " << last_row_seen;
-    return Status::IOError(out.str());
+    return STATUS(IOError, out.str());
   }
   return Status::OK();
 }
