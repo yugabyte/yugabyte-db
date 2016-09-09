@@ -48,6 +48,7 @@ class Socket;
 namespace rpc {
 
 class Messenger;
+
 struct TransferCallbacks;
 
 struct RedisClientCommand {
@@ -67,7 +68,7 @@ class AbstractInboundTransfer {
   virtual ~AbstractInboundTransfer() {}
 
   // Read from the socket into our buffer.
-  virtual Status ReceiveBuffer(Socket& socket) = 0;
+  virtual Status ReceiveBuffer(Socket& socket) = 0;  // NOLINT.
 
   // Return true if any bytes have yet been received.
   virtual bool TransferStarted() const = 0;
@@ -93,7 +94,7 @@ class YBInboundTransfer : public AbstractInboundTransfer {
   YBInboundTransfer();
 
   // Read from the socket into our buffer.
-  Status ReceiveBuffer(Socket& socket) override;
+  Status ReceiveBuffer(Socket& socket) override;  // NOLINT.
 
   // Return true if any bytes have yet been received.
   bool TransferStarted() const override {
@@ -138,9 +139,11 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   // suitable for logging.
   std::string StatusAsString() const override;
 
-  const RedisClientCommand &client_command() const {
+  const RedisClientCommand& client_command() const {
     return client_command_;
   }
+
+  RedisInboundTransfer* ExcessData() const;
 
  private:
   static constexpr int kProtoIOBufLen = 1024 * 16;  // I/O buffer size for reading client commands.
@@ -171,6 +174,7 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
 
   // Returns true if the buffer has the \r\n required at the end of the token.
   bool FindEndOfLine();
+
   int64_t ParseNumber();
 
   int64_t cur_offset_ = 0;  // index into buf_ where the next byte read from the client is stored.
@@ -178,10 +182,10 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   bool done_ = false;
   int64_t parsing_pos_ = 0;  // index into buf_, from which the input needs to be parsed.
   int64_t searching_pos_ = 0;  // index into buf_, from which the input needs to be searched.
-                               // Typically ends up being equal to parsing_pos_ except when we
-                               // receive partial data. We don't want to search the searched data
-                               // again. Otherwise, the worst case analysis takes us to O(N^2) where
-                               // N is the message length.
+  // Typically ends up being equal to parsing_pos_ except when we
+  // receive partial data. We don't want to search the searched data
+  // again. Otherwise, the worst case analysis takes us to O(N^2) where
+  // N is the message length.
 
   DISALLOW_COPY_AND_ASSIGN(RedisInboundTransfer);
 };
@@ -195,7 +199,9 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
 // Upon completion of the transfer, a callback is triggered.
 class OutboundTransfer : public boost::intrusive::list_base_hook<> {
  public:
-  enum { kMaxPayloadSlices = 10 };
+  enum {
+    kMaxPayloadSlices = 10
+  };
 
   // Create a new transfer. The 'payload' slices will be concatenated and
   // written to the socket. When the transfer completes or errors, the
@@ -207,8 +213,8 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
   //
   // NOTE: 'payload' is currently restricted to a maximum of kMaxPayloadSlices
   // slices.
-  OutboundTransfer(const std::vector<Slice> &payload,
-                   TransferCallbacks *callbacks);
+  OutboundTransfer(const std::vector<Slice>& payload,
+                   TransferCallbacks* callbacks);
 
   // Destruct the transfer. A transfer object should never be deallocated
   // before it has either (a) finished transferring, or (b) been Abort()ed.
@@ -216,10 +222,10 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
 
   // Abort the current transfer, with the given status.
   // This triggers TransferCallbacks::NotifyTransferAborted.
-  void Abort(const Status &status);
+  void Abort(const Status& status);
 
   // send from our buffers into the sock
-  Status SendBuffer(Socket &socket);
+  Status SendBuffer(Socket& socket);  // NOLINT.
 
   // Return true if any bytes have yet been sent.
   bool TransferStarted() const {
@@ -251,7 +257,7 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
   // The number of bytes in the above slice which has already been sent.
   int32_t cur_offset_in_slice_;
 
-  TransferCallbacks *callbacks_;
+  TransferCallbacks* callbacks_;
 
   bool aborted_;
 
@@ -267,7 +273,7 @@ struct TransferCallbacks {
   virtual void NotifyTransferFinished() = 0;
 
   // The transfer was aborted (e.g because the connection died or an error occurred).
-  virtual void NotifyTransferAborted(const Status &status) = 0;
+  virtual void NotifyTransferAborted(const Status& status) = 0;
 };
 
 }  // namespace rpc

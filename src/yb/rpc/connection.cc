@@ -57,7 +57,7 @@ Status Connection::SetNonBlocking(bool enabled) {
   return socket_.SetNonBlocking(enabled);
 }
 
-void Connection::EpollRegister(ev::loop_ref& loop) {
+void Connection::EpollRegister(ev::loop_ref& loop) {  // NOLINT
   DCHECK(reactor_thread_->IsCurrentThread());
   DVLOG(4) << "Registering connection for epoll: " << ToString();
   write_io_.set(loop);
@@ -87,7 +87,7 @@ Connection::~Connection() {
 bool Connection::Idle() const {
   DCHECK(reactor_thread_->IsCurrentThread());
   // check if we're in the middle of receiving something
-  AbstractInboundTransfer* transfer = inbound_.get();
+  AbstractInboundTransfer* transfer = inbound();
   if (transfer && (transfer->TransferStarted())) {
     return false;
   }
@@ -116,11 +116,11 @@ void Connection::Shutdown(const Status& status) {
   DCHECK(reactor_thread_->IsCurrentThread());
   shutdown_status_ = status;
 
-  if (inbound_ && inbound_->TransferStarted()) {
+  if (inbound() != nullptr && inbound()->TransferStarted()) {
     double secs_since_active = reactor_thread_->cur_time()
         .GetDeltaSince(last_activity_time_).ToSeconds();
     LOG(WARNING) << "Shutting down connection " << ToString() << " with pending inbound data ("
-                 << inbound_->StatusAsString() << ", last active "
+                 << inbound()->StatusAsString() << ", last active "
                  << HumanReadableElapsedTime::ToShortString(secs_since_active)
                  << " ago, status=" << status.ToString() << ")";
   }
@@ -175,7 +175,7 @@ Connection::CallAwaitingResponse::~CallAwaitingResponse() {
   DCHECK(conn->reactor_thread_->IsCurrentThread());
 }
 
-void Connection::CallAwaitingResponse::HandleTimeout(ev::timer& watcher, int revents) {
+void Connection::CallAwaitingResponse::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   conn->HandleOutboundCallTimeout(this);
 }
 
@@ -330,7 +330,7 @@ class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
       : call_(call.Pass()), conn_(conn) {}
 
   ~RedisResponseTransferCallbacks() {
-    // TBD in https://phabricator.dev.yugabyte.com/D366
+    conn_->FinishedHandlingACall();
   }
 
  protected:
@@ -368,7 +368,7 @@ void Connection::set_user_credentials(const UserCredentials& user_credentials) {
   user_credentials_.CopyFrom(user_credentials);
 }
 
-void Connection::ReadHandler(ev::io& watcher, int revents) {
+void Connection::ReadHandler(ev::io& watcher, int revents) {  // NOLINT
   DCHECK(reactor_thread_->IsCurrentThread());
 
   DVLOG(3) << ToString() << " ReadHandler(revents=" << revents << ")";
@@ -380,10 +380,10 @@ void Connection::ReadHandler(ev::io& watcher, int revents) {
   last_activity_time_ = reactor_thread_->cur_time();
 
   while (true) {
-    if (!inbound_) {
-      inbound_.reset(MakeNewInboundTransfer());
+    if (inbound() == nullptr) {
+      CreateInboundTransfer();
     }
-    Status status = inbound_->ReceiveBuffer(socket_);
+    Status status = inbound()->ReceiveBuffer(socket_);
     if (PREDICT_FALSE(!status.ok())) {
       if (status.posix_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
@@ -393,19 +393,11 @@ void Connection::ReadHandler(ev::io& watcher, int revents) {
       reactor_thread_->DestroyConnection(this, status);
       return;
     }
-    if (!inbound_->TransferFinished()) {
+    if (!inbound()->TransferFinished()) {
       DVLOG(3) << ToString() << ": read is not yet finished yet.";
       return;
     }
-    DVLOG(3) << ToString() << ": finished reading " << inbound_->StatusAsString();
-
-    if (direction_ == CLIENT) {
-      HandleCallResponse(inbound_.Pass());
-    } else if (direction_ == SERVER) {
-      HandleIncomingCall(inbound_.Pass());
-    } else {
-      LOG(FATAL) << "Invalid direction: " << direction_;
-    }
+    HandleFinishedTransfer();
 
     // TODO: it would seem that it would be good to loop around and see if
     // there is more data on the socket by trying another recv(), but it turns
@@ -443,7 +435,7 @@ void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfe
   car->call->SetResponse(resp.Pass());
 }
 
-void Connection::WriteHandler(ev::io& watcher, int revents) {
+void Connection::WriteHandler(ev::io& watcher, int revents) {  // NOLINT
   DCHECK(reactor_thread_->IsCurrentThread());
 
   if (revents & EV_ERROR) {
@@ -492,9 +484,9 @@ std::string Connection::ToString() const {
   // include anything in the output about the current state,
   // which might concurrently change from another thread.
   return strings::Substitute(
-      "$0 $1",
-      direction_ == SERVER ? "server connection from" : "client connection to",
-      remote_.ToString());
+    "Connection ($0) $1 $2", this,
+    direction_ == SERVER ? "server connection from" : "client connection to",
+    remote_.ToString());
 }
 
 // Reactor task that transitions this Connection from connection negotiation to
@@ -577,6 +569,14 @@ void YBConnection::RunNegotiation(const MonoTime& deadline) {
   Negotiation::YBNegotiation(this, deadline);
 }
 
+void YBConnection::CreateInboundTransfer() {
+  return inbound_.reset(new YBInboundTransfer());
+}
+
+AbstractInboundTransfer *YBConnection::inbound() const {
+  return inbound_.get();
+}
+
 TransferCallbacks* YBConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
   gscoped_ptr<YBInboundCall> yb_call(down_cast<YBInboundCall*>(call.release()));
   return new YBResponseTransferCallbacks(yb_call.Pass(), this);
@@ -621,6 +621,16 @@ Status YBConnection::InitSaslServer() {
   return Status::OK();
 }
 
+void YBConnection::HandleFinishedTransfer() {
+  if (direction_ == CLIENT) {
+    HandleCallResponse(inbound_.PassAs<AbstractInboundTransfer>());
+  } else if (direction_ == SERVER) {
+    HandleIncomingCall(inbound_.PassAs<AbstractInboundTransfer>());
+  } else {
+    LOG(FATAL) << "Invalid direction: " << direction_;
+  }
+}
+
 void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
@@ -651,15 +661,35 @@ RedisConnection::RedisConnection(ReactorThread* reactor_thread,
                                  Sockaddr remote,
                                  int socket,
                                  Direction direction)
-    : Connection(reactor_thread, remote, socket, direction) {}
+    : Connection(reactor_thread, remote, socket, direction), processing_call_(false) {}
 
 void RedisConnection::RunNegotiation(const MonoTime& deadline) {
   Negotiation::RedisNegotiation(this, deadline);
 }
 
+void RedisConnection::CreateInboundTransfer() {
+  return inbound_.reset(new RedisInboundTransfer());
+}
+
+AbstractInboundTransfer *RedisConnection::inbound() const {
+  return inbound_.get();
+}
+
 TransferCallbacks* RedisConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
   gscoped_ptr<RedisInboundCall> redis_call(down_cast<RedisInboundCall *>(call.release()));
   return new RedisResponseTransferCallbacks(redis_call.Pass(), this);
+}
+
+void RedisConnection::HandleFinishedTransfer() {
+  if (processing_call_) {
+    DVLOG(4) << "Already handling a call from the client. Need to wait. " << ToString();
+    return;
+  }
+
+  CHECK(direction_ == SERVER) << "Invalid direction for Redis: " << direction_;
+  RedisInboundTransfer* next_transfer = inbound_->ExcessData();
+  HandleIncomingCall(inbound_.PassAs<AbstractInboundTransfer>());
+  inbound_.reset(next_transfer);
 }
 
 void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
@@ -675,7 +705,17 @@ void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> tr
     return;
   }
 
+  processing_call_ = true;
   reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
+}
+
+void RedisConnection::FinishedHandlingACall() {
+  // If the next client call has already been received by the server. Check if it is
+  // ready to be handled.
+  processing_call_ = false;
+  if (inbound_ && inbound_->TransferFinished()) {
+    HandleFinishedTransfer();
+  }
 }
 
 }  // namespace rpc

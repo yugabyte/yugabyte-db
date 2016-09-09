@@ -108,12 +108,12 @@ TEST_F(TestRedisService, SimpleCommandMulti) {
   SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
 }
 
-TEST_F(TestRedisService, DISABLED_BatchedCommandsInline) {
+TEST_F(TestRedisService, BatchedCommandsInline) {
   SendCommandAndExpectResponse("TEST1\r\nTEST2\r\nTEST3\r\nTEST4\r\n",
                                "+OK\r\n+OK\r\n+OK\r\n+OK\r\n");
 }
 
-TEST_F(TestRedisService, DISABLED_BatchedCommandMulti) {
+TEST_F(TestRedisService, BatchedCommandMulti) {
   SendCommandAndExpectResponse("*3\r\n$4\r\nset1\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
                                    "*3\r\n$4\r\nset2\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
                                    "*3\r\n$4\r\nset3\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",

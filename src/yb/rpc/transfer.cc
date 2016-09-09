@@ -132,6 +132,7 @@ bool RedisInboundTransfer::FindEndOfLine() {
 }
 
 int64_t RedisInboundTransfer::ParseNumber() {
+  // NOLINTNEXTLINE
   static_assert(sizeof(long long) == sizeof(int64_t),
                 "Expecting long long to be a 64-bit integer");
   char* end_ptr = nullptr;
@@ -213,9 +214,26 @@ bool RedisInboundTransfer::CheckMultiBulkBuffer() {
   }
 
   // We're done consuming the client's command when num_multi_bulk_args_left == 0.
-  // TODO: Fix this when we handle multiple commands in one connection.
-  CHECK_EQ(cur_offset_, parsing_pos_) << "Expect to consume all data when the command is read.";
   return true;
+}
+
+RedisInboundTransfer* RedisInboundTransfer::ExcessData() const {
+  CHECK_GE(cur_offset_, parsing_pos_) << "Parsing position cannot be past current offset.";
+  if (cur_offset_ == parsing_pos_) return nullptr;
+
+  // Copy excess data from buf_. Starting at pos_ up to cur_offset_.
+  const int excess_bytes_len = cur_offset_ - parsing_pos_;
+  RedisInboundTransfer *excess = new RedisInboundTransfer();
+  // Right now, all the buffers are created with the same size. When we handle large sized
+  // requests in RedisInboundTransfer, make sure that we have a large enough buffer.
+  assert(excess->buf_.size() > excess_bytes_len);
+  memcpy(static_cast<void *>(excess->buf_.data()),
+         static_cast<const void *>(buf_.data() + parsing_pos_),
+         excess_bytes_len);
+  excess->cur_offset_ = excess_bytes_len;
+  excess->CheckReadCompletely();
+
+  return excess;
 }
 
 void RedisInboundTransfer::CheckReadCompletely() {

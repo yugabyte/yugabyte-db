@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <boost/intrusive/list.hpp>
 #include <ev++.h>
+#include <atomic>
 #include <memory>
 #include <unordered_map>
 
@@ -46,7 +47,9 @@ namespace yb {
 namespace rpc {
 
 class DumpRunningRpcsRequestPB;
+
 class RpcConnectionPB;
+
 class ReactorThread;
 
 //
@@ -70,9 +73,9 @@ class Connection : public RefCountedThreadSafe<Connection> {
  public:
   enum Direction {
     // This host is sending calls via this connection.
-    CLIENT,
+        CLIENT,
     // This host is receiving calls via this connection.
-    SERVER
+        SERVER
   };
 
   // Create a new Connection.
@@ -90,7 +93,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   // Register our socket with an epoll loop.  We will only ever be registered in
   // one epoll loop at a time.
-  void EpollRegister(ev::loop_ref& loop);
+  void EpollRegister(ev::loop_ref& loop);  // NOLINT
 
   virtual ~Connection();
 
@@ -120,16 +123,16 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // marked failed.
   // Takes ownership of the 'call' object regardless of whether it succeeds or fails.
   // This may be called from a non-reactor thread.
-  void QueueOutboundCall(const std::shared_ptr<OutboundCall> &call);
+  void QueueOutboundCall(const std::shared_ptr<OutboundCall>& call);
 
   // The address of the remote end of the connection.
   const Sockaddr& remote() const { return remote_; }
 
   // libev callback when data is available to read.
-  void ReadHandler(ev::io& watcher, int revents);
+  void ReadHandler(ev::io& watcher, int revents);  // NOLINT
 
   // libev callback when we may write to the socket.
-  void WriteHandler(ev::io& watcher, int revents);
+  void WriteHandler(ev::io& watcher, int revents);  // NOLINT
 
   // Safe to be called from other threads.
   std::string ToString() const;
@@ -156,10 +159,15 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   Status DumpPB(const DumpRunningRpcsRequestPB& req,
                 RpcConnectionPB* resp);
+
  protected:
   friend struct CallAwaitingResponse;
+
   friend class QueueTransferTask;
+
   friend class YBResponseTransferCallbacks;
+
+  friend class RedisResponseTransferCallbacks;
 
   // A call which has been fully sent to the server, which we're waiting for
   // the server to process. This is used on the client side only.
@@ -167,7 +175,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
     ~CallAwaitingResponse();
 
     // Notification from libev that the call has timed out.
-    void HandleTimeout(ev::timer& watcher, int revents);
+    void HandleTimeout(ev::timer& watcher, int revents);  // NOLINT
 
     Connection* conn;
     std::shared_ptr<OutboundCall> call;
@@ -192,7 +200,9 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   virtual TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) = 0;
 
-  virtual AbstractInboundTransfer* MakeNewInboundTransfer() = 0;
+  virtual void CreateInboundTransfer() = 0;
+
+  virtual AbstractInboundTransfer* inbound() const = 0;
 
   // An incoming packet has completed transferring on the server side.
   // This parses the call and delivers it into the call queue.
@@ -202,6 +212,8 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
   void HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfer);
+
+  virtual void HandleFinishedTransfer() = 0;
 
   // The given CallAwaitingResponse has elapsed its user-defined timeout.
   // Set it to Failed.
@@ -213,7 +225,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   void QueueOutbound(gscoped_ptr<OutboundTransfer> transfer);
 
   // The reactor thread that created this connection.
-  ReactorThread * const reactor_thread_;
+  ReactorThread* const reactor_thread_;
 
   // The socket we're communicating on.
   Socket socket_;
@@ -229,9 +241,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   // The credentials of the user operating on this connection (if a client user).
   UserCredentials user_credentials_;
-
-  // the inbound transfer, if any
-  gscoped_ptr<AbstractInboundTransfer> inbound_;
 
   // notifies us when our socket is writable.
   ev::io write_io_;
@@ -282,13 +291,37 @@ class RedisConnection : public Connection {
 
   virtual void RunNegotiation(const MonoTime& deadline) override;
 
-  virtual AbstractInboundTransfer* MakeNewInboundTransfer() override {
-    return new RedisInboundTransfer();
-  }
+ protected:
+  virtual void CreateInboundTransfer() override;
 
   TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+
+  virtual void HandleFinishedTransfer() override;
+
+  AbstractInboundTransfer* inbound() const override;
+
+ private:
+  friend class RedisResponseTransferCallbacks;
+
+  gscoped_ptr<RedisInboundTransfer> inbound_;
+
+  // Used by the WriteHandler to signal that the current call has been
+  // responded to, so that the next call can be queued up for handling.
+  // Since the redis client calls do not have an associated call id. We
+  // need to be careful to make sure that the responses are sent in the
+  // same order in which the requests were made. Having more than one
+  // client request -- from the same connection -- cannot be allowed to
+  // process in parallel.
+  // In the current implementation, the Reader thread which receives data
+  // from the client, and the Writer thread that responds to the client are
+  // one and the same. So we might even be fine having this be a normal "bool"
+  // instead of atomic. But, we are just being safe here. There is no reason
+  // why the ReadHandler and WriteHandler should be on the same thread always.
+  std::atomic<bool> processing_call_;
+
+  void FinishedHandlingACall();
 };
 
 class YBConnection : public Connection {
@@ -312,14 +345,19 @@ class YBConnection : public Connection {
 
   virtual void RunNegotiation(const MonoTime& deadline) override;
 
-  virtual AbstractInboundTransfer* MakeNewInboundTransfer() override {
-    return new YBInboundTransfer();
-  }
+ protected:
+  virtual void CreateInboundTransfer() override;
 
   TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+
+  virtual void HandleFinishedTransfer() OVERRIDE;
+
+  AbstractInboundTransfer* inbound() const override;
+
  private:
+  gscoped_ptr<YBInboundTransfer> inbound_;
   // SASL client instance used for connection negotiation when Direction == CLIENT.
   SaslClient sasl_client_;
 
