@@ -37,30 +37,35 @@
     provider: *provider_aws
     latitude: 53.412910
     longitude: -8.243890
+    ybImage: ami-ee79069d
 - &aws-eu-central-1 !!com.yugabyte.yw.models.Region
     code: eu-central-1
     name: EU (Frankfurt)
     provider: *provider_aws
     latitude: 50.110922
     longitude: 8.682127
+    ybImage: ami-359d6f5a
 - &aws-ap-southeast-1 !!com.yugabyte.yw.models.Region
     code: ap-southeast-1
     name: Asia Pacific (Singapore)
     provider: *provider_aws
     latitude: 1.352083
     longitude: 103.819836
+    ybImage: ami-80ba60e3
 - &aws-ap-northeast-1 !!com.yugabyte.yw.models.Region
     code: ap-northeast-1
     name: Asia Pacific (Tokyo)
     provider: *provider_aws
     latitude: 35.689487
     longitude: 139.691706
+    ybImage: ami-397fab58
 - &aws-ap-southeast-2 !!com.yugabyte.yw.models.Region
     code: ap-southeast-2
     name: Asia Pacific (Sydney)
     provider: *provider_aws
     latitude: -33.868820
     longitude: 151.209296
+    ybImage: ami-50102133
 - &aws-ap-northeast-2 !!com.yugabyte.yw.models.Region
     code: ap-northeast-2
     name: Asia Pacific (Seoul)
@@ -73,6 +78,7 @@
     provider: *provider_aws
     latitude: -23.550520
     longitude: -46.633309
+    ybImage: ami-1052c27c
 
 # Availability Zones
 - &zone1 !!com.yugabyte.yw.models.AvailabilityZone
@@ -105,21 +111,93 @@
     name: us-east-1a
     region: *aws-us-east-1
     subnet: subnet-df6e8996
-- &zone6 !!com.yugabyte.yw.models.AvailabilityZone
+- &zone7 !!com.yugabyte.yw.models.AvailabilityZone
     code: us-east-1b
     name: us-east-1b
     region: *aws-us-east-1
     subnet: subnet-2a774672
-- &zone6 !!com.yugabyte.yw.models.AvailabilityZone
+- &zone8 !!com.yugabyte.yw.models.AvailabilityZone
     code: us-east-1d
     name: us-east-1d
     region: *aws-us-east-1
     subnet: subnet-8e84b3a4
-- &zone6 !!com.yugabyte.yw.models.AvailabilityZone
+- &zone9 !!com.yugabyte.yw.models.AvailabilityZone
     code: us-east-1e
     name: us-east-1e
     region: *aws-us-east-1
     subnet: subnet-9c1d1fa1
+- &zone10 !!com.yugabyte.yw.models.AvailabilityZone
+    code: eu-west-1a
+    name: eu-west-1a
+    region: *aws-eu-west-1
+    subnet: subnet-4cad0614
+- &zone11 !!com.yugabyte.yw.models.AvailabilityZone
+    code: eu-west-1b
+    name: eu-west-1b
+    region: *aws-eu-west-1
+    subnet: subnet-2d462f49
+- &zone12 !!com.yugabyte.yw.models.AvailabilityZone
+    code: eu-west-1c
+    name: eu-west-1c
+    region: *aws-eu-west-1
+    subnet: subnet-5777ed21
+- &zone13 !!com.yugabyte.yw.models.AvailabilityZone
+    code: eu-central-1a
+    name: eu-central-1a
+    region: *aws-eu-central-1
+    subnet: subnet-8e07d4e6
+- &zone14 !!com.yugabyte.yw.models.AvailabilityZone
+    code: eu-central-1b
+    name: eu-central-1b
+    region: *aws-eu-central-1
+    subnet: subnet-0fc12175
+- &zone15 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-northeast-1a
+    name: ap-northeast-1a
+    region: *aws-ap-northeast-1
+    subnet: subnet-5a7ddd2c
+- &zone16 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-northeast-1c
+    name: ap-northeast-1c
+    region: *aws-ap-northeast-1
+    subnet: subnet-f9b245a1
+- &zone17 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-southeast-1a
+    name: ap-southeast-1a
+    region: *aws-ap-southeast-1
+    subnet: subnet-c23b96b4
+- &zone18 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-southeast-1b
+    name: ap-southeast-1b
+    region: *aws-ap-southeast-1
+    subnet: subnet-bb04b7df
+- &zone19 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-southeast-2a
+    name: ap-southeast-2a
+    region: *aws-ap-southeast-2
+    subnet: subnet-4a4e932e
+- &zone20 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-southeast-2b
+    name: ap-southeast-2b
+    region: *aws-ap-southeast-2
+    subnet: subnet-bcbc47ca
+- &zone21 !!com.yugabyte.yw.models.AvailabilityZone
+    code: ap-southeast-2c
+    name: ap-southeast-2c
+    region: *aws-ap-southeast-2
+    subnet: subnet-40b14919
+- &zone20 !!com.yugabyte.yw.models.AvailabilityZone
+    code: sa-east-1a
+    name: sa-east-1a
+    region: *aws-sa-east-1
+    subnet: subnet-89462ced
+- &zone21 !!com.yugabyte.yw.models.AvailabilityZone
+    code: sa-east-1c
+    name: sa-east-1c
+    region: *aws-sa-east-1
+    subnet: subnet-78f2d121
+
+
 
 # InstanceType
 - &aws-c3large !!com.yugabyte.yw.models.InstanceType
