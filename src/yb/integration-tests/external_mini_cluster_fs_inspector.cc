@@ -258,7 +258,7 @@ Status ExternalMiniClusterFsInspector::WaitForReplicaCount(int expected, const M
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
   return STATUS(TimedOut, Substitute("Timed out waiting for a total replica count of $0. "
-                                     "Found $2 replicas",
+                                     "Found $1 replicas",
                                      expected, found));
 }
 
@@ -347,4 +347,3 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
 
 } // namespace itest
 } // namespace yb
-
