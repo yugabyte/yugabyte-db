@@ -295,6 +295,9 @@ public class AWSInitializer extends Controller {
    * the row for the instance type already exists.
    */
   private void storeInstanceTypeInfoToDB() {
+    // First reset all the JSON details of all entries in the table, as we are about to refresh it.
+    InstanceType.resetAllInstanceTypeDetails();
+
     for (Map<String, String> productAttrs : ec2AvailableInstances) {
       String providerCode = "aws";
 
