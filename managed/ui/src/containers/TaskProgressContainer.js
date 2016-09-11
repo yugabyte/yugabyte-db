@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import TaskProgressPanel from '../components/TaskProgressPanel.js';
+import TaskProgress from '../components/TaskProgress.js';
 import { fetchTaskProgress, fetchTaskProgressSuccess,
          fetchTaskProgressFailure, resetTaskProgress } from '../actions/tasks';
 import { connect } from 'react-redux';
@@ -30,4 +30,4 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-export default connect( mapStateToProps, mapDispatchToProps)(TaskProgressPanel);
+export default connect( mapStateToProps, mapDispatchToProps)(TaskProgress);

@@ -19,7 +19,7 @@ export default class ProgressList extends Component {
     } else if ( type === "Success" ) {
       return "fa fa-check-square-o"
     } else if ( type === "Running" ) {
-      return "fa fa-refresh"
+      return "fa fa-spin fa-refresh"
     }
     return null
   }

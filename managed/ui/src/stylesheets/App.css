@@ -140,7 +140,7 @@ ul.progress-list li {
   overflow: hidden;
 }
 ul.progress-list li i {
-  padding-right: 10px;
+  margin-right: 10px;
   color: #757679;
 }
 
@@ -181,8 +181,40 @@ ul.progress-list li i {
   margin: 0 20px;
 }
 
-.header-row .btn-group > div {
+.header-row .btn-group div {
   display: inline-block;
   margin-right: 10px;
   float: right;
+}
+
+.fa-spin {
+  -webkit-animation: fa-spin 2s infinite linear;
+          animation: fa-spin 2s infinite linear;
+}
+
+.fa-pulse {
+  -webkit-animation: fa-spin 1s infinite steps(8);
+          animation: fa-spin 1s infinite steps(8);
+}
+
+@-webkit-keyframes fa-spin {
+  0% {
+    -webkit-transform: rotate(0deg);
+            transform: rotate(0deg);
+  }
+  100% {
+    -webkit-transform: rotate(359deg);
+            transform: rotate(359deg);
+  }
+}
+
+@keyframes fa-spin {
+  0% {
+    -webkit-transform: rotate(0deg);
+            transform: rotate(0deg);
+  }
+  100% {
+    -webkit-transform: rotate(359deg);
+            transform: rotate(359deg);
+  }
 }

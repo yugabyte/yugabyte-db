@@ -1,6 +1,8 @@
 import UniverseTable from '../components/UniverseTable.js';
 import { fetchUniverseList, fetchUniverseListSuccess,
-  fetchUniverseListFailure, resetUniverseList} from '../actions/universe';
+  fetchUniverseListFailure, resetUniverseList, fetchUniverseTasks,
+  fetchUniverseTasksSuccess, fetchUniverseTasksFailure, resetUniverseTasks} from '../actions/universe';
+
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
@@ -17,6 +19,19 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseList: () => {
       dispatch(resetUniverseList());
+    },
+    fetchUniverseTasks: () => {
+      dispatch(fetchUniverseTasks())
+      .then((response) => {
+        if (!response.error) {
+          dispatch(fetchUniverseTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchUniverseTasksFailure(response.payload));
+        }
+      });
+    },
+    resetUniverseTasks: () => {
+      dispatch(resetUniverseTasks());
     }
   }
 }

@@ -9,6 +9,7 @@ import { isValidArray, isValidObject } from '../utils/ObjectUtils';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import DescriptionList from './DescriptionList';
+import TaskProgressContainer from '../containers/TaskProgressContainer';
 
 class UniverseDetailsCell extends Component {
   static propTypes = {
@@ -17,11 +18,19 @@ class UniverseDetailsCell extends Component {
 
   render() {
     const { cell } = this.props;
+    var taskUUIDs = cell["TaskUUIDs"];
+    if (isValidArray(taskUUIDs)) {
+      delete cell["TaskUUIDs"];
+    }
+
     var universeDetailsItems = Object.keys(cell).map(function(key, index) {
       return {name: key, data: cell[key]}
     });
     return (
-      <DescriptionList listItems={universeDetailsItems} />
+      <span>
+        <DescriptionList listItems={universeDetailsItems} />
+        <TaskProgressContainer taskUUIDs={taskUUIDs} type="Bar" />
+      </span>
     )
   }
 }
@@ -52,10 +61,12 @@ export default class UniverseTable extends Component {
 
   componentWillMount() {
     this.props.fetchUniverseList();
+    this.props.fetchUniverseTasks();
   }
 
   componentWillUnmount() {
     this.props.resetUniverseList();
+    this.props.resetUniverseTasks();
   }
 
   render() {
@@ -89,35 +100,50 @@ export default class UniverseTable extends Component {
       }
     }
 
-    if (isValidArray(this.props.universe.universeList)) {
-      universeDisplay = this.props.universe.universeList.map(function (item, idx) {
+    const { universe: { universeList, universeTasks, loading } } = this.props;
+
+    if (loading) {
+      return <div className="container">Loading...</div>;
+    }
+
+    if (isValidArray(universeList)) {
+      universeDisplay = universeList.map(function (item, idx) {
+        const { provider, regions, universeDetails } = item
+
         var regionNames = "";
-        if (typeof(item.regions) !== "undefined") {
-          regionNames = item.regions.map(function(region, idx) {
+        if (typeof(regions) !== "undefined") {
+          regionNames = regions.map(function(region, idx) {
             return {"idx": idx, "name": region.name};
           });
         }
-
         var providerName = "";
-        if (isValidObject(item.provider)) {
-          providerName = item.provider.name;
+        if (isValidObject(provider)) {
+          providerName = provider.name;
         }
 
-        var numNodes = "";
-        if (isValidObject(item.universeDetails.numNodes)) {
-          numNodes = item.universeDetails.numNodes;
+        var numNodes;
+        var replicationFactor;
+        if (isValidObject(universeDetails)) {
+          numNodes = universeDetails.numNodes;
+
+          if (isValidObject(universeDetails.userIntent)) {
+            replicationFactor = universeDetails.userIntent.replicationFactor;
+          }
         }
 
-        var replicationFactor = "";
-        if (isValidObject(item.universeDetails.userIntent)) {
-          replicationFactor = item.universeDetails.userIntent.replicationFactor;
+        var universeTaskUUIDs = []
+        if (universeTasks[item.universeUUID] !== undefined) {
+          universeTaskUUIDs = universeTasks[item.universeUUID].map(function(task) {
+            return (task.percentComplete !== 100) ? task.id : false;
+          }).filter(Boolean);
         }
 
-        var universeDetailString= {
+        var universeDetailString = {
           "Provider": providerName,
           "Regions": regionNames.length > 0 ? regionNames: [],
           "Num of Nodes": numNodes,
-          "Replication Factor": replicationFactor
+          "Replication Factor": replicationFactor,
+          "TaskUUIDs": universeTaskUUIDs
         };
 
         var updateProgressStatus = false;
@@ -136,6 +162,7 @@ export default class UniverseTable extends Component {
         } else {
           status = "pending";
         }
+
         var actionString = item.universeUUID;
         return {
           id: item.universeUUID,
@@ -149,7 +176,7 @@ export default class UniverseTable extends Component {
       });
     }
 
-    const tableBodyStyle = {"height": 500,"marginBottom": "1%","paddingBottom": "1%"};
+    const tableBodyStyle = {"marginBottom": "1%","paddingBottom": "1%"};
 
     const selectRowProp = {
       bgColor: "rgb(211,211,211)"
@@ -168,9 +195,6 @@ export default class UniverseTable extends Component {
           <TableHeaderColumn dataField="details"
                              dataFormat={detailStringFormatter} columnClassName="no-border-cell"
                              className="no-border-cell" dataAlign="left">Details</TableHeaderColumn>
-          <TableHeaderColumn columnClassName="no-border-cell"
-                             className="no-border-cell">
-          </TableHeaderColumn>
           <TableHeaderColumn dataField="status" dataFormat={statusStringFormatter}
                              columnClassName="no-border-cell" className="no-border-cell">
             Status
