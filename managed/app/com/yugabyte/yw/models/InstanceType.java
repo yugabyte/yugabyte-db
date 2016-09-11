@@ -87,7 +87,8 @@ public class InstanceType extends Model {
     }
     // Since 'instanceTypeDetailsJson' can be null (populated externally), we need to populate these
     // fields explicitly.
-    if (instanceType.instanceTypeDetailsJson == null) {
+    if (instanceType.instanceTypeDetailsJson == null ||
+        instanceType.instanceTypeDetailsJson.isEmpty()) {
       instanceType.instanceTypeDetails = new InstanceTypeDetails();
       instanceType.instanceTypeDetailsJson =
           Json.stringify(Json.toJson(instanceType.instanceTypeDetails));
@@ -142,6 +143,19 @@ public class InstanceType extends Model {
       LOG.error("Running query [" + updateQuery + "] updated " + modifiedCount + " rows");
     }
     return instanceType;
+  }
+
+  /**
+   * Reset the 'instance_type_details_json' of all rows is this table.
+   */
+  public static void resetAllInstanceTypeDetails() {
+    String updateQuery = "UPDATE instance_type SET instance_type_details_json = ''";
+    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
+    int modifiedCount = Ebean.execute(update);
+    LOG.info("Query [" + updateQuery + "] updated " + modifiedCount + " rows");
+    if (modifiedCount == 0) {
+      LOG.warn("Failed to update any SQL row");
+    }
   }
 
   /**
