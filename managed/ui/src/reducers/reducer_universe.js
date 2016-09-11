@@ -8,7 +8,7 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS} from '../actions/universe';
 
 
-const INITIAL_STATE = {currentUniverse: null,universeList: [], error: null};
+const INITIAL_STATE = {currentUniverse: null, universeList: [], universeTasks: [], error: null};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -30,9 +30,9 @@ export default function(state = INITIAL_STATE, action) {
     case RESET_UNIVERSE_INFO:
       return { ...state, currentUniverse: null, error: null, loading: false};
     case FETCH_UNIVERSE_LIST:
-      return { ...state, universeList: [], error: null};
+      return { ...state, universeList: [], error: null, loading: true};
     case FETCH_UNIVERSE_LIST_SUCCESS:
-      return { ...state, universeList: action.payload.data, error: null};
+      return { ...state, universeList: action.payload.data, error: null, loading: false};
     case FETCH_UNIVERSE_LIST_FAILURE:
       return { ...state, universeList: [], error: error, loading: false};
     case RESET_UNIVERSE_LIST:

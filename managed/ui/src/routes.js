@@ -45,7 +45,7 @@ export default (store) => {
       <Route onEnter={authenticatedSession} component={DashboardWrapper}>
         <IndexRoute component={Dashboard} />
         <Route path="/dashboard" component={Dashboard} />
-        <Route path="/universes" component={Universes}/>
+        <Route path="/universes" component={Universes} />
         <Route path="/universes/:uuid" component={UniverseDetail} />
       </Route>
     </Route>

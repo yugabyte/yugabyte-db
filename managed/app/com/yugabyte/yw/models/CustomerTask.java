@@ -65,10 +65,8 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @JsonBackReference
-  @ManyToOne
-  private Universe universe;
-  public UUID getUniverseUUID() { return universe.universeUUID; }
+  private UUID universeUUID;
+  public UUID getUniverseUUID() { return universeUUID; }
 
   @Constraints.Required
   @Column(nullable = false)
@@ -90,7 +88,7 @@ public class CustomerTask extends Model {
   public static CustomerTask create(Customer customer, Universe universe, UUID taskUUID, TargetType targetType, TaskType type, String targetName) {
     CustomerTask th = new CustomerTask();
     th.customer = customer;
-    th.universe = universe;
+    th.universeUUID = universe.universeUUID;
     th.taskUUID = taskUUID;
     th.targetType = targetType;
     th.type = type;

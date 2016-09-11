@@ -70,7 +70,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.isArray());
+    assertTrue(json.isObject());
     assertEquals(0, json.size());
   }
 
@@ -90,12 +90,15 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.isArray());
-    assertEquals(1, json.size());
-    assertThat(json.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
-    assertThat(json.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
-    assertThat(json.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
-    assertThat(json.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
+    assertTrue(json.isObject());
+
+    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertTrue(universeTasks.isArray());
+    assertEquals(1, universeTasks.size());
+    assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
+    assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
+    assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
+    assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
   }
 
   @Test
@@ -116,12 +119,14 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.isArray());
-    assertEquals(1, json.size());
-    assertThat(json.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
-    assertThat(json.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Bar")));
-    assertThat(json.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
-    assertThat(json.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
+    assertTrue(json.isObject());
+    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertTrue(universeTasks.isArray());
+    assertEquals(1, universeTasks.size());
+    assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
+    assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Bar")));
+    assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
+    assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
   }
 
   @Test

@@ -34,7 +34,7 @@ create table customer_task (
   target_type                   varchar(8) not null,
   target_name                   varchar(255) not null,
   type                          varchar(6) not null,
-  universe_universe_uuid        varchar(40),
+  universe_uuid                 varchar(40) not null,
   create_time                   datetime(6) not null,
   completion_time               datetime(6),
   constraint ck_customer_task_target_type check (target_type in ('Table','Universe')),
@@ -117,9 +117,6 @@ create index ix_availability_zone_region_uuid on availability_zone (region_uuid)
 alter table customer_task add constraint fk_customer_task_customer_uuid foreign key (customer_uuid) references customer (uuid) on delete restrict on update restrict;
 create index ix_customer_task_customer_uuid on customer_task (customer_uuid);
 
-alter table customer_task add constraint fk_customer_task_universe_universe_uuid foreign key (universe_universe_uuid) references universe (universe_uuid) on delete restrict on update restrict;
-create index ix_customer_task_universe_universe_uuid on customer_task (universe_universe_uuid);
-
 alter table region add constraint fk_region_provider_uuid foreign key (provider_uuid) references provider (uuid) on delete restrict on update restrict;
 create index ix_region_provider_uuid on region (provider_uuid);
 
@@ -131,9 +128,6 @@ drop index ix_availability_zone_region_uuid on availability_zone;
 
 alter table customer_task drop foreign key fk_customer_task_customer_uuid;
 drop index ix_customer_task_customer_uuid on customer_task;
-
-alter table customer_task drop foreign key fk_customer_task_universe_universe_uuid;
-drop index ix_customer_task_universe_universe_uuid on customer_task;
 
 alter table region drop foreign key fk_region_provider_uuid;
 drop index ix_region_provider_uuid on region;

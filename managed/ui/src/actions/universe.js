@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
+import { isValidObject } from '../utils/ObjectUtils';
 
 // Create Universe
 export const CREATE_UNIVERSE = 'CREATE_NEW_UNIVERSE';
@@ -168,8 +169,15 @@ export function editUniverseFailure(error) {
 
 export function fetchUniverseTasks(universeUUID) {
   var customerUUID = localStorage.getItem("customer_id");
-  const request =
-    axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`);
+
+  var requestUrl;
+  if (isValidObject(universeUUID)) {
+    requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`;
+  } else {
+    requestUrl = `${ROOT_URL}/customers/${customerUUID}/tasks`;
+  }
+
+  const request = axios.get(requestUrl);
   return {
     type: FETCH_UNIVERSE_TASKS,
     payload: request

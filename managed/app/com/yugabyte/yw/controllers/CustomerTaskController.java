@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
 
 import com.avaje.ebean.Query;
 import com.yugabyte.yw.models.Universe;
@@ -48,7 +50,7 @@ public class CustomerTaskController extends AuthenticatedController {
       return badRequest(responseJson);
     }
 
-    List<CustomerTaskFormData> taskList = fetchTasks(customerUUID, null);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
     return ApiResponse.success(taskList);
   }
 
@@ -59,28 +61,27 @@ public class CustomerTaskController extends AuthenticatedController {
     }
     try {
       Universe universe = Universe.get(universeUUID);
-      List<CustomerTaskFormData> taskList = fetchTasks(customerUUID, universe.universeUUID);
-
+      Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universe.universeUUID);
       return ApiResponse.success(taskList);
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
     }
   }
 
-  private List<CustomerTaskFormData> fetchTasks(UUID customerUUID,  UUID universeUUID) {
+  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID universeUUID) {
     Query<CustomerTask> taskQuery = CustomerTask.find.where()
       .eq("customer_uuid", customerUUID)
       .orderBy("create_time desc")
       .setMaxRows(TASK_HISTORY_LIMIT);
 
     if (universeUUID != null) {
-      taskQuery.where().eq("universe_universe_uuid", universeUUID);
+      taskQuery.where().eq("universe_uuid", universeUUID);
     }
 
 
     Set<CustomerTask> pendingTasks = taskQuery.findSet();
 
-    List<CustomerTaskFormData> taskList = new ArrayList<>();
+    Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
     String customerTaskBaseUrl =
       "http://" + ctx().request().host() + "/api/customers/" + customerUUID + "/tasks/";
 
@@ -102,10 +103,12 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.success = taskProgress.get("status").asText().equals("Success") ? true : false;
         taskData.id = task.getTaskUUID();
         taskData.title = task.getFriendlyDescription();
+        List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getUniverseUUID(), new ArrayList<>());
         taskList.add(taskData);
+        taskListMap.put(task.getUniverseUUID(), taskList);
       }
     }
-    return taskList;
+    return taskListMap;
   }
 
   public Result status(UUID customerUUID, UUID taskUUID) {
