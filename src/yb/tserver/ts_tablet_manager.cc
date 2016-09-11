@@ -37,6 +37,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
@@ -364,6 +365,10 @@ Status HandleReplacingStaleTablet(
       break;
     }
     case TABLET_DATA_READY: {
+      if (tablet_id == master::kSysCatalogTabletId) {
+        LOG(FATAL) << LogPrefix(tablet_id, uuid) << " Remote bootstrap: "
+                   << "Found tablet in TABLET_DATA_READY state during StartRemoteBootstrap()";
+      }
       // There's a valid race here that can lead us to come here:
       // 1. Leader sends a second remote bootstrap request as a result of receiving a
       // TABLET_NOT_FOUND from this tserver while it was in the middle of a remote bootstrap.

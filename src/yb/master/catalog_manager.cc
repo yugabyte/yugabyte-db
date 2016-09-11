@@ -1977,27 +1977,28 @@ Status CatalogManager::EnableBgTasks() {
 }
 
 Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+  const string& tablet_id = req.tablet_id();
+  std::unique_lock<std::mutex> l(remote_bootstrap_mtx_, std::try_to_lock);
+  if (!l.owns_lock()) {
+    return STATUS(IllegalState,
+                  Substitute("Remote bootstrap of tablet $0 already in progress", tablet_id));
+  }
+
   if (!master_->opts().IsShellMode()) {
     return STATUS(IllegalState, "Cannot bootstrap a master which is not in shell mode.");
   }
 
+  LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
+
   HostPort bootstrap_peer_addr;
   RETURN_NOT_OK(HostPortFromPB(req.bootstrap_peer_addr(), &bootstrap_peer_addr));
 
-  const string& tablet_id = req.tablet_id();
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   int64_t leader_term = req.caller_term();
 
   scoped_refptr<TabletPeer> old_tablet_peer;
   scoped_refptr<TabletMetadata> meta;
   bool replacing_tablet = false;
-
-  std::unique_lock<std::mutex> l(remote_bootstrap_mtx_, std::try_to_lock);
-  if (!l.owns_lock()) {
-    return STATUS(IllegalState,
-        Substitute("Remote bootstrap of tablet $0 already in progress", tablet_id));
-  }
-  LOG(INFO) << "Starting remote bootstrap: " << req.ShortDebugString();
 
   if (tablet_exists_) {
     old_tablet_peer = tablet_peer();
