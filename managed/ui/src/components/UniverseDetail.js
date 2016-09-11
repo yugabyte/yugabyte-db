@@ -9,7 +9,7 @@ import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
-import TaskProgessPanelContainer from '../containers/TaskProgressPanelContainer.js';
+import TaskProgressContainer from '../containers/TaskProgressContainer';
 
 export default class UniverseDetail extends Component {
   static contextTypes = {
@@ -33,13 +33,19 @@ export default class UniverseDetail extends Component {
   }
 
   render() {
-    const { currentUniverse, loading } = this.props.universe;
+    const { universe: { currentUniverse, universeTasks, loading } } = this.props;
     if (loading) {
       return <div className="container">Loading...</div>;
     } else if (!currentUniverse) {
       return <span />;
     }
     const { universeDetails } = currentUniverse;
+    var universeTaskUUIDs = []
+    if (universeTasks[currentUniverse.universeUUID] !== undefined) {
+      universeTaskUUIDs = universeTasks[currentUniverse.universeUUID].map(function(task) {
+        return (task.percentComplete !== 100) ? task.id : false;
+      }).filter(Boolean);
+    }
 
     return (
       <Grid id="page-wrapper">
@@ -49,12 +55,12 @@ export default class UniverseDetail extends Component {
           </Col>
           <ButtonGroup>
             <UniverseModalContainer type="Edit" />
-            <DeleteUniverseContainer uuid={this.props.universe.currentUniverse.universeUUID} />
+            <DeleteUniverseContainer uuid={currentUniverse.universeUUID} />
           </ButtonGroup>
         </Row>
         <Row>
           <Col lg={11}>
-            <ConnectStringPanel universeId={this.props.universe.currentUniverse.universeUUID}
+            <ConnectStringPanel universeId={currentUniverse.universeUUID}
                                 customerId={localStorage.getItem("customer_id")} />
           </Col>
         </Row>
@@ -64,7 +70,7 @@ export default class UniverseDetail extends Component {
           </Col>
           <Col md={5} lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse} />
-            <TaskProgessPanelContainer />
+            <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
           </Col>
         </Row>
         <Row>
