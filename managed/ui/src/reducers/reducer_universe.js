@@ -4,11 +4,13 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          CREATE_UNIVERSE, CREATE_UNIVERSE_SUCCESS, CREATE_UNIVERSE_FAILURE,
          FETCH_UNIVERSE_LIST, FETCH_UNIVERSE_LIST_SUCCESS, FETCH_UNIVERSE_LIST_FAILURE,
          RESET_UNIVERSE_LIST, DELETE_UNIVERSE, DELETE_UNIVERSE_SUCCESS,
-         DELETE_UNIVERSE_FAILURE, FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS,
-         FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS} from '../actions/universe';
+         DELETE_UNIVERSE_FAILURE, FETCH_CUSTOMER_COST, FETCH_CUSTOMER_COST_SUCCESS,
+         FETCH_CUSTOMER_COST_FAILURE, RESET_CUSTOMER_COST,
+         FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS,
+         FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS } from '../actions/universe';
 
-
-const INITIAL_STATE = {currentUniverse: null, universeList: [], universeTasks: [], error: null};
+const INITIAL_STATE = {currentUniverse: null, universeList: [], universeCurrentCostList: [],
+                       currentTotalCost: 0, error: null};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -36,7 +38,8 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_UNIVERSE_LIST_FAILURE:
       return { ...state, universeList: [], error: error, loading: false};
     case RESET_UNIVERSE_LIST:
-      return { ...state, universeList: [], error: null, loading: false};
+      return { ...state, universeList: [], universeCurrentCostList: [],
+        currentTotalCost: 0, error: null, loading: false};
     case FETCH_UNIVERSE_TASKS:
       return { ...state, universeTasks: [], error: null, loading: true};
     case FETCH_UNIVERSE_TASKS_SUCCESS:
@@ -51,6 +54,19 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, currentUniverse: null, error: null};
     case DELETE_UNIVERSE_FAILURE:
       return { ...state, error: action.payload.error}
+    case FETCH_CUSTOMER_COST:
+      return { ...state }
+    case FETCH_CUSTOMER_COST_SUCCESS:
+      var currentTotalCost = 0;
+      for (var counter in action.payload) {
+        currentTotalCost += action.payload[counter].costPerMonth;
+      }
+      return { ...state, universeCurrentCostList: action.payload,
+               currentTotalCost: currentTotalCost}
+    case FETCH_CUSTOMER_COST_FAILURE:
+      return { ...state}
+    case RESET_CUSTOMER_COST:
+      return { ...state, currentTotalCost: 0, universeCurrentCostList: []}
     default:
       return state;
   }

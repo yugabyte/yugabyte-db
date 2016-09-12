@@ -3,26 +3,25 @@
 import React, { Component } from 'react';
 import UniverseTableContainer from '../containers/UniverseTableContainer';
 import YBPanelItem from './YBPanelItem';
+import { Row, Col } from 'react-bootstrap';
 import UniverseModalContainer from '../containers/UniverseModalContainer';
 
 export default class ListUniverse extends Component {
   render() {
     return (
       <div id="page-wrapper">
-        <div className="row header-row">
-          <div className="col-lg-10 universe-table-header">
+        <Row className="header-row">
+          <Col lg={10} className="universe-table-header">
             <h3>Universes<small> Status and details</small></h3>
-          </div>
-        <div className="col-lg-1 universe-table-header-action">
-          <UniverseModalContainer type="Create" />
-        </div>
-        </div>
+          </Col>
+          <Col lg={1} className="universe-table-header-action">
+            <UniverseModalContainer type="Create" />
+          </Col>
+        </Row>
         <div>
-          <div>
-            <YBPanelItem name="Universe List">
-              <UniverseTableContainer />
-            </YBPanelItem>
-          </div>
+          <YBPanelItem name="Universe List">
+            <UniverseTableContainer />
+          </YBPanelItem>
         </div>
       </div>
     )

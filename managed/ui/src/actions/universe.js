@@ -30,6 +30,13 @@ export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_SUCCESS = 'DELETE_UNIVERSE_SUCCESS';
 export const DELETE_UNIVERSE_FAILURE = 'DELETE_UNIVERSE_FAILURE';
 
+
+// Get Universe Cost
+export const FETCH_CUSTOMER_COST = 'FETCH_CUSTOMER_COST';
+export const FETCH_CUSTOMER_COST_SUCCESS = 'FETCH_CUSTOMER_COST_SUCCESS';
+export const FETCH_CUSTOMER_COST_FAILURE = 'FETCH_CUSTOMER_COST_FAILURE';
+export const RESET_CUSTOMER_COST = 'RESET_CUSTOMER_COST';
+
 // Commissioner Tasks for Universe
 export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
 export const FETCH_UNIVERSE_TASKS_SUCCESS = 'FETCH_UNIVERSE_TASKS_SUCCESS';
@@ -37,7 +44,6 @@ export const FETCH_UNIVERSE_TASKS_FAILURE = 'FETCH_UNIVERSE_TASKS_FAILURE';
 export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 
 const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
-
 
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
@@ -167,6 +173,35 @@ export function editUniverseFailure(error) {
   }
 }
 
+export function fetchCustomerCost() {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/` + customerUUID + `/cost`);
+  return {
+    type: FETCH_CUSTOMER_COST,
+    payload: request
+  }
+}
+
+export function fetchCustomerCostSuccess(result) {
+  return {
+    type: FETCH_CUSTOMER_COST_SUCCESS,
+    payload: result
+  }
+}
+
+export function fetchCustomerCostFailue(error) {
+  return {
+    type: FETCH_CUSTOMER_COST_FAILURE,
+    payload: error
+  }
+}
+
+export function resetCustomerCost() {
+  return {
+    type: RESET_CUSTOMER_COST
+  }
+}
+
 export function fetchUniverseTasks(universeUUID) {
   var customerUUID = localStorage.getItem("customer_id");
 
@@ -198,7 +233,7 @@ export function fetchUniverseTasksFailure(error) {
   }
 }
 
-export function resetUniverseTasks(error) {
+export function resetUniverseTasks() {
   return {
     type: RESET_UNIVERSE_TASKS
   }
