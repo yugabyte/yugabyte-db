@@ -47,6 +47,7 @@ GDB_CORE_BACKTRACE_CMD_PREFIX=( gdb -q -n -ex bt -batch )
 DEFAULT_TEST_TIMEOUT_SEC=600
 INCREASED_TEST_TIMEOUT_SEC=1200
 
+EPHEMERAL_DRIVES_PATTERN="/mnt/ephemeral* /mnt/d*"
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -371,18 +372,20 @@ prepare_for_running_test() {
 
   #
   # If there are ephermeral drives, pick a random one for this test and create a symlink from
-  # $BUILD_ROOT/yb-test-logs/<testname> to /mnt/ephemeral?/test-workspace/<testname>.
+  # $BUILD_ROOT/yb-test-logs/<testname> to /mnt/<drive>/test-workspace/<testname>.
   # Otherwise, simply create the directory under $BUILD_ROOT/yb-test-logs.
   #
   test_dir="$YB_TEST_LOG_ROOT_DIR/$test_binary_sanitized"
   if [[ ! -d $test_dir ]]; then
     set +e
-    num_ephemeral_drives=$(ls -d /mnt/ephemeral* 2> /dev/null | wc -l)
+    num_ephemeral_drives=$(ls -d $EPHEMERAL_DRIVES_PATTERN 2> /dev/null | wc -l)
     set -e
     if [[ $num_ephemeral_drives -eq 0 ]]; then
       mkdir -p $test_dir
     else
-      rand_drive=$(ls -d /mnt/ephemeral* | sort -R | tail -1)
+      set +e
+      rand_drive=$(ls -d $EPHEMERAL_DRIVES_PATTERN | sort -R | tail -1)
+      set -e
       actual_dir=$rand_drive/test-workspace/$test_binary_sanitized
       mkdir -p "$actual_dir"
       ln -s "$actual_dir" "$test_dir"

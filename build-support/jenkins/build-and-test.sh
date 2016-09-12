@@ -113,11 +113,14 @@ mkdir -p "$BUILD_ROOT"
 # the drives for its working directory.
 #
 set +e
-for ephemeral_dir in $(ls -d /mnt/ephemeral* 2> /dev/null); do
-  if [[ -d $ephemeral_dir/test-workspace ]]; then
-    rm -rf "$ephemeral_dir"/test-workspace/*
+for ephemeral_dir in $(ls -d $EPHEMERAL_DRIVES_PATTERN 2> /dev/null); do
+  work_dir="$ephemeral_dir"/test-workspace
+  if [[ -d $work_dir ]]; then
+    echo "Cleaning up old contents in $work_dir/*"
+    rm -rf "$work_dir"/*
   else
-    mkdir -p "$ephemeral_dir"/test-workspace
+    echo "Creating $work_dir"
+    mkdir -p "$work_dir"
   fi
 done
 set -e
