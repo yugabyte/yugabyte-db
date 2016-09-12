@@ -21,6 +21,8 @@
 # the build tree, that the installed headers are sane, and that
 # the sample code can be built and runs correctly.
 
+set -e -u -o pipefail
+
 # Clean up after the test. Must be idempotent.
 cleanup() {
   if [ -n "$TS_PID" ]; then
@@ -40,7 +42,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-OUTPUT_DIR=$(cd $(dirname "$BASH_SOURCE"); pwd)
+OUTPUT_DIR=$(cd $(dirname "$BASH_SOURCE") && pwd)
 
 # Install the client library to a temporary directory.
 # Try to detect whether we're building using Ninja or Make.
@@ -61,7 +63,7 @@ popd
 # within the library.
 for include_file in $(find $LIBRARY_DIR -name \*.h) ; do
   echo Checking standalone compilation of $include_file...
-  if ! ${CXX:-g++} -o /dev/null -I$LIBRARY_DIR/usr/local/include $include_file ; then
+  if ! ${CXX:-g++} -std=c++11 -o /dev/null -I$LIBRARY_DIR/usr/local/include $include_file ; then
     set +x
     echo
     echo -----------------------------------------
@@ -71,6 +73,7 @@ for include_file in $(find $LIBRARY_DIR -name \*.h) ; do
     exit 1
   fi
 done
+
 # Prefer the cmake on the system path, since we expect our client library
 # to be usable with older versions of cmake. But if it isn't there,
 # use the one from thirdparty.

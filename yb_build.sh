@@ -287,17 +287,18 @@ if "$rocksdb_only"; then
   make_opts+=( build_rocksdb_all_targets )
 fi
 
-log "Running make in $PWD"
-set +u +e  # "set -u" may cause failures on empty lists
-time ( set -x; make -j8 "${make_opts[@]}" "${make_targets[@]}" )
-exit_code=$?
-set -u -e
-log "Non-java build finished with exit code $exit_code. Timing information is available above."
-if [ "$exit_code" -ne 0 ]; then
-  exit "$exit_code"
+if [[ $cxx_test_name != "client_samples-test" ]]; then
+  log "Running make in $PWD"
+  set +u +e  # "set -u" may cause failures on empty lists
+  time ( set -x; make -j8 "${make_opts[@]}" "${make_targets[@]}" )
+  exit_code=$?
+  set -u -e
+  log "Non-java build finished with exit code $exit_code. Timing information is available above."
+  if [ "$exit_code" -ne 0 ]; then
+    exit "$exit_code"
+  fi
+  touch "$thirdparty_built_flag_file"
 fi
-
-touch "$thirdparty_built_flag_file"
 
 if "$test_existence_check"; then
   (

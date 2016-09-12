@@ -25,5 +25,9 @@ include_directories(${YB_CLIENT_INCLUDE_DIR})
 # The YB client library always uses the old gcc ABI.
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
+# Kudu client becomes an internal client for YugaByte, so it is fine to assume we build it with
+# C++11.
+add_compile_options(-std=c++11)
+
 add_executable(sample sample.cc)
 target_link_libraries(sample yb_client)

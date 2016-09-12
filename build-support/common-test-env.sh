@@ -804,12 +804,25 @@ did_test_succeed() {
     return 1
   fi
 
+  if grep -q 'Segmentation fault: ' "$log_path"; then
+    log 'Segmentation fault'
+    return 1
+  fi
+
+  if grep -q 'Check failed: ' "$log_path"; then
+    log 'Check failed'
+    return 1
+  fi
+
   return 0
 }
 
 find_test_binary() {
   expect_num_args 1 "$@"
   local binary_name=$1
+  if [[ $binary_name == "client_samples-test" ]]; then
+    binary_name+=".sh"
+  fi
   expect_vars_to_be_set BUILD_ROOT
   local dirs_tried=""
   local rel_dir
