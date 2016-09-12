@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, PropTypes } from 'react';
 import { Modal } from 'react-bootstrap';
 import Select from 'react-select';
 import 'react-select/dist/react-select.css';
@@ -8,6 +8,11 @@ import $ from 'jquery';
 import { isValidObject } from '../utils/ObjectUtils';
 
 class UniverseModal extends Component {
+
+  static propTypes = {
+    type: PropTypes.oneOf(['Edit', 'Create']).isRequired,
+  }
+
   constructor(props) {
     super(props);
     this.showModal = this.showModal.bind(this);
@@ -20,16 +25,38 @@ class UniverseModal extends Component {
       showModal: false,
       regionSelected: []
     };
-    props.getProviderListItems();
   }
 
   componentDidMount() {
     var self = this;
+    this.props.getProviderListItems();
     if (this.props.type === "Edit") {
       var currentProvider = "";
-      var currentMultiAz = "";
+      var currentMultiAz = false;
       var universeName = "";
-      if(isValidObject(self.props.universe.currentUniverse)) {
+      // If Edit Universe is called in the context of Universe List
+      if(self.props.uuid) {
+        self.props.universe.universeList.map(function (universeItem, idx) {
+          if (universeItem.universeUUID === self.props.uuid) {
+            self.props.getRegionListItems(universeItem.provider.uuid, universeItem.universeDetails.userIntent.isMultiAZ);
+            self.props.getInstanceTypeListItems(universeItem.provider.uuid);
+            return (
+              self.setState({
+                universeName: universeItem.name,
+                currentMultiAz: universeItem.universeDetails.userIntent.isMultiAZ,
+                azCheckState: universeItem.universeDetails.userIntent.isMultiAZ,
+                regionSelected: universeItem.regions.map(function (item, idx) {
+                  return {'value': item.uuid, 'name': item.name, "label": item.name}
+                })
+              })
+            )
+          } else {
+              return null;
+          }
+        });
+      }
+      // If Edit Universe is called in the context of Current Universe
+      else if(isValidObject(self.props.universe.currentUniverse)) {
         currentProvider = self.props.universe.currentUniverse.provider.uuid;
         currentMultiAz = self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
         universeName = self.props.universe.currentUniverse.name;
@@ -45,10 +72,12 @@ class UniverseModal extends Component {
         universeName: universeName,
         azCheckState: currentMultiAz,
         regionSelected: items,
-        buttonType: "universe-button btn btn-xs btn-info ",
+        buttonType: "universe-button btn btn-xs btn-info",
         buttonIcon: "fa fa-pencil"
       }
-    } else {
+    }
+    // If Create Universe is called
+    else {
       this.state = {
         readOnlyInput: "",
         readOnlySelect: "",
@@ -93,8 +122,9 @@ class UniverseModal extends Component {
     if (this.props.type === "Create") {
       self.props.createNewUniverse($('#universeForm').serialize());
     } else {
-      self.props.editUniverse(this.props.universe.currentUniverse.universeUUID,
-        $('#universeForm').serialize());
+      var universeUUID = typeof self.props.uuid !== "undefined" ? self.props.uuid :
+        this.props.universe.currentUniverse.universeUUID;
+      self.props.editUniverse(universeUUID, $('#universeForm').serialize());
     }
     self.closeModal();
   }
