@@ -6,6 +6,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
+import java.util.Calendar;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +66,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Create for {}.", customerUUID);
       // Get the user submitted form data.
       Form<UniverseFormData> formData =
-        formFactory.form(UniverseFormData.class).bindFromRequest();
+              formFactory.form(UniverseFormData.class).bindFromRequest();
 
       // Check for any form errors.
       if (formData.hasErrors()) {
@@ -87,25 +89,25 @@ public class UniverseController extends AuthenticatedController {
       customer.save();
 
       LOG.info("Added universe {} : {} for customer [{}].",
-    		  universe.universeUUID, universe.name, customer.customerId);
+              universe.universeUUID, universe.name, customer.customerId);
 
       UniverseDefinitionTaskParams taskParams =
-        getTaskParams(formData, universe, customer.customerId);
+              getTaskParams(formData, universe, customer.customerId);
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
       LOG.info("Submitted create universe for {}:{}, task uuid = {}.",
-               universe.universeUUID, universe.name, taskUUID);
+              universe.universeUUID, universe.name, taskUUID);
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-                          universe,
-                          taskUUID,
-                          CustomerTask.TargetType.Universe,
-                          CustomerTask.TaskType.Create,
-                          universe.name);
+              universe,
+              taskUUID,
+              CustomerTask.TargetType.Universe,
+              CustomerTask.TaskType.Create,
+              universe.name);
       LOG.info("Saved task uuid " + taskUUID + " in customer tasks table for universe " +
-               universe.universeUUID + ":" + universe.name);
+              universe.universeUUID + ":" + universe.name);
 
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
@@ -127,7 +129,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Update {} for {}.", customerUUID, universeUUID);
       // Get the user submitted form data.
       Form<UniverseFormData> formData =
-        formFactory.form(UniverseFormData.class).bindFromRequest();
+              formFactory.form(UniverseFormData.class).bindFromRequest();
 
       // Check for any form errors.
       if (formData.hasErrors()) {
@@ -146,21 +148,21 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Found universe {} : {}.", universe.universeUUID, universe.name);
 
       UniverseDefinitionTaskParams taskParams =
-        getTaskParams(formData, universe, customer.customerId);
+              getTaskParams(formData, universe, customer.customerId);
 
       UUID taskUUID = commissioner.submit(TaskInfo.Type.EditUniverse, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
-               universe.universeUUID, universe.name, taskUUID);
+              universe.universeUUID, universe.name, taskUUID);
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-                          universe,
-                          taskUUID,
-                          CustomerTask.TargetType.Universe,
-                          CustomerTask.TaskType.Update,
-                          universe.name);
+              universe,
+              taskUUID,
+              CustomerTask.TargetType.Universe,
+              CustomerTask.TaskType.Update,
+              universe.name);
       LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
-                universe.universeUUID, universe.name);
+              universe.universeUUID, universe.name);
       ObjectNode resultNode = (ObjectNode)universe.toJson();
       resultNode.put("taskUUID", taskUUID.toString());
       return Results.status(OK, resultNode);
@@ -227,11 +229,11 @@ public class UniverseController extends AuthenticatedController {
 
     // Add this task uuid to the user universe.
     CustomerTask.create(customer,
-                        universe,
-                        taskUUID,
-                        CustomerTask.TargetType.Universe,
-                        CustomerTask.TaskType.Delete,
-                        universe.name);
+            universe,
+            taskUUID,
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Delete,
+            universe.name);
 
     // Remove the entry for the universe from the customer table.
     customer.removeUniverseUUID(universeUUID);
@@ -254,36 +256,41 @@ public class UniverseController extends AuthenticatedController {
     // Make sure the universe exists, this method will throw an exception if it does not.
     try {
       universe = Universe.get(universeUUID);
-    } catch (RuntimeException e) {
+    }
+    catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
-
-    // Get the node list for the universe.
-    Collection<NodeDetails> nodes = universe.getNodes();
-
-    double costPerDay = 0;
-
-    // TODO: only pick the newly configured nodes in case of the universe being edited.
-    for (NodeDetails node : nodes) {
-      // Get the region code for this node.
-      String regionCode = AvailabilityZone.find.byId(node.azUuid).region.code;
-      // Get the price.
-      // TODO: we do not currently store tenancy for the node.
-      try {
-        double instanceCostPerDay = AWSCostUtil.getCostPerHour(node.instance_type,
-                                                               regionCode,
-                                                               AWSConstants.Tenancy.Shared) * 24;
-        LOG.info("Computed cost per day for instance {}, type {}, region {} as {}",
-                 node.instance_name, node.instance_type, node.region, instanceCostPerDay);
-        costPerDay += instanceCostPerDay;
-      } catch (Exception e) {
-        return ApiResponse.error(INTERNAL_SERVER_ERROR,
-                                 "Error getting cost for universe " + universeUUID);
-      }
+    try {
+      ObjectNode universeCost = getUniverseCostUtil(universe);
+      return ApiResponse.success(universeCost);
     }
+    catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+                               "Error getting cost for customer " + customerUUID);
+    }
+  }
 
-    ObjectNode response = Json.newObject();
-    response.put("costPerDay", costPerDay);
+
+  public Result universeListCost(UUID customerUUID) {
+    Customer customer = Customer.find.byId(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    ArrayNode response = Json.newArray();
+    Set<Universe> universeSet = null;
+    try {
+      universeSet = customer.getUniverses();
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "No universe found for customer with ID: " + customerUUID);
+    }
+    try {
+      for (Universe universe : universeSet) {
+        response.add(getUniverseCostUtil(universe));
+      }
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR,
+                               "Error getting cost for customer " + customerUUID);
+    }
     return ApiResponse.success(response);
   }
 
@@ -293,13 +300,12 @@ public class UniverseController extends AuthenticatedController {
    * @param formData : Input form data.
    * @param universe : The universe details with which we are working.
    * @param customerId : Current customer's id.
-   *
    * @return: The universe task params.
    */
   private UniverseDefinitionTaskParams getTaskParams(
-      Form<UniverseFormData> formData,
-      Universe universe,
-      int customerId) {
+          Form<UniverseFormData> formData,
+          Universe universe,
+          int customerId) {
     // Setup the create universe task.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = universe.universeUUID;
@@ -337,9 +343,9 @@ public class UniverseController extends AuthenticatedController {
     }
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
-        !userIntent.regionList.contains(userIntent.preferredRegion)) {
+            !userIntent.regionList.contains(userIntent.preferredRegion)) {
       throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
-                                 " not in user region list");
+              " not in user region list");
     }
 
     // Create the placement info object.
@@ -349,7 +355,7 @@ public class UniverseController extends AuthenticatedController {
     if (!userIntent.isMultiAZ) {
       // Select an AZ in the required region.
       List<AvailabilityZone> azList =
-          AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
+              AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
       if (azList.isEmpty()) {
         throw new RuntimeException("No AZ found for region: " + userIntent.regionList.get(0));
       }
@@ -381,8 +387,8 @@ public class UniverseController extends AuthenticatedController {
 
       // Pick one AZ from the other region.
       UUID otherRegionUUID = userIntent.regionList.get(0).equals(preferredRegionUUID) ?
-                             userIntent.regionList.get(1) :
-                             userIntent.regionList.get(0);
+              userIntent.regionList.get(1) :
+              userIntent.regionList.get(0);
       selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
 
     } else if (userIntent.regionList.size() == 3) {
@@ -392,7 +398,7 @@ public class UniverseController extends AuthenticatedController {
       }
     } else {
       throw new RuntimeException("Unsupported placement, num regions = " +
-                                 userIntent.regionList.size() + "more than replication factor");
+              userIntent.regionList.size() + "more than replication factor");
     }
 
     return placementInfo;
@@ -408,7 +414,7 @@ public class UniverseController extends AuthenticatedController {
     List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(regionUUID);
     if (azList.size() < numZones) {
       throw new RuntimeException("Need at least " + numZones + " zones but found only " +
-                                 azList.size() + " for region " + region.name);
+              azList.size() + " for region " + region.name);
     }
     Collections.shuffle(azList);
     // Pick as many AZs as required.
@@ -479,5 +485,32 @@ public class UniverseController extends AuthenticatedController {
     }
     placementAZ.replicationFactor++;
     LOG.debug("Setting az " + az.name + " replication factor = " + placementAZ.replicationFactor);
+  }
+
+  /**
+   * Helper Method to fetch API Responses for Instance costs
+   */
+  private ObjectNode getUniverseCostUtil(Universe universe) throws Exception {
+    Collection<NodeDetails> nodes = universe.getNodes();
+    // TODO: only pick the newly configured nodes in case of the universe being edited.
+    double instanceCostPerDay = 0;
+    double universeCostPerDay = 0;
+    for (NodeDetails node : nodes) {
+      String regionCode = AvailabilityZone.find.byId(node.azUuid).region.code;
+      // TODO: we do not currently store tenancy for the node.
+      instanceCostPerDay = AWSCostUtil.getCostPerHour(node.instance_type,
+                           regionCode,
+                           AWSConstants.Tenancy.Shared) * 24;
+      universeCostPerDay += instanceCostPerDay;
+    }
+    Calendar currentCalender = Calendar.getInstance();
+    int monthDays = currentCalender.getActualMaximum(Calendar.DAY_OF_MONTH);
+    double costPerMonth = monthDays * universeCostPerDay;
+    ObjectNode universeCostItem = Json.newObject();
+    universeCostItem.put("costPerDay", universeCostPerDay);
+    universeCostItem.put("costPerMonth", costPerMonth);
+    universeCostItem.put("name", universe.name);
+    universeCostItem.put("uuid", universe.universeUUID.toString());
+    return universeCostItem;
   }
 }

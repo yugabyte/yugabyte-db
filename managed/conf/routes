@@ -51,6 +51,8 @@ DELETE  /api/customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.contro
 GET     /api/customers/:cUUID/universes/:uniUUID/cost     com.yugabyte.yw.controllers.UniverseController.universeCost(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID/masters  com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
+GET     /api/customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
+
 # Table Management API
 GET     /api/tables                                   com.yugabyte.yw.controllers.TablesController.list()
 GET     /api/tablet-servers                           com.yugabyte.yw.controllers.TabletServerController.list()
