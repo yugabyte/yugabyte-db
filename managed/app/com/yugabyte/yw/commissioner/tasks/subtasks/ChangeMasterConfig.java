@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeConfigResponse;
-import org.yb.client.IsLeaderReadyForChangeConfigResponse;
 import org.yb.client.YBClient;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -61,41 +60,6 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     return getName();
   }
 
-  // Waits and checks if the leader master is ready to serve config changes. In case of an error or
-  // a timeout, this method throws a runtime exception.
-  private void waitForLeaderReadyToDoChangeConfig(YBClient client, long timeoutMs) {
-    String msg = null;
-    boolean timeout = true;
-    long start = System.currentTimeMillis();
-    do {
-      try {
-        IsLeaderReadyForChangeConfigResponse readyResp =
-            client.isMasterLeaderReadyForChangeConfig();
-        if (readyResp.hasError()) {
-          msg = "Master leader ready check returned error: " + readyResp.errorMessage();
-          LOG.error(msg);
-          timeout = false;
-          break;
-        }
-        if (readyResp.isReady()) {
-          LOG.info("Master leader " + client.getLeaderMasterHostAndPort().toString() +
-                   " is ready for config change.");
-          return;
-        }
-        Thread.sleep(PER_ATTEMPT_SLEEP_TIME_MS);
-      } catch (Exception e) {
-        LOG.error("Error from leader ready check rpc.", e);
-        continue;
-      }
-    } while (System.currentTimeMillis() < start + timeoutMs);
-
-    if (timeout) {
-      msg = "Timed out waiting for master leader to be ready for change config.";
-      LOG.error(msg);
-    }
-    throw new RuntimeException(msg);
-  }
-
   @Override
   public void run() {
     // Get the master addresses.
@@ -109,11 +73,6 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     }
 
     YBClient client = ybService.getClient(masterAddresses);
-    // Wait for the master leader to be able to perform config changes. Give enough time to try all
-    // masters.
-    waitForLeaderReadyToDoChangeConfig(
-        client, universe.getMasters().size() * client.getDefaultAdminOperationTimeoutMs());
-
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
