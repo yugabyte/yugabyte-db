@@ -106,8 +106,18 @@ ul {
     width: 30px;
 }
 
+.graph-panel-container {
+    margin-top: 4px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+}
+
+.dashboard-widget-container {
+    background-color: transparent ;
+}
+
 .yb-nav-bar {
-    background-color: #fff;
+  background-color: #fff;
 }
 
 .progess-gauge {
