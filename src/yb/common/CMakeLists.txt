@@ -39,6 +39,16 @@ ADD_EXPORTABLE_LIBRARY(wire_protocol_proto
   DEPS ${WIRE_PROTOCOL_PROTO_LIBS}
   NONLINK_DEPS ${WIRE_PROTOCOL_PROTO_TGTS})
 
+PROTOBUF_GENERATE_CPP(
+  REDIS_PROTOCOL_PROTO_SRCS REDIS_PROTOCOL_PROTO_HDRS REDIS_PROTOCOL_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES redis_protocol.proto)
+ADD_EXPORTABLE_LIBRARY(redis_protocol_proto
+  SRCS ${REDIS_PROTOCOL_PROTO_SRCS}
+  DEPS protobuf
+  NONLINK_DEPS ${REDIS_PROTOCOL_PROTO_TGTS})
+
 set(COMMON_SRCS
   encoded_key.cc
   generic_iterators.cc
@@ -69,6 +79,7 @@ set(COMMON_LIBS
   yb_common_proto
   consensus_metadata_proto
   wire_protocol_proto
+  redis_protocol_proto
   yb_util
   gutil)
 

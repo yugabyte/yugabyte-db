@@ -20,6 +20,7 @@ option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/common/redis_protocol.proto";
 import "yb/tablet/tablet.proto";
 
 // Tablet-server specific errors use this protobuf.
@@ -118,6 +119,13 @@ message WriteRequestPB {
   // we put a write batch here.
   optional KeyValueWriteBatchPB write_batch = 7;
 
+  // A batch of redis operations.
+  repeated RedisWriteRequestPB redis_write_batch = 8;
+
+  // Whether data blocks will be cached when read from the files or discarded after use.
+  // Disable this to lower cache churn when doing large scans.
+  optional bool cache_blocks = 9 [default = true];
+
   // NOTE: exactly one of row_operations and write_batch must be set.
 
   // The required consistency mode for this write.
@@ -152,6 +160,9 @@ message WriteResponsePB {
     required AppStatusPB error = 2;
   }
   repeated PerRowErrorPB per_row_errors = 2;
+
+  // A batch of redis responses.
+  repeated RedisResponsePB redis_response_batch = 8;
 
   // The timestamp chosen by the server for this write.
   // TODO KUDU-611 propagate timestamps with server signature.
@@ -198,6 +209,27 @@ message ColumnRangePredicatePB {
 message ColumnRangePredicateListPB {
   repeated ColumnRangePredicatePB range_predicates = 1;
 }
+
+message ReadRequestPB {
+  // The tablet to scan.
+  optional bytes tablet_id = 1;
+
+  repeated RedisReadRequestPB redis_batch = 2;
+
+  // Whether data blocks will be cached when read from the files or discarded after use.
+  // Disable this to lower cache churn when doing large scans.
+  optional bool cache_blocks = 3 [default = true];
+
+  // TODO: add timestamp in future
+}
+
+message ReadResponsePB {
+  repeated RedisResponsePB redis_batch = 1;
+
+  // The timestamp chosen by the server for this read.
+  optional fixed64 timestamp = 2;
+}
+
 
 message NewScanRequestPB {
   // The tablet to scan.

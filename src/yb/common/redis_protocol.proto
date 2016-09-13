@@ -1,0 +1,217 @@
+// Copyright (c) YugaByte, Inc.
+
+package yb;
+
+option java_package = "org.yb";
+
+// This is an internal API for communicating redis commands from YBClient to YBServer.
+// Links:
+// http://redis.io/commands
+// http://redis.io/topics/protocol
+
+// A single Redis request. Some user commands like MGET should be split into multiple of these.
+message RedisWriteRequestPB {
+
+  enum Type {
+    SET = 1;
+    GETSET = 2;
+    APPEND = 3;
+    DEL = 4;
+    SETRANGE = 5;
+    INCR = 6;
+    PUSH = 7;
+    INSERT = 8;
+    POP = 9;
+    ADD = 10;
+    REMOVE = 11;
+  }
+
+  optional Type redisOpType = 1;
+
+  // Only one of the following fields should be set.
+  optional RedisSetRequestPB set_request = 2;
+  optional RedisGetSetRequestPB getset_request = 3;
+  optional RedisAppendRequestPB append_request = 4;
+  optional RedisDelRequestPB del_request = 5;
+  optional RedisSetRangeRequestPB set_range_request = 6;
+  optional RedisIncrRequestPB incr_request = 7;
+  optional RedisPushRequestPB push_request = 8;
+  optional RedisInsertRequestPB insert_request = 9;
+  optional RedisPopRequestPB pop_request = 10;
+  optional RedisAddRequestPB add_request = 11;
+  optional RedisRemoveRequestPB remove_request = 12;
+}
+
+message RedisReadRequestPB {
+
+  enum Type {
+    GET = 1;
+    STRLEN = 2;
+    EXISTS = 3;
+    GETRANGE = 4;
+  }
+
+  optional Type redisOpType = 1;
+
+  // Only one of the following fields should be set.
+  optional RedisGetRequestPB get_request = 2;
+  optional RedisStrLenRequestPB strlen_request = 3;
+  optional RedisExistsRequestPB exists_request = 4;
+  optional RedisGetRangeRequestPB get_range_request = 5;
+
+}
+
+enum RedisDataType {
+  REDIS_TYPE_NONE = 1;
+  REDIS_TYPE_STRING = 2;
+  REDIS_TYPE_LIST = 3;
+  REDIS_TYPE_SET = 4;
+  REDIS_TYPE_HASH = 5;
+  REDIS_TYPE_SORTEDSET = 6;
+}
+
+// This enum is used to specify the side of a list (For LPOP or RPOP etc.).
+enum RedisSide {
+  REDIS_SIDE_LEFT = 1;
+  REDIS_SIDE_RIGHT = 2;
+}
+
+// This enum is used to specify the insertion position (Insert after or before index).
+enum RedisOrder {
+  REDIS_ORDER_BEFORE = 1;
+  REDIS_ORDER_AFTER = 2;
+}
+
+enum RedisWriteMode {
+  REDIS_WRITEMODE_UPSERT = 1;
+  REDIS_WRITEMODE_INSERT = 2;
+  REDIS_WRITEMODE_UPDATE = 3;
+}
+
+// This is a common message that encapsulates 'key value' with additional options.
+
+// - Even if just a key is needed, or there are multiple values, this is used.
+// - In case of referring to an entity within a container, the type of the outer_key and the subkey
+//   or index of the inner entity is specified.
+//   - String    : Set the key and value only (setting STRING type is optional as it is understood).
+//   - List      : Set the key, index, and value.
+//   - Set       : Set the key, and value (possibly multiple depending on the command).
+//   - Hash      : Set key, subkey, value.
+//   - SortedSet : Set key, subkey, value (value is interpreted as score).
+// - Value is not present in case of an append, get, exists, etc. For multiple inserts into
+//   a container, the subkey and value fields have one or more items.
+message RedisKeyValuePB {
+  optional bytes key = 1;                   // Required
+  optional RedisDataType type = 2 [ default = REDIS_TYPE_NONE ];
+  repeated bytes subkey = 3;
+  optional int32 index = 4;
+  repeated bytes value = 5;
+}
+
+// SET, SETNX, SETXX, HSET, HSETNX, LSET, MSET, HMSET, MSETNX
+message RedisSetRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional uint64 px = 2;                   // Expiry time in milliseconds.
+  optional RedisWriteMode mode = 3 [ default = REDIS_WRITEMODE_UPSERT ];
+}
+
+// GET, HGET, MGET, HMGET, HGETALL
+message RedisGetRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+}
+
+// GETSET
+message RedisGetSetRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+}
+
+// APPEND
+message RedisAppendRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+}
+
+// STRLEN, HSTRLEN
+message RedisStrLenRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+}
+
+// DEL, HDEL
+message RedisDelRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+}
+
+// EXISTS, HEXISTS
+message RedisExistsRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+}
+
+// SETRANGE
+message RedisSetRangeRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional int32 offset = 2;                // Required
+}
+
+// GETRANGE
+message RedisGetRangeRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional int32 start = 2;                 // Required
+  optional int32 end = 3;                   // Required
+}
+
+// INCR, INCRBY, INCRBYFLOAT, HINCRBY, HINCRBYFLOAT, ZINCRBY, DECR, DECRBY, ZADD with incr option
+message RedisIncrRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional int64 increment_int = 2 [ default = 1 ];
+  optional double increment_float = 3;
+}
+
+// RPUSH, RPUSHX, LPUSH, LPUSHX
+message RedisPushRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
+  optional bool assume_exists = 3 [ default = false];
+}
+
+// LINSERT
+message RedisInsertRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional RedisOrder order = 2;             // Required
+}
+
+// LPOP, RPOP, SPOP; blocking versions BLPOP etc. currently not supported.
+message RedisPopRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
+  optional uint32 count = 3;                // Count is allowed only when popping from a set.
+}
+
+// SADD, ZADD
+message RedisAddRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  // Following options are for ZADD only.
+  optional RedisWriteMode mode = 2 [ default = REDIS_WRITEMODE_UPSERT ];
+  // Modify the return value from the number of new elements added,
+  // to the total number of elements changed.
+  optional bool ch = 3;
+}
+
+// LREM, SREM, ZREM
+message RedisRemoveRequestPB {
+  optional RedisKeyValuePB key_value = 1;
+  optional int32 count = 2;                 // Optional for LREM.
+}
+
+enum RedisStatusCode {
+  OK = 1;
+  NIL = 2;
+  UNKNOWN_COMMAND = 3;
+  WRONG_TYPE = 4;
+}
+
+message RedisResponsePB {
+  optional RedisStatusCode code = 1;
+  optional int64 int_response = 2;
+  optional bytes string_response = 3;
+  repeated bytes array_response = 4;
+  repeated bytes map_response = 5;
+}
