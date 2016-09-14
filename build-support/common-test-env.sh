@@ -844,6 +844,16 @@ find_test_binary() {
   fatal "Could not find binary $binary_name in any of the directories: $dirs_tried"
 }
 
+show_disk_usage() {
+  header "Disk usage (df -h)"
+
+  df -h
+
+  echo
+  horizontal_line
+  echo
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

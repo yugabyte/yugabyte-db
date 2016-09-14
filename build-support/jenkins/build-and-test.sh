@@ -278,6 +278,9 @@ if [ "$BUILD_CPP" == "1" ]; then
 fi
 
 if [ "$BUILD_JAVA" == "1" ]; then
+  # Disk usage might have changed after the C++ build.
+  show_disk_usage
+
   echo
   echo Building and testing java...
   echo ------------------------------------------------------------
@@ -306,6 +309,8 @@ fi
 
 
 if [ "$BUILD_PYTHON" == "1" ]; then
+  show_disk_usage
+
   echo
   echo Building and testing python.
   echo ------------------------------------------------------------

@@ -66,6 +66,18 @@ log() {
   fi
 }
 
+horizontal_line() {
+  echo "------------------------------------------------------------------------------------------"
+}
+
+header() {
+  echo
+  horizontal_line
+  echo "$@"
+  horizontal_line
+  echo
+}
+
 # Usage: expect_some_args "$@"
 # Fatals if there are no arguments.
 expect_some_args() {
