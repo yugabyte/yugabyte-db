@@ -100,7 +100,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           newNodesMap.values(), true /* isShell */).setUserSubTask(SubTaskType.InstallingSoftware);
 
       // Creates the YB cluster by starting the masters in the shell mode.
-      createClusterStartTasks(
+      createStartMasterTasks(
           newMasters, true /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Start the tservers in the clusters.
