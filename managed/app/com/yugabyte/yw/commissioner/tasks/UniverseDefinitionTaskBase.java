@@ -318,8 +318,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes   : a collection of nodes that need to be created
    * @param isShell : Determines if the masters should be started in shell mode
    */
-  public TaskList createClusterStartTasks(Collection<NodeDetails> nodes,
-                                          boolean isShell) {
+  public TaskList createStartMasterTasks(Collection<NodeDetails> nodes,
+                                         boolean isShell) {
     TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
