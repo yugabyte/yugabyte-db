@@ -46,6 +46,7 @@
     "react-gauge": "0.0.5",
     "react-leaflet": "^0.12.1",
     "react-modal": "^1.4.0",
+    "react-numeric-input": "^2.0.4",
     "react-redux": "^4.0.0",
     "react-router": "^2.0.0-rc5",
     "react-select": "^1.0.0-beta14",

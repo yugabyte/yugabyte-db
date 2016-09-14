@@ -6,6 +6,7 @@ import Select from 'react-select';
 import 'react-select/dist/react-select.css';
 import $ from 'jquery';
 import { isValidObject } from '../utils/ObjectUtils';
+import NumericInput from 'react-numeric-input';
 
 class UniverseModal extends Component {
 
@@ -115,7 +116,7 @@ class UniverseModal extends Component {
   regionChanged(value){
     this.setState({regionSelected: value})
   }
-
+  
   universeAction(event){
     event.preventDefault();
     var self = this;
@@ -146,7 +147,7 @@ class UniverseModal extends Component {
         {providerItem.name}
       </option>;
     });
-    
+
     if (this.props.type === "Create") {
       universeProviderList.unshift(<option key="" value=""></option>);
     }
@@ -202,6 +203,10 @@ class UniverseModal extends Component {
                   value={this.state.regionSelected}
                   onChange={this.regionChanged}
                 />
+              </label>
+              <label className="form-item-label">
+                <div>Number Of Nodes</div>
+                <NumericInput className="form-control" min={3} max={32} value={3}/>
               </label>
               <div className="universeFormSplit">
                 Advanced
