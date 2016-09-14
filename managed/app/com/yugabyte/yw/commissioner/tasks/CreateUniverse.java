@@ -63,8 +63,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           newNodesMap.values(), false /* isShell */).setUserSubTask(SubTaskType.InstallingSoftware);
 
       // Creates the YB cluster by starting the masters in the create mode.
-      createClusterStartTasks(
+      createStartMasterTasks(
           newMasters, false /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
+
+      // Start the tservers in the clusters.
+      createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for all servers to be responsive.
       createWaitForServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
@@ -75,9 +78,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Persist the placement info into the YB master.
       createPlacementInfoTask(
           newMasters, null /* blacklistNodes */).setUserSubTask(SubTaskType.ConfigureUniverse);
-
-      // Start the tservers in the clusters.
-      createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();

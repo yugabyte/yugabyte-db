@@ -12,7 +12,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class AnsibleDestroyServer extends NodeTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AnsibleSetupServer.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
 
   // Params for this task.
   public static class Params extends NodeTaskParams {}
