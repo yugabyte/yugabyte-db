@@ -76,7 +76,7 @@ public class ModifyBlackList extends AbstractTaskBase {
         HostPortPB.Builder hpb =
             HostPortPB.newBuilder()
                       .setPort(node.tserverRpcPort)
-                      .setHost(node.private_ip);
+                      .setHost(node.cloudInfo.private_ip);
         modifyHosts.add(hpb.build());
       }
       ModifyMasterClusterConfigBlacklist modifyBlackList =

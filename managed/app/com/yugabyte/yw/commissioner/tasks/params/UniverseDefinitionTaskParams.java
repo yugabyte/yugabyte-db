@@ -2,15 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.params;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UserIntent;
 
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
-  // The cloud on which to create the instance.
-  public String cloudProvider = CloudType.aws.toString();
-
   // This should be a globally unique name - it is a combination of the customer id and the universe
   // id. This is used as the prefix of node names in the universe.
   public String nodePrefix = null;

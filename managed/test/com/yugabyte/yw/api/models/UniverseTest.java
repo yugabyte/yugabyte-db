@@ -1,10 +1,11 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.api.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 import com.yugabyte.yw.models.helpers.UserIntent;
@@ -85,18 +86,19 @@ public class UniverseTest extends FakeDBApplication {
         universeDetails.numNodes = 5;
         for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
-          node.instance_name = "host-n" + idx;
-          node.cloud = "aws";
-          node.az = "az-" + idx;
-          node.region = "test-region";
-          node.subnet_id = subnets.get(idx % subnets.size());
-          node.private_ip = "host-n" + idx;
+          node.nodeName = "host-n" + idx;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = "aws";
+          node.cloudInfo.az = "az-" + idx;
+          node.cloudInfo.region = "test-region";
+          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
+          node.cloudInfo.private_ip = "host-n" + idx;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+          universeDetails.nodeDetailsMap.put(node.nodeName, node);
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -106,14 +108,14 @@ public class UniverseTest extends FakeDBApplication {
     int idx = 1;
     for (NodeDetails node : u.getMasters()) {
       assertTrue(node.isMaster);
-      assertThat(node.instance_name, is(allOf(notNullValue(), equalTo("host-n" + idx))));
+      assertThat(node.nodeName, is(allOf(notNullValue(), equalTo("host-n" + idx))));
       idx++;
     }
 
     idx = 1;
     for (NodeDetails node : u.getTServers()) {
       assertTrue(node.isTserver);
-      assertThat(node.instance_name, is(allOf(notNullValue(), equalTo("host-n" + idx))));
+      assertThat(node.nodeName, is(allOf(notNullValue(), equalTo("host-n" + idx))));
       idx++;
     }
 
@@ -135,18 +137,19 @@ public class UniverseTest extends FakeDBApplication {
         universeDetails.numNodes = 3;
         for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
-          node.instance_name = "host-n" + idx;
-          node.cloud = "aws";
-          node.az = "az-" + idx;
-          node.region = "test-region";
-          node.subnet_id = "subnet-" + idx;
-          node.private_ip = "host-n" + idx;
+          node.nodeName = "host-n" + idx;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = "aws";
+          node.cloudInfo.az = "az-" + idx;
+          node.cloudInfo.region = "test-region";
+          node.cloudInfo.subnet_id = "subnet-" + idx;
+          node.cloudInfo.private_ip = "host-n" + idx;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+          universeDetails.nodeDetailsMap.put(node.nodeName, node);
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -179,18 +182,19 @@ public class UniverseTest extends FakeDBApplication {
         universeDetails.numNodes = 3;
         for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
-          node.instance_name = "host-n" + idx;
-          node.cloud = "aws";
-          node.az = "az-" + idx;
-          node.region = "test-region";
-          node.subnet_id = "subnet-" + idx;
-          node.private_ip = "host-n" + idx;
+          node.nodeName = "host-n" + idx;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = "aws";
+          node.cloudInfo.az = "az-" + idx;
+          node.cloudInfo.region = "test-region";
+          node.cloudInfo.subnet_id = "subnet-" + idx;
+          node.cloudInfo.private_ip = "host-n" + idx;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+          universeDetails.nodeDetailsMap.put(node.nodeName, node);
         }
         universe.setUniverseDetails(universeDetails);
       }

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.mvc.Controller;
@@ -56,38 +57,15 @@ public class MetaMasterController extends Controller {
   }
 
   public static class MasterNode {
-    // Type of the node (example: c3.xlarge).
-    public String instance_type;
-    // The private ip address
-    public String private_ip;
-    // The public ip address.
-    public String public_ip;
-    // The public dns name of the node.
-    public String public_dns;
-    // The private dns name of the node.
-    public String private_dns;
-    // AWS only. The id of the subnet into which this node is deployed.
-    public String subnet_id;
-    // The az into which the node is deployed.
-    public String az;
-    // The region into which the node is deployed.
-    public String region;
-    // The cloud provider where the node is located.
-    public String cloud;
+    // Information about the node that is returned by the cloud provider.
+    public CloudSpecificInfo cloudInfo;
+
     // The master rpc port.
     public int masterRpcPort;
 
     public static MasterNode fromUniverseNode(NodeDetails uNode) {
       MasterNode mNode = new MasterNode();
-      mNode.instance_type = uNode.instance_type;
-      mNode.private_ip = uNode.private_ip;
-      mNode.public_ip = uNode.public_ip;
-      mNode.public_dns = uNode.public_dns;
-      mNode.private_dns = uNode.private_dns;
-      mNode.subnet_id = uNode.subnet_id;
-      mNode.az = uNode.az;
-      mNode.region = uNode.region;
-      mNode.cloud = uNode.cloud;
+      mNode.cloudInfo = uNode.cloudInfo;
       mNode.masterRpcPort = uNode.masterRpcPort;
 
       return mNode;

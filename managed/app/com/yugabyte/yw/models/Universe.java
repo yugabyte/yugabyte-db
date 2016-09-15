@@ -289,7 +289,7 @@ public class Universe extends Model {
       if (masterAddresses.length() != 0) {
         masterAddresses.append(",");
       }
-      masterAddresses.append(nodeDetails.private_ip);
+      masterAddresses.append(nodeDetails.cloudInfo.private_ip);
       masterAddresses.append(":");
       masterAddresses.append(nodeDetails.masterRpcPort);
     }

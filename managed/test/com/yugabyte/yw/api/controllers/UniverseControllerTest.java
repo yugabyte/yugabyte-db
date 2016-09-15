@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 import com.yugabyte.yw.models.helpers.UserIntent;
@@ -151,16 +152,17 @@ public class UniverseControllerTest extends FakeDBApplication {
         universeDetails.numNodes = 5;
         for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
-          node.instance_name = "host-n" + idx;
-          node.cloud = "aws";
-          node.subnet_id = subnets.get(idx % subnets.size());
-          node.private_ip = "host-n" + idx;
+          node.nodeName = "host-n" + idx;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = "aws";
+          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
+          node.cloudInfo.private_ip = "host-n" + idx;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+          universeDetails.nodeDetailsMap.put(node.nodeName, node);
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -238,6 +240,9 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("isMultiAZ", false);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
 
+    AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
+    assertThat(az.region.name, is(notNullValue()));
+
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
                             .cookie(validCookie).bodyJson(bodyJson));
     assertEquals(OK, result.status());
@@ -286,6 +291,9 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("isMultiAZ", true);
     bodyJson.put("universeName", universe.name);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
+
+    AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
+    assertThat(az.region.name, is(notNullValue()));
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie).bodyJson(bodyJson));
