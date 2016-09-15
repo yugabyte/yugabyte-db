@@ -23,10 +23,12 @@ import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.master.Master;
+import org.yb.Common;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
+import org.yb.consensus.Metadata;
+import org.yb.master.Master;
 
 import com.stumbleupon.async.Deferred;
 
@@ -196,12 +198,214 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Find the uuid of a master using its host/port.
+   * @return The uuid of the master, or null if not found.
+   * @throws Nothing.
+   */
+  String getMasterUUID(String host, int port) {
+    HostAndPort hostAndPort = HostAndPort.fromParts(host, port);
+    Deferred<GetMasterRegistrationResponse> d;
+    TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
+    if (clientForHostAndPort == null) {
+      String message = "Couldn't resolve master's address at " + hostAndPort.toString();
+      LOG.warn(message);
+    } else {
+      d = asyncClient.getMasterRegistration(clientForHostAndPort);
+      try {
+        GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+        return resp.getInstanceId().getPermanentUuid().toStringUtf8();
+      } catch (Exception e) {
+        LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find the uuid of the leader master.
+   * @return The uuid of the leader master, or null if no leader found.
+   * @throws Nothing.
+   */
+  public String getLeaderMasterUUID() {
+    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
+      Deferred<GetMasterRegistrationResponse> d;
+      TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
+      if (clientForHostAndPort == null) {
+        String message = "Couldn't resolve this master's address " + hostAndPort.toString();
+        LOG.warn(message);
+      } else {
+        d = asyncClient.getMasterRegistration(clientForHostAndPort);
+        try {
+          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+            return resp.getInstanceId().getPermanentUuid().toStringUtf8();
+          }
+        } catch (Exception e) {
+          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find the host/port of the leader master.
+   * @return The host and port of the leader master, or null if no leader found.
+   * @throws Nothing.
+   */
+  public HostAndPort getLeaderMasterHostAndPort() {
+    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
+      Deferred<GetMasterRegistrationResponse> d;
+      TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
+      if (clientForHostAndPort == null) {
+        String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
+        LOG.warn(message);
+      } else {
+        d = asyncClient.getMasterRegistration(clientForHostAndPort);
+        try {
+          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+            return hostAndPort;
+          }
+        } catch (Exception e) {
+          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Helper API to wait and get current leader's UUID. This takes care of waiting for any election
+   * in progress.
+   *
+   * @param timeout Amount of time to try getting the leader uuid.
+   * @return Master leader uuid on success, null otherwise.
+   */
+  private String waitAndGetLeaderMasterUUID(long timeoutMs) throws Exception {
+    long start = System.currentTimeMillis();
+
+    // Retry till we get a valid UUID (or timeout) for the new leader.
+    do {
+      String leaderUuid = getLeaderMasterUUID();
+
+      // Done if we got a valid one.
+      if (leaderUuid != null) {
+        return leaderUuid;
+      }
+
+      Thread.sleep(asyncClient.SLEEP_TIME);
+    } while (System.currentTimeMillis() < start + timeoutMs);
+
+    LOG.error("Timed out getting leader uuid.");
+
+    return null;
+  }
+
+ /**
    * Change master server configuration.
-   * @return a list of tablet servers
+   *
+   * @param  leaderUuid Current master leader's uuid.
+   * @return The new leader uuid, on success.
+   * @exception if the new leader is the same as the old leader after certain number of tries.
+   */
+  private String stepDownMasterLeaderAndWaitForNewLeader(String leaderUuid) throws Exception {
+    String tabletId = getMasterTabletId();
+    String newLeader = leaderUuid;
+
+    int numIters = 0;
+    int maxNumIters = 25;
+    String errorMsg = null;
+    try {
+      // TODO: This while loop will not be needed once JIRA ENG-49 is fixed.
+      do {
+        Deferred<LeaderStepDownResponse> d = asyncClient.masterLeaderStepDown(leaderUuid,
+                                                                              tabletId);
+        LeaderStepDownResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+        if (resp.hasError()) {
+          errorMsg = "Master leader step down hit error " + resp.errorMessage();
+          break;
+        }
+        newLeader = waitAndGetLeaderMasterUUID(getDefaultAdminOperationTimeoutMs());
+        if (newLeader == null) {
+          errorMsg = "Timed out as we could not find a valid new leader. Old leader is " +
+                     leaderUuid;
+          break;
+        }
+
+        // Done if we found a new leader.
+        if (!newLeader.equals(leaderUuid)) {
+          break;
+        }
+
+        numIters++;
+        LOG.info("Try step down {}, new master {}, iter {}.", leaderUuid, newLeader, numIters);
+        if (numIters >= maxNumIters) {
+          errorMsg = "Maximum iterations reached trying to step down the " +
+                     "leader master with uuid " + leaderUuid;
+          break;
+        }
+
+        Thread.sleep(asyncClient.SLEEP_TIME);
+      } while (true);
+    } catch (Exception e) {
+      LOG.error("Error trying to step down {}. Error: .", leaderUuid, e);
+      throw new RuntimeException("Could not step down leader master " + leaderUuid, e);
+    }
+
+    if (errorMsg != null) {
+      LOG.error(errorMsg);
+      throw new RuntimeException(errorMsg);
+    }
+
+    LOG.info("Step down of {} done, new master uuid={}.", leaderUuid, newLeader);
+
+    return newLeader;
+  }
+
+  /**
+   * Change master configuration.
+   *
+   * @param host Master host that is being added or removed.
+   * @param port RPC port of the host being added or removed.
+   * @param isAdd If we are adding or removing the master to the configuration.
+   *
+   * @return The change config response object.
    */
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd) throws Exception {
-    Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(host, port, isAdd);
+    String changeUuid = getMasterUUID(host, port);
+    if (changeUuid == null) {
+      throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
+                                          port + " - could not get it's uuid.");
+    }
+    String leaderUuid = getLeaderMasterUUID();
+    if (leaderUuid == null) {
+      throw new IllegalStateException("Invalid setup - could not find the leader master in " +
+                                      asyncClient.getMasterAddresses());
+    }
+
+    boolean didStepDown = false;
+    // If caller is trying to remove the leader, then step it down first and wait for a new one to
+    // be elected.
+    if (!isAdd && leaderUuid.equals(changeUuid)) {
+      // We just set the leader in this case for tracing purposes, but change config call will
+      // not use it.
+      leaderUuid = stepDownMasterLeaderAndWaitForNewLeader(leaderUuid);
+      didStepDown = true;
+    }
+
+    LOG.info("Sending changeConfig to leader {}: Target host/port={}/{} at uuid={}, add={}, " +
+             "stepdown={}.", leaderUuid, host, port, changeUuid, isAdd, didStepDown);
+
+    // For a new leader after stepdown, the sendRpcToTablet will retry to get the correct leader.
+    // Seemed very intrusive to change request's uuid contents during rpc retry.
+    // didStepDown can be removed once a "proxy" like concept is added to java client.
+    Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(
+        didStepDown ? "" : leaderUuid, host, port, changeUuid, isAdd);
     ChangeConfigResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
     if (!resp.hasError()) {
       asyncClient.updateMasterAdresses(host, port, isAdd);
@@ -217,28 +421,12 @@ public class YBClient implements AutoCloseable {
     return AsyncYBClient.getMasterTabletId();
   }
 
-  /**
-  * Get the master leader's uuid.
-  * @return current leader master's uuid.
-  */
-  public String getLeaderMasterUUID() {
-    return asyncClient.getLeaderMasterUUID();
-  }
-
-  /**
-  * Get the master leader's host/port.
-  * @return current leader master's host and rpc port.
-  */
-  public HostAndPort getLeaderMasterHostAndPort() {
-    return asyncClient.getLeaderMasterHostAndPort();
-  }
-
-  /**
+ /**
   * Wait for the cluster to have successfully elected a Master Leader.
   * @param timeoutMs the amount of time, in MS, to wait until a Leader is present
   */
   public void waitForMasterLeader(long timeoutMs) throws Exception {
-    String leaderUuid = asyncClient.waitAndGetLeaderMasterUUID(timeoutMs);
+    String leaderUuid = waitAndGetLeaderMasterUUID(timeoutMs);
 
     if (leaderUuid == null) {
       throw new RuntimeException("Timed out waiting for Master Leader.");

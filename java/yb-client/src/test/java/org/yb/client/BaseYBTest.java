@@ -327,7 +327,7 @@ public class BaseYBTest {
    * @throws Exception If we are unable to find the leader master.
    */
   public static HostAndPort findLeaderMasterHostPort() throws Exception {
-    return client.getLeaderMasterHostAndPort();
+    return syncClient.getLeaderMasterHostAndPort();
   }
 
   /**
@@ -336,7 +336,7 @@ public class BaseYBTest {
    * @throws Exception If we are unable to find the leader master.
    */
   public static String findLeaderMasterUUID() throws Exception {
-    return client.getLeaderMasterUUID();
+    return syncClient.getLeaderMasterUUID();
   }
 
   /**
