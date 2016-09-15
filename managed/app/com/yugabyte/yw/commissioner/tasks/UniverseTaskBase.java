@@ -115,7 +115,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Create the Ansible task to destroy the server.

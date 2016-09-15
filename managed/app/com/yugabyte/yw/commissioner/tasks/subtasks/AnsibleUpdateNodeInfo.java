@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 
@@ -68,23 +69,26 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
             Entry<String, JsonNode> entry = iter.next();
             Field field;
             try {
-              LOG.info("Node " + taskParams.nodeName + ", setting field " + entry.getKey() +
-                " to value " + entry.getValue());
+              LOG.info("Node {}: setting field {} to value {}.",
+                       taskParams.nodeName, entry.getKey(), entry.getValue());
               // Error out if the host was not found.
               if (entry.getKey().equals("host_found") && entry.getValue().equals("false")) {
                 throw new RuntimeException("Host " + taskParams.nodeName + " not found.");
               }
-              field = NodeDetails.class.getField(entry.getKey());
-              field.set(node, entry.getValue().asText());
+              try {
+                field = NodeDetails.class.getField(entry.getKey());
+                field.set(node, entry.getValue().asText());
+              } catch (NoSuchFieldException eCS) {
+                // Try one more time with the cloud info class.
+                // TODO: May be try this first as it has more fields?
+                field = CloudSpecificInfo.class.getField(entry.getKey());
+                field.set(node.cloudInfo, entry.getValue().asText());
+              }
             } catch (NoSuchFieldException | SecurityException e) {
-              // We may not care about some fields, just warn and skip them.
-              LOG.warn("Skipping field " + entry.getKey() + " with value " + entry.getValue());
-            } catch (IllegalArgumentException e) {
-              LOG.error("Field " + entry.getKey() + " could not be updated to value " +
-                entry.getValue(), e);
-            } catch (IllegalAccessException e) {
-              LOG.error("Field " + entry.getKey() + " could not be updated to value " +
-                entry.getValue(), e);
+              LOG.warn("Skipping field {} with value {}.", entry.getKey(), entry.getValue());
+            } catch (IllegalArgumentException | IllegalAccessException e) {
+              LOG.error("Field {} could not be updated to value {}.",
+                        entry.getKey(), entry.getValue(), e);
             }
           }
           // Update the node details.

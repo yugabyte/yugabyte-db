@@ -309,7 +309,6 @@ public class UniverseController extends AuthenticatedController {
     // Setup the create universe task.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = universe.universeUUID;
-    taskParams.cloudProvider = CloudType.aws.toString();
     taskParams.numNodes = formData.get().replicationFactor;
 
     // Compose a unique name for the universe.
@@ -361,6 +360,7 @@ public class UniverseController extends AuthenticatedController {
       }
       Collections.shuffle(azList);
       UUID azUUID = azList.get(0).uuid;
+      LOG.info("Using AZ {} out of {}", azUUID, azList.size());
       // Add all replicas into the same AZ.
       for (int idx = 0; idx < userIntent.replicationFactor; idx++) {
         addPlacementZone(azUUID, placementInfo);
@@ -397,8 +397,9 @@ public class UniverseController extends AuthenticatedController {
         selectAndAddPlacementZones(userIntent.regionList.get(idx), placementInfo, 1);
       }
     } else {
-      throw new RuntimeException("Unsupported placement, num regions = " +
-              userIntent.regionList.size() + "more than replication factor");
+      throw new RuntimeException("Unsupported placement, num regions " +
+          userIntent.regionList.size() + " is more than replication factor of " +
+          userIntent.replicationFactor);
     }
 
     return placementInfo;
@@ -428,7 +429,6 @@ public class UniverseController extends AuthenticatedController {
     AvailabilityZone az = AvailabilityZone.find.byId(zone);
     Region region = az.region;
     Provider cloud = region.provider;
-
     // Find the placement cloud if it already exists, or create a new one if one does not exist.
     PlacementCloud placementCloud = null;
     for (PlacementCloud pCloud : placementInfo.cloudList) {
@@ -498,7 +498,7 @@ public class UniverseController extends AuthenticatedController {
     for (NodeDetails node : nodes) {
       String regionCode = AvailabilityZone.find.byId(node.azUuid).region.code;
       // TODO: we do not currently store tenancy for the node.
-      instanceCostPerDay = AWSCostUtil.getCostPerHour(node.instance_type,
+      instanceCostPerDay = AWSCostUtil.getCostPerHour(node.cloudInfo.instance_type,
                            regionCode,
                            AWSConstants.Tenancy.Shared) * 24;
       universeCostPerDay += instanceCostPerDay;

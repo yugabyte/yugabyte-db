@@ -146,7 +146,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
           NodeDetails node = universe.getNode(nodeName);
           if (node.isTserver) {
             blacklistBuilder.addHosts(ProtobufHelper.hostAndPortToPB(
-                HostAndPort.fromParts(node.private_ip, node.tserverRpcPort)));
+                HostAndPort.fromParts(node.cloudInfo.private_ip, node.tserverRpcPort)));
           }
         }
         blacklistBuilder.build();

@@ -18,6 +18,7 @@ import java.util.HashSet;
 
 import com.yugabyte.yw.controllers.MetaMasterController;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 import org.junit.Test;
@@ -56,16 +57,17 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         universeDetails.numNodes = 5;
         for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
-          node.instance_name = "host-n" + idx;
-          node.cloud = "aws";
-          node.subnet_id = subnets.get(idx % subnets.size());
-          node.private_ip = "host-n" + idx;
+          node.nodeName = "host-n" + idx;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = "aws";
+          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
+          node.cloudInfo.private_ip = "host-n" + idx;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.instance_name, node);
+          universeDetails.nodeDetailsMap.put(node.nodeName, node);
         }
       }
     };
@@ -85,7 +87,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     masterNodeNames.add("host-n2");
     masterNodeNames.add("host-n3");
     for (MetaMasterController.MasterNode node : masterList.masters) {
-      assertTrue(masterNodeNames.contains(node.private_ip));
+      assertTrue(masterNodeNames.contains(node.cloudInfo.private_ip));
     }
   }
 

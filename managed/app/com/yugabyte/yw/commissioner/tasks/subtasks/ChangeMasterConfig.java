@@ -77,13 +77,14 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
     LOG.info("Starting changeMasterConfig({}:{}, {})",
-             node.private_ip, node.masterRpcPort, taskParams().opType);
+             node.cloudInfo.private_ip, node.masterRpcPort, taskParams().opType);
     ChangeConfigResponse response;
     try {
-      response = client.changeMasterConfig(node.private_ip, node.masterRpcPort, isAddMasterOp);
+      response = client.changeMasterConfig(
+          node.cloudInfo.private_ip, node.masterRpcPort, isAddMasterOp);
     } catch (Exception e) {
-      String msg = "Error performing change config on node " + node.instance_name +
-                   ", host:port = " + node.private_ip + ":" + node.masterRpcPort;
+      String msg = "Error performing change config on node " + node.nodeName +
+                   ", host:port = " + node.cloudInfo.private_ip + ":" + node.masterRpcPort;
       LOG.error(msg, e);
       throw new RuntimeException(msg);
     }

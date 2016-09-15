@@ -105,7 +105,7 @@ public class Util {
   public static List<HostAndPort> getHostPortList(Collection<NodeDetails> nodes) {
      List<HostAndPort> curServers = new ArrayList<HostAndPort>();
      for (NodeDetails node : nodes) {
-       curServers.add(HostAndPort.fromParts(node.public_ip, node.masterRpcPort));
+       curServers.add(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
      }
      return curServers;
   }

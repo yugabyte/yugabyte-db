@@ -150,12 +150,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Get the list of node names to add as masters.
     List<String> mastersToAdd = new ArrayList<String>();
     for (NodeDetails node : newMasters) {
-      mastersToAdd.add(node.instance_name);
+      mastersToAdd.add(node.nodeName);
     }
     // Get the list of node names to remove as masters.
     List<String> mastersToRemove = new ArrayList<String>();
     for (NodeDetails node : existingMasters) {
-      mastersToRemove.add(node.instance_name);
+      mastersToRemove.add(node.nodeName);
     }
     // Find the minimum number of master changes where we can perform an add followed by a remove.
     int numIters = Math.min(mastersToAdd.size(), mastersToRemove.size());

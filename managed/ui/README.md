@@ -1,3 +1,11 @@
+Ensure that the node/npm binaries are recent. For example,
+$ npm -v
+3.10.3
+
+$ node -v
+v6.3.1
+
+
 ### `npm install`
 Install all the dependencies needed for the project
 
@@ -5,6 +13,8 @@ Install all the dependencies needed for the project
 
 Runs the app in the development mode.<br>
 Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+
+Ensure that the yugaware side is also running using `sbt run` in ~/code/yugaware directory.<br>
 
 The page will reload if you make edits.<br>
 You will also see any lint errors in the console.

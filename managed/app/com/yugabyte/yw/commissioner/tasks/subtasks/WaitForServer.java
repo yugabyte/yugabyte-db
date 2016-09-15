@@ -58,7 +58,7 @@ public class WaitForServer extends AbstractTaskBase {
       YBClient client = ybService.getClient(hostPorts);
       NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
       HostAndPort hp = HostAndPort.fromParts(
-          node.private_ip, node.isMaster ? node.masterRpcPort : node.tserverRpcPort);
+          node.cloudInfo.private_ip, node.isMaster ? node.masterRpcPort : node.tserverRpcPort);
       ret = client.waitForServer(hp, TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
