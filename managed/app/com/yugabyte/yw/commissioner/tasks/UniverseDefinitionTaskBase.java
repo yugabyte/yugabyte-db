@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -74,24 +75,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (int nodeIdx = nodeStartIndex; nodeIdx < taskParams().numNodes + nodeStartIndex; nodeIdx++) {
       NodeDetails nodeDetails = new NodeDetails();
       // Create the node name.
-      nodeDetails.instance_name = nodePrefix + "-n" + nodeIdx;
+      nodeDetails.nodeName = nodePrefix + "-n" + nodeIdx;
       // Set the cloud.
       PlacementCloud placementCloud = taskParams().placementInfo.cloudList.get(cloudIdx);
-      nodeDetails.cloud = placementCloud.name;
+      nodeDetails.cloudInfo = new CloudSpecificInfo();
+      nodeDetails.cloudInfo.cloud = placementCloud.name;
       // Set the region.
       PlacementRegion placementRegion = placementCloud.regionList.get(regionIdx);
-      nodeDetails.region = placementRegion.code;
+      nodeDetails.cloudInfo.region = placementRegion.code;
       // Set the AZ and the subnet.
       PlacementAZ placementAZ = placementRegion.azList.get(azIdx);
       nodeDetails.azUuid = placementAZ.uuid;
-      nodeDetails.az = placementAZ.name;
-      nodeDetails.subnet_id = placementAZ.subnet;
+      nodeDetails.cloudInfo.az = placementAZ.name;
+      nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
       // Set the tablet server role to true.
       nodeDetails.isTserver = true;
       // Set the node id.
       nodeDetails.nodeIdx = nodeIdx;
       // Add the node to the list of nodes.
-      newNodesMap.put(nodeDetails.instance_name, nodeDetails);
+      newNodesMap.put(nodeDetails.nodeName, nodeDetails);
       LOG.debug("Placed new node {} in universe {} at cloud:{}, region:{}, az:{}.",
                 nodeDetails.toString(), taskParams().universeUUID, cloudIdx, regionIdx, azIdx);
 
@@ -125,7 +127,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Group the cluster nodes by subnets.
     Map<String, TreeSet<String>> subnetsToNodenameMap = new HashMap<String, TreeSet<String>>();
     for (Entry<String, NodeDetails> entry : nodesMap.entrySet()) {
-      TreeSet<String> nodeSet = subnetsToNodenameMap.get(entry.getValue().subnet_id);
+      TreeSet<String> nodeSet = subnetsToNodenameMap.get(entry.getValue().cloudInfo.subnet_id);
       // If the node set is empty, create it.
       if (nodeSet == null) {
         nodeSet = new TreeSet<String>();
@@ -133,7 +135,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the node name into the node set.
       nodeSet.add(entry.getKey());
       // Add the node set back into the map.
-      subnetsToNodenameMap.put(entry.getValue().subnet_id, nodeSet);
+      subnetsToNodenameMap.put(entry.getValue().cloudInfo.subnet_id, nodeSet);
     }
     LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
              subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
@@ -152,8 +154,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       // We do not have enough subnets. Simply pick enough masters.
       for (NodeDetails node : nodesMap.values()) {
-        masters.add(node.instance_name);
-        LOG.info("Chose node {} as a master from subnet {}.", node.instance_name, node.subnet_id);
+        masters.add(node.nodeName);
+        LOG.info("Chose node {} as a master from subnet {}.",
+                 node.nodeName, node.cloudInfo.subnet_id);
         if (masters.size() == numMasters) {
           break;
         }
@@ -207,8 +210,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           // Since we have already set the 'updateInProgress' flag on this universe in the DB and
           // this step is single threaded, we are guaranteed no one else will be modifying it.
           // Replace the entire node value.
-          universeDetails.nodeDetailsMap.put(node.instance_name, node);
-          LOG.debug("Adding node " + node.instance_name +
+          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          LOG.debug("Adding node " + node.nodeName +
                     " to universe " + taskParams().universeUUID);
         }
       }
@@ -231,11 +234,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the region code.
       params.azUuid = node.azUuid;
       // Add the node name.
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Pick one of the subnets in a round robin fashion.
-      params.subnetId = node.subnet_id;
+      params.subnetId = node.cloudInfo.subnet_id;
       // Set the instance type.
       params.instanceType = taskParams().userIntent.instanceType;
       // Create the Ansible task to setup the server.
@@ -263,7 +266,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Create the Ansible task to get the server info.
@@ -292,7 +295,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
@@ -326,7 +329,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
@@ -357,7 +360,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the cloud name.
       params.cloud = CloudType.aws;
       // Add the node name.
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
@@ -385,7 +388,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
       params.universeUUID = taskParams().universeUUID;
-      params.nodeName = node.instance_name;
+      params.nodeName = node.nodeName;
       WaitForServer task = new WaitForServer();
       task.initialize(params);
       taskList.addTask(task);
@@ -423,7 +426,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<String>();
       for (NodeDetails node : blacklistNodes) {
-        blacklistNodeNames.add(node.instance_name);
+        blacklistNodeNames.add(node.nodeName);
       }
       params.blacklistNodes = blacklistNodeNames;
     }

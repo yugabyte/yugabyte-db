@@ -15,11 +15,11 @@ export default class NodeDetails extends Component {
 	  const nodeDetailRows = Object.keys(nodeDetails).map(function(key) {
       var nodeDetail = nodeDetails[key];
       return {
-        name: nodeDetail.instance_name,
-        region: nodeDetail.region,
+        name: nodeDetail.nodeName,
+        region: nodeDetail.cloudInfo.region,
         isMaster: nodeDetail.isMaster ? "Yes" : "No",
         isTServer: nodeDetail.isTserver ? "Yes" : "No",
-        privateIP: nodeDetail.private_ip,
+        privateIP: nodeDetail.cloudInfo.private_ip,
       };
     });
 
