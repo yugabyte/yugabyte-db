@@ -124,14 +124,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Send destroy old set of nodes to ansible and remove them from this universe.
       createDestroyServerTasks(existingNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
 
-      // TODO: Wait for server's to actually be shutdown by checking 'ping' fails.
-
-      // Finally clear the blacklist on the yb cluster master. This is done after destroy so
-      // that the new master leader does not move load to tserver's from the blacklist that might
-      // still be heart beating to it.
-      // TODO: Enable this as part of the above TODO fix.
-      // createModifyBlackListTask(existingNodes, false)
-      //    .setUserSubTask(SubTaskType.RemovingUnusedServers);
+      // Clearing the blacklist on the yb cluster master is handled on the server side.
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
