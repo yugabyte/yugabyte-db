@@ -41,6 +41,7 @@
     "react": "^15.3.0",
     "react-addons-update": "^15.3.0",
     "react-bootstrap": "^0.30.2",
+    "react-bootstrap-multiselect": "^2.2.0",
     "react-bootstrap-table": "^2.4.2",
     "react-dom": "^15.3.0",
     "react-gauge": "0.0.5",
