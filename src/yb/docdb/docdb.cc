@@ -1,17 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <string>
 #include <memory>
 
+#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/internal_doc_iterator.h"
+#include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
-
-#include "yb/docdb/value_type.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/internal_doc_iterator.h"
-#include "yb/docdb/docdb-internal.h"
 
 using std::endl;
 using std::string;
@@ -27,7 +27,10 @@ using strings::Substitute;
 namespace yb {
 namespace docdb {
 
-static const string kObjectValueType = EncodeValueType(ValueType::kObject);
+namespace {
+// This a zero-terminated string for safety, even though we only intend to use one byte.
+const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
+}
 
 // ------------------------------------------------------------------------------------------------
 // DocWriteBatch
@@ -40,7 +43,8 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
 // This codepath is used to handle both primitive upserts and deletions.
 Status DocWriteBatch::SetPrimitive(
     const DocPath& doc_path, const PrimitiveValue& value, const Timestamp timestamp) {
-  // TODO: add a check that this method is always being called with non-decreasing timestamps.
+  // TODO(mbautin): add a check that this method is always being called with non-decreasing
+  //                timestamps.
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, timestamp=$2",
       doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
@@ -116,7 +120,7 @@ Status DocWriteBatch::SetPrimitive(
       }
 
       // The document/subdocument that this subkey is supposed to live in does not exist, create it.
-      write_batch_.Put(doc_iter.key_prefix().AsSlice(), kObjectValueType);
+      write_batch_.Put(doc_iter.key_prefix().AsSlice(), rocksdb::Slice(kObjectValueType, 1));
 
       // Record the fact that we're adding this subdocument in our local cache so that future
       // operations in this document write batch don't have to add it or look for it in RocksDB.
@@ -287,5 +291,5 @@ Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out) {
   return Status::OK();
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

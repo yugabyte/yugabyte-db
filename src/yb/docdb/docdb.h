@@ -3,6 +3,7 @@
 #ifndef YB_DOCDB_DOCDB_H_
 #define YB_DOCDB_DOCDB_H_
 
+#include <string>
 #include <cstdint>
 #include <ostream>
 
@@ -55,7 +56,7 @@ namespace docdb {
 
 class DocWriteBatch {
  public:
-  DocWriteBatch(rocksdb::DB* rocksdb);
+  explicit DocWriteBatch(rocksdb::DB* rocksdb);
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
@@ -79,17 +80,17 @@ class DocVisitor {
   DocVisitor() {}
   virtual ~DocVisitor() {}
 
-	virtual void StartDocument(const DocKey& key) = 0;
-	virtual void EndDocument() = 0;
+  virtual void StartDocument(const DocKey& key) = 0;
+  virtual void EndDocument() = 0;
 
-	virtual void VisitKey(const PrimitiveValue& key) = 0;
+  virtual void VisitKey(const PrimitiveValue& key) = 0;
   virtual void VisitValue(const PrimitiveValue& value) = 0;
 
-	virtual void StartObject() = 0;
-	virtual void EndObject() = 0;
+  virtual void StartObject() = 0;
+  virtual void EndObject() = 0;
 
-	virtual void StartArray() = 0;
-	virtual void EndArray() = 0;
+  virtual void StartArray() = 0;
+  virtual void EndArray() = 0;
 };
 
 class DocScanner {
@@ -101,11 +102,11 @@ class DocScanner {
              const DocKey& end_key,
              bool end_key_included)
       : rocksdb_(rocksdb),
-				timestamp_(timestamp),
-				start_key_(start_key),
-				end_key_(end_key),
-				end_key_included_(end_key_included) {
-	}
+        timestamp_(timestamp),
+        start_key_(start_key),
+        end_key_(end_key),
+        end_key_included_(end_key_included) {
+  }
 
  private:
   rocksdb::DB* rocksdb_;
@@ -116,15 +117,15 @@ class DocScanner {
 };
 
 yb::Status ScanDocument(rocksdb::DB* rocksdb,
-												const KeyBytes& document_key,
-												DocVisitor* visitor);
+                        const KeyBytes& document_key,
+                        DocVisitor* visitor);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,
 // if any.
 yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out);
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_DOCDB_H_

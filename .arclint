@@ -10,6 +10,21 @@
       "include": "(\\.py$)",
       "exclude": "(^thirdparty/)",
       "bin": "pycodestyle"
+    },
+    "googleccplint": {
+      "type": "googlecpplint",
+      "include": [
+        "(\\.cpp$)",
+        "(\\.cc$)",
+        "(\\.c$)",
+        "(\\.hpp$)",
+        "(\\.h$)"
+      ],
+      "cpplint.header_guard_root_dir": "src",
+      "cpplint.max_line_length": 100,
+      "severity.rules": {
+        "(.*)": "error"
+      }
     }
   }
 }
