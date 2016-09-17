@@ -266,7 +266,7 @@ fi
 export PATH="$YB_THIRDPARTY_DIR/installed/bin:$PATH"
 
 if "$no_ccache"; then
-  cmake_opts+=( -DYB_NO_CCACHE=1 )
+  export YB_NO_CCACHE=1
 fi
 
 if "$no_tcmalloc"; then
