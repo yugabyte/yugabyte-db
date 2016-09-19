@@ -31,7 +31,7 @@ public class AWSCostUtil {
 
     InstanceTypeRegionDetails regionDetails = null;
     for (InstanceTypeRegionDetails rDetails : regionDetailsList) {
-      if (rDetails.tenancy.equals(tenancy)) {
+      if (rDetails.tenancy.equals(tenancy) && rDetails.operatingSystem.equals("Linux")) {
         regionDetails = rDetails;
         break;
       }
