@@ -47,6 +47,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   // odd number for consensus to work.
   public static final int maxMasterSubnets = 3;
 
+  // Enum for specifying the server type.
+  public enum ServerType {
+    MASTER,
+    TSERVER
+  }
+
   // The task params.
   @Override
   protected UniverseDefinitionTaskParams taskParams() {
@@ -381,14 +387,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Create a task list to ping all servers until they are up.
    *
-   * @param nodes : a collection of nodes that need to be pinged
+   * @param nodes : a collection of nodes that need to be pinged.
+   * @param type  : Master or tserver type server running on these nodes.
    */
-  public TaskList createWaitForServerTasks(Collection<NodeDetails> nodes) {
+  public TaskList createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
     TaskList taskList = new TaskList("WaitForServer", executor);
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
       params.universeUUID = taskParams().universeUUID;
       params.nodeName = node.nodeName;
+      params.serverType = type;
       WaitForServer task = new WaitForServer();
       task.initialize(params);
       taskList.addTask(task);

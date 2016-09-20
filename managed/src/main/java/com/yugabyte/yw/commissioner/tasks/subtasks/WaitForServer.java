@@ -8,6 +8,7 @@ import org.yb.client.YBClient;
 
 import org.yb.client.shaded.com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -27,7 +28,11 @@ public class WaitForServer extends AbstractTaskBase {
   private static final long TIMEOUT_SERVER_WAIT_MS = 60000;
 
   public static class Params extends UniverseTaskParams {
+    // The name of the node which contains the server process.
     public String nodeName;
+
+    // Server type running on the above node for which we will wait. 
+    public ServerType serverType;
   }
 
   @Override
@@ -43,19 +48,35 @@ public class WaitForServer extends AbstractTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", " + taskParams().nodeName + ")";
+    return super.getName() + "(" + taskParams().universeUUID + ", " + taskParams().nodeName +
+    		", type=" + taskParams().serverType + ")";
   }
 
   @Override
   public void run() {
     boolean ret = false;
+    if (taskParams().serverType != ServerType.MASTER && taskParams().serverType != ServerType.TSERVER) {
+      throw new IllegalArgumentException("Unexpected server type " + taskParams().serverType);
+    }
     String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
       YBClient client = ybService.getClient(hostPorts);
       NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
+
+      if (taskParams().serverType == ServerType.MASTER && !node.isMaster) {
+        throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is not for a " +
+                                           "node running master : " + node.toString());
+      }
+
+      if (taskParams().serverType == ServerType.TSERVER && !node.isTserver) {
+        throw new IllegalArgumentException("Task server type " + taskParams().serverType + " is not for a " +
+                                           "node running tserver : " + node.toString());
+      }
+
       HostAndPort hp = HostAndPort.fromParts(
-          node.cloudInfo.private_ip, node.isMaster ? node.masterRpcPort : node.tserverRpcPort);
+          node.cloudInfo.private_ip,
+          taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
       ret = client.waitForServer(hp, TIMEOUT_SERVER_WAIT_MS);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
