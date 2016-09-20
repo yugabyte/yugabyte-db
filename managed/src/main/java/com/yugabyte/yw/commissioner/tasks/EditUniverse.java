@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
@@ -103,11 +104,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createStartMasterTasks(
           newMasters, true /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
+      // Wait for masters to be responsive.
+      createWaitForServersTasks(
+          newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
+
       // Start the tservers in the clusters.
       createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
-      // Wait for all servers to be responsive.
-      createWaitForServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
+      // Wait for all tablet servers to be responsive.
+      createWaitForServersTasks(
+          newNodesMap.values(), ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Now finalize the cluster configuration change tasks.
       createMoveMastersTasks(SubTaskType.WaitForDataMigration);
