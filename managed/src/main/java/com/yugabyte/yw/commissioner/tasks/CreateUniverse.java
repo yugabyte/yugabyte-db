@@ -66,11 +66,16 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createStartMasterTasks(
           newMasters, false /* isShell */).setUserSubTask(SubTaskType.ConfigureUniverse);
 
+      // Wait for new masters to be responsive.
+      createWaitForServersTasks(
+           newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
+
       // Start the tservers in the clusters.
       createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
 
-      // Wait for all servers to be responsive.
-      createWaitForServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
+      // Wait for new tablet servers to be responsive.
+      createWaitForServersTasks(
+           newNodesMap.values(), ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for a Master Leader to be elected.
       createWaitForMasterLeaderTask().setUserSubTask(SubTaskType.ConfigureUniverse);
