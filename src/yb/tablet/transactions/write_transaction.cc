@@ -316,9 +316,13 @@ void WriteTransactionState::UpdateMetricsForOp(const RowOp& op) {
 }
 
 void WriteTransactionState::release_row_locks() {
-  // free the row locks
+  // Free the row locks.
   for (RowOp* op : row_ops_) {
     op->row_lock.Release();
+  }
+  // Free docdb row locks.
+  for (const string& locked_key : docdb_locks_) {
+    tablet_peer()->tablet()->shared_lock_manager()->Unlock(locked_key);
   }
 }
 

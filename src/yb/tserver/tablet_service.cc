@@ -17,8 +17,9 @@
 
 #include "yb/tserver/tablet_service.h"
 
-#include <algorithm>
 #include <boost/optional.hpp>
+
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -239,7 +240,7 @@ static StatusCallback BindHandleResponse(const ReqType* req, RespType* resp, Rpc
   return Bind(&HandleResponse<ReqType, RespType>, req, resp, context);
 }
 
-} // namespace
+}  // namespace
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
@@ -280,8 +281,8 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
  public:
   RpcTransactionCompletionCallback(rpc::RpcContext* context,
                                    Response* response)
- : context_(context),
-   response_(response) {}
+  : context_(context),
+    response_(response) {}
 
   virtual void TransactionCompleted() OVERRIDE {
     if (!status_.ok()) {
@@ -460,7 +461,7 @@ class ScanResultChecksummer : public ScanResultCollector {
 
     uint64_t row_crc = 0;
     crc_->Compute(tmp_buf_.data(), tmp_buf_.size(), &row_crc, nullptr);
-    return static_cast<uint32_t>(row_crc); // CRC32 only uses the lower 32 bits.
+    return static_cast<uint32_t>(row_crc);  // CRC32 only uses the lower 32 bits.
   }
 
   faststring tmp_buf_;
@@ -738,11 +739,13 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   unique_ptr<WriteTransactionState> tx_state;
 
+  vector<string> locks_held;
+
   if (tablet->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
     // We'll construct a new WriteRequestPB for raft replication.
     unique_ptr<const WriteRequestPB> key_value_write_request;
 
-    s = tablet->CreateKeyValueWriteRequestPB(*req, &key_value_write_request);
+    s = tablet->CreateKeyValueWriteRequestPB(*req, &key_value_write_request, &locks_held);
     if (PREDICT_FALSE(!s.ok())) {
       SetupErrorAndRespond(resp->mutable_error(), s,
                            TabletServerErrorPB::UNKNOWN_ERROR,
@@ -751,6 +754,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     }
     tx_state = unique_ptr<WriteTransactionState>(
         new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
+    tx_state->swap_docdb_locks(&locks_held);
   } else {
     tx_state = unique_ptr<WriteTransactionState>(
         new WriteTransactionState(tablet_peer.get(), req, resp));
@@ -1758,5 +1762,5 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
   return Status::OK();
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb

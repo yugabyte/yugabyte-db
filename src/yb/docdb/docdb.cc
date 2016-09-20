@@ -1,7 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-#include <string>
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
@@ -20,6 +23,7 @@ using std::unique_ptr;
 
 using yb::Timestamp;
 using yb::util::FormatBytesAsStr;
+using yb::util::LockType;
 using yb::FormatRocksDBSliceAsStr;
 using strings::Substitute;
 
@@ -32,12 +36,48 @@ namespace {
 const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
 }
 
+Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
+                                const std::vector<DocWriteOperation>& doc_write_ops,
+                                util::SharedLockManager* const lock_manager,
+                                vector<string>* keys_locked,
+                                rocksdb::WriteBatch* write_batch) {
+  unordered_map<string, LockType> lock_type_map;
+  for (const DocWriteOperation& doc_op : doc_write_ops) {
+    // TODO(akashnil): avoid materializing the vector, do the work of the called function in place.
+    vector<string> doc_op_locks = doc_op.doc_path.GetLockPrefixKeys();
+    assert(doc_op_locks.size() > 0);
+    for (int i = 0; i < doc_op_locks.size(); i++) {
+      auto iter = lock_type_map.find(doc_op_locks[i]);
+      if (iter == lock_type_map.end()) {
+        lock_type_map[doc_op_locks[i]] = LockType::SHARED;
+        keys_locked->push_back(doc_op_locks[i]);
+      }
+    }
+    lock_type_map[doc_op_locks[doc_op_locks.size() - 1]] = LockType::EXCLUSIVE;
+  }
+  // Sort the set of locks to be taken for this transaction, to make sure deadlocks don't occur.
+  std::sort(keys_locked->begin(), keys_locked->end());
+  for (string key : *keys_locked) {
+    lock_manager->Lock(key, lock_type_map[key]);
+  }
+  DocWriteBatch doc_write_batch(rocksdb);
+  for (DocWriteOperation doc_op : doc_write_ops) {
+    doc_write_batch.SetPrimitive(doc_op.doc_path, doc_op.value, doc_op.timestamp);
+  }
+  *write_batch = std::move(*doc_write_batch.write_batch());
+  return Status::OK();
+}
+
 // ------------------------------------------------------------------------------------------------
 // DocWriteBatch
 // ------------------------------------------------------------------------------------------------
 
 DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
     : rocksdb_(rocksdb) {
+}
+
+Status DocWriteBatch::SetPrimitive(DocWriteOperation doc_write_op) {
+  return SetPrimitive(doc_write_op.doc_path, doc_write_op.value, doc_write_op.timestamp);
 }
 
 // This codepath is used to handle both primitive upserts and deletions.

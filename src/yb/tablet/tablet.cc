@@ -17,6 +17,9 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <boost/bind.hpp>
+#include <boost/thread/shared_mutex.hpp>
+
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -26,9 +29,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <boost/bind.hpp>
-#include <boost/thread/shared_mutex.hpp>
 
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
@@ -756,7 +756,8 @@ void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
 }
 
 Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_request_pb,
-                                            unique_ptr<const WriteRequestPB>* kudu_write_batch_pb) {
+                                            unique_ptr<const WriteRequestPB>* kudu_write_batch_pb,
+                                            vector<string>* keys_locked) {
 
   TRACE("PREPARE: Decoding operations");
 
@@ -781,7 +782,7 @@ Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_req
 
   rocksdb::WriteBatch write_batch;
 
-  CreateWriteBatchFromKuduRowOps(ops, &write_batch);
+  CreateWriteBatchFromKuduRowOps(ops, &write_batch, keys_locked);
 
   WriteRequestPB* const write_request_copy = new WriteRequestPB(kudu_write_request_pb);
 
@@ -794,8 +795,10 @@ Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_req
 }
 
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                              WriteBatch* write_batch) {
-  const Timestamp timestamp = clock_->Now();
+                                              WriteBatch* write_batch,
+                                              vector<string>* keys_locked) {
+  vector<docdb::DocWriteOperation> doc_ops;
+  const Timestamp current_time = clock_->Now();
   DocWriteBatch doc_write_batch(rocksdb_.get());
   for (DecodedRowOperation row_op : row_ops) {
     switch (row_op.type) {
@@ -821,7 +824,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           const DataType data_type = schema()->column(i).type_info()->type();
           const PrimitiveValue column_value =
               PrimitiveValue::FromKuduValue(data_type, value_slice);
-          doc_write_batch.SetPrimitive(doc_path, column_value, timestamp);
+          doc_ops.emplace_back(doc_path, column_value, current_time);
         }
 
         break;
@@ -831,7 +834,8 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
                    << " for key-value tables";
     }
   }
-  *write_batch = std::move(*doc_write_batch.write_batch());
+  docdb::StartDocWriteTransaction(
+      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked, write_batch);
   return Status::OK();
 }
 
@@ -962,8 +966,8 @@ Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
                                 mem_tracker_));
   shared_ptr<RowSetTree> new_rst(new RowSetTree());
   ModifyRowSetTree(*components_->rowsets,
-                   RowSetVector(), // remove nothing
-                   { *old_ms }, // add the old MRS
+                   RowSetVector(),  // remove nothing
+                   { *old_ms },  // add the old MRS
                    new_rst.get());
 
   // Swap it in
@@ -1990,7 +1994,7 @@ int64_t Tablet::GetLogRetentionSizeForIndex(int64_t min_log_index,
   int64_t total_size = 0;
   for (const MaxIdxToSegmentMap::value_type& entry : max_idx_to_segment_size) {
     if (min_log_index > entry.first) {
-      continue; // We're not in this segment, probably someone else is retaining it.
+      continue;  // We're not in this segment, probably someone else is retaining it.
     }
     total_size += entry.second;
   }
@@ -2036,7 +2040,7 @@ Status Tablet::CompactWorstDeltas(RowSet::DeltaCompactionType type) {
 
   // We just released compact_select_lock_ so other compactions can select and run, but the
   // rowset is ours.
-  DCHECK(perf_improv != 0);
+  DCHECK_NE(perf_improv, 0);
   if (type == RowSet::MINOR_DELTA_COMPACTION) {
     RETURN_NOT_OK_PREPEND(rs->MinorCompactDeltaStores(),
                           "Failed minor delta compaction on " + rs->ToString());
@@ -2190,5 +2194,5 @@ void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
   iter_->GetIteratorStats(stats);
 }
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

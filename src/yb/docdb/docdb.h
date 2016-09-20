@@ -3,13 +3,15 @@
 #ifndef YB_DOCDB_DOCDB_H_
 #define YB_DOCDB_DOCDB_H_
 
-#include <string>
 #include <cstdint>
 #include <ostream>
+#include <string>
+#include <vector>
 
 #include "rocksdb/db.h"
 
 #include "yb/common/timestamp.h"
+#include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
 
 #include "yb/docdb/doc_key.h"
@@ -54,12 +56,54 @@
 namespace yb {
 namespace docdb {
 
+// Currently DocWriteOperation is just one upsert (or delete) of a value at some DocPath.
+// In future we will make more complicated DocWriteOperations for redis.
+struct DocWriteOperation {
+  DocPath doc_path;
+  PrimitiveValue value;
+  Timestamp timestamp;
+
+  DocWriteOperation(DocPath doc_path, PrimitiveValue value, Timestamp timestamp) :
+      doc_path(doc_path), value(value), timestamp(timestamp) {}
+};
+
+
+// This function starts the transaction by taking locks, reading from rocksdb,
+// and constructing the write batch. The set of keys locked are returned to the caller via the
+// keys_locked argument (because they need to be saved and unlocked when the transaction commits).
+//
+// Example: doc_write_ops might consist of the following operations:
+// a.b = {}, a.b.c = 1, a.b.d = 2, e.d = 3
+// We will generate all the lock_prefixes for the keys with lock types
+// a - shared, a.b - exclusive, a - shared, a.b - shared, a.b.c - exclusive ...
+// Then we will deduplicate the keys and promote shared locks to exclusive, and sort them.
+// Finally, the locks taken will be in order:
+// a - shared, a.b - exclusive, a.b.c - exclusive, a.b.d - exclusive, e - shared, e.d - exclusive.
+// Then the sorted lock key list will be returned. (Type is not returned because it is not needed
+// for unlocking)
+// TODO(akashnil): If a.b is exclusive, we don't need to lock any sub-paths under it.
+//
+// Input: doc_write_ops
+// Context: rocksdb, lock_manager
+// Outputs: keys_locked, write_batch
+Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
+                                const std::vector<DocWriteOperation>& doc_write_ops,
+                                util::SharedLockManager* const lock_manager,
+                                vector<string>* keys_locked,
+                                rocksdb::WriteBatch* write_batch);
+
+// The DocWriteBatch class is used to build a rocksdb write batch for a doc db batch of operations
+// that may include a mix or write (set) or delete operations. It may read from rocksdb while
+// writing, and builds up an internal rocksdb::WriteBatch while handling the operations.
+// When all the operations are applied, the rocksdb::WriteBatch should be taken as output.
+// Take ownership of it using std::move if it needs to live longer than this DocWriteBatch.
 class DocWriteBatch {
  public:
   explicit DocWriteBatch(rocksdb::DB* rocksdb);
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
+  Status SetPrimitive(DocWriteOperation doc_write_op);
   Status SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value, Timestamp timestamp);
   Status DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp);
 

@@ -17,11 +17,11 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
 
-#include "yb/tablet/tablet-test-util.h"
-
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <memory>
+
+#include "yb/tablet/tablet-test-util.h"
 
 #include "yb/common/partial_row.h"
 #include "yb/common/row_operations.h"
@@ -98,7 +98,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     scoped_refptr<Log> log;
     CHECK_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
                        *tablet()->schema(),
-                       0, // schema_version
+                       0,  // schema_version
                        NULL, &log));
 
     scoped_refptr<MetricEntity> metric_entity =
@@ -168,9 +168,11 @@ class RemoteBootstrapTest : public YBTabletTest {
       CountDownLatch latch(1);
 
       unique_ptr<const WriteRequestPB> key_value_write_request;
+      std::vector<std::string> keys_locked;
 
       if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
-        Status s = tablet()->CreateKeyValueWriteRequestPB(*req.get(), &key_value_write_request);
+        Status s = tablet()->CreateKeyValueWriteRequestPB(
+            *req.get(), &key_value_write_request, &keys_locked);
         assert(s.ok());
       } else {
         key_value_write_request = std::move(req);
@@ -178,6 +180,9 @@ class RemoteBootstrapTest : public YBTabletTest {
 
       auto state = new WriteTransactionState(
           tablet_peer_.get(), key_value_write_request.get(), &resp);
+      if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+        state->swap_docdb_locks(&keys_locked);
+      }
       state->set_completion_callback(gscoped_ptr<tablet::TransactionCompletionCallback>(
           new tablet::LatchTransactionCompletionCallback<WriteResponsePB>(&latch, &resp)).Pass());
       ASSERT_OK(tablet_peer_->SubmitWrite(state));
@@ -229,4 +234,4 @@ class RemoteBootstrapTest : public YBTabletTest {
 }  // namespace tserver
 }  // namespace yb
 
-#endif
+#endif  // YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_

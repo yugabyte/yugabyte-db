@@ -14,8 +14,10 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TABLET_TABLET_H
-#define YB_TABLET_TABLET_H
+#ifndef YB_TABLET_TABLET_H_
+#define YB_TABLET_TABLET_H_
+
+#include <boost/thread/shared_mutex.hpp>
 
 #include <iosfwd>
 #include <map>
@@ -24,7 +26,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/thread/shared_mutex.hpp>
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/write_batch.h"
@@ -47,9 +48,10 @@
 #include "yb/util/semaphore.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/shared_lock_manager.h"
 
 namespace rocksdb {
-  class DB;
+class DB;
 }
 
 namespace yb {
@@ -202,13 +204,19 @@ class Tablet {
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
   // replicated by Raft. (Makes a copy, it is caller's responsibility to deallocate
   // kudu_write_request_pb afterwards if it is no longer needed).
+  // The operation acquires the necessary locks required to correctly serialize concurrent write
+  // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
+  // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
+  // committed.
   Status CreateKeyValueWriteRequestPB(
       const tserver::WriteRequestPB& kudu_write_request_pb,
-      std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb);
+      std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb,
+      std::vector<std::string>* keys_locked);
 
   // Uses primary_key:column_name for key encoding.
   Status CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                        rocksdb::WriteBatch* write_batch);
+                                        rocksdb::WriteBatch* write_batch,
+                                        std::vector<std::string>* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // KEY_VALUE_TABLE_TYPE.
@@ -352,6 +360,8 @@ class Tablet {
 
   // Return the MVCC manager for this tablet.
   MvccManager* mvcc_manager() { return &mvcc_; }
+
+  yb::util::SharedLockManager* shared_lock_manager() { return &shared_lock_manager_; }
 
   const TabletMetadata *metadata() const { return metadata_.get(); }
   TabletMetadata *metadata() { return metadata_.get(); }
@@ -585,6 +595,8 @@ class Tablet {
   scoped_refptr<server::Clock> clock_;
 
   MvccManager mvcc_;
+  // This is used for Kudu tables only. Docdb uses shared_lock_manager_. lock_manager_ may be
+  // deprecated in future.
   LockManager lock_manager_;
 
   gscoped_ptr<CompactionPolicy> compaction_policy_;
@@ -622,6 +634,9 @@ class Tablet {
 
   // RocksDB database for key-value tables.
   gscoped_ptr<rocksdb::DB> rocksdb_;
+
+  // This is for docdb fine-grained locking.
+  yb::util::SharedLockManager shared_lock_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
@@ -700,7 +715,7 @@ struct TabletComponents : public RefCountedThreadSafe<TabletComponents> {
   const std::shared_ptr<RowSetTree> rowsets;
 };
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb
 
-#endif
+#endif  // YB_TABLET_TABLET_H_

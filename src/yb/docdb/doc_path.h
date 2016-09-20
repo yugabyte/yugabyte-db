@@ -3,11 +3,14 @@
 #ifndef YB_DOCDB_DOC_PATH_H_
 #define YB_DOCDB_DOC_PATH_H_
 
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/docdb/primitive_value.h"
 #include "yb/gutil/strings/substitute.h"
 #include "rocksdb/util/string_util.h"
-
-#include <ostream>
 
 namespace yb {
 namespace docdb {
@@ -55,11 +58,25 @@ class DocPath {
     return subkeys_.back();
   }
 
- private:
+  // Return prefix strings upto each prefix of the docpath.
+  // Consider a docpath p1.s1.s2.s3; We will logically return the strings:
+  // p1, p1.s1, p1.s1.s2, p1.s1.s2.s3
+  // (Of course the parts are glued by 01 encoding and not .'s).
+  std::vector<std::string> GetLockPrefixKeys() const {
+    std::vector<std::string> prefix_list;
+    KeyBytes current_prefix = encoded_doc_key_;
+    prefix_list.push_back(current_prefix.ToString());
+    for (PrimitiveValue v : subkeys_) {
+      current_prefix.Append(v.ToKeyBytes());
+      prefix_list.push_back(current_prefix.ToString());
+    }
+    return prefix_list;
+  }
 
+ private:
   // Encoded key identifying the document. This key can itself contain multiple components
   // (hash bucket, hashed components, range components).
-  // TODO: should this really be encoded?
+  // TODO(mikhail): should this really be encoded?
   KeyBytes encoded_doc_key_;
 
   std::vector<PrimitiveValue> subkeys_;
@@ -69,7 +86,7 @@ inline std::ostream& operator << (std::ostream& out, const DocPath& doc_path) {
   return out << doc_path.ToString();
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_DOC_PATH_H_

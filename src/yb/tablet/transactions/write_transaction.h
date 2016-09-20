@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_TABLET_WRITE_TRANSACTION_H_
-#define YB_TABLET_WRITE_TRANSACTION_H_
+#ifndef YB_TABLET_TRANSACTIONS_WRITE_TRANSACTION_H_
+#define YB_TABLET_TRANSACTIONS_WRITE_TRANSACTION_H_
 
 #include <mutex>
 #include <string>
@@ -179,6 +179,11 @@ class WriteTransactionState : public TransactionState {
     kv_write_batch_ = *kv_batch;
   }
 
+  void swap_docdb_locks(std::vector<std::string>* docdb_locks) {
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
+    docdb_locks_ = std::move(*docdb_locks);
+  }
+
   void UpdateMetricsForOp(const RowOp& op);
 
   // Releases all the row locks acquired by this transaction.
@@ -206,6 +211,9 @@ class WriteTransactionState : public TransactionState {
   // The row operations which are decoded from the request during PREPARE
   // Protected by superclass's txn_state_lock_.
   std::vector<RowOp*> row_ops_;
+
+  // Store the ids that have been locked for docdb transaction. They need to be released on commit.
+  std::vector<std::string> docdb_locks_;
 
   // For transactions that work on KV tables, the KV batch is constructed and appended
   // to Raft log before applying.
@@ -292,4 +300,4 @@ class WriteTransaction : public Transaction {
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_WRITE_TRANSACTION_H_ */
+#endif  // YB_TABLET_TRANSACTIONS_WRITE_TRANSACTION_H_
