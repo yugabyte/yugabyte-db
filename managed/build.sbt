@@ -2,7 +2,10 @@ name := """yugaware"""
 
 version := "1.0-SNAPSHOT"
 
-lazy val root = (project in file(".")).enablePlugins(PlayJava, PlayEbean, SbtWeb)
+lazy val root = (project in file("."))
+  .enablePlugins(PlayJava, PlayEbean, SbtWeb)
+  .disablePlugins(PlayLayoutPlugin)
+
 
 scalaVersion := "2.11.7"
 
@@ -23,5 +26,7 @@ resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT" % "compile,test" classifier "tests"
 publishTo := Some("yugabyteS3" at "s3://no-such-url/")
+
+PlayKeys.playMonitoredFiles ++= (sourceDirectories in (Compile, TwirlKeys.compileTemplates)).value
 
 topLevelDirectory := None
