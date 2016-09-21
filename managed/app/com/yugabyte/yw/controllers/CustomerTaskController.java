@@ -24,12 +24,11 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.libs.Json;
 import play.mvc.Result;
 
-import static com.yugabyte.yw.ui.controllers.TokenAuthenticator.API_AUTH_TOKEN;
+import static com.yugabyte.yw.controllers.TokenAuthenticator.API_AUTH_TOKEN;
 
 public class CustomerTaskController extends AuthenticatedController {
   @Inject

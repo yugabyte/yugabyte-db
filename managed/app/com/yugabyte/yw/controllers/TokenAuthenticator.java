@@ -1,6 +1,6 @@
 // Copyright (c) Yugabyte, Inc.
 
-package com.yugabyte.yw.ui.controllers;
+package com.yugabyte.yw.controllers;
 
 import play.mvc.Action;
 import play.mvc.Http;

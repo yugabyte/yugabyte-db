@@ -4,7 +4,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.data.Form;
 import play.data.FormFactory;

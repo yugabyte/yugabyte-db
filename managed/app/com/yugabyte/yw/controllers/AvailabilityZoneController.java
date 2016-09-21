@@ -13,7 +13,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.data.Form;
 import play.data.FormFactory;
