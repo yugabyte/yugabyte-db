@@ -188,8 +188,8 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   const int kNumTablets = 20;
   vector<string> ts_flags;
   vector<string> master_flags;
-  ts_flags.push_back("--never_fsync"); // run faster on slow disks
-  master_flags.push_back("--enable_load_balancing=false"); // disable load balancing moves
+  ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
   NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
@@ -200,8 +200,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
             .add_hash_partitions({ "key" }, kNumTablets)
             .Create());
 
-  // Check that the replicas are fairly well spread by computing the standard
-  // deviation of the number of replicas per server.
+  // Computing the standard deviation of the number of replicas per server.
   const double kMeanPerServer = kNumTablets * 3.0 / kNumServers;
   double sum_squared_deviation = 0;
   vector<int> tablet_counts;
@@ -211,11 +210,22 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
     double deviation = static_cast<double>(num_replicas) - kMeanPerServer;
     sum_squared_deviation += deviation * deviation;
   }
-  double stddev = sqrt(sum_squared_deviation / (kMeanPerServer - 1));
+  double stddev = 0.0;
+  // The denominator in the following formula is kNumServers - 1 instead of kNumServers because
+  // of Bessel's correction for unbiased estimation of variance.
+  if (kNumServers > 1) {
+    stddev = sqrt(sum_squared_deviation / (kNumServers - 1));
+  }
   LOG(INFO) << "stddev = " << stddev;
-  // In 1000 runs of the test, only one run had stddev above 2.0. So, 3.0 should
-  // be a safe non-flaky choice.
-  ASSERT_LE(stddev, 3.0);
+  LOG(INFO) << "mean = " << kMeanPerServer;
+  // We want to ensure that stddev is small compared to mean.
+  const double threshold_ratio = 0.2;
+  // We are verifying that stddev is less than 20% of the mean + 1.0.
+  // "+ 1.0" is needed because stddev is inflated by discreet counting.
+
+  // In 100 runs, the maximum threshold needed was 10%. 20% is a safe value to prevent
+  // failures from random chance.
+  ASSERT_LE(stddev, kMeanPerServer * threshold_ratio + 1.0);
 
   // Construct a map from tablet ID to the set of servers that each tablet is hosted on.
   multimap<string, int> tablet_to_servers;
@@ -251,4 +261,4 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   ASSERT_GE(avg_num_peers, kNumServers / 2);
 }
 
-} // namespace yb
+}  // namespace yb
