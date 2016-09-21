@@ -472,7 +472,7 @@ service ConsensusService {
 
   // Implements all of the one-by-one config change operations, including
   // AddServer() and RemoveServer() from the Raft specification, as well as
-  // an operation to change the role of a server between VOTER and NON_VOTER.
+  // an operation to change the role of a server between VOTER and PRE_VOTER.
   // An OK response means the operation was successful.
   rpc ChangeConfig(ChangeConfigRequestPB) returns (ChangeConfigResponsePB);
 

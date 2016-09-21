@@ -52,7 +52,7 @@ message RaftPeerPB {
 
   enum MemberType {
     UNKNOWN_MEMBER_TYPE = 999;
-    NON_VOTER = 0;
+    PRE_VOTER = 0;
     VOTER = 1;
   };
   // Permanent uuid is optional: RaftPeerPB/RaftConfigPB instances may

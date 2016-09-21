@@ -892,7 +892,7 @@ static void SetUsage(const char* argv0) {
       << "<operation> must be one of:\n"
       << " 1. " << kChangeConfigOp << " <tablet_id> "
                 << "<ADD_SERVER|REMOVE_SERVER> <peer_uuid> "
-                << "[VOTER|NON_VOTER]" << std::endl
+                << "[VOTER|PRE_VOTER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
       << " 4. " << kListTabletsOp << " <table_name>"  << " [max_tablets]"

@@ -454,7 +454,7 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
   if (voters_in_transition != 0) {
     LOG(INFO) << "Step down found non voters " << voters_in_transition;
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(STATUS(IllegalState, Substitute("Leader not ready as there are $0 non_voters",
+    StatusToPB(STATUS(IllegalState, Substitute("Leader not ready as there are $0 PRE_VOTERs",
                                                voters_in_transition)),
                resp->mutable_error()->mutable_status());
     // We return OK so that the tablet service won't overwrite the error code.
@@ -1502,7 +1502,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         }
         new_peer = new_config.add_peers();
         *new_peer = server;
-        new_peer->set_member_type(RaftPeerPB::NON_VOTER);
+        new_peer->set_member_type(RaftPeerPB::PRE_VOTER);
         break;
 
       case REMOVE_SERVER:

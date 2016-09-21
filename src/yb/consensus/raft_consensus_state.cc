@@ -31,11 +31,11 @@
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
-DEFINE_int32(inject_delay_commit_non_voter_to_voter_secs, 0,
-             "Amount of time to delay commit of a NON_VOTER to VOTER transition. To be used for "
+DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
+             "Amount of time to delay commit of a PRE_VOTER to VOTER transition. To be used for "
              "unit testing purposes only.");
-TAG_FLAG(inject_delay_commit_non_voter_to_voter_secs, unsafe);
-TAG_FLAG(inject_delay_commit_non_voter_to_voter_secs, hidden);
+TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, unsafe);
+TAG_FLAG(inject_delay_commit_pre_voter_to_voter_secs, hidden);
 
 namespace yb {
 namespace consensus {
@@ -570,15 +570,15 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
       DCHECK(old_config.has_opid_index());
       DCHECK(!new_config.has_opid_index());
 
-      if (PREDICT_FALSE(FLAGS_inject_delay_commit_non_voter_to_voter_secs)) {
+      if (PREDICT_FALSE(FLAGS_inject_delay_commit_pre_voter_to_voter_secs)) {
         bool is_transit_to_voter =
           CountVotersInTransition(old_config) > CountVotersInTransition(new_config);
         if (is_transit_to_voter) {
           LOG_WITH_PREFIX_UNLOCKED(INFO) << "Commit skipped "
-              << " as inject_delay_commit_non_voter_to_voter_secs flag is set to true.\n"
+              << " as inject_delay_commit_pre_voter_to_voter_secs flag is set to true.\n"
               << "  Old config: { " << old_config.ShortDebugString() << " }.\n"
               << "  New config: { " << new_config.ShortDebugString() << " }";
-          SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_commit_non_voter_to_voter_secs));
+          SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_commit_pre_voter_to_voter_secs));
         }
       }
 

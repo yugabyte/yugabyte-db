@@ -277,21 +277,21 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
     ASSERT_OK(cluster_->SetFlag(master, "do_not_start_election_test_only", "true"));
     // Do not let the followers commit change role - to keep their opid same as the new master,
     // and hence will vote for it.
-    ASSERT_OK(cluster_->SetFlag(master, "inject_delay_commit_non_voter_to_voter_secs", "5"));
+    ASSERT_OK(cluster_->SetFlag(master, "inject_delay_commit_pre_voter_to_voter_secs", "5"));
   }
 
   // Wait for 5 seconds on new master to commit voter mode transition. Note that this should be
   // less than the timeout sent to WaitForMasterLeaderToBeReady() below. We want the pending
   // config to be preset when the new master is deemed as leader to start the sys catalog load, but
   // would need to get that pending config committed for load to progress.
-  ASSERT_OK(cluster_->SetFlag(new_master, "inject_delay_commit_non_voter_to_voter_secs", "5"));
+  ASSERT_OK(cluster_->SetFlag(new_master, "inject_delay_commit_pre_voter_to_voter_secs", "5"));
   // And don't let it start an election too soon.
   ASSERT_OK(cluster_->SetFlag(new_master, "do_not_start_election_test_only", "true"));
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
 
-  // Wait for addition of the new master as a NON_VOTER to commit on all peers. The CHANGE_ROLE
+  // Wait for addition of the new master as a PRE_VOTER to commit on all peers. The CHANGE_ROLE
   // part is not committed on all the followers, as that might block the new master from becoming
   // the leader as others would have a opid higher than the new master and will not vote for it.
   // The new master will become FOLLOWER and can start an election once it has a pending change

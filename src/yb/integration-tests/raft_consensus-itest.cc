@@ -1613,10 +1613,10 @@ TEST_F(RaftConsensusITest, TestAddRemoveServer) {
     ASSERT_OK(itest::GetConsensusState(leader_tserver, tablet_id_,
                                        consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
 
-    // Verify that this tserver was added as a NON_VOTER.
+    // Verify that this tserver was added as a PRE_VOTER.
     for (const auto peer : cstate.config().peers()) {
       if (peer.permanent_uuid() == tserver_to_add->uuid()) {
-        ASSERT_EQ(RaftPeerPB::NON_VOTER, peer.member_type());
+        ASSERT_EQ(RaftPeerPB::PRE_VOTER, peer.member_type());
         LOG(INFO) << "tserver with uuid " << tserver_to_add->uuid() << " was added as a "
                   << RaftPeerPB::MemberType_Name(peer.member_type());
       }

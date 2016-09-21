@@ -101,8 +101,8 @@ Status RemoteBootstrapSession::ChangeRole() {
       continue;
     }
 
-    if (peer_pb.member_type() != consensus::RaftPeerPB::NON_VOTER) {
-      LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is not a NON_VOTER. "
+    if (peer_pb.member_type() != consensus::RaftPeerPB::PRE_VOTER) {
+      LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is not a PRE_VOTER. "
                    << "Not changing its role.";
       // Nothing to do.
       return Status::OK();
@@ -125,7 +125,7 @@ Status RemoteBootstrapSession::ChangeRole() {
   // If another ChangeConfig is being processed, our request will be rejected.
   // TODO(hector): Even if this ChangeConfig is accepted, something could go wrong before it is
   // committed and the new peer will never become a VOTER. We need to add code to detect this
-  // situation and promote the NON_VOTER peer.
+  // situation and promote the PRE_VOTER peer.
   return consensus->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
 }
 

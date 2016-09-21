@@ -200,7 +200,7 @@ private:
   log::LogAnchor log_anchor_;
 
   // We need to know whether this ended succesfully before changing the peer's member type from
-  // NON_VOTER to VOTER.
+  // PRE_VOTER to VOTER.
   bool succeeded_;
 
   // Directory where the checkpoint files are stored for this session (only for rocksdb).

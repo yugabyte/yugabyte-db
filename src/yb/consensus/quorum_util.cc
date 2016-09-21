@@ -107,13 +107,13 @@ int CountVoters(const RaftConfigPB& config) {
 }
 
 int CountVotersInTransition(const RaftConfigPB& config) {
-  int non_voters = 0;
+  int pre_voters = 0;
   for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.member_type() == RaftPeerPB::NON_VOTER) {
-      non_voters++;
+    if (peer.member_type() == RaftPeerPB::PRE_VOTER) {
+      pre_voters++;
     }
   }
-  return non_voters;
+  return pre_voters;
 }
 
 int MajoritySize(int num_voters) {

@@ -164,7 +164,7 @@ LeaderElection::LeaderElection(const RaftConfigPB& config,
       decision_callback_(std::move(decision_callback)) {
   for (const RaftPeerPB& peer : config.peers()) {
     if (request.candidate_uuid() == peer.permanent_uuid()) continue;
-    if (peer.member_type() == RaftPeerPB::NON_VOTER) {
+    if (peer.member_type() == RaftPeerPB::PRE_VOTER) {
       LOG(INFO) << "Skipping peer " << peer.permanent_uuid() << " because it is in LEARNER mode";
       continue;
     }
