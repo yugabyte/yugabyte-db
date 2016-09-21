@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import org.yb.client.ListTablesResponse;
 import play.libs.Json;

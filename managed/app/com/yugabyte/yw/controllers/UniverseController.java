@@ -37,7 +37,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.UserIntent;
-import com.yugabyte.yw.ui.controllers.AuthenticatedController;
 
 import play.data.Form;
 import play.data.FormFactory;

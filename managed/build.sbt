@@ -15,16 +15,6 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.3m",
   "mysql" % "mysql-connector-java" % "5.1.27",
   "org.postgresql" % "postgresql" % "9.2-1003-jdbc4",
-
-  // WebJars (i.e. client-side) dependencies
-  "org.webjars" %  "jquery" % "2.1.1",
-  "org.webjars" %  "bootstrap" % "3.3.1",
-  "org.webjars" %  "font-awesome" % "4.6.3",
-  "org.webjars" %  "metisMenu" % "1.1.2",
-  "org.webjars" %  "leaflet" % "0.7.7",
-  "org.webjars" %  "mousetrap" % "1.5.3-1",
-  "org.webjars.bower" % "react" % "15.2.1",
-  "org.webjars" % "select2" % "4.0.2",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.2"
 )
