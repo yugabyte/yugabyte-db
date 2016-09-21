@@ -7,7 +7,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isValidArray, isValidObject } from '../utils/ObjectUtils';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
-import { Row, Col, ProgressBar, Image } from 'react-bootstrap';
+import { Row, Col, Image } from 'react-bootstrap';
 import universelogo from '../images/universe_icon.png';
 import DescriptionItem from './DescriptionItem';
 import DescriptionList from './DescriptionList';
@@ -41,7 +41,7 @@ class StatusStringCell extends Component {
      var currentOp = tasks[0].data.title.split(":")[0];
      return (
        <Row>
-         <Col lg={12} className = "universe-table-status-cell">
+         <Col lg={12} className="universe-table-status-cell">
            <DescriptionItem title={stringHeader}>
              <TaskProgressContainer taskUUIDs={taskIds} type="BarWithDetails"
                                     currentOperation={currentOp} />
@@ -117,7 +117,7 @@ class UniverseDetailsCell extends Component {
     }
     var universeDetailsItems = Object.keys(cell).map(function(key, index) {
       if(key !== "Regions") {
-        return <DataComponents key={key+index} name={key} data={cell[key].toString()}/>
+        return <DataComponents key={key+index} name={key} data={cell[key]}/>
       } else {
         return <RegionDataComponent key={key+index} name={key} regions={cell[key]} />
       }
