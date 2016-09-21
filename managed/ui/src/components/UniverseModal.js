@@ -22,6 +22,7 @@ class UniverseModal extends Component {
     this.multiAZChanged = this.multiAZChanged.bind(this);
     this.regionChanged = this.regionChanged.bind(this);
     this.universeAction = this.universeAction.bind(this);
+    this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
     this.state = {
       showModal: false,
       regionSelected: []
@@ -58,6 +59,8 @@ class UniverseModal extends Component {
       }
       // If Edit Universe is called in the context of Current Universe
       else if(isValidObject(self.props.universe.currentUniverse)) {
+
+        var instanceType = self.props.universe.currentUniverse.universeDetails.userIntent.instanceType;
         currentProvider = self.props.universe.currentUniverse.provider.uuid;
         currentMultiAz = self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
         universeName = self.props.universe.currentUniverse.name;
@@ -74,7 +77,8 @@ class UniverseModal extends Component {
         azCheckState: currentMultiAz,
         regionSelected: items,
         buttonType: "universe-button btn btn-xs btn-info",
-        buttonIcon: "fa fa-pencil"
+        buttonIcon: "fa fa-pencil",
+        instanceTypeSelected: instanceType
       }
     }
     // If Create Universe is called
@@ -85,7 +89,8 @@ class UniverseModal extends Component {
         universeName: "",
         azCheckState: true,
         buttonType: "universe-button btn btn-default btn-lg bg-orange ",
-        buttonIcon: "fa fa-database"
+        buttonIcon: "fa fa-database",
+        instanceTypeSelected: "m3.medium"
       }
     }
   }
@@ -103,6 +108,11 @@ class UniverseModal extends Component {
     var multiAZCheck = this.state.azCheckState;
     this.props.getRegionListItems(providerUUID, multiAZCheck);
     this.props.getInstanceTypeListItems(providerUUID);
+  }
+
+  instanceTypeChanged(event) {
+
+    this.setState({instanceTypeSelected: event.target.value});
   }
 
   multiAZChanged() {
@@ -223,7 +233,7 @@ class UniverseModal extends Component {
               </label>
               <label className="form-item-label">
                 Instance Type
-                <select name="instanceType" className="form-control">
+                <select name="instanceType" className="form-control" value={this.state.instanceTypeSelected} onChange={this.instanceTypeChanged}>
                   {universeInstanceTypeList}
                 </select>
               </label>
