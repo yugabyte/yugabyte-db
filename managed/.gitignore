@@ -31,3 +31,5 @@ react/.idea/
 
 npm-debug.log
 react/npm-debug.log
+
+conf/*
