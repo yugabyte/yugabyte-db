@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { isValidObject } from '../utils/ObjectUtils';
+import { ROOT_URL } from '../config';
 
 // Create Universe
 export const CREATE_UNIVERSE = 'CREATE_NEW_UNIVERSE';
@@ -30,7 +31,6 @@ export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_SUCCESS = 'DELETE_UNIVERSE_SUCCESS';
 export const DELETE_UNIVERSE_FAILURE = 'DELETE_UNIVERSE_FAILURE';
 
-
 // Get Universe Cost
 export const FETCH_CUSTOMER_COST = 'FETCH_CUSTOMER_COST';
 export const FETCH_CUSTOMER_COST_SUCCESS = 'FETCH_CUSTOMER_COST_SUCCESS';
@@ -43,7 +43,6 @@ export const FETCH_UNIVERSE_TASKS_SUCCESS = 'FETCH_UNIVERSE_TASKS_SUCCESS';
 export const FETCH_UNIVERSE_TASKS_FAILURE = 'FETCH_UNIVERSE_TASKS_FAILURE';
 export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 
-const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
