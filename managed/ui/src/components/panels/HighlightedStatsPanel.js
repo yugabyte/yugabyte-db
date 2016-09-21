@@ -2,6 +2,7 @@
 
 import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
+import DescriptionItem from '../DescriptionItem';
 
 export default class HighlightedStatsPanel extends Component {
   render() {
@@ -14,20 +15,27 @@ export default class HighlightedStatsPanel extends Component {
     return (
       <div className="row tile_count universe-cost-panel-container">
         <Col md={3} mdOffset={2} className="tile_stats_count">
-          <span className="count_top">
-            <i className="fa fa-globe"></i>
-            Total Universes
-          </span>
-          <div className="count">{universeList.length}</div>
+          <DescriptionItem title={<span className="count_top">
+                                   <i className="fa fa-globe"></i>
+                                   Total Universes</span>}>
+            <div className="count">{universeList.length}</div>
+          </DescriptionItem>
         </Col>
         <Col md={3} className="tile_stats_count">
-          <span className="count_top"><i className="fa fa-user"></i> Cost Per Month</span>
-          <div className="count">${currentTotalCost.toFixed(2)}</div>
-          <span className="count_bottom"><i className="red"><i className="fa fa-sort-desc"></i>0% </i> From last Week</span>
+         <DescriptionItem title={<span className="count_top">
+                                  <i className="fa fa-user"></i>
+                                  Cost Per Month</span>}>
+           <div className="count">${currentTotalCost.toFixed(2)}</div>
+           <span className="count_bottom"><i className="red">
+             <i className="fa fa-sort-desc"></i>0% </i>
+             From last Week</span>
+         </DescriptionItem>
         </Col>
         <Col md={3} className="tile_stats_count">
-          <span className="count_top"><i className="fa fa-user"></i> Cost This Month</span>
-          <div className="count">$__,__</div>
+          <DescriptionItem title={<span className="count_top"><i className="fa fa-user"></i>
+                                  Cost This Month</span>}>
+            <div className="count">$__,__</div>
+          </DescriptionItem>
         </Col>
       </div>
     )
