@@ -2,16 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
-import java.util.TreeSet;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,11 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 /**
@@ -57,120 +46,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   @Override
   protected UniverseDefinitionTaskParams taskParams() {
     return (UniverseDefinitionTaskParams) taskParams;
-  }
-
-  /**
-   * Configures the set of nodes to be created and saves it to the universe info table.
-   *
-   * @param nodePrefix     : the node name prefix to use
-   * @param nodeStartIndex : id from which the new nodes should be numbered
-   * @param numMasters     : the number of masters desired in the edited universe
-   * @param newNodesMap    : out parameter, set of new nodes being created in the new universe
-   * @param newMasters     : out parameter, the subset of 'nodes' which are masters
-   */
-  public void configureNewNodes(String nodePrefix,
-                                int nodeStartIndex,
-                                int numMasters,
-                                Map<String, NodeDetails> newNodesMap,
-                                Set<NodeDetails> newMasters) {
-
-    // Create the names and known properties of all the cluster nodes.
-    int cloudIdx = 0;
-    int regionIdx = 0;
-    int azIdx = 0;
-    for (int nodeIdx = nodeStartIndex; nodeIdx < taskParams().numNodes + nodeStartIndex; nodeIdx++) {
-      NodeDetails nodeDetails = new NodeDetails();
-      // Create the node name.
-      nodeDetails.nodeName = nodePrefix + "-n" + nodeIdx;
-      // Set the cloud.
-      PlacementCloud placementCloud = taskParams().placementInfo.cloudList.get(cloudIdx);
-      nodeDetails.cloudInfo = new CloudSpecificInfo();
-      nodeDetails.cloudInfo.cloud = placementCloud.name;
-      // Set the region.
-      PlacementRegion placementRegion = placementCloud.regionList.get(regionIdx);
-      nodeDetails.cloudInfo.region = placementRegion.code;
-      // Set the AZ and the subnet.
-      PlacementAZ placementAZ = placementRegion.azList.get(azIdx);
-      nodeDetails.azUuid = placementAZ.uuid;
-      nodeDetails.cloudInfo.az = placementAZ.name;
-      nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
-      // Set the tablet server role to true.
-      nodeDetails.isTserver = true;
-      // Set the node id.
-      nodeDetails.nodeIdx = nodeIdx;
-      // Add the node to the list of nodes.
-      newNodesMap.put(nodeDetails.nodeName, nodeDetails);
-      LOG.debug("Placed new node {} in universe {} at cloud:{}, region:{}, az:{}.",
-                nodeDetails.toString(), taskParams().universeUUID, cloudIdx, regionIdx, azIdx);
-
-      // Advance to the next az/region/cloud combo.
-      azIdx = (azIdx + 1) % placementRegion.azList.size();
-      regionIdx = (regionIdx + (azIdx == 0 ? 1 : 0)) % placementCloud.regionList.size();
-      cloudIdx = (cloudIdx + (azIdx == 0 && regionIdx == 0 ? 1 : 0)) %
-        taskParams().placementInfo.cloudList.size();
-    }
-
-    // Select the masters for this cluster based on subnets.
-    List<String> masters = selectMasters(newNodesMap, numMasters);
-    for (String nodeName : masters) {
-      NodeDetails node = newNodesMap.get(nodeName);
-      // Add the node to the new masters set.
-      newMasters.add(node);
-      // Mark the node as a master.
-      node.isMaster = true;
-    }
-  }
-
-
-  /**
-   * Given a set of nodes and the number of masters, selects the masters.
-   *
-   * @param nodesMap   : a map of node names to the NodeDetails object
-   * @param numMasters : the number of masters to choose
-   * @return the list of node names selected as the master
-   */
-  public static List<String> selectMasters(Map<String, NodeDetails> nodesMap, int numMasters) {
-    // Group the cluster nodes by subnets.
-    Map<String, TreeSet<String>> subnetsToNodenameMap = new HashMap<String, TreeSet<String>>();
-    for (Entry<String, NodeDetails> entry : nodesMap.entrySet()) {
-      TreeSet<String> nodeSet = subnetsToNodenameMap.get(entry.getValue().cloudInfo.subnet_id);
-      // If the node set is empty, create it.
-      if (nodeSet == null) {
-        nodeSet = new TreeSet<String>();
-      }
-      // Add the node name into the node set.
-      nodeSet.add(entry.getKey());
-      // Add the node set back into the map.
-      subnetsToNodenameMap.put(entry.getValue().cloudInfo.subnet_id, nodeSet);
-    }
-    LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
-             subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
-    // Choose the masters such that we have one master per subnet if there are enough subnets.
-    List<String> masters = new ArrayList<String>();
-    if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
-      for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
-        // Get one node from each subnet.
-        String nodeName = entry.getValue().first();
-        masters.add(nodeName);
-        LOG.info("Chose node {} as a master from subnet {}.", nodeName, entry.getKey());
-        if (masters.size() == numMasters) {
-          break;
-        }
-      }
-    } else {
-      // We do not have enough subnets. Simply pick enough masters.
-      for (NodeDetails node : nodesMap.values()) {
-        masters.add(node.nodeName);
-        LOG.info("Chose node {} as a master from subnet {}.",
-                 node.nodeName, node.cloudInfo.subnet_id);
-        if (masters.size() == numMasters) {
-          break;
-        }
-      }
-    }
-
-    // Return the list of master node names.
-    return masters;
   }
 
   /**
@@ -204,6 +79,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     LOG.debug("Locked universe " + taskParams().universeUUID + " for updates");
     // Return the universe object that we have already updated.
     return universe;
+  }
+
+  // Fix up the node name/index based on the node start index.
+  public void fixNodeNamesAndIndexes(int startNodeIndex) {
+    int iter = 0;
+    for (NodeDetails node : taskParams().newNodesSet) {
+      node.nodeIdx = startNodeIndex + iter;
+      String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
+      LOG.info("Changing node name from " + node.nodeName + " to " + newName); 
+      node.nodeName = newName;
+      iter++;
+    }
+  }
+
+  // Get the list of new masters to be provisioned.
+  public void getNewMasters(Set<NodeDetails> newMasters) {
+    for (NodeDetails node : taskParams().newNodesSet) {
+      if (node.isMaster) {
+        newMasters.add(node);
+      }
+    }
   }
 
   public void addNodesToUniverse(Collection<NodeDetails> nodes) {

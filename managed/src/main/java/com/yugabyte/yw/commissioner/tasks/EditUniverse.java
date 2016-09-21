@@ -4,10 +4,8 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -29,9 +27,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 // this universe to go from the current set of master/tserver nodes to the final configuration.
 public class EditUniverse extends UniverseDefinitionTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(EditUniverse.class);
-
-  // The set of new nodes that need to be created.
-  Map<String, NodeDetails> newNodesMap = new HashMap<String, NodeDetails>();
 
   // The subset of new nodes that are masters.
   Set<NodeDetails> newMasters = new HashSet<NodeDetails>();
@@ -77,28 +72,28 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
       int startNodeIndex = maxNodeIdx + 1;
 
+      // Set the correct node names and indexes as they are finalized now. 
+      fixNodeNamesAndIndexes(startNodeIndex);
+
       LOG.info("Configure nodes starting at node index={}, numNodes={}, numMasters={}",
                startNodeIndex, taskParams().numNodes, numMasters);
-      // Configure the new cluster nodes.
-      configureNewNodes(universe.getUniverseDetails().nodePrefix,
-                        startNodeIndex,
-                        numMasters,
-                        newNodesMap,
-                        newMasters);
 
       // Add the newly configured nodes into the universe.
-      addNodesToUniverse(newNodesMap.values());
+      addNodesToUniverse(taskParams().newNodesSet);
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(newNodesMap.values()).setUserSubTask(SubTaskType.Provisioning);
+      createSetupServerTasks(taskParams().newNodesSet).setUserSubTask(SubTaskType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(newNodesMap.values()).setUserSubTask(SubTaskType.Provisioning);
+      createServerInfoTasks(taskParams().newNodesSet).setUserSubTask(SubTaskType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(
-          newNodesMap.values(), true /* isShell */).setUserSubTask(SubTaskType.InstallingSoftware);
+      createConfigureServerTasks(taskParams().newNodesSet, true /* isShell */)
+          .setUserSubTask(SubTaskType.InstallingSoftware);
+
+      // Get the new masters from the node list.
+      getNewMasters(newMasters);
 
       // Creates the YB cluster by starting the masters in the shell mode.
       createStartMasterTasks(
@@ -109,11 +104,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Start the tservers in the clusters.
-      createStartTServersTasks(newNodesMap.values()).setUserSubTask(SubTaskType.ConfigureUniverse);
+      createStartTServersTasks(taskParams().newNodesSet)
+          .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(
-          newNodesMap.values(), ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
+          taskParams().newNodesSet, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Now finalize the cluster configuration change tasks.
       createMoveMastersTasks(SubTaskType.WaitForDataMigration);

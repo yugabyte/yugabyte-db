@@ -2,12 +2,18 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
-import java.util.Calendar;
+import java.util.TreeSet;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +36,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
@@ -54,6 +61,10 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   Commissioner commissioner;
+
+  // This is the maximum number of subnets that the masters can be placed across, and need to be an
+  // odd number for consensus to work.
+  public static final int maxMasterSubnets = 3;
 
   /**
    * API that queues a task to create a new universe. This does not wait for the creation.
@@ -268,7 +279,6 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
-
   public Result universeListCost(UUID customerUUID) {
     Customer customer = Customer.find.byId(customerUUID);
     if (customer == null) {
@@ -293,6 +303,109 @@ public class UniverseController extends AuthenticatedController {
   }
 
   /**
+   * Configures the set of nodes to be created.
+   *
+   * @param taskParams : the user task parameters for the operation.
+   * @return set of node details with their placement info set.
+   */
+  private Set<NodeDetails> configureNewNodes(String nodePrefix,
+                                             int numNodes,
+                                             int numMasters,
+                                             PlacementInfo placementInfo) {
+    Set<NodeDetails> newNodesSet = new HashSet<NodeDetails>();
+    Map<String, NodeDetails> newNodesMap = new HashMap<String, NodeDetails>();
+
+    // Create the names and known properties of all the cluster nodes.
+    int cloudIdx = 0;
+    int regionIdx = 0;
+    int azIdx = 0;
+    for (int nodeIdx = 1; nodeIdx <= numNodes; nodeIdx++) {
+      NodeDetails nodeDetails = new NodeDetails();
+      // Create a temporary node name. These are fixed once the operation is actually run.
+      nodeDetails.nodeName = nodePrefix + "-fake-n" + nodeIdx;
+      // Set the cloud.
+      PlacementCloud placementCloud = placementInfo.cloudList.get(cloudIdx);
+      nodeDetails.cloudInfo = new CloudSpecificInfo();
+      nodeDetails.cloudInfo.cloud = placementCloud.name;
+      // Set the region.
+      PlacementRegion placementRegion = placementCloud.regionList.get(regionIdx);
+      nodeDetails.cloudInfo.region = placementRegion.code;
+      // Set the AZ and the subnet.
+      PlacementAZ placementAZ = placementRegion.azList.get(azIdx);
+      nodeDetails.azUuid = placementAZ.uuid;
+      nodeDetails.cloudInfo.az = placementAZ.name;
+      nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
+      // Set the tablet server role to true.
+      nodeDetails.isTserver = true;
+      // Add the node to the set of nodes.
+      newNodesSet.add(nodeDetails);
+      newNodesMap.put(nodeDetails.nodeName, nodeDetails);
+      LOG.debug("Placed new node {} at cloud:{}, region:{}, az:{}.",
+                nodeDetails.toString(), cloudIdx, regionIdx, azIdx);
+
+      // Advance to the next az/region/cloud combo.
+      azIdx = (azIdx + 1) % placementRegion.azList.size();
+      regionIdx = (regionIdx + (azIdx == 0 ? 1 : 0)) % placementCloud.regionList.size();
+      cloudIdx = (cloudIdx + (azIdx == 0 && regionIdx == 0 ? 1 : 0)) %
+          placementInfo.cloudList.size();
+    }
+
+    // Select the masters for this cluster based on subnets.
+    setMasters(newNodesMap, numMasters);
+
+    return newNodesSet;
+  }
+
+  /**
+   * Given a set of nodes and the number of masters, selects the masters and marks them as such.
+   *
+   * @param nodesMap   : a map of node name to NodeDetails
+   * @param numMasters : the number of masters to choose
+   * @return nothing
+   */
+  private static void setMasters(Map<String, NodeDetails> nodesMap, int numMasters) {
+    // Group the cluster nodes by subnets.
+    Map<String, TreeSet<String>> subnetsToNodenameMap = new HashMap<String, TreeSet<String>>();
+    for (Entry<String, NodeDetails> entry : nodesMap.entrySet()) {
+      String subnet = entry.getValue().cloudInfo.subnet_id;
+      if (!subnetsToNodenameMap.containsKey(subnet)) {
+        subnetsToNodenameMap.put(subnet, new TreeSet<String>());
+      }
+      TreeSet<String> nodeSet = subnetsToNodenameMap.get(subnet);
+      // Add the node name into the node set.
+      nodeSet.add(entry.getKey());
+    }
+    LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
+             subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
+    // Choose the masters such that we have one master per subnet if there are enough subnets.
+    int numMastersChosen = 0;
+    if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
+      for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
+        // Get one node from each subnet.
+        String nodeName = entry.getValue().first();
+        NodeDetails node = nodesMap.get(nodeName);
+        node.isMaster = true;
+        LOG.info("Chose node {} as a master from subnet {}.", nodeName, entry.getKey());
+        numMastersChosen++;
+        if (numMastersChosen == numMasters) {
+          break;
+        }
+      }
+    } else {
+      // We do not have enough subnets. Simply pick enough masters.
+      for (NodeDetails node : nodesMap.values()) {
+        node.isMaster = true;
+        LOG.info("Chose node {} as a master from subnet {}.",
+                 node.nodeName, node.cloudInfo.subnet_id);
+        numMastersChosen++;
+        if (numMastersChosen == numMasters) {
+          break;
+        }
+      }
+    }
+  }
+
+  /**
    * Helper API to convert the user form into task params.
    *
    * @param formData : Input form data.
@@ -304,6 +417,7 @@ public class UniverseController extends AuthenticatedController {
           Form<UniverseFormData> formData,
           Universe universe,
           int customerId) {
+    LOG.info("Initializing params for universe {} : {}.", universe.universeUUID, universe.name);
     // Setup the create universe task.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = universe.universeUUID;
@@ -328,7 +442,12 @@ public class UniverseController extends AuthenticatedController {
 
     // Compute and fill in the placement info.
     taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
-    LOG.info("Initialized params for universe {} : {}.", universe.universeUUID, universe.name);
+
+    // Compute the nodes that should be configured for this operation.
+    taskParams.newNodesSet = configureNewNodes(taskParams.nodePrefix,
+                                               taskParams.numNodes,
+                                               taskParams.userIntent.replicationFactor,
+                                               taskParams.placementInfo);
 
     return taskParams;
   }
@@ -388,7 +507,6 @@ public class UniverseController extends AuthenticatedController {
               userIntent.regionList.get(1) :
               userIntent.regionList.get(0);
       selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
-
     } else if (userIntent.regionList.size() == 3) {
       // If the user has specified three regions, pick one AZ from each region.
       for (int idx = 0; idx < 3; idx++) {
