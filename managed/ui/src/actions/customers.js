@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
+import { ROOT_URL } from '../config';
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
@@ -21,8 +22,6 @@ export const LOGIN_FAILURE = 'LOGIN_FAILURE';
 export const LOGOUT = 'LOGOUT';
 export const LOGOUT_SUCCESS = 'LOGOUT_SUCCESS';
 export const LOGOUT_FAILURE = 'LOGOUT_FAILURE';
-
-const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");

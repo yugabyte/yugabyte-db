@@ -1,13 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
+import { ROOT_URL } from '../config';
 
 export const FETCH_TASK_PROGRESS = 'FETCH_TASK_PROGRESS';
 export const FETCH_TASK_PROGRESS_SUCCESS = 'FETCH_TASK_PROGRESS_SUCCESS';
 export const FETCH_TASK_PROGRESS_FAILURE = 'FETCH_TASK_PROGRESS_FAILURE';
 export const RESET_TASK_PROGRESS = 'RESET_TASK_PROGRESS';
-
-const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 export function fetchTaskProgress(taskUUID) {
   var customerUUID = localStorage.getItem("customer_id");
