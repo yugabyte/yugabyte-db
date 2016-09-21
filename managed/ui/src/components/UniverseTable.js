@@ -6,10 +6,103 @@ import * as moment from 'moment'
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isValidArray, isValidObject } from '../utils/ObjectUtils';
-import UniverseModalContainer from '../containers/UniverseModalContainer';
-import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
-import DescriptionList from './DescriptionList';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
+import { Row, Col, ProgressBar, Image } from 'react-bootstrap';
+import universelogo from '../images/universe_icon.png';
+import DescriptionItem from './DescriptionItem';
+import DescriptionList from './DescriptionList';
+
+class StatusStringCell extends Component {
+ render() {
+   const {status, tasks} = this.props;
+   const stringHeader = <div className='table-cell-sub-text text-center'> Status </div>;
+   var statusInfo = "";
+   if (status === "success") {
+     statusInfo = <i className='fa fa-check' aria-hidden='true'> Succeeded </i>;
+   } else if (status === "failure") {
+     statusInfo = <i className='fa fa-times' > Failed </i>
+   }
+
+   if(status === "failure" || status === "success" ) {
+     return (
+       <Row>
+         <Col lg={8} lgOffset={2}>
+           <DescriptionItem title={stringHeader}>
+             <div className="text-center">{statusInfo}</div>
+           </DescriptionItem>
+         </Col>
+       </Row>
+     )
+    }
+   else if (isValidArray(tasks)){
+     var taskIds = tasks.map(function(item, idx){
+       return (item.id);
+     })
+     var currentOp = tasks[0].data.title.split(":")[0];
+     return (
+       <Row>
+         <Col lg={12} className = "universe-table-status-cell">
+           <DescriptionItem title={stringHeader}>
+             <TaskProgressContainer taskUUIDs={taskIds} type="BarWithDetails"
+                                    currentOperation={currentOp} />
+           </DescriptionItem>
+         </Col>
+       </Row>
+   )
+   }
+   else {
+     return ( <span /> )
+   }
+ }
+}
+
+class UniverseNameCell extends Component {
+    render() {
+      const { cell } = this.props;
+      return (
+        <Link to={"/universes/" + cell.id}>
+          <div className='universe-name-cell'>
+            <Image src={universelogo} />
+             &nbsp;{cell.name}&nbsp;
+          </div>
+          <small className="table-cell-sub-text">Created on&nbsp;
+            {cell.creationTime}
+          </small>
+        </Link>)
+    }
+}
+
+class RegionDataComponent extends Component {
+
+  render() {
+    const { regions, name } = this.props;
+
+    var completeRegionList = regions.map(function(item,idx){
+      return {"data": item.name, "dataClass": "show-data"}
+    });
+     return (
+        <Col lg={4} className="detail-item-cell">
+          <DescriptionItem title={name}>
+            <DescriptionList listItems={completeRegionList} showNames={false}/>
+          </DescriptionItem>
+        </Col>
+      )
+
+    }
+}
+
+class DataComponents extends Component {
+  render() {
+    const {data, name} = this.props;
+    return (
+      <Col lg={2} className="detail-item-cell">
+        <DescriptionItem title={name}>
+          <div className="universe-item-cell">{data}</div>
+        </DescriptionItem>
+      </Col>
+    )
+  }
+}
 
 class UniverseDetailsCell extends Component {
   static propTypes = {
@@ -22,37 +115,21 @@ class UniverseDetailsCell extends Component {
     if (isValidArray(taskUUIDs)) {
       delete cell["TaskUUIDs"];
     }
-
     var universeDetailsItems = Object.keys(cell).map(function(key, index) {
-      return {name: key, data: cell[key]}
+      if(key !== "Regions") {
+        return <DataComponents key={key+index} name={key} data={cell[key].toString()}/>
+      } else {
+        return <RegionDataComponent key={key+index} name={key} regions={cell[key]} />
+      }
     });
-    return (
-      <span>
-        <DescriptionList listItems={universeDetailsItems} />
-        <TaskProgressContainer taskUUIDs={taskUUIDs} type="Bar" />
-      </span>
-    )
-  }
-}
 
-class UniverseButtonGroupCell extends Component {
-  render() {
     return (
-      <div className="row">
-        <div className="col-lg-3">
-          <Link to={'/universes/' + this.props.uuid}
-            className='universe-button btn
-            btn-xs btn-primary '>
-            <i className='fa fa-eye'></i>&nbsp;View&nbsp;
-          </Link>
-        </div>
-        <div className="col-lg-3">
-          <UniverseModalContainer type={'Edit'} uuid={this.props.uuid} />
-        </div>
-        <div className="col-lg-3">
-          <DeleteUniverseContainer uuid={this.props.uuid} />
-        </div>
-      </div>
+      <Row>
+        <Col lg={1}></Col>
+         {universeDetailsItems.map(function(item,idx){
+           return <div key={item+idx}>{item}</div>
+          })}
+      </Row>
     )
   }
 }
@@ -77,27 +154,11 @@ export default class UniverseTable extends Component {
     }
 
     function universeNameTypeFormatter(cell, row) {
-      var universeName = cell.split("|")[0];
-      var universeCreationDate = cell.split("|")[1];
-      return "<div><a>" + universeName + "</a></div><small>Created:<br />"
-             + universeCreationDate + "</small>"
-    }
-
-    function actionStringFormatter(cell, row) {
-      return <UniverseButtonGroupCell uuid={cell} />
+      return <UniverseNameCell cell={cell}/>
     }
 
     function statusStringFormatter(cell, row){
-      if (cell === "failure" ) {
-        return "<div class='universe-button btn-xs btn-danger'>" +
-               "Failure</div>";
-      } else if (cell === "success") {
-        return "<div class='universe-button btn-xs btn-success btn-xs'>" +
-               "Success</div>";
-      } else {
-        return "<div class='universe-button btn-xs btn-default btn-warning'>" +
-               "Pending</div>";
-      }
+      return <StatusStringCell status={cell.status} tasks={cell.tasks} />
     }
 
     const { universe: { universeList, universeTasks, loading } } = this.props;
@@ -114,6 +175,7 @@ export default class UniverseTable extends Component {
         if (typeof(regions) !== "undefined") {
           regionNames = regions.map(function(region, idx) {
             return {"idx": idx, "name": region.name};
+
           });
         }
         var providerName = "";
@@ -131,19 +193,19 @@ export default class UniverseTable extends Component {
           }
         }
 
-        var universeTaskUUIDs = []
-        if (universeTasks[item.universeUUID] !== undefined) {
-          universeTaskUUIDs = universeTasks[item.universeUUID].map(function(task) {
-            return (task.percentComplete !== 100) ? task.id : false;
-          }).filter(Boolean);
+        var universeTaskUUIDs = [];
+        if (isValidObject(universeTasks) && universeTasks[item.universeUUID] !== undefined) {
+          universeTaskUUIDs = universeTasks[item.universeUUID].map(function (task) {
+            return {"id": task.id, "data": task};
+          });
         }
+
 
         var universeDetailString = {
           "Provider": providerName,
           "Regions": regionNames.length > 0 ? regionNames: [],
           "Num of Nodes": numNodes,
-          "Replication Factor": replicationFactor,
-          "TaskUUIDs": universeTaskUUIDs
+          "Replication Factor": replicationFactor
         };
 
         var updateProgressStatus = false;
@@ -162,20 +224,26 @@ export default class UniverseTable extends Component {
         } else {
           status = "pending";
         }
+        var statusString={"status": status, "tasks": universeTaskUUIDs};
 
         var actionString = item.universeUUID;
+        var universeNameObject = { "name": item.name,
+                                   "creationTime":
+                                    moment.default(item.creationDate).format('MMMM DD, YYYY'),
+                                   "id": item.universeUUID};
         return {
           id: item.universeUUID,
-          name: item.name + "|" + moment.default(item.creationDate).format('MMMM DD, YYYY HH:MM a'),
+          name: universeNameObject,
           details: universeDetailString,
           provider: providerName,
           nodes: numNodes,
           action: actionString,
-          status: status
+          status: statusString
         };
       });
     }
 
+    const tableHeaderStyle = {"display": "none"};
     const tableBodyStyle = {"marginBottom": "1%","paddingBottom": "1%"};
 
     const selectRowProp = {
@@ -184,25 +252,22 @@ export default class UniverseTable extends Component {
 
     return (
       <div className="row">
-        <BootstrapTable data={universeDisplay}
-                        striped={true}
-                        hover={true} selectRow={selectRowProp}
-                        trClassName="no-border-cell" bodyStyle={tableBodyStyle}>
+        <BootstrapTable data={universeDisplay} selectRow={selectRowProp}
+                        trClassName="data-table-row" bodyStyle={tableBodyStyle} headerStyle={tableHeaderStyle}>
+          <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
           <TableHeaderColumn dataField="name"
-                             isKey={true}
-                             dataFormat={universeNameTypeFormatter} columnClassName="no-border-cell"
-                             className="no-border-cell" dataAlign="left" >Universe Name</TableHeaderColumn>
-          <TableHeaderColumn dataField="details"
-                             dataFormat={detailStringFormatter} columnClassName="no-border-cell"
-                             className="no-border-cell" dataAlign="left">Details</TableHeaderColumn>
+
+                             dataFormat={universeNameTypeFormatter} columnClassName="no-border-cell name-column"
+                             className="no-border-cell">
+            Universe Name
+          </TableHeaderColumn>
           <TableHeaderColumn dataField="status" dataFormat={statusStringFormatter}
-                             columnClassName="no-border-cell" className="no-border-cell">
+                             columnClassName="no-border-cell status-column" className="no-border-cell">
             Status
           </TableHeaderColumn>
-          <TableHeaderColumn dataField="action" dataFormat={actionStringFormatter}
-                             columnClassName="no-border-cell table-button-col" className="no-border-cell">
-            Actions
-          </TableHeaderColumn>
+          <TableHeaderColumn dataField="details"
+                             dataFormat={detailStringFormatter} columnClassName="no-border-cell detail-column">
+            Details</TableHeaderColumn>
         </BootstrapTable>
       </div>
     )

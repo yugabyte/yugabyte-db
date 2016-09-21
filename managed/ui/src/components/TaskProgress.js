@@ -3,6 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 import TaskProgressWidget from './TaskProgressWidget';
 import TaskProgressBar from './TaskProgressBar';
+import TaskProgressBarWithDetails from './TaskProgressBarWithDetails';
 
 export default class TaskProgress extends Component {
   static contextTypes = {
@@ -11,7 +12,7 @@ export default class TaskProgress extends Component {
 
   static propTypes = {
     taskUUIDs: PropTypes.array,
-    type: PropTypes.oneOf(['Bar', 'Widget'])
+    type: PropTypes.oneOf(['Bar', 'Widget', 'BarWithDetails'])
   }
 
   static defaultProps = {
@@ -32,19 +33,21 @@ export default class TaskProgress extends Component {
   }
 
   render() {
-    const { taskUUIDs, tasks: { taskProgressData, loading}, type } = this.props;
+    const { taskUUIDs, tasks: { taskProgressData, loading}, type, currentOperation } = this.props;
     if (taskUUIDs.length === 0) {
       return <span />;
     } else if (loading || taskProgressData.length === 0) {
       return <div className="container">Loading...</div>;
     } else if (taskProgressData.status === "Success" ||
-               taskProgressData.status === "Failure") {
+      taskProgressData.status === "Failure") {
       // TODO: Better handle/display the success/failure case
       return <span />;
     }
-
+    
     if ( type === "Widget" ) {
       return <TaskProgressWidget progressData={taskProgressData} />;
+    } else if( type === "BarWithDetails" ) {
+      return <TaskProgressBarWithDetails progressData={taskProgressData} currentOperation={currentOperation}/>
     } else {
       return <TaskProgressBar progressData={taskProgressData} />;
     }

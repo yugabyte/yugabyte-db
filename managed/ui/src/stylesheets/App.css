@@ -11,6 +11,14 @@
   margin-bottom: 0px;
 }
 
+.nav_title {
+  width: 100% !important;
+}
+
+.yb-logo-img {
+    width: 60px;
+    height: 60px;
+}
 #page-wrapper {
     position: inherit;
     margin: 0 0 0 120px;
@@ -55,13 +63,34 @@ ul {
   margin-bottom: 4%;
 }
 
+.progress {
+    border: 1px solid #CD6500;
+    width:100%;
+}
+
+.progress-bar {
+    background-color: #CD6500 !important;
+    color: grey;
+}
+
 .form-item-label {
   display: block;
   margin-bottom: 4%;
 }
 
 .no-border-cell {
-    border:none !important;
+  border:none !important;
+}
+
+.detail-item-cell {
+    border-right:1px solid grey;
+    height: 70px ;
+}
+
+.data-table-row {
+    background-color: #f8f8f8 !important;
+    border: 10px solid white !important;
+    border-top:20px solid white !important;
 }
 
 .ybCodeSnippet {
@@ -73,6 +102,18 @@ ul {
     width:60px;
 }
 
+.universe-name-cell {
+    font-size: 2em;
+    color: #CD6500 !important;
+}
+
+.universe-item-cell {
+    font-size: 1.3em;
+}
+
+.table-cell-sub-text {
+    color:grey;
+}
 
 .detail-string-cell {
     padding-left: 0;
@@ -227,4 +268,49 @@ ul.progress-list li i {
     -webkit-transform: rotate(359deg);
             transform: rotate(359deg);
   }
+}
+
+.detail-column {
+    width:700px ;
+}
+
+.status-column {
+    width: 300px;
+}
+
+.yb-progress-bar-container {
+    margin-top: 20px;
+}
+
+.region-item-cell {
+    font-size: small;
+}
+
+.universe-table-status-cell .yb-progress-bar-container {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.universe-table-status-cell .yb-progress-bar-container  .yb-left .progress {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.universe-table-status-cell .progress-list  {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.universe-table-status-cell .progress-list .progress-list-item {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.show-data {
+    margin-left: 0 !important;
+    margin-right: 0;
 }
