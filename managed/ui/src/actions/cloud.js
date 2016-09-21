@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
+import { ROOT_URL } from '../config';
 
 // Get Region List
 export const GET_REGION_LIST = 'GET_REGION_LIST';
@@ -16,8 +17,6 @@ export const GET_PROVIDER_LIST_FAILURE = 'GET_PROVIDER_LIST_FAILURE';
 export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
 export const GET_INSTANCE_TYPE_LIST_SUCCESS = 'GET_INSTANCE_TYPE_LIST_SUCCESS';
 export const GET_INSTANCE_TYPE_LIST_FAILURE = 'GET_INSTANCE_TYPE_LIST_FAILURE';
-
-const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
 export function getProviderList() {
   var auth_token = localStorage.getItem("customer_token").toString();
