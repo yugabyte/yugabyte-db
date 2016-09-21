@@ -2,11 +2,10 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { ProgressBar } from 'react-bootstrap';
 
 export default class UniverseGraphPanel extends Component {
   render() {
-    const { universe: { universeList, loading } } = this.props;
+    const { universe: { loading } } = this.props;
 
     if (loading) {
       return <div className="container">Loading...</div>;

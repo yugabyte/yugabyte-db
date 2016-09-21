@@ -5,7 +5,7 @@ import React, { Component, PropTypes } from 'react';
 export default class DescriptionItem extends Component {
 
   static propTypes = {
-    children: React.PropTypes.element.isRequired
+    children: PropTypes.element.isRequired
   };
 
   render() {

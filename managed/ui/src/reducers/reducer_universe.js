@@ -59,8 +59,11 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_CUSTOMER_COST_SUCCESS:
       var currentTotalCost = 0;
       for (var counter in action.payload) {
-        currentTotalCost += action.payload[counter].costPerMonth;
+        if (action.payload.hasOwnProperty(counter)) {
+          currentTotalCost += action.payload[counter].costPerMonth;
+        }
       }
+
       return { ...state, universeCurrentCostList: action.payload,
                currentTotalCost: currentTotalCost}
     case FETCH_CUSTOMER_COST_FAILURE:
