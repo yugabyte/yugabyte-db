@@ -9,12 +9,7 @@
 ###################################################################################################
 
 # Web Specific Routes
-GET     /                                             com.yugabyte.yw.ui.controllers.DashboardPageController.index()
-GET     /profile                                      com.yugabyte.yw.ui.controllers.DashboardPageController.profile()
-GET     /login                                        com.yugabyte.yw.ui.controllers.HomePageController.login()
-GET     /register                                     com.yugabyte.yw.ui.controllers.HomePageController.register()
-GET     /universes/:iUUID                             com.yugabyte.yw.ui.controllers.UniversePageController.index(iUUID: java.util.UUID)
-GET     /universes                                    com.yugabyte.yw.ui.controllers.UniversePageController.list()
+GET     /                                             com.yugabyte.yw.controllers.DashboardPageController.index()
 
 
 ###################################################################################################

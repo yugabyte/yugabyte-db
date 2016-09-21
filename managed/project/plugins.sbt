@@ -11,6 +11,3 @@ addSbtPlugin("com.frugalmechanic" % "fm-sbt-s3-resolver" % "0.4.0")
 
 // ORM
 addSbtPlugin("com.typesafe.sbt" % "sbt-play-ebean" % "3.0.0")
-
-// ReactJS Source Compiler
-addSbtPlugin("com.github.ddispaltro" % "sbt-reactjs" % "0.5.2")

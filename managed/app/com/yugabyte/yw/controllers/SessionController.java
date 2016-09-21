@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.ui.controllers.TokenAuthenticator;
 
 import play.data.Form;
 import play.data.FormFactory;
