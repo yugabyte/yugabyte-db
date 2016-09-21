@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks.params;
 
+import java.util.Set;
+
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UserIntent;
 
@@ -9,6 +12,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // This should be a globally unique name - it is a combination of the customer id and the universe
   // id. This is used as the prefix of node names in the universe.
   public String nodePrefix = null;
+
+  // The set of new nodes that need to be created.
+  public Set<NodeDetails> newNodesSet = null;
 
   // The configuration for the universe the user intended.
   public UserIntent userIntent;
