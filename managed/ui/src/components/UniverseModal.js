@@ -84,7 +84,7 @@ class UniverseModal extends Component {
         readOnlySelect: "",
         universeName: "",
         azCheckState: true,
-        buttonType: "universe-button btn btn-xs btn-success ",
+        buttonType: "universe-button btn btn-default btn-lg bg-orange ",
         buttonIcon: "fa fa-database"
       }
     }

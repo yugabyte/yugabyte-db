@@ -35,19 +35,6 @@ export default class UniverseGraphPanel extends Component {
                 </h2>
                 <div className="clearfix"></div>
               </div>
-              <Col md={12}>
-                {
-                  universeList.map(function(item,idx){ return (
-                    <div key={item.name+idx}>
-                      <p>{item.name}</p>
-                      <div className="progress progress_sm" >
-                        <ProgressBar now={1} bsStyle={"success"}/>
-                      </div>
-                    </div>
-                    )
-                  })
-                }
-              </Col>
             </Col>
             <div className="clearfix"></div>
           </div>

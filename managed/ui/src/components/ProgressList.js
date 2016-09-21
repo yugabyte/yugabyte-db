@@ -32,7 +32,7 @@ export default class ProgressList extends Component {
           <i className={iconType}></i>{item.name}
         </ListGroupItem>);
     }, this);
-
+    
     return (
       <ListGroup bsClass="progress-list">
         { listItems }

@@ -2,7 +2,9 @@
 
 import React, { Component } from 'react';
 import { Link } from 'react-router';
-import '../stylesheets/SideNavBar.css'
+import '../stylesheets/SideNavBar.css';
+import img from '../images/small-logo.png';
+import {Image} from 'react-bootstrap';
 
 export default class SideNavBar extends Component {
   constructor (props) {
@@ -34,7 +36,7 @@ export default class SideNavBar extends Component {
         <div className="left_col scroll-view">
           <div className="navbar nav_title">
             <Link to="/dashboard" className="site_title">
-              <i className="fa fa-database"></i>
+              <Image src={img} className="yb-logo-img" />
                 <span>YugaByte</span>
             </Link>
           </div>
