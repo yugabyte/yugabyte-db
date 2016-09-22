@@ -40,7 +40,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   @Override
   public void run() {
     String aws_vpc_subnet_id = AvailabilityZone.find.byId(taskParams().azUuid).subnet;
-    String command = "yb_server_provision.py " + taskParams().nodeName +
+    String command = "ybcloud.py instance destroy " + taskParams().nodeName +
                      " --cloud " + taskParams().cloud +
                      " --region " + taskParams().getRegion().code +
                      " --aws_vpc_subnet_id " + aws_vpc_subnet_id +
