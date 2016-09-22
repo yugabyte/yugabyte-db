@@ -13,9 +13,10 @@
   </option>
   <option name="RIGHT_MARGIN" value="100" />
   <Objective-C>
-    <option name="INDENT_NAMESPACE_MEMBERS" value="2" />
+    <option name="INDENT_NAMESPACE_MEMBERS" value="0" />
     <option name="INDENT_C_STRUCT_MEMBERS" value="2" />
     <option name="INDENT_CLASS_MEMBERS" value="2" />
+    <option name="INDENT_VISIBILITY_KEYWORDS" value="1" />
     <option name="INDENT_INSIDE_CODE_BLOCK" value="2" />
     <option name="KEEP_STRUCTURES_IN_ONE_LINE" value="true" />
     <option name="FUNCTION_PARAMETERS_WRAP" value="5" />
@@ -59,6 +60,13 @@
   <XML>
     <option name="XML_LEGACY_SETTINGS_IMPORTED" value="true" />
   </XML>
+  <codeStyleSettings language="CMake">
+    <indentOptions>
+      <option name="INDENT_SIZE" value="2" />
+      <option name="CONTINUATION_INDENT_SIZE" value="2" />
+      <option name="TAB_SIZE" value="2" />
+    </indentOptions>
+  </codeStyleSettings>
   <codeStyleSettings language="ObjectiveC">
     <option name="KEEP_BLANK_LINES_BEFORE_RBRACE" value="1" />
     <option name="BLANK_LINES_BEFORE_IMPORTS" value="0" />
