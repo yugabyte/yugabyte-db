@@ -25,10 +25,12 @@ export default class HighlightedStatsPanel extends Component {
          <DescriptionItem title={<span className="count_top">
                                   <i className="fa fa-user"></i>
                                   Cost Per Month</span>}>
-           <div className="count">${currentTotalCost.toFixed(2)}</div>
-           <span className="count_bottom"><i className="red">
-             <i className="fa fa-sort-desc"></i>0% </i>
-             From last Week</span>
+           <div className="total-cost-cell">
+             <div className="count">${currentTotalCost.toFixed(2)}</div>
+             <span className="count_bottom"><i className="red">
+               <i className="fa fa-sort-desc"></i>0% </i>
+               From last Week</span>
+           </div>
          </DescriptionItem>
         </Col>
         <Col md={3} className="tile_stats_count">
