@@ -192,7 +192,7 @@ Tablet::Tablet(const scoped_refptr<TabletMetadata>& metadata,
                                                                             *schema());
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry, tablet_id(), attrs);
     // If we are creating a KV table create the metrics callback.
-    if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+    if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
       rocksdb_statistics_ = rocksdb::CreateDBStatistics();
       auto rocksdb_statistics = rocksdb_statistics_;
       metric_entity_->AddExternalMetricsCb([rocksdb_statistics](JsonWriter* writer,
@@ -223,7 +223,8 @@ Status Tablet::Open() {
   CHECK(schema()->has_column_ids());
 
   switch (table_type_) {
-    case TableType::KEY_VALUE_TABLE_TYPE:
+    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::REDIS_TABLE_TYPE:
       RETURN_NOT_OK(OpenKeyValueTablet());
       break;
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
@@ -684,7 +685,8 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
         ApplyKuduRowOperation(tx_state, row_op);
       }
       break;
-    case TableType::KEY_VALUE_TABLE_TYPE:
+    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::REDIS_TABLE_TYPE:
       ApplyKeyValueRowOperations(tx_state->kv_write_batch(), tx_state->op_id().index());
       break;
     default:
@@ -694,7 +696,7 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
 
 Status Tablet::CreateCheckpoint(const std::string& dir,
                                 google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files) {
-  CHECK(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  CHECK(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
 
@@ -919,7 +921,7 @@ Status Tablet::DoMajorDeltaCompaction(const vector<ColumnId>& col_ids,
 }
 
 Status Tablet::Flush() {
-  if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return Status::OK();
   }
   TRACE_EVENT1("tablet", "Tablet::Flush", "id", tablet_id());
@@ -1462,14 +1464,14 @@ void Tablet::UnregisterMaintenanceOps() {
 }
 
 bool Tablet::HasSSTables() const {
-  assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  assert(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
   vector<rocksdb::LiveFileMetaData> live_files_metadata;
   rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
   return !live_files_metadata.empty();
 }
 
 SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
-  assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  assert(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
   vector<rocksdb::LiveFileMetaData> live_files_metadata;
   rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
   SequenceNumber max_seqno = 0;

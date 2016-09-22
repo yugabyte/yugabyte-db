@@ -2009,7 +2009,7 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
   }
 
   // Do not use these commit messages for RocksDB-backed tables.
-  if (table_type_ == KEY_VALUE_TABLE_TYPE) {
+  if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
     client_cb.Run(status);
     return;
   }

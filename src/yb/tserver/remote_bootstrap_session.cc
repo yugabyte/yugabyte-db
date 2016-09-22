@@ -202,7 +202,7 @@ Status RemoteBootstrapSession::Init() {
     return Status::OK();
   }
 
-  assert(tablet_superblock_.table_type() == TableType::KEY_VALUE_TABLE_TYPE);
+  assert(tablet_superblock_.table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE);
   auto tablet = tablet_peer_->shared_tablet();
   if (PREDICT_FALSE(!tablet)) {
     return STATUS(IllegalState, "Tablet is not running");

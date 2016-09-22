@@ -87,7 +87,7 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
   }
 
   string rocksdb_dir;
-  if (table_type == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     yb::Random rand(GetCurrentTimeMicros());
     // Determine the data dir to use for this tablet. Pick one of the data dirs at random.
     auto data_root_dirs = fs_manager->GetDataRootDirs();
@@ -192,7 +192,7 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
     }
   }
 
-  if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     rocksdb::Options rocksdb_options;
     InitRocksDBOptions(&rocksdb_options, tablet_id_, nullptr /* statistics */);
 

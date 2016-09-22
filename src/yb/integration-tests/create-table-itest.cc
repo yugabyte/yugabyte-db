@@ -33,6 +33,7 @@ using std::set;
 using std::string;
 using std::vector;
 using strings::Substitute;
+using yb::client::YBTableType;
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
@@ -46,17 +47,42 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
       const master::PlacementBlockPB& placement_block, const int num_replicas,
-      const string& table_suffix) {
+      const string& table_suffix,
+      const YBTableType table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
     return table_creator->table_name(Substitute("$0:$1", kTableName, table_suffix))
         .schema(&client_schema)
         .num_replicas(num_replicas)
         .add_placement_block(placement_block)
+        .table_type(table_type)
         .wait(true)
         .Create();
   }
 };
+
+TEST_F(CreateTableITest, TestCreateRedisTable) {
+  const string cloud = "aws";
+  const string region = "us-west-1";
+  const string zone = "a";
+
+  const int kNumReplicas = 3;
+  vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
+                          Substitute("--placement_region=$0", region),
+                          Substitute("--placement_zone=$0", zone)};
+  NO_FATALS(StartCluster(flags, flags, kNumReplicas));
+
+  master::PlacementBlockPB placement_block;
+  auto* cloud_info = placement_block.mutable_cloud_info();
+  cloud_info->set_placement_cloud(cloud);
+  cloud_info->set_placement_region(region);
+  cloud_info->set_placement_zone(zone);
+  placement_block.set_min_num_replicas(kNumReplicas);
+
+  // Successful table create.
+  ASSERT_OK(CreateTableWithPlacement(placement_block, kNumReplicas, "success_base",
+                                     YBTableType::REDIS_TABLE_TYPE));
+}
 
 TEST_F(CreateTableITest, TestCreateWithPlacement) {
   const string cloud = "aws";

@@ -515,7 +515,8 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       *has_blocks = tablet->num_rowsets() != 0;
       break;
-    case TableType::KEY_VALUE_TABLE_TYPE:
+    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType ::REDIS_TABLE_TYPE:
       *has_blocks = tablet->HasSSTables();
       break;
     default:
@@ -814,7 +815,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
   CHECK_OK(UpdateClock(replicate.timestamp()));
 
   int64_t index = replicate_entry->replicate().id().index();
-  if (tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE &&
+  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
       index == state->rocksdb_max_persistent_index) {
     // We need to set the commit OpId to be at least what's been applied to RocksDB. The reason we
     // could not do it right away based on rocksdb_max_persistent_index is that we don't know the
@@ -831,7 +832,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
   // Append the replicate message to the log as is
   RETURN_NOT_OK(log_->Append(replicate_entry));
 
-  if (tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE &&
+  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
       index <= state->rocksdb_max_persistent_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied
     // to RocksDB.
@@ -866,7 +867,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
     InsertOrDie(&state->pending_replicates, index, replicate_entry);
   }
 
-  if (tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     CHECK(replicate.has_committed_op_id());
 
     // For RocksDB-backed tables we include the commit index as of the time a REPLICATE entry was
@@ -1105,10 +1106,10 @@ void TabletBootstrap::DumpReplayStateToLog(const ReplayState& state) {
 }
 
 Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
-  ReplayState state(tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE ?
+  ReplayState state(tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE ?
                     tablet_->MaxPersistentSequenceNumber() : 0);
 
-  if (tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
                           << state.rocksdb_max_persistent_index;
   }
@@ -1262,7 +1263,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
       consensus_info->orphaned_replicates.push_back(e.second->release_replicate());
     }
   }
-  if (tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     LOG(INFO) << "rocksdb_applied_index=" << state.rocksdb_applied_index
               << ", number of orphaned replicates=" << consensus_info->orphaned_replicates.size();
   }
@@ -1306,7 +1307,7 @@ Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
 
   if (write->has_write_batch()) {
     assert(!write->has_row_operations());
-    assert(tablet_->table_type() == TableType::KEY_VALUE_TABLE_TYPE);
+    assert(tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE);
   }
 
   if (write->has_row_operations() || write->has_write_batch()) {
@@ -1405,7 +1406,8 @@ Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       RETURN_NOT_OK(FilterAndApplyOperations(tx_state, result));
       break;
-    case TableType::KEY_VALUE_TABLE_TYPE:
+    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::REDIS_TABLE_TYPE:
       tablet_->ApplyRowOperations(tx_state);
       break;
     default:

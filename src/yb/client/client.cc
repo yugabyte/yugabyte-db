@@ -163,6 +163,8 @@ static TableType ClientToPBTableType(YBTableType table_type) {
       return TableType::KUDU_COLUMNAR_TABLE_TYPE;
     case YBTableType::KEY_VALUE_TABLE_TYPE:
       return TableType::KEY_VALUE_TABLE_TYPE;
+    case YBTableType::REDIS_TABLE_TYPE:
+      return TableType::REDIS_TABLE_TYPE;
     default:
       LOG(FATAL) << "Unknown value for YBTableType: " << table_type;
   }

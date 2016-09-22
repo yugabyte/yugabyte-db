@@ -252,7 +252,7 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   status_listener_ = CHECK_NOTNULL(status_listener);
 
   VLOG(2) << "Fetching table_type: " << TableType_Name(meta_->table_type());
-  if (meta_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (meta_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     RETURN_NOT_OK(DownloadRocksDBFiles());
   } else {
     // Download all the files (serially, for now, but in parallel in the future).
@@ -268,10 +268,10 @@ Status RemoteBootstrapClient::Finish() {
   CHECK(started_);
 
   CHECK(downloaded_wal_);
-  if (meta_->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
-    CHECK(downloaded_rocksdb_files_);
-  } else if (meta_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+  if (meta_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     CHECK(downloaded_blocks_);
+  } else {
+    CHECK(downloaded_rocksdb_files_);
   }
 
   RETURN_NOT_OK(WriteConsensusMetadata());
