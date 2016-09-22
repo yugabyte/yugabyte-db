@@ -24,9 +24,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
     String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
-    String command = "yb_server_configure.py " + taskParams().nodeName +
+    String command = "ybcloud.py " + taskParams().cloud + " instance configure " + taskParams().nodeName +
                      " --package " + taskParams().ybServerPkg +
-                     " --cloud " + taskParams().cloud +
                      " --region " + taskParams().getRegion().code +
                      " --master_addresses_for_tserver " + masterAddresses;
     if (!taskParams().isMasterInShellMode) {
