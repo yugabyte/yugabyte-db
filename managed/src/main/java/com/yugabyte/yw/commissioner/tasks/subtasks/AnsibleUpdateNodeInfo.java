@@ -33,11 +33,8 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
   public void run() {
     try {
       // Create the process to fetch information about the node from the cloud provider.
-      String command = "yb_inventory.py" +
-                       " --cloud " + taskParams().cloud +
-                       " --region " + taskParams().getRegion().code +
-                       " --as_json" +
-                       " " + taskParams().nodeName;
+      String command = "ybcloud.py " + taskParams().cloud +
+                       " instance list " + taskParams().nodeName + " --as_json";
       LOG.info("Command to run: [{}]", command);
 
       // Run the process.
