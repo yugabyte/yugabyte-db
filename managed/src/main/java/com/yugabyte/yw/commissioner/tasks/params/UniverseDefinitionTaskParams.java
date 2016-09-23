@@ -25,6 +25,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The number of nodes to provision.
   public int numNodes;
 
+  // Expected version of the universe for operation execution.
+  public int expectedUniverseVersion;
+
   // The software version of YB to install.
   // TODO: replace with a nicer string as default.
   public String ybServerPkg =

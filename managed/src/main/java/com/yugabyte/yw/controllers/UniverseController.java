@@ -154,7 +154,8 @@ public class UniverseController extends AuthenticatedController {
       // Get the universe. This makes sure that a universe of this name does exist
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
-      LOG.info("Found universe {} : {}.", universe.universeUUID, universe.name);
+      LOG.info("Found universe {} : name={} at version={}.",
+               universe.universeUUID, universe.name, universe.version);
 
       UniverseDefinitionTaskParams taskParams =
               getTaskParams(formData, universe, customer.getCustomerId());
@@ -466,6 +467,10 @@ public class UniverseController extends AuthenticatedController {
 
     // Compute and fill in the placement info.
     taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+
+    // Save the universe version to check for ops like edit universe as we did not lock the
+    // universe and might get overwritten when this operation is finally run.
+    taskParams.expectedUniverseVersion = universe.version;
 
     // Compute the nodes that should be configured for this operation.
     taskParams.newNodesSet = configureNewNodes(taskParams.nodePrefix,

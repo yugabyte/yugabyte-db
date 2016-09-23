@@ -30,7 +30,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverseForUpdate();
+      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Update the user intent.
       writeUserIntentToUniverse();
