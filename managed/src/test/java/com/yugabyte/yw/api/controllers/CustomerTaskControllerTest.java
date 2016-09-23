@@ -56,7 +56,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = Customer.create("Valid Customer", "foo@bar.com", "password");
-    universe = Universe.create("Test Universe", customer.customerId);
+    universe = Universe.create("Test Universe", customer.getCustomerId());
   }
 
   @Test
@@ -102,7 +102,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   @Test
   public void testTaskHistoryUniverseList() {
     String authToken = customer.createAuthToken();
-    Universe universe1 = Universe.create("Universe 2", customer.customerId);
+    Universe universe1 = Universe.create("Universe 2", customer.getCustomerId());
     UUID taskUUID = UUID.randomUUID();
     CustomerTask.create(customer, universe1, UUID.randomUUID(), CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
     CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Bar");

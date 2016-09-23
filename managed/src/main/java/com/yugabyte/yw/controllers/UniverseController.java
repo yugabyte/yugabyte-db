@@ -83,14 +83,14 @@ public class UniverseController extends AuthenticatedController {
       }
 
       // Verify the customer with this universe is present.
-      Customer customer = Customer.find.byId(customerUUID);
+      Customer customer = Customer.get(customerUUID);
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
 
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
-      Universe universe = Universe.create(formData.get().universeName, customer.customerId);
+      Universe universe = Universe.create(formData.get().universeName, customer.getCustomerId());
       LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
 
       // Add an entry for the universe into the customer table.
@@ -98,10 +98,10 @@ public class UniverseController extends AuthenticatedController {
       customer.save();
 
       LOG.info("Added universe {} : {} for customer [{}].",
-              universe.universeUUID, universe.name, customer.customerId);
+              universe.universeUUID, universe.name, customer.getCustomerId());
 
       UniverseDefinitionTaskParams taskParams =
-              getTaskParams(formData, universe, customer.customerId);
+              getTaskParams(formData, universe, customer.getCustomerId());
 
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateUniverse, taskParams);
@@ -146,7 +146,7 @@ public class UniverseController extends AuthenticatedController {
       }
 
       // Verify the customer with this universe is present.
-      Customer customer = Customer.find.byId(customerUUID);
+      Customer customer = Customer.get(customerUUID);
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
@@ -157,7 +157,7 @@ public class UniverseController extends AuthenticatedController {
       LOG.info("Found universe {} : {}.", universe.universeUUID, universe.name);
 
       UniverseDefinitionTaskParams taskParams =
-              getTaskParams(formData, universe, customer.customerId);
+              getTaskParams(formData, universe, customer.getCustomerId());
 
       UUID taskUUID = commissioner.submit(TaskInfo.Type.EditUniverse, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
@@ -188,7 +188,7 @@ public class UniverseController extends AuthenticatedController {
    */
   public Result list(UUID customerUUID) {
     // Verify the customer is present.
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -201,7 +201,7 @@ public class UniverseController extends AuthenticatedController {
   }
 
   public Result index(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -215,7 +215,7 @@ public class UniverseController extends AuthenticatedController {
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
     // Verify the customer with this universe is present.
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -256,7 +256,7 @@ public class UniverseController extends AuthenticatedController {
 
   public Result universeCost(UUID customerUUID, UUID universeUUID) {
     // Verify the customer with this universe is present.
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -280,7 +280,7 @@ public class UniverseController extends AuthenticatedController {
   }
 
   public Result universeListCost(UUID customerUUID) {
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -416,7 +416,7 @@ public class UniverseController extends AuthenticatedController {
   private UniverseDefinitionTaskParams getTaskParams(
           Form<UniverseFormData> formData,
           Universe universe,
-          int customerId) {
+          Long customerId) {
     LOG.info("Initializing params for universe {} : {}.", universe.universeUUID, universe.name);
     // Setup the create universe task.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -424,7 +424,7 @@ public class UniverseController extends AuthenticatedController {
     taskParams.numNodes = formData.get().replicationFactor;
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix = Integer.toString(customerId) + "-" + universe.name;
+    taskParams.nodePrefix = Long.toString(customerId) + "-" + universe.name;
 
     // Fill in the user intent.
     taskParams.userIntent = new UserIntent();

@@ -89,7 +89,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseListWithValidUUID() {
-    Universe u1 = Universe.create("Universe-1", customer.customerId);
+    Universe u1 = Universe.create("Universe-1", customer.getCustomerId());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
 
@@ -132,7 +132,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
-    Universe universe = Universe.create("Test Universe", customer.customerId);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
     UniverseDetails ud = universe.getUniverseDetails();
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -260,7 +260,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseUpdateWithInvalidParams() {
-    Universe universe = Universe.create("Test Universe", customer.customerId);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
     ObjectNode emptyJson = Json.newObject();
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie).bodyJson(emptyJson));
@@ -280,7 +280,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe universe = Universe.create("Test Universe", customer.customerId);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
     InstanceType i =
         InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
@@ -325,7 +325,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.customerId);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
 
     Result result = route(fakeRequest("DELETE", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie));

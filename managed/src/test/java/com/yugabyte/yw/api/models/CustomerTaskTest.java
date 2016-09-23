@@ -25,7 +25,7 @@ public class CustomerTaskTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = Customer.create("Test", "test@test.com", "foo");
-    defaultUniverse = Universe.create("Test Universe", defaultCustomer.customerId);
+    defaultUniverse = Universe.create("Test Universe", defaultCustomer.getCustomerId());
   }
 
   @Test

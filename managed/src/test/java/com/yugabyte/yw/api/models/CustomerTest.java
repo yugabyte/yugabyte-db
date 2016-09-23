@@ -34,6 +34,17 @@ public class CustomerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateValidateUniqueIDs() {
+    Customer c1 = Customer.create("C1", "foo1@foo.com", "password");
+    c1.save();
+    Customer c2 = Customer.create("C2", "foo2@foo.com", "password");
+    c2.save();
+    assertNotEquals(c1.getCustomerId(), c2.getCustomerId());
+    assertTrue(c2.getCustomerId() > c1.getCustomerId());
+    assertNotEquals(c1.uuid, c2.uuid);
+  }
+
+  @Test
   public void findAll() {
     Customer c1 = Customer.create("C1", "foo@foo.com", "password");
     c1.save();

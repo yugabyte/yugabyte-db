@@ -41,7 +41,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetWIthValidUniverse() {
-    Universe u = Universe.create("Test Universe", 0);
+    Universe u = Universe.create("Test Universe", 0L);
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
