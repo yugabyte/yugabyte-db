@@ -54,6 +54,9 @@ public class UniverseFormData {
   // a multi-region setup.
   public UUID preferredRegion;
 
+  // Version of the YugaByte server software to install.
+  public String serverPackage;
+
   public static UniverseFormData fromUniverse(Universe universe) {
     UniverseDetails universeDetails = universe.getUniverseDetails();
     UniverseFormData formData = new UniverseFormData();
