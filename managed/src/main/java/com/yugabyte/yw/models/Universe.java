@@ -60,7 +60,7 @@ public class Universe extends Model {
 
   // The customer id, needed only to enforce unique universe names for a customer.
   @Constraints.Required
-  public int customerId;
+  public Long customerId;
 
   // The Json serialized version of universeDetails. This is used only in read from and writing to
   // the DB.
@@ -110,7 +110,7 @@ public class Universe extends Model {
    * @param name : name of the universe
    * @return the newly created universe
    */
-  public static Universe create(String name, int customerId) {
+  public static Universe create(String name, Long customerId) {
     // Create the universe object.
     Universe universe = new Universe();
 

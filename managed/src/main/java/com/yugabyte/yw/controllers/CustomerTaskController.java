@@ -41,7 +41,7 @@ public class CustomerTaskController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   public Result list(UUID customerUUID) {
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
 
     if (customer == null) {
       ObjectNode responseJson = Json.newObject();
@@ -54,7 +54,7 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
@@ -111,7 +111,7 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   public Result status(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.find.byId(customerUUID);
+    Customer customer = Customer.get(customerUUID);
     if (customer == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
