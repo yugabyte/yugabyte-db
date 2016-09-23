@@ -28,17 +28,20 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    String command = "ybcloud.py instance provision " + taskParams().cloud;
+    String command = "ybcloud.py " +  taskParams().cloud +
+                     " --region " + taskParams().getRegion().code +
+                     " instance provision";
 
     // Add the appropriate VPC ID parameter if this is an AWS deployment.
     if (taskParams().cloud == CloudType.aws) {
       command += " --aws_vpc_subnet_id " + taskParams().subnetId;
-      // TODO: remove the hardcoded one from here and use it from nodeTaskParams?
-      command += " --region " + taskParams().getRegion().code;
       command += " --aws_image " + taskParams().getRegion().ybImage;
       command += " --aws_instance_type " + taskParams().instanceType;
-      command += " --reuse_host --aws_assign_public_ip " + taskParams().nodeName;
+      command += " --aws_assign_public_ip";
     }
+
+    command += " --reuse_host --aws_assign_public_ip " + taskParams().nodeName;
+
     // Execute the ansible command.
     execCommand(command);
   }

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,12 +40,13 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    String aws_vpc_subnet_id = AvailabilityZone.find.byId(taskParams().azUuid).subnet;
-    String command = "ybcloud.py instance destroy " + taskParams().nodeName +
-                     " --cloud " + taskParams().cloud +
-                     " --region " + taskParams().getRegion().code +
-                     " --aws_vpc_subnet_id " + aws_vpc_subnet_id +
-                     " --destroy";
+    String command = "ybcloud.py " + taskParams().cloud;
+
+    if (taskParams().cloud == Common.CloudType.aws) {
+      command += " --region " + taskParams().getRegion().code;
+    }
+
+    command += " instance destroy " + taskParams().nodeName;
 
     // Execute the ansible command.
     execCommand(command);
