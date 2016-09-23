@@ -29,14 +29,16 @@ import play.data.validation.Constraints;
 public class Customer extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
   // A globally unique UUID for the customer.
-  @Id
+  @Column(nullable = false, unique = true)
   public UUID uuid;
 
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have
   // to be partitioned in case the db is being sharded.
+  @Id
   @GeneratedValue
-  public int customerId;
+  private Long id;
+  public Long getCustomerId() { return id; }
 
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
@@ -109,6 +111,11 @@ public class Customer extends Model {
 
   public static final Find<UUID, Customer> find = new Find<UUID, Customer>() {
   };
+
+  public static Customer get(UUID customerUUID) {
+    return find.where().eq("uuid", customerUUID).findUnique();
+  }
+
 
   public Customer() {
     this.creationDate = new Date();

@@ -16,6 +16,8 @@ import play.mvc.Result;
 import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
@@ -92,6 +94,28 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
 
+    assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID:" + invalidUUID)));
+  }
+
+  @Test
+  public void testCustomerDELETEWithValidUUID() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("DELETE", "/api/customers/" + customer.uuid).cookie(validCookie));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertTrue(json.get("success").asBoolean());
+  }
+
+  @Test
+  public void testCustomerDELETEWithInvalidUUID() {
+    UUID invalidUUID = UUID.randomUUID();
+
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("DELETE", "/api/customers/" + invalidUUID).cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID:" + invalidUUID)));
   }
 }

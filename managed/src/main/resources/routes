@@ -36,6 +36,7 @@ POST    /api/providers/:pUUID/instance_types          com.yugabyte.yw.controller
 # Customer profile API
 GET     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
 PUT     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
 
 # Universe, table, etc management API
 POST    /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
