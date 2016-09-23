@@ -422,6 +422,7 @@ public class UniverseController extends AuthenticatedController {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     taskParams.numNodes = formData.get().replicationFactor;
+    taskParams.ybServerPkg = formData.get().serverPackage;
 
     // Compose a unique name for the universe.
     taskParams.nodePrefix = Long.toString(customerId) + "-" + universe.name;

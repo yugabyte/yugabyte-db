@@ -23,6 +23,7 @@ class UniverseModal extends Component {
     this.regionChanged = this.regionChanged.bind(this);
     this.universeAction = this.universeAction.bind(this);
     this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
+    this.serverPackageChanged = this.serverPackageChanged.bind(this);
     this.state = {
       showModal: false,
       regionSelected: []
@@ -36,6 +37,7 @@ class UniverseModal extends Component {
       var currentProvider = "";
       var currentMultiAz = false;
       var universeName = "";
+      var currentServerPackage = "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz";
       // If Edit Universe is called in the context of Universe List
       if(self.props.uuid) {
         self.props.universe.universeList.map(function (universeItem, idx) {
@@ -59,11 +61,11 @@ class UniverseModal extends Component {
       }
       // If Edit Universe is called in the context of Current Universe
       else if(isValidObject(self.props.universe.currentUniverse)) {
-
         var instanceType = self.props.universe.currentUniverse.universeDetails.userIntent.instanceType;
         currentProvider = self.props.universe.currentUniverse.provider.uuid;
         currentMultiAz = self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
         universeName = self.props.universe.currentUniverse.name;
+        currentServerPackage = self.props.universe.currentUniverse.universeDetails.ybServerPkg;
         var items = self.props.universe.currentUniverse.regions.map(function (item, idx) {
           return {'value': item.uuid, 'name': item.name, "label": item.name}
         });
@@ -78,11 +80,13 @@ class UniverseModal extends Component {
         regionSelected: items,
         buttonType: "universe-button btn btn-xs btn-info",
         buttonIcon: "fa fa-pencil",
-        instanceTypeSelected: instanceType
+        instanceTypeSelected: instanceType,
+        serverPackage: currentServerPackage
       }
     }
     // If Create Universe is called
     else {
+      currentServerPackage = "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz";
       this.state = {
         readOnlyInput: "",
         readOnlySelect: "",
@@ -90,7 +94,8 @@ class UniverseModal extends Component {
         azCheckState: true,
         buttonType: "universe-button btn btn-default btn-lg bg-orange ",
         buttonIcon: "fa fa-database",
-        instanceTypeSelected: "m3.medium"
+        instanceTypeSelected: "m3.medium",
+        serverPackage: currentServerPackage
       }
     }
   }
@@ -108,6 +113,10 @@ class UniverseModal extends Component {
     var multiAZCheck = this.state.azCheckState;
     this.props.getRegionListItems(providerUUID, multiAZCheck);
     this.props.getInstanceTypeListItems(providerUUID);
+  }
+
+  serverPackageChanged(event) {
+    this.setState({serverPackage: event.target.value});
   }
 
   instanceTypeChanged(event) {
@@ -236,6 +245,12 @@ class UniverseModal extends Component {
                 <select name="instanceType" className="form-control" value={this.state.instanceTypeSelected} onChange={this.instanceTypeChanged}>
                   {universeInstanceTypeList}
                 </select>
+              </label>
+              <label className="form-item-label">
+                Server Package
+                <input type="text" name="serverPackage" className="form-control"
+                       defaultValue={this.state.serverPackage}
+                       onChange={this.serverPackageChanged} />
               </label>
             </Modal.Body>
             <Modal.Footer>
