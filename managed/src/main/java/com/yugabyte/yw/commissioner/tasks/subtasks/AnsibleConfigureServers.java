@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,13 +25,22 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
     String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
-    String command = "ybcloud.py " + taskParams().cloud + " instance configure " + taskParams().nodeName +
-                     " --package " + taskParams().ybServerPkg +
-                     " --region " + taskParams().getRegion().code +
-                     " --master_addresses_for_tserver " + masterAddresses;
+    String command = "ybcloud.py " + taskParams().cloud;
+
+
+    if (taskParams().cloud == Common.CloudType.aws) {
+      command += " --region " + taskParams().getRegion().code;
+    }
+
+    command += " instance configure" +
+               " --package " + taskParams().ybServerPkg +
+               " --master_addresses_for_tserver " + masterAddresses;
+
     if (!taskParams().isMasterInShellMode) {
       command += " --master_addresses_for_master " + masterAddresses;
     }
+
+    command += " " + taskParams().nodeName;
 
     // Execute the ansible command.
     execCommand(command);
