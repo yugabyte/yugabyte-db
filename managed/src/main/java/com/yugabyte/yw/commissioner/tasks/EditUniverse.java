@@ -63,20 +63,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       int numMasters = existingMasters.size();
       // For now, we provision the same number of nodes as before.
       taskParams().numNodes = existingNodes.size();
-      // Get the index of the largest node. We start from an index greater than that.
-      int maxNodeIdx = -1;
-      for (NodeDetails node : existingNodes) {
-        if (node.nodeIdx > maxNodeIdx) {
-          maxNodeIdx = node.nodeIdx;
-        }
-      }
-      int startNodeIndex = maxNodeIdx + 1;
 
-      // Set the correct node names and indexes as they are finalized now. 
-      fixNodeNamesAndIndexes(startNodeIndex);
+      // Set the correct node names as they are finalized now. This is done just in case the user
+      // changes the universe name before submitting. 
+      fixNodeNames();
 
-      LOG.info("Configure nodes starting at node index={}, numNodes={}, numMasters={}",
-               startNodeIndex, taskParams().numNodes, numMasters);
+      LOG.info("Configure numNodes={}, numMasters={}", taskParams().numNodes, numMasters);
 
       // Add the newly configured nodes into the universe.
       addNodesToUniverse(taskParams().newNodesSet);

@@ -305,10 +305,16 @@ public class UniverseController extends AuthenticatedController {
   /**
    * Configures the set of nodes to be created.
    *
-   * @param taskParams : the user task parameters for the operation.
-   * @return set of node details with their placement info set.
+   * @param nodePrefix node name prefix.
+   * @param startIndex index to used for node naming.
+   * @param numNodes   number of nodes desired.
+   * @param numMasters number of masters among these nodes.
+   * @param placementInfo desired placement info.
+   *
+   * @return set of node details with their placement info filled in.
    */
   private Set<NodeDetails> configureNewNodes(String nodePrefix,
+                                             int startIndex,
                                              int numNodes,
                                              int numMasters,
                                              PlacementInfo placementInfo) {
@@ -319,7 +325,7 @@ public class UniverseController extends AuthenticatedController {
     int cloudIdx = 0;
     int regionIdx = 0;
     int azIdx = 0;
-    for (int nodeIdx = 1; nodeIdx <= numNodes; nodeIdx++) {
+    for (int nodeIdx = startIndex; nodeIdx < startIndex + numNodes; nodeIdx++) {
       NodeDetails nodeDetails = new NodeDetails();
       // Create a temporary node name. These are fixed once the operation is actually run.
       nodeDetails.nodeName = nodePrefix + "-fake-n" + nodeIdx;
@@ -337,6 +343,8 @@ public class UniverseController extends AuthenticatedController {
       nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
       // Set the tablet server role to true.
       nodeDetails.isTserver = true;
+      // Set the node id.
+      nodeDetails.nodeIdx = nodeIdx;
       // Add the node to the set of nodes.
       newNodesSet.add(nodeDetails);
       newNodesMap.put(nodeDetails.nodeName, nodeDetails);
@@ -405,6 +413,21 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
+  // Returns the start index for provisioning new nodes based on the current maximum node index.
+  // If this is called for a new universe being created, then the start index will be 1.
+  int getStartIndex(Universe universe) {
+    Collection<NodeDetails> existingNodes = universe.getNodes();
+
+    int maxNodeIdx = 0;
+    for (NodeDetails node : existingNodes) {
+      if (node.nodeIdx > maxNodeIdx) {
+        maxNodeIdx = node.nodeIdx;
+      }
+    }
+
+    return maxNodeIdx + 1;
+  }
+
   /**
    * Helper API to convert the user form into task params.
    *
@@ -446,6 +469,7 @@ public class UniverseController extends AuthenticatedController {
 
     // Compute the nodes that should be configured for this operation.
     taskParams.newNodesSet = configureNewNodes(taskParams.nodePrefix,
+                                               getStartIndex(universe),
                                                taskParams.numNodes,
                                                taskParams.userIntent.replicationFactor,
                                                taskParams.placementInfo);
