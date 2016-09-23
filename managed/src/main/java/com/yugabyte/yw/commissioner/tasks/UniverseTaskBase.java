@@ -45,13 +45,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Locks the universe for updates by setting the 'updateInProgress' flag. If the universe is
    * already being modified, then throws an exception.
+   *
+   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
+   *                                version. -1 implies always lock the universe.
    */
-  public Universe lockUniverseForUpdate() {
+  public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
     // Create the update lambda.
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDetails universeDetails = universe.getUniverseDetails();
+        if (expectedUniverseVersion != -1 &&
+            expectedUniverseVersion != universe.version) {
+          String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
+                       ", is different from the expected version of " + expectedUniverseVersion;
+          LOG.error(msg);
+          throw new IllegalStateException(msg);
+        }
+
         // If this universe is already being edited, fail the request.
         if (universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";

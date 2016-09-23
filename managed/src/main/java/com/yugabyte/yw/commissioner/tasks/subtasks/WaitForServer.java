@@ -49,7 +49,7 @@ public class WaitForServer extends AbstractTaskBase {
   @Override
   public String getName() {
     return super.getName() + "(" + taskParams().universeUUID + ", " + taskParams().nodeName +
-    		", type=" + taskParams().serverType + ")";
+           ", type=" + taskParams().serverType + ")";
   }
 
   @Override
