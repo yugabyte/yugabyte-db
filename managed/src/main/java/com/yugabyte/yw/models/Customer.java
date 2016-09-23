@@ -30,7 +30,7 @@ public class Customer extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
-  public UUID uuid;
+  public UUID uuid = UUID.randomUUID();
 
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have
@@ -131,7 +131,6 @@ public class Customer extends Model {
    */
   public static Customer create(String name, String email, String password) {
     Customer cust = new Customer();
-    cust.uuid = UUID.randomUUID();
     cust.email = email.toLowerCase();
     cust.setPassword(password);
     cust.name = name;
