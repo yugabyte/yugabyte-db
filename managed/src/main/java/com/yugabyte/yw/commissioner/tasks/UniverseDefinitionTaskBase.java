@@ -81,15 +81,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return universe;
   }
 
-  // Fix up the node name/index based on the node start index.
-  public void fixNodeNamesAndIndexes(int startNodeIndex) {
-    int iter = 0;
+  // Fix up the name of all the nodes.
+  public void fixNodeNames() {
     for (NodeDetails node : taskParams().newNodesSet) {
-      node.nodeIdx = startNodeIndex + iter;
       String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
       LOG.info("Changing node name from " + node.nodeName + " to " + newName); 
       node.nodeName = newName;
-      iter++;
     }
   }
 
