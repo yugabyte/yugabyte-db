@@ -59,7 +59,12 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
         taskParams.universeUUID, taskParams.nodeName);
 
       // Parse into a json object.
-      final JsonNode jsonNode = Json.parse(line);
+      JsonNode jsonNodeTmp = Json.parse(line);
+      if (jsonNodeTmp.isArray()) {
+        jsonNodeTmp = jsonNodeTmp.get(0);
+      }
+      final JsonNode jsonNode = jsonNodeTmp;
+
       // Update the node details and persist into the DB.
       UniverseUpdater updater = new UniverseUpdater() {
         @Override

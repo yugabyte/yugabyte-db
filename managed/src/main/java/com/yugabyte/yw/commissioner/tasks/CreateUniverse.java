@@ -35,7 +35,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Update the user intent.
       writeUserIntentToUniverse();
 
-      // Set the correct node names and indexes as they are finalized now. 
+      // Set the correct node names and indexes as they are finalized now.
       fixNodeNamesAndIndexes(1 /* startNodeIndex */);
 
       // Add the newly configured nodes into the universe.
