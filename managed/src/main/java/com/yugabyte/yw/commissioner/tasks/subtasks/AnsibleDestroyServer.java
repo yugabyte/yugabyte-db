@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class AnsibleDestroyServer extends NodeTaskBase {
@@ -40,6 +41,9 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
+    // Update the node state as being decomissioned.
+    setNodeState(NodeDetails.NodeState.BeingDecommissioned);
+
     String command = "ybcloud.py " + taskParams().cloud;
 
     if (taskParams().cloud == Common.CloudType.aws) {
@@ -50,6 +54,10 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
     // Execute the ansible command.
     execCommand(command);
+
+    // Update the node state to destroyed. Even though we remove the node below, this will
+    // help tracking state for any nodes stuck in limbo.
+    setNodeState(NodeDetails.NodeState.Destroyed);
 
     removeNodeFromUniverse(taskParams().nodeName);
   }
