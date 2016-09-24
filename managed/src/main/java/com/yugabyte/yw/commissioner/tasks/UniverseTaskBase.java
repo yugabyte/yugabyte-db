@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -133,6 +134,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       AnsibleDestroyServer task = new AnsibleDestroyServer();
       task.initialize(params);
       // Add it to the task list.
+      taskList.addTask(task);
+    }
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Create tasks to update the state of the nodes.
+   * 
+   * @param nodes set of nodes to be updated.
+   * @param nodeState State into which these nodes will be transitioned.
+   * @return
+   */
+  public TaskList createSetNodeStateTasks(Collection<NodeDetails> nodes,
+                                          NodeDetails.NodeState nodeState) {
+    TaskList taskList = new TaskList("SetNodeState", executor);
+    for (NodeDetails node : nodes) {
+      SetNodeState.Params params = new SetNodeState.Params();
+      params.universeUUID = taskParams().universeUUID;
+      params.nodeName = node.nodeName;
+      params.state = nodeState;
+      SetNodeState task = new SetNodeState();
+      task.initialize(params);
       taskList.addTask(task);
     }
     taskListQueue.add(taskList);

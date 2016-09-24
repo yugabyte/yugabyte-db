@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class AnsibleConfigureServers extends NodeTaskBase {
 
@@ -44,5 +45,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // Execute the ansible command.
     execCommand(command);
+
+    // Update the node state once the software is installed.
+    setNodeState(NodeDetails.NodeState.SoftwareInstalled);
   }
 }

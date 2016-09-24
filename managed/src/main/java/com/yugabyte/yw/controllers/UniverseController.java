@@ -346,6 +346,8 @@ public class UniverseController extends AuthenticatedController {
       nodeDetails.isTserver = true;
       // Set the node id.
       nodeDetails.nodeIdx = nodeIdx;
+      // We are ready to add this node.
+      nodeDetails.state = NodeDetails.NodeState.ToBeAdded; 
       // Add the node to the set of nodes.
       newNodesSet.add(nodeDetails);
       newNodesMap.put(nodeDetails.nodeName, nodeDetails);

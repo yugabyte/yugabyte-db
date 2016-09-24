@@ -70,6 +70,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       LOG.info("Configure numNodes={}, numMasters={}", taskParams().numNodes, numMasters);
 
+      // Set the old nodes' state to to-be-decommissioned.
+      createSetNodeStateTasks(existingNodes, NodeDetails.NodeState.ToBeDecommissioned)
+          .setUserSubTask(SubTaskType.Provisioning);
+
       // Add the newly configured nodes into the universe.
       addNodesToUniverse(taskParams().newNodesSet);
 
@@ -102,6 +106,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(
           taskParams().newNodesSet, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
+
+      // Set the new nodes' state to running.
+      createSetNodeStateTasks(taskParams().newNodesSet, NodeDetails.NodeState.Running)
+          .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Now finalize the cluster configuration change tasks.
       createMoveMastersTasks(SubTaskType.WaitForDataMigration);
