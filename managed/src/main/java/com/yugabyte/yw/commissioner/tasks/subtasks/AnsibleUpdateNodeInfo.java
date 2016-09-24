@@ -100,6 +100,8 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
                         entry.getKey(), entry.getValue(), e);
             }
           }
+          // Node provisioning completed.
+          node.state = NodeDetails.NodeState.Provisioned;
           // Update the node details.
           universeDetails.nodeDetailsMap.put(taskParams.nodeName, node);
           universe.setUniverseDetails(universeDetails);

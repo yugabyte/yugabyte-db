@@ -72,6 +72,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(
           taskParams().newNodesSet, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
+      // Set the node state to running.
+      createSetNodeStateTasks(taskParams().newNodesSet, NodeDetails.NodeState.Running)
+          .setUserSubTask(SubTaskType.ConfigureUniverse);
+
       // Wait for a Master Leader to be elected.
       createWaitForMasterLeaderTask().setUserSubTask(SubTaskType.ConfigureUniverse);
 

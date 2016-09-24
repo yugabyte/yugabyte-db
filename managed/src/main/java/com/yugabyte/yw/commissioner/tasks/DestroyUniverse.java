@@ -2,14 +2,18 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import java.util.Collection;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
@@ -32,10 +36,10 @@ public class DestroyUniverse extends UniverseTaskBase {
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
 
       // Create tasks to destroy the existing nodes.
-      createDestroyServerTasks(universe.getNodes());
+      createDestroyServerTasks(universe.getNodes()).setUserSubTask(SubTaskType.RemovingUnusedServers);
 
       // Create tasks to remove the universe entry from the Universe table.
-      createRemoveUniverseEntryTask();
+      createRemoveUniverseEntryTask().setUserSubTask(SubTaskType.RemovingUnusedServers);
 
       // Run all the tasks.
       taskListQueue.run();
@@ -53,7 +57,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  public void createRemoveUniverseEntryTask() {
+  public TaskList createRemoveUniverseEntryTask() {
     TaskList taskList = new TaskList("RemoveUniverseEntry", executor);
     RemoveUniverseEntry.Params params = new RemoveUniverseEntry.Params();
     // Add the universe uuid.
@@ -64,5 +68,6 @@ public class DestroyUniverse extends UniverseTaskBase {
     // Add it to the task list.
     taskList.addTask(task);
     taskListQueue.add(taskList);
+    return taskList;
   }
 }
