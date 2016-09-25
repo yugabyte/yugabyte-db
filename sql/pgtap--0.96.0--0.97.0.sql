@@ -91,3 +91,13 @@ RETURNS TEXT AS $$
               'An index on ' || quote_ident($1) || ' on column '
                   || $2::text || ' should exist');
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION pg_version_num()
+RETURNS integer AS $$
+    SELECT substring(s.a[1] FROM '[[:digit:]]+')::int * 10000
+           + COALESCE(substring(s.a[2] FROM '[[:digit:]]+')::int, 0) * 100
+           + COALESCE(substring(s.a[3] FROM '[[:digit:]]+')::int, 0)
+      FROM (
+          SELECT string_to_array(current_setting('server_version'), '.') AS a
+      ) AS s;
+$$ LANGUAGE SQL IMMUTABLE;

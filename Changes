@@ -7,6 +7,8 @@ Revision history for pgTAP
   exist" instead of "should exist", thanks to Rodolphe Quiédeville (PR #99).
 * Added `is_indexed()`, which test to see that specific table columns are
   indexed, thanks to Rodolphe Quiédeville (PR #103).
+* Fixed `pg_version_num()` to work with the new version format coming in
+  PostgreSQL 10.
  
 0.96.0 2016-05-16T20:53:57Z
 ---------------------------
