@@ -3211,12 +3211,12 @@ enum does *not* exist.
 : Array of the columns and/or expressions in the index.
 
 `:column`
-: Idexed column name or expression.
+: Indexed column name or expression.
 
 `:description`
 : A short description of the test.
 
-Checks for the existence of an index associated with the named table. The
+Checks for the existence of a named index associated with the named table. The
 `:schema` argument is optional, as is the column name or names or expression,
 and the description. The columns argument may be a string naming one column or
 expression, or an array of column names and/or expressions. For expressions,
@@ -4672,7 +4672,8 @@ order defined by the index.
 `:description`
 : A short description of the test.
 
-Tests an index exists on table for a set of columns. Order of column matters.
+Checks for the existence of an index associated with the named table. Differs
+from `has_index()` in not requiring an index name.
 
 ### `index_is_type()` ###
 
