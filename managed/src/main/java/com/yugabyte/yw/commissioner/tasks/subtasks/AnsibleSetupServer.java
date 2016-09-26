@@ -32,13 +32,10 @@ public class AnsibleSetupServer extends NodeTaskBase {
                      " --region " + taskParams().getRegion().code +
                      " instance provision";
 
-    // Add the appropriate VPC ID parameter if this is an AWS deployment.
-    if (taskParams().cloud == CloudType.aws) {
-      command += " --aws_vpc_subnet_id " + taskParams().subnetId;
-      command += " --aws_image " + taskParams().getRegion().ybImage;
-      command += " --aws_instance_type " + taskParams().instanceType;
-      command += " --aws_assign_public_ip";
-    }
+    command += " --cloud_subnet " + taskParams().subnetId;
+    command += " --machine_image " + taskParams().getRegion().ybImage;
+    command += " --instance_type " + taskParams().instanceType;
+    command += " --assign_public_ip";
 
     command += " --reuse_host " + taskParams().nodeName;
 
