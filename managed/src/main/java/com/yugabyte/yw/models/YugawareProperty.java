@@ -42,11 +42,11 @@ public class YugawareProperty extends Model {
 
   // The property config.
   @Constraints.Required
-  @Column(columnDefinition = "LONGTEXT")
+  @Column(columnDefinition = "TEXT")
   private String value;
 
   // The property description.
-  @Column(columnDefinition = "LONGTEXT")
+  @Column(columnDefinition = "TEXT")
   private String description;
 
   private static final Find<String, YugawareProperty> find = new Find<String, YugawareProperty>(){};

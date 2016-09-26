@@ -4,16 +4,20 @@
 
 == Building and running Yugaware locally
 
-Pre-requisites - install sbt and MySQL:
+Pre-requisites - install sbt and postgres:
 [source,bash]
 ----
 # On a mac, run the following:
 $ brew install sbt
-# Note: do not set any password for mysql.
-$ brew install mysql
-# Make MySQL a daemon (restart on machine restart).
-$ ln -sfv /usr/local/opt/mysql/*.plist ~/Library/LaunchAgents
-$ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.mysql.plist
+# Note: do not set any password for postgres.
+$ brew install postgres
+# Make postgres a daemon (restart on machine restart).
+$ ln -sfv /usr/local/opt/postgresql/*.plist ~/Library/LaunchAgents
+$ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist
+
+# Create user and database
+$ createuser root
+$ createdb yugaware
 
 # On Ubuntu, follow these steps:
 Based on http://www.scala-sbt.org/release/docs/Installing-sbt-on-Linux.html

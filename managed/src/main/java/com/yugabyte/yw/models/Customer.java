@@ -74,7 +74,7 @@ public class Customer extends Model {
     return this.authTokenIssueDate;
   }
 
-  @Column(columnDefinition = "LONGTEXT", nullable = false)
+  @Column(columnDefinition = "TEXT", nullable = false)
   private String universeUUIDs = "";
 
   public synchronized void addUniverseUUID(UUID universeUUID) {

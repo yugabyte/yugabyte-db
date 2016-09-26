@@ -33,7 +33,7 @@ public class CustomerTask extends Model {
     Delete
   }
 
-  @Id @GeneratedValue(strategy= GenerationType.IDENTITY)
+  @Id @GeneratedValue
   private Long id;
 
   @Constraints.Required

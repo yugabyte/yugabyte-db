@@ -65,7 +65,7 @@ public class Universe extends Model {
   // The Json serialized version of universeDetails. This is used only in read from and writing to
   // the DB.
   @Constraints.Required
-  @Column(columnDefinition = "LONGTEXT", nullable = false)
+  @Column(columnDefinition = "TEXT", nullable = false)
   private String universeDetailsJson;
 
   private UniverseDetails universeDetails;
