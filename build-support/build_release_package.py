@@ -93,6 +93,7 @@ def create_tarball():
     [ 'thirdparty/installed', 'lib/libunwind*.so.*'],
     [ 'thirdparty/installed', 'lib/libvmem.so.*'],
     [ 'thirdparty/installed', 'lib/libz.so.*'],
+    [ 'thirdparty/installed-deps', 'lib/libgmock.so'] ,
     [ 'thirdparty/installed-deps', 'lib/*.so.*'] ,
     [ 'thirdparty/installed-deps', 'bin/*']
   ]
