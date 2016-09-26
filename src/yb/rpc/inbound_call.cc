@@ -303,7 +303,7 @@ Status RedisInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer
   return Status::OK();
 }
 
-const RedisClientCommand& RedisInboundCall::GetClientCommand() const {
+RedisClientCommand& RedisInboundCall::GetClientCommand() {
   return down_cast<RedisInboundTransfer*>(transfer_.get())->client_command();
 }
 

@@ -1,8 +1,0 @@
-// Copyright (c) YugaByte, Inc.
-
-package yb.redisserver;
-
-option java_package = "org.yb.redisserver";
-
-message EmptyResponsePB {
-}

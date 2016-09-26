@@ -16,8 +16,8 @@
 // under the License.
 //
 // Utility methods for dealing with string case.
-#ifndef YB_UTIL_STRING_CASE_H
-#define YB_UTIL_STRING_CASE_H
+#ifndef YB_UTIL_STRING_CASE_H_
+#define YB_UTIL_STRING_CASE_H_
 
 #include <string>
 
@@ -34,6 +34,11 @@ namespace yb {
 void SnakeToCamelCase(const std::string &snake_case,
                       std::string *camel_case);
 
+// Lower-case all of the characters in the given string.
+// 'string' and 'out' may refer to the same string to replace in-place.
+void ToLowerCase(const std::string &string,
+                 std::string *out);
+
 // Upper-case all of the characters in the given string.
 // 'string' and 'out' may refer to the same string to replace in-place.
 void ToUpperCase(const std::string &string,
@@ -44,5 +49,5 @@ void ToUpperCase(const std::string &string,
 // - 'hiBerNATe' -> 'Hibernate'
 void Capitalize(std::string *word);
 
-} // namespace yb
-#endif
+}  // namespace yb
+#endif  // YB_UTIL_STRING_CASE_H_

@@ -65,7 +65,7 @@ class PbTracer : public debug::ConvertableToTraceFormat {
 scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
   return make_scoped_refptr(new PbTracer(msg));
 }
-} // anonymous namespace
+}  // anonymous namespace
 
 RpcContext::RpcContext(InboundCall *call,
                        const google::protobuf::Message *request_pb,
@@ -76,7 +76,8 @@ RpcContext::RpcContext(InboundCall *call,
     response_pb_(response_pb),
     metrics_(metrics) {
   VLOG(4) << call_->remote_method().service_name() << ": Received RPC request for "
-          << call_->ToString() << ":" << std::endl << request_pb_->DebugString();
+          << call_->ToString() << ":" << std::endl
+          << (request_pb_ ? request_pb_->DebugString() : nullptr);
   TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
                            "call", call_->ToString(),
                            "request", TracePb(*request_pb_));
@@ -180,5 +181,5 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 }
 
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb

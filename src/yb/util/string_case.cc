@@ -46,6 +46,17 @@ void SnakeToCamelCase(const std::string &snake_case,
   }
 }
 
+void ToLowerCase(const std::string &string,
+                 std::string *out) {
+  if (out != &string) {
+    *out = string;
+  }
+
+  for (char& c : *out) {
+    c = tolower(c);
+  }
+}
+
 void ToUpperCase(const std::string &string,
                  std::string *out) {
   if (out != &string) {
@@ -70,4 +81,4 @@ void Capitalize(string *word) {
   }
 }
 
-} // namespace yb
+}  // namespace yb

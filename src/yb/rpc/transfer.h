@@ -139,9 +139,7 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   // suitable for logging.
   std::string StatusAsString() const override;
 
-  const RedisClientCommand& client_command() const {
-    return client_command_;
-  }
+  RedisClientCommand& client_command() { return client_command_; }
 
   RedisInboundTransfer* ExcessData() const;
 

@@ -1,26 +1,6 @@
 # Copyright (c) YugaByte, Inc.
 
 #########################################
-#  redis server_proto
-#########################################
-
-PROTOBUF_GENERATE_CPP(
-  REDISSERVER_PROTO_SRCS REDISSERVER_PROTO_HDRS REDISSERVER_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES redis.proto)
-
-set(REDISSERVER_PROTO_LIBS
-  yb_common_proto
-  consensus_metadata_proto
-  tablet_proto
-  wire_protocol_proto)
-ADD_EXPORTABLE_LIBRARY(redis_proto
-  SRCS ${REDISSERVER_PROTO_SRCS}
-  DEPS ${REDISSERVER_PROTO_LIBS}
-  NONLINK_DEPS ${REDISSERVER_PROTO_TGTS})
-
-#########################################
 # redisserver_service_proto
 #########################################
 
@@ -35,7 +15,7 @@ set(REDISSERVER_YRPC_LIBS
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
-  redis_proto
+  redis_protocol_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(redis_service_proto
   SRCS ${REDISSERVER_YRPC_SRCS}

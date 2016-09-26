@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_INBOUND_CALL_H
-#define YB_RPC_INBOUND_CALL_H
+#ifndef YB_RPC_INBOUND_CALL_H_
+#define YB_RPC_INBOUND_CALL_H_
 
 #include <glog/logging.h>
 #include <string>
@@ -285,7 +285,8 @@ class RedisInboundCall : public InboundCall {
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
 
   virtual MonoTime GetClientDeadline() const override;
-  const RedisClientCommand &GetClientCommand() const;
+  RedisClientCommand& GetClientCommand();
+
  protected:
   scoped_refptr<Connection> get_connection() override;
   const scoped_refptr<Connection> get_connection() const override;
@@ -298,4 +299,4 @@ class RedisInboundCall : public InboundCall {
 }  // namespace rpc
 }  // namespace yb
 
-#endif
+#endif  // YB_RPC_INBOUND_CALL_H_

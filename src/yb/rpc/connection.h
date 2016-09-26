@@ -310,7 +310,7 @@ class RedisConnection : public Connection {
   // Used by the WriteHandler to signal that the current call has been
   // responded to, so that the next call can be queued up for handling.
   // Since the redis client calls do not have an associated call id. We
-  // need to be careful to make sure that the responses are sent in the
+  // need to be careful to ensure that the responses are sent in the
   // same order in which the requests were made. Having more than one
   // client request -- from the same connection -- cannot be allowed to
   // process in parallel.
