@@ -73,7 +73,7 @@ public class InstanceType extends Model {
   @Column(nullable = false)
   public VolumeType volumeType;
 
-  @Column(columnDefinition = "LONGTEXT")
+  @Column(columnDefinition = "TEXT")
   private String instanceTypeDetailsJson;
   public InstanceTypeDetails instanceTypeDetails;
 
