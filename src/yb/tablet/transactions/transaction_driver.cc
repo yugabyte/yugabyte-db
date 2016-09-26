@@ -353,7 +353,7 @@ Status TransactionDriver::ApplyAsync() {
 
   TRACE_EVENT_FLOW_BEGIN0("txn", "ApplyTask", this);
   switch (table_type_) {
-    case TableType::KEY_VALUE_TABLE_TYPE:
+    case TableType::YSQL_TABLE_TYPE:
       // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
       // the order.
       ApplyTask();

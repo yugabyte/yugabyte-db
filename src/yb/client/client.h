@@ -75,7 +75,7 @@ class WriteRpc;
 
 enum YBTableType {
   KUDU_COLUMNAR_TABLE_TYPE = 1,
-  KEY_VALUE_TABLE_TYPE = 2,
+  YSQL_TABLE_TYPE = 2,
   REDIS_TABLE_TYPE = 3,
   UNKNOWN_TABLE_TYPE = -1
 };

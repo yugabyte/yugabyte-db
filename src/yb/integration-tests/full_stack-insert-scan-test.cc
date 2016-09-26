@@ -133,7 +133,7 @@ class FullStackInsertScanTest : public YBTest {
     NO_FATALS(InitCluster());
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
-             .table_type(YBTableType::KEY_VALUE_TABLE_TYPE)
+             .table_type(YBTableType::YSQL_TABLE_TYPE)
              .schema(&schema_)
              .num_replicas(1)
              .Create());

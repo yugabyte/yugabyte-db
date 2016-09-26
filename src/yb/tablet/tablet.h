@@ -219,7 +219,7 @@ class Tablet {
                                         std::vector<std::string>* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
-  // KEY_VALUE_TABLE_TYPE.
+  // YSQL_TABLE_TYPE.
   Status CreateCheckpoint(const std::string& dir,
                           google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
 

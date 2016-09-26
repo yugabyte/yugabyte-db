@@ -46,8 +46,8 @@ static Status PBToClientTableType(
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       *client_table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE;
       return Status::OK();
-    case TableType::KEY_VALUE_TABLE_TYPE:
-      *client_table_type = YBTableType::KEY_VALUE_TABLE_TYPE;
+    case TableType::YSQL_TABLE_TYPE:
+      *client_table_type = YBTableType::YSQL_TABLE_TYPE;
       return Status::OK();
     case TableType::REDIS_TABLE_TYPE:
       *client_table_type = YBTableType::REDIS_TABLE_TYPE;

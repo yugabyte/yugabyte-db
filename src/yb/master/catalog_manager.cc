@@ -876,7 +876,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Nullable columns are currently not being tested for.
   // Support and checks for nullable columns will be added later.
 
-   if (req.table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+   if (req.table_type() == TableType::YSQL_TABLE_TYPE) {
     if (client_schema.num_key_columns() != 1) {
       Status s = STATUS(InvalidArgument,
         "A key-value table should have exactly one key column");

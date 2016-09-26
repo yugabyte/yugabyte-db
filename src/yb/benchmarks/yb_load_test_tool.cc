@@ -67,7 +67,7 @@ DEFINE_bool(drop_table,
             "Whether to drop the table if it already exists. If true, the table is deleted and "
             "then recreated");
 
-DEFINE_bool(use_kv_table, false, "Use key-value table type backed by RocksDB");
+DEFINE_bool(use_kv_table, true, "Use key-value table type backed by RocksDB");
 
 DEFINE_int64(value_size_bytes, 16, "Size of each value in a row being inserted");
 
@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
               .split_rows(splits)
               .num_replicas(FLAGS_num_replicas)
               .table_type(
-                  FLAGS_use_kv_table ? YBTableType::KEY_VALUE_TABLE_TYPE
+                  FLAGS_use_kv_table ? YBTableType::YSQL_TABLE_TYPE
                                      : YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
               .Create();
       if (!table_creation_status.ok()) {

@@ -111,7 +111,7 @@ void KVTableTestBase::CreateClient() {
 
 void KVTableTestBase::OpenTable() {
   ASSERT_OK(client_->OpenTable(kDefaultTableName, &table_));
-  ASSERT_EQ(YBTableType::KEY_VALUE_TABLE_TYPE, table_->table_type());
+  ASSERT_EQ(YBTableType::YSQL_TABLE_TYPE, table_->table_type());
   session_ = NewSession();
 }
 
@@ -123,7 +123,7 @@ void KVTableTestBase::CreateTable() {
   ASSERT_OK(b.Build(&schema_));
 
   ASSERT_OK(table_creator->table_name(table_name())
-      .table_type(YBTableType::KEY_VALUE_TABLE_TYPE)
+      .table_type(YBTableType::YSQL_TABLE_TYPE)
       .num_replicas(3)
       .schema(&schema_)
       .Create());

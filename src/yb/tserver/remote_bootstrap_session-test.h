@@ -170,7 +170,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       unique_ptr<const WriteRequestPB> key_value_write_request;
       std::vector<std::string> keys_locked;
 
-      if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+      if (table_type_ == TableType::YSQL_TABLE_TYPE) {
         Status s = tablet()->CreateKeyValueWriteRequestPB(
             *req.get(), &key_value_write_request, &keys_locked);
         assert(s.ok());
@@ -180,7 +180,7 @@ class RemoteBootstrapTest : public YBTabletTest {
 
       auto state = new WriteTransactionState(
           tablet_peer_.get(), key_value_write_request.get(), &resp);
-      if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+      if (table_type_ == TableType::YSQL_TABLE_TYPE) {
         state->swap_docdb_locks(&keys_locked);
       }
       state->set_completion_callback(gscoped_ptr<tablet::TransactionCompletionCallback>(

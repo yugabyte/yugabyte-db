@@ -161,8 +161,8 @@ static TableType ClientToPBTableType(YBTableType table_type) {
   switch (table_type) {
     case YBTableType::KUDU_COLUMNAR_TABLE_TYPE:
       return TableType::KUDU_COLUMNAR_TABLE_TYPE;
-    case YBTableType::KEY_VALUE_TABLE_TYPE:
-      return TableType::KEY_VALUE_TABLE_TYPE;
+    case YBTableType::YSQL_TABLE_TYPE:
+      return TableType::YSQL_TABLE_TYPE;
     case YBTableType::REDIS_TABLE_TYPE:
       return TableType::REDIS_TABLE_TYPE;
     default:

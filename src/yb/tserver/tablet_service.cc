@@ -741,7 +741,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   vector<string> locks_held;
 
-  if (tablet->table_type() == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (tablet->table_type() == TableType::YSQL_TABLE_TYPE) {
     // We'll construct a new WriteRequestPB for raft replication.
     unique_ptr<const WriteRequestPB> key_value_write_request;
 

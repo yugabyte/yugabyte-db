@@ -515,7 +515,7 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       *has_blocks = tablet->num_rowsets() != 0;
       break;
-    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType ::REDIS_TABLE_TYPE:
       *has_blocks = tablet->HasSSTables();
       break;
@@ -1406,7 +1406,7 @@ Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       RETURN_NOT_OK(FilterAndApplyOperations(tx_state, result));
       break;
-    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       tablet_->ApplyRowOperations(tx_state);
       break;

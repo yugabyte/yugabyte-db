@@ -223,7 +223,7 @@ Status Tablet::Open() {
   CHECK(schema()->has_column_ids());
 
   switch (table_type_) {
-    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       RETURN_NOT_OK(OpenKeyValueTablet());
       break;
@@ -407,7 +407,7 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
   DCHECK_EQ(tx_state->row_ops().size(), 0);
   DCHECK_EQ(tx_state->kv_write_batch()->Count(), 0);
 
-  if (table_type_ == TableType::KEY_VALUE_TABLE_TYPE) {
+  if (table_type_ == TableType::YSQL_TABLE_TYPE) {
     CHECK(tx_state->request()->has_write_batch())
         << "Write request for kv-table has no write batch";
     CHECK(!tx_state->request()->has_row_operations())
@@ -685,7 +685,7 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
         ApplyKuduRowOperation(tx_state, row_op);
       }
       break;
-    case TableType::KEY_VALUE_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       ApplyKeyValueRowOperations(tx_state->kv_write_batch(), tx_state->op_id().index());
       break;
@@ -743,7 +743,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 
 void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
                                         const SequenceNumber seq_num) {
-  assert(table_type_ == TableType::KEY_VALUE_TABLE_TYPE);
+  assert(table_type_ == TableType::YSQL_TABLE_TYPE);
   write_batch->AddAllUserSequenceNumbers(seq_num);
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
@@ -1775,7 +1775,7 @@ Status Tablet::CaptureConsistentIterators(
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);
-    case TableType::KEY_VALUE_TABLE_TYPE:
+    case TableType::YSQL_TABLE_TYPE:
       return KeyValueCaptureConsistentIterators(projection, snap, spec, iters);
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;

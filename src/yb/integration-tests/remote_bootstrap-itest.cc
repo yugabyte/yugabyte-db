@@ -713,7 +713,7 @@ TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKuduTableType) {
 }
 
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKeyValueType) {
-  RejectRogueLeader(YBTableType::KEY_VALUE_TABLE_TYPE);
+  RejectRogueLeader(YBTableType::YSQL_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKuduTableType) {
@@ -721,7 +721,7 @@ TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKuduTableType)
 }
 
 TEST_F(RemoteBootstrapITest, TestDeleteTabletDuringRemoteBootstrapKeyValueType) {
-  DeleteTabletDuringRemoteBootstrap(YBTableType::KEY_VALUE_TABLE_TYPE);
+  DeleteTabletDuringRemoteBootstrap(YBTableType::YSQL_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKuduTableType) {
@@ -729,7 +729,7 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKuduTableT
 }
 
 TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFollowerWithHigherTermKeyValueType) {
-  RemoteBootstrapFollowerWithHigherTerm(YBTableType::KEY_VALUE_TABLE_TYPE);
+  RemoteBootstrapFollowerWithHigherTerm(YBTableType::YSQL_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKuduTableType) {
@@ -737,7 +737,7 @@ TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKuduTableType) {
 }
 
 TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstrapsKeyValueType) {
-  ConcurrentRemoteBootstraps(YBTableType::KEY_VALUE_TABLE_TYPE);
+  ConcurrentRemoteBootstraps(YBTableType::YSQL_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKuduTableType) {
@@ -745,7 +745,7 @@ TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKudu
 }
 
 TEST_F(RemoteBootstrapITest, TestDeleteLeaderDuringRemoteBootstrapStressTestKeyValueType) {
-  DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType::KEY_VALUE_TABLE_TYPE);
+  DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType::YSQL_TABLE_TYPE);
 }
 
 TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKuduTableType) {
@@ -753,7 +753,7 @@ TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDel
 }
 
 TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKeyValueType) {
-  DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::KEY_VALUE_TABLE_TYPE);
+  DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::YSQL_TABLE_TYPE);
 }
 
 } // namespace yb
