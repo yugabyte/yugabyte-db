@@ -33,3 +33,4 @@ npm-debug.log
 react/npm-debug.log
 
 conf/*
+src/main/public/*
