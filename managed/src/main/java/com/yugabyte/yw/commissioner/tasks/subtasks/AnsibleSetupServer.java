@@ -40,7 +40,7 @@ public class AnsibleSetupServer extends NodeTaskBase {
       command += " --aws_assign_public_ip";
     }
 
-    command += " --reuse_host --aws_assign_public_ip " + taskParams().nodeName;
+    command += " --reuse_host " + taskParams().nodeName;
 
     // Execute the ansible command.
     execCommand(command);
