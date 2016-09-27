@@ -41,7 +41,7 @@ export default class UniverseDetail extends Component {
     }
     const { universeDetails } = currentUniverse;
     var universeTaskUUIDs = []
-    if (universeTasks[currentUniverse.universeUUID] !== undefined) {
+    if (universeTasks && universeTasks[currentUniverse.universeUUID] !== undefined) {
       universeTaskUUIDs = universeTasks[currentUniverse.universeUUID].map(function(task) {
         return (task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
