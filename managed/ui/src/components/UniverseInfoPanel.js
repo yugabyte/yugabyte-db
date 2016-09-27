@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import * as moment from 'moment';
+import { FormattedDate } from 'react-intl';
 import DescriptionList from './DescriptionList';
 import YBPanelItem from './YBPanelItem';
 
@@ -14,9 +14,14 @@ export default class UniverseInfoPanel extends Component {
     const { universeInfo } = this.props;
     const { universeDetails } = universeInfo;
     const { userIntent } = universeDetails;
+
+    var formattedCreationDate = <FormattedDate value={universeInfo.creationDate}
+      year='numeric' month='long' day='2-digit'
+      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
+
     var regionList = universeInfo.regions.map(function(region) { return region.name; }).join(", ")
     var universeInfoItems = [
-      {name: "Launch Time", data: moment.default(universeInfo.creationDate).format('LLLL')},
+      {name: "Launch Time", data: formattedCreationDate},
       {name: "Provider", data: universeInfo.provider.name},
       {name: "Regions", data: regionList},
       {name: "Instance Type", data: userIntent.instanceType},

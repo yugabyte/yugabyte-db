@@ -2,9 +2,9 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Link } from 'react-router';
-import * as moment from 'moment'
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import { FormattedDate } from 'react-intl';
 import { isValidArray, isValidObject } from '../utils/ObjectUtils';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
 import { Row, Col, Image } from 'react-bootstrap';
@@ -226,10 +226,11 @@ export default class UniverseTable extends Component {
         }
         var statusString={"status": status, "tasks": universeTaskUUIDs};
 
+        var formattedCreationTime = <FormattedDate value={item.creationDate}
+          year='numeric' month='long' day='2-digit'/>
         var actionString = item.universeUUID;
         var universeNameObject = { "name": item.name,
-                                   "creationTime":
-                                    moment.default(item.creationDate).format('MMMM DD, YYYY'),
+                                   "creationTime": formattedCreationTime,
                                    "id": item.universeUUID};
         return {
           id: item.universeUUID,
