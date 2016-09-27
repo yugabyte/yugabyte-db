@@ -314,3 +314,10 @@ ul.progress-list li i {
     margin-left: 0 !important;
     margin-right: 0;
 }
+
+.region-map-container {
+    width: 100%;
+    border-color: #d3d3d3;
+    border-style: solid;
+    border-width: 20px 10px 20px 10px;
+}
