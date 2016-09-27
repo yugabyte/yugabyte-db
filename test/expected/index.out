@@ -1,5 +1,5 @@
 \unset ECHO
-1..258
+1..270
 ok 1 - has_index() single column should pass
 ok 2 - has_index() single column should have the proper description
 ok 3 - has_index() single column should have the proper diagnostics
@@ -258,3 +258,15 @@ ok 255 - is_indexed( schema, table, column ) fail should have the proper diagnos
 ok 256 - is_indexed( schema, table, columns[] ) fail, column order matters should fail
 ok 257 - is_indexed( schema, table, columns[] ) fail, column order matters should have the proper description
 ok 258 - is_indexed( schema, table, columns[] ) fail, column order matters should have the proper diagnostics
+ok 259 - is_indexed(schema, table, expressions) should pass
+ok 260 - is_indexed(schema, table, expressions) should have the proper description
+ok 261 - is_indexed(schema, table, expressions) should have the proper diagnostics
+ok 262 - is_indexed(schema, table, expression) should pass
+ok 263 - is_indexed(schema, table, expression) should have the proper description
+ok 264 - is_indexed(schema, table, expression) should have the proper diagnostics
+ok 265 - is_indexed(table, expressions) should pass
+ok 266 - is_indexed(table, expressions) should have the proper description
+ok 267 - is_indexed(table, expressions) should have the proper diagnostics
+ok 268 - is_indexed( table, expression) should pass
+ok 269 - is_indexed( table, expression) should have the proper description
+ok 270 - is_indexed( table, expression) should have the proper diagnostics
