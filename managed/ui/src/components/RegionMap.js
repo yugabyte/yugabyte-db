@@ -29,22 +29,25 @@ export default class RegionMap extends Component {
 
     const regionMarkers = []
     const regionLatLngs = regions.map(function(region, idx) {
-      regionMarkers.push(<MapMarker key={idx} latitude={region.latitude} longitude={region.longitude} />)
+      regionMarkers.push(<MapMarker key={idx} latitude={region.latitude} longitude={region.longitude} customIcon={true}/>)
       return [region.latitude, region.longitude];
 
     })
     var bounds = Leaflet.latLngBounds(regionLatLngs);
 
+
     const attribution =
-      'Imagery from <a href="http://giscience.uni-hd.de/">GIScience Research Group @ University of Heidelberg</a> ' +
-      '&mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>' +
+      ' contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
     return (
       <YBPanelItem name="Region Placement">
-        <Map bounds={bounds} center={[-1, 0]} zoom={this.state.zoom} zoomControl={false} ref='map'>
-          <TileLayer
+        <Map bounds={bounds} center={[-1, 0]} zoom={this.state.zoom}
+         zoomControl={false} ref='map' className="region-map-container" minZoom={1} maxZoom={5}
+         touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false} draggable={false}>
+         <TileLayer
             attribution={attribution}
-            url='http://korona.geog.uni-heidelberg.de/tiles/roads/x={x}&y={y}&z={z}'/>
+            url="http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png"/>
           {regionMarkers}
         </Map>
       </YBPanelItem>

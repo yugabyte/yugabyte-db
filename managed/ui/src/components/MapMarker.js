@@ -3,8 +3,8 @@
 import React, { Component, PropTypes } from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import { Icon }  from 'leaflet';
-import CustomMarker from '../stylesheets/images/custom-marker.png';
-
+import CustomMarker from '../stylesheets/images/marker.png';
+import ShadowMarker from '../stylesheets/images/marker-shadow.png';
 export default class MapMarker extends Component {
   static propTypes = {
     latitude: PropTypes.number.isRequired,
@@ -28,10 +28,11 @@ export default class MapMarker extends Component {
     if (customIcon) {
       opts['icon'] = new Icon({
         iconUrl: CustomMarker,
-        shadowUrl: CustomMarker,
-        iconSize:     [25, 31],
-        shadowSize:   [0, 0],
-        popupAnchor:  [2, -12]
+        shadowUrl: ShadowMarker,
+        iconSize:     [20, 27],
+        popupAnchor:  [10, 10],
+        iconAnchor:   [10,30],
+        shadowAnchor: [12, 46]
       });
     }
     return (
