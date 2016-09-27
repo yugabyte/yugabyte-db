@@ -5,6 +5,8 @@ import { Map, TileLayer } from 'react-leaflet';
 import MapMarker from './MapMarker';
 import 'leaflet/dist/leaflet.css';
 import YBPanelItem from './YBPanelItem';
+import Leaflet from 'leaflet'
+
 
 export default class RegionMap extends Component {
   static propTypes = {
@@ -24,9 +26,14 @@ export default class RegionMap extends Component {
 
   render() {
     const { regions } = this.props;
-    const regionMarkers = regions.map(function(region, idx) {
-      return <MapMarker key={idx} latitude={region.latitude} longitude={region.longitude} />;
-    });
+
+    const regionMarkers = []
+    const regionLatLngs = regions.map(function(region, idx) {
+      regionMarkers.push(<MapMarker key={idx} latitude={region.latitude} longitude={region.longitude} />)
+      return [region.latitude, region.longitude];
+
+    })
+    var bounds = Leaflet.latLngBounds(regionLatLngs);
 
     const attribution =
       'Imagery from <a href="http://giscience.uni-hd.de/">GIScience Research Group @ University of Heidelberg</a> ' +
@@ -34,7 +41,7 @@ export default class RegionMap extends Component {
 
     return (
       <YBPanelItem name="Region Placement">
-        <Map bounds={this.state.bounds} center={[-1, 0]} zoom={this.state.zoom} zoomControl={false}>
+        <Map bounds={bounds} center={[-1, 0]} zoom={this.state.zoom} zoomControl={false} ref='map'>
           <TileLayer
             attribution={attribution}
             url='http://korona.geog.uni-heidelberg.de/tiles/roads/x={x}&y={y}&z={z}'/>
