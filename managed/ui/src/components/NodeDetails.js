@@ -16,10 +16,11 @@ export default class NodeDetails extends Component {
       var nodeDetail = nodeDetails[key];
       return {
         name: nodeDetail.nodeName,
-        region: nodeDetail.cloudInfo.region,
+        regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
         isMaster: nodeDetail.isMaster ? "Yes" : "No",
         isTServer: nodeDetail.isTserver ? "Yes" : "No",
         privateIP: nodeDetail.cloudInfo.private_ip,
+        nodeStatus: nodeDetail.state,
       };
     });
 
@@ -27,10 +28,11 @@ export default class NodeDetails extends Component {
       <YBPanelItem name="Node Details">
         <BootstrapTable data={nodeDetailRows}>
           <TableHeaderColumn dataField="name" isKey={true}>Instance Name</TableHeaderColumn>
-          <TableHeaderColumn dataField="region">Region</TableHeaderColumn>
+          <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
           <TableHeaderColumn dataField="isMaster">Master</TableHeaderColumn>
           <TableHeaderColumn dataField="isTServer">TServer</TableHeaderColumn>
           <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
+          <TableHeaderColumn dataField="nodeStatus">Node Status</TableHeaderColumn>
         </BootstrapTable>
       </YBPanelItem>
     )
