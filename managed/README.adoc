@@ -18,26 +18,30 @@ $ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist
 # Create user and database
 $ createuser root
 $ createdb yugaware
+----
 
-# On Ubuntu, follow these steps:
+# On Ubuntu, follow these steps. First install sbt:
 Based on http://www.scala-sbt.org/release/docs/Installing-sbt-on-Linux.html
+[source,bash]
+----
 $ echo "deb https://dl.bintray.com/sbt/debian /" | sudo tee -a /etc/apt/sources.list.d/sbt.list
 $ sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 642AC823
 $ sudo apt-get update
 $ sudo apt-get install sbt
-# Note: do not set any password for mysql.
-$ sudo apt-get install mysql-server
-# Run the following to ensure 'green' status for the mysql deamon.
-$ service mysql status
-$ service mysql restart
-----
 
-Create the yugaware DB in MySQL:
-[source,bash]
-----
-mysql -u root
-mysql> create database yugaware;
-mysql> show databases;
+# Create user and yugaware db in PostgreSQL:
+# Follow all the steps on http://tecadmin.net/install-postgresql-server-on-ubuntu/
+# Then do the following to ensure that we can connect to "yugaware" db as "root" user.
+$ sudo -u postgres createuser -s root
+$ sudo -u postgres createdb yugaware
+$ sudo -u root psql -d yugaware
+yugaware=> \conninfo
+You are connected to database "yugaware" as user "root" via socket in "/var/run/postgresql" at port "5432".
+-- Just press enter to skip setting an actual password (it will be an empty string).
+yugaware=> \password
+Enter new password: 
+Enter it again: 
+yugaware=> \q
 ----
 
 Needs AWS auth credentials to run. Make sure no quotes around the keys!
