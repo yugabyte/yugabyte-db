@@ -5,6 +5,8 @@ package com.yugabyte.yw.models.helpers;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+
 /**
  * Details of a universe.
  */

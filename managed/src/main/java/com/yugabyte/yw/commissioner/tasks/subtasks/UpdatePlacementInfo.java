@@ -16,8 +16,8 @@ import org.yb.master.Master;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
