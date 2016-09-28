@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 

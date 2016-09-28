@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
+import com.yugabyte.yw.forms.ITaskParams;
 
 import play.libs.Json;
 

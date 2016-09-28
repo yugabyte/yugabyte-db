@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 
 /**

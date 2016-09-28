@@ -35,8 +35,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -48,7 +48,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
-import com.yugabyte.yw.models.helpers.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -194,10 +194,10 @@ public class UniverseControllerTest extends FakeDBApplication {
   @Test
   public void testUniverseCreateWithInvalidParams() {
     ObjectNode emptyJson = Json.newObject();
-    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie).bodyJson(emptyJson));
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
+                      .cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result), is(containsString("\"regionList\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"universeName\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"userIntent\":[\"This field is required\"]")));
   }
 
   @Test
@@ -205,6 +205,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     Provider p = Provider.create("aws", "Amazon");
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
 
+    ObjectNode topJson = Json.newObject();
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
     regionList.add(r.uuid.toString());
@@ -212,8 +213,12 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("universeName", "Single UserUniverse");
     bodyJson.put("isMultiAZ", false);
     bodyJson.put("instanceType", "a-instance");
+    bodyJson.put("replicationFactor", 3);
+    bodyJson.put("numNodes", 3);
+    topJson.set("userIntent", bodyJson);
 
-    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes").cookie(validCookie).bodyJson(bodyJson));
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
+                      .cookie(validCookie).bodyJson(topJson));
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").asText(), is(containsString("No AZ found for region: " + r.uuid)));
@@ -232,6 +237,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     InstanceType i =
         InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
+    ObjectNode topJson = Json.newObject();
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
     regionList.add(r.uuid.toString());
@@ -239,12 +245,15 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("universeName", "Single UserUniverse");
     bodyJson.put("isMultiAZ", false);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
+    bodyJson.put("replicationFactor", 3);
+    bodyJson.put("numNodes", 3);
+    topJson.set("userIntent", bodyJson);
 
     AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
     assertThat(az.region.name, is(notNullValue()));
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
-                            .cookie(validCookie).bodyJson(bodyJson));
+                            .cookie(validCookie).bodyJson(topJson));
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("universeUUID").asText(), is(notNullValue()));
@@ -265,8 +274,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result), is(containsString("\"regionList\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"universeName\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"userIntent\":[\"This field is required\"]")));
   }
 
   @Test
@@ -284,6 +292,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     InstanceType i =
         InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
+    ObjectNode topJson = Json.newObject();
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
     regionList.add(r.uuid.toString());
@@ -291,12 +300,16 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("isMultiAZ", true);
     bodyJson.put("universeName", universe.name);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
+    bodyJson.put("replicationFactor", 3);
+    bodyJson.put("numNodes", 3);
+    topJson.set("userIntent", bodyJson);
 
     AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
     assertThat(az.region.name, is(notNullValue()));
 
-    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
-                            .cookie(validCookie).bodyJson(bodyJson));
+    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
+    		                          "/universes/" + universe.universeUUID)
+                                      .cookie(validCookie).bodyJson(topJson));
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));

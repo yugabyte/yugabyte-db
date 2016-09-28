@@ -61,13 +61,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Get the number of masters currently present in the cluster.
       int numMasters = existingMasters.size();
       // For now, we provision the same number of nodes as before.
-      taskParams().numNodes = existingNodes.size();
+      taskParams().userIntent.numNodes = existingNodes.size();
 
       // Set the correct node names as they are finalized now. This is done just in case the user
       // changes the universe name before submitting. 
       fixNodeNames();
 
-      LOG.info("Configure numNodes={}, numMasters={}", taskParams().numNodes, numMasters);
+      LOG.info("Configure numNodes={}, numMasters={}",
+    		  taskParams().userIntent.numNodes, numMasters);
 
       // Set the old nodes' state to to-be-decommissioned.
       createSetNodeStateTasks(existingNodes, NodeDetails.NodeState.ToBeDecommissioned)

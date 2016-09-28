@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.UniverseDetails;

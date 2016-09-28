@@ -8,9 +8,9 @@ import org.yb.client.ChangeConfigResponse;
 import org.yb.client.YBClient;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 

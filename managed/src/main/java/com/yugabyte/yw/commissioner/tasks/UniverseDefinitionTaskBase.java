@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
-import com.yugabyte.yw.commissioner.tasks.params.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
@@ -19,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -68,8 +68,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universeDetails.userIntent = taskParams().userIntent;
         universeDetails.placementInfo = taskParams().placementInfo;
         universeDetails.nodePrefix = taskParams().nodePrefix;
-        universeDetails.numNodes = taskParams().numNodes;
-        universeDetails.ybServerPkg = taskParams().ybServerPkg;
+        universeDetails.numNodes = taskParams().userIntent.numNodes;
+        universeDetails.ybServerPkg = taskParams().userIntent.ybServerPackage;
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -202,7 +202,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
-      params.ybServerPkg = taskParams().ybServerPkg;
+      params.ybServerPkg = taskParams().userIntent.ybServerPackage;
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
@@ -364,7 +364,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (taskParams().nodePrefix == null) {
       throw new RuntimeException(getName() + ": nodePrefix not set");
     }
-    if (taskParams().numNodes < 3) {
+    if (taskParams().userIntent.numNodes < 3) {
       throw new RuntimeException(getName() + ": numNodes is invalid, need at least 3 nodes");
     }
     if (taskParams().userIntent.replicationFactor < 3) {

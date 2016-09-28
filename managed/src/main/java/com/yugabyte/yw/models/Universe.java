@@ -128,7 +128,7 @@ public class Universe extends Model {
     universe.universeDetails = new UniverseDetails();
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
     LOG.debug("Created universe " + universe.universeUUID + " with details [" +
-      universe.universeDetailsJson + "]");
+      universe.universeDetailsJson + "] with name " + name);
     // Save the object.
     universe.save();
     return universe;
