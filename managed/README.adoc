@@ -104,6 +104,10 @@ $ sbt eclipse
 bin/activator eclipse
 ----
 
+=== Publishing Release build to S3
+Run the following command to package and publish yugaware and react components s3 
+$ ./yw_publish.py
+
 Now there should be an Eclipse '.project' file generated. Go to Eclipse and import it using:
 File -> Import -> General -> Existing Projects into Workspace
 Hit next, and browse to the Yugaware source directory for the project to get imported.

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build && cp -R build/* ../src/main/public/",
+    "build": "react-scripts build",
     "eject": "react-scripts eject"
   },
   "engines": {
