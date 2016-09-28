@@ -227,6 +227,7 @@ RedisInboundTransfer* RedisInboundTransfer::ExcessData() const {
   // Right now, all the buffers are created with the same size. When we handle large sized
   // requests in RedisInboundTransfer, make sure that we have a large enough buffer.
   assert(excess->buf_.size() > excess_bytes_len);
+  ASAN_UNPOISON_MEMORY_REGION(excess->buf_.data(), excess_bytes_len);
   memcpy(static_cast<void *>(excess->buf_.data()),
          static_cast<const void *>(buf_.data() + parsing_pos_),
          excess_bytes_len);
