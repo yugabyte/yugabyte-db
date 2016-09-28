@@ -12,7 +12,7 @@ export default class GraphPanel extends Component {
 
   static defaultProps = {
     grafanaUrl: "http://10.9.67.55:3000/dashboard-solo/db/yugabyte-cluster",
-    panelIds: [4, 8]
+    panelIds: [17, 18]
   }
 
   render() {
