@@ -658,6 +658,17 @@ Status YBTableCreator::Create() {
   if (!data_->table_name_.length()) {
     return STATUS(InvalidArgument, "Missing table name");
   }
+  // For a redis table, no external schema is passed to TableCreator, we make a unique schema
+  // and manage its memory withing here.
+  YBSchema* redis_schema = nullptr;
+  if (data_->table_type_ == YBTableType::REDIS_TABLE_TYPE) {
+    CHECK(!data_->schema_) << "Schema should not be set for redis table creation";
+    redis_schema = new YBSchema();
+    YBSchemaBuilder b;
+    b.AddColumn("key_column")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
+    RETURN_NOT_OK(b.Build(redis_schema));
+    schema(redis_schema);
+  }
   if (!data_->schema_) {
     return STATUS(InvalidArgument, "Missing schema");
   }
@@ -711,6 +722,9 @@ Status YBTableCreator::Create() {
   }
 
   LOG(INFO) << "Created table of type " << data_->table_type_;
+  if (redis_schema) {
+    delete redis_schema;
+  }
   return Status::OK();
 }
 
@@ -749,6 +763,10 @@ const YBSchema& YBTable::schema() const {
 
 YBInsert* YBTable::NewInsert() {
   return new YBInsert(shared_from_this());
+}
+
+RedisWriteOp* YBTable::NewRedisWrite() {
+  return new RedisWriteOp(shared_from_this());
 }
 
 YBUpdate* YBTable::NewUpdate() {

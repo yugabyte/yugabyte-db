@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_INTEGRATION_TESTS_KV_TABLE_TEST_BASE
-#define YB_INTEGRATION_TESTS_KV_TABLE_TEST_BASE
+#ifndef YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE
+#define YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE
 
 #include <atomic>
 #include <cmath>
@@ -38,9 +38,12 @@
 namespace yb {
 namespace integration_tests {
 
-class KVTableTestBase : public YBTest {
+// This is a common base class from which SQLTableTest and RedisTableTest will inherit from.
+// In future some of the functionality may be migrated to sub-base classes when it becomes bigger.
+// i.e. scan related functions may be moved down because it is only supported for Kudu / SQL tables.
+class YBTableTestBase : public YBTest {
  protected:
-  KVTableTestBase();
+  YBTableTestBase();
   virtual void SetUp() OVERRIDE;
   virtual void TearDown() OVERRIDE;
 
@@ -51,10 +54,10 @@ class KVTableTestBase : public YBTest {
   virtual int client_rpc_timeout_ms();
   virtual string table_name();
 
-  void CreateTable();
+  virtual void CreateTable();
   void OpenTable();
   void DeleteTable();
-  void PutKeyValue(yb::client::YBSession* session, string key, string value);
+  virtual void PutKeyValue(yb::client::YBSession* session, string key, string value);
   void PutKeyValue(string key, string value);
   void ConfigureScanner(yb::client::YBScanner* scanner);
   void RestartCluster();
@@ -75,9 +78,6 @@ class KVTableTestBase : public YBTest {
     assert(use_external_mini_cluster());
     return external_mini_cluster_.get();
   }
-
-
- private:
 
   static constexpr int kDefaultNumMasters = 1;
   static constexpr int kDefaultNumTabletServers = 3;

@@ -51,8 +51,10 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
       const YBTableType table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
+    if (table_type != YBTableType::REDIS_TABLE_TYPE) {
+      table_creator->schema(&client_schema);
+    }
     return table_creator->table_name(Substitute("$0:$1", kTableName, table_suffix))
-        .schema(&client_schema)
         .num_replicas(num_replicas)
         .add_placement_block(placement_block)
         .table_type(table_type)

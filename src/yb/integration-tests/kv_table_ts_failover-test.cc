@@ -10,7 +10,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/integration-tests/load_generator.h"
-#include "yb/integration-tests/kv_table_test_base.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 
 DEFINE_int32(test_num_iter,
              1,
@@ -26,9 +26,9 @@ using client::YBScanner;
 using client::YBTable;
 using client::sp::shared_ptr;
 
-using integration_tests::KVTableTestBase;
+using integration_tests::YBTableTestBase;
 
-class KVTableTsFailoverTest : public KVTableTestBase {
+class KVTableTsFailoverTest : public YBTableTestBase {
  public:
   virtual bool use_external_mini_cluster() OVERRIDE { return true; }
 };

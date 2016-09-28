@@ -413,7 +413,7 @@ message GetTabletLocationsResponsePB {
 // ============================================================================
 message CreateTableRequestPB {
   required string name = 1;
-  required SchemaPB schema = 2;
+  optional SchemaPB schema = 2;
   // repeated bytes pre_split_keys = 3;
   // repeated PartialRowPB split_rows = 5;
   optional RowOperationsPB split_rows = 6;

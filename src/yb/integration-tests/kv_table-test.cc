@@ -22,7 +22,7 @@
 
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/kv_table_test_base.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 
 using std::string;
 using std::vector;
@@ -53,7 +53,7 @@ using client::YBTableCreator;
 using client::YBTableType;
 using strings::Split;
 
-class KVTableTest : public KVTableTestBase {
+class KVTableTest : public YBTableTestBase {
  protected:
 
   virtual bool use_external_mini_cluster() OVERRIDE { return false; }

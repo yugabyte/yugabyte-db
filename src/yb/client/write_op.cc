@@ -76,6 +76,14 @@ YBInsert::YBInsert(const shared_ptr<YBTable>& table)
 
 YBInsert::~YBInsert() {}
 
+// RedisWriteOp -----------------------------------------------------------------
+
+RedisWriteOp::RedisWriteOp(const shared_ptr<YBTable>& table)
+    : YBWriteOperation(table) {
+}
+
+RedisWriteOp::~RedisWriteOp() {}
+
 // Update -----------------------------------------------------------------------
 
 YBUpdate::YBUpdate(const shared_ptr<YBTable>& table)

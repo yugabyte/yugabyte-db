@@ -282,12 +282,17 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     bool partition_contains_row;
     CHECK(partition_schema.PartitionContainsRow(partition, row, &partition_contains_row).ok());
     CHECK(partition_contains_row)
-        << "Row " << partition_schema.RowDebugString(row)
-        << "not in partition " << partition_schema.PartitionDebugString(partition, *schema);
+    << "Row " << partition_schema.RowDebugString(row)
+    << "not in partition " << partition_schema.PartitionDebugString(partition, *schema);
 #endif
-
-    enc.Add(ToInternalWriteType(op->write_op->type()), op->write_op->row());
-
+    if (op->write_op->type() == YBWriteOperation::Type::REDIS_WRITE) {
+      CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
+      req_.mutable_redis_write_batch()->AddAllocated(
+          new RedisWriteRequestPB(down_cast<RedisWriteOp&> (*(op->write_op)).request()));
+    } else {
+      CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
+      enc.Add(ToInternalWriteType(op->write_op->type()), op->write_op->row());
+    }
     // Set the state now, even though we haven't yet sent it -- at this point
     // there is no return, and we're definitely going to send it. If we waited
     // until after we sent it, the RPC callback could fire before we got a chance
@@ -633,7 +638,7 @@ Status Batcher::Add(YBWriteOperation* write_op) {
   // so that when the user calls Flush, we are ready to go.
   gscoped_ptr<InFlightOp> op(new InFlightOp());
   RETURN_NOT_OK(write_op->table_->partition_schema()
-                .EncodeKey(write_op->row(), &op->partition_key));
+                    .EncodeKey(write_op->row(), &op->partition_key));
   op->write_op.reset(write_op);
   op->state = InFlightOp::kLookingUpTablet;
 

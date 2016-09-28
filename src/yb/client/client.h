@@ -469,6 +469,7 @@ class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
   // Create a new write operation for this table. It is the caller's
   // responsibility to free it, unless it is passed to YBSession::Apply().
   YBInsert* NewInsert();
+  RedisWriteOp* NewRedisWrite();
   YBUpdate* NewUpdate();
   YBDelete* NewDelete();
 

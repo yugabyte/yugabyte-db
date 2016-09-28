@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#include "yb/integration-tests/kv_table_test_base.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/util/curl_util.h"
 
 using std::unique_ptr;
@@ -22,36 +22,36 @@ using strings::Substitute;
 
 namespace integration_tests {
 
-const char* const KVTableTestBase::kDefaultTableName = "kv-table-test";
+const char* const YBTableTestBase::kDefaultTableName = "kv-table-test";
 
-int KVTableTestBase::num_masters() {
+int YBTableTestBase::num_masters() {
   return kDefaultNumMasters;
 }
 
-int KVTableTestBase::num_tablet_servers() {
+int YBTableTestBase::num_tablet_servers() {
   return kDefaultNumTabletServers;
 }
 
-int KVTableTestBase::session_timeout_ms() {
+int YBTableTestBase::session_timeout_ms() {
   return kDefaultSessionTimeoutMs;
 }
 
-string KVTableTestBase::table_name() {
+string YBTableTestBase::table_name() {
   return kDefaultTableName;
 }
 
-int KVTableTestBase::client_rpc_timeout_ms() {
+int YBTableTestBase::client_rpc_timeout_ms() {
   return kDefaultClientRpcTimeoutMs;
 }
 
-bool KVTableTestBase::use_external_mini_cluster() {
+bool YBTableTestBase::use_external_mini_cluster() {
   return kDefaultUsingExternalMiniCluster;
 }
 
-KVTableTestBase::KVTableTestBase() {
+YBTableTestBase::YBTableTestBase() {
 }
 
-void KVTableTestBase::SetUp() {
+void YBTableTestBase::SetUp() {
   YBTest::SetUp();
   if (use_external_mini_cluster()) {
     auto opts = ExternalMiniClusterOptions();
@@ -76,7 +76,7 @@ void KVTableTestBase::SetUp() {
   OpenTable();
 }
 
-void KVTableTestBase::TearDown() {
+void YBTableTestBase::TearDown() {
   DeleteTable();
 
   // Fetch the tablet server metrics page after we delete the table. [ENG-135].
@@ -90,7 +90,7 @@ void KVTableTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-vector<uint16_t> KVTableTestBase::master_rpc_ports() {
+vector<uint16_t> YBTableTestBase::master_rpc_ports() {
   vector<uint16_t> master_rpc_ports;
   for (int i = 0; i < num_masters(); ++i) {
     master_rpc_ports.push_back(0);
@@ -98,7 +98,7 @@ vector<uint16_t> KVTableTestBase::master_rpc_ports() {
   return master_rpc_ports;
 }
 
-void KVTableTestBase::CreateClient() {
+void YBTableTestBase::CreateClient() {
   client_.reset();
   YBClientBuilder builder;
   builder.default_rpc_timeout(MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
@@ -109,13 +109,12 @@ void KVTableTestBase::CreateClient() {
   }
 }
 
-void KVTableTestBase::OpenTable() {
+void YBTableTestBase::OpenTable() {
   ASSERT_OK(client_->OpenTable(kDefaultTableName, &table_));
-  ASSERT_EQ(YBTableType::YSQL_TABLE_TYPE, table_->table_type());
   session_ = NewSession();
 }
 
-void KVTableTestBase::CreateTable() {
+void YBTableTestBase::CreateTable() {
   unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   YBSchemaBuilder b;
   b.AddColumn("k")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
@@ -130,21 +129,21 @@ void KVTableTestBase::CreateTable() {
   table_exists_ = true;
 }
 
-void KVTableTestBase::DeleteTable() {
+void YBTableTestBase::DeleteTable() {
   if (table_exists_) {
     ASSERT_OK(client_->DeleteTable(table_name()));
     table_exists_ = false;
   }
 }
 
-shared_ptr<YBSession> KVTableTestBase::NewSession() {
+shared_ptr<YBSession> YBTableTestBase::NewSession() {
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(session_timeout_ms());
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   return session;
 }
 
-void KVTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
+void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
   unique_ptr<YBInsert> insert(table_->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetBinary("k", key));
   ASSERT_OK(insert->mutable_row()->SetBinary("v", value));
@@ -152,23 +151,23 @@ void KVTableTestBase::PutKeyValue(YBSession* session, string key, string value) 
   ASSERT_OK(session->Flush());
 }
 
-void KVTableTestBase::PutKeyValue(string key, string value) {
+void YBTableTestBase::PutKeyValue(string key, string value) {
   PutKeyValue(session_.get(), key, value);
 }
 
-void KVTableTestBase::ConfigureScanner(YBScanner* scanner) {
+void YBTableTestBase::ConfigureScanner(YBScanner* scanner) {
   ASSERT_OK(scanner->SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
   ASSERT_OK(scanner->SetProjectedColumns({ "k", "v" }));
 }
 
-void KVTableTestBase::RestartCluster() {
+void YBTableTestBase::RestartCluster() {
   DCHECK(!use_external_mini_cluster());
   mini_cluster_->RestartSync();
   NO_FATALS(CreateClient());
   NO_FATALS(OpenTable());
 }
 
-void KVTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, string>>* result_kvs) {
+void YBTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, string>>* result_kvs) {
   while (scanner->HasMoreRows()) {
     vector<YBScanBatch::RowPtr> rows;
     scanner->NextBatch(&rows);
@@ -181,7 +180,7 @@ void KVTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, str
   }
 }
 
-void KVTableTestBase::FetchTSMetricsPage() {
+void YBTableTestBase::FetchTSMetricsPage() {
   EasyCurl c;
   faststring buf;
 

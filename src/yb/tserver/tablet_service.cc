@@ -737,11 +737,20 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  if (tablet->table_type() == TableType::REDIS_TABLE_TYPE) {
+    // This is a redis request, print the protobuf
+    LOG(INFO) << "Got redis request: " << req->DebugString();
+    // Exit without doing anything. Not implemented yet.
+    RpcTransactionCompletionCallback<WriteResponsePB> rpc(context, resp);
+    rpc.TransactionCompleted();
+    return;
+  }
+
   unique_ptr<WriteTransactionState> tx_state;
 
   vector<string> locks_held;
 
-  if (tablet->table_type() == TableType::YSQL_TABLE_TYPE) {
+  if (tablet->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     // We'll construct a new WriteRequestPB for raft replication.
     unique_ptr<const WriteRequestPB> key_value_write_request;
 

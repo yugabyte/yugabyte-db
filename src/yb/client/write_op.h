@@ -21,6 +21,7 @@
 
 #include "yb/client/shared_ptr.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/util/yb_export.h"
 
 namespace yb {
@@ -51,6 +52,7 @@ class YB_EXPORT YBWriteOperation {
     INSERT = 1,
     UPDATE = 2,
     DELETE = 3,
+    REDIS_WRITE = 4,
   };
   virtual ~YBWriteOperation();
 
@@ -59,9 +61,9 @@ class YB_EXPORT YBWriteOperation {
   YBPartialRow* mutable_row() { return &row_; }
 
   virtual std::string ToString() const = 0;
+  virtual Type type() const = 0;
  protected:
   explicit YBWriteOperation(const sp::shared_ptr<YBTable>& table);
-  virtual Type type() const = 0;
 
   sp::shared_ptr<YBTable> const table_;
   YBPartialRow row_;
@@ -97,6 +99,29 @@ class YB_EXPORT YBInsert : public YBWriteOperation {
  private:
   friend class YBTable;
   explicit YBInsert(const sp::shared_ptr<YBTable>& table);
+};
+
+class YB_EXPORT RedisWriteOp : public YBWriteOperation {
+public:
+  virtual ~RedisWriteOp();
+
+  const RedisWriteRequestPB& request() { return redis_write_request_; }
+
+  RedisWriteRequestPB* mutable_request() { return &redis_write_request_; }
+
+  virtual std::string ToString() const OVERRIDE {
+    return "REDIS_WRITE " + redis_write_request_.set_request().key_value().key();
+  }
+
+protected:
+  virtual Type type() const OVERRIDE {
+    return REDIS_WRITE;
+  }
+
+private:
+  friend class YBTable;
+  explicit RedisWriteOp(const sp::shared_ptr<YBTable>& table);
+  RedisWriteRequestPB redis_write_request_;
 };
 
 
