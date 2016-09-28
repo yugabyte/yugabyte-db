@@ -2,8 +2,8 @@
 
 #include "yb/master/cluster_balance.h"
 
-#include <algorithm>
 #include <boost/thread/locks.hpp>
+#include <algorithm>
 
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
@@ -118,7 +118,7 @@ class ClusterLoadBalancer::ClusterLoadState {
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
   struct Comparator {
-    Comparator(ClusterLoadState* state) : state_(state) {}
+    explicit Comparator(ClusterLoadState* state) : state_(state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b) {
       return state_->CompareByUuid(a, b);
     }
@@ -297,6 +297,10 @@ class ClusterLoadBalancer::ClusterLoadState {
       const TabletId& tablet_id, const TabletServerId& to_ts,
       const PlacementInfoPB* placement_info = nullptr) {
     const auto& ts_meta = per_ts_meta_[to_ts];
+    // If this tablet has already been added to a new tablet server, don't add it again.
+    if (tablets_added_.count(tablet_id)) {
+      return false;
+    }
     // We do not add load to blacklisted servers.
     if (blacklisted_servers_.count(to_ts)) {
       return false;
@@ -386,6 +390,7 @@ class ClusterLoadBalancer::ClusterLoadState {
     ++per_tablet_meta_[tablet_id].starting;
     ++per_ts_meta_[to_ts].starting;
     ++total_starting_;
+    tablets_added_.insert(tablet_id);
     SortLoad();
   }
 
@@ -444,6 +449,9 @@ class ClusterLoadBalancer::ClusterLoadState {
 
   // List of tablet server ids that have pending deletes.
   set<TabletServerId> servers_with_pending_deletes_;
+
+  // List of tablet ids that have been added to a new tablet server.
+  set<TabletId> tablets_added_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
@@ -941,5 +949,5 @@ bool ClusterLoadBalancer::ConfigMemberInTransitionMode(const TabletId &tablet_id
   return CountVotersInTransition(config) != 0;
 }
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb

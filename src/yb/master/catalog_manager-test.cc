@@ -73,7 +73,7 @@ void NewReplica(
 class TestLoadBalancer : public ClusterLoadBalancer {
  public:
   typedef unordered_map<string, scoped_refptr<TabletInfo>> TabletInfoMap;
-  TestLoadBalancer(string table_id) : ClusterLoadBalancer(nullptr) {
+  explicit TestLoadBalancer(string table_id) : ClusterLoadBalancer(nullptr) {
     // Create the table.
     scoped_refptr<TableInfo> table(new TableInfo(table_id));
     vector<scoped_refptr<TabletInfo>> tablets;
@@ -119,6 +119,12 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
     PrepareTestState(ts_descs);
     TestWithMissingTabletServers();
+
+    PrepareTestState(ts_descs);
+    TestMovingMultipleTabletsFromSameServer();
+
+    PrepareTestState(ts_descs);
+    TestWithMissingPlacementAndLoadImbalance();
   }
 
  protected:
@@ -150,7 +156,22 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     for (const auto& tablet : tablets_) {
       TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
     }
-    // Now that we have moved off of the blacklisted ts0, we can try to equalize load across the
+
+    // There is some opportunity to equalize load across the remaining servers also. However,
+    // we cannot do so until the next run since all tablets have just been moved once.
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+
+    // Move tablets off ts0 to ts5.
+    for (const auto& tablet : tablets_) {
+      RemoveReplica(tablet.get(), ts_descs_[0]);
+      AddRunningReplica(tablet.get(), ts_descs_[5]);
+    }
+
+    // Reset the load state and recompute.
+    ResetState();
+    AnalyzeTablets();
+
+    // Now that we have reinitialized for the next run, we can try to equalize load across the
     // remaining servers. Our load on non-blacklisted servers is: ts1:4, ts2:4, ts3:0, ts5:4. Of
     // this, we can only balance from ts1 to ts3, as they are in the same AZ.
     expected_from_ts = ts_descs_[1]->permanent_uuid();
@@ -349,6 +370,95 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     ASSERT_FALSE(AnalyzeTablets());
   }
 
+  void TestMovingMultipleTabletsFromSameServer() {
+    LOG(INFO) << "Testing moving multiple tablets from the same tablet server";
+
+    // Add three more tablet servers
+    ts_descs_.push_back(SetupTS("3333", "a"));
+    ts_descs_.push_back(SetupTS("4444", "a"));
+    ts_descs_.push_back(SetupTS("5555", "a"));
+
+    // Move 2 tablets from ts1 and ts2 each to ts3 and ts4, leaving ts0 with 4 tablets, ts1..4
+    // with 2 tablets and ts5 with none.
+    RemoveReplica(tablets_[0].get(), ts_descs_[1]);
+    AddRunningReplica(tablets_[0].get(), ts_descs_[3]);
+    RemoveReplica(tablets_[1].get(), ts_descs_[1]);
+    AddRunningReplica(tablets_[1].get(), ts_descs_[3]);
+    RemoveReplica(tablets_[0].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[0].get(), ts_descs_[4]);
+    RemoveReplica(tablets_[1].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[1].get(), ts_descs_[4]);
+
+    AnalyzeTablets();
+
+    // ENG-348: Check that 2 different tablets are moved from ts0 to ts5.
+    string expected_tablet_id, expected_from_ts, expected_to_ts;
+    expected_from_ts = ts_descs_[0]->permanent_uuid();
+    expected_to_ts = ts_descs_[5]->permanent_uuid();
+    expected_tablet_id = tablets_[0]->tablet_id();
+    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+    expected_tablet_id = tablets_[1]->tablet_id();
+    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+  }
+
+  void TestWithMissingPlacementAndLoadImbalance() {
+    LOG(INFO) << "Testing with tablet servers missing placement and load imbalance";
+    // Setup cluster level placement to multiple AZs.
+    SetupClusterConfig(/* multi_az = */ true);
+
+    // Remove the only tablet peer from AZ "c".
+    for (const auto tablet : tablets_) {
+      TabletInfo::ReplicaMap replica_map;
+      tablet->GetReplicaLocations(&replica_map);
+      replica_map.erase(ts_descs_[2]->permanent_uuid());
+      tablet->SetReplicaLocations(replica_map);
+    }
+    // Remove the tablet server from the list.
+    ts_descs_.pop_back();
+
+    // Add back 1 new server in that same AZ. So we should add missing placments to this new TS.
+    ts_descs_.push_back(SetupTS("1new", "c"));
+
+    // Load up data.
+    AnalyzeTablets();
+
+    // First we'll fill up the missing placements for all 4 tablets.
+    string placeholder;
+    string expected_to_ts;
+    expected_to_ts = ts_descs_[2]->permanent_uuid();
+    TestAddLoad(placeholder, placeholder, expected_to_ts);
+    TestAddLoad(placeholder, placeholder, expected_to_ts);
+    TestAddLoad(placeholder, placeholder, expected_to_ts);
+    TestAddLoad(placeholder, placeholder, expected_to_ts);
+
+    // Add yet 1 more server in that same AZ for some load-balancing.
+    ts_descs_.push_back(SetupTS("2new", "c"));
+
+    AnalyzeTablets();
+
+    // Since we have just filled up the missing placements for all 4 tablets, we cannot rebalance
+    // the tablets to the second new TS until the next run.
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+
+    // Add the missing placements to the first new TS.
+    AddRunningReplica(tablets_[0].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[1].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[2].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[3].get(), ts_descs_[2]);
+
+    // Reset the load state and recompute.
+    ResetState();
+    AnalyzeTablets();
+
+    // Now we should be able to move 2 tablets to the second new TS.
+    expected_to_ts = ts_descs_[3]->permanent_uuid();
+    TestAddLoad(placeholder, placeholder, expected_to_ts);
+    TestAddLoad(placeholder, placeholder, expected_to_ts);
+
+    // And the load should now be balanced so no more move is expected.
+    ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+  }
+
   // Methods to prepare the state of the current test.
  protected:
   void PrepareTestState(const TSDescriptorVector& ts_descs) {
@@ -474,6 +584,13 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     tablet->SetReplicaLocations(replicas);
   }
 
+  void RemoveReplica(TabletInfo* tablet, shared_ptr<TSDescriptor> ts_desc) {
+    TabletInfo::ReplicaMap replicas;
+    tablet->GetReplicaLocations(&replicas);
+    replicas.erase(ts_desc->permanent_uuid());
+    tablet->SetReplicaLocations(replicas);
+  }
+
   void SendReplicaChanges(
       scoped_refptr<TabletInfo> tablet, const string& ts_uuid, const bool is_add) OVERRIDE {
     // Do nothing.
@@ -499,7 +616,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
   vector<scoped_refptr<TabletInfo>> tablets;
 
   // Define & create the splits.
-  vector<string> split_keys = {"a", "b", "c"}; // The keys we split on.
+  vector<string> split_keys = {"a", "b", "c"};  // The keys we split on.
   const int kNumSplits = split_keys.size();
   const int kNumReplicas = 1;
 
@@ -567,5 +684,5 @@ TEST(TestLoadBalancer, TestLoadBalancerAlgorithm) {
   lb->TestAlgorithm();
 }
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb
