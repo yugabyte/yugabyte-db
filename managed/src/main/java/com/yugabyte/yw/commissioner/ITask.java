@@ -3,7 +3,7 @@
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.tasks.params.ITaskParams;
+import com.yugabyte.yw.forms.ITaskParams;
 
 public interface ITask extends Runnable {
 

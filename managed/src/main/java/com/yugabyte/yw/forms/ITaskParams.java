@@ -1,6 +1,6 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.commissioner.tasks.params;
+package com.yugabyte.yw.forms;
 
 /**
  * Marker interface. All task params implement this interface.

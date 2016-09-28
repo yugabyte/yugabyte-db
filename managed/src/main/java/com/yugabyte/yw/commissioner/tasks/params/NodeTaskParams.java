@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.params;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 

@@ -8,7 +8,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
-import com.yugabyte.yw.models.helpers.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.junit.Before;
 import org.junit.Test;
 
