@@ -102,6 +102,11 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.success = taskProgress.get("status").asText().equals("Success") ? true : false;
         taskData.id = task.getTaskUUID();
         taskData.title = task.getFriendlyDescription();
+        taskData.createTime = task.getCreateTime();
+        taskData.completionTime = task.getCompletionTime();
+        taskData.target = task.getTarget().name();
+        taskData.type = task.getType().name();
+
         List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getUniverseUUID(), new ArrayList<>());
         taskList.add(taskData);
         taskListMap.put(task.getUniverseUUID(), taskList);

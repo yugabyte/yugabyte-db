@@ -11,6 +11,7 @@ import DashboardWrapper from './pages/DashboardWrapper';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
+import Alerts from './pages/Alerts';
 
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
@@ -47,6 +48,7 @@ export default (store) => {
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/universes" component={Universes} />
         <Route path="/universes/:uuid" component={UniverseDetail} />
+        <Route path="/alerts" component={Alerts} />
       </Route>
     </Route>
   );

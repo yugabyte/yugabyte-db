@@ -18,9 +18,9 @@ class StatusStringCell extends Component {
    const stringHeader = <div className='table-cell-sub-text text-center'> Status </div>;
    var statusInfo = "";
    if (status === "success") {
-     statusInfo = <i className='fa fa-check' aria-hidden='true'> Succeeded </i>;
+     statusInfo = <i className='fa fa-check fa-fw' aria-hidden='true'> Succeeded </i>;
    } else if (status === "failure") {
-     statusInfo = <i className='fa fa-times' > Failed </i>
+     statusInfo = <i className='fa fa-times fa-fw' > Failed </i>
    }
 
    if(status === "failure" || status === "success" ) {
