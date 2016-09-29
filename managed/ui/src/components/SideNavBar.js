@@ -56,7 +56,7 @@ export default class SideNavBar extends Component {
                   </Link>
                 </li>
                 <li className={this.isActive('alerts')} onClick={this.setFilter.bind(this, 'alerts')}>
-                  <a href="#"><i className="fa fa-bell-o"></i> Alerts <span className="label label-success"></span></a>
+                  <Link to="/alerts"><i className="fa fa-bell-o"></i> Alerts <span className="label label-success"></span></Link>
                 </li>
                 <li className={this.isActive('metrics')} onClick={this.setFilter.bind(this, 'metrics')}><a href="#">
                   <i className="fa fa-line-chart"></i> Metrics <span className="label label-success"></span></a>
