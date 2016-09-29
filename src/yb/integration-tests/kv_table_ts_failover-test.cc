@@ -60,7 +60,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
       LOG(INFO) << "Killing tablet server #" << i;
       external_mini_cluster()->tablet_server(i)->Shutdown();
       LOG(INFO) << "Re-starting tablet server #" << i;
-      external_mini_cluster()->tablet_server(i)->Restart();
+      ASSERT_OK(external_mini_cluster()->tablet_server(i)->Restart());
       external_mini_cluster()->WaitForTabletServerCount(3, MonoDelta::FromSeconds(20));
     }
 
@@ -85,4 +85,4 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
   }
 }
 
-}
+}  // namespace yb

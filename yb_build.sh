@@ -52,6 +52,9 @@ Options:
   --gtest-regex
     Use the given regular expression to filter tests within a gtest-based binary when running them
     with --cxx-test.
+  --rebuild-file <source_file_to_rebuild>
+    The .o file corresponding to the given source file will be deleted from the build directory
+    before the build.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -76,6 +79,7 @@ make_targets=()
 no_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
+object_files_to_delete=()
 
 unset YB_GTEST_REGEX
 
@@ -143,6 +147,8 @@ while [ $# -gt 0 ]; do
       cxx_test_name="$2"
       make_targets+=( "$2" )
       build_java=false
+      # This is necessary to avoid failures if we are just building one test.
+      test_existence_check=false
       shift
     ;;
     --no-rebuild-thirdparty)
@@ -156,6 +162,10 @@ while [ $# -gt 0 ]; do
     ;;
     --gtest-regex)
       export YB_GTEST_REGEX="$2"
+      shift
+    ;;
+    --rebuild-file)
+      object_files_to_delete+=( "$2.o" )
       shift
     ;;
     rocksdb_*)
@@ -285,6 +295,16 @@ fi
 
 if "$rocksdb_only"; then
   make_opts+=( build_rocksdb_all_targets )
+fi
+
+if [[ "${#object_files_to_delete[@]}" -gt 0 ]]; then
+  log_empty_line
+  log "Deleting object files corresponding to: ${object_files_to_delete[@]}"
+  # TODO: can delete multiple files using the same find command.
+  for object_file_to_delete in "${#object_files_to_delete[@]}"; do
+    ( set -x; find "$BUILD_ROOT" -name "$object_files_to_delete" -exec rm -fv {} \; )
+  done
+  log_empty_line
 fi
 
 if [[ $cxx_test_name != "client_samples-test" ]]; then

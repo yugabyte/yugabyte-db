@@ -51,6 +51,10 @@ get_timestamp_for_filenames() {
   date +%Y-%m-%dT%H_%M_%S
 }
 
+log_empty_line() {
+  echo >&2
+}
+
 log() {
   if [[ "${yb_log_quiet:-}" != "true" ]]; then
     # Weirdly, when we put $* inside double quotes, that has an effect of making the following log
@@ -136,10 +140,26 @@ readonly VALID_CMAKE_BUILD_TYPES_RE=$( regex_from_list "${VALID_CMAKE_BUILD_TYPE
 readonly VALID_COMPILER_TYPES=( gcc clang )
 readonly VALID_COMPILER_TYPES_RE=$( regex_from_list "${VALID_COMPILER_TYPES[@]}" )
 
+readonly YELLOW_COLOR="\033[0;33m"
+readonly RED_COLOR="\033[0;31m"
+readonly CYAN_COLOR="\033[0;36m"
+readonly NO_COLOR="\033[0m"
 
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
+
+yellow_color() {
+  echo -ne "$YELLOW_COLOR"
+}
+
+red_color() {
+  echo -ne "$RED_COLOR"
+}
+
+no_color() {
+  echo -ne "$NO_COLOR"
+}
 
 to_lowercase() {
   tr A-Z a-z

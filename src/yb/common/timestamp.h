@@ -64,6 +64,10 @@ class Timestamp {
 
   val_type value() const { return v; }
 
+  bool operator <(const Timestamp& other) const {
+    return CompareTo(other) < 0;
+  }
+
   // An initial transaction timestamp, higher than min so that we can have
   // a Timestamp guaranteed to be lower than all generated timestamps.
   static const Timestamp kInitialTimestamp;
@@ -98,10 +102,6 @@ inline int Timestamp::CompareTo(const Timestamp &other) const {
   return 0;
 }
 
-inline int operator <(const Timestamp& a, const Timestamp& b) {
-  return a.CompareTo(b) < 0;
-}
+}  // namespace yb
 
-} // namespace yb
-
-#endif /* YB_COMMON_TIMESTAMP_H_ */
+#endif  // YB_COMMON_TIMESTAMP_H_

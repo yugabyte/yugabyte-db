@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_INTEGRATION_TESTS_LOAD_GENERATOR_H
-#define YB_INTEGRATION_TESTS_LOAD_GENERATOR_H
+#ifndef YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
+#define YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 
 #include <string>
 #include <set>
@@ -10,8 +10,6 @@
 #include <atomic>
 
 #include "yb/client/client.h"
-
-#include <boost/thread/mutex.hpp>
 
 #include "yb/gutil/stl_util.h"
 #include "yb/util/threadpool.h"
@@ -28,7 +26,7 @@ class KeyIndexSet {
   void Insert(int64_t key);
   bool Contains(int64_t key) const;
   bool RemoveIfContains(int64_t key);
-  int64_t GetRandomKey() const;
+  int64_t GetRandomKey(std::mt19937_64* random_number_generator) const;
 
  private:
   std::set<int64_t> set_;
@@ -67,8 +65,8 @@ class MultiThreadedAction {
   virtual void RunStatsThread() = 0;
 
   std::string description_;
-  const int64_t num_keys_; // Total number of keys in the table after successful end of this action
-  const int64_t start_key_; // First insertion key index of the write action
+  const int64_t num_keys_;  // Total number of keys in the table after successful end of this action
+  const int64_t start_key_;  // First insertion key index of the write action
   const int num_action_threads_;
   yb::client::YBClient* client_;
   yb::client::YBTable* table_;
@@ -136,7 +134,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
 // TODO: create a multi-threaded version of this.
 class SingleThreadedScanner {
  public:
-  SingleThreadedScanner(yb::client::YBTable* table);
+  explicit SingleThreadedScanner(yb::client::YBTable* table);
 
   int64_t CountRows();
 
@@ -189,7 +187,7 @@ class MultiThreadedReader : public MultiThreadedAction {
   const int retries_on_empty_read_;
 };
 
-}
-}
+}  // namespace load_generator
+}  // namespace yb
 
-#endif
+#endif  // YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_

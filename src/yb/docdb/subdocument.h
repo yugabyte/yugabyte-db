@@ -14,12 +14,11 @@ namespace yb {
 namespace docdb {
 
 // A subdocument could either be a primitive value, or an arbitrarily nested JSON-like data
-// structure. This class is move-only, as it maintains an equivalent of a unique_ptr to a map or a
-// vector.
+// structure. This class is copyable, but care should be taken to avoid expensive implicit copies.
 class SubDocument : public PrimitiveValue {
  public:
 
-  SubDocument(ValueType value_type);
+  explicit SubDocument(ValueType value_type);
   SubDocument() : SubDocument(ValueType::kObject) {
     complex_data_structure_ = nullptr;
   }
@@ -32,7 +31,6 @@ class SubDocument : public PrimitiveValue {
   // Don't need this for now.
   SubDocument& operator =(const SubDocument& other) = delete;
 
-
   // A good way to construct single-level subdocuments. Not very performant, primarily useful
   // for tests.
   template<typename T>
@@ -41,13 +39,14 @@ class SubDocument : public PrimitiveValue {
     complex_data_structure_ = nullptr;
     EnsureContainerAllocated();
     for (const auto& key_value : elements) {
-      CHECK(key_value.size() == 2);
+      CHECK_EQ(2, key_value.size());
       auto iter = key_value.begin();
       const auto& key = *iter;
       ++iter;
       const auto& value = *iter;
-      CHECK(!object_container().count(PrimitiveValue(key)));
-      object_container().emplace(PrimitiveValue(key), PrimitiveValue(value));
+      CHECK_EQ(0, object_container().count(PrimitiveValue(key)))
+          << "Duplicate key: " << PrimitiveValue(key).ToString();
+      object_container().emplace(PrimitiveValue(key), SubDocument(PrimitiveValue(value)));
     }
   }
 
@@ -62,8 +61,8 @@ class SubDocument : public PrimitiveValue {
     MoveFrom(&other);
   }
 
-  SubDocument(const PrimitiveValue& other) : PrimitiveValue(other) {}
-  SubDocument(PrimitiveValue&& other) : PrimitiveValue(std::move(other)) {}
+  explicit SubDocument(const PrimitiveValue& other) : PrimitiveValue(other) {}
+  explicit SubDocument(PrimitiveValue&& other) : PrimitiveValue(std::move(other)) {}
 
   bool operator==(const SubDocument& other) const;
   bool operator!=(const SubDocument& other) const { return !(*this == other); }
@@ -92,7 +91,7 @@ class SubDocument : public PrimitiveValue {
   }
 
   // Creates a JSON-like string representation of this subdocument.
-  std::string ToString();
+  std::string ToString() const;
 
   // Attempts to delete a child subdocument of an object with the given key. Fatals if this is not
   // an object.
@@ -171,7 +170,7 @@ std::ostream& operator <<(ostream& out, const SubDocument& subdoc);
 static_assert(sizeof(SubDocument) == sizeof(PrimitiveValue),
               "It is important that we can cast a PrimitiveValue to a SubDocument.");
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_SUBDOCUMENT_H_

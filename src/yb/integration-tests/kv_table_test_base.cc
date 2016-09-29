@@ -146,8 +146,8 @@ shared_ptr<YBSession> KVTableTestBase::NewSession() {
 
 void KVTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
   unique_ptr<YBInsert> insert(table_->NewInsert());
-  insert->mutable_row()->SetBinary("k", key);
-  insert->mutable_row()->SetBinary("v", value);
+  ASSERT_OK(insert->mutable_row()->SetBinary("k", key));
+  ASSERT_OK(insert->mutable_row()->SetBinary("v", value));
   ASSERT_OK(session->Apply(insert.release()));
   ASSERT_OK(session->Flush());
 }
@@ -157,7 +157,7 @@ void KVTableTestBase::PutKeyValue(string key, string value) {
 }
 
 void KVTableTestBase::ConfigureScanner(YBScanner* scanner) {
-  scanner->SetSelection(YBClient::ReplicaSelection::LEADER_ONLY);
+  ASSERT_OK(scanner->SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
   ASSERT_OK(scanner->SetProjectedColumns({ "k", "v" }));
 }
 
@@ -196,5 +196,5 @@ void KVTableTestBase::FetchTSMetricsPage() {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/metrics", addr), &buf));
 }
 
-}; // namespace integration_tests
-} // namespace yb
+}  // namespace integration_tests
+}  // namespace yb

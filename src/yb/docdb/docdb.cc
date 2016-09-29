@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <stack>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/internal_doc_iterator.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
@@ -20,6 +22,7 @@ using std::endl;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
+using std::stack;
 
 using yb::Timestamp;
 using yb::util::FormatBytesAsStr;
@@ -34,7 +37,7 @@ namespace docdb {
 namespace {
 // This a zero-terminated string for safety, even though we only intend to use one byte.
 const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
-}
+}  // namespace
 
 Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
                                 const std::vector<DocWriteOperation>& doc_write_ops,
@@ -218,15 +221,15 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
   }
 
   if (top_level_value.IsPrimitive()) {
-    visitor->VisitValue(top_level_value);
+    RETURN_NOT_OK(visitor->VisitValue(top_level_value));
     return Status::OK();
   }
 
   if (top_level_value.value_type() == ValueType::kObject) {
     rocksdb_iter->Next();
-    visitor->StartObject();
-    ScanSubDocument(higher_level_key, rocksdb_iter, visitor);
-    visitor->EndObject();
+    RETURN_NOT_OK(visitor->StartObject());
+    RETURN_NOT_OK(ScanSubDocument(higher_level_key, rocksdb_iter, visitor));
+    RETURN_NOT_OK(visitor->EndObject());
     return Status::OK();
   }
 
@@ -238,16 +241,18 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
 static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
                                   rocksdb::Iterator* const rocksdb_iter,
                                   DocVisitor* const visitor) {
+  DOCDB_DEBUG_LOG("higher_level_key=$0", higher_level_key.ToString());
   while (rocksdb_iter->Valid()) {
     SubDocKey subdoc_key;
     RETURN_NOT_OK(subdoc_key.DecodeFrom(rocksdb_iter->key()));
     if (!subdoc_key.StartsWith(higher_level_key)) {
       break;
     }
+    DOCDB_DEBUG_LOG("subdoc_key=$0", subdoc_key.ToString());
 
     if (subdoc_key.num_subkeys() != higher_level_key.num_subkeys() + 1) {
       static const char* kErrorMsgPrefix =
-          "A subdocument key must be nested exactly one level under the parent subdocument.";
+          "A subdocument key must be nested exactly one level under the parent subdocument";
       // Log more details in debug mode.
       DLOG(WARNING) << Substitute(
           "$0. Got parent subdocument key: $1, subdocument key: $2.",
@@ -256,10 +261,12 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
     }
 
     if (DecodeValueType(rocksdb_iter->value()) != ValueType::kTombstone) {
-      visitor->VisitKey(subdoc_key.last_subkey());
+      RETURN_NOT_OK(visitor->VisitKey(subdoc_key.last_subkey()));
     }
     ScanPrimitiveValueOrObject(subdoc_key, rocksdb_iter, visitor);
 
+    DOCDB_DEBUG_LOG("Performing a seek to $0",
+                    subdoc_key.AdvanceToNextSubkey().Encode().ToString());
     rocksdb_iter->Seek(subdoc_key.AdvanceToNextSubkey().Encode().AsSlice());
   }
   return Status::OK();
@@ -269,8 +276,7 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
                         const KeyBytes& document_key,
                         DocVisitor* visitor) {
   auto rocksdb_iter = InternalDocIterator::CreateRocksDBIterator(rocksdb);
-  KeyBytes key_prefix(document_key);
-  rocksdb_iter->Seek(key_prefix.AsSlice());
+  rocksdb_iter->Seek(document_key.AsSlice());
   if (!rocksdb_iter->Valid() || !document_key.IsPrefixOf(rocksdb_iter->key())) {
     return Status::OK();
   }
@@ -283,10 +289,140 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
                    doc_key.ToString()));
   }
 
-  visitor->StartDocument(doc_key.doc_key());
+  RETURN_NOT_OK(visitor->StartDocument(doc_key.doc_key()));
   RETURN_NOT_OK(ScanPrimitiveValueOrObject(doc_key, rocksdb_iter.get(), visitor));
-  visitor->EndDocument();
+  RETURN_NOT_OK(visitor->EndDocument());
 
+  return Status::OK();
+}
+
+namespace {
+
+// This is used in the implementation of GetDocument. Builds a SubDocument from a stream of
+// DocVisitor API calls made by the ScanDocument function.
+class SubDocumentBuildingVisitor : public DocVisitor {
+ public:
+  SubDocumentBuildingVisitor() {}
+
+  virtual ~SubDocumentBuildingVisitor() {}
+
+  Status StartDocument(const DocKey& key) override {
+    return Status::OK();
+  }
+
+  Status EndDocument() override {
+    return Status::OK();
+  }
+
+  Status VisitKey(const PrimitiveValue& key) override {
+    RETURN_NOT_OK(EnsureInsideObject(__func__));
+    key_ = key;
+    return Status::OK();
+  }
+
+  Status VisitValue(const PrimitiveValue& value) override {
+    doc_found_ = true;
+    if (stack_.empty()) {
+      root_ = SubDocument(value);
+      stack_.push(&root_);
+    } else {
+      auto top = stack_.top();
+      const ValueType value_type = top->value_type();
+      if (value_type == ValueType::kObject) {
+        // TODO(mbautin): check for duplicate keys here.
+        top->SetChildPrimitive(key_, value);
+      } else {
+        return STATUS(Corruption,
+                      Substitute("Cannot set a value within a subdocument of type $0",
+                                 ValueTypeToStr(value_type)));
+      }
+    }
+    return Status::OK();
+  }
+
+  Status StartObject() override {
+    doc_found_ = true;
+    if (stack_.empty()) {
+      DCHECK_EQ(ValueType::kObject, root_.value_type());
+      DCHECK_EQ(0, root_.object_num_keys());
+      // root_ should already be initialized to an empty map.
+      stack_.push(&root_);
+    } else {
+      auto top = stack_.top();
+      const ValueType value_type = top->value_type();
+      if (value_type == ValueType::kObject) {
+        const auto new_subdoc_and_child_added = top->GetOrAddChild(key_);
+        if (!new_subdoc_and_child_added.second) {
+          // TODO(mbautin): include the duplicate key into status, ensuring the string
+          //                representation is not too long.
+          return STATUS(Corruption, Substitute("Duplicate key"));
+        }
+        stack_.push(new_subdoc_and_child_added.first);
+      } else {
+        return STATUS(Corruption,
+                      Substitute("Cannot set a value within a subdocument of type $0",
+                                  ValueTypeToStr(value_type)));
+      }
+    }
+    return Status::OK();
+  }
+
+  Status EndObject() override {
+    RETURN_NOT_OK(EnsureInsideObject(__func__));
+    stack_.pop();
+    return Status::OK();
+  }
+
+  Status StartArray() override {
+    doc_found_ = true;
+    LOG(FATAL) << __func__ << " not implemented yet";
+    return Status::OK();
+  }
+
+  Status EndArray() override {
+    LOG(FATAL) << __func__ << " not implemented yet";
+    return Status::OK();
+  }
+
+  SubDocument ReleaseResult() {
+    return std::move(root_);
+  }
+
+  bool doc_found() { return doc_found_; }
+
+ private:
+  Status EnsureInsideObject(const char* function_name) {
+    if (stack_.empty()) {
+      return STATUS(Corruption, Substitute("$0 called on an empty stack", function_name));
+    }
+    const ValueType value_type = stack_.top()->value_type();
+    if (value_type != ValueType::kObject) {
+      return STATUS(Corruption,
+                    Substitute("$0 called but the current subdocument type is $1",
+                               function_name, ValueTypeToStr(value_type)));
+    }
+    return Status::OK();
+  }
+
+  stack<SubDocument*> stack_;
+  SubDocument root_;
+  PrimitiveValue key_;
+  bool doc_found_ = false;
+};
+
+}  // namespace
+
+yb::Status GetDocument(rocksdb::DB* rocksdb,
+                       const KeyBytes& document_key,
+                       SubDocument* result,
+                       bool* doc_found) {
+  DOCDB_DEBUG_LOG("GetDocument for key $0", document_key.ToString());
+  *doc_found = false;
+
+  SubDocumentBuildingVisitor subdoc_builder;
+  RETURN_NOT_OK(ScanDocument(rocksdb, document_key, &subdoc_builder));
+  *result = subdoc_builder.ReleaseResult();
+  *doc_found = subdoc_builder.doc_found();
   return Status::OK();
 }
 

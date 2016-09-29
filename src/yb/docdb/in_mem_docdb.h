@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef SRC_YB_DOCDB_IN_MEM_DOCDB_H_
-#define SRC_YB_DOCDB_IN_MEM_DOCDB_H_
+#ifndef YB_DOCDB_IN_MEM_DOCDB_H_
+#define YB_DOCDB_IN_MEM_DOCDB_H_
 
 #include <map>
 
@@ -18,7 +18,6 @@ class InMemDocDB {
  public:
   Status SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value);
   Status DeleteSubDoc(const DocPath& doc_path);
-
   const SubDocument* GetDocument(const KeyBytes& encoded_doc_key) const;
  private:
   // We reuse SubDocument for the top-level map, as this is only being used in testing. We wrap
@@ -26,7 +25,7 @@ class InMemDocDB {
   SubDocument root_;
 };
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_IN_MEM_DOCDB_H_

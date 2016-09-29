@@ -2,7 +2,9 @@
 
 #include "yb/integration-tests/load_generator.h"
 
+#include <random>
 #include <queue>
+#include <thread>
 
 #include "yb/common/common.pb.h"
 #include "yb/gutil/strings/join.h"
@@ -13,6 +15,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/threadlocal.h"
 
 using std::atomic;
 using std::atomic_bool;
@@ -65,16 +68,17 @@ DEFINE_int32(load_gen_wait_time_increment_step_ms,
 namespace {
 
 void ConfigureSession(YBSession* session) {
-  session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH);
+  CHECK_OK(session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   session->SetTimeoutMillis(60000);
-  session->SetExternalConsistencyMode(YBSession::ExternalConsistencyMode::CLIENT_PROPAGATED);
+  CHECK_OK(
+      session->SetExternalConsistencyMode(YBSession::ExternalConsistencyMode::CLIENT_PROPAGATED));
 }
 
 string FormatWithSize(const string& s) {
   return strings::Substitute("'$0' ($1 bytes)", s, s.size());
 }
 
-}
+}  // namespace
 
 namespace yb {
 namespace load_generator {
@@ -111,13 +115,13 @@ bool KeyIndexSet::RemoveIfContains(int64_t key) {
   }
 }
 
-int64_t KeyIndexSet::GetRandomKey() const {
+int64_t KeyIndexSet::GetRandomKey(std::mt19937_64* random_number_generator) const {
   MutexLock l(mutex_);
   // The set iterator does not support indexing, so we probabilistically choose a random element
   // by iterating the set.
   int n = set_.size();
   for (int64_t x : set_) {
-    if (rand() % n == 0) return x;
+    if ((*random_number_generator)() % n == 0) return x;
     --n;  // Decrement the number of remaining elements we are considering.
   }
   // This will only happen if the set is empty.
@@ -185,9 +189,9 @@ string MultiThreadedAction::GetValueByIndex(int64_t key_index) {
 
 void MultiThreadedAction::Start() {
   LOG(INFO) << "Starting " << num_action_threads_ << " " << description_ << " threads";
-  thread_pool_->SubmitFunc(std::bind(&MultiThreadedAction::RunStatsThread, this));
+  CHECK_OK(thread_pool_->SubmitFunc(std::bind(&MultiThreadedAction::RunStatsThread, this)));
   for (int i = 0; i < num_action_threads_; i++) {
-    thread_pool_->SubmitFunc(std::bind(&MultiThreadedAction::RunActionThread, this, i));
+    CHECK_OK(thread_pool_->SubmitFunc(std::bind(&MultiThreadedAction::RunActionThread, this, i)));
   }
 }
 
@@ -218,7 +222,8 @@ MultiThreadedWriter::MultiThreadedWriter(
 
 void MultiThreadedWriter::Start() {
   MultiThreadedAction::Start();
-  thread_pool_->SubmitFunc(std::bind(&MultiThreadedWriter::RunInsertionTrackerThread, this));
+  CHECK_OK(
+      thread_pool_->SubmitFunc(std::bind(&MultiThreadedWriter::RunInsertionTrackerThread, this)));
 }
 
 void MultiThreadedWriter::WaitForCompletion() {
@@ -239,8 +244,8 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
     gscoped_ptr<YBInsert> insert(table_->NewInsert());
     string key_str(GetKeyByIndex(key_index));
     string value_str(GetValueByIndex(key_index));
-    insert->mutable_row()->SetBinary("k", key_str.c_str());
-    insert->mutable_row()->SetBinary("v", value_str.c_str());
+    CHECK_OK(insert->mutable_row()->SetBinary("k", key_str.c_str()));
+    CHECK_OK(insert->mutable_row()->SetBinary("v", value_str.c_str()));
     Status apply_status = session->Apply(insert.release());
     if (apply_status.ok()) {
       Status flush_status = session->Flush();
@@ -256,7 +261,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
       break;
     }
   }
-  session->Close();
+  CHECK_OK(session->Close());
   LOG(INFO) << "Writer thread " << writerIndex << " finished";
   running_threads_latch_.CountDown();
 }
@@ -357,10 +362,12 @@ MultiThreadedReader::MultiThreadedReader(
       num_reads_(0),
       num_read_errors_(0),
       max_num_read_errors_(max_num_read_errors),
-      retries_on_empty_read_(retries_on_empty_read){
+      retries_on_empty_read_(retries_on_empty_read) {
 }
 
 void MultiThreadedReader::RunActionThread(int reader_index) {
+  std::mt19937_64 random_number_generator(reader_index);
+
   LOG(INFO) << "Reader thread " << reader_index << " started";
   shared_ptr<YBSession> session(client_->NewSession());
   ConfigureSession(session.get());
@@ -371,10 +378,10 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
   }
 
   while (!IsStopRequested()) {
-    int64_t key_index;
+    int64_t key_index = 0;
     int64_t written_up_to = insertion_point_->load();
     do {
-      switch (rand() % 3) {
+      switch (random_number_generator() % 3) {
         case 0:
           // Read the latest value that the insertion tracker knows we've written up to.
           key_index = written_up_to;
@@ -382,7 +389,7 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
         case 1:
           // Read one of the keys that have been successfully inserted but have not been processed
           // by the insertion tracker thread yet.
-          key_index = inserted_keys_->GetRandomKey();
+          key_index = inserted_keys_->GetRandomKey(&random_number_generator);
           if (key_index == -1) {
             // The set is empty.
             key_index = written_up_to;
@@ -391,7 +398,7 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
 
         default:
           // We're assuming the total number of keys is < RAND_MAX (~2 billion) here.
-          key_index = rand() % (written_up_to + 1);
+          key_index = random_number_generator() % (written_up_to + 1);
           break;
       }
       // Ensure we don't try to read a key for which a write failed.
@@ -415,7 +422,7 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
     if (read_status != ReadStatus::OK) IncrementReadErrorCount();
   }
 
-  session->Close();
+  CHECK_OK(session->Close());
   LOG(INFO) << "Reader thread " << reader_index << " finished";
   running_threads_latch_.CountDown();
 }
@@ -423,7 +430,7 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
 ReadStatus MultiThreadedReader::PerformRead(int64_t key_index) {
   uint64_t read_ts = client_->GetLatestObservedTimestamp();
   YBScanner scanner(table_);
-  scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY);
+  CHECK_OK(scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
   string key_str(GetKeyByIndex(key_index));
   CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
   CHECK_OK(scanner.AddConjunctPredicate(
@@ -486,7 +493,7 @@ void MultiThreadedReader::RunStatsThread() {
   while (!IsStopRequested() && running_threads_latch_.count() > 0) {
     running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
-    long num_rows_read = num_reads_.load();
+    int64_t num_rows_read = num_reads_.load();
     LOG(INFO) << "Read " << num_rows_read << " rows ("
               << num_rows_read * 1000000.0 / (current_time - start_time) << " reads/sec)"
               << ", read errors: " << num_read_errors_.load();
@@ -500,5 +507,5 @@ void MultiThreadedReader::IncrementReadErrorCount() {
   }
 }
 
-}
-}
+}  // namespace load_generator
+}  // namespace yb

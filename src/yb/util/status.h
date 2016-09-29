@@ -430,5 +430,6 @@ inline void Status::operator=(Status&& s) {
 
 #define STATUS(status_type, ...) (Status::status_type(__FILE__, __LINE__, __VA_ARGS__))
 
+#define CHECKED_STATUS MUST_USE_RESULT yb::Status
 
 #endif  // YB_UTIL_STATUS_H_

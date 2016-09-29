@@ -78,7 +78,7 @@ class DocKey {
   DocKey();
 
   // Construct a document key with only a range component, but no hashed component.
-  DocKey(const std::vector<PrimitiveValue>& range_components);
+  explicit DocKey(const std::vector<PrimitiveValue>& range_components);
 
   // Construct a document key including a hashed component and a range component. The hash value has
   // to be calculated outside of the constructor, and we're not assuming any specific hash function
@@ -174,8 +174,9 @@ inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
 
-// A key pointing to a subdocument. Consists of a DocKey identifying the document and a set of
-// (primitive_value, generation_timestamp) pairs leading to the subdocument in question.
+// A key pointing to a subdocument. Consists of a DocKey identifying the document, a "generation
+// timestamp" for this top-level document, and a list of (primitive_value, generation_timestamp)
+// pairs leading to the subdocument in question, in the outermost to innermost order.
 // "Generation timestamp" is a timestamp at which a particular subdocument was completely
 // overwritten or deleted.
 class SubDocKey {
@@ -281,7 +282,7 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 // A best-effort to decode the given sequence of key bytes as either a DocKey or a SubDocKey.
 std::string BestEffortKeyBytesToStr(const KeyBytes& key_bytes);
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_DOC_KEY_H_

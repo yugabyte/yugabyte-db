@@ -11,6 +11,7 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/in_mem_docdb.h"
+#include "yb/docdb/docdb-internal.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/path_util.h"
@@ -31,8 +32,9 @@ using yb::util::ApplyEagerLineContinuation;
 using rocksdb::WriteOptions;
 
 #define SIMPLE_DEBUG_DOC_VISITOR_METHOD(method_name) \
-  virtual void method_name() override { \
+  Status method_name() override { \
     out_ << __FUNCTION__ << endl; \
+    return Status::OK(); \
   }
 
 namespace yb {
@@ -43,16 +45,19 @@ class DebugDocVisitor : public DocVisitor {
   DebugDocVisitor() {}
   virtual ~DebugDocVisitor() {}
 
-  virtual void StartDocument(const DocKey& key) override {
+  Status StartDocument(const DocKey& key) override {
     out_ << __FUNCTION__ << "(" << key << ")" << endl;
+    return Status::OK();
   }
 
-  virtual void VisitKey(const PrimitiveValue& key) override {
+  Status VisitKey(const PrimitiveValue& key) override {
     out_ << __FUNCTION__ << "(" << key << ")" << endl;
+    return Status::OK();
   }
 
-  virtual void VisitValue(const PrimitiveValue& value) override {
+  Status VisitValue(const PrimitiveValue& value) override {
     out_ << __FUNCTION__ << "(" << value << ")" << endl;
+    return Status::OK();
   }
 
   SIMPLE_DEBUG_DOC_VISITOR_METHOD(EndDocument)
@@ -67,7 +72,6 @@ class DebugDocVisitor : public DocVisitor {
 
  private:
   std::stringstream out_;
-
 };
 
 class DocDBTest : public YBTest {
@@ -81,7 +85,7 @@ class DocDBTest : public YBTest {
     rocksdb_dir_ = JoinPathSegments(test_dir, StringPrintf("mytestdb-%d", rand()));
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     rocksdb::DB* rocksdb = nullptr;
     rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options_,
         rocksdb_dir_, &rocksdb);
@@ -89,7 +93,7 @@ class DocDBTest : public YBTest {
     rocksdb_.reset(rocksdb);
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     rocksdb_.reset(nullptr);
     LOG(INFO) << "Destroying RocksDB database at " << rocksdb_dir_;
     rocksdb::Status destroy_status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_);
@@ -293,19 +297,33 @@ SubDocKey(DocKey([], ["mydockey", 123456]), \
       debug_dump.str());
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      "StartDocument(DocKey([], [\"mydockey\", 123456]))\n"
+      "StartObject\n"
+      "VisitKey(\"subkey_a\")\n"
+      "VisitValue(\"value_a\")\n"
+      "VisitKey(\"subkey_b\")\n"
+      "StartObject\n"
+      "VisitKey(\"subkey_c\")\n"
+      "VisitValue(\"value_bc_prime\")\n"
+      "EndObject\n"
+      "EndObject\n"
+      "EndDocument\n", DebugDumpDocument(encoded_doc_key));
+
+  SubDocument subdoc;
+  bool doc_found = false;
+  ASSERT_OK(GetDocument(rocksdb_.get(), encoded_doc_key, &subdoc, &doc_found));
+  ASSERT_TRUE(doc_found);
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
-StartDocument(DocKey([], ["mydockey", 123456]))
-StartObject
-VisitKey("subkey_a")
-VisitValue("value_a")
-VisitKey("subkey_b")
-StartObject
-VisitKey("subkey_c")
-VisitValue("value_bc_prime")
-EndObject
-EndObject
-EndDocument
-      )#", DebugDumpDocument(encoded_doc_key));
+{
+  "subkey_a": "value_a",
+  "subkey_b": {
+    "subkey_c": "value_bc_prime"
+  }
+}
+      )#",
+      subdoc.ToString()
+  );
 }
 
 TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
@@ -483,16 +501,17 @@ SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(2000)]) -> "row2_e"
 
 TEST_F(DocDBTest, RandomizedDocDBTest) {
   RandomNumberGenerator rng;  // Using default seed.
-  auto random_doc_keys(GenRandomDocKeys(rng, /* use_hash = */ false, 50));
+  auto random_doc_keys(GenRandomDocKeys(&rng, /* use_hash = */ false, 50));
 
-  auto random_subkeys(GenRandomPrimitiveValues(rng, 500));
+  auto random_subkeys(GenRandomPrimitiveValues(&rng, 500));
 
-  uint64_t timestamp_counter = Timestamp::kMin.ToUint64();
+  uint64_t timestamp_counter = Timestamp::kMin.ToUint64() + 1;
   InMemDocDB debug_db_state;
 
   for (int i = 0; i < 50000; ++i) {
+    DOCDB_DEBUG_LOG("Starting iteration i=$0", i);
     DocWriteBatch dwb(rocksdb_.get());
-    const auto& doc_key = RandomElementOf(random_doc_keys, rng);
+    const auto& doc_key = RandomElementOf(random_doc_keys, &rng);
     const KeyBytes encoded_doc_key(doc_key.Encode());
 
     const SubDocument* current_doc = debug_db_state.GetDocument(encoded_doc_key);
@@ -511,7 +530,7 @@ TEST_F(DocDBTest, RandomizedDocDBTest) {
           // We can't add any more subkeys because we've found a primitive subdocument.
           break;
         }
-        subkeys.emplace_back(RandomElementOf(random_subkeys, rng));
+        subkeys.emplace_back(RandomElementOf(random_subkeys, &rng));
         if (current_doc != nullptr) {
           current_doc = current_doc->GetChild(subkeys.back());
         }
@@ -519,17 +538,23 @@ TEST_F(DocDBTest, RandomizedDocDBTest) {
     }
 
     DocPath doc_path(encoded_doc_key, subkeys);
-    const auto value = GenRandomPrimitiveValue(rng);
+    const auto value = GenRandomPrimitiveValue(&rng);
     const Timestamp timestamp(timestamp_counter);
 
     if (rng() % 100 == 0) {
       is_deletion = true;
     }
 
+    const bool doc_already_exists_in_mem =
+        debug_db_state.GetDocument(encoded_doc_key) != nullptr;
+
     if (is_deletion) {
+      DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", i, doc_path.ToString());
       ASSERT_OK(dwb.DeleteSubDoc(doc_path, timestamp));
       ASSERT_OK(debug_db_state.DeleteSubDoc(doc_path));
     } else {
+      DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
+                      i, doc_path.ToString(), value.ToString());
       ASSERT_OK(dwb.SetPrimitive(doc_path, value, timestamp));
       ASSERT_OK(debug_db_state.SetPrimitive(doc_path, value));
     }
@@ -537,10 +562,32 @@ TEST_F(DocDBTest, RandomizedDocDBTest) {
     if (dwb.write_batch()->Count() > 0) {
       rocksdb_->Write(write_options_, dwb.write_batch());
     }
+    SubDocument doc_from_rocksdb;
+    bool subdoc_found_in_rocksdb = false;
+    ASSERT_OK(
+        GetDocument(rocksdb_.get(), encoded_doc_key, &doc_from_rocksdb, &subdoc_found_in_rocksdb));
+    const SubDocument* const subdoc_from_mem = debug_db_state.GetDocument(encoded_doc_key);
+    if (is_deletion && (
+            doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
+            !doc_already_exists_in_mem)) {  // ...or the document did not exist in the first place.
+      // In this case, after performing the deletion operation, we definitely should not see the
+      // top-level document in RocksDB or in the in-memory database.
+      ASSERT_FALSE(subdoc_found_in_rocksdb);
+      ASSERT_EQ(nullptr, subdoc_from_mem);
+    } else {
+      // This is not a deletion, or we've deleted a sub-key from a document, but the top-level
+      // document should still be there in RocksDB.
+      ASSERT_TRUE(subdoc_found_in_rocksdb);
+      ASSERT_NE(nullptr, subdoc_from_mem);
+
+      ASSERT_EQ(*subdoc_from_mem, doc_from_rocksdb);
+      DOCDB_DEBUG_LOG("Retrieved a document from RocksDB: $0", doc_from_rocksdb.ToString());
+      ASSERT_STR_EQ_VERBOSE_TRIMMED(subdoc_from_mem->ToString(), doc_from_rocksdb.ToString());
+    }
 
     ++timestamp_counter;
   }
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

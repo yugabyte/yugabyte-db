@@ -119,22 +119,35 @@ class DocWriteBatch {
 };
 
 // A visitor class that could be overridden to consume results of scanning of one or more document.
+// See e.g. SubDocumentBuildingVisitor (used in implementing GetDocument) as example usage.
 class DocVisitor {
  public:
   DocVisitor() {}
   virtual ~DocVisitor() {}
 
-  virtual void StartDocument(const DocKey& key) = 0;
-  virtual void EndDocument() = 0;
+  // Called once in the beginning of every new document.
+  virtual CHECKED_STATUS StartDocument(const DocKey& key) = 0;
 
-  virtual void VisitKey(const PrimitiveValue& key) = 0;
-  virtual void VisitValue(const PrimitiveValue& value) = 0;
+  // Called in the end of a document.
+  virtual CHECKED_STATUS EndDocument() = 0;
 
-  virtual void StartObject() = 0;
-  virtual void EndObject() = 0;
+  // VisitKey and VisitValue are called as part of enumerating key-value pairs in an object, e.g.
+  // VisitKey(key1), VisitValue(value1), VisitKey(key2), VisitValue(value2), etc.
 
-  virtual void StartArray() = 0;
-  virtual void EndArray() = 0;
+  virtual CHECKED_STATUS VisitKey(const PrimitiveValue& key) = 0;
+  virtual CHECKED_STATUS VisitValue(const PrimitiveValue& value) = 0;
+
+  // Called in the beginning of an object, before any key/value pairs.
+  virtual CHECKED_STATUS StartObject() = 0;
+
+  // Called after all key/value pairs in an object.
+  virtual CHECKED_STATUS EndObject() = 0;
+
+  // Called before enumerating elements of an array. Not used as of 9/26/2016.
+  virtual CHECKED_STATUS StartArray() = 0;
+
+  // Called after enumerating elements of an array. Not used as of 9/26/2016.
+  virtual CHECKED_STATUS EndArray() = 0;
 };
 
 class DocScanner {
@@ -163,6 +176,11 @@ class DocScanner {
 yb::Status ScanDocument(rocksdb::DB* rocksdb,
                         const KeyBytes& document_key,
                         DocVisitor* visitor);
+
+yb::Status GetDocument(rocksdb::DB* rocksdb,
+                       const KeyBytes& document_key,
+                       SubDocument* result,
+                       bool* doc_found);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

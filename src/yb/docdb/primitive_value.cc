@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include <glog/logging.h>  // NOLINT(build/include_order)
 
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -111,7 +111,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
-};
+}
 
 string PrimitiveValue::ToValue() const {
   string result;
@@ -158,7 +158,7 @@ string PrimitiveValue::ToValue() const {
   }
 
   LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
-};
+}
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
   if (slice->empty()) {
@@ -382,5 +382,5 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

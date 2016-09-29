@@ -38,29 +38,30 @@ int Sign(int x) {
 }
 
 template<typename T>
-std::vector<T> GenRandomDocOrSubDocKeys(RandomNumberGenerator& rng, bool use_hash, int num_keys);
+std::vector<T> GenRandomDocOrSubDocKeys(RandomNumberGenerator* rng,
+                                        bool use_hash,
+                                        int num_keys);
 
 template<>
-std::vector<DocKey> GenRandomDocOrSubDocKeys<DocKey>(RandomNumberGenerator& rng,
+std::vector<DocKey> GenRandomDocOrSubDocKeys<DocKey>(RandomNumberGenerator* rng,
                                                      bool use_hash,
                                                      int num_keys) {
   return GenRandomDocKeys(rng, use_hash, num_keys);
 }
 
 template<>
-std::vector<SubDocKey> GenRandomDocOrSubDocKeys<SubDocKey>(RandomNumberGenerator& rng,
+std::vector<SubDocKey> GenRandomDocOrSubDocKeys<SubDocKey>(RandomNumberGenerator* rng,
                                                            bool use_hash,
                                                            int num_keys) {
   return GenRandomSubDocKeys(rng, use_hash, num_keys);
 }
-
 
 template <typename DocOrSubDocKey>
 void TestRoundTripDocOrSubDocKeyEncodingDecoding() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   for (int use_hash = 0; use_hash <= 1; ++use_hash) {
     auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
-        rng, use_hash, kNumDocOrSubDocKeysPerBatch);
+        &rng, use_hash, kNumDocOrSubDocKeysPerBatch);
     for (const auto& key : keys) {
       KeyBytes encoded_key = key.Encode();
       DocOrSubDocKey decoded_key;
@@ -77,7 +78,7 @@ void TestDocOrSubDocKeyComparison() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   for (int use_hash = 0; use_hash <= 1; ++use_hash) {
     auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
-        rng, use_hash, kNumDocOrSubDocKeysPerBatch);
+        &rng, use_hash, kNumDocOrSubDocKeysPerBatch);
     for (int k = 0; k < kNumTestDocOrSubDocKeyComparisons; ++k) {
       const auto& a = keys[rng() % keys.size()];
       const auto& b = keys[rng() % keys.size()];
@@ -213,5 +214,22 @@ TEST(DocKeyTest, TestFromKuduKey) {
             doc_key.ToString());
 }
 
+TEST(DocKeyTest, TestSubDocKeyStartsWith) {
+  RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
+  auto subdoc_keys = GenRandomSubDocKeys(&rng, /* use_hash = */ false, 1000);
+  for (const auto& subdoc_key : subdoc_keys) {
+    if (subdoc_key.num_subkeys() > 0) {
+      const SubDocKey doc_key_only = SubDocKey(subdoc_key.doc_key(), subdoc_key.doc_gen_ts());
+      ASSERT_TRUE(subdoc_key.StartsWith(doc_key_only));
+      ASSERT_FALSE(doc_key_only.StartsWith(subdoc_key));
+      SubDocKey with_another_doc_gen_ts(subdoc_key);
+      with_another_doc_gen_ts.set_doc_gen_ts(Timestamp(subdoc_key.doc_gen_ts().ToUint64() + 1));
+      ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(doc_key_only));
+      ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(subdoc_key));
+      ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ts));
+    }
+  }
 }
-}
+
+}  // namespace docdb
+}  // namespace yb

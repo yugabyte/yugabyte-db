@@ -7,6 +7,34 @@
 
 set -euo pipefail
 
+fatal_error() {
+  echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
+  exit 1
+}
+
+treat_warning_pattern_as_error() {
+  local pattern=$1
+  # We are redirecting grep output to /dev/null, because it has already been shown in stderr.
+  if egrep "$pattern" "$stderr_path" >/dev/null; then
+    fatal_error "treating warning pattern as an error: '$pattern'."
+  fi
+}
+
+show_compiler_command_line() {
+  if [[ -f ${stderr_path:-} ]]; then
+    local compiler_cmdline=$( head -1 "$stderr_path" | sed 's/^[+] //; s/\n$//' )
+  else
+    local compiler_cmdline="(failed to determine compiler command line)"
+  fi
+  local prefix=$1
+  local suffix=${2:-}
+  # Create a command line that can be copied and pasted.
+  # As part of that, replace the ccache invocation with the actual compiler executable.
+  compiler_cmdline="&& $compiler_cmdline"
+  compiler_cmdline=${compiler_cmdline//&& ccache compiler/&& $compiler_executable}
+  echo -e "$prefix( cd \"$PWD\" $compiler_cmdline )$suffix$NO_COLOR" >&2
+}
+
 SCRIPT_NAME="compiler-wrapper.sh"
 YB_SRC_DIR=$( cd "$( dirname "$0" )"/../.. && pwd )
 
@@ -23,7 +51,7 @@ thirdparty_install_dir=$YB_SRC_DIR/thirdparty/installed/bin
 # This script is invoked through symlinks called "cc" or "c++".
 cc_or_cxx=${0##*/}
 
-stderr_path=/tmp/yb-$cc_or_cxx-stderr.$RANDOM-$RANDOM-$RANDOM.$$
+stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
 compiler_args=( "$@" )
 output_file=""
@@ -75,8 +103,10 @@ case "$cc_or_cxx" in
     exit 1
 esac
 
+using_ccache=false
 # We use ccache if it is available and YB_NO_CCACHE is not set.
 if which ccache >/dev/null && [[ -z ${YB_NO_CCACHE:-} ]]; then
+  using_ccache=true
   export CCACHE_CC="$compiler_executable"
   cmd=( ccache compiler )
 else
@@ -85,36 +115,43 @@ fi
 
 cmd+=( "${compiler_args[@]}" )
 
-if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]]; then
-  echo "Using compiler: $compiler_executable"
-fi
-
 exit_handler() {
   local exit_code=$?
-  if [[ $exit_code -ne 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
+    if [[ -f ${stderr_path:-} ]]; then
+      tail -n +2 "$stderr_path" >&2
+    fi
+  else
     # We output the compiler executable path because the actual command we're running will likely
     # contain ccache instead of the compiler executable.
     (
-      echo "Compiler command failed with exit code $exit_code: ${cmd[@]} ;" \
-           "compiler executable: $compiler_executable ;" \
-           "current directory: $PWD"
+      show_compiler_command_line "\n$RED_COLOR" "  # Compiler exit code: $compiler_exit_code.\n"
       if [[ -f ${stderr_path:-} ]]; then
         if [[ -s ${stderr_path:-} ]]; then
-          echo "Compiler standard error:"
-          echo "----------------------------------------------------------------------------------"
-          cat "$stderr_path"
-          echo "----------------------------------------------------------------------------------"
+          (
+            red_color
+            echo "/-------------------------------------------------------------------------------"
+            echo "| COMPILATION FAILED"
+            echo "|-------------------------------------------------------------------------------"
+            IFS='\n'
+            tail -n +2 "$stderr_path" | while read stderr_line; do
+              echo "| $stderr_line"
+            done
+            unset IFS
+            echo "\-------------------------------------------------------------------------------"
+            no_color
+          ) >&2
         else
-          echo "Compiler standard error is empty."
+          echo "Compiler standard error is empty." >&2
         fi
       fi
-      echo
-      echo "Input files:"
+      log_empty_line
+      echo "Input files:" >&2
       for input_file in "${input_files[@]}"; do
-        echo "  $input_file"
+        echo "  $input_file" >&2
       done
-      echo "Output file (from -o): $output_file"
-      echo
+      echo "Output file (from -o): $output_file" >&2
+      log_empty_line
     ) >&2
   fi
   rm -f "${stderr_path:-}"
@@ -124,18 +161,18 @@ exit_handler() {
 trap exit_handler EXIT
 
 set +e
-# Swap stdout and stderr, capture stderr to a file, and swap them again.
-(
-  (
-    if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]]; then
-      set -x
-    fi
-    "${cmd[@]}" 3>&2 2>&1 1>&3
-  ) | tee "$stderr_path"
-) 3>&2 2>&1 1>&3
+
+( set -x; "${cmd[@]}" ) 2>"$stderr_path"
 compiler_exit_code=$?
+
 set -e
 
+if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]]; then
+  show_compiler_command_line "$CYAN_COLOR"
+fi
+
+# Deal with failures when trying to use precompiled headers. Our current approach is to delete the
+# precompiled header.
 if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/null || \
    grep "$PCH_NAME: not used because " "$stderr_path" >/dev/null || \
    grep "fatal error: malformed or corrupted AST file:" "$stderr_path" >/dev/null || \
@@ -146,8 +183,8 @@ if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/
    grep " has been modified since the precompiled header " "$stderr_path" >/dev/null
 then
   PCH_PATH=$PWD/$PCH_NAME
-  echo "Removing '$PCH_PATH' so that further builds have a chance to" \
-       "succeed." >&2
+  echo -e "${RED_COLOR}Removing '$PCH_PATH' so that further builds have a chance to" \
+          "succeed.${NO_COLOR}"
   ( rm -f "$PCH_PATH" )
 fi
 
@@ -161,26 +198,24 @@ fi
 
 # TODO: look into enabling -Werror for the YB part of the codebase, then we won't need this.
 
-# We are redirecting grep output to /dev/null, because it has already been shown in stderr.
-
-if egrep "\
-no return statement in function returning non-void|\
-control may reach end of non-void function|\
-control reaches end of non-void function" \
-    "$stderr_path" >/dev/null
-then
-  echo "[FATAL] $SCRIPT_NAME: treating missing return value as an error." >&2
-  exit 1
+if [[ ${#input_files[@]} -ne 1 ||
+      # We don't treat unannotated fall-through in switch statement as an error for files generated
+      # by Flex.
+      ! ${input_files[0]} =~ [.]l[.]cc$ ]]; then
+  for pattern in "warning: unannotated fall-through between switch labels" \
+                 "warning: fallthrough annotation does not directly precede switch label"; do
+    treat_warning_pattern_as_error "$pattern"
+  done
 fi
 
-for pattern in "warning: reference to local variable .* returned" \
-               "warning: enumeration value .* not handled in switch" \
-               "warning: unannotated fall-through between switch labels" \
-               "warning: fallthrough annotation does not directly precede switch label" \
-               "warning: comparison between .* and .* .*-Wenum-compare" \
-               "will be initialized after .*Wreorder"; do
-  if egrep "$pattern" "$stderr_path" >/dev/null; then
-    echo "[FATAL] $SCRIPT_NAME: treating warning pattern as an error: '$pattern'." >&2
-    exit 1
-  fi
+for pattern in \
+    "no return statement in function returning non-void" \
+    "control may reach end of non-void function" \
+    "control reaches end of non-void function" \
+    "warning: reference to local variable .* returned" \
+    "warning: enumeration value .* not handled in switch" \
+    "warning: comparison between .* and .* .*-Wenum-compare" \
+    "warning: ignoring return value of function declared with warn_unused_result" \
+    "will be initialized after .*Wreorder"; do
+  treat_warning_pattern_as_error "$pattern"
 done

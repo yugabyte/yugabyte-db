@@ -155,7 +155,7 @@ bool SubDocument::DeleteChild(const PrimitiveValue& key) {
   return object_container().erase(key) > 0;
 }
 
-string SubDocument::ToString() {
+string SubDocument::ToString() const {
   ostringstream ss;
   ss << *this;
   return ss.str();
@@ -212,5 +212,5 @@ void SubDocument::EnsureContainerAllocated() {
   }
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

@@ -215,6 +215,7 @@ void SubDocKey::Clear() {
 
 bool SubDocKey::StartsWith(const SubDocKey& other) const {
   return doc_key_ == other.doc_key_ &&
+         doc_gen_ts_ == other.doc_gen_ts_ &&
          other.num_subkeys() <= num_subkeys() &&
          // std::mismatch finds the first difference between two sequences. Prior to C++14, the
          // behavior is undefined if the second range is shorter than the first range, so we make
@@ -232,6 +233,7 @@ bool SubDocKey::operator ==(const SubDocKey& other) const {
 
 SubDocKey SubDocKey::AdvanceToNextSubkey() const {
   assert(!subkeys_.empty());
+  CHECK_NE(subkeys_.back().second, yb::Timestamp::kMin) << "Real data should not use min timestamp";
   SubDocKey next_subkey(*this);
   next_subkey.subkeys_.back().second = yb::Timestamp::kMin;
   return next_subkey;
@@ -272,5 +274,5 @@ string BestEffortKeyBytesToStr(const KeyBytes& key_bytes) {
   return key_bytes.ToString();
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
