@@ -94,10 +94,11 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
                 field.set(node.cloudInfo, entry.getValue().asText());
               }
             } catch (NoSuchFieldException | SecurityException e) {
-              LOG.warn("Skipping field {} with value {}.", entry.getKey(), entry.getValue());
+              LOG.warn("Skipping field {} with value {} due to error {}.",
+                       entry.getKey(), entry.getValue(), e.getMessage());
             } catch (IllegalArgumentException | IllegalAccessException e) {
-              LOG.error("Field {} could not be updated to value {}.",
-                        entry.getKey(), entry.getValue(), e);
+              LOG.error("Field {} could not be updated to value {} due to error {}.",
+                        entry.getKey(), entry.getValue(), e.getMessage(), e);
             }
           }
           // Node provisioning completed.
