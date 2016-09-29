@@ -83,8 +83,9 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       response = client.changeMasterConfig(
           node.cloudInfo.private_ip, node.masterRpcPort, isAddMasterOp);
     } catch (Exception e) {
-      String msg = "Error performing change config on node " + node.nodeName +
-                   ", host:port = " + node.cloudInfo.private_ip + ":" + node.masterRpcPort;
+      String msg = "Error " + e.getMessage() + " while performing change config on node " +
+                   node.nodeName + ", host:port = " + node.cloudInfo.private_ip + ":" +
+                   node.masterRpcPort;
       LOG.error(msg, e);
       throw new RuntimeException(msg);
     }

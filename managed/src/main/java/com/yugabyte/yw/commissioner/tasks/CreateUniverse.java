@@ -89,7 +89,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {}, error={}", getName(), t);
+      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the

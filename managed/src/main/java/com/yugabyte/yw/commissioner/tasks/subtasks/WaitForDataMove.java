@@ -86,7 +86,7 @@ public class WaitForDataMove extends AbstractTaskBase {
         // For now, we wait until load moves out fully. TODO: Add an overall timeout as needed.
       }
     } catch (Exception e) {
-      LOG.error("{} hit error:", getName(), e);
+      LOG.error("{} hit error {}.", getName(), e.getMessage(), e);
       throw new RuntimeException(getName() + " hit error: " , e);
     }
 
