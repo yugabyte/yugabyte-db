@@ -18,6 +18,8 @@ export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
 export const GET_INSTANCE_TYPE_LIST_SUCCESS = 'GET_INSTANCE_TYPE_LIST_SUCCESS';
 export const GET_INSTANCE_TYPE_LIST_FAILURE = 'GET_INSTANCE_TYPE_LIST_FAILURE';
 
+export const RESET_PROVIDER_LIST = 'RESET_PROVIDER_LIST';
+
 export function getProviderList() {
   var auth_token = localStorage.getItem("customer_token").toString();
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
@@ -85,4 +87,10 @@ export function getInstanceTypeListFailure(error) {
     type: GET_INSTANCE_TYPE_LIST_FAILURE,
     payload: error
   };
+}
+
+export function resetProviderList() {
+  return {
+    type: RESET_PROVIDER_LIST
+  }
 }

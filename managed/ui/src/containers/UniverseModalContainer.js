@@ -1,25 +1,73 @@
-// Copyright (c) YugaByte Inc.
+// Copyright (c) YugaByte, Inc.
 
-import UniverseModal from '../components/UniverseModal.js';
+import UniverseModal from '../components/UniverseModal';
+import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
-         getProviderListSuccess, getProviderListFailure,
-         getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure }
-         from '../actions/cloud';
+  getProviderListSuccess, getProviderListFailure,
+  getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure, resetProviderList }
+  from '../actions/cloud';
 import { createUniverse, createUniverseSuccess, createUniverseFailure,
-         editUniverse, editUniverseSuccess, editUniverseFailure,
-         fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure }
-         from '../actions/universe';
+  editUniverse, editUniverseSuccess, editUniverseFailure,
+  fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog }
+  from '../actions/universe';
+import {isValidObject} from '../utils/ObjectUtils';
 
-const mapStateToProps = (state) => {
-  return {
-    universe: state.universe,
-    cloud: state.cloud
-  };
-}
+//For any field errors upon submission (i.e. not instant check)
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    resetProviderList: () => {
+      dispatch(resetProviderList());
+    },
+    submitCreateUniverse: (values) => {
+      values.regionList = values.regionList.map(function(item, idx){
+        return item.value;
+      });
+      return new Promise((resolve, reject) => {
+        dispatch(createUniverse(values)).then((response) => {
+          if (response.payload.status !== 200) {
+            dispatch(createUniverseFailure(response.payload));
+          } else {
+            dispatch(createUniverseSuccess(response.payload));
+            dispatch(fetchUniverseList())
+              .then((response) => {
+                if (response.payload.status !== 200) {
+                  dispatch(fetchUniverseListFailure(response.payload));
+                  //Add Error message state to modal
+                } else {
+                  dispatch(fetchUniverseListSuccess(response.payload));
+                  dispatch(closeDialog());
+                }
+              });
+          }
+        });
+      })
+    },
+    submitEditUniverse: (values) => {
+      values.regionList = values.regionList.map(function(item, idx){
+        return item.value;
+      });
+      var universeUUID = values.universeId;
+      dispatch(editUniverse(universeUUID, values)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(editUniverseFailure(response.payload));
+        } else {
+          dispatch(editUniverseSuccess(response.payload));
+          dispatch(fetchUniverseList())
+            .then((response) => {
+              if (response.payload.status !== 200) {
+                dispatch(fetchUniverseListFailure(response.payload));
+                //Add Error message state to modal
+              } else {
+                dispatch(fetchUniverseListSuccess(response.payload));
+                dispatch(closeDialog());
+              }
+            });
+        }
+      })
+    },
+
     getProviderListItems: () => {
       dispatch(getProviderList())
         .then((response) => {
@@ -51,46 +99,44 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(getInstanceTypeListSuccess(response.payload));
           }
         });
-    },
-
-    createNewUniverse: (formData) => {
-      dispatch(createUniverse(formData)).then((response) => {
-        if(response.payload.status !== 200) {
-          dispatch(createUniverseFailure(response.payload));
-        } else {
-          dispatch(createUniverseSuccess(response.payload));
-          dispatch(fetchUniverseList())
-              .then((response) => {
-                if (response.payload.status !== 200) {
-                  dispatch(fetchUniverseListFailure(response.payload));
-                } else {
-                  dispatch(fetchUniverseListSuccess(response.payload));
-                }
-              });
-        }
-      });
-    },
-
-    editUniverse: (universeUUID, formData) => {
-      dispatch(editUniverse(universeUUID, formData)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(editUniverseFailure(response.payload));
-        } else {
-          dispatch(editUniverseSuccess(response.payload));
-          dispatch(fetchUniverseList())
-            .then((response) => {
-              if (response.payload.status !== 200) {
-                dispatch(fetchUniverseListFailure(response.payload));
-              } else {
-                dispatch(fetchUniverseListSuccess(response.payload));
-              }
-            });
-        }
-      });
     }
   }
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(UniverseModal);
+function mapStateToProps(state, ownProps) {
+  const {universe: {currentUniverse}} = state;
+  var data = {
+      "serverPackage": "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz",
+      "numNodes": 3, "isMultiAZ": true
+    };
+    if (isValidObject(currentUniverse)) {
+      data.universeName = currentUniverse.name;
+      data.provider = currentUniverse.provider.uuid;
+      data.regionList = currentUniverse.regions.map(function (item, idx) {
+        return {'value': item.uuid, 'name': item.name, "label": item.name};
+      });
+      data.numNodes = currentUniverse.universeDetails.numNodes;
+      data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
+      data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
+      data.serverPackage = currentUniverse.universeDetails.ybServerPkg;
+      data.universeId = currentUniverse.universeUUID;
+    }
+
+  return {
+    universe: state.universe,
+    cloud: state.cloud,
+    initialValues: data
+  };
+}
 
 
+var universeModalForm = reduxForm({
+  form: 'UniverseModalForm',
+  fields: ['formType', 'universeName', 'provider', 'regionList',
+    'numNodes', 'isMultiAZ', 'instanceType', 'serverPackage', 'universeId']
+})
+
+
+
+
+module.exports = connect(mapStateToProps, mapDispatchToProps)(universeModalForm(UniverseModal));
