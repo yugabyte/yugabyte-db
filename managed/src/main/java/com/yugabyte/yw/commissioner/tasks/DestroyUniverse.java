@@ -51,7 +51,7 @@ public class DestroyUniverse extends UniverseTaskBase {
       } catch (Throwable t1) {
         // Ignore.
       }
-      LOG.error("Error executing task {} with error={}.", getName(), t);
+      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     }
     LOG.info("Finished {} task.", getName());
