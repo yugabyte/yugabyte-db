@@ -1,5 +1,6 @@
 import ListUniverse from '../components/ListUniverse.js';
-import {fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, resetUniverseList} from '../actions/universe';
+import {fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, resetUniverseList,
+        openDialog, closeDialog} from '../actions/universe';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
@@ -16,6 +17,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseList: () => {
       dispatch(resetUniverseList());
+    },
+    showUniverseModal: () => {
+      dispatch(openDialog());
+    },
+    closeUniverseModal: () => {
+      dispatch(closeDialog());
     }
   }
 }

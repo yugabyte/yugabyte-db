@@ -5,7 +5,8 @@ import { connect } from 'react-redux';
 import {fetchUniverseInfo, fetchUniverseInfoSuccess,
         fetchUniverseInfoFailure, resetUniverseInfo,
         fetchUniverseTasks, fetchUniverseTasksSuccess,
-        fetchUniverseTasksFailure, resetUniverseTasks } from '../actions/universe';
+        fetchUniverseTasksFailure, resetUniverseTasks,
+        openDialog, closeDialog } from '../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -34,6 +35,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
+    },
+    showUniverseModal: () => {
+      dispatch(openDialog());
+    },
+    closeUniverseModal: () => {
+      dispatch(closeDialog());
     }
   }
 }

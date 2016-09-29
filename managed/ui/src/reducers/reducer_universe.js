@@ -7,10 +7,11 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          DELETE_UNIVERSE_FAILURE, FETCH_CUSTOMER_COST, FETCH_CUSTOMER_COST_SUCCESS,
          FETCH_CUSTOMER_COST_FAILURE, RESET_CUSTOMER_COST,
          FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS,
-         FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS } from '../actions/universe';
+         FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS,
+         OPEN_DIALOG, CLOSE_DIALOG} from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], universeCurrentCostList: [],
-                       currentTotalCost: 0, error: null};
+                       currentTotalCost: 0, error: null, showModal: false};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -22,10 +23,14 @@ export default function(state = INITIAL_STATE, action) {
     case CREATE_UNIVERSE_FAILURE:
       error = action.payload.data || {message: action.payload.error};
       return { ...state, loading: false, error: error};
+    case OPEN_DIALOG:
+      return { ...state, showModal: true}
+    case CLOSE_DIALOG:
+      return { ...state, showModal: false}
     case FETCH_UNIVERSE_INFO:
       return { ...state, loading: true};
     case FETCH_UNIVERSE_INFO_SUCCESS:
-      return { ...state, currentUniverse: action.payload.data, error: null, loading: false};
+      return { ...state, currentUniverse: action.payload.data, error: null, loading: false, showModal: false};
     case FETCH_UNIVERSE_INFO_FAILURE:
       error = action.payload.data || {message: action.payload.error};
       return { ...state, currentUniverse: null, error: error, loading: false};

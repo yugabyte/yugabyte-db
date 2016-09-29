@@ -43,6 +43,9 @@ export const FETCH_UNIVERSE_TASKS_SUCCESS = 'FETCH_UNIVERSE_TASKS_SUCCESS';
 export const FETCH_UNIVERSE_TASKS_FAILURE = 'FETCH_UNIVERSE_TASKS_FAILURE';
 export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 
+// Universe Modal Tasks
+export const OPEN_DIALOG = 'OPEN_DIALOG';
+export const CLOSE_DIALOG = 'CLOSE_DIALOG';
 
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
@@ -235,5 +238,17 @@ export function fetchUniverseTasksFailure(error) {
 export function resetUniverseTasks() {
   return {
     type: RESET_UNIVERSE_TASKS
+  }
+}
+
+export function openDialog() {
+  return {
+    type: OPEN_DIALOG
+  }
+}
+
+export function closeDialog() {
+  return {
+    type: CLOSE_DIALOG
   }
 }
