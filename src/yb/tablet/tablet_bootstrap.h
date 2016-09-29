@@ -17,11 +17,13 @@
 #ifndef YB_TABLET_TABLET_BOOTSTRAP_H_
 #define YB_TABLET_TABLET_BOOTSTRAP_H_
 
-#include <boost/thread/shared_mutex.hpp>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <boost/thread/shared_mutex.hpp>
+
+#include "rocksdb/cache.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/log.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -89,15 +91,14 @@ class TabletStatusListener {
 //
 // This is a synchronous method, but is typically called within a thread pool by
 // TSTabletManager.
-Status BootstrapTablet(const scoped_refptr<TabletMetadata>& meta,
-                       const scoped_refptr<server::Clock>& clock,
-                       const std::shared_ptr<MemTracker>& mem_tracker,
-                       MetricRegistry* metric_registry,
-                       TabletStatusListener* status_listener,
-                       std::shared_ptr<Tablet>* rebuilt_tablet,
-                       scoped_refptr<log::Log>* rebuilt_log,
-                       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-                       consensus::ConsensusBootstrapInfo* consensus_info);
+Status BootstrapTablet(
+    const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<server::Clock>& clock,
+    const std::shared_ptr<MemTracker>& mem_tracker, MetricRegistry* metric_registry,
+    TabletStatusListener* status_listener, std::shared_ptr<Tablet>* rebuilt_tablet,
+    scoped_refptr<log::Log>* rebuilt_log,
+    const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
+    consensus::ConsensusBootstrapInfo* consensus_info,
+    std::shared_ptr<rocksdb::Cache> block_cache = nullptr);
 
 }  // namespace tablet
 }  // namespace yb

@@ -17,9 +17,6 @@
 
 #include "yb/tablet/tablet.h"
 
-#include <boost/bind.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -33,6 +30,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
+#include "rocksdb/table.h"
 #include "rocksdb/utilities/checkpoint.h"
 #include "rocksdb/write_batch.h"
 
@@ -86,7 +84,6 @@
 #include "yb/docdb/primitive_value.h"
 
 
-
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
             "Use at your own risk!");
@@ -114,6 +111,9 @@ METRIC_DEFINE_gauge_size(tablet, memrowset_size, "MemRowSet Memory Usage",
 METRIC_DEFINE_gauge_size(tablet, on_disk_size, "Tablet Size On Disk",
                          yb::MetricUnit::kBytes,
                          "Size of this tablet on disk.");
+
+DEFINE_int64(db_block_size_bytes, 64 * 1024,
+             "Size of RocksDB block (in bytes).");
 
 using std::shared_ptr;
 using std::string;
@@ -160,27 +160,26 @@ TabletComponents::TabletComponents(shared_ptr<MemRowSet> mrs,
 
 const char* Tablet::kDMSMemTrackerId = "DeltaMemStores";
 
-Tablet::Tablet(const scoped_refptr<TabletMetadata>& metadata,
-               const scoped_refptr<server::Clock>& clock,
-               const shared_ptr<MemTracker>& parent_mem_tracker,
-               MetricRegistry* metric_registry,
-               const scoped_refptr<LogAnchorRegistry>& log_anchor_registry)
-  : key_schema_(metadata->schema().CreateKeyProjection()),
-    metadata_(metadata),
-    table_type_(metadata->table_type()),
-    log_anchor_registry_(log_anchor_registry),
-    mem_tracker_(MemTracker::CreateTracker(
-        -1, Substitute("tablet-$0", tablet_id()),
-                       parent_mem_tracker)),
-    dms_mem_tracker_(MemTracker::CreateTracker(
-        -1, kDMSMemTrackerId, mem_tracker_)),
-    next_mrs_id_(0),
-    clock_(clock),
-    mvcc_(clock),
-    rowsets_flush_sem_(1),
-    state_(kInitialized),
-    rocksdb_statistics_(nullptr) {
-      CHECK(schema()->has_column_ids());
+Tablet::Tablet(
+    const scoped_refptr<TabletMetadata>& metadata, const scoped_refptr<server::Clock>& clock,
+    const shared_ptr<MemTracker>& parent_mem_tracker, MetricRegistry* metric_registry,
+    const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
+    std::shared_ptr<rocksdb::Cache> block_cache)
+    : key_schema_(metadata->schema().CreateKeyProjection()),
+      metadata_(metadata),
+      table_type_(metadata->table_type()),
+      log_anchor_registry_(log_anchor_registry),
+      mem_tracker_(
+          MemTracker::CreateTracker(-1, Substitute("tablet-$0", tablet_id()), parent_mem_tracker)),
+      dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
+      next_mrs_id_(0),
+      clock_(clock),
+      mvcc_(clock),
+      rowsets_flush_sem_(1),
+      state_(kInitialized),
+      rocksdb_statistics_(nullptr),
+      block_cache_(block_cache) {
+  CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
 
   if (metric_registry) {
@@ -242,6 +241,12 @@ Status Tablet::Open() {
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_);
+
+  // Set block cache options.
+  rocksdb::BlockBasedTableOptions table_options;
+  table_options.block_cache = block_cache_;
+  table_options.block_size = FLAGS_db_block_size_bytes;
+  rocksdb_options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
 
   const string db_dir = metadata()->rocksdb_dir();
   LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
@@ -670,7 +675,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
 }
 
 void Tablet::StartApplying(WriteTransactionState* tx_state) {
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+  shared_lock<rw_spinlock> lock(component_lock_);
   tx_state->StartApplying();
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     tx_state->set_tablet_components(components_);
@@ -764,7 +769,7 @@ Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_req
   TRACE("PREPARE: Decoding operations");
 
   TRACE("Acquiring schema lock in shared mode");
-  boost::shared_lock<rw_semaphore> schema_lock(schema_lock_);
+  shared_lock<rw_semaphore> schema_lock(schema_lock_);
   TRACE("Acquired schema lock");
   vector<DecodedRowOperation> ops;
 
@@ -1078,7 +1083,7 @@ Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
 
   // Replace the MemRowSet
   {
-    boost::lock_guard<rw_spinlock> lock(component_lock_);
+    std::lock_guard<rw_spinlock> lock(component_lock_);
     RETURN_NOT_OK(ReplaceMemRowSetUnlocked(&input, &old_ms));
   }
 
@@ -1142,7 +1147,7 @@ void Tablet::SetFlushCompactCommonHooksForTests(
 }
 
 int32_t Tablet::CurrentMrsIdForTests() const {
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+  shared_lock<rw_spinlock> lock(component_lock_);
   return components_->memrowset->mrs_id();
 }
 
@@ -1367,7 +1372,7 @@ Status Tablet::PickRowSetsToCompact(RowSetsInCompaction *picked,
   // in tablet.h for details on why that would be bad.
   shared_ptr<RowSetTree> rowsets_copy;
   {
-    boost::shared_lock<rw_spinlock> lock(component_lock_);
+    shared_lock<rw_spinlock> lock(component_lock_);
     rowsets_copy = components_->rowsets;
   }
 
@@ -1390,7 +1395,7 @@ Status Tablet::PickRowSetsToCompact(RowSetsInCompaction *picked,
     VLOG(2) << "Compaction quality: " << quality;
   }
 
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+  shared_lock<rw_spinlock> lock(component_lock_);
   for (const shared_ptr<RowSet>& rs : components_->rowsets->all_rowsets()) {
     if (picked_set.erase(rs.get()) == 0) {
       // Not picked.
@@ -1427,7 +1432,7 @@ Status Tablet::PickRowSetsToCompact(RowSetsInCompaction *picked,
 void Tablet::GetRowSetsForTests(RowSetVector* out) {
   shared_ptr<RowSetTree> rowsets_copy;
   {
-    boost::shared_lock<rw_spinlock> lock(component_lock_);
+    shared_lock<rw_spinlock> lock(component_lock_);
     rowsets_copy = components_->rowsets;
   }
   for (const shared_ptr<RowSet>& rs : rowsets_copy->all_rowsets()) {
@@ -1734,7 +1739,7 @@ void Tablet::UpdateCompactionStats(MaintenanceOpStats* stats) {
 
   shared_ptr<RowSetTree> rowsets_copy;
   {
-    boost::shared_lock<rw_spinlock> lock(component_lock_);
+    shared_lock<rw_spinlock> lock(component_lock_);
     rowsets_copy = components_->rowsets;
   }
 
@@ -1751,7 +1756,7 @@ void Tablet::UpdateCompactionStats(MaintenanceOpStats* stats) {
 }
 
 Status Tablet::DebugDump(vector<string> *lines) {
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+  shared_lock<rw_spinlock> lock(component_lock_);
 
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
@@ -1799,7 +1804,7 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
     const MvccSnapshot &snap,
     const ScanSpec *spec,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+  shared_lock<rw_spinlock> lock(component_lock_);
   // Construct all the iterators locally first, so that if we fail
   // in the middle, we don't modify the output arguments.
   vector<shared_ptr<RowwiseIterator> > ret;
@@ -2085,14 +2090,14 @@ double Tablet::GetPerfImprovementForBestDeltaCompactUnlocked(RowSet::DeltaCompac
 
 size_t Tablet::num_rowsets() const {
   assert(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  boost::shared_lock<rw_spinlock> lock(component_lock_);
+  shared_lock<rw_spinlock> lock(component_lock_);
   return components_->rowsets->all_rowsets().size();
 }
 
 void Tablet::PrintRSLayout(ostream* o) {
   shared_ptr<RowSetTree> rowsets_copy;
   {
-    boost::shared_lock<rw_spinlock> lock(component_lock_);
+    shared_lock<rw_spinlock> lock(component_lock_);
     rowsets_copy = components_->rowsets;
   }
   std::lock_guard<std::mutex> compact_lock(compact_select_lock_);

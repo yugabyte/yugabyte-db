@@ -26,13 +26,15 @@
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest_prod.h>
-#include "yb/consensus/metadata.pb.h"
+
+#include "rocksdb/cache.h"
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tablet_peer_lookup.h"
-#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
@@ -341,6 +343,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Thread pool for apply transactions, shared between all tablets.
   gscoped_ptr<ThreadPool> apply_pool_;
+
+  // Block cache to share across tablet DB instances.
+  std::shared_ptr<rocksdb::Cache> block_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

@@ -95,6 +95,16 @@ DEFINE_double(fault_crash_after_rb_files_fetched, 0.0,
               "(For testing only!)");
 TAG_FLAG(fault_crash_after_rb_files_fetched, unsafe);
 
+DEFINE_int64(db_block_cache_size_bytes, -1,
+             "Size of cross-tablet shared RocksDB block cache (in bytes). "
+             "This defaults to -1 for system auto-generated default, which would use "
+             "FLAGS_db_block_cache_ram_percentage to select a percentage of the total memory as "
+             "the default size for the shared block cache.");
+
+DEFINE_int32(db_block_cache_size_percentage, 50,
+             "Default percentage of total available memory to use as block cache size, if not "
+             "asking for a raw number, through FLAGS_db_block_cache_size_bytes.");
+
 namespace yb {
 namespace tserver {
 
@@ -160,6 +170,21 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()));
   apply_pool_->SetRunTimeMicrosHistogram(
       METRIC_op_apply_run_time.Instantiate(server_->metric_entity()));
+
+  int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
+  // Auto-compute size of block cache if asked to.
+  if (FLAGS_db_block_cache_size_bytes == -1) {
+    int64_t total_ram;
+    // Check some bounds.
+    CHECK(FLAGS_db_block_cache_size_percentage > 0 && FLAGS_db_block_cache_size_percentage <= 100)
+        << Substitute(
+               "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
+               "$0",
+               FLAGS_db_block_cache_size_percentage);
+    CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
+    block_cache_size_bytes = total_ram * FLAGS_db_block_cache_size_percentage / 100;
+  }
+  block_cache_ = rocksdb::NewLRUCache(block_cache_size_bytes);
 }
 
 TSTabletManager::~TSTabletManager() {
@@ -635,15 +660,10 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
     tablet_peer->SetBootstrapping();
-    s = BootstrapTablet(meta,
-                        scoped_refptr<server::Clock>(server_->clock()),
-                        server_->mem_tracker(),
-                        metric_registry_,
-                        tablet_peer->status_listener(),
-                        &tablet,
-                        &log,
-                        tablet_peer->log_anchor_registry(),
-                        &bootstrap_info);
+    s = BootstrapTablet(
+        meta, scoped_refptr<server::Clock>(server_->clock()), server_->mem_tracker(),
+        metric_registry_, tablet_peer->status_listener(), &tablet, &log,
+        tablet_peer->log_anchor_registry(), &bootstrap_info, block_cache_);
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
                  << s.ToString();
@@ -839,7 +859,8 @@ void TSTabletManager::MarkDirtyUnlocked(const std::string& tablet_id,
     state.change_seq = next_report_seq_;
     InsertOrDie(&dirty_tablets_, tablet_id, state);
   }
-  VLOG(2) << LogPrefix(tablet_id, fs_manager_->uuid()) << "Marking dirty. Reason: " << context->ToString()
+  VLOG(2) << LogPrefix(tablet_id, fs_manager_->uuid())
+          << "Marking dirty. Reason: " << context->ToString()
           << ". Will report this tablet to the Master in the next heartbeat "
           << "as part of report #" << next_report_seq_;
   server_->heartbeater()->TriggerASAP();

@@ -127,12 +127,11 @@ class FlushedStoresSnapshot {
 // we need to set it before replay or we won't be able to re-rebuild.
 class TabletBootstrap {
  public:
-  TabletBootstrap(const scoped_refptr<TabletMetadata>& meta,
-                  const scoped_refptr<Clock>& clock,
-                  shared_ptr<MemTracker> mem_tracker,
-                  MetricRegistry* metric_registry,
-                  TabletStatusListener* listener,
-                  const scoped_refptr<LogAnchorRegistry>& log_anchor_registry);
+  TabletBootstrap(
+      const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<Clock>& clock,
+      shared_ptr<MemTracker> mem_tracker, MetricRegistry* metric_registry,
+      TabletStatusListener* listener, const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
+      std::shared_ptr<rocksdb::Cache> block_cache);
 
   // Plays the log segments, rebuilding the portion of the Tablet's soft
   // state that is present in the log (additional soft state may be present
@@ -268,6 +267,7 @@ class TabletBootstrap {
   gscoped_ptr<log::LogReader> log_reader_;
 
   gscoped_ptr<ConsensusMetadata> cmeta_;
+  std::shared_ptr<rocksdb::Cache> block_cache_;
 
   // Statistics on the replay of entries in the log.
   struct Stats {
@@ -346,19 +346,17 @@ void TabletStatusListener::StatusMessage(const string& status) {
   last_status_ = status;
 }
 
-Status BootstrapTablet(const scoped_refptr<TabletMetadata>& meta,
-                       const scoped_refptr<Clock>& clock,
-                       const shared_ptr<MemTracker>& mem_tracker,
-                       MetricRegistry* metric_registry,
-                       TabletStatusListener* listener,
-                       shared_ptr<tablet::Tablet>* rebuilt_tablet,
-                       scoped_refptr<log::Log>* rebuilt_log,
-                       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
-                       ConsensusBootstrapInfo* consensus_info) {
+Status BootstrapTablet(
+    const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<Clock>& clock,
+    const shared_ptr<MemTracker>& mem_tracker, MetricRegistry* metric_registry,
+    TabletStatusListener* listener, shared_ptr<tablet::Tablet>* rebuilt_tablet,
+    scoped_refptr<log::Log>* rebuilt_log,
+    const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
+    ConsensusBootstrapInfo* consensus_info, std::shared_ptr<rocksdb::Cache> block_cache) {
   TRACE_EVENT1("tablet", "BootstrapTablet",
                "tablet_id", meta->tablet_id());
-  TabletBootstrap bootstrap(meta, clock, mem_tracker,
-                            metric_registry, listener, log_anchor_registry);
+  TabletBootstrap bootstrap(
+      meta, clock, mem_tracker, metric_registry, listener, log_anchor_registry, block_cache);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // This is necessary since OpenNewLog() initially disables sync.
   RETURN_NOT_OK((*rebuilt_log)->ReEnableSyncIfRequired());
@@ -384,17 +382,17 @@ static string DebugInfo(const string& tablet_id,
 }
 
 TabletBootstrap::TabletBootstrap(
-    const scoped_refptr<TabletMetadata>& meta,
-    const scoped_refptr<Clock>& clock, shared_ptr<MemTracker> mem_tracker,
-    MetricRegistry* metric_registry, TabletStatusListener* listener,
-    const scoped_refptr<LogAnchorRegistry>& log_anchor_registry)
+    const scoped_refptr<TabletMetadata>& meta, const scoped_refptr<Clock>& clock,
+    shared_ptr<MemTracker> mem_tracker, MetricRegistry* metric_registry,
+    TabletStatusListener* listener, const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
+    std::shared_ptr<rocksdb::Cache> block_cache)
     : meta_(meta),
       clock_(clock),
       mem_tracker_(std::move(mem_tracker)),
       metric_registry_(metric_registry),
       listener_(listener),
-      log_anchor_registry_(log_anchor_registry) {
-}
+      log_anchor_registry_(log_anchor_registry),
+      block_cache_(block_cache) {}
 
 Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
@@ -502,11 +500,8 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 }
 
 Status TabletBootstrap::OpenTablet(bool* has_blocks) {
-  gscoped_ptr<Tablet> tablet(new Tablet(meta_,
-                                        clock_,
-                                        mem_tracker_,
-                                        metric_registry_,
-                                        log_anchor_registry_));
+  gscoped_ptr<Tablet> tablet(new Tablet(
+      meta_, clock_, mem_tracker_, metric_registry_, log_anchor_registry_, block_cache_));
   // doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
@@ -653,13 +648,12 @@ typedef map<int64_t, LogEntryPB*> OpIndexToEntryMap;
 
 // State kept during replay.
 struct ReplayState {
-  ReplayState(int64_t rocksdb_max_persistent_index_arg)
+  explicit ReplayState(int64_t rocksdb_max_persistent_index_arg)
       : prev_op_id(MinimumOpId()),
         committed_op_id(MinimumOpId()),
         rocksdb_max_persistent_index(rocksdb_max_persistent_index_arg),
         rocksdb_applied_index(rocksdb_max_persistent_index_arg),
-        num_entries_applied_to_rocksdb(0) {
-  }
+        num_entries_applied_to_rocksdb(0) {}
 
   ~ReplayState() {
     STLDeleteValues(&pending_replicates);

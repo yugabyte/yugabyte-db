@@ -17,8 +17,6 @@
 #ifndef YB_TABLET_TABLET_H_
 #define YB_TABLET_TABLET_H_
 
-#include <boost/thread/shared_mutex.hpp>
-
 #include <iosfwd>
 #include <map>
 #include <memory>
@@ -26,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "rocksdb/cache.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
 #include "rocksdb/write_batch.h"
@@ -101,11 +100,11 @@ class Tablet {
   //
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
-  Tablet(const scoped_refptr<TabletMetadata>& metadata,
-         const scoped_refptr<server::Clock>& clock,
-         const std::shared_ptr<MemTracker>& parent_mem_tracker,
-         MetricRegistry* metric_registry,
-         const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry);
+  Tablet(
+      const scoped_refptr<TabletMetadata>& metadata, const scoped_refptr<server::Clock>& clock,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricRegistry* metric_registry,
+      const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
+      std::shared_ptr<rocksdb::Cache> block_cache = nullptr);
 
   ~Tablet();
 
@@ -497,7 +496,7 @@ class Tablet {
                                  const RowSetVector &to_add);
 
   void GetComponents(scoped_refptr<TabletComponents>* comps) const {
-    boost::shared_lock<rw_spinlock> lock(component_lock_);
+    shared_lock<rw_spinlock> lock(component_lock_);
     *comps = components_;
   }
 
@@ -637,6 +636,9 @@ class Tablet {
 
   // This is for docdb fine-grained locking.
   yb::util::SharedLockManager shared_lock_manager_;
+
+  // RocksDB block cache for this tablet.
+  std::shared_ptr<rocksdb::Cache> block_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

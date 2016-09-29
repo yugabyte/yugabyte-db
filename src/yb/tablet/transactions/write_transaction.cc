@@ -20,8 +20,8 @@
 #include <algorithm>
 #include <vector>
 
-#include "yb/common/wire_protocol.h"
 #include "yb/common/row_operations.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
@@ -29,11 +29,12 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
 #include "yb/util/trace.h"
 
 DEFINE_int32(tablet_inject_latency_on_apply_write_txn_ms, 0,
