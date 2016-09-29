@@ -2,7 +2,8 @@
 
 import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
  GET_PROVIDER_LIST, GET_PROVIDER_LIST_SUCCESS, GET_PROVIDER_LIST_FAILURE,
-  GET_INSTANCE_TYPE_LIST, GET_INSTANCE_TYPE_LIST_SUCCESS, GET_INSTANCE_TYPE_LIST_FAILURE } from '../actions/cloud';
+  GET_INSTANCE_TYPE_LIST, GET_INSTANCE_TYPE_LIST_SUCCESS, GET_INSTANCE_TYPE_LIST_FAILURE,
+  RESET_PROVIDER_LIST} from '../actions/cloud';
 
 const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [], selectedProvider: null, error: null};
 
@@ -30,6 +31,8 @@ export default function(state = INITIAL_STATE, action) {
     case GET_INSTANCE_TYPE_LIST_FAILURE:
       error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors
       return { ...state, instanceTypes: null, status: 'instance_type_fetch_failure', error: error, loading: false};
+    case RESET_PROVIDER_LIST:
+      return { ...state, providers: [], regions: [], instanceTypes:[]}
     default:
       return state;
   }

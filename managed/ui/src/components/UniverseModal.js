@@ -1,14 +1,13 @@
-// Copyright (c) YugaByte, Inc.
-
 import React, { Component, PropTypes } from 'react';
 import { Modal } from 'react-bootstrap';
-import Select from 'react-select';
-import 'react-select/dist/react-select.css';
-import $ from 'jquery';
-import { isValidObject } from '../utils/ObjectUtils';
-import NumericInput from 'react-numeric-input';
+import YBInput from '../components/YBInputField';
+import YBSelect from './fields/YBSelect';
+import YBCheckBox from './fields/YBCheckBox';
+import YBMultiSelect from './fields/YBMultiSelect';
+import YBNumericInput from './fields/YBNumericInput';
+import { Field } from 'redux-form';
 
-class UniverseModal extends Component {
+export default class UniverseModal extends Component {
 
   static propTypes = {
     type: PropTypes.oneOf(['Edit', 'Create']).isRequired,
@@ -16,160 +15,70 @@ class UniverseModal extends Component {
 
   constructor(props) {
     super(props);
-    this.showModal = this.showModal.bind(this);
-    this.closeModal = this.closeModal.bind(this);
     this.providerChanged = this.providerChanged.bind(this);
-    this.multiAZChanged = this.multiAZChanged.bind(this);
-    this.regionChanged = this.regionChanged.bind(this);
-    this.universeAction = this.universeAction.bind(this);
+    this.regionListChanged = this.regionListChanged.bind(this);
     this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
-    this.serverPackageChanged = this.serverPackageChanged.bind(this);
-    this.state = {
-      showModal: false,
-      regionSelected: []
-    };
+    this.numNodesChanged = this.numNodesChanged.bind(this);
+    this.submitCreateUniverse = this.props.submitCreateUniverse.bind(this);
+    this.submitEditUniverse = this.props.submitEditUniverse.bind(this);
+    this.state = { providerSelected: '',
+      regionSelected: [], instanceTypeSelected: '',
+      numNodes: 3, azCheckState: true};
   }
 
-  componentDidMount() {
-    var self = this;
+  componentWillMount() {
     this.props.getProviderListItems();
-    if (this.props.type === "Edit") {
-      var currentProvider = "";
-      var currentMultiAz = false;
-      var universeName = "";
-      var currentServerPackage = "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz";
-      // If Edit Universe is called in the context of Universe List
-      if(self.props.uuid) {
-        self.props.universe.universeList.map(function (universeItem, idx) {
-          if (universeItem.universeUUID === self.props.uuid) {
-            self.props.getRegionListItems(universeItem.provider.uuid, universeItem.universeDetails.userIntent.isMultiAZ);
-            self.props.getInstanceTypeListItems(universeItem.provider.uuid);
-            return (
-              self.setState({
-                universeName: universeItem.name,
-                currentMultiAz: universeItem.universeDetails.userIntent.isMultiAZ,
-                azCheckState: universeItem.universeDetails.userIntent.isMultiAZ,
-                regionSelected: universeItem.regions.map(function (item, idx) {
-                  return {'value': item.uuid, 'name': item.name, "label": item.name}
-                })
-              })
-            )
-          } else {
-              return null;
-          }
-        });
-      }
-      // If Edit Universe is called in the context of Current Universe
-      else if(isValidObject(self.props.universe.currentUniverse)) {
-        var instanceType = self.props.universe.currentUniverse.universeDetails.userIntent.instanceType;
-        currentProvider = self.props.universe.currentUniverse.provider.uuid;
-        currentMultiAz = self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
-        universeName = self.props.universe.currentUniverse.name;
-        currentServerPackage = self.props.universe.currentUniverse.universeDetails.ybServerPkg;
-        var items = self.props.universe.currentUniverse.regions.map(function (item, idx) {
-          return {'value': item.uuid, 'name': item.name, "label": item.name}
-        });
-        self.props.getRegionListItems(currentProvider, currentMultiAz);
-        self.props.getInstanceTypeListItems(currentProvider);
-      }
-      this.state = {
-        readOnlyInput: "readonly",
-        readOnlySelect: "disabled",
-        universeName: universeName,
-        azCheckState: currentMultiAz,
-        regionSelected: items,
-        buttonType: "universe-button btn btn-xs btn-info",
-        buttonIcon: "fa fa-pencil",
-        instanceTypeSelected: instanceType,
-        serverPackage: currentServerPackage
-      }
+    if(this.props.type === "Edit") {
+      var providerUUID = this.props.universe.currentUniverse.provider.uuid;
+      var azState = this.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
+      this.setState({providerSelected: providerUUID});
+      this.setState({instanceTypeSelected: this.props.universe.currentUniverse.universeDetails.userIntent.instanceType});
+      this.props.getRegionListItems(providerUUID, azState);
+      this.props.getInstanceTypeListItems(providerUUID);
+      this.setState({instanceTypeSelected: "m3.medium"});
     }
-    // If Create Universe is called
-    else {
-      currentServerPackage = "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz";
-      this.state = {
-        readOnlyInput: "",
-        readOnlySelect: "",
-        universeName: "",
-        azCheckState: true,
-        buttonType: "universe-button btn btn-default btn-lg bg-orange ",
-        buttonIcon: "fa fa-database",
-        instanceTypeSelected: "m3.medium",
-        serverPackage: currentServerPackage
-      }
-    }
-  }
-
-  showModal() {
-    this.setState({showModal: true});
-  }
-
-  closeModal() {
-    this.setState({showModal: false});
-  }
-
-  providerChanged(event) {
-    var providerUUID = event.target.value;
-    var multiAZCheck = this.state.azCheckState;
-    this.props.getRegionListItems(providerUUID, multiAZCheck);
-    this.props.getInstanceTypeListItems(providerUUID);
-  }
-
-  serverPackageChanged(event) {
-    this.setState({serverPackage: event.target.value});
-  }
-
-  instanceTypeChanged(event) {
-
-    this.setState({instanceTypeSelected: event.target.value});
-  }
-
-  multiAZChanged() {
-    if (this.state.azCheckState === true) {
-      this.setState({azCheckState: false});
-    } else {
-      this.setState({azCheckState: true});
-    }
-  }
-
-  regionChanged(value){
-    this.setState({regionSelected: value})
-  }
-  
-  universeAction(event){
-    event.preventDefault();
-    var self = this;
-    if (this.props.type === "Create") {
-      self.props.createNewUniverse($('#universeForm').serialize());
-    } else {
-      var universeUUID = typeof self.props.uuid !== "undefined" ? self.props.uuid :
-        this.props.universe.currentUniverse.universeUUID;
-      self.props.editUniverse(universeUUID, $('#universeForm').serialize());
-    }
-    self.closeModal();
   }
 
   componentWillUnmount() {
-    this.setState({
-      readOnlyInput: "",
-      readOnlySelect: "",
-      universeName: "",
-      azCheckState: true,
-      buttonType: ""
-    });
+    this.props.resetProviderList();
   }
 
-  render(){
+  providerChanged(event) {
 
-    var universeProviderList = this.props.cloud.providers.map(function(providerItem,idx) {
-      return <option key={providerItem.uuid} value={providerItem.uuid}>
-        {providerItem.name}
-      </option>;
-    });
+    var providerUUID = event.target.value;
+    this.setState({providerSelected: providerUUID});
+    this.props.getRegionListItems(providerUUID, this.props.selectedAzState);
+    this.props.getInstanceTypeListItems(providerUUID);
+  }
 
-    if (this.props.type === "Create") {
-      universeProviderList.unshift(<option key="" value=""></option>);
+  regionListChanged(value) {
+    this.setState({regionSelected: value});
+  }
+
+  instanceTypeChanged(event) {
+    this.setState({instanceTypeSelected: event.target.value});
+  }
+
+  numNodesChanged(event) {
+    this.setState({numNodes: event.target.value});
+  }
+
+  render() {
+    var self = this;
+    const {visible, handleSubmit,
+      onClose } = this.props;
+
+    var azCheckStateChanged =function() {
+      self.setState({azCheckState: !self.state.azCheckState});
     }
+
+    var universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
+      return <option key={providerItem.uuid} value={providerItem.uuid}>
+              {providerItem.name}
+             </option>;
+    });
+    universeProviderList.unshift(<option key="" value=""></option>);
+
 
     var universeRegionList = this.props.cloud.regions.map(function (regionItem, idx) {
       return {value: regionItem.uuid, label: regionItem.name};
@@ -179,79 +88,48 @@ class UniverseModal extends Component {
       this.props.cloud.instanceTypes.map(function (instanceTypeItem, idx) {
         return <option key={instanceTypeItem.instanceTypeCode}
                        value={instanceTypeItem.instanceTypeCode}>
-          {instanceTypeItem.instanceTypeCode}
-        </option>
+                 {instanceTypeItem.instanceTypeCode}
+               </option>
       });
-
+    if(universeInstanceTypeList.length > 0) {
+      universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
+    }
     return (
       <div>
-        <div>
-          <div className={this.state.buttonType} onClick={this.showModal}>
-            <i className={this.state.buttonIcon}></i>&nbsp;
-            {this.props.type}
-          </div>
-        </div>
-        <Modal show={this.state.showModal} onHide={this.closeModal}>
-          <form id="universeForm" onSubmit={this.universeAction}>
+        <Modal show={visible} onHide={onClose}>
+          <form name="UniverseModalForm" onSubmit=
+                  {this.props.type==="Create" ? handleSubmit(this.submitCreateUniverse) :
+                  handleSubmit(this.submitEditUniverse)}>
             <Modal.Header closeButton>
               <Modal.Title>{this.props.type} Universe </Modal.Title>
             </Modal.Header>
             <Modal.Body>
-              <label className="form-item-label">
-                Universe Name
-                <input type="text"
-                       name="universeName"
-                       className="form-control" readOnly={this.state.readOnlyInput}
-                       defaultValue={this.state.universeName} onChange={this.universeNameChanged}
-                      />
-              </label>
-              <label className="form-item-label">
-                Cloud Provider
-                <select name="provider" className="form-control"
-                        disabled={this.state.readOnlySelect}
-                        onChange={this.providerChanged}>
-                        {universeProviderList}
-                </select>
-              </label>
-              <label className="form-item-label" >
-                Region<br/>
-                <Select
-                  name="regionList[]"
-                  options={universeRegionList}
-                  multi={this.state.azCheckState}
-                  value={this.state.regionSelected}
-                  onChange={this.regionChanged}
-                />
-              </label>
-              <label className="form-item-label">
-                <div>Number Of Nodes</div>
-                <NumericInput className="form-control" min={3} max={32} value={3}/>
-              </label>
+              <Field name="universeName" type="text" component={YBInput} label="Universe Name" />
+              <Field name="provider" type="select" component={YBSelect} label="Provider"
+                     options={universeProviderList} onChange={this.providerChanged}
+                     defaultValue={this.state.providerSelected}
+                     value={this.state.providerSelected}
+              />
+              <Field name="regionList" component={YBMultiSelect}
+                     label="Regions" options={universeRegionList}
+                     onChange={this.regionListChanged}
+                     value={this.state.regionSelected} multi={this.state.azCheckState}/>
+
+              <Field name="numNodes" type="text" component={YBNumericInput}
+                     label="Number Of Nodes"
+                     value={this.state.numNodes} onChange={this.state.numNodesChanged} />
               <div className="universeFormSplit">
                 Advanced
               </div>
-              <label className="form-item-label">
-                Multi AZ Capable &nbsp;
-                <input type="checkbox"
-                       name="isMultiAZ"
-                       id="isMultiAZ"
-                       defaultChecked={this.state.azCheckState}
-                       onChange={this.multiAZChanged}
-                       value={this.state.azCheckState}
-                      />
-              </label>
-              <label className="form-item-label">
-                Instance Type
-                <select name="instanceType" className="form-control" value={this.state.instanceTypeSelected} onChange={this.instanceTypeChanged}>
-                  {universeInstanceTypeList}
-                </select>
-              </label>
-              <label className="form-item-label">
-                Server Package
-                <input type="text" name="serverPackage" className="form-control"
-                       defaultValue={this.state.serverPackage}
-                       onChange={this.serverPackageChanged} />
-              </label>
+              <Field name="isMultiAZ" type="checkbox" component={YBCheckBox}
+                     label="Multi AZ" onClick={azCheckStateChanged}/>
+              <Field name="instanceType" type="select" component={YBSelect} label="Instance Type"
+                     options={universeInstanceTypeList} onChange={this.instanceTypeChanged}
+                     defaultValue={this.state.instanceTypeSelected}
+                     value={this.state.instanceTypeSelected}
+              />
+              <Field name="serverPackage" type="text" component={YBInput}
+                     label="Server Package" defaultValue={this.state.serverPackage} />
             </Modal.Body>
             <Modal.Footer>
               <button type="submit" className="btn btn-default btn-success btn-block" >
@@ -264,5 +142,3 @@ class UniverseModal extends Component {
     )
   }
 }
-
-export default UniverseModal;

@@ -7,11 +7,13 @@ import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
 import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
-import UniverseModalContainer from '../containers/UniverseModalContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
+import YBButton from './fields/YBButton';
+import UniverseModalContainer from '../containers/UniverseModalContainer';
 
 export default class UniverseDetail extends Component {
+  
   static contextTypes = {
     router: PropTypes.object
   }
@@ -31,9 +33,9 @@ export default class UniverseDetail extends Component {
     this.props.getUniverseInfo(uuid);
     this.props.fetchUniverseTasks(uuid);
   }
-
+  
   render() {
-    const { universe: { currentUniverse, universeTasks, loading } } = this.props;
+    const { universe: { currentUniverse, universeTasks, loading, showModal } } = this.props;
     if (loading) {
       return <div className="container">Loading...</div>;
     } else if (!currentUniverse) {
@@ -54,7 +56,16 @@ export default class UniverseDetail extends Component {
             <h3>Universe { currentUniverse.name }</h3>
           </Col>
           <ButtonGroup>
-            <UniverseModalContainer type="Edit" />
+            <YBButton btnClass="universe-button btn btn-xs btn-info"
+                           btnText="Edit" btnIcon="fa fa-database"
+                           onClick={this.props.showUniverseModal} />
+
+            <UniverseModalContainer type="Edit"
+                                        visible={showModal}
+                                        onClose={this.props.closeUniverseModal} />
+
+
+
             <DeleteUniverseContainer uuid={currentUniverse.universeUUID} />
           </ButtonGroup>
         </Row>
