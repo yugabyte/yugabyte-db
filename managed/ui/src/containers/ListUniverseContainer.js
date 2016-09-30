@@ -19,7 +19,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(resetUniverseList());
     },
     showUniverseModal: () => {
-      dispatch(openDialog());
+      dispatch(openDialog("universeModal"));
     },
     closeUniverseModal: () => {
       dispatch(closeDialog());
