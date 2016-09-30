@@ -2,8 +2,11 @@
 
 #include <memory>
 #include <string>
+#include <vector>
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
+#include "yb/rpc/redis_encoding.h"
 #include "yb/util/cast.h"
 #include "yb/util/test_util.h"
 
@@ -12,7 +15,11 @@ namespace redisserver {
 
 using std::string;
 using std::unique_ptr;
+using std::vector;
 using strings::Substitute;
+using yb::rpc::EncodeAsArrays;
+using yb::rpc::EncodeAsBulkString;
+using yb::rpc::EncodeAsSimpleString;
 
 class TestRedisService : public YBTest {
  public:
@@ -128,9 +135,16 @@ TEST_F(TestRedisService, IncompleteCommandMulti) {
   SendCommandAndExpectTimeout("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTE");
 }
 
-TEST_F(TestRedisService, DISABLED_Echo) {
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "$3\r\nfoo\r\n");
-  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "$8\r\nfoo bar \r\n");
+TEST_F(TestRedisService, Echo) {
+  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "+foo\r\n");
+  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$8\r\nfoo bar \r\n", "+foo bar \r\n");
+  SendCommandAndExpectResponse(
+      EncodeAsArrays({  // The request is sent as a multi bulk array.
+                         EncodeAsBulkString("echo"),
+                         EncodeAsBulkString("foo bar")
+                     }),
+      EncodeAsSimpleString("foo bar")  // The response is in the simple string format.
+      );
 }
 
 TEST_F(TestRedisService, DISABLED_TestSetThenGet) {

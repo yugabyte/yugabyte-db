@@ -6,9 +6,9 @@
 #include "yb/redisserver/redis_service.service.h"
 
 #include <vector>
-#include <yb/util/string_case.h>
 
 #include "yb/rpc/transfer.h"
+#include "yb/util/string_case.h"
 
 using std::string;
 

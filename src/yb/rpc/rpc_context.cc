@@ -75,9 +75,15 @@ RpcContext::RpcContext(InboundCall *call,
     request_pb_(request_pb),
     response_pb_(response_pb),
     metrics_(metrics) {
-  VLOG(4) << call_->remote_method().service_name() << ": Received RPC request for "
-          << call_->ToString() << ":" << std::endl
-          << (request_pb_ ? request_pb_->DebugString() : nullptr);
+  VLOG(4) << call_->remote_method().service_name()
+          << ": Received RPC request for " << call_->ToString()
+          << std::endl
+          << " request_pb_ : "
+          << (request_pb_.get() != nullptr ? request_pb_->DebugString() : "nullptr")
+          << std::endl
+          << " response_pb_ : "
+          << (response_pb_.get() != nullptr ? response_pb_->DebugString() : "nullptr")
+          << std::endl;
   TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
                            "call", call_->ToString(),
                            "request", TracePb(*request_pb_));

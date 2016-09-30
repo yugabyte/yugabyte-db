@@ -43,6 +43,7 @@ class Message;
 namespace yb {
 
 class Histogram;
+class RedisResponsePB;
 class Trace;
 
 namespace rpc {
@@ -278,6 +279,7 @@ class RedisInboundCall : public InboundCall {
   // failure, 'response' should be an ErrorStatusPB instance.
   Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                  bool is_success) override;
+  Status SerializeResponseBuffer(const RedisResponsePB& redis_response, bool is_success);
 
   virtual void QueueResponseToConnection() override;
   virtual void LogTrace() const override;
@@ -294,6 +296,7 @@ class RedisInboundCall : public InboundCall {
  private:
   // The connection on which this inbound call arrived.
   scoped_refptr<RedisConnection> conn_;
+  faststring response_msg_buf_;
 };
 
 }  // namespace rpc

@@ -2,12 +2,10 @@
 
 #include "yb/redisserver/redis_service.h"
 
-#include <yb/gutil/strings/join.h>
-
 #include <thread>
-#include <yb/util/string_case.h>
 
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
 #include "yb/rpc/rpc_context.h"
@@ -90,12 +88,12 @@ void RedisServiceImpl::Handle(InboundCall* inbound_call) {
 }
 
 void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
-  RedisResponsePB* ok_response = new RedisResponsePB();
-  ok_response->set_string_response(StrCat("+", c->cmd_args[1].ToString(), "\r\n"));
-  DVLOG(0) << "Responding to Echo with " << c->cmd_args[1].ToString();
-  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
+  RedisResponsePB* echo_response = new RedisResponsePB();
+  echo_response->set_string_response(c->cmd_args[1].ToString());
+  VLOG(4) << "Responding to Echo with " << c->cmd_args[1].ToString();
+  RpcContext* context = new RpcContext(call, nullptr, echo_response, metrics_[0]);
   context->RespondSuccess();
-  DVLOG(0) << "Done Responding to Echo.";
+  VLOG(4) << "Done Responding to Echo.";
 }
 
 void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
@@ -117,7 +115,7 @@ void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {
   // Send the result.
   DVLOG(4) << "Responding to call " << call->ToString();
   RedisResponsePB* ok_response = new RedisResponsePB();
-  ok_response->set_string_response("+OK\r\n");
+  ok_response->set_string_response("OK");
   RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
   context->RespondSuccess();
   DVLOG(4) << "Done Responding.";

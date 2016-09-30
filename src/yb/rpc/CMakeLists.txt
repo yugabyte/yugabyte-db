@@ -52,6 +52,7 @@ set(YRPC_SRCS
     negotiation.cc
     proxy.cc
     reactor.cc
+    redis_encoding.cc
     remote_method.cc
     rpc.cc
     rpc_context.cc
@@ -67,6 +68,7 @@ set(YRPC_SRCS
 )
 
 set(YRPC_LIBS
+  redis_protocol_proto
   rpc_header_proto
   rpc_introspection_proto
   yb_util

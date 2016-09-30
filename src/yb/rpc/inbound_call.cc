@@ -19,6 +19,8 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/connection.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/rpc/redis_encoding.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_sidecar.h"
 #include "yb/rpc/serialization.h"
@@ -34,6 +36,7 @@ using google::protobuf::io::CodedOutputStream;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
+using yb::RedisResponsePB;
 
 DEFINE_bool(rpc_dump_all_traces, false,
             "If true, dump all RPC traces at INFO level");
@@ -309,7 +312,17 @@ RedisClientCommand& RedisInboundCall::GetClientCommand() {
 
 Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
                                                  bool is_success) {
-  // TBD
+  if (!is_success) {
+    const ErrorStatusPB& error_status = static_cast<const ErrorStatusPB&>(response);
+    response_msg_buf_.append(EncodeAsError(error_status.message()));
+    return Status::OK();
+  }
+
+  // TODO(Amit): As and when we implement get/set and its h* equivalents, we would have to
+  // handle arrays, hashes etc. For now, we only support the string response.
+  const RedisResponsePB& redis_response = static_cast<const RedisResponsePB&>(response);
+  CHECK(redis_response.has_string_response()) << "We only support string_response as of now.";
+  response_msg_buf_.append(EncodeAsSimpleString(redis_response.string_response()));
   return Status::OK();
 }
 
@@ -356,9 +369,8 @@ const scoped_refptr<Connection> RedisInboundCall::get_connection() const {
 
 void RedisInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
   TRACE_EVENT0("rpc", "RedisInboundCall::SerializeResponseTo");
-  // TBD
-  Slice ok("+OK\r\n");
-  slices->push_back(ok);
+  CHECK_GT(response_msg_buf_.size(), 0);
+  slices->push_back(Slice(response_msg_buf_));
 }
 
 }  // namespace rpc
