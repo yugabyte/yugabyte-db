@@ -3,11 +3,12 @@
 #ifndef YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 #define YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 
-#include <string>
-#include <set>
+#include <atomic>
 #include <iostream>
 #include <mutex>
-#include <atomic>
+#include <random>
+#include <set>
+#include <string>
 
 #include "yb/client/client.h"
 
