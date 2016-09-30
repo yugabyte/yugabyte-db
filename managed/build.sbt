@@ -33,13 +33,4 @@ javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 
 PlayKeys.playMonitoredFiles ++= (sourceDirectories in (Compile, TwirlKeys.compileTemplates)).value
 
-// Add react ui files to public folder of universal package
-mappings in Universal <++= baseDirectory map { base =>
-  val uiBuildPath = base / "ui" / "build"
-  for {
-    (file, relativePath) <-  (uiBuildPath.*** --- uiBuildPath) x relativeTo(uiBuildPath)
-  } yield file -> s"public/$relativePath"
-}
-
-
 topLevelDirectory := None
