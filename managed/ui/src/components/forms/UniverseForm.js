@@ -1,13 +1,13 @@
 import React, { Component, PropTypes } from 'react';
-import { Modal } from 'react-bootstrap';
-import YBInput from '../components/YBInputField';
-import YBSelect from './fields/YBSelect';
-import YBCheckBox from './fields/YBCheckBox';
-import YBMultiSelect from './fields/YBMultiSelect';
-import YBNumericInput from './fields/YBNumericInput';
+import YBInput from '../../components/YBInputField';
+import YBSelect from './../fields/YBSelect';
+
+import YBCheckBox from './../fields/YBCheckBox';
+import YBMultiSelect from './../fields/YBMultiSelect';
+import YBNumericInput from './../fields/YBNumericInput';
 import { Field } from 'redux-form';
 
-export default class UniverseModal extends Component {
+export default class UniverseForm extends Component {
 
   static propTypes = {
     type: PropTypes.oneOf(['Edit', 'Create']).isRequired,
@@ -74,8 +74,8 @@ export default class UniverseModal extends Component {
 
     var universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
       return <option key={providerItem.uuid} value={providerItem.uuid}>
-              {providerItem.name}
-             </option>;
+        {providerItem.name}
+      </option>;
     });
     universeProviderList.unshift(<option key="" value=""></option>);
 
@@ -88,22 +88,18 @@ export default class UniverseModal extends Component {
       this.props.cloud.instanceTypes.map(function (instanceTypeItem, idx) {
         return <option key={instanceTypeItem.instanceTypeCode}
                        value={instanceTypeItem.instanceTypeCode}>
-                 {instanceTypeItem.instanceTypeCode}
-               </option>
+          {instanceTypeItem.instanceTypeCode}
+        </option>
       });
     if(universeInstanceTypeList.length > 0) {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
     return (
-      <div>
-        <Modal show={visible} onHide={onClose}>
-          <form name="UniverseModalForm" onSubmit=
-                  {this.props.type==="Create" ? handleSubmit(this.submitCreateUniverse) :
-                  handleSubmit(this.submitEditUniverse)}>
-            <Modal.Header closeButton>
-              <Modal.Title>{this.props.type} Universe </Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
+
+       <form name="UniverseForm" onSubmit=
+            {this.props.type==="Create" ? handleSubmit(this.submitCreateUniverse) :
+            handleSubmit(this.submitEditUniverse)}>
+
               <Field name="universeName" type="text" component={YBInput} label="Universe Name" />
               <Field name="provider" type="select" component={YBSelect} label="Provider"
                      options={universeProviderList} onChange={this.providerChanged}
@@ -130,15 +126,11 @@ export default class UniverseModal extends Component {
               />
               <Field name="serverPackage" type="text" component={YBInput}
                      label="Server Package" defaultValue={this.state.serverPackage} />
-            </Modal.Body>
-            <Modal.Footer>
               <button type="submit" className="btn btn-default btn-success btn-block" >
                 {this.props.type} Universe
               </button>
-            </Modal.Footer>
-          </form>
-        </Modal>
-      </div>
+       </form>
+
     )
   }
 }

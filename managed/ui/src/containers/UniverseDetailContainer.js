@@ -37,7 +37,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(resetUniverseTasks());
     },
     showUniverseModal: () => {
-      dispatch(openDialog());
+      dispatch(openDialog("universeModal"));
     },
     closeUniverseModal: () => {
       dispatch(closeDialog());

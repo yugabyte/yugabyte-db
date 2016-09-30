@@ -241,9 +241,10 @@ export function resetUniverseTasks() {
   }
 }
 
-export function openDialog() {
+export function openDialog(data) {
   return {
-    type: OPEN_DIALOG
+    type: OPEN_DIALOG,
+    payload: data
   }
 }
 

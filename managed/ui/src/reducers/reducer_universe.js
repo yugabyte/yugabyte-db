@@ -11,7 +11,7 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          OPEN_DIALOG, CLOSE_DIALOG} from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], universeCurrentCostList: [],
-                       currentTotalCost: 0, error: null, showModal: false};
+                       currentTotalCost: 0, error: null, showModal: false, visibleModal: ""};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -24,9 +24,9 @@ export default function(state = INITIAL_STATE, action) {
       error = action.payload.data || {message: action.payload.error};
       return { ...state, loading: false, error: error};
     case OPEN_DIALOG:
-      return { ...state, showModal: true}
+      return { ...state, showModal: true, visibleModal: action.payload};
     case CLOSE_DIALOG:
-      return { ...state, showModal: false}
+      return { ...state, showModal: false, visibleModal: ""};
     case FETCH_UNIVERSE_INFO:
       return { ...state, loading: true};
     case FETCH_UNIVERSE_INFO_SUCCESS:

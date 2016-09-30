@@ -1,17 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 
-import UniverseModal from '../components/UniverseModal';
+import UniverseForm from '../../components/forms/UniverseForm';
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 import { getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
   getProviderListSuccess, getProviderListFailure,
   getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure, resetProviderList }
-  from '../actions/cloud';
+  from '../../actions/cloud';
 import { createUniverse, createUniverseSuccess, createUniverseFailure,
   editUniverse, editUniverseSuccess, editUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog }
-  from '../actions/universe';
-import {isValidObject} from '../utils/ObjectUtils';
+  from '../../actions/universe';
+import {isValidObject} from '../../utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -106,21 +106,21 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
-      "serverPackage": "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz",
-      "numNodes": 3, "isMultiAZ": true
-    };
-    if (isValidObject(currentUniverse)) {
-      data.universeName = currentUniverse.name;
-      data.provider = currentUniverse.provider.uuid;
-      data.regionList = currentUniverse.regions.map(function (item, idx) {
-        return {'value': item.uuid, 'name': item.name, "label": item.name};
-      });
-      data.numNodes = currentUniverse.universeDetails.numNodes;
-      data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
-      data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
-      data.serverPackage = currentUniverse.universeDetails.ybServerPkg;
-      data.universeId = currentUniverse.universeUUID;
-    }
+    "serverPackage": "yb-server-0.0.1-SNAPSHOT.1ea4847731ee5f6013b5fd3be29ca4ef6bc638cd.tar.gz",
+    "numNodes": 3, "isMultiAZ": true
+  };
+  if (isValidObject(currentUniverse)) {
+    data.universeName = currentUniverse.name;
+    data.provider = currentUniverse.provider.uuid;
+    data.regionList = currentUniverse.regions.map(function (item, idx) {
+      return {'value': item.uuid, 'name': item.name, "label": item.name};
+    });
+    data.numNodes = currentUniverse.universeDetails.numNodes;
+    data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
+    data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
+    data.serverPackage = currentUniverse.universeDetails.ybServerPkg;
+    data.universeId = currentUniverse.universeUUID;
+  }
 
   return {
     universe: state.universe,
@@ -130,8 +130,8 @@ function mapStateToProps(state, ownProps) {
 }
 
 
-var universeModalForm = reduxForm({
-  form: 'UniverseModalForm',
+var universeForm = reduxForm({
+  form: 'UniverseForm',
   fields: ['formType', 'universeName', 'provider', 'regionList',
     'numNodes', 'isMultiAZ', 'instanceType', 'serverPackage', 'universeId']
 })
@@ -139,4 +139,4 @@ var universeModalForm = reduxForm({
 
 
 
-module.exports = connect(mapStateToProps, mapDispatchToProps)(universeModalForm(UniverseModal));
+module.exports = connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));

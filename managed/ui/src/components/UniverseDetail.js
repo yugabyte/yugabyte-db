@@ -10,7 +10,8 @@ import GraphPanelContainer from '../containers/GraphPanelContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
 import YBButton from './fields/YBButton';
-import UniverseModalContainer from '../containers/UniverseModalContainer';
+import UniverseFormContainer from '../containers/forms/UniverseFormContainer';
+import YBModal from '../components/fields/YBModal';
 
 export default class UniverseDetail extends Component {
   
@@ -35,7 +36,7 @@ export default class UniverseDetail extends Component {
   }
   
   render() {
-    const { universe: { currentUniverse, universeTasks, loading, showModal } } = this.props;
+    const { universe: { currentUniverse, universeTasks, loading, showModal, visibleModal } } = this.props;
     if (loading) {
       return <div className="container">Loading...</div>;
     } else if (!currentUniverse) {
@@ -59,13 +60,10 @@ export default class UniverseDetail extends Component {
             <YBButton btnClass="universe-button btn btn-xs btn-info"
                            btnText="Edit" btnIcon="fa fa-database"
                            onClick={this.props.showUniverseModal} />
-
-            <UniverseModalContainer type="Edit"
-                                        visible={showModal}
-                                        onClose={this.props.closeUniverseModal} />
-
-
-
+            <YBModal visible={showModal==true && visibleModal=="universeModal"}
+                     onClose={this.props.closeUniverseModal} type="Edit">
+              <UniverseFormContainer type="Edit"/>
+            </YBModal>
             <DeleteUniverseContainer uuid={currentUniverse.universeUUID} />
           </ButtonGroup>
         </Row>
