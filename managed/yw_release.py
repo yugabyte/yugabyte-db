@@ -10,6 +10,7 @@ from ybops.utils import init_env, log_message, get_release_file, publish_release
 
 """This script is basically does bunch of different thing
   - Builds the React API and generates production files (js, css, etc)
+  - Copy the UI build files to Yugaware Public folder
   - Run sbt packaging command to package yugaware along with the react files
   - Rename the package file to have the commit sha in it
   - Generate checksum for the package
@@ -21,9 +22,18 @@ try:
 
     log_message(logging.INFO, "Building/Packaging UI code")
     check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
-
+   
+    log_message(logging.INFO, "Copy React Build files to Yugaware Public folder")
+    ui_build = os.path.join(script_dir, "ui", "build")
+    yugaware_public = os.path.join(script_dir, "src", "main", "public")
+    shutil.copytree(ui_build, yugaware_public)
+    
     log_message(logging.INFO, "Kick off SBT universal packaging")
+    check_output(["sbt", "clean"])
     check_output(["sbt", "universal:packageZipTarball"])
+    
+    log_message(logging.INFO, "Cleanup the Yugaware public folder")
+    shutil.rmtree(yugaware_public)
 
     log_message(logging.INFO, "Get a release file name based on the current commit sha")
     release_file = get_release_file(script_dir, 'yugaware')
