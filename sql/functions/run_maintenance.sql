@@ -21,7 +21,6 @@ v_create_count                  int := 0;
 v_current_partition             text;
 v_current_partition_id          bigint;
 v_current_partition_timestamp   timestamptz;
-v_datetime_string               text;
 v_drop_count                    int := 0;
 v_job_id                        bigint;
 v_jobmon                        boolean;
@@ -88,7 +87,6 @@ v_tables_list_sql := 'SELECT parent_table
                 , partition_interval
                 , control
                 , premake
-                , datetime_string
                 , undo_in_progress
                 , sub_partition_set_full
                 , epoch
@@ -363,5 +361,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

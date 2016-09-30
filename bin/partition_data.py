@@ -64,7 +64,8 @@ def partition_data(conn, partman_schema):
     if args.interval != "":
         sql += ", p_batch_interval := %s"
     sql += ", p_lock_wait := %s"
-    sql += ", p_order := %s)"
+    sql += ", p_order := %s"
+    sql += ", p_analyze := FALSE)"
 
     while True:
         if args.interval != "":

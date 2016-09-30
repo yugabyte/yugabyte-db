@@ -1,7 +1,14 @@
 /*
  * Populate the child table(s) of a time-based partition set with old data from the original parent
  */
-CREATE FUNCTION partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC') RETURNS bigint
+CREATE FUNCTION partition_data_time(
+        p_parent_table text
+        , p_batch_count int DEFAULT 1
+        , p_batch_interval interval DEFAULT NULL
+        , p_lock_wait numeric DEFAULT 0
+        , p_order text DEFAULT 'ASC'
+        , p_analyze boolean DEFAULT true) 
+    RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -195,7 +202,7 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp);
+    PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp, p_analyze);
     -- This suffix generation code is in create_partition_time() as well
     v_partition_suffix := to_char(v_min_partition_timestamp, v_datetime_string);
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);

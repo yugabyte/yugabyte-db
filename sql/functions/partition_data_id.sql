@@ -1,7 +1,13 @@
 /*
  * Populate the child table(s) of an id-based partition set with old data from the original parent
  */
-CREATE FUNCTION partition_data_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval bigint DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC') RETURNS bigint
+CREATE FUNCTION partition_data_id(p_parent_table text
+        , p_batch_count int DEFAULT 1
+        , p_batch_interval bigint DEFAULT NULL
+        , p_lock_wait numeric DEFAULT 0
+        , p_order text DEFAULT 'ASC'
+        , p_analyze boolean DEFAULT true) 
+    RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -108,7 +114,7 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    PERFORM @extschema@.create_partition_id(p_parent_table, v_partition_id);
+    PERFORM @extschema@.create_partition_id(p_parent_table, v_partition_id, p_analyze);
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_min_partition_id::text, TRUE);
 
     EXECUTE format('WITH partition_data AS (
@@ -131,7 +137,7 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP;
 
-PERFORM @extschema@.create_function_id(p_parent_table);
+PERFORM @extschema@.create_function_id(p_parent_table, NULL, p_analyze);
 
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 

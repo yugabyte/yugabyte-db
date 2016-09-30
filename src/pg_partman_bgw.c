@@ -57,6 +57,7 @@ pg_partman_bgw_sigterm(SIGNAL_ARGS)
     int         save_errno = errno;
 
     got_sigterm = true;
+
     if (MyProc)
         SetLatch(&MyProc->procLatch);
 
@@ -72,6 +73,7 @@ static void pg_partman_bgw_sighup(SIGNAL_ARGS) {
     int         save_errno = errno;
 
     got_sighup = true;
+
     if (MyProc)
         SetLatch(&MyProc->procLatch);
 
@@ -190,7 +192,7 @@ void pg_partman_bgw_main(Datum main_arg) {
             , pg_partman_bgw_role
             , pg_partman_bgw_dbname);
 */
-   elog(LOG, "%s master process initialized with role %s"
+    elog(LOG, "%s master process initialized with role %s"
             , MyBgworkerEntry->bgw_name
             , pg_partman_bgw_role);
 
@@ -206,6 +208,7 @@ void pg_partman_bgw_main(Datum main_arg) {
         char                    *rawstring;
         int                     dbcounter;
         int                     rc;
+        int                     full_string_length;
         List                    *elemlist;
         ListCell                *l;
         pid_t                   pid;
@@ -252,11 +255,12 @@ void pg_partman_bgw_main(Datum main_arg) {
                          errmsg("invalid list syntax in parameter \"pg_partman_bgw.dbname\" in postgresql.conf")));
                 return;
             }
+            
             dbcounter = 0;
             foreach(l, elemlist) {
 
                 char *dbname = (char *) lfirst(l);
-
+                
                 elog(DEBUG1, "Dynamic bgw launch begun for %s (%d)", dbname, dbcounter);
                 worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
                     BGWORKER_BACKEND_DATABASE_CONNECTION;
@@ -265,28 +269,38 @@ void pg_partman_bgw_main(Datum main_arg) {
                 worker.bgw_main = NULL;
                 sprintf(worker.bgw_library_name, "pg_partman_bgw");
                 sprintf(worker.bgw_function_name, "pg_partman_bgw_run_maint");
-                sprintf(worker.bgw_name, "pg_partman dynamic background worker (dbname=%s)", dbname);
+                full_string_length = snprintf(worker.bgw_name, sizeof(worker.bgw_name),
+                              "pg_partman dynamic background worker (dbname=%s)", dbname);
+                if (full_string_length >= sizeof(worker.bgw_name)) {
+                    /* dbname was truncated, add an ellipsis to denote it */
+                    const char truncated_mark[] = "...)";
+                    memcpy(worker.bgw_name + sizeof(worker.bgw_name) - sizeof(truncated_mark),
+                           truncated_mark, sizeof(truncated_mark));
+                }
                 worker.bgw_main_arg = Int32GetDatum(dbcounter);
                 worker.bgw_notify_pid = MyProcPid;
 
                 dbcounter++;
 
-                if (!RegisterDynamicBackgroundWorker(&worker, &handle))
+                if (!RegisterDynamicBackgroundWorker(&worker, &handle)) {
                     elog(FATAL, "Unable to register dynamic background worker for pg_partman");
-                    continue;
+                }
 
                 status = WaitForBackgroundWorkerStartup(handle, &pid);
 
-                if (status == BGWH_STOPPED)
+                if (status == BGWH_STOPPED) {
                     ereport(ERROR,
                             (errcode(ERRCODE_INSUFFICIENT_RESOURCES),
                              errmsg("Could not start dynamic pg_partman background process"),
                            errhint("More details may be available in the server log.")));
-                if (status == BGWH_POSTMASTER_DIED)
+                }
+
+                if (status == BGWH_POSTMASTER_DIED) {
                     ereport(ERROR,
                             (errcode(ERRCODE_INSUFFICIENT_RESOURCES),
                           errmsg("Cannot start dynamic pg_partman background processes without postmaster"),
                              errhint("Kill all remaining database processes and restart the database.")));
+                }
                 Assert(status == BGWH_STARTED);
             }
 
@@ -295,7 +309,6 @@ void pg_partman_bgw_main(Datum main_arg) {
         } else { // pg_partman_bgw_dbname if null
             elog(DEBUG1, "pg_partman_bgw.dbname GUC is NULL. Nothing to do in main loop.");
         }
-        continue;
 
     } // end sigterm while
 
@@ -428,7 +441,7 @@ void pg_partman_bgw_run_maint(Datum arg) {
     } else {
         jobmon = "false";
     }
-    appendStringInfo(&buf, "SELECT %s.run_maintenance(p_analyze := %s, p_jobmon := %s)", partman_schema, analyze, jobmon);
+    appendStringInfo(&buf, "SELECT \"%s\".run_maintenance(p_analyze := %s, p_jobmon := %s)", partman_schema, analyze, jobmon);
 
     pgstat_report_activity(STATE_RUNNING, buf.data);
 

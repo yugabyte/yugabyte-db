@@ -1,3 +1,15 @@
+2.6.1
+-- WARNING: The pg_partman background worker is currently incompatible with PostgreSQL 9.6. It runs fine in 9.4 and 9.5. I'm still working on trying to figure out what the issue is. If you must upgrade to 9.6 before this issue is fixed, you can disable the background worker by removing the entry for it in shared_preload_libraries and restarting postgres. Instead schedule the run_maintenance() plpgsql function to run via another scheduler method (cron).
+
+-- Add p_analyze parameter to partition_data_id() and partition_data_time() functions to allow moving data out of the parent to be faster if an analyze is not required after each child table is created. If set to false, highly recommended that an analyze on the entire partitions set is run after moving data. (Github Pull Request #137)
+    -- Also allows better control of automatic analyzing of new partitions for serial partition sets by allowing the p_analyze parameter to run_maintenance() to be passed further down the function call hierarchy.
+    -- Updated partition_data.py to pass this parameter as FALSE when calling these functions. The script does a VACUUM ANALYZE when it completes all batches anyway, so an analyze per child table is not necessary.
+-- Improve performance during privilege inheritance when creating new partitions or when running reapply_privileges() function. Most noticable on databases with many objects (Github Issue #139).
+-- Fixed buffer overflow in background worker code if database name was too long (Github Pull Request #140).
+-- Fixed bug in background worker code that could cause improper initialization of dynamic bgw processes (Github Pull Request #140).
+-- Account for non-lowercase schemename for pg_partman's schema in background worker (Github PullRequest #140).
+
+
 2.6.0
 -- New function to aid in column removal: drop_partition_column(). 
     -- Depending on when a column was added (before or after setting up inheritance for partitioning), dropping it on the parent may or may not drop the column from all children.

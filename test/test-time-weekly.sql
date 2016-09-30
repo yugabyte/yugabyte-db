@@ -390,8 +390,10 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'8 weeks'::interval, 'IYYY"w"IW'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'8 weeks'::interval, 'IYYY"w"IW')||' does not exist (-8 weeks)');
 
-UPDATE part_config SET retention = '2 weeks'::interval WHERE parent_table = 'partman_test.time_taptest_table';
-SELECT drop_partition_time('partman_test.time_taptest_table', p_retention_schema := 'partman_retention_test');
+UPDATE part_config SET retention = '2 weeks'::interval, retention_schema = 'partman_retention_test' WHERE parent_table = 'partman_test.time_taptest_table';
+--SELECT drop_partition_time('partman_test.time_taptest_table', p_retention_schema := 'partman_retention_test');
+-- Use maintenance instead of direct call
+SELECT run_maintenance();
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW')||' does not exist (-3 weeks)');
 SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW'), 

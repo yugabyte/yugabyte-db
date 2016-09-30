@@ -1,7 +1,7 @@
 /*
  * Create the trigger function for the parent table of an id-based partition set
  */
-CREATE FUNCTION create_function_id(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
+CREATE FUNCTION create_function_id(p_parent_table text, p_job_id bigint DEFAULT NULL, p_analyze boolean DEFAULT true) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -240,9 +240,9 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
             v_next_partition_id := (substring(v_last_partition from v_id_position)::bigint) + %s;
             WHILE ((v_next_partition_id - v_current_partition_id) / %s) <= %s LOOP 
-                v_partition_created := @extschema@.create_partition_id(%L, ARRAY[v_next_partition_id]);
+                v_partition_created := @extschema@.create_partition_id(%L, ARRAY[v_next_partition_id], p_analyze := %L);
                 IF v_partition_created THEN
-                    PERFORM @extschema@.create_function_id(%L);
+                    PERFORM @extschema@.create_function_id(%L, p_analyze := %L);
                     PERFORM @extschema@.apply_constraints(%L);
                 END IF;
                 v_next_partition_id := v_next_partition_id + %s;
@@ -258,7 +258,9 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             , v_partition_interval
             , v_premake
             , p_parent_table
+            , p_analyze
             , p_parent_table
+            , p_analyze
             , p_parent_table
             , v_partition_interval
         );
@@ -319,5 +321,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

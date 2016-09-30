@@ -10,9 +10,11 @@ All bug reports, feature requests and general questions can be directed to the I
 
 If you're looking for a partitioning system that handles any range type beyond just time & serial, check out https://github.com/moat/range_partitioning. Note that if you are doing time/serial, the methods used in pg_partman are much more efficient and will provide better performance. But if you need greater flexibility, the range_partitioning extension should work very well for you.
 
+WARNING: The pg_partman background worker is currently incompatible with PostgreSQL 9.6. It runs fine in 9.4 and 9.5. I'm still working on trying to figure out what the issue is. If you must upgrade to 9.6 before this issue is fixed, you can disable the background worker by removing the entry for it in shared_preload_libraries and restarting postgres. Instead schedule the run_maintenance() plpgsql function to run via another scheduler method (cron). Note that the background worker technically runs in 9.6 and won't cause errors, but it essentially ignores the interval configuration option, runs without pause and will very quickly fill up your postgres logs or cause excessive system load.
+
 INSTALLATION
 ------------
-Requirement: PostgreSQL 9.4 or greater
+Requirement: PostgreSQL 9.4 & 9.5 (currently incompatible with 9.6) 
 
 Recommended: pg_jobmon (>=v1.3.2). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon

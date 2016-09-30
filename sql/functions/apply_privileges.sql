@@ -69,8 +69,8 @@ END IF;
 FOR v_parent_grant IN 
     SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types
             , grantee
-    FROM information_schema.table_privileges 
-    WHERE table_schema = p_parent_schema AND table_name = p_parent_tablename
+    FROM @extschema@.table_privs
+    WHERE table_schema = p_parent_schema::name AND table_name = p_parent_tablename::name
     GROUP BY grantee 
 LOOP
     -- Compare parent & child grants. Don't re-apply if it already exists
@@ -79,8 +79,8 @@ LOOP
     FOR v_child_grant IN 
         SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types
                 , grantee
-        FROM information_schema.table_privileges 
-        WHERE table_schema = p_child_schema AND table_name = p_child_tablename
+        FROM @extschema@.table_privs 
+        WHERE table_schema = p_child_schema::name AND table_name = p_child_tablename::name
         GROUP BY grantee 
     LOOP
         IF v_parent_grant.types = v_child_grant.types AND v_parent_grant.grantee = v_child_grant.grantee THEN
@@ -124,7 +124,7 @@ END LOOP;
 IF v_grantees IS NOT NULL THEN
     FOR v_row_revoke IN 
         SELECT role FROM (
-            SELECT DISTINCT grantee::text AS role FROM information_schema.table_privileges WHERE table_schema = p_child_schema AND table_name = p_child_tablename
+            SELECT DISTINCT grantee::text AS role FROM @extschema@.table_privs WHERE table_schema = p_child_schema::name AND table_name = p_child_tablename::name
             EXCEPT
             SELECT unnest(v_grantees)) x
     LOOP
@@ -179,4 +179,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

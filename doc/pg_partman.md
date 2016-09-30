@@ -144,7 +144,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * Note that for ID sub-partitioning, future partition maintenance must be done with run_maintenace() and does not use the 50% rule mentioned above.
 
 
-*`partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC') RETURNS bigint`*
+*`partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC', p_analyze boolean DEFAULT true) RETURNS bigint`*
 
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
@@ -155,6 +155,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_batch_count` - optional argument, how many times to run the `batch_interval` in a single call of this function. Default value is 1.
  * `p_lock_wait` - optional argument, sets how long in seconds to wait for a row to be unlocked before timing out. Default is to wait forever.
  * `p_order` - optional argument, by default data is migrated out of the parent in ascending order (ASC). Allows you to change to descending order (DESC).
+ * `p_analyze` - optional argument, by default whenever a new child table is created, an analyze is run on the parent table of the partition set to ensure constraint exclusion works. This analyze can be skipped by setting this to false and help increase the speed of moving large amounts of data. If this is set to false, it is highly recommended that a manual analyze of the partition set be done upon completion to ensure statistics are updated properly.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 
@@ -169,6 +170,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_batch_count` - optional argument, how many times to run the `batch_interval` in a single call of this function. Default value is 1.
  * `p_lock_wait` - optional argument, sets how long in seconds to wait for a row to be unlocked before timing out. Default is to wait forever.
  * `p_order` - optional argument, by default data is migrated out of the parent in ascending order (ASC). Allows you to change to descending order (DESC). 
+ * `p_analyze` - optional argument, by default whenever a new child table is created, an analyze is run on the parent table of the partition set to ensure constraint exclusion works. This analyze can be skipped by setting this to false and help increase the speed of moving large amounts of data. If this is set to false, it is highly recommended that a manual analyze of the partition set be done upon completion to ensure statistics are updated properly.
 * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 
@@ -372,7 +374,7 @@ The rest are managed by the extension itself and should not be changed unless ab
     - Defaults to TRUE. Can be set with the `create_parent()` function at creation time as well.
  - `retention`
     - Text type value that determines how old the data in a child partition can be before it is dropped. 
-    - Must be a value that can either be cast to the interval or bigint data types. 
+    - Must be a value that can either be cast to the interval (for time-based partitioning) or bigint (for serial partitioning) data types. 
     - Leave this column NULL (the default) to always keep all child partitions. See **About** section for more info.
  - `retention_schema`
     - Schema to move tables to as part of the retentions system instead of dropping them. Overrides retention_keep_* options.
@@ -402,7 +404,7 @@ The rest are managed by the extension itself and should not be changed unless ab
  - `undo_in_progress`
     - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation and retention management by the `run_maintenance()` function to stop. Default is false.
 - `trigger_exception_handling`
-    - Boolean value that can be set to allow the partitioning trigger function to handle any exceptions encountered while writing to this table. Handling it in this case means putting the data into the parent table to try and ensure no data loss in case of errors. Be aware that catching the exception here will override any other exception handling that may be done when writing to this partitioned set (Ex. handling a unique constraint violation to ignore it). This option is set to false by default to avoid causing unexpected behavior in other exception handling situations.
+    - Boolean value that can be set to allow the partitioning trigger function to handle any exceptions encountered while writing to this table. Handling it in this case means putting the data into the parent table to try and ensure no data loss in case of errors. Be aware that catching the exception here will override any other exception handling that may be done when writing to this partitioned set (Ex. handling a unique constraint violation to ignore it). Just the existence of this exception block will also increase xid consumption since every row inserted will increment the global xid value. If this is table has a high insert rate, you can quickly reach xid wraparound, so use this carefully. This option is set to false by default to avoid causing unexpected behavior in other exception handling situations.
 - `p_upsert` 
     - text value of the ON CONFLICT clause to include in the partition trigger  Defaults to '' (empty string) which means it's inactive. See *create_parent()* function definition & *About* section for more info.
 - `trigger_return_null`
