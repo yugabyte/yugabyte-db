@@ -24,7 +24,7 @@ const mapDispatchToProps = (dispatch) => {
       values.regionList = values.regionList.map(function(item, idx){
         return item.value;
       });
-      var payload = {"UserIntent": values};
+      var payload = {"userIntent": values};
       return new Promise((resolve, reject) => {
         dispatch(createUniverse(payload)).then((response) => {
           if (response.payload.status !== 200) {
@@ -49,7 +49,7 @@ const mapDispatchToProps = (dispatch) => {
       values.regionList = values.regionList.map(function(item, idx){
         return item.value;
       });
-      var payload = {"UserIntent": values};
+      var payload = {"userIntent": values};
       var universeUUID = values.universeId;
       dispatch(editUniverse(universeUUID, payload)).then((response) => {
         if (response.payload.status !== 200) {
