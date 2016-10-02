@@ -19,11 +19,16 @@ export default class UniverseForm extends Component {
     this.regionListChanged = this.regionListChanged.bind(this);
     this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
     this.numNodesChanged = this.numNodesChanged.bind(this);
-    this.submitCreateUniverse = this.props.submitCreateUniverse.bind(this);
-    this.submitEditUniverse = this.props.submitEditUniverse.bind(this);
+    if (this.props.type === "Create") {
+      this.submitHandler = this.props.submitCreateUniverse.bind(this);
+    } else {
+      this.submitHandler = this.props.submitEditUniverse.bind(this);
+    }
+
     this.state = { providerSelected: '',
       regionSelected: [], instanceTypeSelected: '',
       numNodes: 3, azCheckState: true};
+
   }
 
   componentWillMount() {
@@ -65,8 +70,7 @@ export default class UniverseForm extends Component {
 
   render() {
     var self = this;
-    const {visible, handleSubmit,
-      onClose } = this.props;
+    const { handleSubmit } = this.props;
 
     var azCheckStateChanged =function() {
       self.setState({azCheckState: !self.state.azCheckState});
@@ -94,11 +98,9 @@ export default class UniverseForm extends Component {
     if(universeInstanceTypeList.length > 0) {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
-    return (
 
-       <form name="UniverseForm" onSubmit=
-            {this.props.type==="Create" ? handleSubmit(this.submitCreateUniverse) :
-            handleSubmit(this.submitEditUniverse)}>
+    return (
+       <form name="UniverseForm" onSubmit={ handleSubmit(this.submitHandler) }>
 
               <Field name="universeName" type="text" component={YBInput} label="Universe Name" />
               <Field name="provider" type="select" component={YBSelect} label="Provider"

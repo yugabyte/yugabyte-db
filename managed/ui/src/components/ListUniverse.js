@@ -9,9 +9,10 @@ import YBModal from './fields/YBModal';
 import YBButton from './fields/YBButton';
 
 export default class ListUniverse extends Component {
-  
+
   render() {
     const {universe:{showModal, visibleModal}} = this.props;
+    var modalVisibility = (showModal === true && visibleModal === "universeModal")
     return (
       <div id="page-wrapper">
         <Row className="header-row">
@@ -22,7 +23,7 @@ export default class ListUniverse extends Component {
             <YBButton btnClass="universe-button btn btn-default btn-lg bg-orange"
                            btnText="Create Universe" btnIcon="fa fa-pencil"
                            onClick={this.props.showUniverseModal} />
-            <YBModal visible={showModal==true && visibleModal=="universeModal"}
+            <YBModal visible={modalVisibility}
                      onClose={this.props.closeUniverseModal} type="Create">
               <UniverseFormContainer type="Create"/>
             </YBModal>
