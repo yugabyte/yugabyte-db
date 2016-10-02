@@ -18,13 +18,14 @@
 #include "yb/client/client.h"
 
 #include <algorithm>
-#include <boost/bind.hpp>
 #include <mutex>
 #include <set>
 #include <unordered_map>
 #include <vector>
 #include <iostream>
 #include <limits>
+
+#include <boost/bind.hpp>
 
 #include "yb/client/batcher.h"
 #include "yb/client/callbacks.h"
@@ -661,7 +662,7 @@ Status YBTableCreator::Create() {
   // For a redis table, no external schema is passed to TableCreator, we make a unique schema
   // and manage its memory withing here.
   YBSchema* redis_schema = nullptr;
-  if (data_->table_type_ == YBTableType::REDIS_TABLE_TYPE) {
+  if (data_->table_type_ == TableType::REDIS_TABLE_TYPE) {
     CHECK(!data_->schema_) << "Schema should not be set for redis table creation";
     redis_schema = new YBSchema();
     YBSchemaBuilder b;
