@@ -6,7 +6,12 @@ Revision history for pgTAP
 * Fixed the default description for `hasnt_opclass()` to say "should not
   exist" instead of "should exist", thanks to Rodolphe Quiédeville (PR #99).
 * Added `is_indexed()`, which test to see that specific table columns are
-  indexed, thanks to Rodolphe Quiédeville (PR #103).
+  indexed. It's effectively the same as `has_index()` except that it doesn't
+  require an index name and does require one or more column names or
+  expressions in the defined for the index. Thanks to Rodolphe Quiédeville
+  (PR #103).
+* Fixed `pg_version_num()` to work with the new version format coming in
+  PostgreSQL 10.
  
 0.96.0 2016-05-16T20:53:57Z
 ---------------------------

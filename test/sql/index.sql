@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(258);
+SELECT plan(270);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -689,7 +689,7 @@ SELECT * FROM check_test(
     is_indexed( 'public', 'sometab', ARRAY['numb','name']::name[] ),
     true,
     'is_indexed( schema, table, columns[] )',
-    'An index on public.sometab with {numb,name} should exist',
+    'Should have an index on public.sometab(numb, name)',
     ''
 );
 
@@ -705,7 +705,7 @@ SELECT * FROM check_test(
     is_indexed( 'sometab', ARRAY['numb','name']::name[] ),
     true,
     'is_indexed( table, columns[] )',
-    'An index on sometab with {numb,name} should exist',
+    'Should have an index on sometab(numb, name)',
     ''
 );
 
@@ -721,7 +721,7 @@ SELECT * FROM check_test(
     is_indexed( 'public', 'sometab'::name, 'numb'::name ),
     true,
     'is_indexed( schema, table, column )',
-    'An index on public.sometab on column numb should exist',
+    'Should have an index on public.sometab(numb)',
     ''
 );
 
@@ -729,7 +729,7 @@ SELECT * FROM check_test(
     is_indexed( 'public', 'sometab'::name, 'myint'::name ),
     false,
     'is_indexed( schema, table, column ) fail',
-    'An index on public.sometab on column myint should exist',
+    'Should have an index on public.sometab(myint)',
     ''
 );
 
@@ -737,7 +737,49 @@ SELECT * FROM check_test(
     is_indexed( 'public', 'sometab', ARRAY['name','numb']::name[] ),
     false,
     'is_indexed( schema, table, columns[] ) fail, column order matters',
-    'An index on public.sometab with {name,numb} should exist',
+    'Should have an index on public.sometab(name, numb)',
+    ''
+);
+
+
+-- Make sure index expressions are supported.
+SELECT * FROM check_test(
+    is_indexed(
+        'public', 'sometab',
+        ARRAY['upper(name)', 'numb', 'lower(name)'],
+        'whatever'
+    ),
+    true,
+    'is_indexed(schema, table, expressions)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'public', 'sometab', 'lower(name)', 'whatever' ),
+    true,
+    'is_indexed(schema, table, expression)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed(
+        'sometab',
+        ARRAY['upper(name)', 'numb', 'lower(name)'],
+        'whatever'
+    ),
+    true,
+    'is_indexed(table, expressions)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_indexed( 'sometab', 'lower(name)'::name, 'whatever' ),
+    true,
+    'is_indexed( table, expression)',
+    'whatever',
     ''
 );
 
