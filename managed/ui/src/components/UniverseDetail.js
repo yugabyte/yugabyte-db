@@ -14,7 +14,7 @@ import UniverseFormContainer from '../containers/forms/UniverseFormContainer';
 import YBModal from '../components/fields/YBModal';
 
 export default class UniverseDetail extends Component {
-  
+
   static contextTypes = {
     router: PropTypes.object
   }
@@ -34,7 +34,7 @@ export default class UniverseDetail extends Component {
     this.props.getUniverseInfo(uuid);
     this.props.fetchUniverseTasks(uuid);
   }
-  
+
   render() {
     const { universe: { currentUniverse, universeTasks, loading, showModal, visibleModal } } = this.props;
     if (loading) {
@@ -49,7 +49,8 @@ export default class UniverseDetail extends Component {
         return (task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }
-
+    var modalVisibility = (showModal === true && visibleModal === "universeModal")
+    
     return (
       <Grid id="page-wrapper">
         <Row className="header-row">
@@ -60,7 +61,7 @@ export default class UniverseDetail extends Component {
             <YBButton btnClass="universe-button btn btn-xs btn-info"
                            btnText="Edit" btnIcon="fa fa-database"
                            onClick={this.props.showUniverseModal} />
-            <YBModal visible={showModal==true && visibleModal=="universeModal"}
+            <YBModal visible={modalVisibility}
                      onClose={this.props.closeUniverseModal} type="Edit">
               <UniverseFormContainer type="Edit"/>
             </YBModal>
