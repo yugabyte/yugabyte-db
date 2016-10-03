@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <memory>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
 #include "yb/common/row_operations.h"
@@ -500,8 +500,9 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
     ASSERT_TRUE(s.ok());
     ASSERT_TRUE(is_create_resp.has_done());
     ASSERT_FALSE(is_create_resp.done());
-    ASSERT_TRUE(is_create_resp.has_error());
-    ASSERT_TRUE(is_create_resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    if (is_create_resp.has_error()) {
+      ASSERT_TRUE(is_create_resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    }
 
     --num_retries;
   }
