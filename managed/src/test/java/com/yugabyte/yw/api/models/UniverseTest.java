@@ -7,12 +7,13 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -74,7 +75,9 @@ public class UniverseTest extends FakeDBApplication {
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails = new UniverseDefinitionTaskParams();
+        universeDetails.userIntent = new UserIntent();
 
         // Create some subnets.
         List<String> subnets = new ArrayList<String>();
@@ -83,8 +86,9 @@ public class UniverseTest extends FakeDBApplication {
         subnets.add("subnet-3");
 
         // Add a desired number of nodes.
-        universeDetails.numNodes = 5;
-        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+        universeDetails.userIntent.numNodes = 5;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -98,25 +102,26 @@ public class UniverseTest extends FakeDBApplication {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
         }
         universe.setUniverseDetails(universeDetails);
       }
     };
     u = Universe.saveDetails(u.universeUUID, updater);
 
-    int idx = 1;
+    int nodeIdx;
     for (NodeDetails node : u.getMasters()) {
       assertTrue(node.isMaster);
-      assertThat(node.nodeName, is(allOf(notNullValue(), equalTo("host-n" + idx))));
-      idx++;
+      assertNotNull(node.nodeName);
+      nodeIdx = Character.getNumericValue(node.nodeName.charAt(node.nodeName.length() - 1));
+      assertTrue(nodeIdx <= 3);
     }
 
-    idx = 1;
     for (NodeDetails node : u.getTServers()) {
       assertTrue(node.isTserver);
-      assertThat(node.nodeName, is(allOf(notNullValue(), equalTo("host-n" + idx))));
-      idx++;
+      assertNotNull(node.nodeName);
+      nodeIdx = Character.getNumericValue(node.nodeName.charAt(node.nodeName.length() - 1));
+      assertTrue(nodeIdx <= 5);
     }
 
     assertTrue(u.getTServers().size() > u.getMasters().size());
@@ -131,11 +136,14 @@ public class UniverseTest extends FakeDBApplication {
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails = new UniverseDefinitionTaskParams();
+        universeDetails.userIntent = new UserIntent();
 
         // Add a desired number of nodes.
-        universeDetails.numNodes = 3;
-        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+        universeDetails.userIntent.numNodes = 3;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -149,13 +157,17 @@ public class UniverseTest extends FakeDBApplication {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
         }
         universe.setUniverseDetails(universeDetails);
       }
     };
     u = Universe.saveDetails(u.universeUUID, updater);
-    assertThat(u.getMasterAddresses(), is(allOf(notNullValue(), equalTo("host-n1:7100,host-n2:7100,host-n3:7100"))));
+    String masterAddrs = u.getMasterAddresses();
+    assertNotNull(masterAddrs);
+    for (int idx = 1; idx <= 3; idx++) {
+      assertThat(masterAddrs, containsString("host-n" + idx));
+    }
   }
 
   @Test
@@ -172,15 +184,18 @@ public class UniverseTest extends FakeDBApplication {
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails = new UniverseDefinitionTaskParams();
         universeDetails.userIntent = new UserIntent();
+
         universeDetails.userIntent.isMultiAZ = true;
         universeDetails.userIntent.replicationFactor = 3;
         universeDetails.userIntent.regionList = regionList;
 
         // Add a desired number of nodes.
-        universeDetails.numNodes = 3;
-        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+        universeDetails.userIntent.numNodes = 3;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -194,7 +209,7 @@ public class UniverseTest extends FakeDBApplication {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -203,7 +218,8 @@ public class UniverseTest extends FakeDBApplication {
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
-    JsonNode userIntent = universeJson.get("universeDetails").get("userIntent");
+    JsonNode userIntent =
+      universeJson.get("universeDetails").get("userIntent");
     assertTrue(userIntent.get("regionList").isArray());
     assertEquals(3, userIntent.get("regionList").size());
 

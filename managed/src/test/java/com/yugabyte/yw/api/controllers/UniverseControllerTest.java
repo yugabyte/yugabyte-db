@@ -22,6 +22,7 @@ import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -47,8 +49,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -133,12 +133,13 @@ public class UniverseControllerTest extends FakeDBApplication {
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
     Universe universe = Universe.create("Test Universe", customer.getCustomerId());
-    UniverseDetails ud = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails = new UniverseDefinitionTaskParams();
         universeDetails.userIntent = new UserIntent();
         universeDetails.userIntent.replicationFactor = 3;
         universeDetails.userIntent.isMultiAZ = true;
@@ -149,8 +150,9 @@ public class UniverseControllerTest extends FakeDBApplication {
         subnets.add("subnet-3");
 
         // Add a desired number of nodes.
-        universeDetails.numNodes = 5;
-        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+        universeDetails.userIntent.numNodes = 5;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -162,7 +164,7 @@ public class UniverseControllerTest extends FakeDBApplication {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -180,7 +182,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertThat(userIntent.get("replicationFactor").asInt(), allOf(notNullValue(), equalTo(3)));
     assertThat(userIntent.get("isMultiAZ").asBoolean(), allOf(notNullValue(), equalTo(true)));
 
-    JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsMap");
+    JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsSet");
     assertThat(nodeDetailsMap, is(notNullValue()));
 
     int idx = 1;

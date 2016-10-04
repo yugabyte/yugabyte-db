@@ -13,11 +13,11 @@ import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public abstract class UniverseTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
@@ -55,7 +55,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
         if (expectedUniverseVersion != -1 &&
             expectedUniverseVersion != universe.version) {
           String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
@@ -63,6 +62,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           LOG.error(msg);
           throw new IllegalStateException(msg);
         }
+
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
         // If this universe is already being edited, fail the request.
         if (universeDetails.updateInProgress) {
@@ -81,7 +82,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     universeLocked = true;
-    LOG.debug("Locked universe " + taskParams().universeUUID + " for updates");
+    LOG.debug("Locked universe {} at version {}.",
+              taskParams().universeUUID, expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
   }
@@ -95,8 +97,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
         // If this universe is not being edited, fail the request.
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         if (!universeDetails.updateInProgress) {
           String msg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
           LOG.error(msg);
@@ -110,7 +112,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Unlocked universe " + taskParams().universeUUID + " for updates");
+    LOG.debug("Unlocked universe {} for updates.", taskParams().universeUUID);
   }
 
   /**
