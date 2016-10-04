@@ -2,21 +2,25 @@
 
 package com.yugabyte.yw.common;
 
+import java.util.HashSet;
+
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdater() {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
-
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails.userIntent = new UserIntent();
         // Add a desired number of nodes.
-        universeDetails.numNodes = 3;
-        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+        universeDetails.userIntent.numNodes = 3;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -30,7 +34,7 @@ public class ApiUtils {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
         }
         universe.setUniverseDetails(universeDetails);
       }

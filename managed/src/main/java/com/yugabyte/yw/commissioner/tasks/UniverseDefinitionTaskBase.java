@@ -22,7 +22,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 /**
  * Abstract base class for all tasks that create/edit the universe definition. These include the
@@ -31,10 +30,6 @@ import com.yugabyte.yw.models.helpers.UniverseDetails;
  */
 public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseDefinitionTaskBase.class);
-
-  // This is the maximum number of subnets that the masters can be placed across, and need to be an
-  // odd number for consensus to work.
-  public static final int maxMasterSubnets = 3;
 
   // Enum for specifying the server type.
   public enum ServerType {
@@ -56,67 +51,67 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
         // Persist the updated information about the universe.
         // It should have been marked as being edited in lockUniverseForUpdate().
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         if (!universeDetails.updateInProgress) {
           String msg = "Universe " + taskParams().universeUUID +
                        " has not been marked as being updated.";
           LOG.error(msg);
           throw new RuntimeException(msg);
         }
+        for (NodeDetails node : taskParams().nodeDetailsSet) {
+          universeDetails.nodeDetailsSet.add(node);
+        }
         universeDetails.userIntent = taskParams().userIntent;
-        universeDetails.placementInfo = taskParams().placementInfo;
         universeDetails.nodePrefix = taskParams().nodePrefix;
-        universeDetails.numNodes = taskParams().userIntent.numNodes;
-        universeDetails.ybServerPkg = taskParams().userIntent.ybServerPackage;
+        universeDetails.placementInfo = taskParams().placementInfo;
+        universeDetails.universeUUID = taskParams().universeUUID;
         universe.setUniverseDetails(universeDetails);
       }
     };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Locked universe " + taskParams().universeUUID + " for updates");
+    LOG.debug("Wrote user intent for universe {}.", taskParams().universeUUID);
     // Return the universe object that we have already updated.
     return universe;
   }
 
   // Fix up the name of all the nodes.
-  public void fixNodeNames() {
-    for (NodeDetails node : taskParams().newNodesSet) {
+  public void updateNodeNames() {
+    // Persist the desired node information into the DB.
+    UniverseUpdater updater = new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        for (NodeDetails node : universe.getNodes()) {
+          // Since we have already set the 'updateInProgress' flag on this universe in the DB and
+          // this step is single threaded, we are guaranteed no one else will be modifying it.
+          // Replace the entire node value.
+          String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
+          LOG.info("Changing node name from {} to {}.", node.nodeName, newName);
+          node.nodeName = newName;
+        }
+      }
+    };
+    Universe.saveDetails(taskParams().universeUUID, updater);
+    LOG.debug("Updated {} nodes in universe {}.",
+              taskParams().nodeDetailsSet.size(), taskParams().universeUUID);
+
+    for (NodeDetails node : taskParams().nodeDetailsSet) {
       String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
-      LOG.info("Changing node name from " + node.nodeName + " to " + newName); 
+      LOG.info("Changing in-memory node name from " + node.nodeName + " to " + newName);
       node.nodeName = newName;
     }
   }
 
   // Get the list of new masters to be provisioned.
   public void getNewMasters(Set<NodeDetails> newMasters) {
-    for (NodeDetails node : taskParams().newNodesSet) {
+    for (NodeDetails node : taskParams().nodeDetailsSet) {
       if (node.isMaster) {
         newMasters.add(node);
       }
     }
-  }
-
-  public void addNodesToUniverse(Collection<NodeDetails> nodes) {
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
-        for (NodeDetails node : nodes) {
-          // Since we have already set the 'updateInProgress' flag on this universe in the DB and
-          // this step is single threaded, we are guaranteed no one else will be modifying it.
-          // Replace the entire node value.
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
-          LOG.debug("Adding node " + node.nodeName +
-                    " to universe " + taskParams().universeUUID);
-        }
-      }
-    };
-    Universe.saveDetails(taskParams().universeUUID, updater);
-    LOG.debug("Added " + nodes.size() + " nodes to universe " + taskParams().universeUUID);
   }
 
   /**

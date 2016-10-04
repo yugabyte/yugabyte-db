@@ -20,7 +20,7 @@ import javax.persistence.UniqueConstraint;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,9 +68,12 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeDetailsJson;
 
-  private UniverseDetails universeDetails;
-  public void setUniverseDetails(UniverseDetails details) {
+  private UniverseDefinitionTaskParams universeDetails;
+  public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetails = details;
+  }
+  public UniverseDefinitionTaskParams getUniverseDetails() {
+    return universeDetails;
   }
 
   public JsonNode toJson() {
@@ -80,8 +83,10 @@ public class Universe extends Model {
     json.put("creationDate", creationDate.toString());
     json.set("universeDetails", Json.parse(universeDetailsJson));
 
-    if (getUniverseDetails().userIntent != null && getUniverseDetails().userIntent.regionList != null) {
-      List<Region> regions = Region.find.where().idIn(getUniverseDetails().userIntent.regionList).findList();
+    if (getUniverseDetails().userIntent != null &&
+        getUniverseDetails().userIntent.regionList != null) {
+      List<Region> regions =
+        Region.find.where().idIn(getUniverseDetails().userIntent.regionList).findList();
 
       if (!regions.isEmpty()) {
         json.set("regions", Json.toJson(regions));
@@ -90,15 +95,6 @@ public class Universe extends Model {
     }
 
     return json;
-  }
-
-  /**
-   * Converts the UniverseDetails JSON into UniverseDetails object
-   *
-   * @return universe details object
-   */
-  public UniverseDetails getUniverseDetails() {
-    return universeDetails;
   }
 
   public static final Find<UUID, Universe> find = new Find<UUID, Universe>() {
@@ -113,7 +109,6 @@ public class Universe extends Model {
   public static Universe create(String name, Long customerId) {
     // Create the universe object.
     Universe universe = new Universe();
-
     // Generate a new UUID.
     universe.universeUUID = UUID.randomUUID();
     // Set the version of the object to 1.
@@ -125,10 +120,11 @@ public class Universe extends Model {
     // Set the customer id.
     universe.customerId = customerId;
     // Create the default universe details. This should be updated after creation.
-    universe.universeDetails = new UniverseDetails();
+    universe.universeDetails = new UniverseDefinitionTaskParams();
+    universe.universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
-    LOG.debug("Created universe " + universe.universeUUID + " with details [" +
-      universe.universeDetailsJson + "] with name " + name);
+    LOG.debug("Created universe {} with details [{}] with name {}.",
+              universe.universeUUID, universe.universeDetailsJson, name);
     // Save the object.
     universe.save();
     return universe;
@@ -148,7 +144,7 @@ public class Universe extends Model {
     }
 
     universe.universeDetails =
-      Json.fromJson(Json.parse(universe.universeDetailsJson), UniverseDetails.class);
+      Json.fromJson(Json.parse(universe.universeDetailsJson), UniverseDefinitionTaskParams.class);
 
     // Return the universe object.
     return universe;
@@ -219,7 +215,7 @@ public class Universe extends Model {
     // First get the universe.
     Universe universe = Universe.get(universeUUID);
     // Make sure this universe has been locked.
-    assert !universe.getUniverseDetails().updateInProgress;
+    assert !universe.universeDetails.updateInProgress;
     // Delete the universe.
     LOG.info("Deleting universe " + universe.name + ":" + universeUUID);
     universe.delete();
@@ -231,17 +227,23 @@ public class Universe extends Model {
    * @return a collection of nodes in this universe
    */
   public Collection<NodeDetails> getNodes() {
-    return getUniverseDetails().nodeDetailsMap.values();
+    return getUniverseDetails().nodeDetailsSet;
   }
 
   /**
    * Returns details about a single node in the universe.
    *
    * @param nodeName
-   * @return details about a node
+   * @return details about a node, null if it does not exist.
    */
   public NodeDetails getNode(String nodeName) {
-    return getUniverseDetails().nodeDetailsMap.get(nodeName);
+    Collection<NodeDetails> nodes = getNodes();
+    for (NodeDetails node : nodes) {
+      if (node.nodeName.equals(nodeName)) {
+        return node;
+      }
+    }
+    return null;
   }
 
   /**
@@ -251,8 +253,8 @@ public class Universe extends Model {
    */
   public List<NodeDetails> getMasters() {
     List<NodeDetails> masters = new LinkedList<NodeDetails>();
-    UniverseDetails details = getUniverseDetails();
-    for (NodeDetails nodeDetails : details.nodeDetailsMap.values()) {
+    UniverseDefinitionTaskParams details = getUniverseDetails();
+    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
       if (nodeDetails.isMaster) {
         masters.add(nodeDetails);
       }
@@ -267,8 +269,8 @@ public class Universe extends Model {
    */
   public List<NodeDetails> getTServers() {
     List<NodeDetails> tservers = new LinkedList<NodeDetails>();
-    UniverseDetails details = getUniverseDetails();
-    for (NodeDetails nodeDetails : details.nodeDetailsMap.values()) {
+    UniverseDefinitionTaskParams details = getUniverseDetails();
+    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
       if (nodeDetails.isTserver) {
         tservers.add(nodeDetails);
       }
@@ -286,12 +288,14 @@ public class Universe extends Model {
     List<NodeDetails> masters = getMasters();
     StringBuilder masterAddresses = new StringBuilder();
     for (NodeDetails nodeDetails : masters) {
-      if (masterAddresses.length() != 0) {
-        masterAddresses.append(",");
+      if (nodeDetails.cloudInfo.private_ip != null) {
+        if (masterAddresses.length() != 0) {
+          masterAddresses.append(",");
+        }
+        masterAddresses.append(nodeDetails.cloudInfo.private_ip);
+        masterAddresses.append(":");
+        masterAddresses.append(nodeDetails.masterRpcPort);
       }
-      masterAddresses.append(nodeDetails.cloudInfo.private_ip);
-      masterAddresses.append(":");
-      masterAddresses.append(nodeDetails.masterRpcPort);
     }
     return masterAddresses.toString();
   }
@@ -318,8 +322,8 @@ public class Universe extends Model {
     update.setParameter("universeUUID", universeUUID);
     update.setParameter("curVersion", this.version);
     update.setParameter("newVersion", newVersion);
-    LOG.debug("Swapped universe " + universeUUID + ":" + this.name +
-      " details to [" + universeDetailsJson + "] with new version = " + newVersion);
+    LOG.debug("Swapped universe {}:{} details to [{}] with new version = {}.",
+              universeUUID, this.name, universeDetailsJson, newVersion);
     int modifiedCount = Ebean.execute(update);
 
     // Check if the save was not successful.

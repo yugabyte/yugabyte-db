@@ -7,10 +7,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
@@ -28,8 +28,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
-        universeDetails.nodeDetailsMap.remove(nodeName);
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails.nodeDetailsSet.remove(nodeName);
         LOG.debug("Removing node " + nodeName +
                   " from universe " + taskParams().universeUUID);
       }

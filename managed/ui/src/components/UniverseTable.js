@@ -186,7 +186,7 @@ export default class UniverseTable extends Component {
         var numNodes;
         var replicationFactor;
         if (isValidObject(universeDetails)) {
-          numNodes = universeDetails.numNodes;
+          numNodes = universeDetails.nodeDetailsSet.length;
 
           if (isValidObject(universeDetails.userIntent)) {
             replicationFactor = universeDetails.userIntent.replicationFactor;

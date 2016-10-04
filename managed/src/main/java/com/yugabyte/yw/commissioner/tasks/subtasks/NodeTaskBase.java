@@ -8,10 +8,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 import play.api.Play;
 import play.libs.Json;
@@ -52,13 +52,13 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = new UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
-        NodeDetails node = universeDetails.nodeDetailsMap.get(taskParams().nodeName);
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        NodeDetails node = universe.getNode(taskParams().nodeName);
         node.state = state;
         LOG.debug("Setting node {} state to {} in universe {}.", 
                   taskParams().nodeName, state, taskParams().universeUUID);
         // Update the node details.
-        universeDetails.nodeDetailsMap.put(taskParams().nodeName, node);
+        universeDetails.nodeDetailsSet.add(node);
         universe.setUniverseDetails(universeDetails);
       }
     };

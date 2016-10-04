@@ -10,9 +10,9 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 public class UniverseUpdateSucceeded extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseUpdateSucceeded.class);
@@ -46,8 +46,8 @@ public class UniverseUpdateSucceeded extends AbstractTaskBase {
       UniverseUpdater updater = new UniverseUpdater() {
         @Override
         public void run(Universe universe) {
-          UniverseDetails universeDetails = universe.getUniverseDetails();
           // If this universe is not being edited, fail the request.
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           if (!universeDetails.updateInProgress) {
             LOG.error("UserUniverse " + taskParams().universeUUID + " is not being edited.");
             throw new RuntimeException("UserUniverse " + taskParams().universeUUID +

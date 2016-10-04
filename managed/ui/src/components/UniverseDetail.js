@@ -96,7 +96,7 @@ export default class UniverseDetail extends Component {
         </Row>
         <Row>
           <Col lg={11}>
-            <NodeDetails nodeDetails={universeDetails.nodeDetailsMap}/>
+            <NodeDetails nodeDetails={universeDetails.nodeDetailsSet}/>
           </Col>
         </Row>
         <Row>

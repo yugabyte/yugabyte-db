@@ -15,11 +15,11 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 
 import play.libs.Json;
 
@@ -63,8 +63,8 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
         @Override
         public void run(Universe universe) {
           // Get the details of the node to be updated.
-          UniverseDetails universeDetails = universe.getUniverseDetails();
-          NodeDetails node = universeDetails.nodeDetailsMap.get(taskParams.nodeName);
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          NodeDetails node = universe.getNode(taskParams.nodeName);
           // Update each field of the node details based on the JSON output.
           Iterator<Entry<String, JsonNode>> iter = jsonNode.fields();
           while (iter.hasNext()) {
@@ -97,7 +97,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
           // Node provisioning completed.
           node.state = NodeDetails.NodeState.Provisioned;
           // Update the node details.
-          universeDetails.nodeDetailsMap.put(taskParams.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
           universe.setUniverseDetails(universeDetails);
         }
       };

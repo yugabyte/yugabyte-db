@@ -102,11 +102,9 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
     String expectedCommand = baseCommand + " instance configure" +
-      " --package " + params.ybServerPkg +
-      " --master_addresses_for_tserver " + u.getMasterAddresses() +
-      " --master_addresses_for_master " + u.getMasterAddresses() +  " " + params.nodeName;
+      " --package " + params.ybServerPkg + " --master_addresses_for_tserver ";
 
-    assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+    assertThat(command, allOf(notNullValue(), startsWith(expectedCommand)));
   }
 
   @Test
@@ -123,10 +121,9 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
     String expectedCommand = baseCommand + " instance configure" +
-      " --package " + params.ybServerPkg +
-      " --master_addresses_for_tserver " + u.getMasterAddresses() + " " + params.nodeName;
+      " --package " + params.ybServerPkg;
 
-    assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+    assertThat(command, allOf(notNullValue(), startsWith(expectedCommand)));
   }
 
   @Test
