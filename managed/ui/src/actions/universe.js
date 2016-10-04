@@ -47,6 +47,9 @@ export const RESET_UNIVERSE_TASKS = 'RESET_UNIVERSE_TASKS';
 export const OPEN_DIALOG = 'OPEN_DIALOG';
 export const CLOSE_DIALOG = 'CLOSE_DIALOG';
 
+// Submit G-Flag Tasks
+export const SUBMIT_GFLAGS = 'SUBMIT_GFLAGS';
+
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -251,5 +254,11 @@ export function openDialog(data) {
 export function closeDialog() {
   return {
     type: CLOSE_DIALOG
+  }
+}
+
+export function submitGFlags() {
+  return {
+    type: SUBMIT_GFLAGS
   }
 }

@@ -39,7 +39,10 @@ const mapDispatchToProps = (dispatch) => {
     showUniverseModal: () => {
       dispatch(openDialog("universeModal"));
     },
-    closeUniverseModal: () => {
+    showGFlagsModal: () => {
+      dispatch(openDialog("gFlagsModal"))
+    },
+    closeModal: () => {
       dispatch(closeDialog());
     }
   }

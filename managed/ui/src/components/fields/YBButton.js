@@ -1,26 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-
+import {Button} from 'react-bootstrap';
 export default class YBButton extends Component {
 
-  constructor(props) {
-    super(props);
-    this.btnClicked = this.btnClicked.bind(this);
-  }
-  
-  btnClicked(e) {
-    if (typeof this.props.onClick === 'function') {
-      this.props.onClick(e.target.value);
-    }
-  }
   render() {
-    const {btnClass, btnText, btnIcon} = this.props;
+    const {btnClass, btnText, btnIcon, btnSize, btnType} = this.props;
     return (
-      <div className={btnClass} onClick={this.btnClicked}>
-        <i className={btnIcon}></i>&nbsp;
+      <Button bsClass={btnClass} type={btnType}
+              onClick={this.props.onClick} bsSize={btnSize}>
+        <i className={btnIcon}></i>
         {btnText}
-      </div>
+      </Button>
     )
   }
 }

@@ -1,11 +1,11 @@
 import React, { Component, PropTypes } from 'react';
 import YBInput from '../../components/YBInputField';
 import YBSelect from './../fields/YBSelect';
-
 import YBCheckBox from './../fields/YBCheckBox';
 import YBMultiSelect from './../fields/YBMultiSelect';
 import YBNumericInput from './../fields/YBNumericInput';
 import { Field } from 'redux-form';
+import YBModal from './../fields/YBModal';
 
 export default class UniverseForm extends Component {
 
@@ -19,11 +19,6 @@ export default class UniverseForm extends Component {
     this.regionListChanged = this.regionListChanged.bind(this);
     this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
     this.numNodesChanged = this.numNodesChanged.bind(this);
-    if (this.props.type === "Create") {
-      this.submitHandler = this.props.submitCreateUniverse.bind(this);
-    } else {
-      this.submitHandler = this.props.submitEditUniverse.bind(this);
-    }
 
     this.state = { providerSelected: '',
       regionSelected: [], instanceTypeSelected: '',
@@ -70,7 +65,8 @@ export default class UniverseForm extends Component {
 
   render() {
     var self = this;
-    const { handleSubmit } = this.props;
+
+    const { visible, onHide, handleSubmit, title, formName} = this.props;
 
     var azCheckStateChanged =function() {
       self.setState({azCheckState: !self.state.azCheckState});
@@ -99,9 +95,11 @@ export default class UniverseForm extends Component {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
 
+    var submitAction = this.props.type==="Create" ? handleSubmit(this.props.submitCreateUniverse) :
+      handleSubmit(this.props.submitEditUniverse);
     return (
-       <form name="UniverseForm" onSubmit={ handleSubmit(this.submitHandler) }>
-
+           <YBModal visible={visible}
+                    onHide={onHide} title={title} onFormSubmit={submitAction} formName={"UniverseForm"}>
               <Field name="universeName" type="text" component={YBInput} label="Universe Name" />
               <Field name="provider" type="select" component={YBSelect} label="Provider"
                      options={universeProviderList} onChange={this.providerChanged}
@@ -128,11 +126,11 @@ export default class UniverseForm extends Component {
               />
               <Field name="serverPackage" type="text" component={YBInput}
                      label="Server Package" defaultValue={this.state.serverPackage} />
-              <button type="submit" className="btn btn-default btn-success btn-block" >
-                {this.props.type} Universe
-              </button>
-       </form>
-
+           </YBModal>
     )
   }
+}
+
+UniverseForm.propTypes = {
+  "title": PropTypes.string.isRequired
 }
