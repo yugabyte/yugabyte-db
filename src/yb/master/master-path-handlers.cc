@@ -59,48 +59,52 @@ MasterPathHandlers::~MasterPathHandlers() {
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     const Webserver::WebRequest& req, stringstream* output,
     const Webserver::PathHandlerCallback& callback) {
-  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
-  if (!l.first_failed_status().ok()) {
-    *output << "<h1>This is not the Master Leader!</h1>\n";
+  // Lock the CatalogManager in a self-contained block, to prevent double-locking on callbacks.
+  {
+    CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+    if (!l.first_failed_status().ok()) {
+      *output << "<h1>This is not the Master Leader!</h1>\n";
 
-    do {
-      vector<ServerEntryPB> masters;
-      Status s = master_->ListMasters(&masters);
-      if (!s.ok()) {
-        break;
-      }
-
-      string redirect;
-      for (const ServerEntryPB& master : masters) {
-        if (master.has_error()) {
-          // This will leave redirect empty and thus fail accordingly.
+      do {
+        vector<ServerEntryPB> masters;
+        Status s = master_->ListMasters(&masters);
+        if (!s.ok()) {
           break;
         }
 
-        if (master.role() == consensus::RaftPeerPB::LEADER) {
-          // URI already starts with a /, so none is needed between $1 and $2.
-          redirect = Substitute("<a class=\"alert-link\" href=\"http://$0:$1$2$3\">Leader</a>",
-                                master.registration().http_addresses(0).host(),
-                                master.registration().http_addresses(0).port(), req.redirect_uri,
-                                req.query_string.empty() ? "" : "?" + req.query_string);
+        string redirect;
+        for (const ServerEntryPB& master : masters) {
+          if (master.has_error()) {
+            // This will leave redirect empty and thus fail accordingly.
+            break;
+          }
+
+          if (master.role() == consensus::RaftPeerPB::LEADER) {
+            // URI already starts with a /, so none is needed between $1 and $2.
+            redirect = Substitute(
+                "<a class=\"alert-link\" href=\"http://$0:$1$2$3\">Leader</a>",
+                master.registration().http_addresses(0).host(),
+                master.registration().http_addresses(0).port(), req.redirect_uri,
+                req.query_string.empty() ? "" : "?" + req.query_string);
+          }
         }
-      }
 
-      if (redirect.empty()) {
-        break;
-      }
+        if (redirect.empty()) {
+          break;
+        }
 
-      *output << "<h3><div class=\"alert alert-warning\">"
-              << "Please click  " << redirect << " to get redirected to the Master Leader!"
-              << "</div></h3>";
+        *output << "<h3><div class=\"alert alert-warning\">"
+                << "Please click  " << redirect << " to get redirected to the Master Leader!"
+                << "</div></h3>";
 
+        return;
+      } while (0);
+
+      *output << "Cannot get Leader information to help you redirect...\n";
       return;
-    } while (0);
-
-    *output << "Cannot get Leader information to help you redirect...\n";
-  } else {
-    callback(req, output);
+    }
   }
+  callback(req, output);
 }
 
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
@@ -327,7 +331,7 @@ namespace {
 // without consulting with the CM team.
 class JsonDumperBase {
  public:
-  JsonDumperBase(JsonWriter* jw) : jw_(jw) {}
+  explicit JsonDumperBase(JsonWriter* jw) : jw_(jw) {}
 
  protected:
   JsonWriter* jw_;
@@ -335,7 +339,7 @@ class JsonDumperBase {
 
 class JsonTableDumper : public TableVisitor, public JsonDumperBase {
  public:
-  JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
+  explicit JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
   virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
     if (metadata.state() != SysTablesEntryPB::RUNNING) {
@@ -359,7 +363,7 @@ class JsonTableDumper : public TableVisitor, public JsonDumperBase {
 
 class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
  public:
-  JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
+  explicit JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
  protected:
   virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
