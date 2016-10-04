@@ -315,6 +315,17 @@ ul.progress-list li i {
     margin-right: 0;
 }
 
+.task-alerts-cell-container {
+    text-align: center;
+    border-bottom: 1px solid #757679;
+}
+
+.task-alerts-show-more {
+    text-align: center;
+    margin-top: -10px;
+    margin-bottom: 4px;
+}
+
 .region-map-container {
     width: 100%;
     border-color: #d3d3d3;
