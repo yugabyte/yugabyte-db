@@ -121,7 +121,8 @@ public class CreateTableOptions {
    * @return this instance
    */
   public CreateTableOptions setNumReplicas(int numReplicas) {
-    pb.getPlacementInfoBuilder().setNumReplicas(numReplicas);
+    pb.getReplicationInfoBuilder().getLiveReplicasBuilder().setNumReplicas(
+        numReplicas);
     return this;
   }
 

@@ -915,16 +915,15 @@ Status YBClient::Data::RemoveMasterAddress(const Sockaddr& sockaddr) {
   return Status::OK();
 }
 
-Status YBClient::Data::AddClusterPlacementBlock(
-    YBClient* client, const master::PlacementBlockPB& placement_block, const MonoTime& deadline,
+Status YBClient::Data::SetReplicationInfo(
+    YBClient* client, const master::ReplicationInfoPB& replication_info, const MonoTime& deadline,
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {
     return RetryFunc(
         deadline, "Other clients changed the config. Retrying.",
         "Timed out retrying the config change. Probably too many concurrent attempts.",
-        std::bind(
-            &YBClient::Data::AddClusterPlacementBlock, this, client, placement_block, _1, _2));
+        std::bind(&YBClient::Data::SetReplicationInfo, this, client, replication_info, _1, _2));
   }
 
   // Get the current config.
@@ -941,11 +940,10 @@ Status YBClient::Data::AddClusterPlacementBlock(
   ChangeMasterClusterConfigRequestPB change_req;
   ChangeMasterClusterConfigResponsePB change_resp;
 
-  // Update the list with the new placement.
+  // Update the list with the new replication info.
   change_req.mutable_cluster_config()->CopyFrom(get_resp.cluster_config());
-  auto new_pb =
-      change_req.mutable_cluster_config()->mutable_placement_info()->add_placement_blocks();
-  new_pb->CopyFrom(placement_block);
+  auto new_ri = change_req.mutable_cluster_config()->mutable_replication_info();
+  new_ri->CopyFrom(replication_info);
 
   // Try to update it on the live cluster.
   s = SyncLeaderMasterRpc<ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB>(

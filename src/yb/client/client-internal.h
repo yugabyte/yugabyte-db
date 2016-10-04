@@ -168,11 +168,11 @@ class YBClient::Data {
   // specified, and re-initializes the 'master_server_addrs_' variable.
   Status ReinitializeMasterAddresses();
 
-  // Add placement info to the cluster config. Last argument defaults to nullptr to auto-wrap in a
+  // Set replication info for the cluster data. Last argument defaults to nullptr to auto-wrap in a
   // retry. It is otherwise used in a RetryFunc to indicate if to keep retrying or not, if we get a
   // version mismatch on setting the config.
-  Status AddClusterPlacementBlock(
-      YBClient* client, const master::PlacementBlockPB& placement_block, const MonoTime& deadline,
+  Status SetReplicationInfo(
+      YBClient* client, const master::ReplicationInfoPB& replication_info, const MonoTime& deadline,
       bool* retry = nullptr);
 
   // Retry 'func' until either:
@@ -242,6 +242,7 @@ class YBClient::Data {
 
   AtomicInt<uint64_t> latest_observed_timestamp_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
@@ -257,4 +258,4 @@ Status RetryFunc(
 } // namespace client
 } // namespace yb
 
-#endif
+#endif  // YB_CLIENT_CLIENT_INTERNAL_H

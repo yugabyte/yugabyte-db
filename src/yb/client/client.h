@@ -48,7 +48,7 @@ class PartitionSchema;
 class Sockaddr;
 
 namespace master {
-class PlacementBlockPB;
+class ReplicationInfoPB;
 }
 
 namespace client {
@@ -305,7 +305,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // Given a host and port for a master, get the uuid of that process.
   Status GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
 
-  Status AddClusterPlacementBlock(const master::PlacementBlockPB& placement_block);
+  Status SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
   std::string client_id() const { return client_id_; }
 
@@ -422,7 +422,7 @@ class YB_EXPORT YBTableCreator {
   // If not provided, defaults to true.
   YBTableCreator& wait(bool wait);
 
-  YBTableCreator& add_placement_block(const master::PlacementBlockPB& pi);
+  YBTableCreator& replication_info(const master::ReplicationInfoPB& ri);
 
   // Creates the table.
   //
@@ -1142,4 +1142,4 @@ class YB_EXPORT YBTabletServer {
 
 } // namespace client
 } // namespace yb
-#endif
+#endif  // YB_CLIENT_CLIENT_H

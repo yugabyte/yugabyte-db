@@ -466,22 +466,22 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const string kTableName = "test";
   Schema schema({ColumnSchema("key", INT32)}, 1);
   CreateTableRequestPB req;
-  req.mutable_placement_info()->set_num_replicas(5);
-  auto* pb = req.mutable_placement_info()->add_placement_blocks();
+  req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(5);
+  auto* pb = req.mutable_replication_info()->mutable_live_replicas()->add_placement_blocks();
 
   // Fail due to not cloud_info.
   Status s = CreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
   auto* cloud_info = pb->mutable_cloud_info();
-  pb->set_min_num_replicas(req.placement_info().num_replicas() + 1);
+  pb->set_min_num_replicas(req.replication_info().live_replicas().num_replicas() + 1);
 
   // Fail due to min_num_replicas being more than num_replicas.
   s = CreateTable(kTableName, schema, &req);
   ASSERT_TRUE(s.IsInvalidArgument());
 
   // Succeed the CreateTable call, but expect to have errors on call.
-  pb->set_min_num_replicas(req.placement_info().num_replicas());
+  pb->set_min_num_replicas(req.replication_info().live_replicas().num_replicas());
   cloud_info->set_placement_cloud("fail");
   ASSERT_OK(CreateTable(kTableName, schema, &req));
 

@@ -31,7 +31,7 @@ DEFINE_int64(tablets_batch_size_max, 100, "How many tablets to get from the Mast
 namespace yb {
 namespace tools {
 
-static const std::string kMessengerName = "ysck";
+static const char kMessengerName[] = "ysck";
 
 using rpc::Messenger;
 using rpc::MessengerBuilder;
@@ -334,7 +334,7 @@ Status RemoteYsckMaster::GetTableInfo(const string& table_name, Schema* schema, 
   RETURN_NOT_OK(proxy_->GetTableSchema(req, &resp, &rpc));
 
   RETURN_NOT_OK(SchemaFromPB(resp.schema(), schema));
-  *num_replicas = resp.placement_info().num_replicas();
+  *num_replicas = resp.replication_info().live_replicas().num_replicas();
   return Status::OK();
 }
 

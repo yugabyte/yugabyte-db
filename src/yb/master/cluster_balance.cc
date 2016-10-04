@@ -2,8 +2,9 @@
 
 #include "yb/master/cluster_balance.h"
 
-#include <boost/thread/locks.hpp>
 #include <algorithm>
+
+#include <boost/thread/locks.hpp>
 
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
@@ -465,12 +466,11 @@ bool ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
     {
       TableMetadataLock l(tablet->table().get(), TableMetadataLock::READ);
       // If we have a custom per-table placement policy, use that.
-      if (!l.data().pb.placement_info().placement_blocks().empty()) {
-        pb.CopyFrom(l.data().pb.placement_info());
+      if (l.data().pb.replication_info().has_live_replicas()) {
+        pb.CopyFrom(l.data().pb.replication_info().live_replicas());
       } else {
         // Otherwise, default to cluster policy.
         pb.CopyFrom(GetClusterPlacementInfo());
-        pb.set_num_replicas(l.data().pb.placement_info().num_replicas());
       }
     }
     state_->placement_by_table_[table_id] = std::move(pb);
@@ -915,7 +915,9 @@ const unordered_map<string, scoped_refptr<TabletInfo>>& ClusterLoadBalancer::Get
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {
   ClusterConfigMetadataLock l(
       catalog_manager_->cluster_config_.get(), ClusterConfigMetadataLock::READ);
-  return l.data().pb.placement_info();
+  // TODO: this is now hardcoded to just the live replicas; this will need to change when we add
+  // support for async replication.
+  return l.data().pb.replication_info().live_replicas();
 }
 
 const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {

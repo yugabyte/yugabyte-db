@@ -119,6 +119,14 @@ message PlacementInfoPB {
   repeated PlacementBlockPB placement_blocks = 2;
 }
 
+// Higher level structure to keep track of all types of replicas configured. This will have, at a
+// minimum, the information about the replicas that are supposed to be active members of the raft
+// configs, but can also include extra information, such as async replicas.
+message ReplicationInfoPB {
+  optional PlacementInfoPB live_replicas = 1;
+  optional PlacementInfoPB async_replicas = 2;
+}
+
 // This is used to mark servers in the load balancer that should be considered
 // for immediate removal of load and also prevented from being assigned any
 // new load.
@@ -223,9 +231,8 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Placement information regarding cloud info as well as overall number of TS
-  // replicas.
-  optional PlacementInfoPB placement_info = 5;
+  // Replication information for this tablet.
+  optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.
   optional State state = 6 [ default = UNKNOWN ];
@@ -237,7 +244,7 @@ message SysTablesEntryPB {
 // used for ensuring that client read-modify-writes are valid.
 message SysClusterConfigEntryPB {
   optional int32 version = 1;
-  optional PlacementInfoPB placement_info = 2;
+  optional ReplicationInfoPB replication_info = 2;
   optional BlacklistPB server_blacklist = 3;
 }
 
@@ -418,7 +425,7 @@ message CreateTableRequestPB {
   // repeated PartialRowPB split_rows = 5;
   optional RowOperationsPB split_rows = 6;
   optional PartitionSchemaPB partition_schema = 7;
-  optional PlacementInfoPB placement_info = 4;
+  optional ReplicationInfoPB replication_info = 4;
   optional TableType table_type = 8 [ default = DEFAULT_TABLE_TYPE ];
 }
 
@@ -566,7 +573,7 @@ message GetTableSchemaResponsePB {
   // The table's partition schema.
   optional PartitionSchemaPB partition_schema = 5;
 
-  optional PlacementInfoPB placement_info = 3;
+  optional ReplicationInfoPB replication_info = 3;
 
   // The ID of the table.
   optional bytes table_id = 4;

@@ -36,6 +36,8 @@
 
 #include "yb/master/catalog_manager.h"
 
+#include <stdlib.h>
+
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -320,7 +322,7 @@ class ClusterConfigLoader : public ClusterConfigVisitor {
     ClusterConfigMetadataLock l(config, ClusterConfigMetadataLock::WRITE);
     l.mutable_data()->pb.CopyFrom(metadata);
 
-    if (metadata.has_server_blacklist()){
+    if (metadata.has_server_blacklist()) {
       // Rebuild the blacklist state for load movement completion tracking.
       RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist(), true /* bootup */));
     }
@@ -444,9 +446,9 @@ void CatalogManagerBgTasks::Run() {
       }
     }
 
-    //if (!to_delete.empty()) {
-      // TODO: Run the cleaner
-    //}
+    // if (!to_delete.empty()) {
+    //   // TODO: Run the cleaner
+    // }
 
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
@@ -823,13 +825,15 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
       << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
 }
 
-Status CatalogManager::ValidateTablePlacementInfo(const PlacementInfoPB& placement_info) {
+Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
   // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
-  if (!placement_info.placement_blocks().empty()) {
+  if (replication_info.has_live_replicas() || replication_info.has_async_replicas()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
-    if (!l.data().pb.placement_info().placement_blocks().empty()) {
-      return STATUS(InvalidArgument,
-          "Unsupported: cannot set both table and cluster level placement yet.");
+    auto ri = l.data().pb.replication_info();
+    if (ri.has_live_replicas() || ri.has_async_replicas()) {
+      return STATUS(
+          InvalidArgument,
+          "Unsupported: cannot set both table and cluster level replication info yet.");
     }
   }
   return Status::OK();
@@ -876,7 +880,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Nullable columns are currently not being tested for.
   // Support and checks for nullable columns will be added later.
 
-   if (req.table_type() == TableType::YSQL_TABLE_TYPE) {
+  if (req.table_type() == TableType::YSQL_TABLE_TYPE) {
     if (client_schema.num_key_columns() != 1) {
       Status s = STATUS(InvalidArgument,
         "A key-value table should have exactly one key column");
@@ -918,8 +922,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
 
   // If they didn't specify a num_replicas, set it based on the default.
-  if (!req.has_placement_info() || !req.placement_info().has_num_replicas()) {
-    req.mutable_placement_info()->set_num_replicas(FLAGS_default_num_replicas);
+  if (!req.has_replication_info()) {
+    req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(
+        FLAGS_default_num_replicas);
   }
 
   // Verify that the total number of tablets is reasonable, relative to the number
@@ -928,7 +933,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   int num_live_tservers = ts_descs.size();
   int max_tablets = FLAGS_max_create_tablets_per_ts * num_live_tservers;
-  if (req.placement_info().num_replicas() > 1 && max_tablets > 0 &&
+  if (req.replication_info().live_replicas().num_replicas() > 1 && max_tablets > 0 &&
       partitions.size() > max_tablets) {
     s = STATUS(InvalidArgument, Substitute("The requested number of tablets is over the "
                                            "permitted maximum ($0)", max_tablets));
@@ -939,29 +944,33 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // Verify that the number of replicas isn't larger than the number of live tablet
   // servers.
   if (FLAGS_catalog_manager_check_ts_count_for_create_table &&
-      req.placement_info().num_replicas() > num_live_tservers) {
-    s = STATUS(InvalidArgument, Substitute(
-        "Not enough live tablet servers to create a table with the requested replication "
-        "factor $0. $1 tablet servers are alive.",
-        req.placement_info().num_replicas(), num_live_tservers));
+      req.replication_info().live_replicas().num_replicas() > num_live_tservers) {
+    s = STATUS(
+        InvalidArgument,
+        Substitute(
+            "Not enough live tablet servers to create a table with the requested replication "
+            "factor $0. $1 tablet servers are alive.",
+            req.replication_info().live_replicas().num_replicas(), num_live_tservers));
     SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
     return s;
   }
 
   // Validate the table placement rules are a subset of the cluster ones.
-  s = ValidateTablePlacementInfo(req.placement_info());
+  s = ValidateTableReplicationInfo(req.replication_info());
   if (!s.ok()) {
     SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     return s;
   }
 
   // If we don't have table level requirements, fallback to the cluster ones.
-  auto placement_info = req.placement_info();
-  if (placement_info.placement_blocks().empty()) {
+  auto replication_info = req.replication_info();
+  if (!replication_info.has_live_replicas()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
-    placement_info = l.data().pb.placement_info();
+    replication_info = l.data().pb.replication_info();
   }
 
+  // TODO: update this when we get async replica support.
+  auto placement_info = replication_info.live_replicas();
   // Verify that placement requests are reasonable and we can satisfy the minimums.
   if (!placement_info.placement_blocks().empty()) {
     int minimum_sum = 0;
@@ -975,10 +984,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       }
     }
 
-    if (minimum_sum > req.placement_info().num_replicas()) {
-      s = STATUS(InvalidArgument, Substitute(
-          "Sum of required minimum replicas per placement ($0) is greater than num_replicas ($1)",
-          minimum_sum, req.placement_info().num_replicas()));
+    // TODO: update this when we get async replica support, as we're checking live_replica on
+    // request here, against placement_info, which we've set to live_replicas() above.
+    if (minimum_sum > req.replication_info().live_replicas().num_replicas()) {
+      s = STATUS(
+          InvalidArgument, Substitute(
+                               "Sum of required minimum replicas per placement ($0) is greater "
+                               "than num_replicas ($1)",
+                               minimum_sum, req.replication_info().live_replicas().num_replicas()));
       SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       return s;
     }
@@ -1110,7 +1123,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   metadata->set_table_type(req.table_type());
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
-  *metadata->mutable_placement_info() = req.placement_info();
+  metadata->mutable_replication_info()->CopyFrom(req.replication_info());
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   CHECK_OK(SchemaToPB(schema, metadata->mutable_schema()));
@@ -1486,7 +1499,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     // There's no AlterTable, the regular schema is "fully applied".
     resp->mutable_schema()->CopyFrom(l.data().pb.schema());
   }
-  resp->mutable_placement_info()->CopyFrom(l.data().pb.placement_info());
+  resp->mutable_replication_info()->CopyFrom(l.data().pb.replication_info());
   resp->set_table_id(table->id());
   resp->mutable_partition_schema()->CopyFrom(l.data().pb.partition_schema());
   resp->set_create_table_done(!table->IsCreateInProgress());
@@ -2294,7 +2307,9 @@ class RetryingTSRpcTask : public MonitoredTask {
     } else {
       base_delay_ms = 60 * 1000; // cap at 1 minute
     }
-    int64_t jitter_ms = rand() % 50;              // Add up to 50ms of additional random delay.
+    // Normal rand is seeded by default with 1. Using the same for rand_r seed.
+    unsigned int seed = 1;
+    int64_t jitter_ms = rand_r(&seed) % 50;  // Add up to 50ms of additional random delay.
     int64_t delay_millis = std::min<int64_t>(base_delay_ms + jitter_ms, millis_remaining);
 
     if (delay_millis <= 0) {
@@ -2633,11 +2648,12 @@ class AsyncAlterTable : public RetryingTSRpcTask {
 
 class CommonInfoForRaftTask : public RetryingTSRpcTask {
  public:
-  CommonInfoForRaftTask(Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-                    const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
+  CommonInfoForRaftTask(
+      Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : RetryingTSRpcTask(
-          master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-          tablet->table()),
+            master, callback_pool, gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)),
+            tablet->table()),
         tablet_(tablet),
         cstate_(cstate),
         change_config_ts_uuid_(change_config_ts_uuid) {
@@ -3342,7 +3358,8 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
                    tablet->tablet_id()));
   }
 
-  int nreplicas = table_guard.data().pb.placement_info().num_replicas();
+  // TODO: update this when we figure out how we want replica selection for async replicas.
+  int nreplicas = table_guard.data().pb.replication_info().live_replicas().num_replicas();
 
   if (ts_descs.size() < nreplicas) {
     return STATUS(InvalidArgument,
@@ -3364,13 +3381,16 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
   }
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
-  RETURN_NOT_OK(ValidateTablePlacementInfo(table_guard.data().pb.placement_info()));
+  RETURN_NOT_OK(ValidateTableReplicationInfo(table_guard.data().pb.replication_info()));
 
-  auto placement_info = table_guard.data().pb.placement_info();
-  if (placement_info.placement_blocks().empty()) {
+  // TODO: we do this defaulting to cluster if no table data in two places, should refactor and
+  // have a centralized getter, that will ultimately do the subsetting as well.
+  auto replication_info = table_guard.data().pb.replication_info();
+  if (!replication_info.has_live_replicas()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
-    placement_info = l.data().pb.placement_info();
+    replication_info = l.data().pb.replication_info();
   }
+  auto placement_info = replication_info.live_replicas();
 
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
@@ -3432,7 +3452,7 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
     }
 
     int replicas_left = nreplicas - already_selected_ts.size();
-    DCHECK(replicas_left >= 0);
+    DCHECK_GE(replicas_left, 0);
     if (replicas_left > 0) {
       // No need to do an extra check here, as we checked early if we have enough to cover all
       // requested placements and checked individually per placement info, if we could cover the
@@ -3782,7 +3802,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   }
 }
 
-Status CatalogManager::PeerStateDump(vector<RaftPeerPB>& peers, bool on_disk) {
+Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers, bool on_disk) {
   std::unique_ptr<MasterServiceProxy> peer_proxy;
   Sockaddr sockaddr;
   MonoTime timeout = MonoTime::Now(MonoTime::FINE);

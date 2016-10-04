@@ -24,13 +24,7 @@ namespace yb {
 
 namespace client {
 
-YBTableCreator::Data::Data(YBClient* client)
-  : client_(client),
-    table_type_(TableType::DEFAULT_TABLE_TYPE),
-    schema_(nullptr),
-    num_replicas_(0),
-    wait_(true) {
-}
+YBTableCreator::Data::Data(YBClient* client) : client_(client) {}
 
 YBTableCreator::Data::~Data() {
   STLDeleteElements(&split_rows_);

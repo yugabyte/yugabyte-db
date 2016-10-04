@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MASTER_TEST_UTIL_H_
-#define YB_MASTER_TEST_UTIL_H_
+#ifndef YB_MASTER_MASTER_TEST_UTIL_H
+#define YB_MASTER_MASTER_TEST_UTIL_H
 
 #include <algorithm>
 #include <string>
@@ -79,7 +79,7 @@ void CreateTabletForTesting(MiniMaster* mini_master,
     CreateTableResponsePB resp;
 
     req.set_name(table_name);
-    req.mutable_placement_info()->set_num_replicas(1);
+    req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
     ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
     ASSERT_OK(mini_master->master()->catalog_manager()->CreateTable(&req, &resp, NULL));
   }
@@ -121,4 +121,4 @@ void CreateTabletForTesting(MiniMaster* mini_master,
 } // namespace master
 } // namespace yb
 
-#endif /* YB_MASTER_TEST_UTIL_H_ */
+#endif /* YB_MASTER_MASTER_TEST_UTIL_H */

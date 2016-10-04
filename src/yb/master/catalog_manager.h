@@ -17,7 +17,6 @@
 #ifndef YB_MASTER_CATALOG_MANAGER_H
 #define YB_MASTER_CATALOG_MANAGER_H
 
-#include <boost/optional/optional_fwd.hpp>
 #include <list>
 #include <map>
 #include <set>
@@ -25,6 +24,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/partition.h"
 #include "yb/consensus/consensus.pb.h"
@@ -397,7 +398,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // }
   //
   class ScopedLeaderSharedLock {
-  public:
+   public:
     // Creates a new shared lock, acquiring the catalog manager's leader_lock_
     // for reading in the process. The lock is released when this object is
     // destroyed.
@@ -443,7 +444,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     template<typename RespClass>
       bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
 
-  private:
+   private:
     CatalogManager* catalog_;
     shared_lock<RWMutex> leader_shared_lock_;
     Status catalog_status_;
@@ -527,7 +528,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
-  void DumpState(std::ostream* out, bool on_disk_dump=false) const;
+  void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
   void SetLoadBalancerEnabled(bool is_enabled);
 
@@ -574,7 +575,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // must be initialized before calling this method.
   consensus::RaftPeerPB::Role Role() const;
 
-  Status PeerStateDump(vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
+  Status PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
 
   // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
   // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
@@ -603,7 +604,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // loads the tablets metadata.
   Status VisitSysCatalog();
 
-private:
+ private:
   friend class TableLoader;
   friend class TabletLoader;
   friend class ClusterConfigLoader;
@@ -802,10 +803,10 @@ private:
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   void AbortTableCreation(TableInfo* table, const std::vector<TabletInfo*>& tablets);
 
-  // Validates that the passed-in table placement information respects the overall cluster level
+  // Validates that the passed-in table replication information respects the overall cluster level
   // configuration. This should essentially not be more broader reaching than the cluster. As an
   // example, if the cluster is confined to AWS, you cannot have tables in GCE.
-  Status ValidateTablePlacementInfo(const PlacementInfoPB& placement_info);
+  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Report metrics.
   void ReportMetrics();

@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <memory>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/stl_util.h"
@@ -125,7 +125,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
     TableMetadataLock l(table.get(), TableMetadataLock::WRITE);
     l.mutable_data()->pb.set_name("testtb");
     l.mutable_data()->pb.set_version(0);
-    l.mutable_data()->pb.mutable_placement_info()->set_num_replicas(1);
+    l.mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
     l.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
     ASSERT_OK(SchemaToPB(Schema(), l.mutable_data()->pb.mutable_schema()));
     // Add the table
@@ -404,7 +404,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   {
     ClusterConfigMetadataLock l(loader->config_info, ClusterConfigMetadataLock::READ);
     ASSERT_EQ(l.data().pb.version(), 0);
-    ASSERT_EQ(l.data().pb.placement_info().placement_blocks_size(), 0);
+    ASSERT_EQ(l.data().pb.replication_info().live_replicas().placement_blocks_size(), 0);
   }
 
   // Test modifications directly through the Sys catalog API.
@@ -413,7 +413,10 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   scoped_refptr<ClusterConfigInfo> config_info(new ClusterConfigInfo());
   {
     ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
-    auto pb = l.mutable_data()->pb.mutable_placement_info()->add_placement_blocks();
+    auto pb = l.mutable_data()
+                  ->pb.mutable_replication_info()
+                  ->mutable_live_replicas()
+                  ->add_placement_blocks();
     auto cloud_info = pb->mutable_cloud_info();
     cloud_info->set_placement_cloud("cloud");
     cloud_info->set_placement_region("region");
@@ -433,7 +436,10 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   {
     ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
-    auto pb = l.mutable_data()->pb.mutable_placement_info()->mutable_placement_blocks(0);
+    auto pb = l.mutable_data()
+                  ->pb.mutable_replication_info()
+                  ->mutable_live_replicas()
+                  ->mutable_placement_blocks(0);
     auto cloud_info = pb->mutable_cloud_info();
     // Update some config_info info.
     cloud_info->set_placement_cloud("cloud2");
@@ -456,12 +462,15 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   SysClusterConfigEntryPB config;
   ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
   ASSERT_EQ(config.version(), 0);
-  ASSERT_EQ(config.placement_info().placement_blocks_size(), 0);
+  ASSERT_EQ(config.replication_info().live_replicas().placement_blocks_size(), 0);
 
   // Update a field in the previously used in memory state and set through proper API.
   {
     ClusterConfigMetadataLock l(config_info.get(), ClusterConfigMetadataLock::WRITE);
-    auto pb = l.mutable_data()->pb.mutable_placement_info()->mutable_placement_blocks(0);
+    auto pb = l.mutable_data()
+                  ->pb.mutable_replication_info()
+                  ->mutable_live_replicas()
+                  ->mutable_placement_blocks(0);
     pb->set_min_num_replicas(300);
 
     ChangeMasterClusterConfigRequestPB req;
@@ -480,8 +489,8 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     ASSERT_EQ(l.data().pb.version(), 0);
     ASSERT_EQ(config.version(), 1);
     ASSERT_TRUE(PbEquals(
-        l.data().pb.placement_info().placement_blocks(0),
-        config.placement_info().placement_blocks(0)));
+        l.data().pb.replication_info().live_replicas().placement_blocks(0),
+        config.replication_info().live_replicas().placement_blocks(0)));
   }
 
   // Reload the data again and check that it matches expectations.
@@ -493,7 +502,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     ASSERT_TRUE(PbEquals(l.data().pb, config));
     ASSERT_TRUE(l.data().pb.has_version());
     ASSERT_EQ(l.data().pb.version(), 1);
-    ASSERT_EQ(l.data().pb.placement_info().placement_blocks_size(), 1);
+    ASSERT_EQ(l.data().pb.replication_info().live_replicas().placement_blocks_size(), 1);
   }
 }
 

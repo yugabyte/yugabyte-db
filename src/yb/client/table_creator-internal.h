@@ -37,26 +37,28 @@ class YBTableCreator::Data {
 
   std::string table_name_;
 
-  TableType table_type_;
+  TableType table_type_ = TableType::DEFAULT_TABLE_TYPE;
 
-  const YBSchema* schema_;
+  const YBSchema* schema_ = nullptr;
 
   std::vector<const YBPartialRow*> split_rows_;
 
   PartitionSchemaPB partition_schema_;
 
-  int num_replicas_;
+  int num_replicas_ = 0;
 
-  std::vector<master::PlacementBlockPB> placement_blocks_;
+  master::ReplicationInfoPB replication_info_;
+  bool has_replication_info_ = false;
 
   MonoDelta timeout_;
 
-  bool wait_;
+  bool wait_ = true;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
 } // namespace client
 } // namespace yb
 
-#endif
+#endif  // YB_CLIENT_TABLE_CREATOR_INTERNAL_H

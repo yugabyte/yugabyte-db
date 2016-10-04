@@ -30,7 +30,7 @@ using std::shared_ptr;
 using std::make_shared;
 
 void CreateTable(
-    const vector<string> split_keys, const int num_replicas, TableInfo* table,
+    const vector<string> split_keys, const int num_replicas, bool setup_placement, TableInfo* table,
     vector<scoped_refptr<TabletInfo>>* tablets) {
   const int kNumSplits = split_keys.size();
   for (int i = 0; i <= kNumSplits; i++) {
@@ -51,9 +51,12 @@ void CreateTable(
     tablets->push_back(make_scoped_refptr(tablet));
   }
 
-  TableMetadataLock meta_lock(table, TableMetadataLock::WRITE);
-  meta_lock.mutable_data()->pb.mutable_placement_info()->set_num_replicas(num_replicas);
-  meta_lock.Commit();
+  if (setup_placement) {
+    TableMetadataLock meta_lock(table, TableMetadataLock::WRITE);
+    auto* ri = meta_lock.mutable_data()->pb.mutable_replication_info();
+    ri->mutable_live_replicas()->set_num_replicas(num_replicas);
+    meta_lock.Commit();
+  }
 
   // The splits are of the form ("-a", "a-b", "b-c", "c-"), hence the +1.
   ASSERT_EQ(tablets->size(), split_keys.size() + 1);
@@ -83,7 +86,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     const int num_replicas = 3;
     total_num_tablets_ = num_replicas * (splits.size() + 1);
 
-    CreateTable(splits, num_replicas, table.get(), &tablets);
+    CreateTable(splits, num_replicas, false, table.get(), &tablets);
 
     tablets_ = std::move(tablets);
 
@@ -323,6 +326,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
   void TestNoPlacement() {
     LOG(INFO) << "Testing with no placement information";
+    cluster_placement_.set_num_replicas(kNumReplicas);
     // Analyze the tablets into the internal state.
     AnalyzeTablets();
 
@@ -362,6 +366,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
   void TestWithMissingTabletServers() {
     LOG(INFO) << "Testing with missing tablet servers";
+    SetupClusterConfig(/* multi_az = */ false);
 
     // Remove one of the needed tablet servers.
     ts_descs_.pop_back();
@@ -372,6 +377,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
   void TestMovingMultipleTabletsFromSameServer() {
     LOG(INFO) << "Testing moving multiple tablets from the same tablet server";
+    cluster_placement_.set_num_replicas(kNumReplicas);
 
     // Add three more tablet servers
     ts_descs_.push_back(SetupTS("3333", "a"));
@@ -513,7 +519,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
   void SetupClusterConfig(bool multi_az) {
-    cluster_placement_.set_num_replicas(3);
+    cluster_placement_.set_num_replicas(kNumReplicas);
     auto pb = cluster_placement_.add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud("aws");
     pb->mutable_cloud_info()->set_placement_region("us-west-1");
@@ -587,7 +593,9 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   void RemoveReplica(TabletInfo* tablet, shared_ptr<TSDescriptor> ts_desc) {
     TabletInfo::ReplicaMap replicas;
     tablet->GetReplicaLocations(&replicas);
+    int before_size = replicas.size();
     replicas.erase(ts_desc->permanent_uuid());
+    ASSERT_TRUE(before_size > replicas.size());
     tablet->SetReplicaLocations(replicas);
   }
 
@@ -597,6 +605,8 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
  private:
+  const int kNumReplicas = 3;
+
   int total_num_tablets_;
   vector<scoped_refptr<TabletInfo>> tablets_;
   BlacklistPB blacklist_;
@@ -620,11 +630,11 @@ TEST(TableInfoTest, TestAssignmentRanges) {
   const int kNumSplits = split_keys.size();
   const int kNumReplicas = 1;
 
-  CreateTable(split_keys, kNumReplicas, table.get(), &tablets);
+  CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets);
 
   {
     TableMetadataLock meta_lock(table.get(), TableMetadataLock::READ);
-    ASSERT_EQ(meta_lock.data().pb.placement_info().num_replicas(), kNumReplicas)
+    ASSERT_EQ(meta_lock.data().pb.replication_info().live_replicas().num_replicas(), kNumReplicas)
         << "Invalid replicas for created table.";
   }
 
