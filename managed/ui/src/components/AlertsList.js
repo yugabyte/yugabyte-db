@@ -16,7 +16,8 @@ export default class AlertsList extends Component {
   render() {
 
     function percentFormatter(cell, row) {
-      return <FormattedNumber value={cell} style={"percent"} />;
+
+      return <FormattedNumber value={cell/100} style={"percent"} />;
     }
 
     function timeFormatter(cell, row) {
