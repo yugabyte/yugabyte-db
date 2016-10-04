@@ -11,7 +11,7 @@ import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
 import YBButton from './fields/YBButton';
 import UniverseFormContainer from '../containers/forms/UniverseFormContainer';
-import YBModal from '../components/fields/YBModal';
+import GFlagsFormContainer from '../containers/forms/GFlagsFormContainer';
 
 export default class UniverseDetail extends Component {
 
@@ -49,7 +49,7 @@ export default class UniverseDetail extends Component {
         return (task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }
-    var modalVisibility = (showModal === true && visibleModal === "universeModal")
+
     
     return (
       <Grid id="page-wrapper">
@@ -59,13 +59,24 @@ export default class UniverseDetail extends Component {
           </Col>
           <ButtonGroup>
             <YBButton btnClass="universe-button btn btn-xs btn-info"
-                           btnText="Edit" btnIcon="fa fa-database"
-                           onClick={this.props.showUniverseModal} />
-            <YBModal visible={modalVisibility}
-                     onClose={this.props.closeUniverseModal} type="Edit">
-              <UniverseFormContainer type="Edit"/>
-            </YBModal>
+
+                           btnText="Edit" btnIcon="fa fa-database" onClick={this.props.showUniverseModal} />
+
+
+            <UniverseFormContainer type="Edit"
+                                   visible={showModal===true && visibleModal==="universeModal"}
+                                   onHide={this.props.closeModal} title="Edit Universe" />
+
+
+            <YBButton btnClass="universe-button btn btn-xs btn-default"
+                      btnText="Flags" btnIcon="fa fa-flag fa-fw"
+                      onClick={this.props.showGFlagsModal}/>
+
+            <GFlagsFormContainer modalVisible={showModal === true && visibleModal === "gFlagsModal"}
+                                 onHide={this.props.closeModal} title="Set GFlags"/>
+
             <DeleteUniverseContainer uuid={currentUniverse.universeUUID} />
+
           </ButtonGroup>
         </Row>
         <Row>
