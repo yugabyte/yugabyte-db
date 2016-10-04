@@ -1187,7 +1187,7 @@ hypopg(PG_FUNCTION_ARGS)
 		memset(nulls, 0, sizeof(nulls));
 
 
-		values[j++] = CStringGetTextDatum(strdup(entry->indexname));
+		values[j++] = CStringGetTextDatum(entry->indexname);
 		values[j++] = ObjectIdGetDatum(entry->oid);
 		values[j++] = ObjectIdGetDatum(entry->relid);
 		values[j++] = Int8GetDatum(entry->ncolumns);
@@ -1291,7 +1291,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 			if (entry != NULL)
 			{
 				values[0] = ObjectIdGetDatum(entry->oid);
-				values[1] = CStringGetTextDatum(strdup(entry->indexname));
+				values[1] = CStringGetTextDatum(entry->indexname);
 
 				tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 			}
