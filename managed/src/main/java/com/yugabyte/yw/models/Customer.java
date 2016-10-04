@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import com.avaje.ebean.Model;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.Joiner;
 
 import play.data.validation.Constraints;
@@ -102,6 +103,7 @@ public class Customer extends Model {
     return uuids;
   }
 
+  @JsonIgnore
   public Set<Universe> getUniverses() {
     if (getUniverseUUIDs().isEmpty()) {
       return new HashSet<>();

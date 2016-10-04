@@ -56,7 +56,7 @@ public class NodeDetails {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("name: ").append(nodeName)
+    sb.append("name: ").append(nodeName).append(".")
       .append(cloudInfo.toString())
       .append(", isMaster: ").append(isMaster)
       .append(", isTserver: ").append(isTserver);

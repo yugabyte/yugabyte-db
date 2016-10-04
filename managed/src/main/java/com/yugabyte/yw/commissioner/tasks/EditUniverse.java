@@ -51,9 +51,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      // Update the user intent.
-      universe = writeUserIntentToUniverse();
-
       // Get the existing nodes.
       existingNodes = universe.getNodes();
       // Get the existing masters.
@@ -63,29 +60,29 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // For now, we provision the same number of nodes as before.
       taskParams().userIntent.numNodes = existingNodes.size();
 
+      // Update the user intent.
+      writeUserIntentToUniverse();
+
       // Set the correct node names as they are finalized now. This is done just in case the user
       // changes the universe name before submitting. 
-      fixNodeNames();
+      updateNodeNames();
 
       LOG.info("Configure numNodes={}, numMasters={}",
-    		  taskParams().userIntent.numNodes, numMasters);
+               taskParams().userIntent.numNodes, numMasters);
 
       // Set the old nodes' state to to-be-decommissioned.
       createSetNodeStateTasks(existingNodes, NodeDetails.NodeState.ToBeDecommissioned)
           .setUserSubTask(SubTaskType.Provisioning);
 
-      // Add the newly configured nodes into the universe.
-      addNodesToUniverse(taskParams().newNodesSet);
-
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().newNodesSet).setUserSubTask(SubTaskType.Provisioning);
+      createSetupServerTasks(taskParams().nodeDetailsSet).setUserSubTask(SubTaskType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(taskParams().newNodesSet).setUserSubTask(SubTaskType.Provisioning);
+      createServerInfoTasks(taskParams().nodeDetailsSet).setUserSubTask(SubTaskType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(taskParams().newNodesSet, true /* isShell */)
+      createConfigureServerTasks(taskParams().nodeDetailsSet, true /* isShell */)
           .setUserSubTask(SubTaskType.InstallingSoftware);
 
       // Get the new masters from the node list.
@@ -100,15 +97,15 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           newMasters, ServerType.MASTER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Start the tservers in the clusters.
-      createStartTServersTasks(taskParams().newNodesSet)
+      createStartTServersTasks(taskParams().nodeDetailsSet)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Wait for all tablet servers to be responsive.
       createWaitForServersTasks(
-          taskParams().newNodesSet, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
+          taskParams().nodeDetailsSet, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Set the new nodes' state to running.
-      createSetNodeStateTasks(taskParams().newNodesSet, NodeDetails.NodeState.Running)
+      createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Running)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Now finalize the cluster configuration change tasks.

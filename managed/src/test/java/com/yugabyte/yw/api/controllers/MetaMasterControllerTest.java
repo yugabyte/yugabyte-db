@@ -17,10 +17,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 
 import com.yugabyte.yw.controllers.MetaMasterController;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.UniverseDetails;
 import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,12 +41,14 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetWIthValidUniverse() {
+  public void testGetWithValidUniverse() {
     Universe u = Universe.create("Test Universe", 0L);
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
-        UniverseDetails universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails = new UniverseDefinitionTaskParams();
+        universeDetails.userIntent = new UserIntent();
 
         // Create some subnets.
         List<String> subnets = new ArrayList<String>();
@@ -54,8 +57,9 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         subnets.add("subnet-3");
 
         // Add a desired number of nodes.
-        universeDetails.numNodes = 5;
-        for (int idx = 1; idx <= universeDetails.numNodes; idx++) {
+        universeDetails.userIntent.numNodes = 5;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node = new NodeDetails();
           node.nodeName = "host-n" + idx;
           node.cloudInfo = new CloudSpecificInfo();
@@ -67,7 +71,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
             node.isMaster = true;
           }
           node.nodeIdx = idx;
-          universeDetails.nodeDetailsMap.put(node.nodeName, node);
+          universeDetails.nodeDetailsSet.add(node);
         }
       }
     };
