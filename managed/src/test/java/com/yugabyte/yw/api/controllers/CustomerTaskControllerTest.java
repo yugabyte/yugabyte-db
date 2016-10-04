@@ -98,9 +98,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
-    assertThat(universeTasks.get(0).get("createTime").asInt()<currentTimeStamp, equalTo(true));
-    assertThat(universeTasks.get(0).get("completionTime").asText(), equalTo("null"));
-    assertThat(universeTasks.get(0).get("target").asText(), equalTo("Universe"));
+    assertTrue(universeTasks.get(0).get("createTime").asInt() < currentTimeStamp);
+    assertNotNull(universeTasks.get(0).get("completionTime").asText());
+    assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
   }
 
   @Test
@@ -130,9 +130,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Bar")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
-    assertThat(universeTasks.get(0).get("createTime").asInt()<currentTimeStamp, equalTo(true));
-    assertThat(universeTasks.get(0).get("completionTime").asText(), equalTo("null"));
-    assertThat(universeTasks.get(0).get("target").asText(), equalTo("Universe"));
+    assertTrue(universeTasks.get(0).get("createTime").asInt() < currentTimeStamp);
+    assertNotNull(universeTasks.get(0).get("completionTime").asText());
+    assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
   }
 
   @Test
