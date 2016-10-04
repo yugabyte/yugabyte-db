@@ -1,14 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE
-#define YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE
+#ifndef YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
+#define YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <future>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
@@ -79,6 +80,19 @@ class YBTableTestBase : public YBTest {
     return external_mini_cluster_.get();
   }
 
+  vector<string> master_rpc_addresses_as_strings() {
+    vector<string> host_ports;
+    int num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()
+                                                  : mini_cluster()->num_masters();
+    for (int i = 0; i < num_masters; i++) {
+      auto sock_addr = use_external_mini_cluster()
+                           ? external_mini_cluster()->master(i)->bound_rpc_addr()
+                           : mini_cluster()->mini_master(i)->bound_rpc_addr();
+      host_ports.push_back(sock_addr.ToString());
+    }
+    return host_ports;
+  }
+
   static constexpr int kDefaultNumMasters = 1;
   static constexpr int kDefaultNumTabletServers = 3;
   static constexpr int kDefaultSessionTimeoutMs = 60000;
@@ -99,6 +113,6 @@ class YBTableTestBase : public YBTest {
   std::unique_ptr<yb::ExternalMiniCluster> external_mini_cluster_;
 };
 
-} // namespace integration_tests
-} // namespace yb
-#endif
+}  // namespace integration_tests
+}  // namespace yb
+#endif  // YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_

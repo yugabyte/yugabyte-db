@@ -110,7 +110,7 @@ void YBTableTestBase::CreateClient() {
 }
 
 void YBTableTestBase::OpenTable() {
-  ASSERT_OK(client_->OpenTable(kDefaultTableName, &table_));
+  ASSERT_OK(client_->OpenTable(table_name(), &table_));
   session_ = NewSession();
 }
 

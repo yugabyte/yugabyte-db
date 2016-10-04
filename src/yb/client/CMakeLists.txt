@@ -23,6 +23,7 @@ set(CLIENT_SRCS
   error_collector.cc
   error-internal.cc
   meta_cache.cc
+  redis_helpers.cc
   scan_batch.cc
   scan_predicate.cc
   scanner-internal.cc

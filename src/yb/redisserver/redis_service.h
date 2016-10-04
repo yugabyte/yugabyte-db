@@ -7,19 +7,28 @@
 
 #include <vector>
 
+#include "yb/client/shared_ptr.h"
 #include "yb/rpc/transfer.h"
 #include "yb/util/string_case.h"
 
 using std::string;
+using yb::client::sp::shared_ptr;
 
 namespace yb {
+
+namespace client {
+class YBClient;
+class YBTable;
+class YBSession;
+}  // namespace client
+
 namespace redisserver {
 
 class RedisServer;
 
 class RedisServiceImpl : public RedisServerServiceIf {
  public:
-  explicit RedisServiceImpl(RedisServer* server);
+  RedisServiceImpl(RedisServer* server, string yb_tier_master_address);
 
   void Handle(yb::rpc::InboundCall* call) override;
 
@@ -56,6 +65,13 @@ class RedisServiceImpl : public RedisServerServiceIf {
     RedisCommandInfo();
   };
 
+  constexpr static int kRpcTimeoutSec = 5;
+  constexpr static int kMethodCount = 3;
+
+  void PopulateHandlers();
+  RedisCommandFunctionPtr FetchHandler(const std::vector<Slice>& cmd_args);
+  void SetUpYBClient(string yb_master_address);
+
   // Redis command table, for commands that we currently support.
   //
   // Based on  "redisCommandTable[]" from redis/src/server.c
@@ -65,17 +81,19 @@ class RedisServiceImpl : public RedisServerServiceIf {
   //   name: a string representing the command name.
   //   function: pointer to the member function implementing the command.
   //   arity: number of arguments expected, it is possible to use -N to say >= N.
-  constexpr static int kMethodCount = 3;
   const struct RedisCommandInfo kRedisCommandTable[kMethodCount] = {
       {"get", &RedisServiceImpl::GetCommand, 2},
       {"set", &RedisServiceImpl::SetCommand, -3},
       {"echo", &RedisServiceImpl::EchoCommand, 2}};
 
-  void PopulateHandlers();
-  RedisCommandFunctionPtr FetchHandler(const std::vector<Slice>& cmd_args);
-
   yb::rpc::RpcMethodMetrics metrics_[kMethodCount];
   std::map<string, const RedisCommandInfo*> command_name_to_info_map_;
+
+  shared_ptr<client::YBClient> client_;
+  shared_ptr<client::YBTable> table_;
+  shared_ptr<client::YBSession> session_;
+
+  RedisServer* server_;
 };
 
 }  // namespace redisserver

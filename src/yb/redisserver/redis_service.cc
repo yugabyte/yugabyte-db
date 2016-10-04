@@ -4,7 +4,8 @@
 
 #include <thread>
 
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/client/client.h"
+#include "yb/client/redis_helpers.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
@@ -22,6 +23,12 @@ METRIC_DEFINE_histogram(server,
 namespace yb {
 namespace redisserver {
 
+using yb::client::RedisConstants;
+using yb::client::RedisWriteOp;
+using yb::client::RedisWriteOpForSetKV;
+using yb::client::YBClientBuilder;
+using yb::client::YBSchema;
+using yb::client::YBSession;
 using yb::rpc::InboundCall;
 using yb::rpc::RedisInboundCall;
 using yb::rpc::RpcContext;
@@ -67,13 +74,33 @@ RedisServiceImpl::RedisCommandFunctionPtr RedisServiceImpl::FetchHandler(
   return cmd_info.function_ptr;
 }
 
-RedisServiceImpl::RedisServiceImpl(RedisServer* server)
-    : RedisServerServiceIf(server->metric_entity()) {
+RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_addresses)
+    : RedisServerServiceIf(server->metric_entity()), server_(server) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   metrics_[0].handler_latency =
       METRIC_handler_latency_yb_redisserver_RedisServerService_Any.Instantiate(
           server->metric_entity());
   PopulateHandlers();
+  SetUpYBClient(yb_tier_master_addresses);
+}
+
+void RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
+  YBClientBuilder client_builder;
+  client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
+  client_builder.add_master_server_addr(yb_tier_master_addresses);
+  CHECK_OK(client_builder.Build(&client_));
+
+  const string table_name(RedisConstants::kRedisTableName);
+  // Ensure that the table has already been created.
+  {
+    YBSchema existing_schema;
+    CHECK(client_->GetTableSchema(table_name, &existing_schema).ok()) << "Table '" << table_name
+                                                                      << "' does not exist yet";
+  }
+  CHECK_OK(client_->OpenTable(table_name, &table_));
+
+  session_ = client_->NewSession();
+  CHECK_OK(session_->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
 }
 
 void RedisServiceImpl::Handle(InboundCall* inbound_call) {
@@ -101,7 +128,21 @@ void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
 }
 
 void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
-  DummyCommand(call, c);  // Not yet Implemented.
+  // TODO: Using a synchronous call, as we do here, is going to quickly block up all
+  // our threads. Switch this to FlushAsync as soon as it is ready.
+  CHECK_OK(session_->Apply(RedisWriteOpForSetKV(
+    table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString()).release()));
+  Status status = session_->Flush();
+  LOG(INFO) << "Received status from Flush " << status.ToString(true);
+  RedisResponsePB* ok_response = new RedisResponsePB();
+  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
+
+  if (status.ok()) {
+    ok_response->set_string_response("OK");
+    context->RespondSuccess();
+  } else {
+    context->RespondFailure(status);
+  }
 }
 
 void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {

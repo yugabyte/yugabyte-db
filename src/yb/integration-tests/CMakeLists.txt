@@ -24,6 +24,7 @@ set(INTEGRATION_TESTS_SRCS
   test_workload.cc
   load_generator.cc
   yb_table_test_base.cc
+  redis_table-test.cc
 )
 
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})

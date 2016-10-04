@@ -24,7 +24,7 @@ Status RedisServer::Init() {
 Status RedisServer::Start() {
   CHECK(initialized_);
 
-  gscoped_ptr<ServiceIf> redis_service(new RedisServiceImpl(this));
+  gscoped_ptr<ServiceIf> redis_service(new RedisServiceImpl(this, opts_.master_addresses_flag));
   RETURN_NOT_OK(RegisterService(redis_service.Pass()));
 
   RETURN_NOT_OK(server::RpcServerBase::StartRpcServer());
@@ -32,5 +32,5 @@ Status RedisServer::Start() {
   return Status::OK();
 }
 
-} // namespace redisserver
-} // namespace yb
+}  // namespace redisserver
+}  // namespace yb

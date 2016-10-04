@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/redis_table-test.h"
 #include "yb/redisserver/redis_server.h"
 #include "yb/rpc/redis_encoding.h"
 #include "yb/util/cast.h"
@@ -17,16 +18,14 @@ using std::string;
 using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
+using yb::tablet::RedisTableTest;
 using yb::rpc::EncodeAsArrays;
 using yb::rpc::EncodeAsBulkString;
 using yb::rpc::EncodeAsSimpleString;
 
-class TestRedisService : public YBTest {
+class TestRedisService : public RedisTableTest {
  public:
-  static void SetUpTestCase();
-
   void SetUp() override;
-
   void TearDown() override;
 
   void SendCommandAndExpectTimeout(const string& cmd);
@@ -38,21 +37,23 @@ class TestRedisService : public YBTest {
       const string& cmd, int expected_resp_length, int timeout_in_millis = 1000);
 
   Socket client_sock_;
-  static unique_ptr<RedisServer> server_;
-  static int server_port_;
-  static unique_ptr<FileLock> port_lock_;
+  unique_ptr<RedisServer> server_;
+  int redis_server_port_ = 0;
+  unique_ptr<FileLock> redis_port_lock_;
   static constexpr size_t kBufLen = 1024;
   uint8_t resp_[kBufLen];
 };
 
-int yb::redisserver::TestRedisService::server_port_ = 0;  // To be assigned a free port.
-unique_ptr<RedisServer> yb::redisserver::TestRedisService::server_(nullptr);
-unique_ptr<FileLock> yb::redisserver::TestRedisService::port_lock_(nullptr);
+void TestRedisService::SetUp() {
+  RedisTableTest::SetUp();
 
-void TestRedisService::SetUpTestCase() {
-  server_port_ = GetFreePort(&port_lock_);
+  redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
-  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", server_port_);
+  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", redis_server_port_);
+
+  auto master_rpc_addrs = master_rpc_addresses_as_strings();
+  opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
+
   server_.reset(new RedisServer(opts));
   LOG(INFO) << "Initializing redis server...";
   CHECK_OK(server_->Init());
@@ -60,20 +61,19 @@ void TestRedisService::SetUpTestCase() {
   LOG(INFO) << "Starting redis server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "Redis server successfully started.";
-}
-
-void TestRedisService::SetUp() {
-  YBTest::SetUp();
 
   Sockaddr remote;
-  remote.ParseString("0.0.0.0", server_port_);
+  remote.ParseString("0.0.0.0", redis_server_port_);
   CHECK_OK(client_sock_.Init(0));
   CHECK_OK(client_sock_.SetNoDelay(false));
   LOG(INFO) << "Connecting to " << remote.ToString();
   CHECK_OK(client_sock_.Connect(remote));
 }
 
-void TestRedisService::TearDown() { EXPECT_OK(client_sock_.Close()); }
+void TestRedisService::TearDown() {
+  EXPECT_OK(client_sock_.Close());
+  RedisTableTest::TearDown();
+}
 
 Status TestRedisService::SendCommandAndGetResponse(
     const string& cmd, int expected_resp_length, int timeout_in_millis) {
@@ -145,6 +145,11 @@ TEST_F(TestRedisService, Echo) {
                      }),
       EncodeAsSimpleString("foo bar")  // The response is in the simple string format.
       );
+}
+
+TEST_F(TestRedisService, TestSetOnly) {
+  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$4\r\nfool\r\n$4\r\nBEST\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, DISABLED_TestSetThenGet) {

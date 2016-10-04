@@ -1,10 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/integration-tests/redis_table-test.h"
+
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+#include "yb/client/redis_helpers.h"
 
 using std::string;
 using std::vector;
@@ -14,6 +17,7 @@ namespace yb {
 namespace tablet {
 
 using client::RedisWriteOp;
+using client::RedisWriteOpForSetKV;
 using client::YBColumnSchema;
 using client::YBTableCreator;
 using client::YBSchemaBuilder;
@@ -23,37 +27,26 @@ using client::YBSession;
 
 using integration_tests::YBTableTestBase;
 
-class RedisTableTest : public YBTableTestBase {
- protected:
+void RedisTableTest::CreateTable() {
+  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
 
-  void CreateTable() OVERRIDE {
-    unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(table_name())
+                .table_type(YBTableType::REDIS_TABLE_TYPE)
+                .num_replicas(3)
+                .Create());
+  table_exists_ = true;
+}
 
-    ASSERT_OK(table_creator->table_name(table_name())
-                  .table_type(YBTableType::REDIS_TABLE_TYPE)
-                  .num_replicas(3)
-                  .Create());
-    table_exists_ = true;
-  }
+void RedisTableTest::PutKeyValue(YBSession* session, string key, string value) {
+  ASSERT_OK(session->Apply(RedisWriteOpForSetKV(table_.get(), key, value).release()));
+  ASSERT_OK(session->Flush());
+}
 
-  using YBTableTestBase::PutKeyValue;
-
-  void PutKeyValue(YBSession* session, string key, string value) OVERRIDE {
-    unique_ptr<RedisWriteOp> redis_op(table_->NewRedisWrite());
-    CHECK_OK(redis_op->mutable_row()->SetBinary("key_column", key));
-    auto* kv = redis_op->mutable_request()->mutable_set_request()->mutable_key_value();
-    kv->set_key(key);
-    kv->add_value(value);
-    ASSERT_OK(session->Apply(redis_op.release()));
-    ASSERT_OK(session->Flush());
-  }
-
-  void RedisSimpleSetCommands() {
-    PutKeyValue("key123", "value123");
-    PutKeyValue("key200", "value200");
-    PutKeyValue("key300", "value300");
-  }
-};
+void RedisTableTest::RedisSimpleSetCommands() {
+  YBTableTestBase::PutKeyValue("key123", "value123");
+  YBTableTestBase::PutKeyValue("key200", "value200");
+  YBTableTestBase::PutKeyValue("key300", "value300");
+}
 
 TEST_F(RedisTableTest, SimpleRedisSetTest) {
   NO_FATALS(RedisSimpleSetCommands());
