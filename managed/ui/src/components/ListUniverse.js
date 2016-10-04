@@ -5,14 +5,13 @@ import UniverseTableContainer from '../containers/UniverseTableContainer';
 import YBPanelItem from './YBPanelItem';
 import { Row, Col } from 'react-bootstrap';
 import UniverseFormContainer from '../containers/forms/UniverseFormContainer';
-import YBModal from './fields/YBModal';
 import YBButton from './fields/YBButton';
 
 export default class ListUniverse extends Component {
 
   render() {
     const {universe:{showModal, visibleModal}} = this.props;
-    var modalVisibility = (showModal === true && visibleModal === "universeModal")
+
     return (
       <div id="page-wrapper">
         <Row className="header-row">
@@ -23,10 +22,9 @@ export default class ListUniverse extends Component {
             <YBButton btnClass="universe-button btn btn-default btn-lg bg-orange"
                            btnText="Create Universe" btnIcon="fa fa-pencil"
                            onClick={this.props.showUniverseModal} />
-            <YBModal visible={modalVisibility}
-                     onClose={this.props.closeUniverseModal} type="Create">
-              <UniverseFormContainer type="Create"/>
-            </YBModal>
+            <UniverseFormContainer type="Create"
+                                   visible={showModal===true && visibleModal==="universeModal"}
+                                   onHide={this.props.closeUniverseModal} title="Create Universe" />
           </Col>
         </Row>
         <div>

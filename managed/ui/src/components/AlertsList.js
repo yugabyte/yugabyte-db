@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isValidObject } from '../utils/ObjectUtils';
-import { Row, Col } from 'react-bootstrap';
+
 import YBPanelItem from '../components/YBPanelItem';
 import { FormattedDate, FormattedNumber } from 'react-intl';
 
@@ -46,7 +46,7 @@ export default class AlertsList extends Component {
     var alertsDisplay = [];
 
     if (isValidObject(universeTasks)) {
-      Object.keys(universeTasks).map(function (key, idx) {
+      Object.keys(universeTasks).forEach(function (key, idx) {
         alertsDisplay = [].concat(alertsDisplay, universeTasks[key]);
       });
     }
