@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.models.YugawareProperty;
 
+// TODO: change the name from Configuration to YBConfiguration
 public class Configuration {
   public enum Parameter {
     SupportedInstanceTypesInAWS

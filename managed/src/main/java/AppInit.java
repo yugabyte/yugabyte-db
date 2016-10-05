@@ -25,7 +25,13 @@ public class AppInit {
   @Inject
   public AppInit(Environment environment, Application application) {
     Logger.info("Yugaware Application has started");
+
     if (!environment.isTest()) {
+      if (application.configuration().getString("yb.devops.home") == null ||
+        application.configuration().getString("yb.devops.home").length() == 0) {
+        throw new RuntimeException("yb.devops.home is not set in application.conf");
+      }
+
       // Check if we have provider data, if not, we need to see the database
       if (Provider.find.where().findRowCount() == 0) {
         Logger.debug("Seed the Yugaware DB");

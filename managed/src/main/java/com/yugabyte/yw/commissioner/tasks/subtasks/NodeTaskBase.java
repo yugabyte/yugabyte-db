@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.common.DevOpsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,6 +13,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.UniverseDetails;
 
+import play.api.Play;
 import play.libs.Json;
 
 public abstract class NodeTaskBase extends AbstractTaskBase {
@@ -20,6 +22,9 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
   // The task params.
   protected NodeTaskParams taskParams;
 
+  private DevOpsHelper devOpsHelper;
+  public DevOpsHelper getDevOpsHelper() { return devOpsHelper; }
+
   @Override
   protected NodeTaskParams taskParams() {
     return taskParams;
@@ -27,6 +32,7 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
+    this.devOpsHelper = Play.current().injector().instanceOf(DevOpsHelper.class);
     this.taskParams = (NodeTaskParams)params;
   }
 
