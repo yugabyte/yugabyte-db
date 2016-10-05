@@ -199,6 +199,11 @@ class Tablet {
   void ApplyKeyValueRowOperations(rocksdb::WriteBatch* write_batch,
                                   rocksdb::SequenceNumber seq_num);
 
+  Status KeyValueBatchFromRedisWriteBatch(
+      const tserver::WriteRequestPB& redis_write_request,
+      std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb,
+      vector<string> *keys_locked);
+
   // Takes a Kudu WriteRequestPB as input with its row operations.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
   // replicated by Raft. (Makes a copy, it is caller's responsibility to deallocate
@@ -207,10 +212,10 @@ class Tablet {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  Status CreateKeyValueWriteRequestPB(
-      const tserver::WriteRequestPB& kudu_write_request_pb,
-      std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb,
-      std::vector<std::string>* keys_locked);
+  Status KeyValueBatchFromYSQLRowOps(
+      const tserver::WriteRequestPB &kudu_write_request_pb,
+      std::unique_ptr<const tserver::WriteRequestPB> *kudu_write_batch_pb,
+      std::vector<std::string> *keys_locked);
 
   // Uses primary_key:column_name for key encoding.
   Status CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,

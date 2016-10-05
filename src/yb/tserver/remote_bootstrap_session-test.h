@@ -171,7 +171,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       std::vector<std::string> keys_locked;
 
       if (table_type_ == TableType::YSQL_TABLE_TYPE) {
-        Status s = tablet()->CreateKeyValueWriteRequestPB(
+        Status s = tablet()->KeyValueBatchFromYSQLRowOps(
             *req.get(), &key_value_write_request, &keys_locked);
         assert(s.ok());
       } else {

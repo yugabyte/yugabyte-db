@@ -729,18 +729,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  if (!req->has_row_operations()) {
+  if (!req->has_row_operations() && tablet->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
-    RpcTransactionCompletionCallback<WriteResponsePB> rpc(context, resp);
-    rpc.TransactionCompleted();
-    return;
-  }
-
-  if (tablet->table_type() == TableType::REDIS_TABLE_TYPE) {
-    // This is a redis request, print the protobuf
-    LOG(INFO) << "Got redis request: " << req->DebugString();
-    // Exit without doing anything. Not implemented yet.
     RpcTransactionCompletionCallback<WriteResponsePB> rpc(context, resp);
     rpc.TransactionCompleted();
     return;
@@ -749,24 +740,41 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   unique_ptr<WriteTransactionState> tx_state;
 
   vector<string> locks_held;
+  unique_ptr<const WriteRequestPB> key_value_write_request;
 
-  if (tablet->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // We'll construct a new WriteRequestPB for raft replication.
-    unique_ptr<const WriteRequestPB> key_value_write_request;
+  switch (tablet->table_type()) {
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
+      tx_state = unique_ptr<WriteTransactionState>(
+          new WriteTransactionState(tablet_peer.get(), req, resp));
+    } break;
+    case TableType::REDIS_TABLE_TYPE: {
+      unique_ptr<const WriteRequestPB> key_value_write_request;
+      s = tablet->KeyValueBatchFromRedisWriteBatch(
+          *req, &key_value_write_request, &locks_held);
+      if (PREDICT_FALSE(!s.ok())) {
+        SetupErrorAndRespond(resp->mutable_error(), s,
+                             TabletServerErrorPB::UNKNOWN_ERROR,
+                             context);
+        return;
+      }
+      tx_state = unique_ptr<WriteTransactionState>(
+          new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
+      tx_state->swap_docdb_locks(&locks_held);
+    } break;
+    case TableType::YSQL_TABLE_TYPE: {
+      // We'll construct a new WriteRequestPB for raft replication.
 
-    s = tablet->CreateKeyValueWriteRequestPB(*req, &key_value_write_request, &locks_held);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s,
-                           TabletServerErrorPB::UNKNOWN_ERROR,
-                           context);
-      return;
-    }
-    tx_state = unique_ptr<WriteTransactionState>(
-        new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
-    tx_state->swap_docdb_locks(&locks_held);
-  } else {
-    tx_state = unique_ptr<WriteTransactionState>(
-        new WriteTransactionState(tablet_peer.get(), req, resp));
+      s = tablet->KeyValueBatchFromYSQLRowOps(*req, &key_value_write_request, &locks_held);
+      if (PREDICT_FALSE(!s.ok())) {
+        SetupErrorAndRespond(resp->mutable_error(), s,
+                             TabletServerErrorPB::UNKNOWN_ERROR,
+                             context);
+        return;
+      }
+      tx_state = unique_ptr<WriteTransactionState>(
+          new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
+      tx_state->swap_docdb_locks(&locks_held);
+    } break;
   }
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(

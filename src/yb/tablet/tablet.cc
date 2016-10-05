@@ -412,7 +412,7 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
   DCHECK_EQ(tx_state->row_ops().size(), 0);
   DCHECK_EQ(tx_state->kv_write_batch()->Count(), 0);
 
-  if (table_type_ == TableType::YSQL_TABLE_TYPE) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     CHECK(tx_state->request()->has_write_batch())
         << "Write request for kv-table has no write batch";
     CHECK(!tx_state->request()->has_row_operations())
@@ -748,7 +748,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 
 void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
                                         const SequenceNumber seq_num) {
-  assert(table_type_ == TableType::YSQL_TABLE_TYPE);
+  assert(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
   write_batch->AddAllUserSequenceNumbers(seq_num);
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
@@ -762,9 +762,44 @@ void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
   }
 }
 
-Status Tablet::CreateKeyValueWriteRequestPB(const WriteRequestPB& kudu_write_request_pb,
-                                            unique_ptr<const WriteRequestPB>* kudu_write_batch_pb,
-                                            vector<string>* keys_locked) {
+Status Tablet::KeyValueBatchFromRedisWriteBatch(
+    const WriteRequestPB& redis_write_request,
+    unique_ptr<const WriteRequestPB>* kudu_write_batch_pb,
+    vector<string> *keys_locked) {
+  vector<docdb::DocWriteOperation> doc_ops;
+  const Timestamp current_time = clock_->Now();
+  DocWriteBatch doc_write_batch(rocksdb_.get());
+  for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
+    RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
+    switch (req.redis_op_type()) {
+      case RedisWriteRequestPB_Type::RedisWriteRequestPB_Type_SET: {
+        RedisSetRequestPB set = req.set_request();
+        const DocPath doc_path(set.key_value().key());
+        const PrimitiveValue value(set.key_value().value(0));
+        doc_ops.emplace_back(doc_path, value, current_time);
+      } break;
+      default:
+        LOG(FATAL) << "Unsupported row operation type " << req.redis_op_type()
+                   << " for key-value tables";
+    }
+  }
+  rocksdb::WriteBatch write_batch;
+  docdb::StartDocWriteTransaction(
+      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked, &write_batch);
+
+  WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
+
+  kudu_write_batch_pb->reset(write_request_copy);
+
+  write_request_copy->clear_row_operations();
+  write_request_copy->mutable_write_batch()->set_serialized_write_batch(write_batch.Data());
+
+  return Status::OK();
+}
+
+Status Tablet::KeyValueBatchFromYSQLRowOps(const WriteRequestPB &kudu_write_request_pb,
+                                           unique_ptr<const WriteRequestPB> *kudu_write_batch_pb,
+                                           vector<string> *keys_locked) {
 
   TRACE("PREPARE: Decoding operations");
 

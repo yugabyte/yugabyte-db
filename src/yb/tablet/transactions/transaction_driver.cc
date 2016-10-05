@@ -83,7 +83,7 @@ Status TransactionDriver::Init(gscoped_ptr<Transaction> transaction,
     DCHECK_EQ(type, consensus::LEADER);
     gscoped_ptr<ReplicateMsg> replicate_msg;
     transaction_->NewReplicateMsg(&replicate_msg);
-    if (consensus_) { // sometimes NULL in tests
+    if (consensus_) {  // sometimes NULL in tests
       // Unretained is required to avoid a refcount cycle.
       mutable_state()->set_consensus_round(
         consensus_->NewRound(replicate_msg.Pass(),
@@ -353,7 +353,8 @@ Status TransactionDriver::ApplyAsync() {
 
   TRACE_EVENT_FLOW_BEGIN0("txn", "ApplyTask", this);
   switch (table_type_) {
-    case TableType::YSQL_TABLE_TYPE:
+    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType ::REDIS_TABLE_TYPE:
       // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
       // the order.
       ApplyTask();
@@ -454,16 +455,16 @@ std::string TransactionDriver::StateString(ReplicationState repl_state,
   string state_str;
   switch (repl_state) {
     case NOT_REPLICATING:
-      StrAppend(&state_str, "NR-"); // For Not Replicating
+      StrAppend(&state_str, "NR-");  // For Not Replicating
       break;
     case REPLICATING:
-      StrAppend(&state_str, "R-"); // For Replicating
+      StrAppend(&state_str, "R-");  // For Replicating
       break;
     case REPLICATION_FAILED:
-      StrAppend(&state_str, "RF-"); // For Replication Failed
+      StrAppend(&state_str, "RF-");  // For Replication Failed
       break;
     case REPLICATED:
-      StrAppend(&state_str, "RD-"); // For Replication Done
+      StrAppend(&state_str, "RD-");  // For Replication Done
       break;
     default:
       LOG(DFATAL) << "Unexpected replication state: " << repl_state;
