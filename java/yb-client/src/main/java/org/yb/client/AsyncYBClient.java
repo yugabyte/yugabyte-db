@@ -64,7 +64,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.GuardedBy;
-
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -1507,6 +1506,7 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<ArrayList<Void>> shutdown() {
     checkIsClosed();
     closed = true;
+
     // This is part of step 3.  We need to execute this in its own thread
     // because Netty gets stuck in an infinite loop if you try to shut it
     // down from within a thread of its own thread pool.  They don't want
@@ -1551,7 +1551,8 @@ public class AsyncYBClient implements AutoCloseable {
 
   private void checkIsClosed() {
     if (closed) {
-      throw new IllegalStateException("Cannot proceed, the client has already been closed");
+      throw new IllegalStateException("Cannot proceed, the client to " + getMasterAddresses() +
+                                      " has already been closed.");
     }
   }
 

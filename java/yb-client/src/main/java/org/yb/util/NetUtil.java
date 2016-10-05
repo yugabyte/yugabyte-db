@@ -25,7 +25,10 @@ import com.google.common.net.HostAndPort;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.Common.HostPortPB;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Networking related methods.
@@ -97,5 +100,31 @@ public class NetUtil {
       hostPorts.add(HostPortPB.newBuilder().setHost(host).setPort(port).build());
     }
     return hostPorts;
+  }
+
+  /**
+   * Checks if two comma separated list of host:port have the same elements.
+   *
+   * @param commaSepAddrsLeft  The comma separated list of "host:port" pairs.
+   * @param commaSepAddrsRight The other comma separated list of "host:port" pairs.
+   * @return True is they are the same list of "host:port" pairs.
+   */
+  public static boolean areSameAddresses(final String commaSepAddrsLeft,
+                                         final String commaSepAddrsRight) {
+    String[] addrStringsLeft = commaSepAddrsLeft.split(",");
+    String[] addrStringsRight = commaSepAddrsRight.split(",");
+
+    if (addrStringsLeft.length != addrStringsRight.length) {
+      return false;
+    }
+
+    Set<String> leftList = new HashSet<String>(Arrays.asList(addrStringsLeft));
+    for (String addr : addrStringsRight) {
+      if (!leftList.contains(addr)) {
+         return false;
+      }
+    }
+
+    return true;
   }
 }

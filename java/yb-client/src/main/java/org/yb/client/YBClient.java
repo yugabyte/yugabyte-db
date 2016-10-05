@@ -464,15 +464,14 @@ public class YBClient implements AutoCloseable {
         // final debug if we never succeed.
         finalException = e;
       }
-
       // Need to wait even when ping has an exception, so the sleep is outside the above try block.
       try {
         Thread.sleep(AsyncYBClient.SLEEP_TIME);
       } catch (Exception e) {}
     } while (System.currentTimeMillis() < start + timeoutMs);
 
-    LOG.warn("Timed out waiting for server {} to come online at. Final exception was {}.",
-             hp.toString(), finalException);
+    LOG.warn("Timed out waiting for server {} to come online. Final exception was {}.",
+             hp.toString(), finalException.toString());
 
     return false;
   }
