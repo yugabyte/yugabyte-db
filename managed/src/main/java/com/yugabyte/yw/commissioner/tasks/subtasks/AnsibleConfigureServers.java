@@ -1,11 +1,10 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.DevOpsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class AnsibleConfigureServers extends NodeTaskBase {
@@ -24,24 +23,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Create the process to fetch information about the node from the cloud provider.
-    String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
-    String command = "ybcloud.py " + taskParams().cloud;
-
-
-    if (taskParams().cloud == Common.CloudType.aws) {
-      command += " --region " + taskParams().getRegion().code;
-    }
-
-    command += " instance configure" +
-               " --package " + taskParams().ybServerPkg +
-               " --master_addresses_for_tserver " + masterAddresses;
-
-    if (!taskParams().isMasterInShellMode) {
-      command += " --master_addresses_for_master " + masterAddresses;
-    }
-
-    command += " " + taskParams().nodeName;
+    String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Configure, taskParams());
+    LOG.info("Command to run: [{}]", command);
 
     // Execute the ansible command.
     execCommand(command);

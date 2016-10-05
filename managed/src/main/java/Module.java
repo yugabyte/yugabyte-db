@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.AbstractModule;
+import com.yugabyte.yw.common.DevOpsHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.LocalYBMiniClusterService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -20,5 +21,7 @@ public class Module extends AbstractModule {
     bind(YBClientService.class).to(LocalYBClientService.class);
     // Set LocalMiniClusterService as the implementation for YBClientService
     bind(YBMiniClusterService.class).to(LocalYBMiniClusterService.class);
+
+    bind(DevOpsHelper.class).asEagerSingleton();
   }
 }
