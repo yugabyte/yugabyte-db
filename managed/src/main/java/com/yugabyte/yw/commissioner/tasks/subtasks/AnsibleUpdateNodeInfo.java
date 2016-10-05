@@ -9,7 +9,7 @@ import java.lang.reflect.Field;
 import java.util.Iterator;
 import java.util.Map.Entry;
 
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.DevOpsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,14 +34,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
   public void run() {
     try {
       // Create the process to fetch information about the node from the cloud provider.
-      String command = "ybcloud.py " + taskParams().cloud;
-
-      if (taskParams().cloud == Common.CloudType.aws) {
-        command += " --region " + taskParams().getRegion().code;
-      }
-
-      command += " instance list " + taskParams().nodeName + " --as_json";
-
+      String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.List, taskParams());
       LOG.info("Command to run: [{}]", command);
 
       // Run the process.

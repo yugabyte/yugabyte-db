@@ -2,12 +2,11 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.DevOpsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -41,16 +40,11 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    // Update the node state as being decomissioned.
+    // Update the node state as being decommissioned.
     setNodeState(NodeDetails.NodeState.BeingDecommissioned);
 
-    String command = "ybcloud.py " + taskParams().cloud;
-
-    if (taskParams().cloud == Common.CloudType.aws) {
-      command += " --region " + taskParams().getRegion().code;
-    }
-
-    command += " instance destroy " + taskParams().nodeName;
+    String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Destroy, taskParams());
+    LOG.info("Command to run: [{}]", command);
 
     // Execute the ansible command.
     execCommand(command);
