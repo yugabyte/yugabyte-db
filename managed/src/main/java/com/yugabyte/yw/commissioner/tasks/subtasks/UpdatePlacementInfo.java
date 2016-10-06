@@ -109,7 +109,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
       // Clear the placement info, as it is no longer valid.
       Master.PlacementInfoPB.Builder placementInfoPB =
-          configBuilder.clearPlacementInfo().getPlacementInfoBuilder();
+          configBuilder.clearReplicationInfo().getReplicationInfoBuilder().getLiveReplicasBuilder();
       // Set the replication factor to the number of masters.
       placementInfoPB.setNumReplicas(numMasters);
       LOG.info("Starting modify config with {} masters.", numMasters);

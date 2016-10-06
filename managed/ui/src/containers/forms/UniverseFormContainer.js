@@ -108,7 +108,7 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
-    "serverPackage": "yb-server-0.0.1-SNAPSHOT.182f9666d63c314480f9d481c5169762766350a5.tar.gz",
+    "serverPackage": "yb-server-0.0.1-SNAPSHOT.49c0462fcac213c7aeaea3cf3e27b02d70b4b055.tar.gz",
     "numNodes": 3, "isMultiAZ": true
   };
   if (isValidObject(currentUniverse)) {
