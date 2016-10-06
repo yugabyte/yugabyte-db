@@ -21,12 +21,13 @@
 
 #include "yb/client/shared_ptr.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/util/yb_export.h"
 
 namespace yb {
 
 class EncodedKey;
+
+class RedisWriteRequestPB;
 
 namespace client {
 
@@ -105,13 +106,11 @@ class YB_EXPORT RedisWriteOp : public YBWriteOperation {
 public:
   virtual ~RedisWriteOp();
 
-  const RedisWriteRequestPB& request() { return redis_write_request_; }
+  const RedisWriteRequestPB& request() { return *redis_write_request_; }
 
-  RedisWriteRequestPB* mutable_request() { return &redis_write_request_; }
+  RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
 
-  virtual std::string ToString() const OVERRIDE {
-    return "REDIS_WRITE " + redis_write_request_.set_request().key_value().key();
-  }
+  virtual std::string ToString() const OVERRIDE;
 
 protected:
   virtual Type type() const OVERRIDE {
@@ -121,7 +120,7 @@ protected:
 private:
   friend class YBTable;
   explicit RedisWriteOp(const sp::shared_ptr<YBTable>& table);
-  RedisWriteRequestPB redis_write_request_;
+  std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
 };
 
 

@@ -39,6 +39,7 @@
 #include "yb/common/encoded_key.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/human_readable.h"
@@ -287,8 +288,8 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 #endif
     if (op->write_op->type() == YBWriteOperation::Type::REDIS_WRITE) {
       CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-      req_.mutable_redis_write_batch()->AddAllocated(
-          new RedisWriteRequestPB(down_cast<RedisWriteOp&> (*(op->write_op)).request()));
+      RedisWriteRequestPB* redis_req = req_.mutable_redis_write_batch()->Add();
+      *redis_req = down_cast<RedisWriteOp&> (*(op->write_op)).request();
     } else {
       CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
       enc.Add(ToInternalWriteType(op->write_op->type()), op->write_op->row());

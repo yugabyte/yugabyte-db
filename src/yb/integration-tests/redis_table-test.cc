@@ -1,8 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 #include <glog/logging.h>
-#include <yb/client/client.h>
 
+#include "yb/client/client.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
 using std::string;
@@ -58,5 +59,5 @@ TEST_F(RedisTableTest, SimpleRedisSetTest) {
   NO_FATALS(RedisSimpleSetCommands());
 }
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

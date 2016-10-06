@@ -21,6 +21,7 @@
 #include "yb/common/encoded_key.h"
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/common/redis_protocol.pb.h"
 
 namespace yb {
 namespace client {
@@ -79,10 +80,14 @@ YBInsert::~YBInsert() {}
 // RedisWriteOp -----------------------------------------------------------------
 
 RedisWriteOp::RedisWriteOp(const shared_ptr<YBTable>& table)
-    : YBWriteOperation(table) {
+    : YBWriteOperation(table), redis_write_request_(new RedisWriteRequestPB()) {
 }
 
 RedisWriteOp::~RedisWriteOp() {}
+
+std::string RedisWriteOp::ToString() const {
+  return "REDIS_WRITE " + redis_write_request_->set_request().key_value().key();
+}
 
 // Update -----------------------------------------------------------------------
 
