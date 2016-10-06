@@ -91,8 +91,6 @@ class RedisServiceImpl : public RedisServerServiceIf {
 
   shared_ptr<client::YBClient> client_;
   shared_ptr<client::YBTable> table_;
-  shared_ptr<client::YBSession> session_;
-  shared_ptr<client::YBSession> read_only_session_;
 
   RedisServer* server_;
 };

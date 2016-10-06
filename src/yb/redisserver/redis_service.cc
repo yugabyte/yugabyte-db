@@ -4,6 +4,7 @@
 
 #include <thread>
 
+#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/redis_helpers.h"
 #include "yb/common/redis_protocol.pb.h"
@@ -25,18 +26,21 @@ namespace yb {
 namespace redisserver {
 
 using yb::client::RedisConstants;
+using yb::client::YBRedisReadOp;
 using yb::client::YBRedisWriteOp;
 using yb::client::RedisReadOpForGetKey;
 using yb::client::RedisWriteOpForSetKV;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
+using yb::client::YBStatusCallback;
 using yb::rpc::InboundCall;
 using yb::rpc::RedisInboundCall;
 using yb::rpc::RpcContext;
 using yb::rpc::RedisClientCommand;
 using yb::RedisResponsePB;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 
@@ -100,11 +104,6 @@ void RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
                                                                       << "' does not exist yet";
   }
   CHECK_OK(client_->OpenTable(table_name, &table_));
-
-  session_ = client_->NewSession();
-  CHECK_OK(session_->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
-  read_only_session_ = client_->NewSession(true);
-  CHECK_OK(read_only_session_->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
 }
 
 void RedisServiceImpl::Handle(InboundCall* inbound_call) {
@@ -127,34 +126,93 @@ void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
   VLOG(4) << "Done Responding to Echo.";
 }
 
-void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
-  VLOG(1) << "Processing Get.";
-  auto get_op = RedisReadOpForGetKey(table_.get(), c->cmd_args[1].ToString());
-  CHECK_OK(read_only_session_->ReadSync(get_op));
-  RedisResponsePB* ok_response = new RedisResponsePB(get_op->response());
-  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
-  context->RespondSuccess();
-}
+class GetCommandCb : public YBStatusCallback {
+ public:
+  GetCommandCb(
+      shared_ptr<client::YBSession> session, InboundCall* call, shared_ptr<YBRedisReadOp> read_op,
+      rpc::RpcMethodMetrics metrics)
+      : session_(session), redis_call_(call), read_op_(read_op), metrics_(metrics) {}
 
-void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
-  VLOG(1) << "Processing Set.";
-  // TODO: Using a synchronous call, as we do here, is going to quickly block up all
-  // our threads. Switch this to FlushAsync as soon as it is ready.
-  auto set_op = RedisWriteOpForSetKV(table_.get(),
-                                     c->cmd_args[1].ToString(),
-                                     c->cmd_args[2].ToString());
-  CHECK_OK(session_->Apply(set_op));
-  Status status = session_->Flush();
-  LOG(INFO) << "Received status from Flush " << status.ToString(true);
-  RedisResponsePB* ok_response = new RedisResponsePB();
-  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
+  void Run(const Status& status) override;
+
+ private:
+  shared_ptr<client::YBSession> session_;
+  unique_ptr<InboundCall> redis_call_;
+  shared_ptr<YBRedisReadOp> read_op_;
+  rpc::RpcMethodMetrics metrics_;
+};
+
+void GetCommandCb::Run(const Status& status) {
+  VLOG(3) << "Received status from call " << status.ToString(true);
 
   if (status.ok()) {
+    RedisResponsePB* ok_response = new RedisResponsePB(read_op_->response());
+    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, ok_response, metrics_);
+    context->RespondSuccess();
+  } else {
+    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, nullptr, metrics_);
+    context->RespondFailure(status);
+  }
+
+  delete this;
+}
+
+void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
+  VLOG(1) << "Processing Get.";
+  auto read_only_session = client_->NewSession(true);
+  CHECK_OK(read_only_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+  auto get_op = RedisReadOpForGetKey(table_.get(), c->cmd_args[1].ToString());
+  read_only_session->ReadAsync(
+      get_op, new GetCommandCb(read_only_session, call, get_op, metrics_[0]));
+}
+
+class SetCommandCb : public YBStatusCallback {
+ public:
+  SetCommandCb(
+      shared_ptr<client::YBSession> session, InboundCall* call, rpc::RpcMethodMetrics metrics)
+      : session_(session), redis_call_(call), metrics_(metrics) {}
+
+  void Run(const Status& status) override;
+
+ private:
+  shared_ptr<client::YBSession> session_;
+  unique_ptr<InboundCall> redis_call_;
+  rpc::RpcMethodMetrics metrics_;
+};
+
+void SetCommandCb::Run(const Status& status) {
+  VLOG(3) << "Received status from call " << status.ToString(true);
+
+  if (status.ok()) {
+    RedisResponsePB* ok_response = new RedisResponsePB();
+    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, ok_response, metrics_);
     ok_response->set_string_response("OK");
     context->RespondSuccess();
   } else {
+    vector<client::YBError*> errors;
+    bool overflowed;
+    ElementDeleter d(&errors);
+    if (session_.get() != nullptr) {
+      session_->GetPendingErrors(&errors, &overflowed);
+      for (const auto error : errors) {
+        LOG(WARNING) << "Explicit error while inserting: " << error->status().ToString();
+      }
+    }
+
+    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, nullptr, metrics_);
     context->RespondFailure(status);
   }
+
+  delete this;
+}
+
+void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
+  auto tmp_session = client_->NewSession();
+  CHECK_OK(tmp_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+  CHECK_OK(tmp_session->Apply(
+      RedisWriteOpForSetKV(table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString())));
+  // Callback will delete itself, after processing the callback.
+  tmp_session->FlushAsync(new SetCommandCb(tmp_session, call, metrics_[0]));
 }
 
 void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {
