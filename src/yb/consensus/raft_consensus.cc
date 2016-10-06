@@ -450,12 +450,13 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
 
   // The leader needs to be ready to perform a step down.
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  int voters_in_transition = CountVotersInTransition(active_config);
-  if (voters_in_transition != 0) {
-    LOG(INFO) << "Step down found non voters " << voters_in_transition;
+  int servers_in_transition = CountServersInTransition(active_config);
+  if (servers_in_transition != 0) {
+    LOG(INFO) << "Step down found " << servers_in_transition << " peers in transition";
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(STATUS(IllegalState, Substitute("Leader not ready as there are $0 PRE_VOTERs",
-                                               voters_in_transition)),
+    StatusToPB(STATUS(IllegalState,
+                      Substitute("Leader not ready as there are $0 peers in transition",
+                                 servers_in_transition)),
                resp->mutable_error()->mutable_status());
     // We return OK so that the tablet service won't overwrite the error code.
     return Status::OK();
@@ -1403,9 +1404,9 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  int voters_in_transition = 0;
+  int servers_in_transition = 0;
   if (type != CHANGE_ROLE) {
-    voters_in_transition = CountVotersInTransition(active_config);
+    servers_in_transition = CountServersInTransition(active_config);
   }
 
   // Check that all the following requirements are met:
@@ -1413,14 +1414,14 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   //    committed at least one operation in our current term as leader.
   //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
   // 2. Ensure there is no other pending change config.
-  // 3. There are no peers that are in the process of becoming voters.
+  // 3. There are no peers that are in the process of becoming VOTERs or OBSERVERs.
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
       state_->IsConfigChangePendingUnlocked() ||
-      voters_in_transition != 0) {
+      servers_in_transition != 0) {
     return STATUS(IllegalState, Substitute("Leader is not ready for Config Change, can try again. "
                                            "Num peers in transit = $0. Type=$1. Has opid=$2.\n"
                                            "  Committed config: $3.\n  Pending config: $4.",
-                                           voters_in_transition, type,
+                                           servers_in_transition, type,
                                            active_config.has_opid_index(),
                                            state_->GetCommittedConfigUnlocked().ShortDebugString(),
                                            state_->IsConfigChangePendingUnlocked() ?
@@ -1492,9 +1493,17 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
               Substitute("Server with UUID $0 is already a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
-        if (server.has_member_type()) {
-          return STATUS(InvalidArgument, "server must not have member_type specified",
-                                         req.ShortDebugString());
+        if (!server.has_member_type()) {
+          return STATUS(InvalidArgument,
+                        Substitute("Server must have member_type specified. Request: $0",
+                                   req.ShortDebugString()));
+        }
+        if (server.member_type() != RaftPeerPB::PRE_VOTER &&
+            server.member_type() != RaftPeerPB::PRE_OBSERVER) {
+          return STATUS(InvalidArgument,
+              Substitute("Server with UUID $0 must be of member_type PRE_VOTER or PRE_OBSERVER. "
+                         "member_type received: $1", server_uuid,
+                         RaftPeerPB::MemberType_Name(server.member_type())));
         }
         if (!server.has_last_known_addr()) {
           return STATUS(InvalidArgument, "server must have last_known_addr specified",
@@ -1502,7 +1511,6 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         }
         new_peer = new_config.add_peers();
         *new_peer = server;
-        new_peer->set_member_type(RaftPeerPB::PRE_VOTER);
         break;
 
       case REMOVE_SERVER:
@@ -1514,10 +1522,6 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                          server_uuid,
                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE)
                             .ShortDebugString()));
-        }
-        if (CountVotersInTransition(committed_config) != 0) {
-          return STATUS(RuntimeError, "Current configuration contains at least one peer that is "
-                                      "transitioning to VOTER role");
         }
         if (!RemoveFromRaftConfig(&new_config, server_uuid)) {
           return STATUS(NotFound,
@@ -1543,7 +1547,18 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
             Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                        server_uuid, new_config.ShortDebugString()));
         }
-        new_peer->set_member_type(RaftPeerPB::VOTER);
+        if (new_peer->member_type() != RaftPeerPB::PRE_OBSERVER &&
+            new_peer->member_type() != RaftPeerPB::PRE_VOTER) {
+          return STATUS(IllegalState, Substitute("Cannot change role of server with UUID $0 "
+                                                 "because its member type is $1",
+                                                 server_uuid, new_peer->member_type()));
+        }
+        if (new_peer->member_type() == RaftPeerPB::PRE_OBSERVER) {
+          new_peer->set_member_type(RaftPeerPB::OBSERVER);
+        } else {
+          new_peer->set_member_type(RaftPeerPB::VOTER);
+        }
+
         VLOG(3) << "config after CHANGE_ROLE: " << new_config.DebugString();
         break;
       default:

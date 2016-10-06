@@ -97,23 +97,26 @@ bool RemoveFromRaftConfig(RaftConfigPB* config, const string& uuid) {
 }
 
 int CountVoters(const RaftConfigPB& config) {
-  int voters = 0;
-  for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.member_type() == RaftPeerPB::VOTER) {
-      voters++;
-    }
-  }
-  return voters;
+  return CountMemberType(config, RaftPeerPB::VOTER);
 }
 
 int CountVotersInTransition(const RaftConfigPB& config) {
-  int pre_voters = 0;
+  return CountMemberType(config, RaftPeerPB::PRE_VOTER);
+}
+
+int CountServersInTransition(const RaftConfigPB& config) {
+  return CountMemberType(config, RaftPeerPB::PRE_VOTER) +
+      CountMemberType(config, RaftPeerPB::PRE_OBSERVER);
+}
+
+int CountMemberType(const RaftConfigPB& config, const RaftPeerPB::MemberType member_type) {
+  int count = 0;
   for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.member_type() == RaftPeerPB::PRE_VOTER) {
-      pre_voters++;
+    if (peer.member_type() == member_type) {
+      count++;
     }
   }
-  return pre_voters;
+  return count;
 }
 
 int MajoritySize(int num_voters) {
@@ -135,8 +138,15 @@ RaftPeerPB::Role GetConsensusRole(const std::string& permanent_uuid,
       switch (peer.member_type()) {
         case RaftPeerPB::VOTER:
           return RaftPeerPB::FOLLOWER;
-        default:
+
+        // PRE_VOTER, PRE_OBSERVER, and OBSERVER peers are considered LEARNERs.
+        case RaftPeerPB::PRE_VOTER:
+        case RaftPeerPB::PRE_OBSERVER:
+        case RaftPeerPB::OBSERVER:
           return RaftPeerPB::LEARNER;
+
+        case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
+         return RaftPeerPB::UNKNOWN_ROLE;
       }
     }
   }

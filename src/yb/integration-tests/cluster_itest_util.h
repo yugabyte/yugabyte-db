@@ -150,6 +150,14 @@ Status GetConsensusState(const TServerDetails* replica,
                          const MonoDelta& timeout,
                          consensus::ConsensusStatePB* consensus_state);
 
+// Wait until the number of servers with the specified member type in the committed consensus
+// configuration is equal to config_size.
+Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
+                                            const TServerDetails* replica,
+                                            const std::string& tablet_id,
+                                            const MonoDelta& timeout,
+                                            consensus::RaftPeerPB::MemberType member_type);
+
 // Wait until the number of voters in the committed consensus configuration is
 // 'quorum_size', according to the specified replica.
 Status WaitUntilCommittedConfigNumVotersIs(int config_size,

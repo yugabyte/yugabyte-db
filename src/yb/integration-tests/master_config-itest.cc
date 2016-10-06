@@ -342,5 +342,21 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
   VerifyLeaderMasterPeerCount();
 }
 
+TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
+
+  ExternalMaster* new_master = nullptr;
+  cluster_->StartNewMaster(&new_master);
+
+
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER,
+                                           consensus::RaftPeerPB::PRE_OBSERVER),
+                    "Add Change Config returned error");
+  ++num_masters_;
+
+  // Followers might not be up to speed as we did not wait, so just check leader.
+  VerifyLeaderMasterPeerCount();
+}
+
+
 } // namespace master
 } // namespace yb

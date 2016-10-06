@@ -402,15 +402,22 @@ void SysCatalogTable::SysCatalogStateChanged(
               << "' - new count " << new_count << ", old count " << old_count;
 
     // If new_config and old_config have the same number of peers, then the change config must have
-    // been a ROLE_CHANGE, thus new_config must have exactly one more voter than old config.
+    // been a ROLE_CHANGE, thus old_config must have exactly one peer in transition (PRE_VOTER or
+    // PRE_OBSERVER) and new_config should have none.
     if (new_count == old_count) {
-      int new_voter_count = CountVoters(context->change_record.new_config());
-      int old_voter_count = CountVoters(context->change_record.old_config());
-
-      if (new_voter_count - old_voter_count != 1) {
-        LOG(FATAL) << "Expected new config to have one more voter than new config, found "
-                   << new_voter_count << " voters in new config and "
-                   << old_voter_count << " voters in old config.";
+      int old_config_peers_transition_count =
+          CountServersInTransition(context->change_record.old_config());
+      if ( old_config_peers_transition_count != 1) {
+        LOG(FATAL) << "Expected old config to have one server in transition (PRE_VOTER or "
+                   << "PRE_OBSERVER), but found " << old_config_peers_transition_count
+                   << ". Config: " << context->change_record.old_config().ShortDebugString();
+      }
+      int new_config_peers_transition_count =
+          CountServersInTransition(context->change_record.new_config());
+      if (new_config_peers_transition_count != 0) {
+        LOG(FATAL) << "Expected new config to have no servers in transition (PRE_VOTER or "
+                   << "PRE_OBSERVER), but found " << new_config_peers_transition_count
+                   << ". Config: " << context->change_record.old_config().ShortDebugString();
       }
     } else if (std::abs(new_count - old_count) != 1) {
 

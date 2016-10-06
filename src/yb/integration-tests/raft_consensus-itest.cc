@@ -390,6 +390,9 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                                       int64_t* orig_term,
                                       string* fell_behind_uuid);
 
+  void TestAddRemoveServer(RaftPeerPB::MemberType member_type);
+  void TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::MemberType member_type);
+
   shared_ptr<YBTable> table_;
   std::vector<scoped_refptr<yb::Thread> > threads_;
   CountDownLatch inserters_;
@@ -734,6 +737,189 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
       << "Tablet server " << i << " crashed";
   }
   *fell_behind_uuid = replica->uuid();
+}
+
+void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type) {
+  ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
+
+  MonoDelta kTimeout = MonoDelta::FromSeconds(30);
+  FLAGS_num_tablet_servers = 3;
+  FLAGS_num_replicas = 3;
+  vector<string> ts_flags;
+  ts_flags.push_back("--enable_leader_failure_detection=false");
+  ts_flags.push_back("--inject_latency_before_change_role_secs=1");
+  vector<string> master_flags;
+  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers;
+  AppendValuesFromMap(tablet_servers_, &tservers);
+  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+  // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
+  TServerDetails* leader_tserver = tservers[0];
+  const string& leader_uuid = tservers[0]->uuid();
+  ASSERT_OK(StartElection(leader_tserver, tablet_id_, kTimeout));
+  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, kTimeout));
+
+  // Make sure the server rejects removal of itself from the configuration.
+  Status s = RemoveServer(leader_tserver, tablet_id_, leader_tserver, boost::none, kTimeout);
+  ASSERT_TRUE(s.IsInvalidArgument()) << "Should not be able to remove self from config: "
+                                     << s.ToString();
+
+  // Insert the row that we will update throughout the test.
+  ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_, RowOperationsPB::INSERT,
+                               kTestRowKey, kTestRowIntVal, "initial insert", kTimeout));
+
+  // Kill the master, so we can change the config without interference.
+  cluster_->master()->Shutdown();
+
+  TabletServerMap active_tablet_servers = tablet_servers_;
+
+  // Do majority correctness check for 3 servers.
+  NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
+  OpId opid;
+  ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
+                                  &opid));
+  int64_t cur_log_index = opid.index();
+
+  // Go from 3 tablet servers down to 1 in the configuration.
+  vector<int> remove_list = { 2, 1 };
+  for (int to_remove_idx : remove_list) {
+    int num_servers = active_tablet_servers.size();
+    LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
+
+    TServerDetails* tserver_to_remove = tservers[to_remove_idx];
+    LOG(INFO) << "Removing tserver with uuid " << tserver_to_remove->uuid();
+    ASSERT_OK(RemoveServer(leader_tserver, tablet_id_, tserver_to_remove, boost::none, kTimeout));
+    ASSERT_EQ(1, active_tablet_servers.erase(tserver_to_remove->uuid()));
+    ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, ++cur_log_index));
+
+    // Do majority correctness check for each incremental decrease.
+    NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
+    ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
+                                    &opid));
+    cur_log_index = opid.index();
+  }
+
+  int num_observers = 0;
+  // Add the tablet servers back, in reverse order, going from 1 to 3 servers in the configuration.
+  vector<int> add_list = { 1, 2 };
+  for (int to_add_idx : add_list) {
+    int num_servers = active_tablet_servers.size();
+    if (RaftPeerPB::PRE_VOTER == member_type) {
+      LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
+    } else {
+      LOG(INFO) << "Add: Going from " << num_observers<< " to " << num_observers + 1
+                << " observers";
+    }
+
+    TServerDetails* tserver_to_add = tservers[to_add_idx];
+    LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
+
+    ASSERT_OK(DeleteTablet(tserver_to_add, tablet_id_, tablet::TABLET_DATA_TOMBSTONED, boost::none,
+                           kTimeout));
+
+    ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, member_type, boost::none,
+                        kTimeout));
+
+    consensus::ConsensusStatePB cstate;
+    ASSERT_OK(itest::GetConsensusState(leader_tserver, tablet_id_,
+                                       consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
+
+    // Verify that this tserver member type was set correctly.
+    for (const auto peer : cstate.config().peers()) {
+      if (peer.permanent_uuid() == tserver_to_add->uuid()) {
+        ASSERT_EQ(member_type, peer.member_type());
+        LOG(INFO) << "tserver with uuid " << tserver_to_add->uuid() << " was added as a "
+                  << RaftPeerPB::MemberType_Name(peer.member_type());
+      }
+    }
+
+    if (RaftPeerPB::PRE_VOTER == member_type) {
+      InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
+    } else {
+      num_observers++;
+    }
+
+    // Wait until the ChangeConfig has finished and this tserver has been made a VOTER.
+    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(), leader_tserver,
+                                                    tablet_id_, MonoDelta::FromSeconds(10)));
+    ASSERT_OK(WaitUntilCommittedConfigMemberTypeIs(num_observers, leader_tserver, tablet_id_,
+                                                   MonoDelta::FromSeconds(10),
+                                                   RaftPeerPB::OBSERVER));
+
+    ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, ++cur_log_index));
+
+    // Do majority correctness check for each incremental increase.
+    NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
+    ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
+                                    &opid));
+    cur_log_index = opid.index();
+  }
+}
+
+void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
+    RaftPeerPB::MemberType member_type) {
+
+  ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
+  FLAGS_num_tablet_servers = 3;
+  FLAGS_num_replicas = 3;
+  vector<string> ts_flags;
+  ts_flags.push_back("--enable_leader_failure_detection=false");
+  ts_flags.push_back("--inject_latency_before_change_role_secs=10");
+  vector<string> master_flags;
+  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers;
+  AppendValuesFromMap(tablet_servers_, &tservers);
+  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+  // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
+  TServerDetails* initial_leader = tservers[0];
+  const MonoDelta timeout = MonoDelta::FromSeconds(10);
+  ASSERT_OK(StartElection(initial_leader, tablet_id_, timeout));
+  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, timeout));
+
+  // The server we will remove and then bring back.
+  TServerDetails* tserver = tservers[2];
+
+  // Kill the master, so we can change the config without interference.
+  cluster_->master()->Shutdown();
+
+  // Now remove server 2 from the configuration.
+  TabletServerMap active_tablet_servers = tablet_servers_;
+  LOG(INFO) << "Removing tserver with uuid " << tserver->uuid();
+  ASSERT_OK(RemoveServer(initial_leader, tablet_id_, tserver, boost::none,
+                         MonoDelta::FromSeconds(10)));
+  ASSERT_EQ(1, active_tablet_servers.erase(tserver->uuid()));
+  int64_t cur_log_index = 2;
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10),
+                                  active_tablet_servers, tablet_id_, cur_log_index));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(cur_log_index, initial_leader, tablet_id_, timeout));
+
+  ASSERT_OK(DeleteTablet(tserver, tablet_id_, tablet::TABLET_DATA_TOMBSTONED, boost::none,
+                         MonoDelta::FromSeconds(30)));
+
+  // Now add server 2 back as a learner to the peers.
+  LOG(INFO) << "Adding back Peer " << tserver->uuid();
+  ASSERT_OK(AddServer(initial_leader, tablet_id_, tserver, member_type, boost::none,
+                      MonoDelta::FromSeconds(10)));
+
+  // Only wait for TS 0 and 1 to agree that the new change config op (ADD_SERVER for server 2)
+  // has been replicated.
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(60),
+                                  active_tablet_servers, tablet_id_, ++cur_log_index));
+
+  // Now try to remove server 1 from the configuration. This should fail.
+  LOG(INFO) << "Removing tserver with uuid " << tservers[1]->uuid();
+  auto status = RemoveServer(initial_leader, tablet_id_, tservers[1], boost::none,
+                             MonoDelta::FromSeconds(10));
+  ASSERT_TRUE(status.IsIllegalState());
+  ASSERT_STR_CONTAINS(status.ToString(), "Leader is not ready for Config Change");
 }
 
 // Test that the leader doesn't crash if one of its followers has
@@ -1531,110 +1717,13 @@ void RaftConsensusITest::WaitForReplicasReportedToMaster(
   }
 }
 
-// Basic test of adding and removing servers from a configuration.
-TEST_F(RaftConsensusITest, TestAddRemoveServer) {
-  MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
-  vector<string> ts_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--inject_latency_before_change_role_secs=1");
-  vector<string> master_flags;
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(BuildAndStart(ts_flags, master_flags));
+// Basic tests of adding and removing servers from a configuration.
+TEST_F(RaftConsensusITest, TestAddRemoveVoter) {
+  TestAddRemoveServer(RaftPeerPB::PRE_VOTER);
+}
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
-  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
-
-  // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
-  TServerDetails* leader_tserver = tservers[0];
-  const string& leader_uuid = tservers[0]->uuid();
-  ASSERT_OK(StartElection(leader_tserver, tablet_id_, kTimeout));
-  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, 1));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, kTimeout));
-
-  // Make sure the server rejects removal of itself from the configuration.
-  Status s = RemoveServer(leader_tserver, tablet_id_, leader_tserver, boost::none, kTimeout);
-  ASSERT_TRUE(s.IsInvalidArgument()) << "Should not be able to remove self from config: "
-                                     << s.ToString();
-
-  // Insert the row that we will update throughout the test.
-  ASSERT_OK(WriteSimpleTestRow(leader_tserver, tablet_id_, RowOperationsPB::INSERT,
-                               kTestRowKey, kTestRowIntVal, "initial insert", kTimeout));
-
-  // Kill the master, so we can change the config without interference.
-  cluster_->master()->Shutdown();
-
-  TabletServerMap active_tablet_servers = tablet_servers_;
-
-  // Do majority correctness check for 3 servers.
-  NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
-  OpId opid;
-  ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
-                                  &opid));
-  int64_t cur_log_index = opid.index();
-
-  // Go from 3 tablet servers down to 1 in the configuration.
-  vector<int> remove_list = { 2, 1 };
-  for (int to_remove_idx : remove_list) {
-    int num_servers = active_tablet_servers.size();
-    LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
-
-    TServerDetails* tserver_to_remove = tservers[to_remove_idx];
-    LOG(INFO) << "Removing tserver with uuid " << tserver_to_remove->uuid();
-    ASSERT_OK(RemoveServer(leader_tserver, tablet_id_, tserver_to_remove, boost::none, kTimeout));
-    ASSERT_EQ(1, active_tablet_servers.erase(tserver_to_remove->uuid()));
-    ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, ++cur_log_index));
-
-    // Do majority correctness check for each incremental decrease.
-    NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
-    ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
-                                    &opid));
-    cur_log_index = opid.index();
-  }
-
-  // Add the tablet servers back, in reverse order, going from 1 to 3 servers in the configuration.
-  vector<int> add_list = { 1, 2 };
-  for (int to_add_idx : add_list) {
-    int num_servers = active_tablet_servers.size();
-    LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
-
-    TServerDetails* tserver_to_add = tservers[to_add_idx];
-    LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
-
-    ASSERT_OK(DeleteTablet(tserver_to_add, tablet_id_, tablet::TABLET_DATA_TOMBSTONED, boost::none,
-                           kTimeout));
-
-    ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::VOTER, boost::none,
-                        kTimeout));
-
-    consensus::ConsensusStatePB cstate;
-    ASSERT_OK(itest::GetConsensusState(leader_tserver, tablet_id_,
-                                       consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
-
-    // Verify that this tserver was added as a PRE_VOTER.
-    for (const auto peer : cstate.config().peers()) {
-      if (peer.permanent_uuid() == tserver_to_add->uuid()) {
-        ASSERT_EQ(RaftPeerPB::PRE_VOTER, peer.member_type());
-        LOG(INFO) << "tserver with uuid " << tserver_to_add->uuid() << " was added as a "
-                  << RaftPeerPB::MemberType_Name(peer.member_type());
-      }
-    }
-
-    InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
-
-    // Wait until the ChangeConfig has finished and this tserver has been made a VOTER.
-    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(), leader_tserver,
-                                                  tablet_id_, MonoDelta::FromSeconds(10)));
-    ASSERT_OK(WaitForServersToAgree(kTimeout, active_tablet_servers, tablet_id_, ++cur_log_index));
-
-    // Do majority correctness check for each incremental increase.
-    NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
-    ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader_tserver, consensus::RECEIVED_OPID, kTimeout,
-                                    &opid));
-    cur_log_index = opid.index();
-  }
+TEST_F(RaftConsensusITest, TestAddRemoveObserver) {
+  TestAddRemoveServer(RaftPeerPB::PRE_OBSERVER);
 }
 
 // Regression test for KUDU-1169: a crash when a Config Change operation is replaced
@@ -1750,7 +1839,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   // Specifying the correct committed opid index should work.
   // The previous config change op is the latest entry in the log.
   committed_opid_index = cur_log_index;
-  ASSERT_OK(AddServer(leader_tserver, tablet_id_, follower_ts, RaftPeerPB::VOTER,
+  ASSERT_OK(AddServer(leader_tserver, tablet_id_, follower_ts, RaftPeerPB::PRE_VOTER,
                       committed_opid_index, MonoDelta::FromSeconds(10)));
 
   InsertOrDie(&active_tablet_servers, follower_ts->uuid(), follower_ts);
@@ -1823,7 +1912,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Now add server 4 back as a learner to the peers.
   LOG(INFO) << "Adding back Peer " << final_leader->uuid() << " and expecting timeout...";
-  Status s = AddServer(initial_leader, tablet_id_, final_leader, RaftPeerPB::VOTER, boost::none,
+  Status s = AddServer(initial_leader, tablet_id_, final_leader, RaftPeerPB::PRE_VOTER, boost::none,
                        MonoDelta::FromSeconds(10));
 
   // Pause tablet servers 1 through 3, so they won't see the operation to change server 4 from
@@ -1967,8 +2056,8 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
 
     TServerDetails* tserver_to_add = tservers[to_add_idx];
     LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
-    ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::VOTER, boost::none,
-                        MonoDelta::FromSeconds(10)));
+    ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER,
+                        boost::none, MonoDelta::FromSeconds(10)));
     InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
     ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
                                                   leader_tserver, tablet_id_,
@@ -2041,7 +2130,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   // Change the config.
   TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add];
   LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
-  ASSERT_OK(AddServer(leader_ts, tablet_id_, tserver_to_add, RaftPeerPB::VOTER, boost::none,
+  ASSERT_OK(AddServer(leader_ts, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER, boost::none,
                       timeout));
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, expected_index));
   ++expected_index;
@@ -2215,7 +2304,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   }
 
   LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as VOTER...";
-  ASSERT_OK(AddServer(leader, tablet_id_, new_node, RaftPeerPB::VOTER, boost::none,
+  ASSERT_OK(AddServer(leader, tablet_id_, new_node, RaftPeerPB::PRE_VOTER, boost::none,
                       MonoDelta::FromSeconds(10)));
   InsertOrDie(&active_tablet_servers, new_node->uuid(), new_node);
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
@@ -2510,63 +2599,11 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
 }
 
 TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenVoterInTransition) {
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
-  vector<string> ts_flags;
-  ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--inject_latency_before_change_role_secs=10");
-  vector<string> master_flags;
-  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(BuildAndStart(ts_flags, master_flags));
+  TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::PRE_VOTER);
+}
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
-  ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
-
-  // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
-  TServerDetails* initial_leader = tservers[0];
-  const MonoDelta timeout = MonoDelta::FromSeconds(10);
-  ASSERT_OK(StartElection(initial_leader, tablet_id_, timeout));
-  ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, timeout));
-
-  // The server we will remove and then bring back.
-  TServerDetails* tserver = tservers[2];
-
-  // Kill the master, so we can change the config without interference.
-  cluster_->master()->Shutdown();
-
-  // Now remove server 2 from the configuration.
-  TabletServerMap active_tablet_servers = tablet_servers_;
-  LOG(INFO) << "Removing tserver with uuid " << tserver->uuid();
-  ASSERT_OK(RemoveServer(initial_leader, tablet_id_, tserver, boost::none,
-                         MonoDelta::FromSeconds(10)));
-  ASSERT_EQ(1, active_tablet_servers.erase(tserver->uuid()));
-  int64_t cur_log_index = 2;
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10),
-                                  active_tablet_servers, tablet_id_, cur_log_index));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(cur_log_index, initial_leader, tablet_id_, timeout));
-
-  ASSERT_OK(DeleteTablet(tserver, tablet_id_, tablet::TABLET_DATA_TOMBSTONED, boost::none,
-                         MonoDelta::FromSeconds(30)));
-
-  // Now add server 2 back as a learner to the peers.
-  LOG(INFO) << "Adding back Peer " << tserver->uuid();
-  ASSERT_OK(AddServer(initial_leader, tablet_id_, tserver, RaftPeerPB::VOTER, boost::none,
-                      MonoDelta::FromSeconds(10)));
-
-  // Only wait for TS 0 and 1 to agree that the new change config op (ADD_SERVER for server 2,
-  // has been replicated.
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(60),
-                                  active_tablet_servers, tablet_id_, ++cur_log_index));
-
-  // Now try to remove server 1 from the configuration. This should fail.
-  LOG(INFO) << "Removing tserver with uuid " << tservers[1]->uuid();
-  auto status = RemoveServer(initial_leader, tablet_id_, tservers[1], boost::none,
-                  MonoDelta::FromSeconds(10));
-  ASSERT_TRUE(status.IsIllegalState());
-  ASSERT_STR_CONTAINS(status.ToString(), "Leader is not ready for Config Change");
-
+TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenObserverInTransition) {
+  TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::PRE_OBSERVER);
 }
 
 }  // namespace tserver

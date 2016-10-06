@@ -64,6 +64,11 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
         RaftPeerPB.newBuilder()
                   .setPermanentUuid(ByteString.copyFromUtf8(uuid))
                   .setLastKnownAddr(hpb.build());
+
+    if (this.changeType == Consensus.ChangeConfigType.ADD_SERVER) {
+      pbb.setMemberType(Metadata.RaftPeerPB.MemberType.PRE_VOTER);
+    }
+
     builder.setType(this.changeType)
            .setTabletId(ByteString.copyFromUtf8(tablet_id))
            .setDestUuid(ByteString.copyFromUtf8(leader_uuid))

@@ -455,7 +455,9 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigType type) {
+Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
+                                         ChangeConfigType type,
+                                         RaftPeerPB::MemberType member_type) {
   if (type != consensus::ADD_SERVER && type != consensus::REMOVE_SERVER) {
     return STATUS(InvalidArgument, Substitute("Invalid Change Config type $0", type));
   }
@@ -467,6 +469,9 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master, ChangeConfigTyp
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(master->uuid());
+  if (type == consensus::ADD_SERVER) {
+    peer_pb.set_member_type(member_type);
+  }
   RETURN_NOT_OK(HostPortToPB(master->bound_rpc_hostport(), peer_pb.mutable_last_known_addr()));
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
   req.set_type(type);

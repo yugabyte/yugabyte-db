@@ -109,9 +109,9 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &master_observed_leader));
   ASSERT_EQ(leader->uuid(), master_observed_leader->uuid());
 
-  LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as VOTER...";
+  LOG(INFO) << "Adding tserver with uuid " << new_node->uuid() << " as PRE_VOTER ...";
   string exe_path = GetAdminToolPath();
-  string arg_str = Substitute("$0 -master_addresses $1 change_config $2 ADD_SERVER $3 VOTER",
+  string arg_str = Substitute("$0 -master_addresses $1 change_config $2 ADD_SERVER $3 PRE_VOTER",
                               exe_path,
                               cluster_->master()->bound_rpc_addr().ToString(),
                               tablet_id_, new_node->uuid());

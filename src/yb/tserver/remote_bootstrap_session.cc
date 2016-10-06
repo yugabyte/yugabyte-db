@@ -36,6 +36,7 @@ namespace tserver {
 
 using consensus::MinimumOpId;
 using consensus::OpId;
+using consensus::RaftPeerPB;
 using fs::ReadableBlock;
 using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
@@ -86,8 +87,9 @@ Status RemoteBootstrapSession::ChangeRole() {
   // null.
   if (!consensus) {
     tablet::TabletStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState, Substitute("Unable to change role for server $0 for tablet $1."
-                                           "Consensus is not available. Tablet state: $2 ($3)",
+    return STATUS(IllegalState, Substitute("Unable to change role for server $0 in config for "
+                                           "tablet $1. Consensus is not available. "
+                                           "Tablet state: $2 ($3)",
                                            requestor_uuid_, tablet_peer_->tablet_id(),
                                            tablet::TabletStatePB_Name(tablet_state), tablet_state));
   }
@@ -96,37 +98,54 @@ Status RemoteBootstrapSession::ChangeRole() {
   // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
   // the leader starts bootstrapping it.
   const consensus::RaftConfigPB config = tablet_peer_->RaftConfig();
-  for (const consensus::RaftPeerPB& peer_pb : config.peers()) {
+  for (const RaftPeerPB& peer_pb : config.peers()) {
     if (peer_pb.permanent_uuid() != requestor_uuid_) {
       continue;
     }
 
-    if (peer_pb.member_type() != consensus::RaftPeerPB::PRE_VOTER) {
-      LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is not a PRE_VOTER. "
-                   << "Not changing its role.";
-      // Nothing to do.
-      return Status::OK();
+    switch(peer_pb.member_type()) {
+      case RaftPeerPB::OBSERVER: FALLTHROUGH_INTENDED;
+      case RaftPeerPB::VOTER:
+        LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
+                   << RaftPeerPB::MemberType_Name(peer_pb.member_type())
+                   << " Not changing its role after remote bootstrap";
+
+        // Even though this is an error, we return Status::OK() so the remote server doesn't
+        // tombstone its tablet.
+        return Status::OK();
+
+      case RaftPeerPB::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+      case RaftPeerPB::PRE_VOTER: {
+        consensus::ChangeConfigRequestPB req;
+        consensus::ChangeConfigResponsePB resp;
+
+        req.set_tablet_id(tablet_peer_->tablet_id());
+        req.set_type(consensus::CHANGE_ROLE);
+        RaftPeerPB* peer = req.mutable_server();
+        peer->set_permanent_uuid(requestor_uuid_);
+
+        boost::optional<TabletServerErrorPB::Code> error_code;
+
+        LOG(INFO) << "Changing config with request: { " << req.ShortDebugString() << " } "
+                  << "in bootstrap session " << session_id_;
+
+        // If another ChangeConfig is being processed, our request will be rejected.
+        // TODO(hector): Even if this ChangeConfig is accepted, something could go wrong before it
+        // is committed and the new peer will never become a VOTER. We need to add code to detect
+        // this situation and promote the PRE_VOTER peer.
+        return consensus->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
+      }
+      case RaftPeerPB::UNKNOWN_MEMBER_TYPE:
+        return STATUS(IllegalState, Substitute("Unable to change role for peer $0 in config for "
+                                               "tablet $1. Peer has an invalid member type $2",
+                                               peer_pb.permanent_uuid(), tablet_peer_->tablet_id(),
+                                               RaftPeerPB::MemberType_Name(peer_pb.member_type())));
     }
+    LOG(FATAL) << "Unexpected peer member type "
+               << RaftPeerPB::MemberType_Name(peer_pb.member_type());
   }
-
-  consensus::ChangeConfigRequestPB req;
-  consensus::ChangeConfigResponsePB resp;
-
-  req.set_tablet_id(tablet_peer_->tablet_id());
-  req.set_type(consensus::CHANGE_ROLE);
-  consensus::RaftPeerPB* peer = req.mutable_server();
-  peer->set_permanent_uuid(requestor_uuid_);
-
-  boost::optional<TabletServerErrorPB::Code> error_code;
-
-  LOG(INFO) << "Changing config with request: { " << req.ShortDebugString() << " } "
-            << "in bootstrap session " << session_id_;
-
-  // If another ChangeConfig is being processed, our request will be rejected.
-  // TODO(hector): Even if this ChangeConfig is accepted, something could go wrong before it is
-  // committed and the new peer will never become a VOTER. We need to add code to detect this
-  // situation and promote the PRE_VOTER peer.
-  return consensus->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
+  return STATUS(IllegalState, Substitute("Unable to find peer $0 in config for tablet $1",
+                                         requestor_uuid_, tablet_peer_->tablet_id()));
 }
 
 Status RemoteBootstrapSession::Init() {

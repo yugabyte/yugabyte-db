@@ -106,7 +106,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
     ASSERT_EQ(1, active_ts_map.erase(cluster_->tablet_server(i)->uuid()));
   }
   // This will time out, but should take effect.
-  Status s = itest::AddServer(leader_ts, tablet_id, follower_ts, RaftPeerPB::VOTER,
+  Status s = itest::AddServer(leader_ts, tablet_id, follower_ts, RaftPeerPB::PRE_VOTER,
                               boost::none, MonoDelta::FromSeconds(5));
   ASSERT_TRUE(s.IsTimedOut());
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id, TABLET_DATA_READY,
@@ -298,7 +298,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, ts_to_remove, boost::none, timeout));
   ASSERT_OK(itest::DeleteTablet(ts_to_remove, tablet_id, TABLET_DATA_TOMBSTONED,
                                 boost::none, timeout));
-  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, ts_to_remove, RaftPeerPB::VOTER,
+  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, ts_to_remove, RaftPeerPB::PRE_VOTER,
                              boost::none, timeout));
   ASSERT_OK(itest::WaitUntilTabletRunning(ts_to_remove, tablet_id, timeout));
 

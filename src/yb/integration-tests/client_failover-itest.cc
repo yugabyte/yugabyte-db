@@ -129,7 +129,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                                 kTimeout));
 
   TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()];
-  ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::RaftPeerPB::VOTER,
+  ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::RaftPeerPB::PRE_VOTER,
                       boost::none, kTimeout));
   HostPort hp;
   ASSERT_OK(HostPortFromPB(leader->registration.common().rpc_addresses(0), &hp));

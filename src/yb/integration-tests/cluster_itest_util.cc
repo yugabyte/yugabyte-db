@@ -302,6 +302,15 @@ Status WaitUntilCommittedConfigNumVotersIs(int config_size,
                                            const TServerDetails* replica,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout) {
+  return WaitUntilCommittedConfigMemberTypeIs(config_size, replica, tablet_id, timeout,
+                                              RaftPeerPB::VOTER);
+}
+
+Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
+                                           const TServerDetails* replica,
+                                           const std::string& tablet_id,
+                                           const MonoDelta& timeout,
+                                           RaftPeerPB::MemberType member_type) {
   MonoTime start = MonoTime::Now(MonoTime::FINE);
   MonoTime deadline = start;
   deadline.AddDelta(timeout);
@@ -315,7 +324,7 @@ Status WaitUntilCommittedConfigNumVotersIs(int config_size,
     s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_COMMITTED,
                           remaining_timeout, &cstate);
     if (s.ok()) {
-      if (CountVoters(cstate.config()) == config_size) {
+      if (CountMemberType(cstate.config(), member_type) == config_size) {
         return Status::OK();
       }
     }
@@ -547,6 +556,7 @@ Status AddServer(const TServerDetails* leader,
   req.set_type(consensus::ADD_SERVER);
   RaftPeerPB* peer = req.mutable_server();
   peer->set_permanent_uuid(replica_to_add->uuid());
+  peer->set_member_type(member_type);
   *peer->mutable_last_known_addr() = replica_to_add->registration.common().rpc_addresses(0);
   if (cas_config_opid_index) {
     req.set_cas_config_opid_index(*cas_config_opid_index);

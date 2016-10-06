@@ -195,7 +195,9 @@ class ExternalMiniCluster {
   void StartNewMaster(ExternalMaster** new_master);
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
-  Status ChangeConfig(ExternalMaster* master, ChangeConfigType type);
+  Status ChangeConfig(ExternalMaster* master,
+      ChangeConfigType type,
+      consensus::RaftPeerPB::MemberType member_type = consensus::RaftPeerPB::PRE_VOTER);
 
   // Performs an RPC to the given master to get the number of masters it is tracking in-memory.
   Status GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers);

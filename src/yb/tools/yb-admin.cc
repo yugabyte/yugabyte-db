@@ -356,12 +356,15 @@ Status ClusterAdminClient::ChangeConfig(
     if (!RaftPeerPB::MemberType_Parse(uppercase_member_type, &member_type_val)) {
       return STATUS(InvalidArgument, "Unrecognized member_type", *member_type);
     }
+    if (member_type_val != RaftPeerPB::PRE_VOTER && member_type_val != RaftPeerPB::PRE_OBSERVER) {
+      return STATUS(InvalidArgument, "member_type should be PRE_VOTER or PRE_OBSERVER");
+    }
+    peer_pb.set_member_type(member_type_val);
   }
 
   // Validate the existence of the optional fields.
-  if (!member_type && (cc_type == consensus::ADD_SERVER || cc_type == consensus::CHANGE_ROLE)) {
-    return STATUS(InvalidArgument, "Must specify member_type when adding "
-                                   "a server or changing a role");
+  if (!member_type && cc_type == consensus::ADD_SERVER) {
+    return STATUS(InvalidArgument, "Must specify member_type when adding a server.");
   }
 
   // Look up RPC address of peer if adding as a new server.
@@ -514,6 +517,8 @@ Status ClusterAdminClient::ChangeMasterConfig(
 
   RaftPeerPB peer_pb;
   peer_pb.set_permanent_uuid(peer_uuid);
+  // Ignored by ChangeConfig if request != ADD_SERVER.
+  peer_pb.set_member_type(RaftPeerPB::PRE_VOTER);
   HostPortPB *peer_host_port = peer_pb.mutable_last_known_addr();
   peer_host_port->set_port(peer_port);
   peer_host_port->set_host(peer_host);
@@ -892,7 +897,7 @@ static void SetUsage(const char* argv0) {
       << "<operation> must be one of:\n"
       << " 1. " << kChangeConfigOp << " <tablet_id> "
                 << "<ADD_SERVER|REMOVE_SERVER> <peer_uuid> "
-                << "[VOTER|PRE_VOTER]" << std::endl
+                << "[PRE_VOTER|PRE_OBSERVER]" << std::endl
       << " 2. " << kListTabletServersOp << " <tablet_id> " << std::endl
       << " 3. " << kListTablesOp << std::endl
       << " 4. " << kListTabletsOp << " <table_name>"  << " [max_tablets]"

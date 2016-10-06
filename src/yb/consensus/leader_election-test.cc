@@ -91,9 +91,16 @@ class LeaderElectionTest : public YBTest {
   void ElectionCallback(const ElectionResult& result);
 
  protected:
-  void InitUUIDs(int num_voters);
-  void InitNoOpPeerProxies();
-  void InitDelayableMockedProxies(bool enable_delay);
+  void InitUUIDs(int num_voters, int non_voters);
+  void InitNoOpPeerProxies(int num_voters,
+                           int num_pre_voters,
+                           int num_pre_observers,
+                           int num_observers);
+  void InitDelayableMockedProxies(int num_voters,
+                                  int num_pre_voters,
+                                  int num_pre_observers,
+                                  int num_observers,
+                                  bool enable_delay);
   gscoped_ptr<VoteCounter> InitVoteCounter(int num_voters, int majority_size);
 
   // Voter 0 is the high-term voter.
@@ -126,26 +133,80 @@ void LeaderElectionTest::ElectionCallback(const ElectionResult& result) {
   latch_.CountDown();
 }
 
-void LeaderElectionTest::InitUUIDs(int num_voters) {
-  voter_uuids_ = GenVoterUUIDs(num_voters);
-  candidate_uuid_ = voter_uuids_[num_voters - 1];
-  voter_uuids_.pop_back();
+void LeaderElectionTest::InitUUIDs(int num_voters, int non_voters) {
+  ASSERT_GT(num_voters, 0);
+  voter_uuids_ = GenVoterUUIDs(num_voters + non_voters);
+  candidate_uuid_ = voter_uuids_[0];
+  voter_uuids_.erase(voter_uuids_.begin());
 }
 
-void LeaderElectionTest::InitNoOpPeerProxies() {
+void LeaderElectionTest::InitNoOpPeerProxies(int num_voters,
+                                             int num_pre_voters,
+                                             int num_pre_observers,
+                                             int num_observers) {
+  ASSERT_GT(num_voters, 0);
+  ASSERT_GE(num_pre_voters, 0);
+  ASSERT_GE(num_pre_observers, 0);
+  ASSERT_GE(num_observers, 0);
   config_.Clear();
+
+  // Remove candidate_uuid_.
+  num_voters--;
+  ASSERT_EQ(voter_uuids_.size(), num_voters + num_pre_voters + num_pre_observers + num_observers);
   for (const string& uuid : voter_uuids_) {
     RaftPeerPB* peer_pb = config_.add_peers();
+    RaftPeerPB::MemberType member_type;
+    if (num_voters > 0) {
+      member_type = RaftPeerPB::VOTER;
+      num_voters--;
+    } else if (num_pre_voters > 0) {
+      member_type = RaftPeerPB::PRE_VOTER;
+      num_pre_voters--;
+    } else if (num_pre_observers > 0) {
+      member_type = RaftPeerPB::PRE_OBSERVER;
+      num_pre_observers--;
+    } else if (num_observers > 0) {
+      member_type = RaftPeerPB::OBSERVER;
+      num_observers--;
+    }
+    peer_pb->set_member_type(member_type);
     peer_pb->set_permanent_uuid(uuid);
     PeerProxy* proxy = new NoOpTestPeerProxy(pool_.get(), *peer_pb);
     InsertOrDie(&proxies_, uuid, proxy);
   }
 }
 
-void LeaderElectionTest::InitDelayableMockedProxies(bool enable_delay) {
+void LeaderElectionTest::InitDelayableMockedProxies(int num_voters,
+                                                    int num_pre_voters,
+                                                    int num_pre_observers,
+                                                    int num_observers,
+                                                    bool enable_delay) {
+  ASSERT_GT(num_voters, 0);
+  ASSERT_GE(num_pre_voters, 0);
+  ASSERT_GE(num_pre_observers, 0);
+  ASSERT_GE(num_observers, 0);
   config_.Clear();
+
+  // Remove candidate_uuid_.
+  num_voters--;
+  ASSERT_EQ(voter_uuids_.size(), num_voters + num_pre_voters + num_pre_observers + num_observers);
   for (const string& uuid : voter_uuids_) {
     RaftPeerPB* peer_pb = config_.add_peers();
+    RaftPeerPB::MemberType member_type;
+    if (num_voters > 0) {
+      member_type = RaftPeerPB::VOTER;
+      num_voters--;
+    } else if (num_pre_voters > 0) {
+      member_type = RaftPeerPB::PRE_VOTER;
+      num_pre_voters--;
+    } else if (num_pre_observers >0) {
+      member_type = RaftPeerPB::PRE_OBSERVER;
+      num_pre_observers--;
+    } else if (num_observers > 0) {
+      member_type = RaftPeerPB::OBSERVER;
+      num_observers--;
+    }
+    peer_pb->set_member_type(member_type);
     peer_pb->set_permanent_uuid(uuid);
     auto proxy = new DelayablePeerProxy<MockedPeerProxy>(pool_.get(),
                                                          new MockedPeerProxy(pool_.get()));
@@ -169,8 +230,8 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithHighTermVoter
   const int kNumVoters = 3;
   const int kMajoritySize = 2;
 
-  InitUUIDs(kNumVoters);
-  InitDelayableMockedProxies(true);
+  InitUUIDs(kNumVoters, 0);
+  InitDelayableMockedProxies(kNumVoters, 0, 0, 0, true);
   gscoped_ptr<VoteCounter> counter = InitVoteCounter(kNumVoters, kMajoritySize);
 
   VoteResponsePB response;
@@ -210,8 +271,8 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithGrantDenyErro
   CHECK_EQ(1, kNumVoters % 2);  // RaftConfig size must be odd.
   const int kMajoritySize = (kNumVoters / 2) + 1;
 
-  InitUUIDs(kNumVoters);
-  InitDelayableMockedProxies(false); // Don't delay the vote responses.
+  InitUUIDs(kNumVoters, 0);
+  InitDelayableMockedProxies(kNumVoters, 0, 0, 0, false); // Don't delay the vote responses.
   gscoped_ptr<VoteCounter> counter = InitVoteCounter(kNumVoters, kMajoritySize);
   int num_grant_followers = num_grant - 1;
 
@@ -262,36 +323,50 @@ scoped_refptr<LeaderElection> LeaderElectionTest::SetUpElectionWithGrantDenyErro
 // All peers respond "yes", no failures.
 TEST_F(LeaderElectionTest, TestPerfectElection) {
   // Try configuration sizes of 1, 3, 5.
-  vector<int> config_sizes = { 1, 3, 5 };
-  for (int num_voters : config_sizes) {
-    LOG(INFO) << "Testing election with config size of " << num_voters;
-    int majority_size = (num_voters / 2) + 1;
-    ConsensusTerm election_term = 10 + num_voters; // Just to be able to differentiate.
+  const vector<int> pre_voters_config_sizes = { 0, 1, 3, 5 };
+  const vector<int> pre_observers_config_sizes = { 0, 1, 3, 5 };
+  const vector<int> observers_config_sizes = { 0, 1, 3, 5 };
+  const vector<int> voters_config_sizes = { 1, 3, 5 };
 
-    InitUUIDs(num_voters);
-    InitNoOpPeerProxies();
-    gscoped_ptr<VoteCounter> counter = InitVoteCounter(num_voters, majority_size);
+  for (int num_pre_voters : pre_voters_config_sizes) {
+    for (int num_pre_observers : pre_observers_config_sizes) {
+      for (int num_observers : observers_config_sizes) {
+        for (int num_voters : voters_config_sizes) {
+          LOG(INFO) << "Testing election with config { voters: " << num_voters
+                    << ", pre_voters: " << num_pre_voters
+                    << ", pre_observers: " << num_pre_observers
+                    << ", observers: " << num_observers << " }";
+          int majority_size = (num_voters / 2) + 1;
+          ConsensusTerm election_term = 10 + num_voters; // Just to be able to differentiate.
 
-    VoteRequestPB request;
-    request.set_candidate_uuid(candidate_uuid_);
-    request.set_candidate_term(election_term);
-    request.set_tablet_id(tablet_id_);
+          InitUUIDs(num_voters, num_pre_voters + num_pre_observers + num_observers);
+          InitNoOpPeerProxies(num_voters, num_pre_voters, num_pre_observers, num_observers);
+          gscoped_ptr<VoteCounter> counter = InitVoteCounter(num_voters, majority_size);
 
-    scoped_refptr<LeaderElection> election(
-        new LeaderElection(config_, proxy_factory_.get(), request, counter.Pass(),
-                           MonoDelta::FromSeconds(kLeaderElectionTimeoutSecs),
-                           Bind(&LeaderElectionTest::ElectionCallback,
-                                Unretained(this))));
-    election->Run();
-    latch_.Wait();
+          VoteRequestPB request;
+          LOG(INFO) << "candidate_uuid_: " << candidate_uuid_;
+          request.set_candidate_uuid(candidate_uuid_);
+          request.set_candidate_term(election_term);
+          request.set_tablet_id(tablet_id_);
 
-    ASSERT_EQ(election_term, result_->election_term);
-    ASSERT_EQ(VOTE_GRANTED, result_->decision);
+          scoped_refptr<LeaderElection> election(
+              new LeaderElection(config_, proxy_factory_.get(), request, counter.Pass(),
+                                 MonoDelta::FromSeconds(kLeaderElectionTimeoutSecs),
+                                 Bind(&LeaderElectionTest::ElectionCallback,
+                                      Unretained(this))));
+          election->Run();
+          latch_.Wait();
 
-    pool_->Wait();
-    proxies_.clear(); // We don't delete them; The election VoterState object
-                      // ends up owning them.
-    latch_.Reset(1);
+          ASSERT_EQ(election_term, result_->election_term);
+          ASSERT_EQ(VOTE_GRANTED, result_->decision);
+
+          pool_->Wait();
+          proxies_.clear(); // We don't delete them; The election VoterState object
+          // ends up owning them.
+          latch_.Reset(1);
+        }
+      }
+    }
   }
 }
 
@@ -393,8 +468,8 @@ TEST_F(LeaderElectionTest, TestFailToCreateProxy) {
   const int kMajoritySize = 2;
 
   // Initialize the UUIDs and the proxies (which also sets up the config PB).
-  InitUUIDs(kNumVoters);
-  InitNoOpPeerProxies();
+  InitUUIDs(kNumVoters, 0);
+  InitNoOpPeerProxies(kNumVoters, 0, 0, 0);
 
   // Remove all the proxies. This will make our peer factory return a bad Status.
   STLDeleteValues(&proxies_);
@@ -630,7 +705,6 @@ TEST_F(VoteCounterTest, TestVoteCounter_EvenVoters) {
     ASSERT_FALSE(counter.AreAllVotesIn());
   }
 }
-
 
 }  // namespace consensus
 }  // namespace yb

@@ -2799,6 +2799,7 @@ bool AsyncAddServerTask::PrepareRequest(int attempt) {
   req_.set_cas_config_opid_index(cstate_.config().opid_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
+  peer->set_member_type(RaftPeerPB::PRE_VOTER);
   TSRegistrationPB peer_reg;
   replacement_replica->GetRegistration(&peer_reg);
   if (peer_reg.common().rpc_addresses_size() == 0) {
