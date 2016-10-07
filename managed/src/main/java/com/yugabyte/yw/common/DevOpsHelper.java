@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.models.Universe;
 
 @Singleton
@@ -19,10 +20,11 @@ public class DevOpsHelper {
     Provision,
     Configure,
     Destroy,
-    List
+    List,
+    Control
   }
 
-  public static final String YBCLOUD_SCRIPT = "/bin/python_virtual_env.sh ybcloud.py";
+  public static final String YBCLOUD_SCRIPT = "/bin/ybcloud.sh";
 
   @Inject
   play.Configuration appConfig;
@@ -83,6 +85,15 @@ public class DevOpsHelper {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
+        break;
+      }
+      case Control:
+      {
+        if (!(nodeTaskParam instanceof AnsibleClusterServerCtl.Params)) {
+          throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
+        }
+        AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params)nodeTaskParam;
+        command += " " + taskParam.process + " " + taskParam.command;
         break;
       }
     }

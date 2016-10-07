@@ -24,7 +24,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   @Override
   public void run() {
     String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Configure, taskParams());
-    LOG.info("Command to run: [{}]", command);
 
     // Execute the ansible command.
     execCommand(command);
