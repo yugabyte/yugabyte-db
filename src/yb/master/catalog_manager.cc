@@ -827,10 +827,12 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
 
 Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) {
   // TODO(bogdan): add the actual subset rules, instead of just erroring out as not supported.
-  if (replication_info.has_live_replicas() || replication_info.has_async_replicas()) {
+  if (!replication_info.live_replicas().placement_blocks().empty() ||
+      !replication_info.async_replicas().placement_blocks().empty()) {
     ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
     auto ri = l.data().pb.replication_info();
-    if (ri.has_live_replicas() || ri.has_async_replicas()) {
+    if (!ri.live_replicas().placement_blocks().empty() ||
+        !ri.async_replicas().placement_blocks().empty()) {
       return STATUS(
           InvalidArgument,
           "Unsupported: cannot set both table and cluster level replication info yet.");
