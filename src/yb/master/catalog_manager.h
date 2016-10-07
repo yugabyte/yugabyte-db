@@ -55,7 +55,7 @@ class AtomicGauge;
 
 namespace rpc {
 class RpcContext;
-} // namespace rpc
+}  // namespace rpc
 
 namespace master {
 
@@ -778,9 +778,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                TSDescriptor* ts_desc,
                                const std::string& reason);
 
-  void SendLeaderStepDownAndRemoveRequest(
+  // Start a task to request the specified tablet leader to step down and optionally to remove
+  // the tablet that is over-replicated.
+  void SendLeaderStepDownRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid);
+      const string& change_config_ts_uuid, bool should_remove);
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
@@ -944,6 +946,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb
 #endif /* YB_MASTER_CATALOG_MANAGER_H */

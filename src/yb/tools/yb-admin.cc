@@ -17,12 +17,13 @@
 //
 // Tool to administer a cluster from the CLI.
 
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <iostream>
 #include <memory>
 #include <strstream>
+#include <numeric>
+#include <boost/optional.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
@@ -106,6 +107,7 @@ const char* const kListTabletServersLogLocationsOp = "list_tablet_server_log_loc
 const char* const kListTabletsForTabletServerOp = "list_tablets_for_tablet_server";
 const char* const kSetLoadBalancerEnabled = "set_load_balancer_enabled";
 const char* const kGetLoadMoveCompletion = "get_load_move_completion";
+const char* const kListLeaderCounts = "list_leader_counts";
 static const char* g_progname = nullptr;
 
 // Maximum number of elements to dump on unexpected errors.
@@ -173,6 +175,8 @@ class ClusterAdminClient {
   Status SetLoadBalancerEnabled(const bool is_enabled);
 
   Status GetLoadMoveCompletion();
+
+  Status ListLeaderCounts(const string& table_name);
 
  private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -387,7 +391,7 @@ Status ClusterAdminClient::ChangeConfig(
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(LeaderStepDown(leader_uuid, tablet_id, &consensus_proxy));
-    sleep(5); // TODO, election completion timing is not known accurately
+    sleep(5);  // TODO - election completion timing is not known accurately
     RETURN_NOT_OK(SetTabletPeerInfo(tablet_id, LEADER, &leader_uuid, &leader_addr));
     if (leader_uuid != old_leader_uuid) {
       return STATUS(ConfigurationError,
@@ -467,6 +471,83 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   return Status::OK();
 }
 
+double standard_deviation(vector<double> data) {
+  if (data.empty()) {
+    return 0.0;
+  }
+  double mean = std::accumulate(data.begin(), data.end(), 0.0) / data.size();
+  vector<double> deltas(data.size());
+  std::transform(data.begin(), data.end(), deltas.begin(), [mean](double x) { return x - mean; });
+  double inner_product = std::inner_product(deltas.begin(), deltas.end(), deltas.begin(), 0.0);
+  double stdev = std::sqrt(inner_product / data.size());
+  return stdev;
+}
+
+Status ClusterAdminClient::ListLeaderCounts(const string& table_name) {
+  vector<string> tablet_ids, range_starts, range_ends;
+  RETURN_NOT_OK(yb_client_->GetTablets(
+      table_name, 0, &tablet_ids, &range_starts, &range_ends));
+  rpc::RpcController rpc;
+  master::GetTabletLocationsRequestPB req;
+  master::GetTabletLocationsResponsePB resp;
+  rpc.set_timeout(timeout_);
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+  RETURN_NOT_OK(master_proxy_->GetTabletLocations(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  unordered_map<string, int> leader_counts;
+  int total_leader_count = 0;
+  for (int i = 0; i < resp.tablet_locations_size(); ++i) {
+    TabletLocationsPB locs = resp.tablet_locations(i);
+    for (int i = 0; i < locs.replicas_size(); i++) {
+      if (locs.replicas(i).role() == RaftPeerPB::LEADER) {
+        leader_counts[locs.replicas(i).ts_info().permanent_uuid()]++;
+        total_leader_count++;
+      }
+    }
+  }
+
+  // Calculate the standard deviation and adjusted deviation percentage according to the best and
+  // worst-case scenarios. Best-case distribution is when leaders are evenly distributed and
+  // worst-case is when leaders are all on one tablet server.
+  // For example, say we have 16 leaders on 3 tablet servers:
+  //   Leader distribution:    7 5 4
+  //   Best-case scenario:     6 5 5
+  //   Worst-case scenario:   12 0 0
+  //   Standard deviation:    1.24722
+  //   Adjusted deviation %:  10.9717%
+  vector<double> leader_dist, best_case, worst_case;
+  std::cout << "\tServer UUID\t\t  Leader Count" << std::endl;
+  for (const auto& leader_count : leader_counts) {
+    std::cout << leader_count.first << "\t" << leader_count.second << std::endl;
+    leader_dist.push_back(leader_count.second);
+  }
+
+  if (!leader_dist.empty()) {
+    for (int i = 0; i < leader_dist.size(); ++i) {
+      best_case.push_back(total_leader_count / leader_dist.size());
+      worst_case.push_back(0);
+    }
+    for (int i = 0; i < total_leader_count % leader_dist.size(); ++i) {
+      ++best_case[i];
+    }
+    worst_case[0] = total_leader_count;
+
+    double stdev = standard_deviation(leader_dist);
+    double best_stdev = standard_deviation(best_case);
+    double worst_stdev = standard_deviation(worst_case);
+    double percent_dev = (stdev - best_stdev) / (worst_stdev - best_stdev) * 100.0;
+    std::cout << "Standard deviation: " << stdev << std::endl;
+    std::cout << "Adjusted deviation percentage: " << percent_dev << "%" << std::endl;
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ChangeMasterConfig(
     const string& change_type,
     const string& peer_host,
@@ -492,11 +573,11 @@ Status ClusterAdminClient::ChangeMasterConfig(
       leader_uuid == peer_uuid) {
     string old_leader_uuid = leader_uuid;
     RETURN_NOT_OK(MasterLeaderStepDown(leader_uuid));
-    sleep(5); // TODO - wait for exactly the time needed for new leader to get elected.
+    sleep(5);  // TODO - wait for exactly the time needed for new leader to get elected.
     // Reget the leader master's socket info to set up the proxy
     RETURN_NOT_OK(yb_client_->RefreshMasterLeaderSocket(&leader_sock_));
     master_proxy_.reset(new MasterServiceProxy(messenger_, leader_sock_));
-    leader_uuid = ""; // reset so it can be set to new leader in the GetMasterLeaderInfo call below
+    leader_uuid = "";  // reset so it can be set to new leader in the GetMasterLeaderInfo call below
     GetMasterLeaderInfo(&leader_uuid);
     if (leader_uuid.empty()) {
       return STATUS(ConfigurationError, "Could not locate new master leader!");
@@ -572,9 +653,9 @@ Status ClusterAdminClient::GetTabletLocations(const string& tablet_id,
 }
 
 Status ClusterAdminClient::GetTabletPeer(
-   const string& tablet_id,
-   PeerMode mode,
-   TSInfoPB* ts_info) {
+  const string& tablet_id,
+  PeerMode mode,
+  TSInfoPB* ts_info) {
   TabletLocationsPB locations;
   RETURN_NOT_OK(GetTabletLocations(tablet_id, &locations));
   CHECK_EQ(tablet_id, locations.tablet_id()) << locations.ShortDebugString();
@@ -910,8 +991,9 @@ static void SetUsage(const char* argv0) {
       << " 9. " << kDumpMastersStateOp << std::endl
       << " 10. " << kListTabletServersLogLocationsOp << std::endl
       << " 11. " << kListTabletsForTabletServerOp << " <ts_uuid>" << std::endl
-      << " 12. " << kSetLoadBalancerEnabled << " <0|1>"
-      << " 13. " << kGetLoadMoveCompletion;
+      << " 12. " << kSetLoadBalancerEnabled << " <0|1>" << std::endl
+      << " 13. " << kGetLoadMoveCompletion << std::endl
+      << " 14. " << kListLeaderCounts << " <table_name>";
 
   google::SetUsageMessage(str.str());
 }
@@ -1073,6 +1155,16 @@ static int ClusterAdminCliMain(int argc, char** argv) {
       std::cerr << "Unable to get load completion: " << s.ToString() << std::endl;
       return 1;
     }
+  } else if (op == kListLeaderCounts) {
+    if (argc != 3) {
+      UsageAndExit(argv[0]);
+    }
+    const string table_name = argv[2];
+    Status s = client.ListLeaderCounts(table_name);
+    if (!s.ok()) {
+      std::cerr << "Unable to get leader counts: " << s.ToString() << std::endl;
+      return 1;
+    }
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     UsageAndExit(argv[0]);
@@ -1081,8 +1173,8 @@ static int ClusterAdminCliMain(int argc, char** argv) {
   return 0;
 }
 
-} // namespace tools
-} // namespace yb
+}  // namespace tools
+}  // namespace yb
 
 int main(int argc, char** argv) {
   return yb::tools::ClusterAdminCliMain(argc, argv);

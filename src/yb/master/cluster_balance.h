@@ -48,7 +48,7 @@ namespace master {
 //  over-replicated tablet peer groups, while still conforming to the placement requirements.
 class ClusterLoadBalancer {
  public:
-  ClusterLoadBalancer(CatalogManager* cm);
+  explicit ClusterLoadBalancer(CatalogManager* cm);
   virtual ~ClusterLoadBalancer();
 
   // Executes one run of the load balancing algorithm. This currently does not persist any state,
@@ -86,6 +86,10 @@ class ClusterLoadBalancer {
     // Max number of tablet peer replicas to add in any one run of the load balancer.
     int kMaxConcurrentAdds = 3;
 
+    // Max number of tablet leaders on overloaded tablet servers to step down and move in any one
+    // run of the load balancer.
+    int kMaxConcurrentOverloadedLeaderStepDowns = 3;
+
     // TODO(bogdan): actually use these...
     // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
 
@@ -120,9 +124,12 @@ class ClusterLoadBalancer {
   virtual const BlacklistPB& GetServerBlacklist() const;
 
   // Issue the call to CatalogManager to change the config for this particular tablet, either
-  // adding or removing the peer at ts_uuid, based on the is_add argument.
+  // adding or removing the peer at ts_uuid, based on the is_add argument. Removing the peer
+  // is optional. When neither adding nor removing peer, it means just stepping down a leader
+  // from an overloaded tablet server to move it to a peer.
   virtual void SendReplicaChanges(
-      scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add);
+      scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
+      const bool should_remove_leader);
 
   //
   // Higher level methods and members.
@@ -178,6 +185,11 @@ class ClusterLoadBalancer {
   // Returns true if a move was actually made.
   bool HandleRemoveIfWrongPlacement(TabletId* out_tablet_id, TabletServerId* out_from_ts);
 
+  // Processes any tablet leaders that are on an overloaded tablet server and need to step down.
+  //
+  // Returns true if a move was actually made.
+  bool HandleOverloadedLeaderStepDowns(TabletId* stepdown_tablet_id, TabletServerId* from_ts_uuid);
+
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
   // serving it to which other TS.
   //
@@ -201,6 +213,10 @@ class ClusterLoadBalancer {
   // tablet server.
   void RemoveReplica(
       const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader);
+
+  // Issue the change config and modify the in-memory state for stepping down a tablet leader
+  // on the specified tablet server.
+  void StepDownLeader(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
 
@@ -239,6 +255,6 @@ class ClusterLoadBalancer {
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb
 #endif /* YB_MASTER_CLUSTER_BALANCE_H */

@@ -94,11 +94,11 @@
 #include "yb/util/trace.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 
-DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000, // 30 sec
+DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
 TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
 
-DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000, // 30 sec
+DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used by the master when attempting to create tablet "
              "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
@@ -110,7 +110,7 @@ DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
             "election.");
 TAG_FLAG(catalog_manager_wait_for_new_tablets_to_elect_leader, hidden);
 
-DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 60 * 60 * 1000, // 1 hour
+DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 60 * 60 * 1000,  // 1 hour
              "After this amount of time, the master will stop attempting to contact "
              "a tablet server in order to perform operations such as deleting a tablet.");
 TAG_FLAG(unresponsive_ts_rpc_timeout_ms, advanced);
@@ -132,7 +132,7 @@ DEFINE_bool(catalog_manager_allow_local_consensus, true,
             "Use local consensus when config size == 1");
 TAG_FLAG(catalog_manager_allow_local_consensus, hidden);
 
-DEFINE_int32(master_failover_catchup_timeout_ms, 30 * 1000, // 30 sec
+DEFINE_int32(master_failover_catchup_timeout_ms, 30 * 1000,  // 30 sec
              "Amount of time to give a newly-elected leader master to load"
              " the previous master's metadata and become active. If this time"
              " is exceeded, the node crashes.");
@@ -492,7 +492,7 @@ void CheckIfNoLongerLeaderAndSetupError(Status s, RespClass* resp) {
   }
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 CatalogManager::CatalogManager(Master* master)
     : master_(master),
@@ -1622,7 +1622,7 @@ bool ShouldTransitionTabletToRunning(const ReportedTabletPB& report) {
   // Otherwise, we only transition to RUNNING once a leader is elected.
   return report.committed_consensus_state().has_leader_uuid();
 }
-} // anonymous namespace
+}  // anonymous namespace
 
 Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
                                             const ReportedTabletPB& report,
@@ -2180,7 +2180,7 @@ class RetryingTSRpcTask : public MonitoredTask {
     Status s = ResetTSProxy();
     if (!s.ok()) {
       MarkFailed();
-      UnregisterAsyncTask(); // May delete this.
+      UnregisterAsyncTask();  // May delete this.
       return s.CloneAndPrepend("Failed to reset TS proxy");
     }
 
@@ -2263,7 +2263,7 @@ class RetryingTSRpcTask : public MonitoredTask {
                    << type_name() << " RPC failed for tablet "
                    << tablet_id() << ": " << rpc_.status().ToString();
     } else if (state() != kStateAborted) {
-      HandleResponse(attempt_); // Modifies state_.
+      HandleResponse(attempt_);  // Modifies state_.
     }
 
     // Schedule a retry if the RPC call was not successful.
@@ -2305,7 +2305,7 @@ class RetryingTSRpcTask : public MonitoredTask {
     if (attempt_ <= 12) {
       base_delay_ms = 1 << (attempt_ + 3);  // 1st retry delayed 2^4 ms, 2nd 2^5, etc.
     } else {
-      base_delay_ms = 60 * 1000; // cap at 1 minute
+      base_delay_ms = 60 * 1000;  // cap at 1 minute
     }
     // Normal rand is seeded by default with 1. Using the same for rand_r seed.
     unsigned int seed = 1;
@@ -2657,7 +2657,7 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
         tablet_(tablet),
         cstate_(cstate),
         change_config_ts_uuid_(change_config_ts_uuid) {
-    deadline_ = MonoTime::Max(); // Never time out.
+    deadline_ = MonoTime::Max();  // Never time out.
   }
 
  protected:
@@ -2852,13 +2852,15 @@ bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
   return true;
 }
 
-// Task to step down tablet server leader from an overly-replicated tablet config.
-class AsyncTryStepDownAndRemove : public CommonInfoForRaftTask {
+// Task to step down tablet server leader and optionally to remove it from an overly-replicated
+// tablet config.
+class AsyncTryStepDown : public CommonInfoForRaftTask {
  public:
-  AsyncTryStepDownAndRemove(
+  AsyncTryStepDown(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
-      : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid, bool should_remove)
+    : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
+      should_remove_(should_remove) {}
 
   string type_name() const OVERRIDE { return "Stepdown Leader"; }
 
@@ -2871,11 +2873,12 @@ class AsyncTryStepDownAndRemove : public CommonInfoForRaftTask {
   virtual bool SendRequest(int attempt) OVERRIDE;
   virtual void HandleResponse(int attempt) OVERRIDE;
 
+  const bool should_remove_;
   consensus::LeaderStepDownRequestPB stepdown_req_;
   consensus::LeaderStepDownResponsePB stepdown_resp_;
 };
 
-bool AsyncTryStepDownAndRemove::PrepareRequest(int attempt) {
+bool AsyncTryStepDown::PrepareRequest(int attempt) {
   LOG(INFO) << Substitute("Prep Leader step down $0, $1 $2",
                           attempt, permanent_uuid(), change_config_ts_uuid_);
   if (attempt > 1) {
@@ -2896,7 +2899,7 @@ bool AsyncTryStepDownAndRemove::PrepareRequest(int attempt) {
   return true;
 }
 
-bool AsyncTryStepDownAndRemove::SendRequest(int attempt) {
+bool AsyncTryStepDown::SendRequest(int attempt) {
   if (!PrepareRequest(attempt)) {
     MarkAborted();
     return false;
@@ -2906,12 +2909,12 @@ bool AsyncTryStepDownAndRemove::SendRequest(int attempt) {
                           change_config_ts_uuid_, tablet_->tablet_id());
   consensus_proxy_->LeaderStepDownAsync(
       stepdown_req_, &stepdown_resp_, &rpc_,
-      std::bind(&AsyncTryStepDownAndRemove::RpcCallback, this));
+      std::bind(&AsyncTryStepDown::RpcCallback, this));
 
   return true;
 }
 
-void AsyncTryStepDownAndRemove::HandleResponse(int attempt) {
+void AsyncTryStepDown::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
     MarkAborted();
     LOG(WARNING) << Substitute(
@@ -2925,12 +2928,14 @@ void AsyncTryStepDownAndRemove::HandleResponse(int attempt) {
   LOG(INFO) << Substitute("Leader step down done $0, $1 $2",
                           attempt, permanent_uuid(), change_config_ts_uuid_);
 
-  auto task = new AsyncRemoveServerTask(
-      master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_);
+  if (should_remove_) {
+    auto task = new AsyncRemoveServerTask(
+        master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_);
 
-  tablet_->table()->AddTask(task);
-  Status status = task->Run();
-  WARN_NOT_OK(status, "Failed to send new RemoveServer request");
+    tablet_->table()->AddTask(task);
+    Status status = task->Run();
+    WARN_NOT_OK(status, "Failed to send new RemoveServer request");
+  }
 }
 
 void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table) {
@@ -3020,11 +3025,11 @@ bool CatalogManager::getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
   return true;
 }
 
-void CatalogManager::SendLeaderStepDownAndRemoveRequest(
+void CatalogManager::SendLeaderStepDownRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid) {
-  AsyncTryStepDownAndRemove* task = new AsyncTryStepDownAndRemove(
-      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+    const string& change_config_ts_uuid, bool should_remove) {
+  AsyncTryStepDown* task = new AsyncTryStepDown(
+      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, should_remove);
 
   tablet->table()->AddTask(task);
   Status status = task->Run();
@@ -3234,7 +3239,7 @@ class ScopedTabletInfoCommitter {
   const std::vector<scoped_refptr<TabletInfo> >* tablets_;
   bool aborted_;
 };
-} // anonymous namespace
+}  // anonymous namespace
 
 Status CatalogManager::ProcessPendingAssignments(
     const std::vector<scoped_refptr<TabletInfo> >& tablets) {
@@ -4377,5 +4382,5 @@ void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string&
   pb.set_state_msg(msg);
 }
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb

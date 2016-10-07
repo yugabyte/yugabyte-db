@@ -128,6 +128,9 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
     PrepareTestState(ts_descs);
     TestWithMissingPlacementAndLoadImbalance();
+
+    PrepareTestState(ts_descs);
+    TestBalancingLeaders();
   }
 
  protected:
@@ -398,12 +401,13 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     AnalyzeTablets();
 
     // ENG-348: Check that 2 different tablets are moved from ts0 to ts5.
+    // Since tablet 0 on ts0 is the leader, it won't be moved and tablet 1 and 2 will be instead.
     string expected_tablet_id, expected_from_ts, expected_to_ts;
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
-    expected_tablet_id = tablets_[0]->tablet_id();
-    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
     expected_tablet_id = tablets_[1]->tablet_id();
+    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+    expected_tablet_id = tablets_[2]->tablet_id();
     TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
   }
 
@@ -463,6 +467,80 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
     // And the load should now be balanced so no more move is expected.
     ASSERT_FALSE(HandleAddReplicas(&placeholder, &placeholder, &placeholder));
+  }
+
+  void TestBalancingLeaders() {
+    LOG(INFO) << "Testing moving overloaded leaders";
+    // Move all leaders to ts0.
+    for (const auto tablet : tablets_) {
+      MoveTabletLeader(tablet.get(), ts_descs_[0]);
+    }
+    LOG(INFO) << "Leader distribution: 4 0 0";
+
+    AnalyzeTablets();
+
+    // Only 2 tablets should be moved off from ts0.
+    string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id, expected_from_ts;
+    expected_from_ts = ts_descs_[0]->permanent_uuid();
+    TestMoveOverloadedLeader(&tablet_id_1, expected_from_ts);
+    TestMoveOverloadedLeader(&tablet_id_2, expected_from_ts);
+    // Ideally, we want to assert the leaders expected to step down. However, since the tablets
+    // are stored in an unordered_map in catalog manager and all leaders have same load gap, the
+    // leaders stepping down are not deterministic. So just make sure we are not stepping down the
+    // same leader twice.
+    ASSERT_NE(tablet_id_1, tablet_id_2);
+    ASSERT_FALSE(HandleOverloadedLeaderStepDowns(&placeholder, &placeholder));
+
+    // Move 1 tablet to ts1.
+    MoveTabletLeader(tablets_[0].get(), ts_descs_[1]);
+    LOG(INFO) << "Leader distribution: 3 1 0";
+
+    ResetState();
+    AnalyzeTablets();
+
+    // Only 1 tablets should be moved off from ts0.
+    expected_from_ts = ts_descs_[0]->permanent_uuid();
+    TestMoveOverloadedLeader(&placeholder, expected_from_ts);
+    ASSERT_FALSE(HandleOverloadedLeaderStepDowns(&placeholder, &placeholder));
+
+    // Move 1 more tablet to ts1 and blacklist ts0
+    MoveTabletLeader(tablets_[1].get(), ts_descs_[1]);
+    blacklist_.add_hosts()->set_host(ts_descs_[0]->permanent_uuid());
+    LOG(INFO) << "Leader distribution: 2 2 0. Blacklist: ts0";
+
+    ResetState();
+    AnalyzeTablets();
+
+    // With ts0 blacklisted, the 2 tablets on ts0 should be moved away. ts1 and ts2 are expected
+    // to take up 2 leaders each and therefore no leader move is expected.
+    expected_from_ts = ts_descs_[0]->permanent_uuid();
+    expected_tablet_id = tablets_[0]->tablet_id();
+    TestRemoveLoad(expected_tablet_id, expected_from_ts);
+    expected_tablet_id = tablets_[1]->tablet_id();
+    TestRemoveLoad(expected_tablet_id, expected_from_ts);
+    ASSERT_FALSE(HandleOverloadedLeaderStepDowns(&placeholder, &placeholder));
+
+    // Clear the blacklist.
+    blacklist_.Clear();
+    LOG(INFO) << "Leader distribution: 2 2 0. Blacklist cleared.";
+
+    ResetState();
+    AnalyzeTablets();
+
+    // Only 1 tablets should be moved off from ts1.
+    expected_from_ts = ts_descs_[1]->permanent_uuid();
+    TestMoveOverloadedLeader(&placeholder, expected_from_ts);
+    ASSERT_FALSE(HandleOverloadedLeaderStepDowns(&placeholder, &placeholder));
+
+    // Move 1 tablet from ts1 to ts2.
+    MoveTabletLeader(tablets_[1].get(), ts_descs_[2]);
+    LOG(INFO) << "Leader distribution: 2 1 1";
+
+    ResetState();
+    AnalyzeTablets();
+
+    // The distribution is as balanced as it can be so there shouldn't be any move.
+    ASSERT_FALSE(HandleOverloadedLeaderStepDowns(&placeholder, &placeholder));
   }
 
   // Methods to prepare the state of the current test.
@@ -570,6 +648,14 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     }
   }
 
+  void TestMoveOverloadedLeader(string* tablet_id, const string& expected_from_ts) {
+    string from_ts;
+    ASSERT_TRUE(HandleOverloadedLeaderStepDowns(tablet_id, &from_ts));
+    if (!expected_from_ts.empty()) {
+      ASSERT_EQ(expected_from_ts, from_ts);
+    }
+  }
+
   // Overrides for base class functionality to bypass calling CatalogManager.
  protected:
   void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const OVERRIDE { *ts_descs = ts_descs_; }
@@ -599,8 +685,22 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     tablet->SetReplicaLocations(replicas);
   }
 
+  void MoveTabletLeader(TabletInfo* tablet, shared_ptr<TSDescriptor> ts_desc) {
+    TabletInfo::ReplicaMap replicas;
+    tablet->GetReplicaLocations(&replicas);
+    for (auto &replica : replicas) {
+      if (replica.second.ts_desc == ts_desc.get()) {
+        replica.second.role = consensus::RaftPeerPB::LEADER;
+      } else {
+        replica.second.role = consensus::RaftPeerPB::FOLLOWER;
+      }
+    }
+    tablet->SetReplicaLocations(replicas);
+  }
+
   void SendReplicaChanges(
-      scoped_refptr<TabletInfo> tablet, const string& ts_uuid, const bool is_add) OVERRIDE {
+      scoped_refptr<TabletInfo> tablet, const string& ts_uuid, const bool is_add,
+      const bool should_remove) OVERRIDE {
     // Do nothing.
   }
 
