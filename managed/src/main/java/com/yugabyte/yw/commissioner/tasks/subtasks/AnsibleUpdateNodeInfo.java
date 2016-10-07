@@ -35,7 +35,6 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
     try {
       // Create the process to fetch information about the node from the cloud provider.
       String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.List, taskParams());
-      LOG.info("Command to run: [{}]", command);
 
       // Run the process.
       Process p = Runtime.getRuntime().exec(command);
