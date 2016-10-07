@@ -608,23 +608,7 @@ a, a:visited, a:focus, a:active, :visited, :focus, :active, .btn:focus, .btn:act
   margin-left: 0 !important;
   line-height: 32px;
 }
-.site_title {
-  text-overflow: ellipsis;
-  overflow: hidden;
-  font-weight: 400;
-  font-size: 22px;
-  width: 100%;
-  color: #ECF0F1 !important;
-  margin-left: 35px !important;
-  line-height: 59px;
-  display: block;
-  height: 55px;
 
-  padding-left: 10px;
-}
-.site_title:hover, .site_title:focus {
-  text-decoration: none
-}
 .nav.navbar-nav>li>a {
   color: #515356 !important;
 }
