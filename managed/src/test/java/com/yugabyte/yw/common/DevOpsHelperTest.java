@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
@@ -40,7 +41,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     defaultRegion = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
-    baseCommand = "/my/devops/bin/python_virtual_env.sh ybcloud.py " + defaultProvider.code +
+    baseCommand = "/my/devops/bin/ybcloud.sh " + defaultProvider.code +
       " --region " + defaultRegion.code;
   }
 
@@ -173,6 +174,34 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
     String expectedCommand = baseCommand + " instance list --as_json " +  params.nodeName;
+    assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+  }
+
+  @Test
+  public void testControlNodeCommandWithInvalidParam() {
+    NodeTaskParams params = new NodeTaskParams();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+
+    try {
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, params);
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleClusterServerCtl.Params"));
+    }
+  }
+
+  @Test
+  public void testControlNodeCommand() {
+    AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    params.process = "master";
+    params.command = "create";
+
+    String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, params);
+    String expectedCommand = baseCommand + " instance control " +
+      params.process + " " + params.command + " " +  params.nodeName;
     assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
   }
 }

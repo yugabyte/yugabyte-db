@@ -1,12 +1,13 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.common.DevOpsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 
-public class AnsibleClusterServerCtl extends AbstractTaskBase {
+public class AnsibleClusterServerCtl extends NodeTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleClusterServerCtl.class);
 
@@ -28,12 +29,8 @@ public class AnsibleClusterServerCtl extends AbstractTaskBase {
 
   @Override
   public void run() {
-    // Create the process to fetch information about the node from the cloud provider.
-    String command = "yb_server_ctl.py " +  taskParams().nodeName +
-                     " --cloud " + taskParams().cloud +
-                     " --region " + taskParams().getRegion().code +
-                     " " + taskParams().process +
-                     " --command " + taskParams().command;
+    String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Control, taskParams());
+
     // Execute the ansible command.
     execCommand(command);
   }

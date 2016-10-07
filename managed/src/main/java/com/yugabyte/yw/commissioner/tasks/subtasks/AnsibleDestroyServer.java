@@ -44,7 +44,6 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     setNodeState(NodeDetails.NodeState.BeingDecommissioned);
 
     String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Destroy, taskParams());
-    LOG.info("Command to run: [{}]", command);
 
     // Execute the ansible command.
     execCommand(command);
