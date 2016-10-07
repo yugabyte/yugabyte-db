@@ -4,25 +4,27 @@
 }
 
 #ybPortal {
-  background-color: #f8f8f8;
+    background-color: #f8f8f8;
 }
 
 #ybPortal .navbar {
-  margin-bottom: 0px;
+    margin-bottom: 0px;
 }
 
 .nav_title {
-  width: 100% !important;
+    width: 100% !important;
 }
 
 .yb-logo-img {
-    width: 60px;
-    height: 60px;
+    padding: 0;
+    margin: 10px 0 0 46px;
+    width: 50px;
+    height: 50px;
 }
 #page-wrapper {
     position: inherit;
-    margin: 0 0 0 120px;
-    padding: 0 30px;
+    margin: 4% 0 0 8%;
+    padding: 1% 2%;
     border-left: 1px solid #e7e7e7;
     background-color: transparent;
     min-height: 100%;
@@ -35,32 +37,32 @@
 }
 
 .leaflet-container {
-  height: 300px;
-  width: 500px;
+    height: 300px;
+    width: 500px;
 }
 
 .graph-panel-grid div.dropdown {
-  float: right;
-  margin-top: -7px;
+    float: right;
+    margin-top: -7px;
 }
 
 form a {
-  margin-left: 5px;
+    margin-left: 5px;
 }
 
 ul {
-  list-style: none;
+    list-style: none;
 }
 
 .modal-body {
-  max-height: calc(100% - 120px);
-  overflow: auto;
+    max-height: calc(100% - 120px);
+    overflow: auto;
 }
 
 .universeFormSplit {
-  border-bottom: 1px solid black;
-  margin-top: 4%;
-  margin-bottom: 4%;
+    border-bottom: 1px solid black;
+    margin-top: 4%;
+    margin-bottom: 4%;
 }
 
 .progress {
@@ -74,12 +76,12 @@ ul {
 }
 
 .form-item-label {
-  display: block;
-  margin-bottom: 4%;
+    display: block;
+    margin-bottom: 4%;
 }
 
 .no-border-cell {
-  border:none !important;
+    border:none !important;
 }
 
 .detail-item-cell {
@@ -138,9 +140,9 @@ ul {
 }
 
 .universe-table-header-action .universe-button {
-  width: auto;
-  font-size: 14px;
-  padding: 6px 12px;
+    width: auto;
+    font-size: 14px;
+    padding: 6px 12px;
 }
 
 .top-nav-menu-button {
@@ -158,116 +160,116 @@ ul {
 }
 
 .yb-nav-bar {
-  background-color: #fff;
+    background-color: #fff;
 }
 
 .progess-gauge {
-  vertical-align: top;
-  background: #fff;
-  border: 1px solid #abd9ea;
-  border-radius: 5px;
-  text-align: center;
-  padding: 2px;
-  margin-top: 10px;
+    vertical-align: top;
+    background: #fff;
+    border: 1px solid #abd9ea;
+    border-radius: 5px;
+    text-align: center;
+    padding: 2px;
+    margin-top: 10px;
 }
 
 .progess-gauge > canvas {
-  width: 80% !important;
-  height: auto !important;
+    width: 80% !important;
+    height: auto !important;
 }
 ul.progress-list {
-  padding-left: 0;
-  margin-top: 10px;
+    padding-left: 0;
+    margin-top: 10px;
 }
 
 ul.progress-list li {
-  padding-left: 10px;
-  list-style: none;
-  margin: 0;
-  padding-bottom: 6px;
-  padding-top: 4px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
+    padding-left: 10px;
+    list-style: none;
+    margin: 0;
+    padding-bottom: 6px;
+    padding-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 ul.progress-list li i {
-  margin-right: 10px;
-  color: #757679;
+    margin-right: 10px;
+    color: #757679;
 }
 
 @media (min-width: 768px) {
-  .dl-normal {
-    margin-top: 0px;
-    margin-bottom: 20px;
-  }
+    .dl-normal {
+        margin-top: 0px;
+        margin-bottom: 20px;
+    }
 
-  .dl-normal dt {
-      float: left;
-      overflow: hidden;
-      clear: left;
-      text-align: right;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-  }
+    .dl-normal dt {
+        float: left;
+        overflow: hidden;
+        clear: left;
+        text-align: right;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
-  .dl-normal dd {
-    margin-left: 120px;
-    line-height: 20px;
-  }
+    .dl-normal dd {
+        margin-left: 120px;
+        line-height: 20px;
+    }
 
-  .dl-nested {
-    margin-bottom: 0px;
-  }
+    .dl-nested {
+        margin-bottom: 0px;
+    }
 
-  .dl-nested dl {
-  }
-  .dl-nested dd {
-    margin: 0px;
-    overflow: visible;
-    white-space: normal;
-  }
+    .dl-nested dl {
+    }
+    .dl-nested dd {
+        margin: 0px;
+        overflow: visible;
+        white-space: normal;
+    }
 }
 
 .graph-panel {
-  margin: 0 20px;
+    margin: 0 20px;
 }
 
 .header-row .btn-group div {
-  display: inline-block;
-  margin-right: 10px;
-  float: right;
+    display: inline-block;
+    margin-right: 10px;
+    float: right;
 }
 
 .fa-spin {
-  -webkit-animation: fa-spin 2s infinite linear;
-          animation: fa-spin 2s infinite linear;
+    -webkit-animation: fa-spin 2s infinite linear;
+    animation: fa-spin 2s infinite linear;
 }
 
 .fa-pulse {
-  -webkit-animation: fa-spin 1s infinite steps(8);
-          animation: fa-spin 1s infinite steps(8);
+    -webkit-animation: fa-spin 1s infinite steps(8);
+    animation: fa-spin 1s infinite steps(8);
 }
 
 @-webkit-keyframes fa-spin {
-  0% {
-    -webkit-transform: rotate(0deg);
-            transform: rotate(0deg);
-  }
-  100% {
-    -webkit-transform: rotate(359deg);
-            transform: rotate(359deg);
-  }
+    0% {
+        -webkit-transform: rotate(0deg);
+        transform: rotate(0deg);
+    }
+    100% {
+        -webkit-transform: rotate(359deg);
+        transform: rotate(359deg);
+    }
 }
 
 @keyframes fa-spin {
-  0% {
-    -webkit-transform: rotate(0deg);
-            transform: rotate(0deg);
-  }
-  100% {
-    -webkit-transform: rotate(359deg);
-            transform: rotate(359deg);
-  }
+    0% {
+        -webkit-transform: rotate(0deg);
+        transform: rotate(0deg);
+    }
+    100% {
+        -webkit-transform: rotate(359deg);
+        transform: rotate(359deg);
+    }
 }
 
 .detail-column {
@@ -341,3 +343,10 @@ ul.progress-list li i {
     margin-bottom: 1%;
     padding-bottom: 1%;
 }
+
+.left-col-container {
+    position: fixed;
+    margin-top: 60px;
+    height: 100%;
+}
+
