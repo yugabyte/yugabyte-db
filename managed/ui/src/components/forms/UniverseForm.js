@@ -44,7 +44,6 @@ export default class UniverseForm extends Component {
   }
 
   providerChanged(event) {
-
     var providerUUID = event.target.value;
     this.setState({providerSelected: providerUUID});
     this.props.getRegionListItems(providerUUID, this.props.selectedAzState);
@@ -66,7 +65,7 @@ export default class UniverseForm extends Component {
   render() {
     var self = this;
 
-    const { visible, onHide, handleSubmit, title, formName} = this.props;
+    const { visible, onHide, handleSubmit, title} = this.props;
 
     var azCheckStateChanged =function() {
       self.setState({azCheckState: !self.state.azCheckState});

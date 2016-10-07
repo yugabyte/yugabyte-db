@@ -7,13 +7,12 @@ import YBPanelItem from './YBPanelItem';
 
 export default class NodeDetails extends Component {
   static propTypes = {
-    nodeDetails: PropTypes.object.isRequired
+    nodeDetails: PropTypes.array.isRequired
   };
 
   render() {
     const { nodeDetails } = this.props;
-    const nodeDetailRows = Object.keys(nodeDetails).map(function(key) {
-      var nodeDetail = nodeDetails[key];
+    const nodeDetailRows = nodeDetails.map(function(nodeDetail) {
       var privateIP = nodeDetail.cloudInfo.private_ip;
 
       return {
