@@ -267,15 +267,18 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
 }
 
 void MultiThreadedWriter::RunStatsThread() {
-  MicrosecondsInt64 start_time = GetMonoTimeMicros();
+  MicrosecondsInt64 prev_time = GetMonoTimeMicros();
+  int64_t prev_writes = 0;
   while (!IsStopRequested() && running_threads_latch_.count() > 0) {
-    running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
+    running_threads_latch_.WaitFor(MonoDelta::FromSeconds(5));
     int64_t num_writes = this->num_writes();
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
     LOG(INFO) << "Wrote " << num_writes << " rows ("
-              << num_writes * 1000000.0 / (current_time - start_time) << " writes/sec)"
-              << ", contiguous insertion point: " << inserted_up_to_inclusive_.load()
+              << (num_writes - prev_writes) * 1000000.0 / (current_time - prev_time)
+              << " writes/sec), contiguous insertion point: " << inserted_up_to_inclusive_.load()
               << ", write errors: " << failed_keys_.NumElements();
+    prev_writes = num_writes;
+    prev_time = current_time;
   }
 }
 
@@ -489,14 +492,17 @@ ReadStatus MultiThreadedReader::PerformRead(int64_t key_index) {
 }
 
 void MultiThreadedReader::RunStatsThread() {
-  MicrosecondsInt64 start_time = GetMonoTimeMicros();
+  MicrosecondsInt64 prev_time = GetMonoTimeMicros();
+  int64_t prev_rows_read = 0;
   while (!IsStopRequested() && running_threads_latch_.count() > 0) {
-    running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
+    running_threads_latch_.WaitFor(MonoDelta::FromSeconds(5));
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
     int64_t num_rows_read = num_reads_.load();
     LOG(INFO) << "Read " << num_rows_read << " rows ("
-              << num_rows_read * 1000000.0 / (current_time - start_time) << " reads/sec)"
-              << ", read errors: " << num_read_errors_.load();
+              << (num_rows_read - prev_rows_read) * 1000000.0 / (current_time - prev_time)
+              << " reads/sec), read errors: " << num_read_errors_.load();
+    prev_rows_read = num_rows_read;
+    prev_time = current_time;
   }
 }
 
