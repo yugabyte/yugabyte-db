@@ -650,7 +650,6 @@ select oracle.to_date('210514 12:13:44.55');
 
 -- Tests for oracle.to_date(text,text)
 SET search_path TO oracle,"$user", public, pg_catalog;
-select to_date('2014/02/31 10:11:12', 'YYYY/MM/DD hh12:mi:ss');
 select to_date('2014/04/25 10:13', 'YYYY/MM/DD HH:MI');
 select to_date('16-Feb-09 10:11:11', 'DD-Mon-YY HH:MI:SS');
 select to_date('02/16/09 04:12:12', 'MM/DD/YY HH24:MI:SS');
@@ -768,8 +767,6 @@ set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(to_date('21052014 12:13:44+05:30'));
 set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(to_date('210514 12:13:44+05:30'));
-set orafce.nls_date_format='DDMMYY HH24:MI:SS';
-select oracle.to_char(oracle.to_date('2014/02/31 10:11:12', 'YYYY/MM/DD hh12:mi:ss'));
 set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('2014/04/25 10:13', 'YYYY/MM/DD HH:MI'));
 set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
