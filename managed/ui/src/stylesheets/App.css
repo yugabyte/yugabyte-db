@@ -31,7 +31,7 @@
 }
 
 #page-wrapper .header-row {
-    padding-bottom: 9px;
+    padding-bottom: 2px;
     margin-bottom: 20px;
     border-bottom: 1px solid #eee;
 }
@@ -344,9 +344,26 @@ ul.progress-list li i {
     padding-bottom: 1%;
 }
 
+.universe-detail-btn-group .dropdown {
+    padding: 0;
+}
+
+.header-row .btn-group div {
+    float: left ;
+}
+
+.header-row .h2 {
+    margin-bottom: 0;
+}
+
+.detail-label-small {
+    margin:0 0 6px 6px;
+    color: grey;
+    padding-left: 4px;
+}
+
 .left-col-container {
     position: fixed;
     margin-top: 60px;
     height: 100%;
 }
-
