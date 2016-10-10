@@ -1,24 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import YBPanelItem from '../YBPanelItem';
-import { Col } from 'react-bootstrap';
+import {isValidArray} from '../../utils/ObjectUtils';
+import RegionMap from '../../components/RegionMap';
 
 export default class UniverseRegionLocationPanel extends Component {
+
   render() {
+    const { cloud } = this.props;
+    if(!isValidArray(cloud.regions)) {
+      return <span/>
+    }
+
     return (
-          <YBPanelItem name="All Supported Regions">
-            <div className="x_content">
-              <div className="dashboard-widget-content">
-                <Col md={4} className="hidden-small">
-                  <table className="countries_list">
-                    <tbody></tbody>
-                  </table>
-                </Col>
-                <Col md={8} sm={12} xs={12} id="world-map-gdp"></Col>
-              </div>
-            </div>
-          </YBPanelItem>
+       <RegionMap title="All Supported Regions" regions={cloud.regions} />
     )
   }
 }

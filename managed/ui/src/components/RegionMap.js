@@ -13,6 +13,10 @@ export default class RegionMap extends Component {
     regions: PropTypes.array.isRequired
   };
 
+  static defaultProps = {
+    title: "Region Placement"
+  };
+
   constructor(props) {
     super(props);
     this.state = {
@@ -25,7 +29,7 @@ export default class RegionMap extends Component {
   }
 
   render() {
-    const { regions } = this.props;
+    const { regions, title } = this.props;
 
     const regionMarkers = []
     const regionLatLngs = regions.map(function(region, idx) {
@@ -41,7 +45,7 @@ export default class RegionMap extends Component {
       ' contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
     return (
-      <YBPanelItem name="Region Placement">
+      <YBPanelItem name={title}>
         <Map bounds={bounds} center={[-1, 0]} zoom={this.state.zoom}
          zoomControl={false} ref='map' className="region-map-container" minZoom={1} maxZoom={5}
          touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false} draggable={false}>

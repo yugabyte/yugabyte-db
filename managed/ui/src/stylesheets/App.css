@@ -332,7 +332,7 @@ ul.progress-list li i {
     width: 100%;
     border-color: #d3d3d3;
     border-style: solid;
-    border-width: 20px 10px 20px 10px;
+    border-width: 2px 1px;
 }
 
 .name-column-sm {
