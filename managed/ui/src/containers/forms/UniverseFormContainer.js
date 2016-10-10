@@ -3,10 +3,8 @@
 import UniverseForm from '../../components/forms/UniverseForm';
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
-import { getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
-  getProviderListSuccess, getProviderListFailure,
-  getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure, resetProviderList }
-  from '../../actions/cloud';
+import { getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure
+          } from '../../actions/cloud';
 import { createUniverse, createUniverseSuccess, createUniverseFailure,
   editUniverse, editUniverseSuccess, editUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog }
@@ -17,9 +15,7 @@ import {isValidObject} from '../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    resetProviderList: () => {
-      dispatch(resetProviderList());
-    },
+
     submitCreateUniverse: (values) => {
       values.regionList = values.regionList.map(function(item, idx){
         return item.value;
@@ -69,29 +65,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       })
     },
-
-    getProviderListItems: () => {
-      dispatch(getProviderList())
-        .then((response) => {
-          if(response.payload.status !== 200) {
-            dispatch(getProviderListFailure(response.payload));
-          } else {
-            dispatch(getProviderListSuccess(response.payload));
-          }
-        });
-    },
-
-    getRegionListItems: (provider, isMultiAz) => {
-      dispatch(getRegionList(provider, isMultiAz))
-        .then((response) => {
-          if(response.payload.status !== 200) {
-            dispatch(getRegionListFailure(response.payload));
-          } else {
-            dispatch(getRegionListSuccess(response.payload));
-          }
-        });
-    },
-
+    
     getInstanceTypeListItems: (provider) => {
       dispatch(getInstanceTypeList(provider))
         .then((response) => {

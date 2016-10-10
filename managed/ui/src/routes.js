@@ -7,7 +7,7 @@ import { validateToken, validateTokenSuccess, validateTokenFailure } from './act
 import App from './pages/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import DashboardWrapper from './pages/DashboardWrapper';
+import AuthenticatedComponent from './pages/AuthenticatedComponent';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
@@ -43,7 +43,7 @@ export default (store) => {
     <Route path="/" component={App}>
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
-      <Route onEnter={authenticatedSession} component={DashboardWrapper}>
+      <Route onEnter={authenticatedSession} component={AuthenticatedComponent}>
         <IndexRoute component={Dashboard} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/universes" component={Universes} />

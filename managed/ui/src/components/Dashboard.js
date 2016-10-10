@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import HighlightedStatsPanelContainer from '../containers/panels/HighlightedStatsPanelContainer';
 import UniverseGraphPanelContainer from '../containers/panels/UniverseGraphPanelContainer';
 import UniverseCostBreakDownPanelContainer from '../containers/panels/UniverseCostBreakDownPanelContainer';
@@ -8,18 +8,6 @@ import UniverseRegionLocationPanelContainer from '../containers/panels/UniverseR
 import { Col } from 'react-bootstrap';
 
 export default class Dashboard extends Component {
-  static contextTypes = {
-    router: PropTypes.object
-  };
-
-  constructor(props) {
-    super(props);
-    props.fetchUniverseList();
-  }
-
-  componentWillUnmount() {
-    this.props.resetUniverseList();
-  }
 
   render() {
     return (
@@ -30,7 +18,7 @@ export default class Dashboard extends Component {
             <UniverseCostBreakDownPanelContainer />
           </Col>
           <Col lg={6}>
-            <UniverseRegionLocationPanelContainer />
+            <UniverseRegionLocationPanelContainer {...this.props}/>
           </Col>
       </div>
     );

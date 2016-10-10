@@ -27,25 +27,18 @@ export default class UniverseForm extends Component {
   }
 
   componentWillMount() {
-    this.props.getProviderListItems();
+
     if(this.props.type === "Edit") {
       var providerUUID = this.props.universe.currentUniverse.provider.uuid;
-      var azState = this.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
       this.setState({providerSelected: providerUUID});
       this.setState({instanceTypeSelected: this.props.universe.currentUniverse.universeDetails.userIntent.instanceType});
-      this.props.getRegionListItems(providerUUID, azState);
       this.props.getInstanceTypeListItems(providerUUID);
     }
   }
-
-  componentWillUnmount() {
-    this.props.resetProviderList();
-  }
-
+  
   providerChanged(event) {
     var providerUUID = event.target.value;
     this.setState({providerSelected: providerUUID});
-    this.props.getRegionListItems(providerUUID, this.props.selectedAzState);
     this.props.getInstanceTypeListItems(providerUUID);
   }
 
