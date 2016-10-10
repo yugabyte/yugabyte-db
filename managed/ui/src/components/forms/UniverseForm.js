@@ -21,7 +21,7 @@ export default class UniverseForm extends Component {
     this.numNodesChanged = this.numNodesChanged.bind(this);
 
     this.state = { providerSelected: '',
-      regionSelected: [], instanceTypeSelected: '',
+      regionSelected: [], instanceTypeSelected: 'm3.medium',
       numNodes: 3, azCheckState: true};
 
   }
@@ -35,7 +35,6 @@ export default class UniverseForm extends Component {
       this.setState({instanceTypeSelected: this.props.universe.currentUniverse.universeDetails.userIntent.instanceType});
       this.props.getRegionListItems(providerUUID, azState);
       this.props.getInstanceTypeListItems(providerUUID);
-      this.setState({instanceTypeSelected: "m3.medium"});
     }
   }
 
@@ -119,9 +118,9 @@ export default class UniverseForm extends Component {
               <Field name="isMultiAZ" type="checkbox" component={YBCheckBox}
                      label="Multi AZ" onClick={azCheckStateChanged}/>
               <Field name="instanceType" type="select" component={YBSelect} label="Instance Type"
-                     options={universeInstanceTypeList} onChange={this.instanceTypeChanged}
+                     options={universeInstanceTypeList}
                      defaultValue={this.state.instanceTypeSelected}
-                     value={this.state.instanceTypeSelected}
+                     
               />
               <Field name="serverPackage" type="text" component={YBInput}
                      label="Server Package" defaultValue={this.state.serverPackage} />
