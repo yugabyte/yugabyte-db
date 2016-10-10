@@ -70,7 +70,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
     String expectedCommand = baseCommand + " instance provision" +
       " --cloud_subnet " + params.subnetId + " --machine_image " + defaultRegion.ybImage +
-      " --instance_type " + params.instanceType + " --assign_public_ip --reuse_host " + params.nodeName;
+      " --instance_type " + params.instanceType + " --assign_public_ip " + params.nodeName;
 
     assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
   }

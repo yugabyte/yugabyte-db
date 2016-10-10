@@ -52,7 +52,7 @@ public class DevOpsHelper {
         command += " --cloud_subnet " + taskParam.subnetId +
           " --machine_image " + taskParam.getRegion().ybImage +
           " --instance_type " + taskParam.instanceType +
-          " --assign_public_ip --reuse_host";
+          " --assign_public_ip";
         break;
       }
       case Configure:
