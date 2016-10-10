@@ -92,8 +92,12 @@ public abstract class AbstractTaskBase implements ITask {
       // Log the stderr output of the process.
       BufferedReader berr = new BufferedReader(new InputStreamReader(p.getErrorStream()));
       String line = null;
-      while ( (line = berr.readLine()) != null) {
-        LOG.info("[" + getName() + "] STDERR: " + line);
+      while ((line = berr.readLine()) != null) {
+        LOG.warn("[" + getName() + "] STDERR: " + line);
+      }
+      BufferedReader bout = new BufferedReader(new InputStreamReader(p.getInputStream()));
+      while ((line = bout.readLine()) != null) {
+        LOG.info("[" + getName() + "] STDOUT: " + line);
       }
       int exitValue = p.waitFor();
       String message = "Command [" + command + "] finished with exit code " + exitValue;
