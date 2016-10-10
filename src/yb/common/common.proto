@@ -68,6 +68,8 @@ enum CompressionType {
   ZLIB = 4;
 }
 
+// This must exactly match YBTableType in client.h.
+// We have static_assert's in tablet-test.cc to verify this.
 enum TableType {
   option allow_alias = true;
 

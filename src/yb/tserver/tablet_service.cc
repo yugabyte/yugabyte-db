@@ -17,12 +17,12 @@
 
 #include "yb/tserver/tablet_service.h"
 
-#include <boost/optional.hpp>
-
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <boost/optional.hpp>
 
 #include "yb/common/iterator.h"
 #include "yb/common/schema.h"
@@ -746,7 +746,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
       tx_state = unique_ptr<WriteTransactionState>(
           new WriteTransactionState(tablet_peer.get(), req, resp));
-    } break;
+      break;
+    }
     case TableType::REDIS_TABLE_TYPE: {
       unique_ptr<const WriteRequestPB> key_value_write_request;
       s = tablet->KeyValueBatchFromRedisWriteBatch(
@@ -760,10 +761,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       tx_state = unique_ptr<WriteTransactionState>(
           new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
       tx_state->swap_docdb_locks(&locks_held);
-    } break;
+      break;
+    }
     case TableType::YSQL_TABLE_TYPE: {
       // We'll construct a new WriteRequestPB for raft replication.
-
       s = tablet->KeyValueBatchFromYSQLRowOps(*req, &key_value_write_request, &locks_held);
       if (PREDICT_FALSE(!s.ok())) {
         SetupErrorAndRespond(resp->mutable_error(), s,
@@ -774,7 +775,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       tx_state = unique_ptr<WriteTransactionState>(
           new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
       tx_state->swap_docdb_locks(&locks_held);
-    } break;
+      break;
+    }
   }
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
@@ -790,7 +792,6 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
                          TabletServerErrorPB::UNKNOWN_ERROR,
                          context);
   }
-  return;
 }
 
 ConsensusServiceImpl::ConsensusServiceImpl(const scoped_refptr<MetricEntity>& metric_entity,

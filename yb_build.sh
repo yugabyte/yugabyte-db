@@ -29,7 +29,7 @@ Options:
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
   --clang
     Use the clang C/C++ compiler.
-  --skip-java-build
+  --skip-java-build, --skip-java, --sj
     Do not package and install java source code.
   --run-java-tests
     Run the java unit tests when build is enabled.
@@ -47,7 +47,7 @@ Options:
     Skip building third-party libraries, even if the thirdparty directory has changed in git.
   --show-compiler-cmd-line
     Show compiler command line.
-  --no-test-existence-check
+  --skip-test-existence-check, --no-test-existence-check
     Don't check that all test binaries referenced by CMakeLists.txt files exist.
   --gtest-regex
     Use the given regular expression to filter tests within a gtest-based binary when running them
@@ -124,7 +124,7 @@ while [ $# -gt 0 ]; do
     --clang)
       YB_COMPILER_TYPE="clang"
     ;;
-    --skip-java|--skip-java-build)
+    --skip-java-build|--skip-java|--sj)
       build_java=false
     ;;
     --run-java-tests)
@@ -157,7 +157,7 @@ while [ $# -gt 0 ]; do
     --show-compiler-cmd-line)
       export YB_SHOW_COMPILER_COMMAND_LINE=1
     ;;
-    --no-test-existence-check)
+    --skip-test-existence-check|--no-test-existence-check)
       test_existence_check=false
     ;;
     --gtest-regex)

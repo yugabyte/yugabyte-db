@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_INTEGRATION_TESTS_TEST_WORKLOAD_H
-#define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H
+#ifndef YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
+#define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 
 #include <string>
 #include <vector>
@@ -103,7 +103,7 @@ class TestWorkload {
 
   // Sets up the internal client and creates the table which will be used for
   // writing, if it doesn't already exist.
-  void Setup(client::YBTableType table_type = client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+  void Setup(client::YBTableType table_type = client::YBTableType::YSQL_TABLE_TYPE);
 
   // Start the write workload.
   void Start();
@@ -152,5 +152,5 @@ class TestWorkload {
   DISALLOW_COPY_AND_ASSIGN(TestWorkload);
 };
 
-} // namespace yb
-#endif /* YB_INTEGRATION_TESTS_TEST_WORKLOAD_H */
+}  // namespace yb
+#endif  // YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_

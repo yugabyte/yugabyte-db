@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_CLIENT_H
-#define YB_CLIENT_CLIENT_H
+#ifndef YB_CLIENT_CLIENT_H_
+#define YB_CLIENT_CLIENT_H_
 
 #include <stdint.h>
 #include <string>
@@ -71,8 +71,10 @@ class MetaCache;
 class RemoteTablet;
 class RemoteTabletServer;
 class WriteRpc;
-} // namespace internal
+}  // namespace internal
 
+// This must match TableType in common.proto.
+// We have static_assert's in tablet-test.cc to verify this.
 enum YBTableType {
   KUDU_COLUMNAR_TABLE_TYPE = 1,
   YSQL_TABLE_TYPE = 2,
@@ -1140,6 +1142,6 @@ class YB_EXPORT YBTabletServer {
   DISALLOW_COPY_AND_ASSIGN(YBTabletServer);
 };
 
-} // namespace client
-} // namespace yb
-#endif  // YB_CLIENT_CLIENT_H
+}  // namespace client
+}  // namespace yb
+#endif  // YB_CLIENT_CLIENT_H_

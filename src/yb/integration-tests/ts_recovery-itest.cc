@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/util/test_util.h"
-
-#include <string>
 
 using std::string;
 
@@ -52,6 +52,7 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
 // Test crashing a server just before appending a COMMIT message.
 // We then restart the server and ensure that all rows successfully
 // inserted before the crash are recovered.
+// This test is only enabled on Kudu tables, because YB tables don't use local COMMIT messages.
 TEST_F(TsRecoveryITest, TestRestartWithOrphanedReplicates) {
   NO_FATALS(StartCluster());
   cluster_->SetFlag(cluster_->tablet_server(0),
@@ -62,7 +63,7 @@ TEST_F(TsRecoveryITest, TestRestartWithOrphanedReplicates) {
   work.set_num_write_threads(4);
   work.set_write_timeout_millis(100);
   work.set_timeout_allowed(true);
-  work.Setup();
+  work.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
   work.Start();
 
   // Wait for the process to crash due to the injected fault.
@@ -135,4 +136,4 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
                                        MonoDelta::FromSeconds(30)));
 }
 
-} // namespace yb
+}  // namespace yb

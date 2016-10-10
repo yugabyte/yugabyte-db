@@ -61,7 +61,7 @@ using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-using namespace std::placeholders;
+using namespace std::placeholders;  // NOLINT(build/namespaces)
 
 TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
@@ -176,7 +176,7 @@ bool CompareByTabletId(const scoped_refptr<TabletPeer>& a,
   return a->tablet_id() < b->tablet_id();
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
                                                  std::stringstream *output) {
@@ -216,13 +216,13 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         "<tr><td>$0</td><td>$1</td><td>$2</td>"
         // State, on-disk size, consensus configuration, last status
         "<td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
-        EscapeForHtmlToString(table_name), // $0
-        tablet_id_or_link, // $1
-        EscapeForHtmlToString(partition), // $2
-        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes, // $3, $4
+        EscapeForHtmlToString(table_name),  // $0
+        tablet_id_or_link,  // $1
+        EscapeForHtmlToString(partition),  // $2
+        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes,  // $3, $4
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "", // $5
-        EscapeForHtmlToString(status.last_status())); // $6
+                  : "",  // $5
+        EscapeForHtmlToString(status.last_status()));  // $6
   }
   *output << "</table>\n";
 }
@@ -235,7 +235,7 @@ bool CompareByMemberType(const RaftPeerPB& a, const RaftPeerPB& b) {
   return a.member_type() < b.member_type();
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& cstate) const {
   std::stringstream html;
@@ -303,7 +303,7 @@ bool LoadTablet(TabletServer* tserver,
   return true;
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 void TabletServerPathHandlers::HandleTabletPage(const Webserver::WebRequest& req,
                                                 std::stringstream *output) {
@@ -414,17 +414,16 @@ string TabletServerPathHandlers::ScannerToHtml(const Scanner& scanner) const {
       scanner.TimeSinceLastAccess(MonoTime::Now(MonoTime::COARSE)).ToMicroseconds();
 
   html << Substitute("<tr><td>$0</td><td>$1</td><td>$2 us.</td><td>$3 us.</td><td>$4</td>",
-                     EscapeForHtmlToString(scanner.tablet_id()), // $0
-                     EscapeForHtmlToString(scanner.id()), // $1
-                     time_in_flight_us, time_since_last_access_us, // $2, $3
-                     EscapeForHtmlToString(scanner.requestor_string())); // $4
+                     EscapeForHtmlToString(scanner.tablet_id()),  // $0
+                     EscapeForHtmlToString(scanner.id()),  // $1
+                     time_in_flight_us, time_since_last_access_us,  // $2, $3
+                     EscapeForHtmlToString(scanner.requestor_string()));  // $4
 
 
   if (!scanner.IsInitialized()) {
     html << "<td colspan=\"3\">&lt;not yet initialized&gt;</td></tr>";
     return html.str();
   }
-
   const Schema* projection = &scanner.iter()->schema();
 
   vector<IteratorStats> stats;
@@ -472,13 +471,13 @@ string TabletServerPathHandlers::IteratorStatsToHtml(const Schema& projection,
                        "<td title=\"$3\">$4</td>"
                        "<td title=\"$5\">$6</td>"
                        "</tr>\n",
-                       EscapeForHtmlToString(projection.column(idx).name()), // $0
-                       HumanReadableInt::ToString(stats[idx].data_blocks_read_from_disk), // $1
-                       stats[idx].data_blocks_read_from_disk, // $2
-                       HumanReadableNumBytes::ToString(stats[idx].bytes_read_from_disk), // $3
-                       stats[idx].bytes_read_from_disk, // $4
-                       HumanReadableInt::ToString(stats[idx].cells_read_from_disk), // $5
-                       stats[idx].cells_read_from_disk); // $6
+                       EscapeForHtmlToString(projection.column(idx).name()),  // $0
+                       HumanReadableInt::ToString(stats[idx].data_blocks_read_from_disk),  // $1
+                       stats[idx].data_blocks_read_from_disk,  // $2
+                       HumanReadableNumBytes::ToString(stats[idx].bytes_read_from_disk),  // $3
+                       stats[idx].bytes_read_from_disk,  // $4
+                       HumanReadableInt::ToString(stats[idx].cells_read_from_disk),  // $5
+                       stats[idx].cells_read_from_disk);  // $6
   }
   html << "</table>\n";
   return html.str();
@@ -565,5 +564,5 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   *output << "</table>\n";
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb

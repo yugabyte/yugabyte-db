@@ -32,17 +32,19 @@ Status ExpectValueType(ValueType expected_value_type,
   }
 }
 
-}
+}  // namespace
 
 DocRowwiseIterator::DocRowwiseIterator(const Schema &projection,
                                        const Schema &schema,
                                        rocksdb::DB *db,
-                                       Timestamp timestamp)
+                                       Timestamp timestamp,
+                                       yb::util::PendingOperationCounter* pending_op_counter)
     : projection_(projection),
       schema_(schema),
       timestamp_(timestamp),
       db_(db),
       has_upper_bound_key_(false),
+      pending_op_(pending_op_counter),
       done_(false) {
 }
 
@@ -135,6 +137,55 @@ string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
 }
 
+Status DocRowwiseIterator::PrimitiveValueToKudu(
+    int column_index,
+    const PrimitiveValue& value,
+    RowBlockRow* dest_row) {
+  const ColumnSchema& col_schema = projection_.column(column_index);
+  const DataType data_type = col_schema.type_info()->physical_type();
+  void* const dest_ptr = dest_row->cell(column_index).mutable_ptr();
+  Arena* const arena = dest_row->row_block()->arena();
+  switch (data_type) {
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::STRING: {
+      Slice cell_copy;
+      RETURN_NOT_OK(ExpectValueType(ValueType::kString, col_schema, value));
+      if (PREDICT_FALSE(!arena->RelocateSlice(value.GetStringAsSlice(), &cell_copy))) {
+        return STATUS(IOError, "out of memory");
+      }
+      // Kudu represents variable-size values as Slices pointing to memory allocated from an
+      // associated Arena.
+      *(reinterpret_cast<Slice*>(dest_ptr)) = cell_copy;
+      break;
+    }
+    case DataType::INT64: {
+      RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
+      // TODO: double-check that we can just assign the 64-bit integer here.
+      *(reinterpret_cast<int64_t*>(dest_ptr)) = value.GetInt64();
+      break;
+    }
+    case DataType::INT32: {
+      // TODO: update these casts when all data types are supported in docdb
+      RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
+      *(reinterpret_cast<int32_t*>(dest_ptr)) = static_cast<int32_t>(value.GetInt64());
+      break;
+    }
+    case DataType::BOOL: {
+      if (value.value_type() != ValueType::kTrue &&
+          value.value_type() != ValueType::kFalse) {
+        return STATUS(Corruption,
+                      Substitute("Expected true/false, got $0", value.ToString()));
+      }
+      *(reinterpret_cast<bool*>(dest_ptr)) = value.value_type() == ValueType::kTrue;
+      break;
+    }
+    default:
+      return STATUS(IllegalState,
+                    Substitute("Unsupported column data type $0", data_type));
+  }
+  return Status::OK();
+}
+
 Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   // Verify the basic compatibility of the schema assumed by the row block provided to us to the
   // projection schema we already have.
@@ -158,7 +209,21 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   dst->selection_vector()->SetAllTrue();
   RowBlockRow dst_row(dst->row(0));
 
-  for (size_t i = 0; i < projection_.num_columns(); i++) {
+  // Currently we are assuming that we are not using hashed keys, and all keys are stored in the
+  // "range group" of the DocKey.
+  const auto& range_group = subdoc_key_.doc_key().range_group();
+  if (range_group.size() < projection_.num_key_columns()) {
+    return STATUS(Corruption,
+                  Substitute("Document key has $0 range keys, but at least $1 are expected.",
+                             range_group.size(), projection_.num_key_columns()));
+  }
+
+  // Key columns come from the key.
+  for (size_t i = 0; i < projection_.num_key_columns(); i++) {
+    RETURN_NOT_OK(PrimitiveValueToKudu(i, range_group[i], &dst_row));
+  }
+
+  for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
     subdoc_key_.AppendSubKeysAndTimestamps(
         PrimitiveValue(static_cast<int32_t>(column_id)), timestamp_);
@@ -166,56 +231,26 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     KeyBytes key_for_column = subdoc_key_.Encode();
     db_iter_->Seek(key_for_column.AsSlice());
 
-    if (!db_iter_->Valid() ||
-        !key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
-      if (!dst->column_block(i).is_nullable()) {
-        return STATUS(IllegalState,
-                      Substitute("Column $0 is not nullable, but no data is found", i));
-      }
-      dst->column_block(i).SetCellIsNull(0, true);
-    } else {
-      if (dst->column_block(i).is_nullable())
-        dst->column_block(i).SetCellIsNull(0, false);
-
+    bool is_null = true;
+    const bool is_nullable = dst->column_block(i).is_nullable();
+    if (db_iter_->Valid() &&
+        key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
       // TODO: we are doing a lot of unnecessary buffer copies here.
       PrimitiveValue value;
       RETURN_NOT_OK(value.DecodeFromValue(db_iter_->value()));
-
-      DataType column_data_type = projection_.column(i).type_info()->physical_type();
-
-      // We'll put a Slice or a primitive value here.
-      void* dest_ptr = dst_row.cell(i).mutable_ptr();
-
-      switch (column_data_type) {
-        case DataType::BINARY: FALLTHROUGH_INTENDED;
-        case DataType::STRING: {
-          Slice cell_copy;
-          RETURN_NOT_OK(ExpectValueType(ValueType::kString, projection_.column(i), value));
-          if (PREDICT_FALSE(!dst->arena()->RelocateSlice(value.GetStringAsSlice(), &cell_copy))) {
-            return STATUS(IOError, "out of memory");
-          }
-          // Kudu represents variable-size values as Slices pointing to memory allocated from an
-          // associated Arena.
-          *(reinterpret_cast<Slice*>(dest_ptr)) = cell_copy;
-          break;
-        }
-        case DataType::INT64: {
-          RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, projection_.column(i), value));
-          // TODO: double-check that we can just assign the 64-bit integer here.
-          *(reinterpret_cast<int64_t*>(dst_row.cell(i).mutable_ptr())) = value.GetInt64();
-          break;
-        }
-        case DataType::INT32: {
-          // TODO: correct these casts when all data types are supported in docdb
-          RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, projection_.column(i), value));
-          *(reinterpret_cast<int32_t*>(dst_row.cell(i).mutable_ptr())) =
-              static_cast<int32_t>(value.GetInt64());
-          break;
-        }
-        default:
-          return STATUS(IllegalState,
-              Substitute("Unsupported column data type $0", column_data_type));
+      if (value.value_type() != ValueType::kNull &&
+          value.value_type() != ValueType::kTombstone) {
+        RETURN_NOT_OK(PrimitiveValueToKudu(i, value, &dst_row));
+        is_null = false;
       }
+    }
+
+    if (is_null && !is_nullable) {
+      return STATUS(IllegalState,
+                    Substitute("Column $0 is not nullable, but no data is found", i));
+    }
+    if (is_nullable) {
+      dst->column_block(i).SetCellIsNull(0, is_null);
     }
 
     subdoc_key_.RemoveLastSubKeyAndTimestamp();
@@ -231,9 +266,12 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 }
 
 void DocRowwiseIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const {
-  // Not implemented yet. We don't print warnings or error out here because this method is actually
-  // being called.
+  // A no-op implementation that adds new IteratorStats objects. This is an attempt to fix
+  // linked_list-test with the YSQL table type.
+  for (int i = 0; i < projection_.num_columns(); ++i) {
+    stats->emplace_back();
+  }
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

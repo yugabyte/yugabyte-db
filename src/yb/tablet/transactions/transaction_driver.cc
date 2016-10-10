@@ -402,15 +402,15 @@ void TransactionDriver::ApplyTask() {
       CHECK_OK(CommitWait());
     }
 
+    transaction_->PreCommit();
+
     // We only write the "commit" records to the local log for legacy Kudu tables. We are not
     // writing these records for RocksDB-based tables.
     if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-      transaction_->PreCommit();
-      {
-        TRACE_EVENT1("txn", "AsyncAppendCommit", "txn", this);
-        CHECK_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(DoNothingStatusCB)));
-      }
+      TRACE_EVENT1("txn", "AsyncAppendCommit", "txn", this);
+      CHECK_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(DoNothingStatusCB)));
     }
+
     Finalize();
   }
 }

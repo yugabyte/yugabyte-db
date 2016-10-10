@@ -19,6 +19,11 @@ Options:
     Verbosity option passed to the test.
   -k, --keep-all-logs
     Keep all logs, not just failing tests' logs.
+  --skip-address-already-in-use
+    Skip "address already in use" errors that frequently cause false positive test failures.
+    The current approach is somewhat simplistic in that we attribute the test failure to the
+    "address already in use" issue, even if other issues may be present, but that's OK as long as
+    we believe "address already in use" only happens a small percentage of the time.
 EOT
 }
 
@@ -28,7 +33,7 @@ set -euo pipefail
 
 script_name=${0##*/}
 script_name_no_ext=${script_name%.sh}
-
+skip_address_already_in_use=false
 
 if [[ $# -eq 0 ]]; then
   show_usage >&2
@@ -83,6 +88,9 @@ while [[ $# -gt 0 ]]; do
     -k|--keep-all-logs)
       keep_all_logs=true
     ;;
+    --skip-address-already-in-use)
+      skip_address_already_in_use=true
+    ;;
     *)
       positional_args+=( "$1" )
     ;;
@@ -122,8 +130,17 @@ if [[ $iteration -gt 0 ]]; then
   exit_code=$?
   set -e
   if ! did_test_succeed "$exit_code" "$log_path"; then
-    gzip "$log_path"
-    echo "FAILED: iteration $iteration (log: $log_path.gz)"
+    if "$skip_address_already_in_use" && \
+       ( egrep '\bAddress already in use\b' "$log_path" >/dev/null ||
+         egrep '\bWebserver: Could not start on address\b' "$log_path" >/dev/null ); then
+      # TODO: perhaps we should not skip some types of errors that did_test_succeed finds in the
+      # logs (ASAN/TSAN, check failures, etc.), even if we see "address already in use".
+      echo "PASSED: iteration $iteration (assuming \"Address already in use\" is a false positive)"
+      rm -f "$log_path"
+    else
+      gzip "$log_path"
+      echo "FAILED: iteration $iteration (log: $log_path.gz)"
+    fi
   elif "$keep_all_logs"; then
     gzip "$log_path"
     echo "PASSED: iteration $iteration (log: $log_path.gz)"

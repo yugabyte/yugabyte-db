@@ -16,6 +16,8 @@
 // under the License.
 
 
+#include "yb/client/client.h"
+
 #include <memory>
 #include <vector>
 
@@ -221,6 +223,8 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 
 // Stress test where, due to absurdly low memory limits, many client requests
 // are rejected, forcing the client to retry repeatedly.
+// TODO(mbautin): switch this test to YSQL (RocksDB-backed) after we implement proper memory
+// tracking for RocksDB (https://yugabyte.atlassian.net/browse/ENG-442).
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
 #ifdef THREAD_SANITIZER
   // TSAN tests run much slower, so we don't want to wait for as many
@@ -233,7 +237,8 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   const MonoDelta kMaxWaitTime = MonoDelta::FromSeconds(60);
 
   TestWorkload work(cluster_.get());
-  work.Setup();
+
+  work.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
   work.Start();
 
   // Wait until we've rejected some number of requests.
@@ -279,4 +284,4 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   }
 }
 
-} // namespace yb
+}  // namespace yb

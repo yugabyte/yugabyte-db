@@ -223,6 +223,9 @@ const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 void TabletPeer::Shutdown() {
 
   LOG(INFO) << "Initiating TabletPeer shutdown for tablet: " << tablet_id_;
+  if (tablet_) {
+    tablet_->SetShutdownRequestedFlag();
+  }
 
   {
     std::unique_lock<simple_spinlock> lock(lock_);

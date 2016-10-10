@@ -17,10 +17,13 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
-#include <gtest/gtest.h>
 #include <memory>
-#include <rapidjson/document.h>
 #include <string>
+#include <thread>
+#include <mutex>
+
+#include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
@@ -48,9 +51,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
-
-#include <thread>
-#include <mutex>
 
 using rapidjson::Value;
 using std::string;
@@ -83,6 +83,8 @@ using yb::tserver::TabletServerErrorPB;
 using yb::rpc::RpcController;
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
+
+DECLARE_string(vmodule);
 
 namespace yb {
 
@@ -267,7 +269,7 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
   return ret;
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 Status ExternalMiniCluster::StartSingleMaster() {
   string exe = GetBinaryPath(kMasterBinaryName);
@@ -445,7 +447,7 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader() {
     if (!s.ok() && error_code != TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
       return s;
     }
-    sleep(3); // TODO: add wait for election api.
+    sleep(3);  // TODO: add wait for election api.
     leader = GetLeaderMaster();
     leader_uuid = leader->uuid();
     LOG(INFO) << "Got new leader " << leader->bound_rpc_addr().ToString() << ", iter=" << iter;
@@ -879,7 +881,7 @@ void LeaderMasterCallback(HostPort* dst_hostport,
   }
   sync->StatusCB(status);
 }
-} // anonymous namespace
+}  // anonymous namespace
 
 Status ExternalMiniCluster::GetFirstNonLeaderMasterIndex(int* idx) {
   return GetPeerMasterIndex(idx, false);
@@ -897,7 +899,7 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromSeconds(5));
 
-  *idx = 0; // default to 0'th index, even in case of errors.
+  *idx = 0;  // default to 0'th index, even in case of errors.
 
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     addrs.push_back(master->bound_rpc_addr());
@@ -1103,7 +1105,12 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.push_back("--logbuflevel=-1");
 
   // Use the same verbose logging level in the child process as in the test driver.
-  argv.push_back(Substitute("-v=$0", FLAGS_v));
+  if (!FLAGS_v != 0) {  // Skip this option if it has its default value (0).
+    argv.push_back(Substitute("-v=$0", FLAGS_v));
+  }
+  if (!FLAGS_vmodule.empty()) {
+    argv.push_back(Substitute("--vmodule=$0", FLAGS_vmodule));
+  }
 
   gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
@@ -1464,4 +1471,4 @@ Status ExternalTabletServer::Restart() {
   return Status::OK();
 }
 
-} // namespace yb
+}  // namespace yb

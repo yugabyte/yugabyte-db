@@ -811,15 +811,25 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
   int64_t index = replicate_entry->replicate().id().index();
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
       index == state->rocksdb_max_persistent_index) {
-    // We need to set the commit OpId to be at least what's been applied to RocksDB. The reason we
-    // could not do it right away based on rocksdb_max_persistent_index is that we don't know the
-    // term number from RocksDB's SSTable metadata. One issue to keep in mind is that the current
-    // log entry may have been overwritten by a further entry with the same index and a higher term
-    // due to a leader change, but in that case we'll just update the committed OpId as we encounter
-    // that new entry later. Even if the committed OpId is temporarily incorrect, that will not
-    // cause us to apply incorrect entries to RocksDB during bootstrap, because any such incorrect
-    // OpId will have an index that is <= rocksdb_max_persistent_index.
-
+    // We need to set the committed OpId to be at least what's been applied to RocksDB. The reason
+    // we could not do it before starting log replay is that we don't know the term number of the
+    // last write operation flushed into a RocksDB SSTable, even though we know its Raft index
+    // (rocksdb_max_persistent_index).
+    //
+    // In fact, there could be multiple log entries with the Raft index equal to
+    // rocksdb_max_persistent_index, but with different terms, in case a higher term's leader
+    // "truncated" and overwrote uncommitted log entries from a lower term. Note that such
+    // "truncation" only happens in memory, not on disk: the leader keeps appending new entries to
+    // the log, but for all intents and purposes we can think of it as of real log truncation.
+    //
+    // Even in the above case, with index jumping back as entries get overwritten, it is always
+    // safe to bump committed_op_id to at least the current OpId here. We will never apply entries
+    // from pending_replicates that are not known to be committed after bumping up committed_op_id
+    // here, because pending_replicates always contains entries with monotonically increasing
+    // consecutive indexes, ending with the current index, which is equal to
+    // rocksdb_max_persistent_index, and we only ever apply entries with an index greater than that.
+    //
+    // Also see the other place where we update state->committed_op_id in the end of this function.
     state->UpdateCommittedOpId(replicate_entry->replicate().id());
   }
 
@@ -829,7 +839,8 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
       index <= state->rocksdb_max_persistent_index) {
     // Do not update the bootstrap in-memory state for log records that have already been applied
-    // to RocksDB.
+    // to RocksDB, or were overwritten by a later entry with a higher term that has already been
+    // applied to RocksDB.
     delete replicate_entry;
     return Status::OK();
   }
@@ -862,7 +873,10 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
   }
 
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    CHECK(replicate.has_committed_op_id());
+    CHECK(replicate.has_committed_op_id())
+        << "Replicate message has no committed_op_id for table type "
+        << TableType_Name(tablet_->table_type()) << ". Replicate message:\n"
+        << replicate.DebugString();
 
     // For RocksDB-backed tables we include the commit index as of the time a REPLICATE entry was
     // added to the leader's log into that entry. This allows us to decide when we can replay a
@@ -1100,6 +1114,12 @@ void TabletBootstrap::DumpReplayStateToLog(const ReplayState& state) {
 }
 
 Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
+  // We initialize state->rocksdb_applied_index with MaxPersistentSequenceNumber(), and only apply
+  // a log entry with index equal to state->rocksdb_applied_index, before incrementing that
+  // variable. Together with the check based on state->committed_op_id, this ensures we apply
+  // all committed entries in the right order, even when the Raft index of entries we encounter in
+  // the log jumps back and the term gets increased due to leader changes and logical log
+  // "truncation".
   ReplayState state(tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE ?
                     tablet_->MaxPersistentSequenceNumber() : 0);
 
@@ -1115,7 +1135,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // as of the point in time where the logs begin. We must replay the writes
   // in the logs with the correct point-in-time schema.
   //
-  // We only do this for legacy Kudu columnar-format tables.
+  // We only do this for legacy Kudu columnar-format tables as of 10/03/2016.
+  // TODO(mbautin): should we also do this for YSQL tables?
   if (!segments.empty() && tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     const scoped_refptr<ReadableLogSegment>& segment = segments[0];
     // Set the point-in-time schema for the tablet based on the log header.
@@ -1183,7 +1204,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   }
 
   // If we have non-applied commits they all must belong to pending operations and
-  // they should only pertain to unflushed stores.
+  // they should only pertain to unflushed stores. This is specific to Kudu tables, because we don't
+  // use local COMMIT messages in YB tables.
   if (!state.pending_commits.empty()) {
     for (const OpIndexToEntryMap::value_type& entry : state.pending_commits) {
       if (!ContainsKey(state.pending_replicates, entry.first)) {
@@ -1392,12 +1414,10 @@ Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
     CHECK_EQ(tx_state->row_ops().size(), result->ops_size());
   }
 
-  // Run AcquireRowLocks, Apply, etc!
-  RETURN_NOT_OK_PREPEND(tablet_->AcquireRowLocks(tx_state),
-                        "Failed to acquire row locks");
-
   switch (tablet_->table_type()) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      RETURN_NOT_OK_PREPEND(tablet_->AcquireKuduRowLocks(tx_state),
+                            "Failed to acquire row locks");
       RETURN_NOT_OK(FilterAndApplyOperations(tx_state, result));
       break;
     case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_COMMON_ROWBLOCK_H
-#define YB_COMMON_ROWBLOCK_H
+#ifndef YB_COMMON_ROWBLOCK_H_
+#define YB_COMMON_ROWBLOCK_H_
 
 #include <vector>
 
@@ -109,8 +109,6 @@ class SelectionVector {
   size_t nrows() const { return n_rows_; }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(SelectionVector);
-
   // The number of allocated bytes in bitmap_
   size_t bytes_capacity_;
 
@@ -118,6 +116,8 @@ class SelectionVector {
   size_t n_bytes_;
 
   gscoped_array<uint8_t> bitmap_;
+
+  DISALLOW_COPY_AND_ASSIGN(SelectionVector);
 };
 
 // A block of decoded rows.
@@ -205,8 +205,6 @@ class RowBlock {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(RowBlock);
-
   Schema schema_;
   std::vector<uint8_t *> columns_data_;
   std::vector<uint8_t *> column_null_bitmaps_;
@@ -224,6 +222,8 @@ class RowBlock {
   // Deleted rows or rows which have failed to pass predicates will be zeroed
   // in the bitmap, and thus not returned to the end user.
   SelectionVector sel_vec_;
+
+  DISALLOW_COPY_AND_ASSIGN(RowBlock);
 };
 
 // Provides an abstraction to interact with a RowBlock row.
@@ -244,6 +244,10 @@ class RowBlockRow {
     row_block_ = row_block;
     row_index_ = row_index;
     return this;
+  }
+
+  const RowBlock* row_block() const {
+    return row_block_;
   }
 
   size_t row_index() const {
@@ -315,6 +319,6 @@ inline RowBlockRow RowBlock::row(size_t idx) const {
   return RowBlockRow(this, idx);
 }
 
-} // namespace yb
+}  // namespace yb
 
-#endif
+#endif  // YB_COMMON_ROWBLOCK_H_

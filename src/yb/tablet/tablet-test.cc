@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
 #include <time.h>
+
+#include <glog/logging.h>
 
 #include "yb/common/iterator.h"
 #include "yb/common/row.h"
@@ -30,6 +31,11 @@
 #include "yb/util/slice.h"
 #include "yb/util/test_macros.h"
 
+// Include client header so we can access YBTableType.
+#include "yb/client/client.h"
+
+#include "yb/util/enums.h"
+
 using std::shared_ptr;
 using std::unordered_set;
 
@@ -37,6 +43,7 @@ namespace yb {
 namespace tablet {
 
 using fs::ReadableBlock;
+using yb::util::to_underlying;
 
 DEFINE_int32(testflush_num_inserts, 1000,
              "Number of rows inserted in TestFlush");
@@ -44,6 +51,16 @@ DEFINE_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 DEFINE_int32(testcompaction_num_rows, 1000,
              "Number of rows per rowset in TestCompaction");
+
+static_assert(to_underlying(TableType::KUDU_COLUMNAR_TABLE_TYPE) ==
+                  to_underlying(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE),
+              "Numeric code for KUDU_COLUMNAR_TABLE_TYPE table type must be consistent");
+static_assert(to_underlying(TableType::YSQL_TABLE_TYPE) ==
+                  to_underlying(client::YBTableType::YSQL_TABLE_TYPE),
+              "Numeric code for YSQL_TABLE_TYPE table type must be consistent");
+static_assert(to_underlying(TableType::REDIS_TABLE_TYPE) ==
+                  to_underlying(client::YBTableType::REDIS_TABLE_TYPE),
+              "Numeric code for REDIS_TABLE_TYPE table type must be consistent");
 
 template<class SETUP>
 class TestTablet : public TabletTestBase<SETUP> {

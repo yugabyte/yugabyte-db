@@ -68,7 +68,7 @@ class DocPath {
     prefix_list.push_back(current_prefix.ToString());
     for (PrimitiveValue v : subkeys_) {
       current_prefix.Append(v.ToKeyBytes());
-      prefix_list.push_back(current_prefix.ToString());
+      prefix_list.push_back(current_prefix.AsStringRef());
     }
     return prefix_list;
   }

@@ -18,11 +18,12 @@
 #ifndef YB_CONSENSUS_LOG_H_
 #define YB_CONSENSUS_LOG_H_
 
-#include <boost/thread/shared_mutex.hpp>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/schema.h"
 #include "yb/consensus/log_util.h"
@@ -398,11 +399,10 @@ class Log : public RefCountedThreadSafe<Log> {
   DISALLOW_COPY_AND_ASSIGN(Log);
 };
 
-// This class represents a batch of operations to be written and
-// synced to the log. It is opaque to the user and is managed by the
-// Log class.
-// A single batch must have only one type of entries in it (eg only
-// REPLICATEs or only COMMITs).
+// This class represents a batch of operations to be written and synced to the log. It is opaque to
+// the user and is managed by the Log class. A single batch must have only one type of entries in it
+// (e.g. only REPLICATEs or only COMMITs). YB tables only use REPLICATE entries. COMMIT entries are
+// being used for Kudu tables and will eventually be removed.
 class LogEntryBatch {
  public:
   ~LogEntryBatch();
@@ -480,7 +480,7 @@ class LogEntryBatch {
   // Contents of the log entries that will be written to disk.
   gscoped_ptr<LogEntryBatchPB> entry_batch_pb_;
 
-   // Total size in bytes of all entries
+  // Total size in bytes of all entries
   const uint32_t total_size_bytes_;
 
   // Number of entries in 'entry_batch_pb_'

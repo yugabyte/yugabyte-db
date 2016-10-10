@@ -101,6 +101,10 @@ class DocKey {
     range_group_.clear();
   }
 
+  const std::vector<PrimitiveValue>& range_group() const {
+    return range_group_;
+  }
+
   // Decodes a document key from the given RocksDB key.
   // slice (in/out) - a slice corresponding to a RocksDB key. Any consumed bytes are removed.
   Status DecodeFrom(rocksdb::Slice* slice);

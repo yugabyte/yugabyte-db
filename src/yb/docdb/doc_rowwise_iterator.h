@@ -1,9 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_DOCDB_ROWWISE_ITERATOR_H_
-#define YB_DOCDB_ROWWISE_ITERATOR_H_
+#ifndef YB_DOCDB_DOC_ROWWISE_ITERATOR_H_
+#define YB_DOCDB_DOC_ROWWISE_ITERATOR_H_
 
 #include <string>
+#include <atomic>
 
 #include "rocksdb/db.h"
 
@@ -14,6 +15,7 @@
 #include "yb/common/timestamp.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/util/status.h"
+#include "yb/util/pending_op_counter.h"
 
 namespace yb {
 namespace docdb {
@@ -25,7 +27,8 @@ class DocRowwiseIterator : public RowwiseIterator {
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
                      rocksdb::DB *db,
-                     Timestamp timestamp = Timestamp::kMax);
+                     Timestamp timestamp = Timestamp::kMax,
+                     yb::util::PendingOperationCounter* pending_op_counter = nullptr);
   virtual ~DocRowwiseIterator();
 
   virtual Status Init(ScanSpec *spec) OVERRIDE;
@@ -52,6 +55,11 @@ class DocRowwiseIterator : public RowwiseIterator {
     return DocKey::FromKuduEncodedKey(encoded_key, schema_);
   }
 
+  // Convert from a PrimitiveValue read from RocksDB to a Kudu value in the given column of the
+  // given RowBlockRow. The destination row's schema must match that of the projection associated
+  // with this iterator.
+  Status PrimitiveValueToKudu(int column_index, const PrimitiveValue& value, RowBlockRow* dest_row);
+
   const Schema& projection_;
 
   // The schema for all columns, not just the columns we're scanning.
@@ -66,6 +74,10 @@ class DocRowwiseIterator : public RowwiseIterator {
 
   std::unique_ptr<rocksdb::Iterator> db_iter_;
 
+  // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
+  // RocksDB does not get destroyed while the iterator is still in use.
+  yb::util::ScopedPendingOperation pending_op_;
+
   // The mutable fields that follow are modified by HasNext, a const method.
 
   // Indicates whether we've already finished iterating.
@@ -79,7 +91,7 @@ class DocRowwiseIterator : public RowwiseIterator {
   mutable Status status_;
 };
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_DOC_ROWWISE_ITERATOR_H_

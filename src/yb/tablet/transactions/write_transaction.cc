@@ -92,8 +92,8 @@ Status WriteTransaction::Prepare() {
     return s;
   }
 
-  // Now acquire row locks and prepare everything for apply
-  RETURN_NOT_OK(tablet->AcquireRowLocks(state()));
+  // Acquire Kudu row locks. This is Kudu-specific and has no effect for YB tables.
+  RETURN_NOT_OK(tablet->AcquireKuduRowLocks(state()));
 
   TRACE("PREPARE: finished.");
   return Status::OK();
@@ -317,13 +317,19 @@ void WriteTransactionState::UpdateMetricsForOp(const RowOp& op) {
 }
 
 void WriteTransactionState::release_row_locks() {
-  // Free the row locks.
+  // Release Kudu row locks.
+  // TODO(mbautin): only do this for Kudu tables
+  //                (but row_ops_ locks should not be held for YB tables anyway).
   for (RowOp* op : row_ops_) {
     op->row_lock.Release();
   }
-  // Free docdb row locks.
-  for (const string& locked_key : docdb_locks_) {
-    tablet_peer()->tablet()->shared_lock_manager()->Unlock(locked_key);
+
+  if (tablet_peer() != nullptr &&
+      tablet_peer()->tablet()->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // Free docdb multi-level locks.
+    for (const string& locked_key : docdb_locks_) {
+      tablet_peer()->tablet()->shared_lock_manager()->Unlock(locked_key);
+    }
   }
 }
 

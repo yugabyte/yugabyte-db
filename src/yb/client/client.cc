@@ -733,7 +733,7 @@ Status YBTableCreator::Create() {
                                                                     deadline));
   }
 
-  LOG(INFO) << "Created table of type " << data_->table_type_;
+  LOG(INFO) << "Created table of type " << TableType_Name(data_->table_type_);
   if (redis_schema) {
     delete redis_schema;
   }

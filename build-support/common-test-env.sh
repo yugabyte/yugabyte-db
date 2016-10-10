@@ -47,7 +47,8 @@ GDB_CORE_BACKTRACE_CMD_PREFIX=( gdb -q -n -ex bt -batch )
 DEFAULT_TEST_TIMEOUT_SEC=600
 INCREASED_TEST_TIMEOUT_SEC=1200
 
-EPHEMERAL_DRIVES_PATTERN="/mnt/ephemeral* /mnt/d*"
+EPHEMERAL_DRIVES_GLOB="/mnt/ephemeral* /mnt/d*"  # We first use this to find ephemeral drives.
+EPHEMERAL_DRIVES_FILTER_REGEX="/(ephemeral|d)[0-9]+$"  # We then filter the drives found using this.
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -370,25 +371,28 @@ prepare_for_running_test() {
   local test_binary_sanitized=$( sanitize_for_path "$rel_test_binary" )
   local test_name_sanitized=$( sanitize_for_path "$test_name" )
 
-  #
   # If there are ephermeral drives, pick a random one for this test and create a symlink from
   # $BUILD_ROOT/yb-test-logs/<testname> to /mnt/<drive>/test-workspace/<testname>.
   # Otherwise, simply create the directory under $BUILD_ROOT/yb-test-logs.
-  #
   test_dir="$YB_TEST_LOG_ROOT_DIR/$test_binary_sanitized"
   if [[ ! -d $test_dir ]]; then
-    set +e
-    num_ephemeral_drives=$(ls -d $EPHEMERAL_DRIVES_PATTERN 2> /dev/null | wc -l)
-    set -e
+    local ephemeral_drives=()
+    local ephemeral_mountpoint
+    for ephemeral_mountpoint in $EPHEMERAL_DRIVES_GLOB; do
+      if [[ -d $ephemeral_mountpoint &&
+            $ephemeral_mountpoint =~ $EPHEMERAL_DRIVES_FILTER_REGEX ]]; then
+        ephemeral_drives+=( "$ephemeral_mountpoint" )
+      fi
+    done
+
+    local -r -i num_ephemeral_drives=${#ephemeral_drives[@]}  # "-r -i" means readonly integer.
     if [[ $num_ephemeral_drives -eq 0 ]]; then
-      mkdir -p $test_dir
+      mkdir -p "$test_dir"
     else
-      set +e
-      rand_drive=$(ls -d $EPHEMERAL_DRIVES_PATTERN | sort -R | tail -1)
-      set -e
-      actual_dir=$rand_drive/test-workspace/$test_binary_sanitized
-      mkdir -p "$actual_dir"
-      ln -s "$actual_dir" "$test_dir"
+      local random_drive=${ephemeral_drives[$RANDOM % $num_ephemeral_drives]}
+      local actual_test_dir=$random_drive/test-workspace/$test_binary_sanitized
+      mkdir -p "$actual_test_dir"
+      ln -s "$actual_test_dir" "$test_dir"
     fi
   fi
 

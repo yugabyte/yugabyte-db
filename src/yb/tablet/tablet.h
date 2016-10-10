@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/thread/shared_mutex.hpp>
+
 #include "rocksdb/cache.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
@@ -44,10 +46,12 @@
 #include "yb/tablet/rowset.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
+#include "yb/util/pending_op_counter.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/shared_lock_manager.h"
+#include "yb/util/countdown_latch.h"
 
 namespace rocksdb {
 class DB;
@@ -116,6 +120,13 @@ class Tablet {
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // This can be called to proactively prevent new operations from being handled, even before
+  // Shutdown() is called.
+  void SetShutdownRequestedFlag();
+  bool IsShutdownRequested() const {
+    return shutdown_requested_.load(std::memory_order::memory_order_acquire);
+  }
+
   void Shutdown();
 
   // Decode the Write (insert/mutate) operations from within a user's request.
@@ -123,13 +134,16 @@ class Tablet {
   Status DecodeWriteOperations(const Schema* client_schema,
                                WriteTransactionState* tx_state);
 
+  // Kudu-specific. To be removed with the rest of Kudu storage engine. This is a no-op for YB
+  // tables.
+  //
   // Acquire locks for each of the operations in the given txn.
   //
   // Note that, if this fails, it's still possible that the transaction
   // state holds _some_ of the locks. In that case, we expect that
   // the transaction will still clean them up when it is aborted (or
   // otherwise destructed).
-  Status AcquireRowLocks(WriteTransactionState* tx_state);
+  Status AcquireKuduRowLocks(WriteTransactionState *tx_state);
 
   // Finish the Prepare phase of a write transaction.
   //
@@ -469,11 +483,11 @@ class Tablet {
     const ScanSpec *spec,
     vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  Status KeyValueCaptureConsistentIterators(
-    const Schema *projection,
-    const MvccSnapshot &snap,
-    const ScanSpec *spec,
-    vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+  Status YSQLCaptureConsistentIterators(
+      const Schema *projection,
+      const MvccSnapshot &snap,
+      const ScanSpec *spec,
+      vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
   Status PickRowSetsToCompact(RowSetsInCompaction *picked,
                               CompactFlags flags) const;
@@ -637,13 +651,25 @@ class Tablet {
   std::shared_ptr<rocksdb::Statistics> rocksdb_statistics_;
 
   // RocksDB database for key-value tables.
-  gscoped_ptr<rocksdb::DB> rocksdb_;
+  std::unique_ptr<rocksdb::DB> rocksdb_;
 
   // This is for docdb fine-grained locking.
   yb::util::SharedLockManager shared_lock_manager_;
 
   // RocksDB block cache for this tablet.
   std::shared_ptr<rocksdb::Cache> block_cache_;
+
+  // A lightweight way to reject new operations when the tablet is shutting down. This is used to
+  // prevent race conditions between destroying the RocksDB instance and read/write operations.
+  std::atomic_bool shutdown_requested_;
+
+  // Number of pending operations. We use this to make sure we don't shut down RocksDB before all
+  // pending operations are finished. We don't have a strict definition of an "operation" for the
+  // purpose of this counter. We simply wait for this counter to go to zero before shutting down
+  // RocksDB.
+  //
+  // This is marked mutable because read path member functions (which are const) are using this.
+  mutable yb::util::PendingOperationCounter pending_op_counter_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

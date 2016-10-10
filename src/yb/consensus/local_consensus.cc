@@ -108,6 +108,14 @@ Status LocalConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
 
   ReplicateMsg* msg = round->replicate_msg();
 
+  // We are using the committed_op_id() field of REPLICATE messages to determine that we can apply
+  // a REPLICATE message during tablet bootstrap of YB tables. In LocalConsensus, we could keep
+  // track of the committed OpId by updating it in the async log append callback, but since this
+  // is only used for tests, we just set it to the minimum possible OpId. This has the effect of
+  // making all REPLICATE messages "pending replicates" that only get applied (if necessary)
+  // after tablet bootstrap.
+  msg->mutable_committed_op_id()->CopyFrom(MinimumOpId());
+
   OpId* cur_op_id = DCHECK_NOTNULL(msg)->mutable_id();
   cur_op_id->set_term(0);
 

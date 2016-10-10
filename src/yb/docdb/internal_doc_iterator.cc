@@ -26,8 +26,7 @@ std::unique_ptr<rocksdb::Iterator> InternalDocIterator::CreateRocksDBIterator(
 
 InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
                                          DocWriteBatchCache* doc_write_batch_cache)
-    : rocksdb_(rocksdb),
-      doc_write_batch_cache_(doc_write_batch_cache),
+    : doc_write_batch_cache_(doc_write_batch_cache),
       key_prefix_ends_with_ts_(false),
       subdoc_exists_(Trilean::kUnknown) {
   iter_ = CreateRocksDBIterator(rocksdb);
@@ -138,5 +137,5 @@ void InternalDocIterator::SeekToKeyPrefix() {
   DOCDB_DEBUG_LOG("New InternalDocIterator state: $0", ToDebugString());
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

@@ -15,13 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <unordered_map>
+#include <unordered_set>
+
 #include <boost/optional.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -111,7 +112,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     ScanRequestPB req;
     ScanResponsePB resp;
     RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(10)); // Squelch warnings.
+    rpc.set_timeout(MonoDelta::FromSeconds(10));  // Squelch warnings.
 
     NewScanRequestPB* scan = req.mutable_new_scan_request();
     scan->set_tablet_id(tablet_id_);
@@ -263,7 +264,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       if (sleep_time_usec < 0) sleep_time_usec = 0;
 
       // Additionally only cause timeouts at all 50% of the time, otherwise sleep.
-      double val = (rand() * 1.0) / RAND_MAX;
+      double val = (rand() * 1.0) / RAND_MAX;  // NOLINT(runtime/threadsafe_fn)
       if (val < 0.5) {
         SleepFor(MonoDelta::FromMicroseconds(sleep_time_usec));
         continue;
@@ -286,7 +287,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   // Before stopping the leader this pauses all follower nodes in regular intervals so that
   // we get an increased chance of stuff being pending.
   void StopOrKillLeaderAndElectNewOne() {
-    bool kill = rand() % 2 == 0;
+    bool kill = rand() % 2 == 0;  // NOLINT(runtime/threadsafe_fn)
 
     TServerDetails* old_leader;
     CHECK_OK(GetLeaderReplicaWithRetries(tablet_id_, &old_leader));
@@ -526,7 +527,7 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
     threads_.push_back(new_thread);
   }
   for (scoped_refptr<yb::Thread> thr : threads_) {
-   CHECK_OK(ThreadJoiner(thr.get()).Join());
+    CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
 
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * FLAGS_num_client_threads);
@@ -690,7 +691,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTableId);
   workload.set_timeout_allowed(true);
-  workload.set_payload_bytes(128 * 1024); // Write ops of size 128KB.
+  workload.set_payload_bytes(128 * 1024);  // Write ops of size 128KB.
   workload.set_write_batch_size(1);
   workload.set_num_write_threads(4);
   workload.Setup();
@@ -937,7 +938,7 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
 TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
   // Disable follower eviction to maintain the original intent of this test.
   vector<string> extra_flags = { "--evict_failed_followers=false" };
-  AddFlagsForLogRolls(&extra_flags); // For CauseFollowerToFallBehindLogGC().
+  AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
   BuildAndStart(extra_flags);
 
   string leader_uuid;
@@ -999,6 +1000,9 @@ void RaftConsensusITest::AssertNoTabletServersCrashed() {
 // being elected and never succeed in replicating their first operation.
 // For example, KUDU-783 reproduces from this test approximately 5% of the
 // time on a slow-test debug build.
+//
+// This test is still on Kudu tables, because it crashes significantly more frequently on YSQL:
+// https://yugabyte.atlassian.net/browse/ENG-444
 TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   int kCrashesToCause = 3;
   if (AllowSlowTests()) {
@@ -1039,7 +1043,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(1);
-  workload.Setup();
+  workload.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
   workload.Start();
 
   int num_crashes = 0;
@@ -1201,7 +1205,7 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
   }
 
   for (scoped_refptr<yb::Thread> thr : threads_) {
-   CHECK_OK(ThreadJoiner(thr.get()).Join());
+    CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
 
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * FLAGS_num_client_threads);
@@ -1829,7 +1833,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
 
   // Now, add the server back. Again, specifying something other than the
   // latest committed_opid_index should fail.
-  invalid_committed_opid_index = -1; // The old one is no longer valid.
+  invalid_committed_opid_index = -1;  // The old one is no longer valid.
   s = AddServer(leader_tserver, tablet_id_, follower_ts, RaftPeerPB::VOTER,
                 invalid_committed_opid_index, MonoDelta::FromSeconds(10),
                 &error_code);
@@ -1924,7 +1928,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
     ASSERT_OK(replica_ts->Pause());
   }
 
-  active_tablet_servers = tablet_servers_; // Reset to the unpaused servers.
+  active_tablet_servers = tablet_servers_;  // Reset to the unpaused servers.
   for (int i = 1; i <= 3; i++) {
     ASSERT_EQ(1, active_tablet_servers.erase(tservers[i]->uuid()));
   }
@@ -2473,7 +2477,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
 // evicted from the config.
 TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   vector<string> ts_flags;
-  AddFlagsForLogRolls(&ts_flags); // For CauseFollowerToFallBehindLogGC().
+  AddFlagsForLogRolls(&ts_flags);  // For CauseFollowerToFallBehindLogGC().
   vector<string> master_flags;
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
@@ -2497,7 +2501,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
 // evicted from the config.
 TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   vector<string> extra_flags;
-  AddFlagsForLogRolls(&extra_flags); // For CauseFollowerToFallBehindLogGC().
+  AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
   BuildAndStart(extra_flags, {"--enable_load_balancing=true"});
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);

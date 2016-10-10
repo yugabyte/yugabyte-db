@@ -167,6 +167,7 @@ set(UTIL_SRCS
   cross_thread_mutex.cc
   string_trim.cc
   trilean.cc
+  pending_op_counter.cc
 )
 
 if(NOT APPLE)

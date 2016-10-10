@@ -14,14 +14,15 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TABLET_MVCC_H
-#define YB_TABLET_MVCC_H
+#ifndef YB_TABLET_MVCC_H_
+#define YB_TABLET_MVCC_H_
 
-#include <gtest/gtest_prod.h>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <gtest/gtest_prod.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/server/clock.h"
@@ -106,6 +107,24 @@ class MvccSnapshot {
   // flushed file may not be a consistent snapshot from the MVCC point of view,
   // yet we need to construct a scanner that accurately represents that set.
   void AddCommittedTimestamps(const std::vector<Timestamp>& timestamps);
+
+  // We use this to translate between Kudu's MVCC snapshots and timestamps needed for reading from
+  // our DocDB. This assumes the snapshot is "clean" (no "holes" in the set of committed
+  // timestamps). We should gradually get rid of the need for handling dirty snapshots in YB,
+  // because our MVCC design does not need them.
+  Timestamp LastCommittedTimestamp() const {
+    if (!is_clean()) {
+      if (committed_timestamps_.size() == 1 &&
+          all_committed_before_.value() == committed_timestamps_.front()) {
+        // This is a degenerate case of a dirty snapshot that is in fact clean, consiting of all
+        // timestamps less than X and the set {X}, e.g.:
+        // MvccSnapshot[committed={T|T < 6041797920884666368 or (T in {6041797920884666368})}]
+        return all_committed_before_;
+      }
+      LOG(WARNING) << __func__ << " called on a dirty snapshot: " << ToString();
+    }
+    return Timestamp(all_committed_before_.value() - 1);
+  }
 
  private:
   friend class MvccManager;
@@ -444,8 +463,7 @@ class ScopedTransaction {
   DISALLOW_COPY_AND_ASSIGN(ScopedTransaction);
 };
 
+}  // namespace tablet
+}  // namespace yb
 
-} // namespace tablet
-} // namespace yb
-
-#endif
+#endif  // YB_TABLET_MVCC_H_

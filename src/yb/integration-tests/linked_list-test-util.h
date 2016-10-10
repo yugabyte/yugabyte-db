@@ -15,6 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifndef YB_INTEGRATION_TESTS_LINKED_LIST_TEST_UTIL_H_
+#define YB_INTEGRATION_TESTS_LINKED_LIST_TEST_UTIL_H_
+
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -101,6 +104,9 @@ class LinkedListTester {
   Status VerifyLinkedListAtSnapshotRemote(
       const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
       const std::function<Status(const std::string&)>& cb, int64_t* verified_count) {
+    LOG(INFO) << __func__ << ": snapshot_timestamp=" << snapshot_timestamp
+                          << ", expected=" << expected
+                          << ", log_errors=" << log_errors;
     return VerifyLinkedListRemote(snapshot_timestamp,
                                   expected,
                                   log_errors,
@@ -112,6 +118,7 @@ class LinkedListTester {
   Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
                                           const bool log_errors,
                                           int64_t* verified_count) {
+    LOG(INFO) << __func__ << ": expected=" << expected << ", log_errors=" << log_errors;
     return VerifyLinkedListRemote(
         kNoSnapshot, expected, log_errors, std::bind(&LinkedListTester::ReturnOk, this, _1),
         verified_count);
@@ -132,6 +139,7 @@ class LinkedListTester {
   // bootstrapping and replication.
   Status WaitAndVerify(int seconds_to_run,
                        int64_t expected) {
+    LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run << ", expected=" << expected;
     return WaitAndVerify(
         seconds_to_run, expected, std::bind(&LinkedListTester::ReturnOk, this, _1));
   }
@@ -229,8 +237,8 @@ class ScopedRowUpdater {
   // Create and start a new ScopedUpdater. 'table' must remain valid for
   // the lifetime of this object.
   explicit ScopedRowUpdater(client::YBTable* table)
-    : table_(table),
-      to_update_(kint64max) { // no limit
+      : table_(table),
+        to_update_(kint64max) {  // no limit
     CHECK_OK(Thread::Create("linked_list-test", "updater",
                             &ScopedRowUpdater::RowUpdaterThread, this, &updater_));
   }
@@ -415,6 +423,7 @@ Status LinkedListTester::CreateLinkedListTable() {
                         .schema(&schema_)
                         .split_rows(GenerateSplitRows(schema_))
                         .num_replicas(num_replicas_)
+                        .table_type(client::YBTableType::YSQL_TABLE_TYPE)
                         .Create(),
                         "Failed to create table");
   return Status::OK();
@@ -472,7 +481,7 @@ Status LinkedListTester::LoadLinkedList(
     if (next_sample.ComesBefore(now)) {
       Timestamp now = ht_clock->Now();
       sampled_timestamps_and_counts_.push_back(
-          pair<uint64_t,int64_t>(now.ToUint64(), *written_count));
+          pair<uint64_t, int64_t>(now.ToUint64(), *written_count));
       next_sample.AddDelta(sample_interval);
       LOG(INFO) << "Sample at HT timestamp: " << now.ToString()
                 << " Inserted count: " << *written_count;
@@ -554,6 +563,9 @@ static void VerifyNoDuplicateEntries(const std::vector<int64_t>& ints, int* erro
 Status LinkedListTester::VerifyLinkedListRemote(
     const uint64_t snapshot_timestamp, const int64_t expected, bool log_errors,
     const std::function<Status(const std::string&)>& cb, int64_t* verified_count) {
+  LOG(INFO) << __func__ << ": snapshot_timestamp=" << snapshot_timestamp
+                        << ", expected=" << expected
+                        << ", log_errors=" << log_errors;
   client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table));
 
@@ -566,7 +578,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
 
   client::YBScanner scanner(table.get());
   RETURN_NOT_OK_PREPEND(scanner.SetProjectedColumns(verify_projection_), "Bad projection");
-  RETURN_NOT_OK(scanner.SetBatchSizeBytes(0)); // Force at least one NextBatch RPC.
+  RETURN_NOT_OK(scanner.SetBatchSizeBytes(0));  // Force at least one NextBatch RPC.
 
   if (snapshot_timestamp != kNoSnapshot) {
     RETURN_NOT_OK(scanner.SetReadMode(client::YBScanner::READ_AT_SNAPSHOT));
@@ -578,7 +590,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
 
   RETURN_NOT_OK_PREPEND(scanner.Open(), "Couldn't open scanner");
 
-  RETURN_NOT_OK(scanner.SetBatchSizeBytes(1024)); // More normal batch size.
+  RETURN_NOT_OK(scanner.SetBatchSizeBytes(1024));  // More normal batch size.
 
   LinkedListVerifier verifier(num_chains_, enable_mutation_, expected,
                               GenerateSplitInts());
@@ -858,4 +870,6 @@ Status LinkedListVerifier::VerifyData(int64_t* verified_count, bool log_errors) 
   return Status::OK();
 }
 
-} // namespace yb
+}  // namespace yb
+
+#endif  // YB_INTEGRATION_TESTS_LINKED_LIST_TEST_UTIL_H_

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TABLET_LOCAL_TABLET_WRITER_H
-#define YB_TABLET_LOCAL_TABLET_WRITER_H
+#ifndef YB_TABLET_LOCAL_TABLET_WRITER_H_
+#define YB_TABLET_LOCAL_TABLET_WRITER_H_
 
 #include <vector>
 
@@ -53,6 +53,8 @@ class LocalTabletWriter {
                              const Schema* client_schema)
     : tablet_(tablet),
       client_schema_(client_schema) {
+    CHECK_EQ(TableType::KUDU_COLUMNAR_TABLE_TYPE, tablet->table_type())
+        << "LocalTabletWriter does not support RocksDB-backed tables yet";
     CHECK(!client_schema->has_column_ids());
     CHECK_OK(SchemaToPB(*client_schema, req_.mutable_schema()));
   }
@@ -91,7 +93,7 @@ class LocalTabletWriter {
     tx_state_.reset(new WriteTransactionState(NULL, &req_, NULL));
 
     RETURN_NOT_OK(tablet_->DecodeWriteOperations(client_schema_, tx_state_.get()));
-    RETURN_NOT_OK(tablet_->AcquireRowLocks(tx_state_.get()));
+    RETURN_NOT_OK(tablet_->AcquireKuduRowLocks(tx_state_.get()));
     tablet_->StartTransaction(tx_state_.get());
 
     // Create a "fake" OpId and set it in the TransactionState for anchoring.
@@ -134,6 +136,6 @@ class LocalTabletWriter {
 };
 
 
-} // namespace tablet
-} // namespace yb
-#endif /* YB_TABLET_LOCAL_TABLET_WRITER_H */
+}  // namespace tablet
+}  // namespace yb
+#endif  // YB_TABLET_LOCAL_TABLET_WRITER_H_

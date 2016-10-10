@@ -113,7 +113,6 @@ class InternalDocIterator {
   // that document/subdocument actually exists.
   void SeekToKeyPrefix();
 
-  rocksdb::DB* rocksdb_;
   DocWriteBatchCache* doc_write_batch_cache_;
 
   std::unique_ptr<rocksdb::Iterator> iter_;
@@ -134,7 +133,7 @@ class InternalDocIterator {
   Trilean subdoc_exists_;
 };
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_INTERNAL_DOC_ITERATOR_H_

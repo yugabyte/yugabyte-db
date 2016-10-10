@@ -15,12 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/optional.hpp>
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
+
+#include <boost/optional.hpp>
+#include <glog/stl_logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -189,7 +190,7 @@ void DeleteTableTest::WaitForTabletDeletedOnTS(int index,
 
 void DeleteTableTest::WaitForTSToCrash(int index) {
   ExternalTabletServer* ts = cluster_->tablet_server(index);
-  for (int i = 0; i < 6000; i++) { // wait 60sec
+  for (int i = 0; i < 6000; i++) {  // wait 60sec
     if (!ts->IsProcessAlive()) return;
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
@@ -432,7 +433,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   NO_FATALS(StartCluster());
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
-  const int kTsIndex = 0; // We'll test with the first TS.
+  const int kTsIndex = 0;  // We'll test with the first TS.
 
   // We'll do a config change to remote bootstrap a replica here later. For
   // now, shut it down.
@@ -495,11 +496,11 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
 // Also test that we can remotely bootstrap a tombstoned tablet.
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   vector<string> flags;
-  flags.push_back("--log_segment_size_mb=1"); // Faster log rolls.
+  flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
   // Start the cluster with load balancer turned off.
   NO_FATALS(StartCluster(flags, {"--enable_load_balancing=false"}));
   const MonoDelta timeout = MonoDelta::FromSeconds(20);
-  const int kTsIndex = 0; // We'll test with the first TS.
+  const int kTsIndex = 0;  // We'll test with the first TS.
 
   // We'll do a config change to remote bootstrap a replica here later. For
   // now, shut it down.
@@ -722,12 +723,12 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingTransaction) {
   const int kNumTabletServers = 5;
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--flush_threshold_mb=0"); // Always be flushing.
+  ts_flags.push_back("--flush_threshold_mb=0");  // Always be flushing.
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=100");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
 
-  const int kTsIndex = 0; // We'll test with the first TS.
+  const int kTsIndex = 0;  // We'll test with the first TS.
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
 
   // Create the table.
@@ -779,11 +780,13 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingTransaction) {
 
 // Test that orphaned blocks are cleared from the superblock when a tablet is
 // tombstoned.
+// This test relies on Kudu's file format, so it can't run on top of RocksDB yet.
 TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
-  ts_flags.push_back("--flush_threshold_mb=0"); // Flush quickly since we wait for a flush to occur.
+  // Flush quickly since we wait for a flush to occur.
+  ts_flags.push_back("--flush_threshold_mb=0");
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=100");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags));
@@ -793,7 +796,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
 
   // Create the table.
   TestWorkload workload(cluster_.get());
-  workload.Setup();
+  workload.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -966,7 +969,7 @@ class DeleteTableTombstonedParamTest : public DeleteTableTest,
 //    (transition from TABLET_DATA_TOMBSTONED to TABLET_DATA_DELETED).
 TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   vector<string> flags;
-  flags.push_back("--log_segment_size_mb=1"); // Faster log rolls.
+  flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
   NO_FATALS(StartCluster(flags));
   const string fault_flag = GetParam();
   LOG(INFO) << "Running with fault flag: " << fault_flag;
@@ -1006,7 +1009,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
 
   // Run the workload against whoever the leader is until WALs appear on TS 0
   // for the tablets we created.
-  const int kTsIndex = 0; // Index of the tablet server we'll use for the test.
+  const int kTsIndex = 0;  // Index of the tablet server we'll use for the test.
   workload.Start();
   while (workload.rows_inserted() < 100) {
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -1088,4 +1091,4 @@ const char* tombstoned_faults[] = {"fault_crash_after_blocks_deleted",
 INSTANTIATE_TEST_CASE_P(FaultFlags, DeleteTableTombstonedParamTest,
                         ::testing::ValuesIn(tombstoned_faults));
 
-} // namespace yb
+}  // namespace yb

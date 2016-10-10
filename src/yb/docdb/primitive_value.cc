@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include <glog/logging.h>  // NOLINT(build/include_order)
+#include <glog/logging.h>
 
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -376,6 +376,9 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     case DataType::INT32:
       // TODO: fix cast when variable length integer encoding is implemented.
       return PrimitiveValue(*reinterpret_cast<const int32_t*>(slice.data()));
+    case DataType::BOOL:
+      // TODO(mbautin): check if this is the right way to interpret a bool value in Kudu.
+      return PrimitiveValue(*slice.data() == 0 ? ValueType::kFalse: ValueType::kTrue);
     default:
       LOG(FATAL) << "Converting Kudu value of type " << data_type
                  << " to docdb PrimitiveValue is currently not supported";

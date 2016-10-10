@@ -63,8 +63,8 @@ struct DocWriteOperation {
   PrimitiveValue value;
   Timestamp timestamp;
 
-  DocWriteOperation(DocPath doc_path, PrimitiveValue value, Timestamp timestamp) :
-      doc_path(doc_path), value(value), timestamp(timestamp) {}
+  DocWriteOperation(DocPath doc_path, PrimitiveValue value, Timestamp timestamp)
+      : doc_path(doc_path), value(value), timestamp(timestamp) {}
 };
 
 
@@ -148,29 +148,6 @@ class DocVisitor {
 
   // Called after enumerating elements of an array. Not used as of 9/26/2016.
   virtual CHECKED_STATUS EndArray() = 0;
-};
-
-class DocScanner {
- public:
-  // Creates a scanner to scan the document database at the given timestamp.
-  DocScanner(rocksdb::DB* rocksdb,
-             Timestamp timestamp,
-             const DocKey& start_key,
-             const DocKey& end_key,
-             bool end_key_included)
-      : rocksdb_(rocksdb),
-        timestamp_(timestamp),
-        start_key_(start_key),
-        end_key_(end_key),
-        end_key_included_(end_key_included) {
-  }
-
- private:
-  rocksdb::DB* rocksdb_;
-  Timestamp timestamp_;
-  DocKey start_key_;
-  DocKey end_key_;
-  bool end_key_included_;
 };
 
 yb::Status ScanDocument(rocksdb::DB* rocksdb,

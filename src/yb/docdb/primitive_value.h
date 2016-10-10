@@ -31,10 +31,10 @@ int GenericCompare(const T& a, const T& b) {
 
 class PrimitiveValue {
  public:
-  explicit PrimitiveValue() : type_(ValueType::kNull) {
+  PrimitiveValue() : type_(ValueType::kNull) {
   }
 
-  PrimitiveValue(ValueType value_type);
+  explicit PrimitiveValue(ValueType value_type);
 
   PrimitiveValue(const PrimitiveValue& other) {
     if (other.type_ == ValueType::kString) {
@@ -221,7 +221,7 @@ inline std::vector<PrimitiveValue> PrimitiveValues(T... args) {
   return v;
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_PRIMITIVE_VALUE_H_

@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Portions Copyright (c) YugaByte, Inc.
+
 #include "yb/tablet/tablet.h"
 
 #include <algorithm>
@@ -26,6 +28,9 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <boost/bind.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
@@ -44,6 +49,9 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/primitive_value.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -51,6 +59,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/tablet/compaction.h"
 #include "yb/tablet/compaction_policy.h"
 #include "yb/tablet/delta_compaction.h"
@@ -67,6 +76,7 @@
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
@@ -74,15 +84,10 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
-#include "yb/util/string_packer.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_packer.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/primitive_value.h"
-
 
 DEFINE_bool(tablet_do_dup_key_checks, true,
             "Whether to check primary keys for duplicate on insertion. "
@@ -123,8 +128,20 @@ using std::unique_ptr;
 
 using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
+using yb::util::ScopedPendingOperation;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::KeyValueWriteBatchPB;
+using yb::docdb::ValueType;
+using yb::docdb::KeyBytes;
+
+// Make sure RocksDB does not disappear while we're using it. This is used at the top level of
+// functions that perform RocksDB operations (directly or indirectly). Once a function is using
+// this mechanism, any functions that it calls can safely use RocksDB as usual.
+#define GUARD_AGAINST_ROCKSDB_SHUTDOWN \
+  if (IsShutdownRequested()) { \
+    return STATUS(IllegalState, "tablet is shutting down"); \
+  } \
+  ScopedPendingOperation shutdown_guard(&pending_op_counter_);
 
 namespace yb {
 namespace tablet {
@@ -178,7 +195,8 @@ Tablet::Tablet(
       rowsets_flush_sem_(1),
       state_(kInitialized),
       rocksdb_statistics_(nullptr),
-      block_cache_(block_cache) {
+      block_cache_(block_cache),
+      shutdown_requested_(false) {
   CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
 
@@ -358,8 +376,18 @@ void Tablet::MarkFinishedBootstrapping() {
   state_ = kOpen;
 }
 
+void Tablet::SetShutdownRequestedFlag() {
+  shutdown_requested_.store(true, std::memory_order::memory_order_release);
+}
+
 void Tablet::Shutdown() {
+  SetShutdownRequestedFlag();
   UnregisterMaintenanceOps();
+
+  LOG_SLOW_EXECUTION(WARNING, 1000,
+      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
+    CHECK_OK(pending_op_counter_.WaitForAllOpsToFinish(MonoDelta::FromSeconds(60)));
+  }
 
   std::lock_guard<rw_spinlock> lock(component_lock_);
   components_ = nullptr;
@@ -456,14 +484,16 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
   return Status::OK();
 }
 
-Status Tablet::AcquireRowLocks(WriteTransactionState* tx_state) {
-  TRACE_EVENT1("tablet", "Tablet::AcquireRowLocks",
-               "num_locks", tx_state->row_ops().size());
-  TRACE("PREPARE: Acquiring locks for $0 operations", tx_state->row_ops().size());
-  for (RowOp* op : tx_state->row_ops()) {
-    RETURN_NOT_OK(AcquireLockForOp(tx_state, op));
+Status Tablet::AcquireKuduRowLocks(WriteTransactionState *tx_state) {
+  if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    TRACE_EVENT1("tablet", "Tablet::AcquireKuduRowLocks",
+                 "num_locks", tx_state->row_ops().size());
+    TRACE("PREPARE: Acquiring locks for $0 operations", tx_state->row_ops().size());
+    for (RowOp* op : tx_state->row_ops()) {
+      RETURN_NOT_OK(AcquireLockForOp(tx_state, op));
+    }
+    TRACE("PREPARE: locks acquired");
   }
-  TRACE("PREPARE: locks acquired");
   return Status::OK();
 }
 
@@ -484,11 +514,7 @@ Status Tablet::CheckRowInTablet(const ConstContiguousRow& row) const {
 }
 
 Status Tablet::AcquireLockForOp(WriteTransactionState* tx_state, RowOp* op) {
-  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // TODO: clarify whether RocksDB already has some notion of row locks and whether it needs them,
-    // or we need them for RocksDB to have consistent state on all peers.
-    return Status::OK();
-  }
+  CHECK_EQ(TableType::KUDU_COLUMNAR_TABLE_TYPE, table_type_);
 
   ConstContiguousRow row_key(&key_schema_, op->decoded_op.row_data);
   op->key_probe.reset(new tablet::RowSetKeyProbe(row_key));
@@ -701,6 +727,8 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
 
 Status Tablet::CreateCheckpoint(const std::string& dir,
                                 google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
   CHECK(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
@@ -766,6 +794,8 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     const WriteRequestPB& redis_write_request,
     unique_ptr<const WriteRequestPB>* kudu_write_batch_pb,
     vector<string> *keys_locked) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
   vector<docdb::DocWriteOperation> doc_ops;
   const Timestamp current_time = clock_->Now();
   DocWriteBatch doc_write_batch(rocksdb_.get());
@@ -800,13 +830,13 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
 Status Tablet::KeyValueBatchFromYSQLRowOps(const WriteRequestPB &kudu_write_request_pb,
                                            unique_ptr<const WriteRequestPB> *kudu_write_batch_pb,
                                            vector<string> *keys_locked) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   TRACE("PREPARE: Decoding operations");
 
   TRACE("Acquiring schema lock in shared mode");
   shared_lock<rw_semaphore> schema_lock(schema_lock_);
   TRACE("Acquired schema lock");
-  vector<DecodedRowOperation> ops;
 
   Schema client_schema;
 
@@ -815,16 +845,17 @@ Status Tablet::KeyValueBatchFromYSQLRowOps(const WriteRequestPB &kudu_write_requ
   // Allocating temporary arena for decoding.
   Arena arena(32 * 1024, 4 * 1024 * 1024);
 
-  RowOperationsPBDecoder dec(&kudu_write_request_pb.row_operations(),
-                             &client_schema,
-                             schema(),
-                             &arena);
+  vector<DecodedRowOperation> row_ops;
+  RowOperationsPBDecoder row_operation_decoder(&kudu_write_request_pb.row_operations(),
+                                               &client_schema,
+                                               schema(),
+                                               &arena);
 
-  RETURN_NOT_OK(dec.DecodeOperations(&ops));
+  RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
 
   rocksdb::WriteBatch write_batch;
 
-  CreateWriteBatchFromKuduRowOps(ops, &write_batch, keys_locked);
+  CreateWriteBatchFromKuduRowOps(row_ops, &write_batch, keys_locked);
 
   WriteRequestPB* const write_request_copy = new WriteRequestPB(kudu_write_request_pb);
 
@@ -836,44 +867,85 @@ Status Tablet::KeyValueBatchFromYSQLRowOps(const WriteRequestPB &kudu_write_requ
   return Status::OK();
 }
 
+namespace {
+
+DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
+  return DocPath(encoded_doc_key, PrimitiveValue(col_id));
+}
+
+}  // namespace
+
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
                                               WriteBatch* write_batch,
                                               vector<string>* keys_locked) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
   vector<docdb::DocWriteOperation> doc_ops;
   const Timestamp current_time = clock_->Now();
-  DocWriteBatch doc_write_batch(rocksdb_.get());
   for (DecodedRowOperation row_op : row_ops) {
+    // row_data contains the row key for all Kudu operation types (insert/update/delete).
+    ConstContiguousRow contiguous_row(schema(), row_op.row_data);
+    EncodedKeyBuilder key_builder(schema());
+    for (int i = 0; i < schema()->num_key_columns(); i++) {
+      DCHECK(!schema()->column(i).is_nullable())
+          << "Column " << i << " (part of row key) cannot be nullable";
+      key_builder.AddColumnKey(contiguous_row.cell_ptr(i));
+    }
+    unique_ptr<EncodedKey> encoded_key(key_builder.BuildEncodedKey());
+
+    const DocKey doc_key = DocKey::FromKuduEncodedKey(*encoded_key, *schema());
+    const auto encoded_doc_key = doc_key.Encode();
+
     switch (row_op.type) {
+      case RowOperationsPB_Type_DELETE: {
+        doc_ops.emplace_back(DocPath(encoded_doc_key),
+                             PrimitiveValue(ValueType::kTombstone),
+                             current_time);
+        break;
+      }
+      case RowOperationsPB_Type_UPDATE: {
+        RowChangeListDecoder decoder(row_op.changelist);
+        RETURN_NOT_OK(decoder.Init());
+        while (decoder.HasNext()) {
+          CHECK(decoder.is_update());
+          RowChangeListDecoder::DecodedUpdate update;
+          RETURN_NOT_OK(decoder.DecodeNext(&update));
+          doc_ops.emplace_back(
+              DocPathForColumn(encoded_doc_key, update.col_id),
+              update.null ? PrimitiveValue(ValueType::kTombstone)
+                          : PrimitiveValue::FromKuduValue(
+                                schema()->column_by_id(update.col_id).type_info()->type(),
+                                update.raw_value),
+              current_time);
+        }
+        break;
+      }
       case RowOperationsPB_Type_INSERT: {
-        ConstContiguousRow r(schema(), row_op.row_data);
+        // TODO(mbautin): insert a special operation into doc_ops to overwrite the entire document.
+        for (int i = schema()->num_key_columns(); i < schema()->num_columns(); i++) {
+          const ColumnSchema& col_schema = schema()->column(i);
+          const DataType data_type = col_schema.type_info()->type();
 
-        const string primary_key = r.CellSlice(0).ToString();
-
-        EncodedKeyBuilder key_builder(schema());
-
-        for (int i = 0; i < schema()->num_key_columns(); i++) {
-          key_builder.AddColumnKey(r.cell_ptr(i));
+          PrimitiveValue column_value;
+          if (col_schema.is_nullable()) {
+            if (contiguous_row.is_null(i)) {
+              // TODO(mbautin): for now we're explicitly deleting null values.
+              // We don't need to do that when we start overwriting the entire document at the top.
+              column_value = PrimitiveValue(ValueType::kTombstone);
+            } else {
+              column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
+            }
+          } else {
+            column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
+          }
+          doc_ops.emplace_back(DocPathForColumn(encoded_doc_key, schema()->column_id(i)),
+                               column_value, current_time);
         }
-
-        unique_ptr<EncodedKey> encoded_key(key_builder.BuildEncodedKey());
-
-        const DocKey dockey = DocKey::FromKuduEncodedKey(*encoded_key, *schema());
-
-        for (int i = 0; i < schema()->num_columns(); i++) {
-          const PrimitiveValue column_key(schema()->column_id(i));
-          const DocPath doc_path(dockey.Encode(), column_key);
-          const Slice value_slice = r.CellSlice(i);
-          const DataType data_type = schema()->column(i).type_info()->type();
-          const PrimitiveValue column_value =
-              PrimitiveValue::FromKuduValue(data_type, value_slice);
-          doc_ops.emplace_back(doc_path, column_value, current_time);
-        }
-
         break;
       }
       default:
         LOG(FATAL) << "Unsupported row operation type " << row_op.type
-                   << " for key-value tables";
+                   << " for a RocksDB-backed table";
     }
   }
   docdb::StartDocWriteTransaction(
@@ -883,8 +955,8 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
 
 void Tablet::ApplyKuduRowOperation(WriteTransactionState *tx_state,
                                    RowOp *row_op) {
-  CHECK(table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE)
-      << "Failed while trying to apply Kudu row operations on non-Kudu table";
+  CHECK_EQ(TableType::KUDU_COLUMNAR_TABLE_TYPE, table_type_)
+      << "Failed while trying to apply Kudu row operations on a non-Kudu table";
   switch (row_op->decoded_op.type) {
     case RowOperationsPB::INSERT:
       ignore_result(InsertUnlocked(tx_state, row_op));
@@ -1816,21 +1888,26 @@ Status Tablet::CaptureConsistentIterators(
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);
     case TableType::YSQL_TABLE_TYPE:
-      return KeyValueCaptureConsistentIterators(projection, snap, spec, iters);
+      return YSQLCaptureConsistentIterators(projection, snap, spec, iters);
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
   }
   return STATUS(IllegalState, "This should never happen");
 }
 
-Status Tablet::KeyValueCaptureConsistentIterators(
+Status Tablet::YSQLCaptureConsistentIterators(
     const Schema *projection,
     const MvccSnapshot &snap,
     const ScanSpec *spec,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
   iters->clear();
   iters->push_back(std::make_shared<DocRowwiseIterator>(
-      *projection, *schema(), rocksdb_.get(), clock_->Now()));
+      *projection, *schema(), rocksdb_.get(), snap.LastCommittedTimestamp(),
+      // We keep the pending operation counter incremented while the iterator exists so that
+      // RocksDB does not get deallocated while we're using it.
+      &pending_op_counter_));
   return Status::OK();
 }
 
