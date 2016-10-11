@@ -100,6 +100,17 @@ public class TestYBClient extends BaseYBTest {
   }
 
   /**
+   * Test load balanced check.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testIsLoadBalanced() throws Exception {
+    LOG.info("Starting testIsLoadBalanced");
+    IsLoadBalancedResponse resp = syncClient.getIsLoadBalanced();
+    assertFalse(resp.hasError());
+  }
+  
+  /**
    * Test Master Configuration Change operation going from A,B,C to D,E,F.
    * @throws Exception
    */

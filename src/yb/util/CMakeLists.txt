@@ -120,6 +120,7 @@ set(UTIL_SRCS
   locks.cc
   logging.cc
   malloc.cc
+  math_util.cc
   memcmpable_varint.cc
   memory/arena.cc memory/memory.cc
   memenv/memenv.cc

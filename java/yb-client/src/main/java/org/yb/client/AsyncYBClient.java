@@ -412,6 +412,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the tablet load is balanced as per the master leader.
+   * @return a deferred object that yields if the load is balanced.
+   */
+  public Deferred<IsLoadBalancedResponse> getIsLoadBalanced() {
+    checkIsClosed();
+    IsLoadBalancedRequest rpc = new IsLoadBalancedRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    * @return the constant master tablet uuid.
    */

@@ -198,6 +198,15 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the tablet load is balanced as per the master leader.
+   * @return a deferred object that yields if the load is balanced.
+   */
+  public IsLoadBalancedResponse getIsLoadBalanced() throws Exception {
+    Deferred<IsLoadBalancedResponse> d = asyncClient.getIsLoadBalanced();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Find the uuid of a master using its host/port.
    * @return The uuid of the master, or null if not found.
    * @throws Nothing.
@@ -471,8 +480,38 @@ public class YBClient implements AutoCloseable {
     } while (System.currentTimeMillis() < start + timeoutMs);
 
     LOG.warn("Timed out waiting for server {} to come online. Final exception was {}.",
-             hp.toString(), finalException.toString());
+             hp.toString(), finalException != null ? finalException.toString() : "none");
 
+    return false;
+  }
+
+  /**
+  * Wait for the tablet load to be balanced by master leader.
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the master leader does not return any error balance check.
+  */
+  public boolean waitForLoadBalance(final long timeoutMs) {
+    Exception finalException = null;
+    long start = System.currentTimeMillis();
+    do {
+      try {
+        IsLoadBalancedResponse resp = getIsLoadBalanced();
+        if (!resp.hasError()) {
+          return true;
+        }
+      } catch (Exception e) {
+        // We will get exceptions if we cannot connect to the other end. Catch them and save for
+        // final debug if we never succeed.
+        finalException = e;
+      }
+      // Need to wait even when check has an exception, so sleep is outside the above try block.
+      try {
+        Thread.sleep(AsyncYBClient.SLEEP_TIME);
+      } catch (Exception e) {}
+    } while ((timeoutMs == Long.MAX_VALUE) || System.currentTimeMillis() < start + timeoutMs);
+
+    LOG.warn("Timed out waiting for load to balance. Final exception was {}.",
+             finalException != null ? finalException.toString() : "none");
     return false;
   }
 

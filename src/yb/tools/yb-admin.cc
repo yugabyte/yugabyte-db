@@ -40,6 +40,7 @@
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/math_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/string_case.h"
@@ -471,18 +472,6 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   return Status::OK();
 }
 
-double standard_deviation(vector<double> data) {
-  if (data.empty()) {
-    return 0.0;
-  }
-  double mean = std::accumulate(data.begin(), data.end(), 0.0) / data.size();
-  vector<double> deltas(data.size());
-  std::transform(data.begin(), data.end(), deltas.begin(), [mean](double x) { return x - mean; });
-  double inner_product = std::inner_product(deltas.begin(), deltas.end(), deltas.begin(), 0.0);
-  double stdev = std::sqrt(inner_product / data.size());
-  return stdev;
-}
-
 Status ClusterAdminClient::ListLeaderCounts(const string& table_name) {
   vector<string> tablet_ids, range_starts, range_ends;
   RETURN_NOT_OK(yb_client_->GetTablets(
@@ -537,9 +526,9 @@ Status ClusterAdminClient::ListLeaderCounts(const string& table_name) {
     }
     worst_case[0] = total_leader_count;
 
-    double stdev = standard_deviation(leader_dist);
-    double best_stdev = standard_deviation(best_case);
-    double worst_stdev = standard_deviation(worst_case);
+    double stdev = yb::standard_deviation(leader_dist);
+    double best_stdev = yb::standard_deviation(best_case);
+    double worst_stdev = yb::standard_deviation(worst_case);
     double percent_dev = (stdev - best_stdev) / (worst_stdev - best_stdev) * 100.0;
     std::cout << "Standard deviation: " << stdev << std::endl;
     std::cout << "Adjusted deviation percentage: " << percent_dev << "%" << std::endl;

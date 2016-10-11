@@ -500,5 +500,17 @@ void MasterServiceImpl::IsMasterLeaderServiceReady(
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::IsLoadBalanced(
+    const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+    return;
+  }
+  Status s = server_->catalog_manager()->IsLoadBalanced(resp);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
 } // namespace master
 } // namespace yb

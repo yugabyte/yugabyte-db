@@ -599,6 +599,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // using a new leader master, then the in_transit error code is set and percent is not set.
   Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
+  // API to check if all the live tservers have similar tablet worklaod.
+  Status IsLoadBalanced(IsLoadBalancedResponsePB* resp);
+
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.

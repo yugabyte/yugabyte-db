@@ -719,6 +719,14 @@ message IsMasterLeaderReadyResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// When no errors, the master leader will have balanced all the load across the live tservers.
+message IsLoadBalancedRequestPB {
+}
+
+message IsLoadBalancedResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -764,4 +772,6 @@ service MasterService {
       returns (ChangeMasterClusterConfigResponsePB);
   rpc GetLoadMoveCompletion(GetLoadMovePercentRequestPB)
       returns (GetLoadMovePercentResponsePB);
+  rpc IsLoadBalanced(IsLoadBalancedRequestPB)
+      returns (IsLoadBalancedResponsePB);
 }

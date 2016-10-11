@@ -84,6 +84,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
@@ -3965,6 +3966,23 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
+Status CatalogManager::IsLoadBalanced(IsLoadBalancedResponsePB* resp) {
+  vector<double> load;
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+  for (const auto ts_desc : ts_descs) {
+    load.push_back(ts_desc->num_live_replicas());
+  }
+  double std_dev = yb::standard_deviation(load);
+  LOG(INFO) << "Load standard deviation is " << std_dev << " for "
+            << ts_descs.size() << " tservers.";
+  if (std_dev >= 2.0) {
+    return STATUS(IllegalState, "Load is not balanced");
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
   LOG(INFO) << "Blacklist completion check start " << blacklist_tservers_.empty()
             << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
@@ -4160,6 +4178,7 @@ INITTED_AND_LEADER_OR_RESPOND(GetMasterClusterConfigResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(ChangeMasterClusterConfigResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetLoadMovePercentResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsMasterLeaderReadyResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(IsLoadBalancedResponsePB);
 
 #undef INITTED_OR_RESPOND
 #undef INITTED_AND_LEADER_OR_RESPOND

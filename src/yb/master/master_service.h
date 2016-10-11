@@ -114,6 +114,10 @@ class MasterServiceImpl : public MasterServiceIf {
       const IsMasterLeaderReadyRequestPB* req, IsMasterLeaderReadyResponsePB* resp,
       rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void IsLoadBalanced(
+      const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp,
+      rpc::RpcContext* rpc) OVERRIDE;
+
  private:
   Master* server_;
 
