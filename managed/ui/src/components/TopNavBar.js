@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import 'react-fa';
-import { MenuItem , NavDropdown, Navbar, NavItem, Nav, Image } from 'react-bootstrap';
+import { MenuItem , NavDropdown, Navbar, Nav, Image } from 'react-bootstrap';
 import TaskAlertsContainer from '../containers/TaskAlertsContainer';
 import img from '../images/small-logo.png';
 import { Link } from 'react-router';

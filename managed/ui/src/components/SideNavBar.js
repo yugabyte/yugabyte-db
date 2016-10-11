@@ -1,30 +1,28 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Link } from 'react-router';
+import { Link, IndexLink, withRouter } from 'react-router'
+
+class NavLink extends Component {
+  render () {
+    const { router, index, to, children, ...props, icon } = this.props
+    let isActive;
+    
+    isActive = router.isActive(to, index);
+    const LinkComponent = index ?  IndexLink : Link;
+
+    return (
+      <li className={isActive ? 'active' : ''}>
+        <LinkComponent to={to} {...props}><i className={icon}></i>{children}</LinkComponent>
+      </li>
+    )
+  }
+}
+
+NavLink = withRouter(NavLink)
+
 
 export default class SideNavBar extends Component {
-  constructor (props) {
-    super(props);
-    this.setFilter = this.setFilter.bind(this);
-    this.isActive = this.isActive.bind(this);
-  }
-
-  componentWillMount () {
-    this.setState({selected: ''});
-  }
-
-  setFilter (filter) {
-    this.setState({selected : filter});
-  }
-
-  isActive(value) {
-    if (value === this.state.selected) {
-      return 'active';
-    } else {
-      return 'default';
-    }
-  }
 
   render() {
     return (
@@ -34,28 +32,24 @@ export default class SideNavBar extends Component {
             <div id="sidebar-menu" className="main_menu_side hidden-print main_menu">
               <div className="menu_section">
                 <ul className="nav side-menu">
-                  <li className={this.isActive('')} onClick={this.setFilter.bind(this, '')}>
-                    <Link to="/dashboard" ><i className="fa fa-home"></i> Home
-                      <span className="label label-success"></span>
-                    </Link>
-                  </li>
-                  <li className={this.isActive('universe')} onClick={this.setFilter.bind(this, 'universe')}>
-                    <Link to="/universes"><i className="fa fa-globe"></i> Universes
-                      <span className="label label-success"></span>
-                    </Link>
-                  </li>
-                  <li className={this.isActive('alerts')} onClick={this.setFilter.bind(this, 'alerts')}>
-                    <Link to="/alerts"><i className="fa fa-bell-o"></i> Alerts <span className="label label-success"></span></Link>
-                  </li>
-                  <li className={this.isActive('metrics')} onClick={this.setFilter.bind(this, 'metrics')}><a href="#">
-                    <i className="fa fa-line-chart"></i> Metrics <span className="label label-success"></span></a>
-                  </li>
-                  <li className={this.isActive('docs')} onClick={this.setFilter.bind(this, 'docs')}>
-                    <a href="#"><i className="fa fa-file-text-o"></i> Docs <span className="label label-success"></span></a>
-                  </li>
-                  <li className={this.isActive('support')} onClick={this.setFilter.bind(this, 'support')}>
-                    <a href="#"><i className="fa fa-phone"></i> Support <span className="label label-success"></span></a>
-                  </li>
+                  <NavLink to="/" index={true} icon="fa fa-home">
+                     Home
+                  </NavLink>
+                  <NavLink to="/universes" icon="fa fa-globe">
+                     Universes
+                  </NavLink>
+                  <NavLink to="/alerts" icon="fa fa-bell-o">
+                     Alerts
+                  </NavLink>
+                  <NavLink to="metrics" icon="fa fa-line-chart">
+                    Metrics
+                  </NavLink>
+                  <NavLink to="docs" icon="fa fa-file-text-o">
+                     Docs
+                  </NavLink>
+                  <NavLink to="support" icon="fa fa-phone">
+                    Support
+                  </NavLink>
                 </ul>
               </div>
             </div>

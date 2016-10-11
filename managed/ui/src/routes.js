@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import Alerts from './pages/Alerts';
+import ListUniverse from './pages/ListUniverse';
 
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
@@ -45,9 +46,10 @@ export default (store) => {
       <Route path="/register" component={Register} />
       <Route onEnter={authenticatedSession} component={AuthenticatedComponent}>
         <IndexRoute component={Dashboard} />
-        <Route path="/dashboard" component={Dashboard} />
-        <Route path="/universes" component={Universes} />
-        <Route path="/universes/:uuid" component={UniverseDetail} />
+        <Route path="/universes" component={Universes} >
+          <IndexRoute component={ListUniverse} />
+          <Route path="/universes/:uuid" component={UniverseDetail} />
+        </Route>
         <Route path="/alerts" component={Alerts} />
       </Route>
     </Route>
