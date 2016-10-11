@@ -105,10 +105,11 @@ public abstract class AbstractTaskBase implements ITask {
       if (exitValue != 0) {
         throw new RuntimeException(message);
       }
-      // TODO: log output stream somewhere.
     } catch (IOException e) {
+      LOG.error("Command [" + command + "] threw IOException: {}", e);
       throw new RuntimeException(e);
     } catch (InterruptedException e) {
+      LOG.error("Command [" + command + "] threw InterruptedException: {}", e);
       throw new RuntimeException(e);
     }
   }

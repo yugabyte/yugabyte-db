@@ -16,10 +16,8 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.models.Customer;
@@ -28,11 +26,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import play.libs.Json;
 import play.mvc.Result;
 
-import static com.yugabyte.yw.controllers.TokenAuthenticator.API_AUTH_TOKEN;
-
 public class CustomerTaskController extends AuthenticatedController {
-  @Inject
-  ApiHelper apiHelper;
 
   @Inject
   Commissioner commissioner;
@@ -77,23 +71,18 @@ public class CustomerTaskController extends AuthenticatedController {
       taskQuery.where().eq("universe_uuid", universeUUID);
     }
 
-
     Set<CustomerTask> pendingTasks = taskQuery.findSet();
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
-    String customerTaskBaseUrl =
-      "http://" + ctx().request().host() + "/api/customers/" + customerUUID + "/tasks/";
 
     for (CustomerTask task : pendingTasks) {
       CustomerTaskFormData taskData = new CustomerTaskFormData();
-      JsonNode taskProgress = apiHelper.getRequest(
-        customerTaskBaseUrl + task.getTaskUUID(),
-        ImmutableMap.of("X-AUTH-TOKEN", ctx().request().headers().get(API_AUTH_TOKEN)[0]));
 
+      JsonNode taskProgress = commissioner.getStatus(task.getTaskUUID());
       // If the task progress API returns error, we will log it and not add that task to
       // to the task list for UI rendering.
       if (taskProgress.has("error")) {
-        LOG.error("Error fetching Task Progress for " + task.getTaskUUID());
+        LOG.error("Error fetching Task Progress for " + task.getTaskUUID() + ", Error: " + taskProgress.get("error"));
       } else {
         taskData.percentComplete = taskProgress.get("percent").asInt();
         if (taskData.percentComplete == 100) {
