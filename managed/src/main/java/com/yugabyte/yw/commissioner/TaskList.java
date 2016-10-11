@@ -126,10 +126,10 @@ public class TaskList implements Runnable {
           return false;
         }
       } catch (InterruptedException e) {
-        LOG.error("Failed to execute task {}, hit error {}.", future.toString(), e.getMessage());
+        LOG.error("Failed to execute task {}, hit error {}.", future.toString(), e.getMessage(), e);
         return false;
       } catch (ExecutionException e) {
-        LOG.error("Failed to execute task {}, hit error {}.", future.toString(), e.getMessage());
+        LOG.error("Failed to execute task {}, hit error {}.", future.toString(), e.getMessage(), e);
         return false;
       }
     }

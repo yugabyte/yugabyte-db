@@ -40,16 +40,13 @@ import static play.test.Helpers.route;
 public class CustomerTaskControllerTest extends FakeDBApplication {
   private Customer customer;
   private Universe universe;
-  private ApiHelper mockApiHelper;
   private Commissioner mockCommissioner;
 
   @Override
   protected Application provideApplication() {
-    mockApiHelper = mock(ApiHelper.class);
     mockCommissioner = mock(Commissioner.class);
     return new GuiceApplicationBuilder()
       .configure((Map) Helpers.inMemoryDatabase())
-      .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
       .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
       .build();
   }
@@ -82,7 +79,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     ObjectNode getResponseJson = Json.newObject();
     getResponseJson.put("status", "Success");
     getResponseJson.put("percent", "50");
-    when(mockApiHelper.getRequest(Matchers.anyString(), Matchers.anyMap())).thenReturn(getResponseJson);
+    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
 
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
                             .header("X-AUTH-TOKEN", authToken));
@@ -114,7 +111,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     ObjectNode getResponseJson = Json.newObject();
     getResponseJson.put("status", "Success");
     getResponseJson.put("percent", "50");
-    when(mockApiHelper.getRequest(Matchers.anyString(), Matchers.anyMap())).thenReturn(getResponseJson);
+    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
 
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/tasks")
                             .header("X-AUTH-TOKEN", authToken));
@@ -144,7 +141,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     ObjectNode getResponseJson = Json.newObject();
     getResponseJson.put("status", "Success");
     getResponseJson.put("percent", "100");
-    when(mockApiHelper.getRequest(Matchers.anyString(), Matchers.anyMap())).thenReturn(getResponseJson);
+    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
 
     Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
                             .header("X-AUTH-TOKEN", authToken));
