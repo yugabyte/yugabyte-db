@@ -65,18 +65,33 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
       : proxy_map_(proxy_map) {
   }
 
+  ~FromMapPeerProxyFactory() {
+    DeleteUnusedPeerProxies();
+  }
+
   Status NewProxy(const RaftPeerPB& peer_pb,
                   gscoped_ptr<PeerProxy>* proxy) override {
     PeerProxy* proxy_ptr = FindPtrOrNull(*proxy_map_, peer_pb.permanent_uuid());
     if (!proxy_ptr) return STATUS(NotFound, "No proxy for peer.");
     proxy->reset(proxy_ptr);
+    used_peer_proxy_.insert(peer_pb.permanent_uuid());
     return Status::OK();
+  }
+
+  void DeleteUnusedPeerProxies() {
+    for (auto item : *proxy_map_) {
+      if (used_peer_proxy_.count(item.first) == 0) {
+        delete item.second;
+      }
+    }
+    used_peer_proxy_.clear();
   }
 
  private:
   // FYI, the tests may add and remove nodes from this map while we hold a
   // reference to it.
   const ProxyMap* const proxy_map_;
+  std::set<string> used_peer_proxy_;
 };
 
 class LeaderElectionTest : public YBTest {
@@ -361,6 +376,9 @@ TEST_F(LeaderElectionTest, TestPerfectElection) {
           ASSERT_EQ(VOTE_GRANTED, result_->decision);
 
           pool_->Wait();
+          FromMapPeerProxyFactory *from_map_proxy_factory =
+              down_cast<FromMapPeerProxyFactory*>(proxy_factory_.get());
+          from_map_proxy_factory->DeleteUnusedPeerProxies();
           proxies_.clear(); // We don't delete them; The election VoterState object
           // ends up owning them.
           latch_.Reset(1);
