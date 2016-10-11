@@ -2,11 +2,14 @@
 
 import React, { Component } from 'react';
 import UniverseDetailContainer from '../containers/UniverseDetailContainer';
+import Universes from './Universes';
 
 class UniverseDetail extends Component {
   render() {
     return (
-      <UniverseDetailContainer uuid={this.props.params.uuid}/>
+      <Universes>
+        <UniverseDetailContainer uuid={this.props.params.uuid}/>
+      </Universes>
     );
   }
 }
