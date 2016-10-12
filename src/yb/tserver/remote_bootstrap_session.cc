@@ -234,6 +234,10 @@ Status RemoteBootstrapSession::Init() {
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
+
+  // Clear any previous rocksdb files in the superblock. Each session should create a new list
+  // based the checkpoint directory files.
+  tablet_superblock_.clear_rocksdb_files();
   RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
                                          tablet_superblock_.mutable_rocksdb_files()));
 

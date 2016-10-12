@@ -185,6 +185,14 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     return s;
   }
 
+  LOG(INFO) << "Received superblock: " << resp.superblock().ShortDebugString();
+  if (resp.superblock().table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    string files;
+    for (const auto& file : resp.superblock().rocksdb_files()) {
+      files += "Name: " + file.name() + " -- size: " + std::to_string(file.size_bytes()) + ", ";
+    }
+    LOG(INFO) << "RocksDB files: " << files;
+  }
   session_id_ = resp.session_id();
   LOG(INFO) << "Began remote bootstrap session " << session_id_;
 
