@@ -13,7 +13,7 @@ class LoginForm extends Component {
     if (nextProps.customer.status === 'authenticated' &&
         nextProps.customer.customer &&
         !nextProps.customer.error) {
-        this.context.router.push('/dashboard');
+        this.context.router.push('/');
     }
   }
 
