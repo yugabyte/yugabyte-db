@@ -1,58 +1,44 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Modal } from 'react-bootstrap';
+import {Modal} from 'react-bootstrap';
+import YBButton from '../components/fields/YBButton';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 
 export default class DeleteUniverse extends Component {
 
   constructor(props) {
     super(props);
-    this.showDeleteModal = this.showDeleteModal.bind(this);
     this.closeDeleteModal = this.closeDeleteModal.bind(this);
     this.confirmDelete = this.confirmDelete.bind(this);
-    this.state = {
-      deleteModalShown: false
-    };
-  }
-
-  showDeleteModal() {
-    this.setState({deleteModalShown: true});
   }
 
   closeDeleteModal() {
-    this.setState({deleteModalShown: false});
+    this.props.onHide();
   }
 
   confirmDelete() {
-    this.props.deleteUniverse(this.props.uuid);
-    this.setState({deleteModalShown: false});
+    this.props.onHide();
+    this.props.deleteUniverse(this.props.universe.currentUniverse.universeUUID);
   }
 
   render() {
+
+    const { visible, onHide, universe: {currentUniverse: {name}} } = this.props;
+    
     return (
-      <div>
-        <div className="universe-button btn btn-xs btn-danger " onClick={this.showDeleteModal}>
-          <i className='fa fa-trash-o' onClick={this.closeDeleteModal}></i>
-            &nbsp;Delete
-        </div>
-        <Modal show={this.state.deleteModalShown} onHide={this.closeDeleteModal}>
-          <Modal.Header closeButton>
-            <Modal.Title>Delete Universe </Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="delete-title">Delete Universe ?</div>
-              <div className="delete-btn-group">
-                <div className="btn btn-sm btn-default" onClick={this.confirmDelete}>
-                  Yes
-                </div>
-                <div className="btn btn-sm btn-default" onClick={this.closeDeleteModal}>
-                  No
-                </div>
-              </div>
-           </Modal.Body>
-        </Modal>
-      </div>
+      <Modal show={visible} onHide={onHide}>
+        <Modal.Header>
+          <Modal.Title>Delete Universe: { name }</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          Are you sure you want to delete the universe. You will lose all your data!
+        </Modal.Body>
+        <Modal.Footer>
+          <YBButton onClick={this.closeDeleteModal} btnText="No"/>
+          <YBButton btnStyle="primary" onClick={this.confirmDelete} btnText="Yes"/>
+        </Modal.Footer>
+      </Modal>
     )
   }
 }
