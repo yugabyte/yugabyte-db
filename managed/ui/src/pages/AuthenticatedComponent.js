@@ -9,7 +9,9 @@ export default class AuthenticatedComponent extends Component {
     return (
       <AuthenticatedComponentContainer>
         <NavBar />
-        {this.props.children}
+        <div className="container-body">
+          {this.props.children}
+        </div>
       </AuthenticatedComponentContainer>
     );
   }
