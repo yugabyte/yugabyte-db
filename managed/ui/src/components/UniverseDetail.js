@@ -9,6 +9,7 @@ import UniverseInfoPanel from './UniverseInfoPanel';
 import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
+import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import YBButton from './fields/YBButton';
 import UniverseFormContainer from '../containers/forms/UniverseFormContainer';
 import GFlagsFormContainer from '../containers/forms/GFlagsFormContainer';
@@ -76,7 +77,7 @@ export default class UniverseDetail extends Component {
             <ButtonGroup className="universe-detail-btn-group">
               <YBButton btnClass=" btn btn-default btn-sm bg-orange"
                         btnText="Edit" btnIcon="fa fa-database" onClick={this.props.showUniverseModal} />
-              <DropdownButton bsStyle="btn btn-default btn-sm " title="More" id="bg-nested-dropdown" >
+              <DropdownButton className="btn btn-default btn-sm " title="More" id="bg-nested-dropdown" >
                 <MenuItem eventKey="1">
                   <YBLabelWithIcon icon="fa fa-refresh fa-fw">
                     s/w Upgrades
@@ -88,7 +89,7 @@ export default class UniverseDetail extends Component {
                   </YBLabelWithIcon>
                 </MenuItem>
               </DropdownButton>
-              <YBButton btnIcon="fa fa-trash-o" btnClass="btn btn-default btn-sm" />
+              <YBButton btnIcon="fa fa-trash-o" btnClass="btn btn-default btn-sm" onClick={this.props.showDeleteUniverseModal}/>
             </ButtonGroup>
           </Col>
           <UniverseFormContainer type="Edit"
@@ -96,7 +97,8 @@ export default class UniverseDetail extends Component {
                                  onHide={this.props.closeModal} title="Edit Universe" />
           <GFlagsFormContainer modalVisible={showModal === true && visibleModal === "gFlagsModal"}
                                onHide={this.props.closeModal} title="Set GFlags"/>
-
+          <DeleteUniverseContainer visible={showModal===true && visibleModal==="deleteUniverseModal"}
+                                       onHide={this.props.closeModal} title="Delete Universe"/>
         </Row>
         <Row>
           <Col lg={11}>
