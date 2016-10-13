@@ -73,7 +73,7 @@ bool Sockaddr::operator<(const Sockaddr &rhs) const {
 }
 
 uint32_t Sockaddr::HashCode() const {
-  uint32_t ret = addr_.sin_addr.s_addr;
+  uint32_t ret = addr_.sin_addr.s_addr % 59534743;
   ret ^= (addr_.sin_port * 7919);
   return ret;
 }
