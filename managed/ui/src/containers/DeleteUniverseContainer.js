@@ -19,9 +19,9 @@ const mapDispatchToProps = (dispatch) => {
                   dispatch(fetchUniverseListFailure(response.payload));
                 } else {
                   dispatch(fetchUniverseListSuccess(response.payload));
+                  browserHistory.push('/universes');
                 }
               });
-            browserHistory.push('/universes');
           } else {
             dispatch(deleteUniverseFailure(response.payload));
           }
