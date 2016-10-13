@@ -23,8 +23,6 @@
 }
 #page-wrapper {
     position: inherit;
-    margin: 4% 0 0 8%;
-    padding: 1% 2%;
     border-left: 1px solid #e7e7e7;
     background-color: transparent;
     min-height: 100%;
@@ -364,7 +362,16 @@ ul.progress-list li i {
 }
 
 .left-col-container {
+    top: 60px;
+    bottom: 0;
+    z-index: 1;
     position: fixed;
-    margin-top: 60px;
-    height: 100%;
+    overflow: hidden;
+    width: 140px;
+}
+
+.container-body {
+    margin-left: 140px;
+    margin-top: 40px;
+    padding-top: 25px;
 }

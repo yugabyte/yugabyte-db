@@ -56,7 +56,7 @@ export default class UniverseDetail extends Component {
 
     
     return (
-      <Grid id="page-wrapper">
+      <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">
           <Col lg={9}>
             <div className="detail-label-small">
