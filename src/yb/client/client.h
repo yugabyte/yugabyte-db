@@ -315,6 +315,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   class YB_NO_EXPORT Data;
 
   friend class YBClientBuilder;
+  friend class YBNoOp;
   friend class YBScanner;
   friend class YBTable;
   friend class YBTableAlterer;
@@ -881,6 +882,24 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };
 
+
+// This class is not thread-safe, though different YBNoOp objects on
+// different threads may share a single YBTable object.
+class YB_EXPORT YBNoOp {
+ public:
+  // Initialize the NoOp request object. The given 'table' object must remain valid
+  // for the lifetime of this object.
+  explicit YBNoOp(YBTable* table);
+  ~YBNoOp();
+
+  // Executes a no-op request against the tablet server on which the row specified
+  // by "key" lives.
+  Status Execute(const YBPartialRow& key);
+ private:
+  YBTable* table_;
+
+  DISALLOW_COPY_AND_ASSIGN(YBNoOp);
+};
 
 // A single scanner. This class is not thread-safe, though different
 // scanners on different threads may share a single YBTable object.

@@ -163,7 +163,8 @@ class MultiThreadedReader : public MultiThreadedAction {
       std::atomic_bool* stop_flag,
       int value_size,
       int max_num_read_errors,
-      int retries_on_empty_read);
+      int retries_on_empty_read,
+      bool noop_reads);
 
   void IncrementReadErrorCount();
 
@@ -186,6 +187,9 @@ class MultiThreadedReader : public MultiThreadedAction {
   std::atomic<int64_t> num_read_errors_;
   const int max_num_read_errors_;
   const int retries_on_empty_read_;
+
+  // Flag that decides if the readers will perform NoOp requests or real reads.
+  const bool noop_reads_;
 };
 
 }  // namespace load_generator

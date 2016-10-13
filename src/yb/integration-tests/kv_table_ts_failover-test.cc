@@ -50,7 +50,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     yb::load_generator::MultiThreadedReader reader(
         rows, reader_threads, client_.get(), table_.get(), writer.InsertionPoint(),
         writer.InsertedKeys(), writer.FailedKeys(), &stop_requested_flag, value_size_bytes,
-        max_read_errors, retries_on_empty_read);
+        max_read_errors, retries_on_empty_read, false /* noop_reads */);
 
     writer.Start();
     reader.Start();

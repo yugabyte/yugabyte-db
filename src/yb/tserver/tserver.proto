@@ -210,6 +210,14 @@ message ColumnRangePredicateListPB {
   repeated ColumnRangePredicatePB range_predicates = 1;
 }
 
+message NoOpRequestPB {
+  optional bytes tablet_id = 1;
+}
+
+message NoOpResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ReadRequestPB {
   // The tablet to scan.
   optional bytes tablet_id = 1;

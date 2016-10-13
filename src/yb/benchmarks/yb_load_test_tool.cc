@@ -42,9 +42,11 @@ DEFINE_string(table_name, "yb_load_test", "Table name to use for YugaByte load t
 
 DEFINE_int64(num_rows, 50000, "Number of rows to insert");
 
+DEFINE_int64(num_noops, 100000000, "Number of noop requests to execute.");
+
 DEFINE_int32(num_writer_threads, 4, "Number of writer threads");
 
-DEFINE_int32(num_reader_threads, 4, "Number of reader threads");
+DEFINE_int32(num_reader_threads, 4, "Number of reader threads (used for read or noop requests).");
 
 DEFINE_int64(max_num_write_errors,
              1000,
@@ -54,9 +56,15 @@ DEFINE_int64(max_num_read_errors,
              1000,
              "Maximum number of read errors. The test is aborted after this number of errors.");
 
+DEFINE_int64(max_noop_errors,
+             1000,
+             "Maximum number of noop errors. The test is aborted after this number of errors.");
+
 DEFINE_int32(num_replicas, 3, "Replication factor for the load test table");
 
 DEFINE_int32(num_tablets, 16, "Number of tablets to create in the table");
+
+DEFINE_bool(noop_only, false, "Only perform noop requests");
 
 DEFINE_bool(reads_only, false, "Only read the existing rows from the table.");
 
@@ -226,6 +234,23 @@ int main(int argc, char* argv[]) {
 
       writer.Start();
       writer.WaitForCompletion();
+    } else if (FLAGS_noop_only) {
+      MultiThreadedReader reader(
+          FLAGS_num_noops,
+          FLAGS_num_reader_threads,
+          client.get(),
+          table.get(),
+          nullptr /* insertion_point */,
+          nullptr /* inserted_keys */,
+          nullptr /* failed_keys */,
+          &stop_flag,
+          FLAGS_value_size_bytes,
+          FLAGS_max_num_read_errors,
+          FLAGS_retries_on_empty_read,
+          true /* noop_reads */);
+
+      reader.Start();
+      reader.WaitForCompletion();
     } else {
       MultiThreadedWriter writer(
           FLAGS_num_rows, 0,
@@ -248,7 +273,8 @@ int main(int argc, char* argv[]) {
           &stop_flag,
           FLAGS_value_size_bytes,
           FLAGS_max_num_read_errors,
-          FLAGS_retries_on_empty_read);
+          FLAGS_retries_on_empty_read,
+          false /* noop_reads */);
 
       reader.Start();
 

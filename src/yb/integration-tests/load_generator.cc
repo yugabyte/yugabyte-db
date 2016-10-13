@@ -38,14 +38,15 @@ using yb::TableType;
 
 using yb::client::YBClient;
 using yb::client::YBError;
-using yb::client::YBTable;
+using yb::client::YBNoOp;
+using yb::client::YBPredicate;
 using yb::client::YBInsert;
 using yb::client::YBSession;
+using yb::client::YBScanBatch;
 using yb::client::YBScanner;
 using yb::client::YBRowResult;
-using yb::client::YBPredicate;
+using yb::client::YBTable;
 using yb::client::YBValue;
-using yb::client::YBScanBatch;
 
 DEFINE_bool(load_gen_verbose,
             false,
@@ -356,7 +357,8 @@ MultiThreadedReader::MultiThreadedReader(
     atomic_bool* stop_flag,
     int value_size,
     int max_num_read_errors,
-    int retries_on_empty_read)
+    int retries_on_empty_read,
+    bool noop_reads)
     : MultiThreadedAction(
           "readers", num_keys, 0, num_reader_threads, 1, client, table, stop_flag, value_size),
       insertion_point_(insertion_point),
@@ -365,7 +367,8 @@ MultiThreadedReader::MultiThreadedReader(
       num_reads_(0),
       num_read_errors_(0),
       max_num_read_errors_(max_num_read_errors),
-      retries_on_empty_read_(retries_on_empty_read) {
+      retries_on_empty_read_(retries_on_empty_read),
+      noop_reads_(noop_reads) {
 }
 
 void MultiThreadedReader::RunActionThread(int reader_index) {
@@ -375,16 +378,26 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
   shared_ptr<YBSession> session(client_->NewSession());
   ConfigureSession(session.get());
 
-  // Wait until at least one row has been inserted (keys are numbered starting from 1).
-  while (!IsStopRequested() && insertion_point_->load() < 0) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
+  if (!noop_reads_) {
+    // Wait until at least one row has been inserted (keys are numbered starting from 1).
+    while (!IsStopRequested() && insertion_point_->load() < 0) {
+      SleepFor(MonoDelta::FromMilliseconds(10));
+    }
   }
 
   while (!IsStopRequested()) {
     int64_t key_index = 0;
-    int64_t written_up_to = insertion_point_->load();
-    do {
-      switch (random_number_generator() % 3) {
+    if (noop_reads_) {
+      if (num_reads_ >= num_keys_) {
+        LOG(INFO) << "Exiting reader as " << num_reads_ << " noops done across all threads.";
+        break;
+      }
+      key_index = random_number_generator();
+      VLOG(1) << "Reader thread " << reader_index << " picked key #" << key_index;
+    } else {
+      int64_t written_up_to = insertion_point_->load();
+      do {
+        switch (random_number_generator() % 3) {
         case 0:
           // Read the latest value that the insertion tracker knows we've written up to.
           key_index = written_up_to;
@@ -403,12 +416,13 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
           // We're assuming the total number of keys is < RAND_MAX (~2 billion) here.
           key_index = random_number_generator() % (written_up_to + 1);
           break;
-      }
-      // Ensure we don't try to read a key for which a write failed.
-    } while (failed_keys_->Contains(key_index) && !IsStopRequested());
+        }
+        // Ensure we don't try to read a key for which a write failed.
+      } while (failed_keys_->Contains(key_index) && !IsStopRequested());
 
-    VLOG(1) << "Reader thread " << reader_index << " saw written_up_to="
-            << written_up_to << " and picked key #" << key_index;
+      VLOG(1) << "Reader thread " << reader_index << " saw written_up_to="
+              << written_up_to << " and picked key #" << key_index;
+    }
 
     ++num_reads_;
     ReadStatus read_status = PerformRead(key_index);
@@ -431,10 +445,23 @@ void MultiThreadedReader::RunActionThread(int reader_index) {
 }
 
 ReadStatus MultiThreadedReader::PerformRead(int64_t key_index) {
+  string key_str(GetKeyByIndex(key_index));
+
+  if (noop_reads_) {
+    YBNoOp noop(table_);
+    gscoped_ptr<YBPartialRow> row(table_->schema().NewRow());
+    CHECK_OK(row->SetBinary("k", key_str));
+    Status s = noop.Execute(*row);
+    if (s.ok()) {
+      return ReadStatus::OK;
+    }
+    LOG(ERROR) << "NoOp failed" << s.CodeAsString();
+    return ReadStatus::OTHER_ERROR;
+  }
+
   uint64_t read_ts = client_->GetLatestObservedTimestamp();
   YBScanner scanner(table_);
   CHECK_OK(scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
-  string key_str(GetKeyByIndex(key_index));
   CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
   CHECK_OK(scanner.AddConjunctPredicate(
       table_->NewComparisonPredicate(

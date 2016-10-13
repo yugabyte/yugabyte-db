@@ -1038,6 +1038,12 @@ void TabletServiceImpl::ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
   context->RespondSuccess();
 }
 
+void TabletServiceImpl::NoOp(const NoOpRequestPB *req,
+                             NoOpResponsePB *resp,
+                             rpc::RpcContext *context) {
+  context->RespondSuccess();
+}
+
 void TabletServiceImpl::Scan(const ScanRequestPB* req,
                              ScanResponsePB* resp,
                              rpc::RpcContext* context) {

@@ -212,8 +212,8 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
 }
 
 Status YBScanner::Data::OpenTablet(const string& partition_key,
-                                     const MonoTime& deadline,
-                                     set<string>* blacklist) {
+                                   const MonoTime& deadline,
+                                   set<string>* blacklist) {
 
   PrepareRequest(YBScanner::Data::NEW);
   next_req_.clear_scanner_id();

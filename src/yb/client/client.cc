@@ -84,6 +84,8 @@ using yb::master::TabletLocationsPB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
+using yb::tserver::NoOpRequestPB;
+using yb::tserver::NoOpResponsePB;
 using yb::tserver::ScanResponsePB;
 using std::set;
 using std::string;
@@ -111,6 +113,7 @@ namespace client {
 using internal::Batcher;
 using internal::ErrorCollector;
 using internal::MetaCache;
+using internal::RemoteTabletServer;
 using sp::shared_ptr;
 
 static const int kHtTimestampBitsToShift = 12;
@@ -1044,6 +1047,105 @@ Status YBTableAlterer::Alter() {
     string alter_name = data_->rename_to_.get_value_or(data_->table_name_);
     RETURN_NOT_OK(data_->client_->data_->WaitForAlterTableToFinish(
         data_->client_, alter_name, deadline));
+  }
+
+  return Status::OK();
+}
+
+////////////////////////////////////////////////////////////
+// YBNoOp
+////////////////////////////////////////////////////////////
+
+YBNoOp::YBNoOp(YBTable* table)
+  : table_(table) {
+}
+
+YBNoOp::~YBNoOp() {
+}
+
+Status YBNoOp::Execute(const YBPartialRow& key) {
+  string encoded_key;
+  RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(MonoDelta::FromMilliseconds(5000));
+
+  NoOpRequestPB noop_req;
+  NoOpResponsePB noop_resp;
+
+  for (int attempt = 1; attempt < 11; attempt++) {
+    Synchronizer sync;
+    scoped_refptr<internal::RemoteTablet> remote_;
+    table_->client()->data_->meta_cache_->LookupTabletByKey(table_,
+                                                            encoded_key,
+                                                            deadline,
+                                                            &remote_,
+                                                            sync.AsStatusCallback());
+    RETURN_NOT_OK(sync.Wait());
+
+    RemoteTabletServer *ts = nullptr;
+    vector<RemoteTabletServer*> candidates;
+    set<string> blacklist; // TODO: empty set for now.
+    Status lookup_status = table_->client()->data_->GetTabletServer(
+       table_->client(),
+       remote_,
+       YBClient::ReplicaSelection::LEADER_ONLY,
+       blacklist,
+       &candidates,
+       &ts);
+
+    // If we get ServiceUnavailable, this indicates that the tablet doesn't
+    // currently have any known leader. We should sleep and retry, since
+    // it's likely that the tablet is undergoing a leader election and will
+    // soon have one.
+    if (lookup_status.IsServiceUnavailable() &&
+        MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+      const int sleep_ms = attempt * 100;
+      VLOG(1) << "Tablet " << remote_->tablet_id() << " current unavailable: "
+              << lookup_status.ToString() << ". Sleeping for " << sleep_ms << "ms "
+              << "and retrying...";
+      SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
+      continue;
+    }
+    RETURN_NOT_OK(lookup_status);
+
+    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    if (deadline.ComesBefore(now)) {
+      return STATUS(TimedOut, "Op timed out, deadline expired");
+    }
+
+    // Recalculate the deadlines.
+    // If we have other replicas beyond this one to try, then we'll use the default RPC timeout.
+    // That gives us time to try other replicas later. Otherwise, use the full remaining deadline
+    // for the user's call.
+    MonoTime rpc_deadline;
+    if (static_cast<int>(candidates.size()) - blacklist.size() > 1) {
+      rpc_deadline = now;
+      rpc_deadline.AddDelta(table_->client()->default_rpc_timeout());
+      rpc_deadline = MonoTime::Earliest(deadline, rpc_deadline);
+    } else {
+      rpc_deadline = deadline;
+    }
+
+    RpcController controller;
+    controller.set_deadline(rpc_deadline);
+
+    CHECK(ts->proxy());
+    const Status rpc_status = ts->proxy()->NoOp(noop_req, &noop_resp, &controller);
+    if (rpc_status.ok() && !noop_resp.has_error()) {
+      break;
+    }
+
+    LOG(INFO) << rpc_status.CodeAsString();
+    if (noop_resp.has_error()) {
+      Status s = StatusFromPB(noop_resp.error().status());
+      LOG(INFO) << rpc_status.CodeAsString();
+    }
+    /*
+     * TODO: For now, we just try a few attempts and exit. Ideally, we should check for
+     * errors that are retriable, and retry if so.
+     * RETURN_NOT_OK(CanBeRetried(true, rpc_status, server_status, rpc_deadline, deadline,
+     *                         candidates, blacklist));
+     */
   }
 
   return Status::OK();
