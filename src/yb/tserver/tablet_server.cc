@@ -91,7 +91,8 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   opts_.SetMasterAddresses(new_master_addresses);
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
-            << new_config.opid_index() << " new masters=" << new_master_addresses.get();
+            << new_config.opid_index() << " new masters="
+            << HostPort::ToCommaSeparatedString(*new_master_addresses.get());
 
   heartbeater_->set_master_addresses(new_master_addresses);
 

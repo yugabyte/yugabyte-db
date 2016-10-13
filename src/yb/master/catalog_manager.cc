@@ -1561,8 +1561,8 @@ void CatalogManager::NotifyTabletDeleteFinished(const string& tserver_uuid,
   }
 
   if (!ts_desc->IsTabletDeletePending(tablet_id)) {
-    LOG(ERROR) << "Pending delete for tablet " << tablet_id << " in ts "
-               << tserver_uuid << " doesn't exist";
+    LOG(WARNING) << "Pending delete for tablet " << tablet_id << " in ts "
+                 << tserver_uuid << " doesn't exist";
     return;
   }
   LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
@@ -3894,13 +3894,13 @@ Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
 Status CatalogManager::SetBlackList(const BlacklistPB& blacklist, bool bootup) {
   int64_t total_load = 0;
   if (!blacklist_tservers_.empty()) {
-    // Just warn if we are overwriting.
-    LOG(WARNING) << Substitute("Overwriting $0 blacklisted servers with load $1.",
-                               blacklist_tservers_.size(), initial_blacklist_load_);
-    initial_blacklist_load_ = 0;
+    return STATUS(InvalidArgument, Substitute("Cannot overwrite blacklist of size $0 with load $1.",
+                                              blacklist_tservers_.size(), initial_blacklist_load_));
   }
+
   LOG(INFO) << "Set blacklist size=" << blacklist.hosts_size() << ", bootup=" << bootup
             << " num_tablets=" << tablet_map_.size();
+  int num_blacklist_valid = 0;
   for (const auto &hp : blacklist.hosts()) {
     // We always set the host port info here, the load might not be available, especially after
     // new leader bootup.
@@ -3918,14 +3918,15 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist, bool bootup) {
               << "', load=" << load;
     bli.last_reported_load = load;
     total_load += load;
+    num_blacklist_valid++;
   }
-  initial_blacklist_load_ = total_load;
 
   // If it is the new leader bootup case or there are no blacklist nodes, we do not
   // have the initial load on the blacklist.
-  if (bootup || blacklist.hosts_size() == 0) {
+  if (bootup || blacklist.hosts_size() == 0 || num_blacklist_valid != blacklist.hosts_size()) {
     is_initial_blacklist_load_set_ = false;
   } else {
+    initial_blacklist_load_ = total_load;
     is_initial_blacklist_load_set_ = true;
   }
 
@@ -3966,12 +3967,13 @@ Status CatalogManager::SetClusterConfig(
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
   LOG(INFO) << "Blacklist completion check start " << blacklist_tservers_.empty()
-               << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
+            << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
   int64_t total_pending = 0;
-
+  int num_blacklist_valid = 0;
   for (auto entry : blacklist_tservers_) {
     // If it is a valid uuid and there was no last reported load, then we stop getting its load.
     if (entry.uuid != "" && entry.last_reported_load == 0) {
+      num_blacklist_valid++;
       continue;
     }
 
@@ -3981,6 +3983,8 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
     if (ts_desc == nullptr) {
       continue;
     }
+
+    num_blacklist_valid++;
     if (entry.uuid == "") {
       entry.uuid = ts_desc->permanent_uuid();
     }
@@ -3991,7 +3995,8 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   }
 
   // Set the initial load after a reboot/new leader case only when we have some blacklisted nodes.
-  if (!is_initial_blacklist_load_set_ && !blacklist_tservers_.empty()) {
+  if (!is_initial_blacklist_load_set_ && !blacklist_tservers_.empty() &&
+      num_blacklist_valid == blacklist_tservers_.size()) {
     initial_blacklist_load_ = total_pending;
     is_initial_blacklist_load_set_ = true;
   }
@@ -3999,14 +4004,16 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
   // We do not expect the load to increase, bail out for now if it does, with some logging.
   // This could happen if new ones are being added while we were taking init load snapshot,
   // not an error case. The in-transit ones that were being added will also get removed soon.
-  if (initial_blacklist_load_ < total_pending) {
+  if (is_initial_blacklist_load_set_ && initial_blacklist_load_ < total_pending) {
     LOG(WARNING) << "Blacklist load has increased from " << initial_blacklist_load_
-                 << " to " << total_pending;
+                 << " to " << total_pending << " num_valid=" << num_blacklist_valid;
     resp->set_percent(0);
     return Status::OK();
   }
 
-  LOG(INFO) << "Load went from " << initial_blacklist_load_ << " to " << total_pending;
+  LOG(INFO) << "Load went from " << initial_blacklist_load_ << " to "
+            << total_pending << ", num_valid=" << num_blacklist_valid << ", set="
+            << is_initial_blacklist_load_set_;
 
   if (initial_blacklist_load_ == 0) {
     // For case where there are known blacklisted servers but load unknown, ask client to retry.

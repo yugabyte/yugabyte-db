@@ -251,7 +251,13 @@ Status Heartbeater::Thread::ConnectToMaster() {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   // TODO send heartbeats without tablet reports to non-leader masters.
-  RETURN_NOT_OK(FindLeaderMaster(deadline, &leader_master_hostport_));
+  Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
+  if (!s.ok()) {
+    LOG(INFO) << "Find leader master "  <<  leader_master_hostport_.ToString()
+              << " hit error " << s.ToString();
+    return s;
+  }
+
   RETURN_NOT_OK(leader_master_hostport_.ResolveAddresses(&addrs));
   // Pings are common for both Master and Tserver.
   gscoped_ptr<server::GenericServiceProxy> new_proxy;
@@ -420,7 +426,8 @@ void Heartbeater::Thread::RunThread() {
       LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
                    << ": " << s.ToString() << " tries=" << consecutive_failed_heartbeats_
                    << ", num=" << master_addresses_->size()
-                   << ", masters=" << master_addresses_.get() << ", code=" << s.CodeAsString();
+                   << ", masters=" << HostPort::ToCommaSeparatedString(*master_addresses_.get())
+                   << ", code=" << s.CodeAsString();
       consecutive_failed_heartbeats_++;
       if (master_addresses_->size() > 1) {
         // If we encountered a network error (e.g., connection

@@ -371,12 +371,14 @@ class ClusterLoadBalancer::ClusterLoadState {
     }
     // If we ask to use placement information, check against it.
     if (placement_info && !HasValidPlacement(to_ts, placement_info)) {
+      LOG(INFO) << "tablet server " << to_ts << " has invalid placement info. "
+                << "Not allowing it to take more tablets.";
       return false;
     }
     // If this server has a pending tablet delete, don't use it.
     if (servers_with_pending_deletes_.count(to_ts)) {
       LOG(INFO) << "tablet server " << to_ts << " has a pending delete. "
-                <<  "Not allowing it to take more tablets";
+                << "Not allowing it to take more tablets";
       return false;
     }
     // If all checks pass, return true.
@@ -603,6 +605,14 @@ const PlacementInfoPB& ClusterLoadBalancer::GetPlacementByTablet(const TabletId&
   return state_->placement_by_table_.at(table_id);
 }
 
+int ClusterLoadBalancer::get_total_wrong_placement() const {
+  return state_->tablets_wrong_placement_.size();
+}
+
+int ClusterLoadBalancer::get_total_blacklisted_servers() const {
+  return state_->blacklisted_servers_.size();
+}
+
 int ClusterLoadBalancer::get_total_over_replication() const {
   return state_->tablets_over_replicated_.size();
 }
@@ -729,8 +739,20 @@ bool ClusterLoadBalancer::AnalyzeTablets() {
   state_->SortLeaderData();
 
   VLOG(1) << Substitute(
-      "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2",
-      get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets());
+      "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
+      "Wrong placement: $3. BlackListed: $4.",
+      get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
+      get_total_wrong_placement(), get_total_blacklisted_servers());
+
+  // Temp log to get info when there are blacklisted.
+  if (get_total_blacklisted_servers() != 0) {
+    LOG(INFO) << Substitute(
+        "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
+        "Wrong placement: $3. BlackListed: $4.",
+        get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
+        get_total_wrong_placement(), get_total_blacklisted_servers());
+  }
+
   return true;
 }
 
@@ -1052,7 +1074,7 @@ void ClusterLoadBalancer::RemoveReplica(
 
 void ClusterLoadBalancer::StepDownLeader(
      const TabletId& tablet_id, const TabletServerId& ts_uuid) {
-  LOG(INFO) << Substitute("Stepping down tablet leader $0 from $1", tablet_id, ts_uuid);
+  LOG(INFO) << Substitute("Stepping down leader $0 from tablet $1.", ts_uuid, tablet_id);
   SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
      false /* should_remove_leader */);
   state_->StepDownLeader(tablet_id, ts_uuid);

@@ -233,6 +233,8 @@ class ClusterLoadBalancer {
   int get_total_starting_tablets() const;
   int get_total_running_tablets() const;
 
+  int get_total_wrong_placement() const;
+  int get_total_blacklisted_servers() const;
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
   // VOTER, but it's not a VOTER yet.

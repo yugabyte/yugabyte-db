@@ -1463,7 +1463,8 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
     s = IsLeaderReadyForChangeConfigUnlocked(type);
     if (!s.ok()) {
-      LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type);
+      LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type)
+                << " due to error " << s.ToString();
       *error_code = TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG ;
       return s;
     }
