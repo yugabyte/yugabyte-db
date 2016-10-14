@@ -88,7 +88,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // The software version of YB to install.
     // TODO: replace with a nicer string as default.
     public String ybServerPackage =
-        "yb-server-0.0.1-SNAPSHOT.569267b3cfb5c2c879fb79567d75225fe26ec8fe.tar.gz";
+        "yb-server-0.0.1-SNAPSHOT.1d7270931187f362b863d2af203ea858347ebc90.tar.gz";
 
     public String toString() {
       return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type=" +
