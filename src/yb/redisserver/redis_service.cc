@@ -6,6 +6,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/redis_helpers.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
