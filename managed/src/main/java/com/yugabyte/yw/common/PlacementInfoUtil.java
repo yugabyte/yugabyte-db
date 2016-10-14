@@ -4,8 +4,13 @@ package com.yugabyte.yw.common;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -54,9 +59,6 @@ public class PlacementInfoUtil {
     // Compose a unique name for the universe.
     taskParams.nodePrefix = Long.toString(customerId) + "-" + universe.name;
 
-    // Compute and fill in the placement info.
-    taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
-
     // Save the universe version to check for ops like edit universe as we did not lock the
     // universe and might get overwritten when this operation is finally run.
     taskParams.expectedUniverseVersion = universe.version;
@@ -80,17 +82,25 @@ public class PlacementInfoUtil {
         LOG.info("Num nodes changing from {} to {}.",
                  existingIntent.numNodes, taskParams.userIntent.numNodes);
         taskParams.nodeDetailsSet.addAll(existingNodes);
+
+        taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
       } else {
+        // Compute and fill in the placement info.
+        taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+
         // Here for full move based edit or full move + expand case.
         for (NodeDetails node : existingNodes) {
           node.state = NodeDetails.NodeState.ToBeDecommissioned;
           taskParams.nodeDetailsSet.add(node);
         }
       }
+    } else {
+      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
     }
 
     // Compute the nodes that should be configured for this operation.
-    taskParams.nodeDetailsSet.addAll(configureNewNodes(taskParams.nodePrefix,
+    taskParams.nodeDetailsSet.addAll(configureNewNodes(universe,
+                                                       taskParams.nodePrefix,
                                                        getStartIndex(universe),
                                                        numNewNodes,
                                                        numNewMasters,
@@ -168,9 +178,119 @@ public class PlacementInfoUtil {
     }
   }
 
+  // Helper API to sort an given map in ascending order of its values and return the same.
+  private static Map<UUID, Integer> sortByValues(Map<UUID, Integer> map) { 
+    List<Map.Entry<UUID, Integer>> list = new LinkedList<Map.Entry<UUID, Integer>>(map.entrySet());
+    Collections.sort(list, new Comparator<Map.Entry<UUID, Integer>>() {
+      public int compare(Map.Entry<UUID, Integer> o1, Map.Entry<UUID, Integer> o2) {
+        return (o1.getValue()).compareTo(o2.getValue());
+      }
+    });
+
+    Map<UUID, Integer> sortedHashMap = new LinkedHashMap<UUID, Integer>();
+    for (Map.Entry<UUID, Integer> entry : list) {
+      sortedHashMap.put(entry.getKey(), entry.getValue());
+    }
+    return sortedHashMap;
+  }
+
+  // Structure for tracking the calculated placement indexes on cloud/region/az.
+  private static class PlacementIndexes {
+    public int cloudIdx = 0;
+    public int regionIdx = 0;
+    public int azIdx = 0;
+
+    public PlacementIndexes(int aIdx, int rIdx, int cIdx) {
+      cloudIdx = cIdx;
+      regionIdx= rIdx;
+      azIdx = aIdx;
+    }
+
+    public String toString() {
+      return "[" + cloudIdx + ":" + regionIdx + ":" + azIdx + "]";
+    }
+  }
+
+  // Create the ordered (by increasing node count per AZ) list of placement indices in the
+  // given placement info.
+  private static LinkedHashSet<PlacementIndexes>
+      findPlacementsOfAZUuid(Map<UUID, Integer> azUuids,
+                             PlacementInfo placementInfo) {
+    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    for (UUID targetAZUuid : azUuids.keySet()) {
+      int cIdx = 0;
+      for (PlacementCloud cloud : placementInfo.cloudList) {
+        int rIdx = 0;
+        for (PlacementRegion region : cloud.regionList) {
+          int aIdx = 0;
+          for (PlacementAZ az : region.azList) {
+            if (az.uuid.equals(targetAZUuid)) {
+              placements.add(new PlacementIndexes(aIdx, rIdx, cIdx));
+              continue;
+            }
+            aIdx++;
+          }
+          rIdx++;
+        }
+        cIdx++;
+      }
+    }
+    LOG.debug("Placement indexes {}.", placements);
+    return placements;
+  }
+  
+  private static LinkedHashSet<PlacementIndexes> getBasePlacement(int numNodes,
+		                                                          PlacementInfo placementInfo) {
+    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    for (int nodeIdx = 0; nodeIdx < numNodes; nodeIdx++) {
+      int cIdx = 0;
+      for (PlacementCloud cloud : placementInfo.cloudList) {
+        int rIdx = 0;
+        for (PlacementRegion region : cloud.regionList) {
+          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+            placements.add(new PlacementIndexes(azIdx, rIdx, cIdx));
+          }
+        }
+        rIdx++;
+      }
+      cIdx++;
+    }
+
+    LOG.debug("Base placement indexes {}.", placements);
+    return placements;
+  }
+
+  // Return the set of indices for cloud/region/zone in the given placementInfo based on
+  // the current distribution of nodes in the zones.
+  private static LinkedHashSet<PlacementIndexes> getPlacementIndices(Universe universe,
+                                                                     int numNodes,
+                                                                     PlacementInfo placementInfo) {
+    // For universe creation case, create a simple round robin list of placements.
+    if (universe.getNodes().isEmpty()) {
+      return getBasePlacement(numNodes, placementInfo);
+    }
+
+    // Get node count per azUuid in the current universe.
+    Map<UUID, Integer> azUuidToNumNodes = new HashMap<UUID, Integer>();
+    for (NodeDetails node : universe.getNodes()) {
+      UUID azUuid = node.azUuid;
+      if (!azUuidToNumNodes.containsKey(azUuid)) {
+        azUuidToNumNodes.put(azUuid, 0);
+      }
+      azUuidToNumNodes.put(azUuid, azUuidToNumNodes.get(azUuid) + 1);
+    }
+
+    for (Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
+       LOG.info(" {} -> {}", entry.getKey(), entry.getValue());
+    }
+
+    return findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes), placementInfo);
+  }
+
   /**
    * Configures the set of nodes to be created.
    *
+   * @param universe the universe in which the new nodes are going to be configured.
    * @param nodePrefix node name prefix.
    * @param startIndex index to used for node naming.
    * @param numNodes   number of nodes desired.
@@ -179,7 +299,8 @@ public class PlacementInfoUtil {
    *
    * @return set of node details with their placement info filled in.
    */
-  private static Set<NodeDetails> configureNewNodes(String nodePrefix,
+  private static Set<NodeDetails> configureNewNodes(Universe universe,
+                                                    String nodePrefix,
                                                     int startIndex,
                                                     int numNodes,
                                                     int numMastersToChoose,
@@ -188,22 +309,29 @@ public class PlacementInfoUtil {
     Map<String, NodeDetails> newNodesMap = new HashMap<String, NodeDetails>();
 
     // Create the names and known properties of all the cluster nodes.
-    int cloudIdx = 0;
-    int regionIdx = 0;
-    int azIdx = 0; // TODO: Pick a different index from the last round.
+    LinkedHashSet<PlacementIndexes> indexes =
+        getPlacementIndices(universe, numNodes, placementInfo);
+    Iterator<PlacementIndexes> iter = indexes.iterator();
     for (int nodeIdx = startIndex; nodeIdx < startIndex + numNodes; nodeIdx++) {
+      PlacementIndexes index = null;
+      if (iter.hasNext()) {
+        index = iter.next();
+      } else {
+        iter = indexes.iterator();
+        index = iter.next();
+      }
       NodeDetails nodeDetails = new NodeDetails();
       // Create a temporary node name. These are fixed once the operation is actually run.
       nodeDetails.nodeName = nodePrefix + "-fake-n" + nodeIdx;
       // Set the cloud.
-      PlacementCloud placementCloud = placementInfo.cloudList.get(cloudIdx);
+      PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
       nodeDetails.cloudInfo = new CloudSpecificInfo();
       nodeDetails.cloudInfo.cloud = placementCloud.name;
       // Set the region.
-      PlacementRegion placementRegion = placementCloud.regionList.get(regionIdx);
+      PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
       nodeDetails.cloudInfo.region = placementRegion.code;
       // Set the AZ and the subnet.
-      PlacementAZ placementAZ = placementRegion.azList.get(azIdx);
+      PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
       nodeDetails.azUuid = placementAZ.uuid;
       nodeDetails.cloudInfo.az = placementAZ.name;
       nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
@@ -217,13 +345,7 @@ public class PlacementInfoUtil {
       newNodesSet.add(nodeDetails);
       newNodesMap.put(nodeDetails.nodeName, nodeDetails);
       LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}.",
-                nodeDetails.toString(), cloudIdx, regionIdx, azIdx);
-
-      // Advance to the next az/region/cloud combo.
-      azIdx = (azIdx + 1) % placementRegion.azList.size();
-      regionIdx = (regionIdx + (azIdx == 0 ? 1 : 0)) % placementCloud.regionList.size();
-      cloudIdx = (cloudIdx + (azIdx == 0 && regionIdx == 0 ? 1 : 0)) %
-          placementInfo.cloudList.size();
+                nodeDetails.toString(), index.cloudIdx, index.regionIdx, index.azIdx);
     }
 
     // For expand/shrink universe case, we do not need to select any new masters and as such
@@ -300,7 +422,7 @@ public class PlacementInfoUtil {
     return maxNodeIdx + 1;
   }
 
-  private static PlacementInfo getPlacementInfo(UserIntent userIntent) {
+  public static PlacementInfo getPlacementInfo(UserIntent userIntent) {
     // We only support a replication factor of 3.
     if (userIntent.replicationFactor != 3) {
       throw new RuntimeException("Replication factor must be 3");
