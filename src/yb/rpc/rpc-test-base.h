@@ -405,9 +405,13 @@ class RpcTestBase : public YBTest {
     gscoped_ptr<ServiceIf> service(new ServiceClass(metric_entity_));
     service_name_ = service->service_name();
     scoped_refptr<MetricEntity> metric_entity = server_messenger_->metric_entity();
-    service_pool_ = new ServicePool(service.Pass(), metric_entity, 50);
+    service_pool_ = new ServicePool(ServicePoolOptions("test",
+                                                       "test",
+                                                       n_worker_threads_,
+                                                       50 /* queue_length */),
+                                    service.Pass(), metric_entity);
     server_messenger_->RegisterService(service_name_, service_pool_);
-    ASSERT_OK(service_pool_->Init(n_worker_threads_));
+    ASSERT_OK(service_pool_->Init());
   }
 
  protected:

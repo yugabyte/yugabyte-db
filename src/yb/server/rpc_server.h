@@ -40,9 +40,7 @@ struct RpcServerOptions {
 
   std::string rpc_bind_addresses;
   uint32_t num_acceptors_per_address;
-  uint32_t num_service_threads;
   uint16_t default_port;
-  size_t service_queue_length;
 };
 
 class RpcServer {
@@ -53,7 +51,7 @@ class RpcServer {
   Status Init(const std::shared_ptr<rpc::Messenger>& messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
-  Status RegisterService(gscoped_ptr<rpc::ServiceIf> service);
+  Status RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> service);
   Status Bind();
   Status Start();
   void Shutdown();

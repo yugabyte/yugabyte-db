@@ -132,7 +132,7 @@ Status ReactorThread::Init() {
                coarse_timer_granularity_.ToSeconds());
 
   // Create Reactor thread.
-  return yb::Thread::Create("reactor", "rpc reactor", &ReactorThread::RunThread, this, &thread_);
+  return yb::Thread::Create("reactor", "reactor", &ReactorThread::RunThread, this, &thread_);
 }
 
 void ReactorThread::Shutdown() {

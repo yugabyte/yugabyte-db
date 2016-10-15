@@ -57,11 +57,12 @@ METRIC_DEFINE_counter(server, rpcs_queue_overflow,
 namespace yb {
 namespace rpc {
 
-ServicePool::ServicePool(gscoped_ptr<ServiceIf> service,
-                         const scoped_refptr<MetricEntity>& entity,
-                         size_t service_queue_length)
-  : service_(service.Pass()),
-    service_queue_(service_queue_length),
+  ServicePool::ServicePool(ServicePoolOptions opts,
+                           gscoped_ptr<ServiceIf> service,
+                           const scoped_refptr<MetricEntity>& entity)
+  : options_(opts),
+    service_(service.Pass()),
+    service_queue_(opts.queue_length),
     incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
     rpcs_timed_out_in_queue_(METRIC_rpcs_timed_out_in_queue.Instantiate(entity)),
     rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
@@ -72,11 +73,11 @@ ServicePool::~ServicePool() {
   Shutdown();
 }
 
-Status ServicePool::Init(int num_threads) {
-  for (int i = 0; i < num_threads; i++) {
+Status ServicePool::Init() {
+  for (int i = 0; i < options_.num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create("service pool", "rpc worker",
-        &ServicePool::RunThread, this, &new_thread));
+    CHECK_OK(yb::Thread::Create(options_.name, options_.short_name, &ServicePool::RunThread, this,
+                                &new_thread));
     threads_.push_back(new_thread);
   }
   return Status::OK();

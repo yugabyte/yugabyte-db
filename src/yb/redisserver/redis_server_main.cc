@@ -23,7 +23,6 @@ static int RedisServerMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  RedisServer::kDefaultPort);
-  FLAGS_rpc_num_service_threads = 20;
 
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {

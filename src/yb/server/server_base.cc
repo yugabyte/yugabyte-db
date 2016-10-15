@@ -58,11 +58,20 @@ TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
 
+DEFINE_int32(generic_svc_num_threads, 10,
+             "Number of RPC worker threads to run for the generic service");
+TAG_FLAG(generic_svc_num_threads, advanced);
+
+DEFINE_int32(generic_svc_queue_length, 50,
+             "RPC Queue length for the generic service");
+TAG_FLAG(generic_svc_queue_length, advanced);
+
 using std::shared_ptr;
 using std::string;
 using std::stringstream;
 using std::vector;
 using strings::Substitute;
+using yb::rpc::ServicePoolOptions;
 
 namespace yb {
 namespace server {
@@ -194,8 +203,9 @@ Status RpcServerBase::DumpServerInfo(const string& path,
   return Status::OK();
 }
 
-Status RpcServerBase::RegisterService(gscoped_ptr<rpc::ServiceIf> rpc_impl) {
-  return rpc_server_->RegisterService(rpc_impl.Pass());
+Status RpcServerBase::RegisterService(const ServicePoolOptions& opts,
+                                      gscoped_ptr<rpc::ServiceIf> rpc_impl) {
+  return rpc_server_->RegisterService(opts, rpc_impl.Pass());
 }
 
 Status RpcServerBase::StartMetricsLogging() {
@@ -251,8 +261,8 @@ void RpcServerBase::MetricsLoggingThread() {
 }
 
 Status RpcServerBase::Start() {
-  RETURN_NOT_OK(RegisterService(make_gscoped_ptr<rpc::ServiceIf>(
-      new GenericServiceImpl(this))));
+  gscoped_ptr<rpc::ServiceIf> gsvc_impl(new GenericServiceImpl(this));
+  RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(generic_svc, gensvc), gsvc_impl.Pass()));
 
   RETURN_NOT_OK(StartRpcServer());
 

@@ -51,14 +51,6 @@ DEFINE_int32(rpc_num_acceptors_per_address, 1,
              "Number of RPC acceptor threads for each bound address");
 TAG_FLAG(rpc_num_acceptors_per_address, advanced);
 
-DEFINE_int32(rpc_num_service_threads, 10,
-             "Number of RPC worker threads to run");
-TAG_FLAG(rpc_num_service_threads, advanced);
-
-DEFINE_int32(rpc_service_queue_length, 50,
-             "Default length of queue for incoming RPC requests");
-TAG_FLAG(rpc_service_queue_length, advanced);
-
 DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
             "Allow binding to ephemeral ports. This can cause problems, so currently "
             "only allowed in tests.");
@@ -69,9 +61,7 @@ namespace yb {
 RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
     num_acceptors_per_address(FLAGS_rpc_num_acceptors_per_address),
-    num_service_threads(FLAGS_rpc_num_service_threads),
-    default_port(0),
-    service_queue_length(FLAGS_rpc_service_queue_length) {
+    default_port(0) {
 }
 
 RpcServer::RpcServer(RpcServerOptions opts)
@@ -112,14 +102,15 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
   return Status::OK();
 }
 
-Status RpcServer::RegisterService(gscoped_ptr<rpc::ServiceIf> service) {
+Status RpcServer::RegisterService(const rpc::ServicePoolOptions& opts,
+                                  gscoped_ptr<rpc::ServiceIf> service) {
   CHECK(server_state_ == INITIALIZED ||
         server_state_ == BOUND) << "bad state: " << server_state_;
   const scoped_refptr<MetricEntity>& metric_entity = messenger_->metric_entity();
   string service_name = service->service_name();
   scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(service.Pass(), metric_entity, options_.service_queue_length);
-  RETURN_NOT_OK(service_pool->Init(options_.num_service_threads));
+    new rpc::ServicePool(opts, service.Pass(), metric_entity);
+  RETURN_NOT_OK(service_pool->Init());
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }

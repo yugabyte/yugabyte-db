@@ -46,6 +46,7 @@ class Webserver;
 namespace rpc {
 class Messenger;
 class ServiceIf;
+class ServicePoolOpts;
 } // namespace rpc
 
 namespace server {
@@ -90,7 +91,7 @@ class RpcServerBase {
   virtual ~RpcServerBase();
 
   Status Init();
-  Status RegisterService(gscoped_ptr<rpc::ServiceIf> rpc_impl);
+  Status RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> rpc_impl);
   Status Start();
   Status StartRpcServer();
   void Shutdown();

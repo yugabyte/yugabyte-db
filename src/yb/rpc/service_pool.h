@@ -30,6 +30,12 @@
 #include "yb/util/thread.h"
 #include "yb/util/status.h"
 
+#define SERVICE_POOL_OPTIONS(name, short_name) \
+  ServicePoolOptions(#name, \
+                     #short_name, \
+                     FLAGS_ ## name ## _num_threads, \
+                     FLAGS_ ## name ## _queue_length)
+
 namespace yb {
 
 class Counter;
@@ -42,17 +48,32 @@ namespace rpc {
 class Messenger;
 class ServiceIf;
 
+struct ServicePoolOptions {
+  ServicePoolOptions(const std::string& p_name,
+                     const std::string& p_short_name,
+                     uint32_t p_num_threads,
+                     size_t p_queue_length)
+  : name(p_name),
+    short_name(p_short_name),
+    num_threads(p_num_threads),
+    queue_length(p_queue_length) {}
+  const std::string name;       // Used for categorizing threads in this pool
+  const std::string short_name; // Used as prefix for thread names
+  const uint32_t num_threads;   // Number of threads that service this pool
+  const size_t queue_length;    // Max queue length allowed by this service
+};
+
 // A pool of threads that handle new incoming RPC calls.
 // Also includes a queue that calls get pushed onto for handling by the pool.
 class ServicePool : public RpcService {
  public:
-  ServicePool(gscoped_ptr<ServiceIf> service,
-              const scoped_refptr<MetricEntity>& metric_entity,
-              size_t service_queue_length);
+  ServicePool(ServicePoolOptions opts,
+              gscoped_ptr<ServiceIf> service,
+              const scoped_refptr<MetricEntity>& metric_entity);
   virtual ~ServicePool();
 
   // Start up the thread pool.
-  virtual Status Init(int num_threads);
+  virtual Status Init();
 
   // Shut down the queue and the thread pool.
   virtual void Shutdown();
@@ -71,6 +92,7 @@ class ServicePool : public RpcService {
 
  private:
   void RunThread();
+  const ServicePoolOptions options_;
   gscoped_ptr<ServiceIf> service_;
   std::vector<scoped_refptr<yb::Thread> > threads_;
   BlockingQueue<InboundCall*> service_queue_;

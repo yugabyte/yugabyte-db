@@ -63,9 +63,34 @@ using std::vector;
 using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::ServiceIf;
+using yb::rpc::ServicePoolOptions;
 using yb::tserver::ConsensusServiceImpl;
 using yb::tserver::RemoteBootstrapServiceImpl;
 using strings::Substitute;
+
+DEFINE_int32(master_svc_num_threads, 10,
+             "Number of RPC worker threads to run for the master service");
+TAG_FLAG(master_svc_num_threads, advanced);
+
+DEFINE_int32(master_consensus_svc_num_threads, 10,
+             "Number of RPC threads for the master consensus service");
+TAG_FLAG(master_consensus_svc_num_threads, advanced);
+
+DEFINE_int32(master_remote_bootstrap_svc_num_threads, 10,
+             "Number of RPC threads for the master remote bootstrap service");
+TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
+
+DEFINE_int32(master_svc_queue_length, 50,
+             "RPC queue length for master service");
+TAG_FLAG(master_svc_queue_length, advanced);
+
+DEFINE_int32(master_consensus_svc_queue_length, 50,
+             "RPC queue length for master consensus service");
+TAG_FLAG(master_consensus_svc_queue_length, advanced);
+
+DEFINE_int32(master_remote_bootstrap_svc_queue_length, 50,
+             "RPC queue length for master remote bootstrap service");
+TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
 namespace yb {
 namespace master {
@@ -127,10 +152,12 @@ Status Master::StartAsync() {
   gscoped_ptr<ServiceIf> remote_bootstrap_service(
     new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
 
-
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(impl.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(consensus_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(remote_bootstrap_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(master_svc, msvc), impl.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(master_consensus_svc, conssvc), consensus_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(master_remote_bootstrap_svc, rbssvc), remote_bootstrap_service.Pass()));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.

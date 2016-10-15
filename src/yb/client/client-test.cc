@@ -70,6 +70,8 @@ DECLARE_int32(scanner_gc_check_interval_us);
 DECLARE_int32(scanner_inject_latency_on_each_batch_ms);
 DECLARE_int32(scanner_max_batch_size_bytes);
 DECLARE_int32(scanner_ttl_ms);
+DECLARE_int32(tablet_server_svc_queue_length);
+
 DEFINE_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
@@ -2658,9 +2660,9 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
+  FLAGS_tablet_server_svc_queue_length = 1;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
-    ts->options()->rpc_opts.service_queue_length = 1;
     ASSERT_OK(ts->Restart());
     ASSERT_OK(ts->WaitStarted());
   }

@@ -153,10 +153,15 @@ class BogusServicePool : public ServicePool {
  public:
   BogusServicePool(gscoped_ptr<ServiceIf> service,
                    const scoped_refptr<MetricEntity>& metric_entity,
+                   int num_threads,
                    size_t service_queue_length)
-    : ServicePool(service.Pass(), metric_entity, service_queue_length) {
+    : ServicePool(ServicePoolOptions("bogus",
+                                     "bogus",
+                                     num_threads,
+                                     service_queue_length),
+                  service.Pass(), metric_entity) {
   }
-  virtual Status Init(int num_threads) OVERRIDE {
+  virtual Status Init() OVERRIDE {
     // Do nothing
     return Status::OK();
   }
@@ -192,9 +197,10 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   gscoped_ptr<ServiceIf> service(new GenericCalculatorService());
   service_name_ = service->service_name();
   service_pool_ = new BogusServicePool(service.Pass(),
-                                      server_messenger_->metric_entity(),
-                                      kMaxConcurrency);
-  ASSERT_OK(service_pool_->Init(n_worker_threads_));
+                                       server_messenger_->metric_entity(),
+                                       n_worker_threads_,
+                                       kMaxConcurrency);
+  ASSERT_OK(service_pool_->Init());
   server_messenger_->RegisterService(service_name_, service_pool_);
 
   scoped_refptr<yb::Thread> threads[3];

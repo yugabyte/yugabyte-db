@@ -34,15 +34,49 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-using yb::rpc::ServiceIf;
-using yb::tablet::TabletPeer;
 using std::make_shared;
 using std::shared_ptr;
 using std::vector;
+using yb::rpc::ServiceIf;
+using yb::rpc::ServicePoolOptions;
+using yb::tablet::TabletPeer;
+
+DEFINE_int32(tablet_server_svc_num_threads, 100,
+             "Number of RPC worker threads for the TS service");
+TAG_FLAG(tablet_server_svc_num_threads, advanced);
+
+DEFINE_int32(ts_admin_svc_num_threads, 10,
+             "Number of RPC worker threads for the TS admin service");
+TAG_FLAG(ts_admin_svc_num_threads, advanced);
+
+DEFINE_int32(ts_consensus_svc_num_threads, 10,
+             "Number of RPC worker threads for the TS consensus service");
+TAG_FLAG(ts_consensus_svc_num_threads, advanced);
+
+DEFINE_int32(ts_remote_bootstrap_svc_num_threads, 10,
+             "Number of RPC worker threads for the TS remote bootstrap service");
+TAG_FLAG(ts_remote_bootstrap_svc_num_threads, advanced);
+
+DEFINE_int32(tablet_server_svc_queue_length, 256,
+             "RPC queue length for the TS service");
+TAG_FLAG(tablet_server_svc_queue_length, advanced);
+
+DEFINE_int32(ts_admin_svc_queue_length, 50,
+             "RPC queue length for the TS admin service");
+TAG_FLAG(ts_admin_svc_queue_length, advanced);
+
+DEFINE_int32(ts_consensus_svc_queue_length, 50,
+             "RPC queue length for the TS consensus service");
+TAG_FLAG(ts_consensus_svc_queue_length, advanced);
+
+DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
+             "RPC queue length for the TS remote bootstrap service");
+TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
 namespace yb {
 namespace tserver {
@@ -139,10 +173,14 @@ Status TabletServer::Start() {
   gscoped_ptr<ServiceIf> remote_bootstrap_service(
       new RemoteBootstrapServiceImpl(fs_manager_.get(), tablet_manager_.get(), metric_entity()));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(ts_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(admin_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(consensus_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(remote_bootstrap_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(tablet_server_svc, tssvc), ts_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(ts_admin_svc, admsvc), admin_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(ts_consensus_svc, conssvc), consensus_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+     SERVICE_POOL_OPTIONS(ts_remote_bootstrap_svc, rbssvc), remote_bootstrap_service.Pass()));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
