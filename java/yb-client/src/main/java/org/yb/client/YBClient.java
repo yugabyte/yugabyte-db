@@ -17,14 +17,19 @@
 package org.yb.client;
 
 import com.google.common.net.HostAndPort;
+
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.ColumnSchema;
 import org.yb.Common;
+import org.yb.Common.TableType;
 import org.yb.Schema;
+import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
@@ -50,8 +55,66 @@ public class YBClient implements AutoCloseable {
   // Number of retries on retriable errors, could make it time based as needed.
   private static final int MAX_NUM_RETRIES = 25;
 
+  // Redis default table name.
+  public static final String REDIS_DEFAULT_TABLE_NAME = ".redis";
+
+  // Redis key column name.
+  public static final String REDIS_KEY_COLUMN_NAME = "key";
+
   public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
+  }
+
+  // Convert an integer to native representation of the four bytes it is made up of.
+  // Keeps the big-endianness order by saving MSB in left most index (0) and LSB in
+  // right most index (3).
+  private static byte[] toByteArray(int input) {
+    byte[] result = new byte[4];
+
+    result[0] = (byte) (input >> 24);
+    result[1] = (byte) (input >> 16);
+    result[2] = (byte) (input >> 8);
+    result[3] = (byte) (input);
+
+    return result;
+  }
+
+  /**
+   * Create redis table options object.
+   * @param schema Table schema to use for split row creation.
+   * @param numTablets number of pre-split tablets.
+   * @return an options object to be used during table creation.
+   */
+  public static CreateTableOptions getRedisTableOptions(Schema schema, int numTablets) {
+    CreateTableOptions cto = new CreateTableOptions();
+    cto.setTableType(TableType.REDIS_TABLE_TYPE);
+
+    if (numTablets == 0) {
+      LOG.info("Number of tablets cannot be zero, defaulting it to 1.");
+      numTablets = 1;
+    }
+
+    // We split the key space into 4-byte sized partition keys.
+    for (int i = 1; i < numTablets; i++) {
+      PartialRow row = schema.newPartialRow();
+      byte[] bytes = toByteArray(i * (Integer.MAX_VALUE / numTablets));
+      row.addBinary(0, bytes);
+      cto.addSplitRow(row);
+    }
+
+    return cto;
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * @param name Tables name
+   * @param numTablets number of pre-split tablets
+   * @return an object to communicate with the created table.
+   */
+  public YBTable createRedisTable(String name, int numTablets) throws Exception {
+    Schema schema = YBClient.getRedisSchema();
+    CreateTableOptions cto = getRedisTableOptions(schema, numTablets);
+    return createTable(name, schema, cto);
   }
 
   /**
@@ -420,6 +483,17 @@ public class YBClient implements AutoCloseable {
       asyncClient.updateMasterAdresses(host, port, isAdd);
     }
     return resp;
+  }
+
+  /**
+   * Get the basic redis schema.
+   * @return redis schema
+   */
+  public static Schema getRedisSchema() {
+    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(5);
+    columns.add(new ColumnSchema.ColumnSchemaBuilder(REDIS_KEY_COLUMN_NAME, Type.BINARY)
+                    .key(true).build());
+    return new Schema(columns);
   }
 
   /**

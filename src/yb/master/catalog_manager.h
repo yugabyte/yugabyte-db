@@ -245,6 +245,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.name();
   }
 
+  // Return the table's type.
+  const TableType table_type() const {
+    return pb.table_type();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };

@@ -17,7 +17,7 @@ using yb::client::YBRedisWriteOp;
 using std::shared_ptr;
 
 const char* RedisConstants::kRedisTableName = ".redis";
-const char* RedisConstants::kRedisKeyColumnName = "key_column";
+const char* RedisConstants::kRedisKeyColumnName = "key";
 
 shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(YBTable* table, string key, string value) {
   shared_ptr<YBRedisWriteOp> redis_write_to_yb(table->NewRedisWrite());

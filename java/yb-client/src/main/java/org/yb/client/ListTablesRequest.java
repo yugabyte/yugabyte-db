@@ -60,13 +60,8 @@ class ListTablesRequest extends YRpc<ListTablesResponse> {
     final Master.ListTablesResponsePB.Builder respBuilder =
         Master.ListTablesResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    int serversCount = respBuilder.getTablesCount();
-    List<String> tables = new ArrayList<String>(serversCount);
-    for (Master.ListTablesResponsePB.TableInfo info : respBuilder.getTablesList()) {
-      tables.add(info.getName());
-    }
     ListTablesResponse response = new ListTablesResponse(deadlineTracker.getElapsedMillis(),
-                                                         tsUUID, tables);
+                                                         tsUUID, respBuilder.getTablesList());
     return new Pair<ListTablesResponse, Object>(
         response, respBuilder.hasError() ? respBuilder.getError() : null);
   }

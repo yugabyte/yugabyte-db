@@ -68,7 +68,8 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
         schema,
         respBuilder.getTableId().toStringUtf8(),
         ProtobufHelper.pbToPartitionSchema(respBuilder.getPartitionSchema(), schema),
-        respBuilder.getCreateTableDone());
+        respBuilder.getCreateTableDone(),
+        respBuilder.getTableType());
     return new Pair<GetTableSchemaResponse, Object>(
         response, respBuilder.hasError() ? respBuilder.getError() : null);
   }

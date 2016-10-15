@@ -21,6 +21,7 @@ import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.YBClient;
+import org.yb.master.Master;
 import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
 
@@ -125,13 +126,40 @@ public class YBCliCommands implements CommandMarker {
     try {
       ListTablesResponse resp = ybClient.getTablesList();
       StringBuilder sb = new StringBuilder();
-      sb.append("Got " + resp.getTablesList().size() + " tables:\n");
+      sb.append("Got " + resp.getTablesList().size() + " tables [(index) name uuid type]:\n");
       int idx = 1;
-      for (String table : resp.getTablesList()) {
-        sb.append("\t(" + idx + ") " + table + "\n");
+      for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
+        sb.append("\t(" + idx + ") " + table.getName() + " " + table.getId().toStringUtf8() + " " +
+                  table.getTableType() + "\n");
         idx++;
       }
       sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
+      return sb.toString();
+    } catch (Exception e) {
+      return "Failed to fetch tables list from database at " + masterAddresses + ", error: " + e;
+    }
+  }
+
+  @CliCommand(value = "describe table", help = "Info on a table in this database.")
+  public String infoTable(
+      @CliOption(key = { "table", "t" },
+                 mandatory = true,
+                 help = "table name")
+      final String tableName) {
+    try {
+      ListTablesResponse resp = ybClient.getTablesList();
+      StringBuilder sb = new StringBuilder();
+      for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
+        if (table.getName().equals(tableName)) {
+          sb.append("Table info [name uuid type]:\n");
+          sb.append(table.getName() + " " + table.getId().toStringUtf8() + " " +
+                    table.getTableType() + "\n");
+          sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
+          return sb.toString();
+        }
+      }
+      sb.append("Table " + tableName + " not found.\n" +
+                "Time taken: " + resp.getElapsedMillis() + " ms.");
       return sb.toString();
     } catch (Exception e) {
       return "Failed to fetch tables list from database at " + masterAddresses + ", error: " + e;

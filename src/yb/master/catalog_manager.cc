@@ -1506,6 +1506,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->set_table_id(table->id());
   resp->mutable_partition_schema()->CopyFrom(l.data().pb.partition_schema());
   resp->set_create_table_done(!table->IsCreateInProgress());
+  resp->set_table_type(table->metadata().state().pb.table_type());
 
   return Status::OK();
 }
@@ -1530,6 +1531,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     ListTablesResponsePB::TableInfo *table = resp->add_tables();
     table->set_id(entry.second->id());
     table->set_name(ltm.data().name());
+    table->set_table_type(ltm.data().table_type());
   }
   return Status::OK();
 }

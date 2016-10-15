@@ -71,6 +71,7 @@ public class BaseYBTest {
   protected static YBClient syncClient;
   protected static Schema basicSchema = getBasicSchema();
   protected static Schema allTypesSchema = getSchemaWithAllTypes();
+  protected static Schema redisSchema = getRedisSchema();
 
   private static List<String> tableNames = new ArrayList<>();
 
@@ -231,6 +232,10 @@ public class BaseYBTest {
             new ColumnSchema.ColumnSchemaBuilder("timestamp", Type.TIMESTAMP).build());
 
     return new Schema(columns);
+  }
+
+  public static Schema getRedisSchema() {
+    return YBClient.getRedisSchema();
   }
 
   public static Schema getBasicSchema() {

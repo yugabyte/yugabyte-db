@@ -17,6 +17,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.Master;
@@ -33,14 +34,16 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
 
   private final Schema schema;
   private final String name;
+  private final TableType tableType;
   private final Master.CreateTableRequestPB.Builder builder;
 
   CreateTableRequest(YBTable masterTable, String name, Schema schema,
-                     CreateTableOptions builder) {
+                     CreateTableOptions tableOptions) {
     super(masterTable);
     this.schema = schema;
     this.name = name;
-    this.builder = builder.getBuilder();
+    this.tableType = tableOptions.getTableType();
+    this.builder = tableOptions.getBuilder();
   }
 
   @Override
@@ -48,6 +51,7 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     assert header.isInitialized();
     this.builder.setName(this.name);
     this.builder.setSchema(ProtobufHelper.schemaToPb(this.schema));
+    this.builder.setTableType(this.tableType);
     return toChannelBuffer(header, this.builder.build());
   }
 

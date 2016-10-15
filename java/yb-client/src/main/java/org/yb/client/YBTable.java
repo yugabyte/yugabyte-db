@@ -16,6 +16,7 @@
 // under the License.
 package org.yb.client;
 
+import static org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
@@ -43,6 +44,7 @@ public class YBTable {
   private final AsyncYBClient client;
   private final String name;
   private final String tableId;
+  private final TableType tableType;
 
   /**
    * Package-private constructor, use {@link YBClient#openTable(String)} to get an instance.
@@ -51,12 +53,18 @@ public class YBTable {
    * @param schema this table's schema
    */
   YBTable(AsyncYBClient client, String name, String tableId,
-            Schema schema, PartitionSchema partitionSchema) {
+          Schema schema, PartitionSchema partitionSchema, TableType tableType) {
     this.schema = schema;
     this.partitionSchema = partitionSchema;
     this.client = client;
     this.name = name;
     this.tableId = tableId;
+    this.tableType = tableType;
+  }
+
+  YBTable(AsyncYBClient client, String name, String tableId,
+          Schema schema, PartitionSchema partitionSchema) {
+    this(client, name, tableId, schema, partitionSchema, TableType.DEFAULT_TABLE_TYPE);
   }
 
   /**
@@ -65,6 +73,13 @@ public class YBTable {
    */
   public Schema getSchema() {
     return this.schema;
+  }
+
+  /**
+   * Get this table's type.
+   */
+  public TableType getTableType() {
+    return this.tableType;
   }
 
   /**

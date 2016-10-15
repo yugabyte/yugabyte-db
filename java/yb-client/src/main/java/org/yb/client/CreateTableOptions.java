@@ -137,6 +137,15 @@ public class CreateTableOptions {
     return this;
   }
 
+  /**
+   * Return the table type.
+   *
+   * @return the table type of current table.
+   */
+  public TableType getTableType() {
+    return pb.getTableType();
+  }
+
   Master.CreateTableRequestPB.Builder getBuilder() {
     if (!splitRows.isEmpty()) {
       pb.setSplitRows(new Operation.OperationsEncoder().encodeSplitRows(splitRows));

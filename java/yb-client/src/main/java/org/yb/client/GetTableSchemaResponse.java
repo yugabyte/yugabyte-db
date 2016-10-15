@@ -16,6 +16,7 @@
 // under the License.
 package org.yb.client;
 
+import org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 
@@ -26,6 +27,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
   private final PartitionSchema partitionSchema;
   private final boolean createTableDone;
   private final String tableId;
+  private final TableType tableType;
 
   /**
    * @param ellapsedMillis Time in milliseconds since RPC creation to now
@@ -37,12 +39,14 @@ public class GetTableSchemaResponse extends YRpcResponse {
                          Schema schema,
                          String tableId,
                          PartitionSchema partitionSchema,
-                         boolean createTableDone) {
+                         boolean createTableDone,
+                         TableType tableType) {
     super(ellapsedMillis, tsUUID);
     this.schema = schema;
     this.partitionSchema = partitionSchema;
     this.createTableDone = createTableDone;
     this.tableId = tableId;
+    this.tableType = tableType;
   }
 
   /**
@@ -75,5 +79,13 @@ public class GetTableSchemaResponse extends YRpcResponse {
    */
   public String getTableId() {
     return tableId;
+  }
+
+  /**
+   * Get the table type.
+   * @return the table's type.
+   */
+  public TableType getTableType() {
+    return tableType;
   }
 }

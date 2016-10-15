@@ -573,7 +573,8 @@ public class AsyncYBClient implements AutoCloseable {
             name,
             response.getTableId(),
             response.getSchema(),
-            response.getPartitionSchema());
+            response.getPartitionSchema(),
+            response.getTableType());
         // We grab the Deferred first because calling callback on the RPC will reset it and we'd
         // return a different, non-triggered Deferred.
         Deferred<YBTable> d = fakeRpc.getDeferred();

@@ -580,6 +580,9 @@ message GetTableSchemaResponsePB {
 
   // True if the create operation is completed, false otherwise.
   optional bool create_table_done = 6;
+
+  // The table type.
+  optional TableType table_type = 7;
 }
 
 // ============================================================================

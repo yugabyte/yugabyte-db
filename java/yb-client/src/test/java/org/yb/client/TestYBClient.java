@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
+import org.yb.Common.TableType;
 import org.yb.Type;
 import org.yb.util.ServerInfo;
 
@@ -258,6 +259,30 @@ public class TestYBClient extends BaseYBTest {
     HostPortPB responseHost = responseHosts.get(0);
     assertEquals(host1.getHost(), responseHost.getHost());
     assertEquals(host1.getPort(), responseHost.getPort());
+  }
+
+  /**
+   * Test creating, opening and deleting a redis table through a YBClient.
+   */
+  @Test(timeout = 100000)
+  public void testRedisTable() throws Exception {
+    LOG.info("Starting testRedisTable");
+    CreateTableOptions cto = YBClient.getRedisTableOptions(redisSchema, 16);
+    // Check that we can create a redis table.
+    YBTable table = syncClient.createTable(tableName, redisSchema, cto);
+    assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
+    assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
+    assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
+
+    // Check that we can open a table and see that it has the new schema.
+    table = syncClient.openTable(tableName);
+    assertEquals(redisSchema.getColumnCount(), table.getSchema().getColumnCount());
+    assertTrue(table.getPartitionSchema().isSimpleRangePartitioning());
+    assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
+
+    // Check that we can delete it.
+    syncClient.deleteTable(tableName);
+    assertFalse(syncClient.getTablesList().getTablesList().contains(tableName));
   }
 
   /**
