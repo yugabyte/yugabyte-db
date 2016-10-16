@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -3617,7 +3617,7 @@
+@@ -3697,7 +3697,7 @@
                 AND n.nspname = $1
                 AND t.typname = $2
                 AND t.typtype = 'e'
@@ -9,7 +9,7 @@
          ),
          $3,
          $4
-@@ -3645,7 +3645,7 @@
+@@ -3725,7 +3725,7 @@
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typname = $1
                 AND t.typtype = 'e'
@@ -18,7 +18,25 @@
          ),
          $2,
          $3
-@@ -9459,54 +9459,3 @@
+@@ -6031,7 +6031,7 @@
+ CREATE OR REPLACE FUNCTION findfuncs( NAME, TEXT, TEXT )
+ RETURNS TEXT[] AS $$
+     SELECT ARRAY(
+-        SELECT DISTINCT (quote_ident(n.nspname) || '.' || quote_ident(p.proname)) COLLATE "C" AS pname
++        SELECT DISTINCT (quote_ident(n.nspname) || '.' || quote_ident(p.proname)) AS pname
+           FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+          WHERE n.nspname = $1
+@@ -6048,7 +6048,7 @@
+ CREATE OR REPLACE FUNCTION findfuncs( TEXT, TEXT )
+ RETURNS TEXT[] AS $$
+     SELECT ARRAY(
+-        SELECT DISTINCT (quote_ident(n.nspname) || '.' || quote_ident(p.proname)) COLLATE "C" AS pname
++        SELECT DISTINCT (quote_ident(n.nspname) || '.' || quote_ident(p.proname)) AS pname
+           FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+          WHERE pg_catalog.pg_function_is_visible(p.oid)
+@@ -9539,54 +9539,3 @@
  
  GRANT SELECT ON tap_funky           TO PUBLIC;
  GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;
