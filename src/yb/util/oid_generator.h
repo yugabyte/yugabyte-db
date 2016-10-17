@@ -36,12 +36,15 @@ class ObjectIdGenerator {
   std::string Next();
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(ObjectIdGenerator);
-
   typedef simple_spinlock LockType;
 
-  LockType oid_lock_;
-  boost::uuids::random_generator oid_generator_;
+  // Multiple instances of OID generators with corresponding locks are used to
+  // avoid bottlenecking on a single lock.
+  static const int kNumOidGenerators = 17;
+  LockType oid_lock_[kNumOidGenerators];
+  boost::uuids::random_generator oid_generator_[kNumOidGenerators];
+
+  DISALLOW_COPY_AND_ASSIGN(ObjectIdGenerator);
 };
 
 } // namespace yb

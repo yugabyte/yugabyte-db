@@ -20,12 +20,18 @@
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 
 string ObjectIdGenerator::Next() {
-  std::lock_guard<LockType> l(oid_lock_);
-  boost::uuids::uuid oid = oid_generator_();
+
+  // Use the thread id to select a random oid generator.
+  const int idx = yb::Thread::UniqueThreadId() % kNumOidGenerators;
+  std::unique_lock<LockType> lck(oid_lock_[idx]);
+  boost::uuids::uuid oid = oid_generator_[idx]();
+  lck.unlock();
+
   const uint8_t *uuid = oid.data;
   return StringPrintf("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
                uuid[0], uuid[1], uuid[2], uuid[3], uuid[4], uuid[5], uuid[6], uuid[7],
