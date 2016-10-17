@@ -82,7 +82,7 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
-    "serverPackage": "yb-server-0.0.1-SNAPSHOT.1d7270931187f362b863d2af203ea858347ebc90.tar.gz",
+    "serverPackage": "yb-server-0.0.1-SNAPSHOT.c31ccae363d3a94ab5ebc7088212a92729df17ea.tar.gz",
     "numNodes": 3, "isMultiAZ": true, "instanceType": "m3.medium"
   };
   

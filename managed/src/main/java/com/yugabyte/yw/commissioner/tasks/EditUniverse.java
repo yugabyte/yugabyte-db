@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -105,15 +106,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Running)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
 
-      // Now finalize the cluster configuration change tasks.
-      createMoveMastersTasks(SubTaskType.WaitForDataMigration);
-
-      // Persist the placement info and blacklisted node info into the YB master.
-      // This is done after master config change jobs, so that the new master leader can perform
-      // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-      createPlacementInfoTask(blacklistNodes).setUserSubTask(SubTaskType.WaitForDataMigration);
+      if (!newMasters.isEmpty()) {
+        // Now finalize the cluster configuration change tasks.
+        createMoveMastersTasks(SubTaskType.WaitForDataMigration);
+      }
 
       if (!blacklistNodes.isEmpty()) {
+        // Persist the placement info and blacklisted node info into the YB master.
+        // This is done after master config change jobs, so that the new master leader can perform
+        // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
+        createPlacementInfoTask(blacklistNodes).setUserSubTask(SubTaskType.WaitForDataMigration);
+
         // Wait for %age completion of the tablet move from master.
         createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
 
@@ -121,9 +124,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         createDestroyServerTasks(blacklistNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
 
         // Clearing the blacklist on the yb cluster master is handled on the server side.
+      } else {
+        // If only tservers are added or removed, wait for load to balance across all tservers.
+        createWaitForLoadBalanceTask().setUserSubTask(SubTaskType.WaitForDataMigration);
       }
-
-      // TODO: If only tservers are added or removed, wait for load to balance across all tservers.
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
@@ -221,6 +225,20 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     waitForMove.initialize(params);
     // Add it to the task list.
     taskList.addTask(waitForMove);
+    // Add the task list to the task queue.
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+  
+  private TaskList createWaitForLoadBalanceTask() {
+    TaskList taskList = new TaskList("WaitForDataMove", executor);
+    WaitForLoadBalance.Params params = new WaitForLoadBalance.Params();
+    params.universeUUID = taskParams().universeUUID;
+    // Create the task.
+    WaitForLoadBalance waitForLoadBalance = new WaitForLoadBalance();
+    waitForLoadBalance.initialize(params);
+    // Add it to the task list.
+    taskList.addTask(waitForLoadBalance);
     // Add the task list to the task queue.
     taskListQueue.add(taskList);
     return taskList;
