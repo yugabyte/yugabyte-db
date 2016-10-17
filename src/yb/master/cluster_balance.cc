@@ -405,6 +405,9 @@ class ClusterLoadBalancer::ClusterLoadState {
     const auto& tablet_meta = per_tablet_meta_[tablet_id];
     // Prioritize taking away load from blacklisted servers, then from wrong placements.
     bool found_match = false;
+    // Use these to do a fallback move, if placement id is the only thing that does not match.
+    TabletServerId fallback_to_uuid;
+    TabletServerId fallback_from_uuid;
     for (const auto& from_uuid : tablet_meta.blacklisted_tablet_servers) {
       bool invalid_placement = tablet_meta.wrong_placement_tablet_servers.count(from_uuid);
       for (const auto& to_uuid : sorted_load_) {
@@ -417,11 +420,17 @@ class ClusterLoadBalancer::ClusterLoadState {
         if (invalid_placement && CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info)) {
           found_match = true;
         } else {
-          const auto& from_placement_id = per_ts_meta_[from_uuid].descriptor->placement_id();
-          const auto& to_placement_id = per_ts_meta_[to_uuid].descriptor->placement_id();
-          if (from_placement_id == to_placement_id &&
-              CanAddTabletToTabletServer(tablet_id, to_uuid)) {
-            found_match = true;
+          if (CanAddTabletToTabletServer(tablet_id, to_uuid)) {
+            const auto& from_placement_id = per_ts_meta_[from_uuid].descriptor->placement_id();
+            const auto& to_placement_id = per_ts_meta_[to_uuid].descriptor->placement_id();
+            if (from_placement_id == to_placement_id) {
+             found_match = true;
+            } else {
+              // ENG-500 : Placement does not match, but we can still use this combo as a fallback.
+              // It uses the last such pair, which should be fine.
+              fallback_to_uuid = to_uuid;
+              fallback_to_uuid = from_uuid;
+            }
           }
         }
         if (found_match) {
@@ -431,6 +440,13 @@ class ClusterLoadBalancer::ClusterLoadState {
         }
       }
     }
+
+    if (!fallback_to_uuid.empty()) {
+      *out_from_ts = fallback_from_uuid;
+      *out_to_ts = fallback_to_uuid;
+      return true;
+    }
+
     // TODO(bogdan): sort and pick the highest load as source.
     //
     // If we didn't have or find any blacklisted server to move load from, move to the wrong

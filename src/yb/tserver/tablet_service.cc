@@ -942,7 +942,8 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                          context);
     return;
   }
-  LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success.";
+  LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
+            << TabletServerErrorPB::Code_Name(resp->error().code());
   context->RespondSuccess();
 }
 

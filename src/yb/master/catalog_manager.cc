@@ -2882,7 +2882,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
 };
 
 bool AsyncTryStepDown::PrepareRequest(int attempt) {
-  LOG(INFO) << Substitute("Prep Leader step down $0, $1 $2",
+  LOG(INFO) << Substitute("Prep Leader step down $0, leader_uuid=$1, change_ts_uuid=$2",
                           attempt, permanent_uuid(), change_config_ts_uuid_);
   if (attempt > 1) {
     return false;
@@ -2928,8 +2928,11 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
   }
 
   MarkComplete();
-  LOG(INFO) << Substitute("Leader step down done $0, $1 $2",
-                          attempt, permanent_uuid(), change_config_ts_uuid_);
+  LOG(INFO) << Substitute("Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
+                          "resp=$3, should_remove=$4.",
+                          attempt, permanent_uuid(), change_config_ts_uuid_,
+                          TabletServerErrorPB::Code_Name(stepdown_resp_.error().code()),
+                          should_remove_);
 
   if (should_remove_) {
     auto task = new AsyncRemoveServerTask(
