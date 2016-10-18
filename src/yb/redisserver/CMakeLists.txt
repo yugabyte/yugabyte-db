@@ -27,6 +27,7 @@ ADD_EXPORTABLE_LIBRARY(redis_service_proto
 #########################################
 
 include_directories(../../redis/src)
+include_directories(../../cpp_redis/includes)
 include_directories(../../redis/deps/lua/src)
 
 set(REDISSERVER_SRCS
@@ -37,6 +38,7 @@ set(REDISSERVER_SRCS
 
 add_library(yb-redis ${REDISSERVER_SRCS})
 target_link_libraries(yb-redis
+  cpp_redis
   protobuf
   log
   yrpc

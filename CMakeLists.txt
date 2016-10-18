@@ -1239,6 +1239,7 @@ if(APPLE)
 endif()
 
 add_subdirectory(src/redis)
+add_subdirectory(src/cpp_redis)
 add_subdirectory(src/yb/gutil)
 add_subdirectory(src/yb/util)
 add_subdirectory(src/yb/common)
