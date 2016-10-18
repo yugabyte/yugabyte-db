@@ -376,6 +376,23 @@ ul.progress-list li i {
     padding-top: 25px;
 }
 
+
+.inline-display {
+    display: inline;
+}
+
+.map-legend-container .list-group-item{
+    padding: 5px 5px;
+    background-color: #545454;
+    margin-bottom: 2px;
+    color: white;
+}
+
+.legend-img {
+    width: 30px;
+    height: 30px;
+}
+
 .hljs {
     height: 520px;
     width: 100%;
@@ -395,4 +412,5 @@ ul.progress-list li i {
 
 #dc-config-val {
     width: 100% !important;
+
 }
