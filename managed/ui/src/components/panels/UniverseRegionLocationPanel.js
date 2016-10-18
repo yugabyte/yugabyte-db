@@ -11,7 +11,6 @@ export default class UniverseRegionLocationPanel extends Component {
     if(!isValidArray(cloud.regions)) {
       return <span/>
     }
-
     return (
        <RegionMap title="All Supported Regions" regions={cloud.regions} />
     )
