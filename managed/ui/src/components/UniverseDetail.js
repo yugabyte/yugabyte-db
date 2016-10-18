@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Grid, Row, Col, ButtonGroup, Image,
-          DropdownButton, MenuItem } from 'react-bootstrap';
+          DropdownButton, MenuItem, ListGroup, ListGroupItem } from 'react-bootstrap';
 import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
@@ -16,6 +16,26 @@ import GFlagsFormContainer from '../containers/forms/GFlagsFormContainer';
 import {Link} from 'react-router';
 import universelogo from '../images/universe_icon.png';
 import YBLabelWithIcon from './fields/YBLabelWithIcon';
+import YBPanelItem from './YBPanelItem';
+import YBMapLegendItem from './YBMapLegendItem';
+
+
+
+class YBMapLegend extends Component {
+  render() {
+    const {regions} = this.props;
+    var rootRegions = regions;
+    var asyncRegions = [{"name": "No Async Replicas Added."}];
+    var cacheRegions = [{"name": "No Caches Added."}];
+    return (
+      <div className="map-legend-container">
+        <YBMapLegendItem regions={rootRegions} title={"Root Data"} type="Root"/>
+        <YBMapLegendItem regions={asyncRegions} title="Async Data Replication" type="Async"/>
+        <YBMapLegendItem regions={cacheRegions} title="Cache Data" type="Cache"/>
+      </div>
+    )
+  }
+}
 
 export default class UniverseDetail extends Component {
 
@@ -54,11 +74,10 @@ export default class UniverseDetail extends Component {
       }).filter(Boolean);
     }
 
-    
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">
-          <Col lg={9}>
+          <Col lg={10}>
             <div className="detail-label-small">
                <Link to="/universes">
                  <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
@@ -70,7 +89,7 @@ export default class UniverseDetail extends Component {
               <h2><Image src={universelogo}/> Universe { currentUniverse.name }</h2>
             </div>
           </Col>
-          <Col lg={3}>
+          <Col lg={2}>
             <div className="detail-label-small">
               Test And Verify
             </div>
@@ -101,27 +120,34 @@ export default class UniverseDetail extends Component {
                                        onHide={this.props.closeModal} title="Delete Universe"/>
         </Row>
         <Row>
-          <Col lg={11}>
+          <Col lg={12}>
             <ConnectStringPanel universeId={currentUniverse.universeUUID}
                                 customerId={localStorage.getItem("customer_id")} />
           </Col>
         </Row>
         <Row>
-          <Col md={6}>
-            <RegionMap regions={currentUniverse.regions}/>
+          <Col md={12}>
+            <YBPanelItem name={"Region Placement"}>
+            <Col lg={4}>
+              <YBMapLegend regions={currentUniverse.regions}/>
+            </Col>
+            <Col lg={8}>
+            <RegionMap regions={currentUniverse.regions} type={"Root"} />
+            </Col>
+            </YBPanelItem>
           </Col>
-          <Col md={5} lg={5}>
+          <Col md={12} lg={12}>
             <UniverseInfoPanel universeInfo={currentUniverse} />
             <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
           </Col>
         </Row>
         <Row>
-          <Col lg={11}>
+          <Col lg={12}>
             <NodeDetails nodeDetails={universeDetails.nodeDetailsSet}/>
           </Col>
         </Row>
         <Row>
-          <Col lg={11}>
+          <Col lg={12}>
             <GraphPanelContainer nodePrefix={universeDetails.nodePrefix} />
           </Col>
         </Row>
