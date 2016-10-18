@@ -13,6 +13,7 @@ import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
+import SetupDataCenter from './pages/SetupDataCenter';
 
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
@@ -51,6 +52,7 @@ export default (store) => {
           <Route path="/universes/:uuid" component={UniverseDetail} />
         </Route>
         <Route path="/alerts" component={Alerts} />
+        <Route path="/setup_datacenter" component={SetupDataCenter} />
       </Route>
     </Route>
   );
