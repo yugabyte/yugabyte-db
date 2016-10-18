@@ -9,7 +9,7 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   editUniverse, editUniverseSuccess, editUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog }
   from '../../actions/universe';
-import {isValidObject} from '../../utils/ObjectUtils';
+import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -17,9 +17,14 @@ const mapDispatchToProps = (dispatch) => {
   return {
 
     submitCreateUniverse: (values) => {
-      values.regionList = values.regionList.map(function(item, idx){
-        return item.value;
-      });
+
+      if (!isValidArray(values.regionList)) {
+        values.regionList = [values.regionList.value];
+      } else {
+        values.regionList = values.regionList.map(function (item, idx) {
+          return item.value;
+        });
+      }
       var payload = {"userIntent": values};
       return new Promise((resolve, reject) => {
         dispatch(createUniverse(payload)).then((response) => {
@@ -42,9 +47,14 @@ const mapDispatchToProps = (dispatch) => {
       })
     },
     submitEditUniverse: (values) => {
-      values.regionList = values.regionList.map(function(item, idx){
-        return item.value;
-      });
+
+      if (!isValidArray(values.regionList)) {
+        values.regionList = [values.regionList.value];
+      } else {
+        values.regionList = values.regionList.map(function (item, idx) {
+          return item.value;
+        });
+      }
       var payload = {"userIntent": values};
       var universeUUID = values.universeId;
       dispatch(editUniverse(universeUUID, payload)).then((response) => {
@@ -89,14 +99,18 @@ function mapStateToProps(state, ownProps) {
   if (isValidObject(currentUniverse)) {
     data.universeName = currentUniverse.name;
     data.provider = currentUniverse.provider.uuid;
-    data.regionList = currentUniverse.regions.map(function (item, idx) {
-      return {'value': item.uuid, 'name': item.name, "label": item.name};
-    });
-    data.numNodes = currentUniverse.universeDetails.numNodes;
+    data.numNodes = currentUniverse.universeDetails.userIntent.numNodes;
     data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
     data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
-    data.serverPackage = currentUniverse.universeDetails.ybServerPkg;
+    data.serverPackage = currentUniverse.universeDetails.userIntent.ybServerPackage;
     data.universeId = currentUniverse.universeUUID;
+    if (isValidObject(currentUniverse.universeDetails)  && currentUniverse.universeDetails.userIntent.isMultiAZ) {
+      data.regionList = currentUniverse.regions.map(function (item, idx) {
+        return {'value': item.uuid, 'name': item.name, "label": item.name};
+      })
+    } else {
+      data.regionList = {'value': currentUniverse.regions[0].uuid, 'name': currentUniverse.regions[0].name, "label": currentUniverse.regions[0].name};
+    }
   }
 
   return {
