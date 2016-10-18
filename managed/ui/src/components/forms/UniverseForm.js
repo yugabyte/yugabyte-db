@@ -6,6 +6,7 @@ import YBMultiSelect from './../fields/YBMultiSelect';
 import YBNumericInput from './../fields/YBNumericInput';
 import { Field } from 'redux-form';
 import YBModal from './../fields/YBModal';
+import {isValidObject} from '../../utils/ObjectUtils';
 
 export default class UniverseForm extends Component {
 
@@ -19,10 +20,13 @@ export default class UniverseForm extends Component {
     this.regionListChanged = this.regionListChanged.bind(this);
     this.instanceTypeChanged = this.instanceTypeChanged.bind(this);
     this.numNodesChanged = this.numNodesChanged.bind(this);
-
+    var azInitState = true;
+    if (isValidObject(this.props.universe.currentUniverse)) {
+      azInitState = this.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ
+    }
     this.state = { providerSelected: '',
-      regionSelected: [], instanceTypeSelected: 'm3.medium',
-      numNodes: 3, azCheckState: true};
+                   regionSelected: [], instanceTypeSelected: 'm3.medium',
+                   numNodes: 3, azCheckState: azInitState };
 
   }
 
