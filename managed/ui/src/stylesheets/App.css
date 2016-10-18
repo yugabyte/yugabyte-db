@@ -375,3 +375,24 @@ ul.progress-list li i {
     margin-top: 40px;
     padding-top: 25px;
 }
+
+.hljs {
+    height: 520px;
+    width: 100%;
+    line-height: 1.4em;
+    font-size: 0.8em;
+}
+
+.btn-center {
+    width: 33%;
+    margin-left: 33%;
+}
+
+.color-grey {
+    color: #d3d3d3;
+    font-size: 1.5em;
+}
+
+#dc-config-val {
+    width: 100% !important;
+}
