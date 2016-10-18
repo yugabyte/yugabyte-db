@@ -168,7 +168,7 @@ public class MiniYBCluster implements AutoCloseable {
       String[] tsCmdLine = {
           TestUtils.findBinary("yb-tserver"),
           "--flagfile=" + flagsPath,
-          "--fs_wal_dir=" + dataDirPath,
+          "--fs_wal_dirs=" + dataDirPath,
           "--fs_data_dirs=" + dataDirPath,
           "--tserver_master_addrs=" + masterAddresses,
           "--webserver_interface=" + localhost,
@@ -205,7 +205,7 @@ public class MiniYBCluster implements AutoCloseable {
     List<String> masterCmdLine = Lists.newArrayList(
         TestUtils.findBinary("yb-master"),
             "--flagfile=" + flagsPath,
-            "--fs_wal_dir=" + dataDirPath,
+            "--fs_wal_dirs=" + dataDirPath,
             "--fs_data_dirs=" + dataDirPath,
             "--webserver_interface=" + localhost,
             "--local_ip_for_outbound_sockets=" + localhost,
@@ -271,7 +271,7 @@ public class MiniYBCluster implements AutoCloseable {
           TestUtils.findBinary("yb-master"),
           "--create_cluster",
           "--flagfile=" + flagsPath,
-          "--fs_wal_dir=" + dataDirPath,
+          "--fs_wal_dirs=" + dataDirPath,
           "--fs_data_dirs=" + dataDirPath,
           "--webserver_interface=" + localhost,
           "--local_ip_for_outbound_sockets=" + localhost,

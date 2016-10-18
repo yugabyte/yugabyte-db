@@ -129,7 +129,7 @@ create_directories() {
   validate_num_servers "$num_servers"
   local i
   for i in $( $SEQ 1 $num_servers ); do
-    for subdir in logs wal data1 data2; do
+    for subdir in logs wal1 wal2 data1 data2; do
       mkdir -p "$cluster_base_dir/$daemon_type-$i/$subdir"
     done
   done
@@ -270,7 +270,7 @@ start_master() {
     set -x
     "$master_binary" \
       --fs_data_dirs "$master_base_dir/data1,$master_base_dir/data2" \
-      --fs_wal_dir "$master_base_dir/wal" \
+      --fs_wal_dirs "$master_base_dir/wal1,$master_base_dir/wal2" \
       --log_dir "$master_base_dir/logs" \
       --v "$verbose_level" \
       $master_flags \
@@ -297,7 +297,7 @@ start_tserver() {
     set -x
     "$tserver_binary" \
        --fs_data_dirs "$tserver_base_dir/data1,$tserver_base_dir/data2" \
-       --fs_wal_dir "$tserver_base_dir/wal" \
+       --fs_wal_dirs "$tserver_base_dir/wal1,$tserver_base_dir/wal2" \
        --log_dir "$tserver_base_dir/logs" \
        --v "$verbose_level" \
        --tserver_master_addrs "$master_addresses" \
@@ -319,7 +319,7 @@ start_daemon() {
   local id=$2
   validate_daemon_index "$id"
 
-  for subdir in logs wal data1 data2; do
+  for subdir in logs wal1 wal2 data1 data2; do
     mkdir -p "$cluster_base_dir/$daemon_type-$id/$subdir"
   done
 

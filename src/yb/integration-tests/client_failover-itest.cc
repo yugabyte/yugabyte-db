@@ -141,11 +141,11 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
 
   // Wait for remote bootstrap to complete. Then elect the new node.
   ASSERT_OK(WaitForServersToAgree(kTimeout, active_ts_map, tablet_id,
-                                  workload.batches_completed() + 4));
+                                  workload.batches_completed() + 5));
   leader_index = missing_replica_index;
   leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()];
   ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(workload.batches_completed() + 5, leader, tablet_id,
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(workload.batches_completed() + 6, leader, tablet_id,
                                           kTimeout));
 
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));

@@ -114,30 +114,32 @@ Status FsTool::FsTree() {
 Status FsTool::ListAllLogSegments() {
   DCHECK(initialized_);
 
-  string wals_dir = fs_manager_->GetWalsRootDir();
-  if (!fs_manager_->Exists(wals_dir)) {
-    return STATUS(Corruption, Substitute(
-        "root log directory '$0' does not exist", wals_dir));
-  }
-
-  std::cout << "Root log directory: " << wals_dir << std::endl;
-
-  vector<string> children;
-  RETURN_NOT_OK_PREPEND(fs_manager_->ListDir(wals_dir, &children),
-                        "Could not list log directories");
-  for (const string& child : children) {
-    if (HasPrefixString(child, ".")) {
-      // Hidden files or ./..
-      VLOG(1) << "Ignoring hidden file in root log directory " << child;
-      continue;
+  auto wal_root_dirs = fs_manager_->GetWalRootDirs();
+  for (auto const& wals_dir : wal_root_dirs) {
+    if (!fs_manager_->Exists(wals_dir)) {
+      return STATUS(Corruption, Substitute(
+          "root log directory '$0' does not exist", wals_dir));
     }
-    string path = JoinPathSegments(wals_dir, child);
-    if (HasSuffixString(child, FsManager::kWalsRecoveryDirSuffix)) {
-      std::cout << "Log recovery dir found: " << path << std::endl;
-    } else {
-      std::cout << "Log directory: " << path << std::endl;
+
+    std::cout << "Root log directory: " << wals_dir << std::endl;
+
+    vector<string> children;
+    RETURN_NOT_OK_PREPEND(fs_manager_->ListDir(wals_dir, &children),
+                          "Could not list log directories");
+    for (const string& child : children) {
+      if (HasPrefixString(child, ".")) {
+        // Hidden files or ./..
+        VLOG(1) << "Ignoring hidden file in root log directory " << child;
+        continue;
+      }
+      string path = JoinPathSegments(wals_dir, child);
+      if (HasSuffixString(child, FsManager::kWalsRecoveryDirSuffix)) {
+        std::cout << "Log recovery dir found: " << path << std::endl;
+      } else {
+        std::cout << "Log directory: " << path << std::endl;
+      }
+      RETURN_NOT_OK(ListSegmentsInDir(path));
     }
-    RETURN_NOT_OK(ListSegmentsInDir(path));
   }
   return Status::OK();
 }
@@ -145,14 +147,17 @@ Status FsTool::ListAllLogSegments() {
 Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
   DCHECK(initialized_);
 
-  string tablet_wal_dir = fs_manager_->GetTabletWalDir(tablet_id);
+  scoped_refptr<TabletMetadata> meta;
+  RETURN_NOT_OK(TabletMetadata::Load(fs_manager_.get(), tablet_id, &meta));
+
+  const string& tablet_wal_dir = meta->wal_dir();
   if (!fs_manager_->Exists(tablet_wal_dir)) {
     return STATUS(NotFound, Substitute("tablet '$0' has no logs in wals dir '$1'",
                                        tablet_id, tablet_wal_dir));
   }
   std::cout << "Tablet WAL dir found: " << tablet_wal_dir << std::endl;
   RETURN_NOT_OK(ListSegmentsInDir(tablet_wal_dir));
-  string recovery_dir = fs_manager_->GetTabletWalRecoveryDir(tablet_id);
+  const string recovery_dir = fs_manager_->GetTabletWalRecoveryDir(tablet_wal_dir);
   if (fs_manager_->Exists(recovery_dir)) {
     std::cout << "Recovery dir found: " << recovery_dir << std::endl;
     RETURN_NOT_OK(ListSegmentsInDir(recovery_dir));

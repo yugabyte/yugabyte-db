@@ -87,8 +87,11 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
   }
 
   string rocksdb_dir;
+  yb::Random rand(GetCurrentTimeMicros());
+  auto wal_root_dirs = fs_manager->GetWalRootDirs();
+  CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
+  auto wal_dir = JoinPathSegments(wal_root_dirs[rand.Uniform(wal_root_dirs.size())], tablet_id);
   if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    yb::Random rand(GetCurrentTimeMicros());
     // Determine the data dir to use for this tablet. Pick one of the data dirs at random.
     auto data_root_dirs = fs_manager->GetDataRootDirs();
     CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -102,6 +105,7 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
                                                        table_name,
                                                        table_type,
                                                        rocksdb_dir,
+                                                       wal_dir,
                                                        schema,
                                                        partition_schema,
                                                        partition,
@@ -246,6 +250,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
                                string table_name,
                                TableType table_type,
                                const string rocksdb_dir,
+                               const string wal_dir,
                                const Schema& schema,
                                PartitionSchema partition_schema,
                                Partition partition,
@@ -261,6 +266,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
       table_name_(std::move(table_name)),
       table_type_(table_type),
       rocksdb_dir_(rocksdb_dir),
+      wal_dir_(wal_dir),
       partition_schema_(std::move(partition_schema)),
       tablet_data_state_(tablet_data_state),
       tombstone_last_logged_opid_(MinimumOpId()),
@@ -323,6 +329,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     table_name_ = superblock.table_name();
     table_type_ = superblock.table_type();
     rocksdb_dir_ = superblock.rocksdb_dir();
+    wal_dir_ = superblock.wal_dir();
 
     uint32_t schema_version = superblock.schema_version();
     gscoped_ptr<Schema> schema(new Schema());
@@ -576,6 +583,7 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
   pb.set_table_name(table_name_);
   pb.set_table_type(table_type_);
   pb.set_rocksdb_dir(rocksdb_dir_);
+  pb.set_wal_dir(wal_dir_);
 
   for (const shared_ptr<RowSetMetadata>& meta : rowsets) {
     meta->ToProtobuf(pb.add_rowsets());

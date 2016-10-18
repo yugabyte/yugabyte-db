@@ -297,7 +297,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(string name, const ServerBaseOptions& o
   FsManagerOpts fs_opts;
   fs_opts.metric_entity = metric_entity_;
   fs_opts.parent_mem_tracker = mem_tracker_;
-  fs_opts.wal_path = options.fs_opts.wal_path;
+  fs_opts.wal_paths = options.fs_opts.wal_paths;
   fs_opts.data_paths = options.fs_opts.data_paths;
   fs_manager_.reset(new FsManager(options.env, fs_opts));
 

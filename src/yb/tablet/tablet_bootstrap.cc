@@ -525,13 +525,13 @@ Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
   *needs_recovery = false;
 
   FsManager* fs_manager = tablet_->metadata()->fs_manager();
-  string tablet_id = tablet_->metadata()->tablet_id();
-  string log_dir = fs_manager->GetTabletWalDir(tablet_id);
+  const string& tablet_id = tablet_->metadata()->tablet_id();
+  const string& log_dir = tablet_->metadata()->wal_dir();
 
   // If the recovery directory exists, then we crashed mid-recovery.
   // Throw away any logs from the previous recovery attempt and restart the log
   // replay process from the beginning using the same recovery dir as last time.
-  string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_id);
+  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(log_dir);
   if (fs_manager->Exists(recovery_path)) {
     LOG_WITH_PREFIX(INFO) << "Previous recovery directory found at " << recovery_path << ": "
                           << "Replaying log files from this location instead of " << log_dir;
@@ -590,10 +590,11 @@ Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
 
 Status TabletBootstrap::OpenLogReaderInRecoveryDir() {
   VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir "
-                      << meta_->fs_manager()->GetTabletWalRecoveryDir(tablet_->tablet_id());
+      << meta_->fs_manager()->GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
   // Open the reader.
   RETURN_NOT_OK_PREPEND(LogReader::OpenFromRecoveryDir(tablet_->metadata()->fs_manager(),
                                                        tablet_->metadata()->tablet_id(),
+                                                       tablet_->metadata()->wal_dir(),
                                                        tablet_->GetMetricEntity().get(),
                                                        &log_reader_),
                         "Could not open LogReader. Reason");
@@ -602,7 +603,7 @@ Status TabletBootstrap::OpenLogReaderInRecoveryDir() {
 
 Status TabletBootstrap::RemoveRecoveryDir() {
   FsManager* fs_manager = tablet_->metadata()->fs_manager();
-  string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_->metadata()->tablet_id());
+  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
   CHECK(fs_manager->Exists(recovery_path))
       << "Tablet WAL recovery dir " << recovery_path << " does not exist.";
 
@@ -634,6 +635,7 @@ Status TabletBootstrap::OpenNewLog() {
   RETURN_NOT_OK(Log::Open(LogOptions(),
                           tablet_->metadata()->fs_manager(),
                           tablet_->tablet_id(),
+                          tablet_->metadata()->wal_dir(),
                           *tablet_->schema(),
                           tablet_->metadata()->schema_version(),
                           tablet_->GetMetricEntity(),

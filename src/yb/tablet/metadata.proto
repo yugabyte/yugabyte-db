@@ -122,6 +122,9 @@ message TabletSuperBlockPB {
   // The RocksDB directory for this tablet.
   optional string rocksdb_dir = 16;
 
+  // The write-ahead log directory for this tablet.
+  optional string wal_dir = 18;
+
   // List of RocksDB SST files.
   repeated RocksDBFilePB rocksdb_files = 17;
 

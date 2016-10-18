@@ -56,13 +56,17 @@ DEFINE_string(block_manager, "file", "Which block manager to use for storage. "
 TAG_FLAG(block_manager, advanced);
 
 DEFINE_string(fs_wal_dir, "",
-              "Directory with write-ahead logs. If this is not specified, the "
-              "program will not start. May be the same as fs_data_dirs");
-TAG_FLAG(fs_wal_dir, stable);
+              "Directory with write-ahead logs. If this is not specified, the program will not "
+              "start. May be the same as fs_data_dirs. Deprecated. Use fs_wal_dirs instead.");
+
+DEFINE_string(fs_wal_dirs, "",
+              "Comma-separated list of directories with write-ahead logs. If this is not "
+              "specified, the program will not start. May be the same as fs_data_dirs");
+TAG_FLAG(fs_wal_dirs, stable);
+
 DEFINE_string(fs_data_dirs, "",
-              "Comma-separated list of directories with data blocks. If this "
-              "is not specified, fs_wal_dir will be used as the sole data "
-              "block directory.");
+              "Comma-separated list of directories with data blocks. If this is not specified, "
+              "the first directory in fs_wal_dirs will be used as the sole data block directory.");
 TAG_FLAG(fs_data_dirs, stable);
 
 using google::protobuf::Message;
@@ -94,8 +98,14 @@ const char *FsManager::kConsensusMetadataDirName = "consensus-meta";
 static const char* const kTmpInfix = ".tmp";
 
 FsManagerOpts::FsManagerOpts()
-  : wal_path(FLAGS_fs_wal_dir),
-    read_only(false) {
+  : read_only(false) {
+  if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_wal_dir.empty()) {
+    LOG(WARNING) << "fs_wal_dir is deprecated. Please use fs_wal_dirs.";
+    FLAGS_fs_wal_dirs = FLAGS_fs_wal_dir;
+  } else if (!FLAGS_fs_wal_dir.empty()) {
+    LOG(WARNING) << "Ignoring fs_wal_dir flags because it is deprecated and fs_wal_dirs is set.";
+  }
+  wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
 }
 
@@ -105,7 +115,7 @@ FsManagerOpts::~FsManagerOpts() {
 FsManager::FsManager(Env* env, const string& root_path)
   : env_(DCHECK_NOTNULL(env)),
     read_only_(false),
-    wal_fs_root_(root_path),
+    wal_fs_roots_({ root_path }),
     data_fs_roots_({ root_path }),
     metric_entity_(nullptr),
     initted_(false) {
@@ -115,7 +125,7 @@ FsManager::FsManager(Env* env,
                      const FsManagerOpts& opts)
   : env_(DCHECK_NOTNULL(env)),
     read_only_(opts.read_only),
-    wal_fs_root_(opts.wal_path),
+    wal_fs_roots_(opts.wal_paths),
     data_fs_roots_(opts.data_paths),
     metric_entity_(opts.metric_entity),
     parent_mem_tracker_(opts.parent_mem_tracker),
@@ -131,13 +141,15 @@ Status FsManager::Init() {
   }
 
   // The wal root must be set.
-  if (wal_fs_root_.empty()) {
-    return STATUS(IOError, "Write-ahead log directory (fs_wal_dir) not provided");
+  if (wal_fs_roots_.empty()) {
+    return STATUS(IOError, "List of write-ahead log directories (fs_wal_dirs) not provided");
   }
 
   // Deduplicate all of the roots.
   set<string> all_roots;
-  all_roots.insert(wal_fs_root_);
+  for (const string& wal_fs_root : wal_fs_roots_) {
+    all_roots.insert(wal_fs_root);
+  }
   for (const string& data_fs_root : data_fs_roots_) {
     all_roots.insert(data_fs_root);
   }
@@ -172,7 +184,9 @@ Status FsManager::Init() {
   }
 
   // All done, use the map to set the canonicalized state.
-  canonicalized_wal_fs_root_ = FindOrDie(canonicalized_roots, wal_fs_root_);
+  for (const string& wal_fs_root: wal_fs_roots_) {
+    canonicalized_wal_fs_roots_.insert(FindOrDie(canonicalized_roots, wal_fs_root));
+  }
   if (!data_fs_roots_.empty()) {
     canonicalized_metadata_fs_root_ = FindOrDie(canonicalized_roots, data_fs_roots_[0]);
     for (const string& data_fs_root : data_fs_roots_) {
@@ -180,16 +194,18 @@ Status FsManager::Init() {
     }
   } else {
     LOG(INFO) << "Data directories (fs_data_dirs) not provided";
-    LOG(INFO) << "Using write-ahead log directory (fs_wal_dir) as data directory";
-    canonicalized_metadata_fs_root_ = canonicalized_wal_fs_root_;
-    canonicalized_data_fs_roots_.insert(canonicalized_wal_fs_root_);
+    LOG(INFO) << "Using first write-ahead log directory in fs_wal_dirs as data directory";
+    canonicalized_metadata_fs_root_ = FindOrDie(canonicalized_roots, wal_fs_roots_[0]);
+    for (const string& canonicalized_wal_fs_root : canonicalized_wal_fs_roots_) {
+      canonicalized_data_fs_roots_.insert(canonicalized_wal_fs_root);
+    }
   }
   for (const RootMap::value_type& e : canonicalized_roots) {
     canonicalized_all_fs_roots_.insert(e.second);
   }
 
   if (VLOG_IS_ON(1)) {
-    VLOG(1) << "WAL root: " << canonicalized_wal_fs_root_;
+    VLOG(1) << "WAL roots: " << canonicalized_wal_fs_roots_;
     VLOG(1) << "Metadata root: " << canonicalized_metadata_fs_root_;
     VLOG(1) << "Data roots: " << canonicalized_data_fs_roots_;
     VLOG(1) << "All roots: " << canonicalized_all_fs_roots_;
@@ -280,9 +296,10 @@ Status FsManager::CreateInitialFileSystemLayout() {
   }
 
   // Initialize ancillary directories.
-  vector<string> ancillary_dirs = { GetWalsRootDir(),
-                                    GetTabletMetadataDir(),
-                                    GetConsensusMetadataDir() };
+  auto ancillary_dirs = GetWalRootDirs();
+  ancillary_dirs.push_back(GetTabletMetadataDir());
+  ancillary_dirs.push_back(GetConsensusMetadataDir());
+
   for (const string& dir : ancillary_dirs) {
     bool created;
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
@@ -376,11 +393,20 @@ const string& FsManager::uuid() const {
 
 vector<string> FsManager::GetDataRootDirs() const {
   // Add the data subdirectory to each data root.
-  std::vector<std::string> data_paths;
+  vector<string> data_paths;
   for (const string& data_fs_root : canonicalized_data_fs_roots_) {
     data_paths.push_back(JoinPathSegments(data_fs_root, kDataDirName));
   }
   return data_paths;
+}
+
+vector<string> FsManager::GetWalRootDirs() const {
+  DCHECK(initted_);
+  vector<string> wal_dirs;
+  for (const auto& canonicalized_wal_fs_root : canonicalized_wal_fs_roots_) {
+    wal_dirs.push_back(JoinPathSegments(canonicalized_wal_fs_root, kWalDirName));
+  }
+  return wal_dirs;
 }
 
 string FsManager::GetTabletMetadataDir() const {
@@ -430,20 +456,23 @@ string FsManager::GetInstanceMetadataPath(const string& root) const {
   return JoinPathSegments(root, kInstanceMetadataFileName);
 }
 
-string FsManager::GetTabletWalRecoveryDir(const string& tablet_id) const {
-  string path = JoinPathSegments(GetWalsRootDir(), tablet_id);
-  StrAppend(&path, kWalsRecoveryDirSuffix);
-  return path;
+string FsManager::GetFirstTabletWalDirOrDie(const std::string& tablet_id) const {
+  auto wal_root_dirs = GetWalRootDirs();
+  CHECK(!wal_root_dirs.empty()) << "No WAL directories specified";
+  return JoinPathSegments(wal_root_dirs[0], tablet_id);
 }
 
-string FsManager::GetWalSegmentFileName(const string& tablet_id,
+string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) const {
+  return tablet_wal_path + kWalsRecoveryDirSuffix;
+}
+
+string FsManager::GetWalSegmentFileName(const string& tablet_wal_path,
                                         uint64_t sequence_number) const {
-  return JoinPathSegments(GetTabletWalDir(tablet_id),
+  return JoinPathSegments(tablet_wal_path,
                           strings::Substitute("$0-$1",
                                               kWalFileNamePrefix,
                                               StringPrintf("%09" PRIu64, sequence_number)));
 }
-
 
 // ==========================================================================
 //  Dump/Debug utils

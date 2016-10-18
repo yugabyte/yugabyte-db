@@ -73,9 +73,9 @@ $ yb-master --help
 // addresses for Master quorum. If not specified, assumes a standalone Master.
 |--fs_data_dirs | string | | Comma-separated list of
 directories where the Master will place its data blocks.
-|--fs_wal_dir | string | | The directory where the Master will
-place its write-ahead logs. May be the same as _one of_ the directories listed in
-`--fs_data_dirs`, but not a sub-directory of a data directory.
+|--fs_wal_dirs | string | | Comma-separated list of directories where the Master
+will place its write-ahead logs. May be the same list as '--fs_data_dirs`, but
+cannot contain sub-directories of a data directories.
 |--log_dir | string | /var/log/kudu | The directory to store Master log files.
 |===
 
@@ -95,9 +95,9 @@ $ yb-tserver --help
 
 |--fs_data_dirs | string |  | Comma-separated list
 of directories where the Tablet Server will place its data blocks.
-|--fs_wal_dir | string | | The directory where the Tablet Server will
-place its write-ahead logs. May be the same as _one of_ the directories listed in
-`--fs_data_dirs`, but not a sub-directory of a data directory.
+|--fs_wal_dirs | string | | Comma-separated list of directories where the Master
+will place its write-ahead logs. May be the same list as '--fs_data_dirs`, but
+cannot contain sub-directories of a data directories.
 |--log_dir | string | /var/log/kudu | The directory to store Tablet Server log files
 |--tserver_master_addrs | string | `127.0.0.1:7051` |  Comma separated
 addresses of the masters which the tablet server should connect to. The masters
@@ -108,7 +108,6 @@ do not read this flag.
 
 For the full list of flags for tablet servers, see the
 link:configuration_reference.html#tablet_server_configuration_reference[Kudu Tablet Server Configuration Reference].
-
 
 == Next Steps
 - link:quickstart.html[Get Started With Kudu]

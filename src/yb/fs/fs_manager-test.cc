@@ -42,15 +42,15 @@ class FsManagerTestBase : public YBTest {
   }
 
   void ReinitFsManager() {
-    ReinitFsManager(GetTestPath("fs_root"), { GetTestPath("fs_root")} );
+    ReinitFsManager({ GetTestPath("fs_root") }, { GetTestPath("fs_root")} );
   }
 
-  void ReinitFsManager(const string& wal_path, const vector<string>& data_paths) {
+  void ReinitFsManager(const vector<string>& wal_paths, const vector<string>& data_paths) {
     // Blow away the old memtrackers first.
     fs_manager_.reset();
 
     FsManagerOpts opts;
-    opts.wal_path = wal_path;
+    opts.wal_paths = wal_paths;
     opts.data_paths = data_paths;
     fs_manager_.reset(new FsManager(env_.get(), opts));
   }
@@ -92,31 +92,34 @@ TEST_F(FsManagerTestBase, TestBaseOperations) {
 TEST_F(FsManagerTestBase, TestIllegalPaths) {
   vector<string> illegal = { "", "asdf", "/foo\n\t" };
   for (const string& path : illegal) {
-    ReinitFsManager(path, { path });
+    ReinitFsManager({ path }, { path });
     ASSERT_TRUE(fs_manager()->CreateInitialFileSystemLayout().IsIOError());
   }
 }
 
 TEST_F(FsManagerTestBase, TestMultiplePaths) {
-  string wal_path = GetTestPath("a");
+  vector<string> wal_paths = { GetTestPath("a"), GetTestPath("b"), GetTestPath("c") };
   vector<string> data_paths = { GetTestPath("a"), GetTestPath("b"), GetTestPath("c") };
-  ReinitFsManager(wal_path, data_paths);
+  ReinitFsManager(wal_paths, data_paths);
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
   ASSERT_OK(fs_manager()->Open());
 }
 
 TEST_F(FsManagerTestBase, TestMatchingPathsWithMismatchedSlashes) {
-  string wal_path = GetTestPath("foo");
-  vector<string> data_paths = { wal_path + "/" };
-  ReinitFsManager(wal_path, data_paths);
+  vector<string> wal_paths = { GetTestPath("foo") };
+  vector<string> data_paths = { wal_paths[0] + "/" };
+  ReinitFsManager(wal_paths, data_paths);
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
 }
 
 TEST_F(FsManagerTestBase, TestDuplicatePaths) {
-  string path = GetTestPath("foo");
-  ReinitFsManager(path, { path, path, path });
+  const string wal_path = GetTestPath("foo");
+  const string data_path = GetTestPath("bar");
+  ReinitFsManager({ wal_path, wal_path, wal_path }, { data_path, data_path, data_path });
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
-  ASSERT_EQ(vector<string>({ JoinPathSegments(path, fs_manager()->kDataDirName) }),
+  ASSERT_EQ(vector<string>({ JoinPathSegments(wal_path, fs_manager()->kWalDirName) }),
+            fs_manager()->GetWalRootDirs());
+  ASSERT_EQ(vector<string>({ JoinPathSegments(data_path, fs_manager()->kDataDirName) }),
             fs_manager()->GetDataRootDirs());
 }
 
@@ -150,24 +153,27 @@ TEST_F(FsManagerTestBase, TestCannotUseNonEmptyFsRoot) {
   }
 
   // Try to create the FS layout. It should fail.
-  ReinitFsManager(path, { path });
+  ReinitFsManager({ path }, { path });
   ASSERT_TRUE(fs_manager()->CreateInitialFileSystemLayout().IsAlreadyPresent());
 }
 
 TEST_F(FsManagerTestBase, TestEmptyWALPath) {
-  ReinitFsManager("", vector<string>());
+  ReinitFsManager(vector<string>(), vector<string>());
   Status s = fs_manager()->CreateInitialFileSystemLayout();
   ASSERT_TRUE(s.IsIOError());
-  ASSERT_STR_CONTAINS(s.ToString(), "directory (fs_wal_dir) not provided");
+  ASSERT_STR_CONTAINS(s.ToString(),
+                      "List of write-ahead log directories (fs_wal_dirs) not provided");
 }
 
 TEST_F(FsManagerTestBase, TestOnlyWALPath) {
   string path = GetTestPath("new_fs_root");
   ASSERT_OK(env_->CreateDir(path));
 
-  ReinitFsManager(path, vector<string>());
+  ReinitFsManager({ path }, vector<string>());
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
-  ASSERT_TRUE(HasPrefixString(fs_manager()->GetWalsRootDir(), path));
+  vector<string> wal_dirs = fs_manager()->GetWalRootDirs();
+  ASSERT_EQ(1, wal_dirs.size());
+  ASSERT_TRUE(HasPrefixString(wal_dirs[0], path));
   ASSERT_TRUE(HasPrefixString(fs_manager()->GetConsensusMetadataDir(), path));
   ASSERT_TRUE(HasPrefixString(fs_manager()->GetTabletMetadataDir(), path));
   vector<string> data_dirs = fs_manager()->GetDataRootDirs();

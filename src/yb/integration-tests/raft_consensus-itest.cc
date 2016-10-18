@@ -2129,7 +2129,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   int64_t expected_index = 0;
   ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id, 1, &expected_index));
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(expected_index, leader_ts, tablet_id, timeout));
-  ++expected_index;
+  expected_index += 2; // Adding a new peer generates two ChangeConfig requests.
 
   // Change the config.
   TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add];

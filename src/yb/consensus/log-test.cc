@@ -300,7 +300,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   gscoped_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(fs_manager_.get(),
                             make_scoped_refptr(new LogIndex(log_->log_dir_)),
-                            kTestTablet, nullptr, &reader));
+                            kTestTablet, tablet_wal_path_, nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -361,7 +361,7 @@ TEST_F(LogTest, TestSegmentRollover) {
   ASSERT_OK(log_->Close());
 
   gscoped_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, NULL, &reader));
+  ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, tablet_wal_path_, NULL, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_TRUE(segments.back()->HasFooter());
@@ -695,7 +695,8 @@ TEST_F(LogTest, TestWriteManyBatches) {
     vector<scoped_refptr<ReadableLogSegment> > segments;
 
     gscoped_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, NULL, &reader));
+    ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, tablet_wal_path_, NULL,
+                              &reader));
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
     for (const scoped_refptr<ReadableLogSegment> entry : segments) {

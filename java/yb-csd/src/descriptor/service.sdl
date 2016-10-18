@@ -115,8 +115,8 @@
           "default" : "3"
         },
         {
-          "name" : "fs_wal_dir",
-          "label" : "Kudu Master WAL Directory",
+          "name" : "fs_wal_dirs",
+          "label" : "Kudu Master WAL Directories",
           "description" : "Directory where Kudu masters will store write-ahead logs. It can be the same as one of the data directories, but not a sub-directory of a data directory. Master and tablet servers must use different directories when co-located on the same machine.",
           "required" : "true",
           "configurableInWizard" : true,
@@ -212,8 +212,8 @@
           "default" : 8050
         },
         {
-          "name" : "fs_wal_dir",
-          "label" : "Kudu Tablet Server WAL Directory",
+          "name" : "fs_wal_dirs",
+          "label" : "Kudu Tablet Server WAL Directories",
           "description" : "Directory where Kudu tablet servers will store write-ahead logs. It can be the same as one of the data directories, but not a sub-directory of a data directory. Master and tablet servers must use different directories when co-located on the same machine.",
           "required" : "true",
           "configurableInWizard" : true,

@@ -68,12 +68,11 @@ const int LogReader::kNoSizeLimit = -1;
 Status LogReader::Open(FsManager *fs_manager,
                        const scoped_refptr<LogIndex>& index,
                        const string& tablet_id,
+                       const string& tablet_wal_path,
                        const scoped_refptr<MetricEntity>& metric_entity,
                        gscoped_ptr<LogReader> *reader) {
   gscoped_ptr<LogReader> log_reader(new LogReader(fs_manager, index, tablet_id,
                                                   metric_entity));
-
-  string tablet_wal_path = fs_manager->GetTabletWalDir(tablet_id);
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path))
   reader->reset(log_reader.release());
@@ -82,9 +81,10 @@ Status LogReader::Open(FsManager *fs_manager,
 
 Status LogReader::OpenFromRecoveryDir(FsManager *fs_manager,
                                       const string& tablet_id,
+                                      const string& tablet_wal_path,
                                       const scoped_refptr<MetricEntity>& metric_entity,
                                       gscoped_ptr<LogReader>* reader) {
-  string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_id);
+  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_wal_path);
 
   // When recovering, we don't want to have any log index -- since it isn't fsynced()
   // during writing, its contents are useless to us.

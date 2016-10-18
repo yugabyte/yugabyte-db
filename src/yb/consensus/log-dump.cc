@@ -27,6 +27,7 @@
 #include "yb/consensus/log_reader.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -49,11 +50,12 @@ namespace log {
 using consensus::CommitMsg;
 using consensus::OperationType;
 using consensus::ReplicateMsg;
-using tserver::WriteRequestPB;
 using std::string;
 using std::vector;
 using std::cout;
 using std::endl;
+using tablet::TabletMetadata;
+using tserver::WriteRequestPB;
 
 enum PrintEntryType {
   DONT_PRINT,
@@ -183,16 +185,18 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
   return Status::OK();
 }
 
-Status DumpLog(const string& tablet_id) {
+Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   Env *env = Env::Default();
   gscoped_ptr<LogReader> reader;
   FsManagerOpts fs_opts;
   fs_opts.read_only = true;
   FsManager fs_manager(env, fs_opts);
+
   RETURN_NOT_OK(fs_manager.Open());
   RETURN_NOT_OK(LogReader::Open(&fs_manager,
                                 scoped_refptr<LogIndex>(),
                                 tablet_id,
+                                tablet_wal_path,
                                 scoped_refptr<MetricEntity>(),
                                 &reader));
 
@@ -220,23 +224,28 @@ Status DumpSegment(const string &segment_path) {
 
 int main(int argc, char **argv) {
   yb::ParseCommandLineFlags(&argc, &argv, true);
-  if (argc != 2) {
+  if (argc != 2 && argc != 3) {
     std::cerr << "usage: " << argv[0]
-              << " -fs_wal_dir <dir> -fs_data_dirs <dirs>"
-              << " <tablet_name> | <log segment path>"
+              << " -fs_data_dirs <dirs>"
+              << " {<tablet_name> <log path>} | <log segment path>"
               << std::endl;
     return 1;
   }
-  yb::InitGoogleLoggingSafe(argv[0]);
-  yb::Status s = yb::log::DumpSegment(argv[1]);
-  if (s.ok()) {
-    return 0;
-  } else if (s.IsNotFound()) {
-    s = yb::log::DumpLog(argv[1]);
+
+  yb::Status status;
+  if (argc == 2) {
+    yb::InitGoogleLoggingSafe(argv[0]);
+    status = yb::log::DumpSegment(argv[1]);
+    if (status.ok()) {
+      return 0;
+    }
   }
-  if (!s.ok()) {
-    std::cerr << "Error: " << s.ToString() << std::endl;
-    return 1;
+  else {
+    status = yb::log::DumpLog(argv[1], argv[2]);
+    if (status.ok()) {
+      return 0;
+    }
   }
-  return 0;
+  std::cerr << "Error: " << status.ToString() << std::endl;
+  return 1;
 }

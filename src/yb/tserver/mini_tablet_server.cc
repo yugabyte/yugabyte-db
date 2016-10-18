@@ -65,7 +65,7 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   opts_.rpc_opts.rpc_bind_addresses = Substitute("127.0.0.1:$0", rpc_port);
   opts_.webserver_opts.port = 0;
-  opts_.fs_opts.wal_path = fs_root;
+  opts_.fs_opts.wal_paths = { fs_root };
   opts_.fs_opts.data_paths = { fs_root };
 }
 

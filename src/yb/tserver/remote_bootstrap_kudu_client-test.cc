@@ -60,10 +60,10 @@ TEST_F(RemoteBootstrapKuduClientTest, TestDownloadBlock) {
 
 // Basic WAL segment download unit test.
 TEST_F(RemoteBootstrapKuduClientTest, TestDownloadWalSegment) {
-  ASSERT_OK(fs_manager_->CreateDirIfMissing(fs_manager_->GetTabletWalDir(GetTabletId())));
+  ASSERT_OK(fs_manager_->CreateDirIfMissing(fs_manager_->GetFirstTabletWalDirOrDie(GetTabletId())));
 
   uint64_t seqno = client_->wal_seqnos_[0];
-  string path = fs_manager_->GetWalSegmentFileName(GetTabletId(), seqno);
+  const string path = fs_manager_->GetWalSegmentFileName(meta_->wal_dir(), seqno);
 
   ASSERT_FALSE(fs_manager_->Exists(path));
   ASSERT_OK(client_->DownloadWAL(seqno));

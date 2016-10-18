@@ -111,7 +111,7 @@ BASE_DIR=$(mktemp -d $TEST_TMPDIR/client_samples-test.XXXXXXXX)
 $OUTPUT_DIR/yb-master \
   --default_num_replicas=1 \
   "--log_dir=$BASE_DIR" \
-  "--fs_wal_dir=$BASE_DIR/master" \
+  "--fs_wal_dirs=$BASE_DIR/master" \
   "--fs_data_dirs=$BASE_DIR/master" \
   --create_cluster \
   --webserver_interface=localhost \
@@ -120,7 +120,7 @@ $OUTPUT_DIR/yb-master \
 MASTER_PID=$!
 $OUTPUT_DIR/yb-tserver \
   "--log_dir=$BASE_DIR" \
-  "--fs_wal_dir=$BASE_DIR/ts" \
+  "--fs_wal_dirs=$BASE_DIR/ts" \
   "--fs_data_dirs=$BASE_DIR/ts" \
   --rpc_bind_addresses=$LOCALHOST_IP \
   --local_ip_for_outbound_sockets=$LOCALHOST_IP \

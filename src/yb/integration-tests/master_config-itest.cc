@@ -256,7 +256,7 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
   VerifyNonLeaderMastersPeerCount();
 
   // Give time for cmeta to get flushed on all peers - TODO(Bharat) ENG-104
-  SleepFor(MonoDelta::FromSeconds(2));
+  SleepFor(MonoDelta::FromSeconds(5));
 
   s = RestartCluster();
   ASSERT_OK_PREPEND(s, "Restart Cluster failed");

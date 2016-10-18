@@ -186,6 +186,7 @@ class RaftConsensusTest : public YBTest {
     CHECK_OK(Log::Open(LogOptions(),
                        fs_manager_.get(),
                        kTestTablet,
+                       fs_manager_->GetFirstTabletWalDirOrDie(kTestTablet),
                        schema_,
                        0, // schema_version
                        NULL,

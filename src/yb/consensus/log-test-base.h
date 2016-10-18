@@ -139,7 +139,7 @@ class LogTestBase : public YBTest {
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry_.get(), "log-test-base");
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
-
+    tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
 
@@ -156,6 +156,7 @@ class LogTestBase : public YBTest {
     CHECK_OK(Log::Open(options_,
                        fs_manager_.get(),
                        kTestTablet,
+                       tablet_wal_path_,
                        schema_with_ids,
                        0, // schema_version
                        metric_entity_.get(),
@@ -166,10 +167,7 @@ class LogTestBase : public YBTest {
     // Test that we actually have the expected number of files in the fs.
     // We should have n segments plus '.' and '..'
     vector<string> files;
-    ASSERT_OK(env_->GetChildren(
-                       JoinPathSegments(fs_manager_->GetWalsRootDir(),
-                                        kTestTablet),
-                       &files));
+    ASSERT_OK(env_->GetChildren(tablet_wal_path_, &files));
     int count = 0;
     for (const string& s : files) {
       if (HasPrefixString(s, FsManager::kWalFileNamePrefix)) {
@@ -340,6 +338,7 @@ class LogTestBase : public YBTest {
   vector<LogEntryPB* > entries_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<Clock> clock_;
+  string tablet_wal_path_;
 };
 
 // Corrupts the last segment of the provided log by either truncating it

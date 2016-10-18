@@ -116,6 +116,8 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   const std::string rocksdb_dir() const { return rocksdb_dir_; };
 
+  const std::string wal_dir() const { return wal_dir_; };
+
   uint32_t schema_version() const;
 
   void SetSchema(const Schema& schema, uint32_t version);
@@ -243,6 +245,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                  std::string table_name,
                  TableType table_type,
                  const std::string rocksdb_dir,
+                 const std::string wal_dir,
                  const Schema& schema,
                  PartitionSchema partition_schema,
                  Partition partition,
@@ -323,6 +326,9 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   // The directory where the RocksDB data for this tablet is stored.
   std::string rocksdb_dir_;
+
+  // The directory where the write-ahead log for this tablet is stored.
+  std::string wal_dir_;
 
   PartitionSchema partition_schema_;
 

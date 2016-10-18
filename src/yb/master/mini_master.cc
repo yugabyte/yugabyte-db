@@ -83,7 +83,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                                 MasterOptions* opts) {
   opts->rpc_opts.rpc_bind_addresses = Substitute("127.0.0.1:$0", rpc_port);
   opts->webserver_opts.port = web_port;
-  opts->fs_opts.wal_path = fs_root_;
+  opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
 
   gscoped_ptr<Master> server(new Master(*opts));

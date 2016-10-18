@@ -90,6 +90,7 @@ class Log : public RefCountedThreadSafe<Log> {
   static Status Open(const LogOptions &options,
                      FsManager *fs_manager,
                      const std::string& tablet_id,
+                     const std::string& tablet_wal_path,
                      const Schema& schema,
                      uint32_t schema_version,
                      const scoped_refptr<MetricEntity>& metric_entity,
@@ -149,7 +150,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Delete all WAL data from the log associated with this tablet.
   // REQUIRES: The Log must be closed.
-  static Status DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
+  static Status DeleteOnDiskData(FsManager* fs_manager,
+                                 const std::string& tablet_id,
+                                 const std::string& tablet_wal_path);
 
   // Returns a reader that is able to read through the previous
   // segments. The reader pointer is guaranteed to be live as long
@@ -252,8 +255,8 @@ class Log : public RefCountedThreadSafe<Log> {
   };
 
   Log(LogOptions options, FsManager* fs_manager, std::string log_path,
-      std::string tablet_id, const Schema& schema, uint32_t schema_version,
-      const scoped_refptr<MetricEntity>& metric_entity);
+      std::string tablet_id, std::string tablet_wal_path, const Schema& schema,
+      uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity);
 
   // Initializes a new one or continues an existing log.
   Status Init();
@@ -320,6 +323,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The ID of the tablet this log is dedicated to.
   std::string tablet_id_;
+
+  // The path where the write-ahead log for this tablet is stored.
+  std::string tablet_wal_path_;
 
   // Lock to protect modifications to schema_ and schema_version_.
   mutable rw_spinlock schema_lock_;

@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
   yb::InitGoogleLoggingSafe(argv[0]);
   if (argc != 2) {
     std::cerr << "usage: " << argv[0]
-              << " -fs_wal_dir <dir> -fs_data_dirs <dirs> <block id>" << std::endl;
+              << " -fs_wal_dirs <dirs> -fs_data_dirs <dirs> <block id>" << std::endl;
     return 1;
   }
 

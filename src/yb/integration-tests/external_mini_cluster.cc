@@ -1389,7 +1389,7 @@ ExternalMaster::~ExternalMaster() {
 
 Status ExternalMaster::Start(bool shell_mode) {
   vector<string> flags;
-  flags.push_back("--fs_wal_dir=" + data_dir_);
+  flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back("--rpc_bind_addresses=" + rpc_bind_address_);
   flags.push_back("--webserver_interface=localhost");
@@ -1410,7 +1410,7 @@ Status ExternalMaster::Restart() {
     return STATUS(IllegalState, "Master cannot be restarted. Must call Shutdown() first.");
   }
   vector<string> flags;
-  flags.push_back("--fs_wal_dir=" + data_dir_);
+  flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back("--rpc_bind_addresses=" + bound_rpc_.ToString());
   flags.push_back("--webserver_interface=localhost");
@@ -1438,7 +1438,7 @@ ExternalTabletServer::~ExternalTabletServer() {
 
 Status ExternalTabletServer::Start() {
   vector<string> flags;
-  flags.push_back("--fs_wal_dir=" + data_dir_);
+  flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
                              bind_host_, rpc_port_));
@@ -1458,7 +1458,7 @@ Status ExternalTabletServer::Restart() {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
   vector<string> flags;
-  flags.push_back("--fs_wal_dir=" + data_dir_);
+  flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back("--rpc_bind_addresses=" + bound_rpc_.ToString());
   flags.push_back(Substitute("--local_ip_for_outbound_sockets=$0",

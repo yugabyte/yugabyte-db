@@ -116,7 +116,7 @@ class RaftConsensusQuorumTest : public YBTest {
       string test_path = GetTestPath(Substitute("peer-$0-root", i));
       FsManagerOpts opts;
       opts.parent_mem_tracker = parent_mem_tracker;
-      opts.wal_path = test_path;
+      opts.wal_paths = { test_path };
       opts.data_paths = { test_path };
       gscoped_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
@@ -126,6 +126,7 @@ class RaftConsensusQuorumTest : public YBTest {
       RETURN_NOT_OK(Log::Open(LogOptions(),
                               fs_manager.get(),
                               kTestTablet,
+                              fs_manager->GetFirstTabletWalDirOrDie(kTestTablet),
                               schema_,
                               0, // schema_version
                               NULL,
@@ -413,6 +414,7 @@ class RaftConsensusQuorumTest : public YBTest {
     ASSERT_OK(log::LogReader::Open(fs_managers_[idx],
                                    scoped_refptr<log::LogIndex>(),
                                    kTestTablet,
+                                   fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTablet),
                                    metric_entity_.get(),
                                    &log_reader));
     vector<LogEntryPB*> ret;

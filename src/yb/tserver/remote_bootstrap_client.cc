@@ -193,11 +193,18 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     }
     LOG(INFO) << "RocksDB files: " << files;
   }
+
   session_id_ = resp.session_id();
   LOG(INFO) << "Began remote bootstrap session " << session_id_;
 
   session_idle_timeout_millis_ = resp.session_idle_timeout_millis();
   superblock_.reset(resp.release_superblock());
+
+  // Clear fields rocksdb_dir and wal_dir so we get an error if we try to use them without setting
+  // them to the right path.
+  superblock_->clear_rocksdb_dir();
+  superblock_->clear_wal_dir();
+
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
   wal_seqnos_.assign(resp.wal_segment_seqnos().begin(), resp.wal_segment_seqnos().end());
   remote_committed_cstate_.reset(resp.release_initial_committed_cstate());
@@ -225,6 +232,10 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     }
     // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     superblock_->set_rocksdb_dir(meta_->rocksdb_dir());
+
+    // Replace wal_dir in the received superblock with our assigned wal_dir.
+    superblock_->set_wal_dir(meta_->wal_dir());
+
     // This will flush to disk, but we set the data state to COPYING above.
     RETURN_NOT_OK_PREPEND(meta_->ReplaceSuperBlock(*superblock_),
                           "Remote bootstrap unable to replace superblock on tablet " +
@@ -246,6 +257,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                             partition,
                                             tablet::TABLET_DATA_COPYING,
                                             &meta_));
+
+    // Replace wal_dir in the received superblock with our assigned wal_dir.
+    superblock_->set_wal_dir(meta_->wal_dir());
   }
 
   started_ = true;
@@ -360,7 +374,7 @@ Status RemoteBootstrapClient::DownloadWALs() {
 
   // Delete and recreate WAL dir if it already exists, to ensure stray files are
   // not kept from previous bootstraps and runs.
-  string path = fs_manager_->GetTabletWalDir(tablet_id_);
+  const string& path = meta_->wal_dir();
   if (fs_manager_->env()->FileExists(path)) {
     RETURN_NOT_OK(fs_manager_->env()->DeleteRecursively(path));
   }
@@ -471,7 +485,7 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
-  string dest_path = fs_manager_->GetWalSegmentFileName(tablet_id_, wal_segment_seqno);
+  const string dest_path = fs_manager_->GetWalSegmentFileName(meta_->wal_dir(), wal_segment_seqno);
 
   WritableFileOptions opts;
   opts.sync_on_close = true;

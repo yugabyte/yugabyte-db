@@ -44,14 +44,14 @@ class LogReader {
  public:
   ~LogReader();
 
-  // Opens a LogReader on the default tablet log directory, and sets
-  // 'reader' to the newly created LogReader.
+  // Opens a LogReader on a specific log directory, and sets 'reader' to the newly created
+  // LogReader.
   //
-  // 'index' may be NULL, but if it is, ReadReplicatesInRange() may not
-  // be used.
+  // 'index' may be NULL, but if it is, ReadReplicatesInRange() may not be used.
   static Status Open(FsManager *fs_manager,
                      const scoped_refptr<LogIndex>& index,
                      const std::string& tablet_id,
+                     const std::string& tablet_wal_path,
                      const scoped_refptr<MetricEntity>& metric_entity,
                      gscoped_ptr<LogReader> *reader);
 
@@ -59,6 +59,7 @@ class LogReader {
   // 'reader' to the newly created LogReader.
   static Status OpenFromRecoveryDir(FsManager *fs_manager,
                                     const std::string& tablet_id,
+                                    const std::string& tablet_wal_path,
                                     const scoped_refptr<MetricEntity>& metric_entity,
                                     gscoped_ptr<LogReader> *reader);
 

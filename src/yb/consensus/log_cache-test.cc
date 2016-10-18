@@ -59,6 +59,7 @@ class LogCacheTest : public YBTest {
     CHECK_OK(log::Log::Open(log::LogOptions(),
                             fs_manager_.get(),
                             kTestTablet,
+                            fs_manager_->GetFirstTabletWalDirOrDie(kTestTablet),
                             schema_,
                             0, // schema_version
                             NULL,

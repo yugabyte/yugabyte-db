@@ -45,20 +45,22 @@ const char* kLeaderUuid = "peer-0";
 const char* kFollowerUuid = "peer-1";
 
 class ConsensusPeersTest : public YBTest {
- public:
+public:
   ConsensusPeersTest()
-    : metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "peer-test")),
-      schema_(GetSimpleTestSchema()) {
+      : metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "peer-test")),
+        schema_(GetSimpleTestSchema()) {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(1).Build(&pool_));
   }
 
   virtual void SetUp() OVERRIDE {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
+
     CHECK_OK(fs_manager_->CreateInitialFileSystemLayout());
     CHECK_OK(Log::Open(options_,
                        fs_manager_.get(),
                        kTabletId,
+                       fs_manager_->GetFirstTabletWalDirOrDie(kTabletId),
                        schema_,
                        0, // schema_version
                        NULL,
@@ -123,7 +125,7 @@ class ConsensusPeersTest : public YBTest {
     FAIL() << "Never replicated index " << index << " on a majority";
   }
 
- protected:
+protected:
   gscoped_ptr<TestRaftConsensusQueueIface> consensus_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;

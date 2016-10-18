@@ -55,7 +55,7 @@ class YBTestBase(object):
             "{0}/yb-master".format(bin_path),
             "-rpc_server_allow_ephemeral_ports",
             "-rpc_bind_addresses=0.0.0.0:0",
-            "-fs_wal_dir={0}/master/data".format(local_path),
+            "-fs_wal_dirs={0}/master/data".format(local_path),
             "-fs_data_dirs={0}/master/data".format(local_path),
             "-log_dir={0}/master/logs".format(local_path),
             "-logtostderr",
@@ -100,7 +100,7 @@ class YBTestBase(object):
                 "-log_dir={0}/master/logs".format(local_path),
                 "-logtostderr",
                 "-fs_data_dirs={0}/ts/{1}/data".format(local_path, m),
-                "-fs_wal_dir={0}/ts/{1}/data".format(local_path, m),
+                "-fs_wal_dirs={0}/ts/{1}/data".format(local_path, m),
             ]
             p = subprocess.Popen(path, shell=False)
             tserver_pid = "{0}/ts/{1}/yb-tserver.pid".format(local_path, m)

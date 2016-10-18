@@ -128,8 +128,8 @@ class TabletPeerTest : public YBTabletTest {
 
     scoped_refptr<Log> log;
     ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
-                               *tablet()->schema(), tablet()->metadata()->schema_version(),
-                               metric_entity_.get(), &log));
+                        tablet()->metadata()->wal_dir(), *tablet()->schema(),
+                        tablet()->metadata()->schema_version(), metric_entity_.get(), &log));
 
     tablet_peer_->SetBootstrapping();
     ASSERT_OK(tablet_peer_->Init(tablet(),

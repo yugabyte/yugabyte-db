@@ -70,8 +70,8 @@ struct FsManagerOpts {
   // If NULL, new memory trackers will be parented to the root tracker.
   std::shared_ptr<MemTracker> parent_mem_tracker;
 
-  // The path where WALs will be stored. Cannot be empty.
-  std::string wal_path;
+  // The paths where WALs will be stored. Cannot be empty.
+  std::vector<std::string> wal_paths;
 
   // The paths where data blocks will be stored. Cannot be empty.
   std::vector<std::string> data_paths;
@@ -140,18 +140,14 @@ class FsManager {
   // ==========================================================================
   std::vector<std::string> GetDataRootDirs() const;
 
-  std::string GetWalsRootDir() const {
-    DCHECK(initted_);
-    return JoinPathSegments(canonicalized_wal_fs_root_, kWalDirName);
-  }
+  std::vector<std::string> GetWalRootDirs() const;
 
-  std::string GetTabletWalDir(const std::string& tablet_id) const {
-    return JoinPathSegments(GetWalsRootDir(), tablet_id);
-  }
+  // Used for tests only. If GetWalRootDirs returns an empty vector, we will crash the process.
+  std::string GetFirstTabletWalDirOrDie(const std::string& tablet_id) const;
 
-  std::string GetTabletWalRecoveryDir(const std::string& tablet_id) const;
+  std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path) const;
 
-  std::string GetWalSegmentFileName(const std::string& tablet_id,
+  std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
                                     uint64_t sequence_number) const;
 
   // Return the directory where tablet superblocks should be stored.
@@ -250,19 +246,19 @@ class FsManager {
 
   // These roots are the constructor input verbatim. None of them are used
   // as-is; they are first canonicalized during Init().
-  const std::string wal_fs_root_;
+  const std::vector<std::string> wal_fs_roots_;
   const std::vector<std::string> data_fs_roots_;
 
   scoped_refptr<MetricEntity> metric_entity_;
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
-  // Canonicalized forms of 'wal_fs_root_ and 'data_fs_roots_'. Constructed
+  // Canonicalized forms of 'wal_fs_roots_ and 'data_fs_roots_'. Constructed
   // during Init().
   //
   // - The first data root is used as the metadata root.
   // - Common roots in the collections have been deduplicated.
-  std::string canonicalized_wal_fs_root_;
+  std::set<std::string> canonicalized_wal_fs_roots_;
   std::string canonicalized_metadata_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;

@@ -144,7 +144,6 @@ class Log::AppendThread {
   scoped_refptr<Thread> thread_;
 };
 
-
 Log::AppendThread::AppendThread(Log *log)
   : log_(log) {
 }
@@ -256,18 +255,19 @@ const Status Log::kLogShutdownStatus(
 Status Log::Open(const LogOptions &options,
                  FsManager *fs_manager,
                  const std::string& tablet_id,
+                 const std::string& tablet_wal_path,
                  const Schema& schema,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  scoped_refptr<Log>* log) {
 
-  string tablet_wal_path = fs_manager->GetTabletWalDir(tablet_id);
   RETURN_NOT_OK(fs_manager->CreateDirIfMissing(tablet_wal_path));
 
   scoped_refptr<Log> new_log(new Log(options,
                                      fs_manager,
                                      tablet_wal_path,
                                      tablet_id,
+                                     tablet_wal_path,
                                      schema,
                                      schema_version,
                                      metric_entity));
@@ -277,12 +277,13 @@ Status Log::Open(const LogOptions &options,
 }
 
 Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
-         string tablet_id, const Schema& schema, uint32_t schema_version,
+         string tablet_id, string tablet_wal_path, const Schema& schema, uint32_t schema_version,
          const scoped_refptr<MetricEntity>& metric_entity)
     : options_(std::move(options)),
       fs_manager_(fs_manager),
       log_dir_(std::move(log_path)),
       tablet_id_(std::move(tablet_id)),
+      tablet_wal_path_(std::move(tablet_wal_path)),
       schema_(schema),
       schema_version_(schema_version),
       active_segment_sequence_number_(0),
@@ -303,14 +304,13 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
 Status Log::Init() {
   std::lock_guard<percpu_rwlock> write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
-
   // Init the index
   log_index_.reset(new LogIndex(log_dir_));
-
   // Reader for previous segments.
   RETURN_NOT_OK(LogReader::Open(fs_manager_,
                                 log_index_,
                                 tablet_id_,
+                                tablet_wal_path_,
                                 metric_entity_.get(),
                                 &reader_));
 
@@ -319,7 +319,7 @@ Status Log::Init() {
   // sequence numbers.
   if (reader_->num_segments() != 0) {
     VLOG(1) << "Using existing " << reader_->num_segments()
-            << " segments from path: " << fs_manager_->GetWalsRootDir();
+            << " segments from path: " << tablet_wal_path_;
 
     vector<scoped_refptr<ReadableLogSegment> > segments;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
@@ -830,13 +830,14 @@ Status Log::Close() {
   }
 }
 
-Status Log::DeleteOnDiskData(FsManager* fs_manager, const string& tablet_id) {
-  string wal_dir = fs_manager->GetTabletWalDir(tablet_id);
+Status Log::DeleteOnDiskData(FsManager* fs_manager,
+                             const string& tablet_id,
+                             const string& tablet_wal_path) {
   Env* env = fs_manager->env();
-  if (!env->FileExists(wal_dir)) {
+  if (!env->FileExists(tablet_wal_path)) {
     return Status::OK();
   }
-  RETURN_NOT_OK_PREPEND(env->DeleteRecursively(wal_dir),
+  RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tablet_wal_path),
                         "Unable to recursively delete WAL dir for tablet " + tablet_id);
   return Status::OK();
 }
@@ -869,8 +870,8 @@ Status Log::SwitchToAllocatedSegment() {
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
 
-  string new_segment_path = fs_manager_->GetWalSegmentFileName(tablet_id_,
-                                                               active_segment_sequence_number_);
+  const string new_segment_path =
+      fs_manager_->GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(fs_manager_->env()->RenameFile(next_segment_path_, new_segment_path));
   if (force_sync_all_) {
@@ -891,7 +892,6 @@ Status Log::SwitchToAllocatedSegment() {
   // Set up the new footer. This will be maintained as the segment is written.
   footer_builder_.Clear();
   footer_builder_.set_num_entries(0);
-
 
   // Set the new segment's schema.
   {
