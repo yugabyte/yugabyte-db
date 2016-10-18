@@ -7634,10 +7634,15 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
-9.3 and Up
+9.5 and Up
 ----------
 
 No changes. Everything should just work.
+
+9.4 and Down
+------------
+* lives_ok() and throws_ok() will not trap ASSERT_FAILURE, since asserts do not
+  exist prior to 9.5.
 
 9.2 and Down
 ------------
