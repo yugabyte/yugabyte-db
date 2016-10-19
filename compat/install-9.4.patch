@@ -1,0 +1,20 @@
+--- sql/pgtap.sql
++++ sql/pgtap.sql
+@@ -675,7 +675,7 @@
+            '      caught: no exception' ||
+         E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
+     );
+-EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
++EXCEPTION WHEN OTHERS THEN
+     IF (errcode IS NULL OR SQLSTATE = errcode)
+         AND ( errmsg IS NULL OR SQLERRM = errmsg)
+     THEN
+@@ -779,7 +779,7 @@
+ BEGIN
+     EXECUTE code;
+     RETURN ok( TRUE, descr );
+-EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
++EXCEPTION WHEN OTHERS THEN
+     -- There should have been no exception.
+     GET STACKED DIAGNOSTICS
+         detail  = PG_EXCEPTION_DETAIL,
