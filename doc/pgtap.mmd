@@ -3826,6 +3826,55 @@ omitted, it will default to "Procedural language `:language` should exist".
 The inverse of `has_language()`, this function tests for the *absence* of a
 procedural language.
 
+### `has_extension()` ###
+
+    SELECT has_extension( :schema, :extension, :description );
+    SELECT has_extension( :schema, :extension );
+    SELECT has_extension( :extension, :description );
+    SELECT has_extension( :extension );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:extension`
+: Name of an extension.
+
+`:description`
+: A short description of the test.
+
+This function tests whether or not an extension exists in the
+database. The first argument is the schema name, the second the
+extension name, and the third the test description. If the schema is
+omitted, the extension must be visible in the search path. If the test
+description is omitted, it will be set to "Extension `:extension`
+should exist".
+Example:
+
+    SELECT has_extension('public', 'pgtap');
+
+### `hasnt_extension()` ###
+
+    SELECT hasnt_extension( :schema, :extension, :description );
+    SELECT hasnt_extension( :schema, :extension );
+    SELECT hasnt_extension( :extension, :description );
+    SELECT hasnt_extension( :extension );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:extension`
+: Name of an extension.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_extension()`. The test passes if the
+specified extension does *not* exist.
+
 Table For One
 -------------
 
