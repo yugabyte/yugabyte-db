@@ -1,5 +1,5 @@
 \unset ECHO
-1..84
+1..97
 ok 1 - four-argument form should pass
 ok 2 - four-argument form should have the proper description
 ok 3 - four-argument form should have the proper diagnostics
@@ -84,3 +84,16 @@ ok 81 - throws_imatching(sql, regex, desc) should have the proper diagnostics
 ok 82 - throws_imatching(valid sql, regex, desc) should fail
 ok 83 - throws_imatching(valid sql, regex, desc) should have the proper description
 ok 84 - throws_imatching(valid sql, regex, desc) should have the proper diagnostics
+ok 85 - Create check_assert function
+ok 86 - throws_ok catches assert should pass
+ok 87 - throws_ok catches assert should have the proper description
+ok 88 - throws_ok catches assert should have the proper diagnostics
+ok 89 - throws_ok does not accept passing assert should fail
+ok 90 - throws_ok does not accept passing assert should have the proper description
+ok 91 - throws_ok does not accept passing assert should have the proper diagnostics
+ok 92 - lives_ok calling check_assert(true) should pass
+ok 93 - lives_ok calling check_assert(true) should have the proper description
+ok 94 - lives_ok calling check_assert(true) should have the proper diagnostics
+ok 95 - lives_ok with check_assert(false) should fail
+ok 96 - lives_ok with check_assert(false) should have the proper description
+ok 97 - lives_ok with check_assert(false) should have the proper diagnostics

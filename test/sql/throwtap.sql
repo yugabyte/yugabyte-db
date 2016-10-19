@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(84);
+SELECT plan(97);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -299,6 +299,107 @@ SELECT * FROM check_test(
     'whatever',
     '    no exception thrown'
 );
+
+/****************************************************************************/
+-- Test ASSERTs
+SELECT lives_ok(
+    CASE WHEN pg_version_num() < 90500 THEN $exec$
+CREATE FUNCTION check_assert(b boolean) RETURNS void LANGUAGE plpgsql AS $body$
+BEGIN
+    RAISE 'this code should never be called!';
+END
+$body$;
+$exec$
+    ELSE $exec$
+CREATE FUNCTION check_assert(b boolean) RETURNS void LANGUAGE plpgsql AS $body$
+BEGIN
+    ASSERT b IS TRUE, 'assert description';
+END
+$body$;
+$exec$
+    END
+    , 'Create check_assert function'
+);
+
+CREATE FUNCTION test_assert() RETURNS SETOF text LANGUAGE plpgsql AS $body$
+BEGIN
+IF pg_version_num() >= 90500 THEN
+RETURN QUERY SELECT * FROM check_test(
+    throws_ok( 'SELECT check_assert(false)', 'P0004', 'assert description' ),
+    true,
+    'throws_ok catches assert',
+    'threw P0004: assert description',
+    ''
+);
+
+RETURN QUERY SELECT * FROM check_test(
+    throws_ok( 'SELECT check_assert(true)', 'P0004' ),
+    false,
+    'throws_ok does not accept passing assert',
+    'threw P0004',
+    '      caught: no exception
+      wanted: P0004'
+);
+
+RETURN QUERY SELECT * FROM check_test(
+    lives_ok( 'SELECT check_assert(true)' ),
+    true,
+    'lives_ok calling check_assert(true)',
+    '',
+    ''
+);
+
+-- Check its diagnostics when there is an exception.
+RETURN QUERY SELECT * FROM check_test(
+    lives_ok( 'SELECT check_assert(false)' ),
+    false,
+    'lives_ok with check_assert(false)',
+    '',
+    '    died: P0004: assert description
+        CONTEXT:
+            PL/pgSQL function check_assert(boolean) line 3 at ASSERT
+            SQL statement "SELECT check_assert(false)"
+            PL/pgSQL function lives_ok(text,text) line 14 at EXECUTE
+            PL/pgSQL function test_assert() line 30 at RETURN QUERY'
+);
+ELSE
+RETURN QUERY SELECT * FROM check_test(
+    pass(''),
+    true,
+    'throws_ok catches assert',
+    '',
+    ''
+);
+
+RETURN QUERY SELECT * FROM check_test(
+    fail(''),
+    false,
+    'throws_ok does not accept passing assert',
+    '',
+    ''
+);
+
+RETURN QUERY SELECT * FROM check_test(
+    pass(''),
+    true,
+    'lives_ok calling check_assert(true)',
+    '',
+    ''
+);
+
+-- Check its diagnostics when there is an exception.
+RETURN QUERY SELECT * FROM check_test(
+    fail(''),
+    false,
+    'lives_ok with check_assert(false)',
+    '',
+    ''
+);
+END IF;
+END
+$body$;
+
+SELECT test_assert();
 
 /****************************************************************************/
 -- Finish the tests and clean up.

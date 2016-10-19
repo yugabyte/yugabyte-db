@@ -675,7 +675,7 @@ BEGIN
            '      caught: no exception' ||
         E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
     );
-EXCEPTION WHEN OTHERS THEN
+EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
     IF (errcode IS NULL OR SQLSTATE = errcode)
         AND ( errmsg IS NULL OR SQLERRM = errmsg)
     THEN
@@ -779,7 +779,7 @@ DECLARE
 BEGIN
     EXECUTE code;
     RETURN ok( TRUE, descr );
-EXCEPTION WHEN OTHERS THEN
+EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
     -- There should have been no exception.
     GET STACKED DIAGNOSTICS
         detail  = PG_EXCEPTION_DETAIL,
