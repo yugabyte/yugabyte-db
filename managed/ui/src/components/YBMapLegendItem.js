@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import {Row, Col, Image, ListGroup, ListGroupItem} from 'react-bootstrap';
+import { Col, Image, ListGroup, ListGroupItem} from 'react-bootstrap';
 import YBButton from './fields/YBButton';
 import rootDataIcon from '../stylesheets/images/rootmarker.png';
 import asyncDataIcon from '../stylesheets/images/asyncmarker.png';

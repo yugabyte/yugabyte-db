@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Grid, Row, Col, ButtonGroup, Image,
-          DropdownButton, MenuItem, ListGroup, ListGroupItem } from 'react-bootstrap';
+          DropdownButton, MenuItem } from 'react-bootstrap';
 import RegionMap from './RegionMap';
 import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
