@@ -75,7 +75,9 @@ $$ LANGUAGE sql;
 -- is_indexed( table, column )
 CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME )
 RETURNS TEXT AS $$
-   SELECT ok ( _is_indexed( $1, ARRAY[$2]::NAME[]) );
+   SELECT ok ( _is_indexed( $1, ARRAY[$2]::NAME[]),
+              'An index on ' || quote_ident($1) || ' on column '
+                  || $2::text || ' should exist');
 $$ LANGUAGE sql;
 
 -- pg_version_num()
@@ -88,8 +90,9 @@ RETURNS integer AS $$
           SELECT string_to_array(current_setting('server_version'), '.') AS a
       ) AS s;
 $$ LANGUAGE SQL IMMUTABLE;
-    
--- isnt_definer( schema, function, args[], description )
+
+
+    -- isnt_definer( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION isnt_definer ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT _func_compare($1, $2, $3, NOT _definer($1, $2, $3), $4 );
@@ -206,4 +209,3 @@ CREATE OR REPLACE FUNCTION isnt_aggregate( NAME )
 RETURNS TEXT AS $$
     SELECT ok( NOT _agg($1), 'Function ' || quote_ident($1) || '() should not be an aggregate function' );
 $$ LANGUAGE sql;
-

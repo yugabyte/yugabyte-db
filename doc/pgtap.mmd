@@ -5164,7 +5164,42 @@ Examples:
 
 If the function does not exist, a handy diagnostic message will let you know:
 
-    # Failed test 290: "Function nasty() should be strict"
+    # Failed test 290: "Function nasty() should be an aggregate function"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `isnt_aggregate()` ###
+
+    SELECT isnt_aggregate( :schema, :function, :args, :description );
+    SELECT isnt_aggregate( :schema, :function, :args );
+    SELECT isnt_aggregate( :schema, :function, :description );
+    SELECT isnt_aggregate( :schema, :function );
+    SELECT isnt_aggregate( :function, :args, :description );
+    SELECT isnt_aggregate( :function, :args );
+    SELECT isnt_aggregate( :function, :description );
+    SELECT isnt_aggregate( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_aggregate()`. The test passes if the specified
+function is not an aggregate function.
+
+If the function does not exist, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should not be an aggregate function"
     #     Function nasty() does not exist
 
 But then you check with `has_function()` first, right?
