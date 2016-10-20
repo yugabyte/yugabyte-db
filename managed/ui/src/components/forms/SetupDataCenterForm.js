@@ -1,17 +1,16 @@
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import {Grid, Row, Col } from 'react-bootstrap';
 import YBPanelItem from '../YBPanelItem';
 import YBButton from '../../components/fields/YBButton';
 import Highlight from 'react-highlight';
 import "highlight.js/styles/github.css";
-import CopyToClipboard from 'react-copy-to-clipboard';
 import AceEditor from 'react-ace';
 import 'brace/mode/json';
 import 'brace/theme/github';
 import sampleDataCenterConfig from '../../templates/SampleDataCenterConfig.json';
 class SetupDataCenterFormTitle extends Component {
   render() {
-    const {text, titleText, copyTextToForm} = this.props;
+    const { titleText, copyTextToForm} = this.props;
     return (
       <span>
         <Col lg={10} className="color-grey">{titleText}</Col>
