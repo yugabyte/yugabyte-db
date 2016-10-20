@@ -119,8 +119,8 @@ export default class UniverseForm extends Component {
                      defaultValue={this.state.instanceTypeSelected}
                      
               />
-              <Field name="serverPackage" type="text" component={YBInput}
-                     label="Server Package" defaultValue={this.state.serverPackage} />
+              <Field name="ybServerPackage" type="text" component={YBInput}
+                     label="Server Package" defaultValue={this.state.ybServerPackage} />
            </YBModal>
     )
   }
