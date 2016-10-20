@@ -13,8 +13,8 @@ class integer_reply;
 class simple_string_reply;
 } //! replies
 
-class reply {
-public:
+typedef class reply {
+ public:
   //! type of reply
   enum class type {
     array,
@@ -66,6 +66,6 @@ private:
   std::vector<reply> m_replies;
   std::string m_str;
   int m_int;
-};
+} RedisReply;
 
 } //! cpp_redis

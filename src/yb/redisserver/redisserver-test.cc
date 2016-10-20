@@ -17,6 +17,8 @@
 namespace yb {
 namespace redisserver {
 
+using cpp_redis::RedisClient;
+using cpp_redis::RedisReply;
 using std::string;
 using std::unique_ptr;
 using std::vector;
@@ -25,9 +27,6 @@ using yb::integration_tests::RedisTableTestBase;
 using yb::rpc::EncodeAsArrays;
 using yb::rpc::EncodeAsBulkString;
 using yb::rpc::EncodeAsSimpleString;
-
-typedef cpp_redis::redis_client RedisClient;
-typedef cpp_redis::reply RedisReply;
 
 class TestRedisService : public RedisTableTestBase {
  public:

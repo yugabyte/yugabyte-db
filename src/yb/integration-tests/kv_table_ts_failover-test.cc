@@ -44,13 +44,15 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     int max_write_errors = 0;
     int max_read_errors = 0;
     int retries_on_empty_read = 10;
+    yb::load_generator::YBSessionFactory session_factory(client_.get(), table_.get());
     yb::load_generator::MultiThreadedWriter writer(
-        rows, start_key, writer_threads, client_.get(), table_.get(), &stop_requested_flag,
-        value_size_bytes, max_write_errors);
-    yb::load_generator::MultiThreadedReader reader(
-        rows, reader_threads, client_.get(), table_.get(), writer.InsertionPoint(),
-        writer.InsertedKeys(), writer.FailedKeys(), &stop_requested_flag, value_size_bytes,
-        max_read_errors, retries_on_empty_read, false /* noop_reads */);
+        rows, start_key, writer_threads, &session_factory, &stop_requested_flag, value_size_bytes,
+        max_write_errors);
+    yb::load_generator::MultiThreadedReader reader(rows, reader_threads, &session_factory,
+                                                   writer.InsertionPoint(), writer.InsertedKeys(),
+                                                   writer.FailedKeys(), &stop_requested_flag,
+                                                   value_size_bytes, max_read_errors,
+                                                   retries_on_empty_read);
 
     writer.Start();
     reader.Start();

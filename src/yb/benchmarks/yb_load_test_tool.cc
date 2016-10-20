@@ -10,6 +10,7 @@
 
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
+#include "yb/client/client.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -68,27 +69,36 @@ DEFINE_bool(noop_only, false, "Only perform noop requests");
 
 DEFINE_bool(reads_only, false, "Only read the existing rows from the table.");
 
+DEFINE_string(
+    target_redis_server_address, "", "<host:port> Address of the redis server to contact.");
+
 DEFINE_bool(writes_only, false, "Writes a new set of rows into an existing table.");
 
-DEFINE_bool(drop_table,
-            false,
-            "Whether to drop the table if it already exists. If true, the table is deleted and "
-            "then recreated");
+DEFINE_bool(
+    drop_table, false,
+    "Whether to drop the table if it already exists. If true, the table is deleted and "
+    "then recreated");
 
 DEFINE_bool(use_kv_table, true, "Use key-value table type backed by RocksDB");
 
 DEFINE_int64(value_size_bytes, 16, "Size of each value in a row being inserted");
 
-DEFINE_int32(retries_on_empty_read,
-             0,
-             "We can retry up to this many times if we get an empty set of rows on a read "
-             "operation");
+DEFINE_int32(
+    retries_on_empty_read, 0,
+    "We can retry up to this many times if we get an empty set of rows on a read "
+    "operation");
 
 using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
 
-using namespace yb::client;
+using yb::client::YBClient;
+using yb::client::YBClientBuilder;
+using yb::client::YBColumnSchema;
+using yb::client::YBSchema;
+using yb::client::YBSchemaBuilder;
+using yb::client::YBTable;
+using yb::client::YBTableCreator;
 using yb::client::sp::shared_ptr;
 using yb::Status;
 using yb::ThreadPool;
@@ -106,6 +116,10 @@ using yb::TableType;
 using strings::Substitute;
 
 using yb::load_generator::KeyIndexSet;
+using yb::load_generator::SessionFactory;
+using yb::load_generator::NoopSessionFactory;
+using yb::load_generator::YBSessionFactory;
+using yb::load_generator::RedisSessionFactory;
 using yb::load_generator::MultiThreadedReader;
 using yb::load_generator::MultiThreadedWriter;
 using yb::load_generator::SingleThreadedScanner;
@@ -113,182 +127,194 @@ using yb::load_generator::FormatHexForLoadTestKey;
 
 // ------------------------------------------------------------------------------------------------
 
-int main(int argc, char* argv[]) {
+void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client);
+
+void LaunchYBLoadTest(SessionFactory *session_factory);
+
+shared_ptr<YBClient> CreateYBClient();
+
+void SetupYBTable(const shared_ptr<YBClient> &client);
+
+bool DropTableIfNecessary(const shared_ptr<YBClient> &client, const string &table_name);
+
+bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const string &table_name);
+
+int main(int argc, char *argv[]) {
   gflags::SetUsageMessage(
-    "Usage:\n"
-    "    load_test_tool --load_test_master_endpoint http://<metamaster rest endpoint>\n"
-    "    load_test_tool --load_test_master_addresses master1:port1,...,masterN:portN"
-  );
+      "Usage:\n"
+      "    load_test_tool --load_test_master_endpoint http://<metamaster rest endpoint>\n"
+      "    load_test_tool --load_test_master_addresses master1:port1,...,masterN:portN"
+      "    load_test_tool --target_redis_server_address server_host_name:port");
   yb::ParseCommandLineFlags(&argc, &argv, true);
   yb::InitGoogleLoggingSafe(argv[0]);
+
+  if (FLAGS_reads_only && FLAGS_writes_only) {
+    LOG(FATAL) << "Reads only and Writes only options cannot be set together.";
+  }
+
+  if (FLAGS_drop_table && (FLAGS_reads_only || FLAGS_writes_only)) {
+    LOG(FATAL) << "If reads only or writes only option is set, then we cannot drop the table";
+  }
+
+  bool use_redis_table = !FLAGS_target_redis_server_address.empty();
 
   if (!FLAGS_reads_only)
     LOG(INFO) << "num_keys = " << FLAGS_num_rows;
 
   for (int i = 0; i < FLAGS_num_iter; ++i) {
-    shared_ptr<YBClient> client;
-    YBClientBuilder client_builder;
-    client_builder.default_rpc_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout_sec));
-    if (!FLAGS_load_test_master_addresses.empty() && !FLAGS_load_test_master_endpoint.empty()) {
-      LOG(FATAL) << "Specify either 'load_test_master_addresses' or 'load_test_master_endpoint'";
-      return 0;
-    }
-    if (!FLAGS_load_test_master_addresses.empty()) {
-      client_builder.add_master_server_addr(FLAGS_load_test_master_addresses);
-    } else if (!FLAGS_load_test_master_endpoint.empty()) {
-      client_builder.add_master_server_endpoint(FLAGS_load_test_master_endpoint);
-    }
-    CHECK_OK(client_builder.Build(&client));
+    if (!use_redis_table) {
+      const string table_name;
+      shared_ptr<YBClient> client = CreateYBClient();
+      SetupYBTable(client);
 
-    const string table_name(FLAGS_table_name);
-
-    if (FLAGS_reads_only && FLAGS_writes_only) {
-      LOG(FATAL) << "Reads only and Writes only options cannot be set together.";
-      return 0;
-    }
-
-    if (FLAGS_drop_table && (FLAGS_reads_only || FLAGS_writes_only)) {
-      LOG(FATAL) << "If reads only or writes only option is set, then we cannot drop the table";
-      return 0;
-    }
-
-    bool should_create = true;
-    LOG(INFO) << "Checking if table '" << table_name << "' already exists";
-    {
-      YBSchema existing_schema;
-      if (client->GetTableSchema(table_name, &existing_schema).ok()) {
-        if (FLAGS_drop_table) {
-          LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
-          // Table with the same name already exists, drop it.
-          CHECK_OK(client->DeleteTable(table_name));
-        } else {
-          should_create = false;
-          LOG(INFO) << "Table '" << table_name << "' already exists, appending to";
-        }
+      shared_ptr<YBTable> table;
+      CHECK_OK(client->OpenTable(table_name, &table));
+      if (FLAGS_reads_only) {
+        SingleThreadedScanner scanner(table.get());
+        scanner.CountRows();
+      } else if (FLAGS_noop_only) {
+        NoopSessionFactory session_factory(client.get(), table.get());
+        // Noop operations are done as write operations.
+        FLAGS_writes_only = true;
+        LaunchYBLoadTest(&session_factory);
       } else {
-        LOG(INFO) << "Table '" << table_name << "' does not exist yet";
+        YBSessionFactory session_factory(client.get(), table.get());
+        LaunchYBLoadTest(&session_factory);
       }
-    }
-
-    if (should_create) {
-      LOG(INFO) << "Building schema";
-      YBSchemaBuilder schemaBuilder;
-      schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
-      schemaBuilder.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
-      YBSchema schema;
-      CHECK_OK(schemaBuilder.Build(&schema));
-
-      // Create the number of partitions based on the split keys.
-      vector<const YBPartialRow *> splits;
-      for (uint64_t j = 1; j < FLAGS_num_tablets; j++) {
-        YBPartialRow *row = schema.NewRow();
-        // We divide the interval between 0 and 2**64 into the requested number of intervals.
-        string split_key = FormatHexForLoadTestKey(
-            ((uint64_t) 1 << 62) * 4.0 * j / (FLAGS_num_tablets));
-        LOG(INFO) << "split_key #" << j << "=" << split_key;
-        CHECK_OK(row->SetBinaryCopy(0, split_key));
-        splits.push_back(row);
-      }
-
-      LOG(INFO) << "Creating table";
-
-      gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
-      Status table_creation_status =
-          table_creator->table_name(table_name)
-              .schema(&schema)
-              .split_rows(splits)
-              .num_replicas(FLAGS_num_replicas)
-              .table_type(
-                  FLAGS_use_kv_table ? YBTableType::YSQL_TABLE_TYPE
-                                     : YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
-              .Create();
-      if (!table_creation_status.ok()) {
-        LOG(INFO) << "Table creation status message: " <<
-        table_creation_status.message().ToString();
-      }
-      if (table_creation_status.message().ToString().find("Table already exists") ==
-          std::string::npos) {
-        CHECK_OK(table_creation_status);
-      }
-    }
-
-    shared_ptr<YBTable> table;
-    CHECK_OK(client->OpenTable(table_name, &table));
-
-    LOG(INFO) << "Starting load test";
-    atomic_bool stop_flag(false);
-    if (FLAGS_reads_only) {
-      SingleThreadedScanner scanner(table.get());
-
-      scanner.CountRows();
-    } else if (FLAGS_writes_only) {
-      // Adds more keys starting from next index after scanned index
-      MultiThreadedWriter writer(
-          FLAGS_num_rows, 0,
-          FLAGS_num_writer_threads,
-          client.get(),
-          table.get(),
-          &stop_flag,
-          FLAGS_value_size_bytes,
-          FLAGS_max_num_write_errors);
-
-      writer.Start();
-      writer.WaitForCompletion();
-    } else if (FLAGS_noop_only) {
-      MultiThreadedReader reader(
-          FLAGS_num_noops,
-          FLAGS_num_reader_threads,
-          client.get(),
-          table.get(),
-          nullptr /* insertion_point */,
-          nullptr /* inserted_keys */,
-          nullptr /* failed_keys */,
-          &stop_flag,
-          FLAGS_value_size_bytes,
-          FLAGS_max_num_read_errors,
-          FLAGS_retries_on_empty_read,
-          true /* noop_reads */);
-
-      reader.Start();
-      reader.WaitForCompletion();
     } else {
-      MultiThreadedWriter writer(
-          FLAGS_num_rows, 0,
-          FLAGS_num_writer_threads,
-          client.get(),
-          table.get(),
-          &stop_flag,
-          FLAGS_value_size_bytes,
-          FLAGS_max_num_write_errors);
-
-      writer.Start();
-      MultiThreadedReader reader(
-          FLAGS_num_rows,
-          FLAGS_num_reader_threads,
-          client.get(),
-          table.get(),
-          writer.InsertionPoint(),
-          writer.InsertedKeys(),
-          writer.FailedKeys(),
-          &stop_flag,
-          FLAGS_value_size_bytes,
-          FLAGS_max_num_read_errors,
-          FLAGS_retries_on_empty_read,
-          false /* noop_reads */);
-
-      reader.Start();
-
-      writer.WaitForCompletion();
-
-      // The reader will not stop on its own, so we stop it as soon as the writer stops.
-      reader.Stop();
-      reader.WaitForCompletion();
+      // We support dropping and recreating the YB table even in the mode where we are querying the
+      // redis endpoints. If this behavior is desired, we expect the appropriate flags viz:
+      // --drop_table, --table_name, and one of load_test_master_addresses/endpoint to be set.
+      if (FLAGS_drop_table) {  // Don't require the above flags, unless --drop_table is specified.
+        SetupYBTable(CreateYBClient());
+      }
+      RedisSessionFactory session_factory(FLAGS_target_redis_server_address);
+      LaunchYBLoadTest(&session_factory);
     }
 
-    LOG(INFO) << "Test completed (iteration: " << i + 1 << " out of "
-              << FLAGS_num_iter << ")";
+    LOG(INFO) << "Test completed (iteration: " << i + 1 << " out of " << FLAGS_num_iter << ")";
     LOG(INFO) << string(80, '-');
     LOG(INFO) << "";
   }
   return 0;
+}
+
+shared_ptr<YBClient> CreateYBClient() {
+  shared_ptr<YBClient> client;
+  YBClientBuilder client_builder;
+  client_builder.default_rpc_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout_sec));
+  if (!FLAGS_load_test_master_addresses.empty() && !FLAGS_load_test_master_endpoint.empty()) {
+    LOG(FATAL) << "Specify either 'load_test_master_addresses' or 'load_test_master_endpoint'";
+  }
+  if (!FLAGS_load_test_master_addresses.empty()) {
+    client_builder.add_master_server_addr(FLAGS_load_test_master_addresses);
+  } else if (!FLAGS_load_test_master_endpoint.empty()) {
+    client_builder.add_master_server_endpoint(FLAGS_load_test_master_endpoint);
+  }
+  CHECK_OK(client_builder.Build(&client));
+
+  return client;
+}
+
+void SetupYBTable(const shared_ptr<YBClient> &client) {
+  const string table_name(FLAGS_table_name);
+  if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
+    CreateYBTable(table_name, client);
+  }
+}
+
+void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client) {
+  LOG(INFO) << "Building schema";
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
+  schemaBuilder.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
+  YBSchema schema;
+  CHECK_OK(schemaBuilder.Build(&schema));
+
+  // Create the number of partitions based on the split keys.
+  vector<const YBPartialRow *> splits;
+  for (uint64_t j = 1; j < FLAGS_num_tablets; j++) {
+    YBPartialRow *row = schema.NewRow();
+    // We divide the interval between 0 and 2**64 into the requested number of intervals.
+    string split_key = FormatHexForLoadTestKey(((uint64_t)1 << 62) * 4.0 * j / (FLAGS_num_tablets));
+    LOG(INFO) << "split_key #" << j << "=" << split_key;
+    CHECK_OK(row->SetBinaryCopy(0, split_key));
+    splits.push_back(row);
+  }
+
+  LOG(INFO) << "Creating table";
+
+  gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  Status table_creation_status =
+      table_creator->table_name(table_name)
+          .schema(&schema)
+          .split_rows(splits)
+          .num_replicas(FLAGS_num_replicas)
+          .table_type(
+              FLAGS_use_kv_table ? yb::client::YBTableType::YSQL_TABLE_TYPE
+                                 : yb::client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
+          .Create();
+  if (!table_creation_status.ok()) {
+    LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
+  }
+  if (table_creation_status.message().ToString().find("Table already exists") ==
+      std::string::npos) {
+    CHECK_OK(table_creation_status);
+  }
+}
+
+bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const string &table_name) {
+  LOG(INFO) << "Checking if table '" << table_name << "' already exists";
+  {
+    YBSchema existing_schema;
+    if (client->GetTableSchema(table_name, &existing_schema).ok()) {
+      LOG(INFO) << "Table '" << table_name << "' already exists";
+      return true;
+    } else {
+      LOG(INFO) << "Table '" << table_name << "' does not exist yet";
+      return false;
+    }
+  }
+}
+
+bool DropTableIfNecessary(const shared_ptr<YBClient> &client, const string &table_name) {
+  if (FLAGS_drop_table) {
+    LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
+    // Table with the same name already exists, drop it.
+    CHECK_OK(client->DeleteTable(table_name));
+    return true;
+  }
+  return false;
+}
+
+void LaunchYBLoadTest(SessionFactory *session_factory) {
+  LOG(INFO) << "Starting load test";
+  atomic_bool stop_flag(false);
+  if (FLAGS_writes_only) {
+    // Adds more keys starting from next index after scanned index
+    MultiThreadedWriter writer(
+        FLAGS_num_rows, 0, FLAGS_num_writer_threads, session_factory, &stop_flag,
+        FLAGS_value_size_bytes, FLAGS_max_num_write_errors);
+
+    writer.Start();
+    writer.WaitForCompletion();
+  } else {
+    MultiThreadedWriter writer(
+        FLAGS_num_rows, 0, FLAGS_num_writer_threads, session_factory, &stop_flag,
+        FLAGS_value_size_bytes, FLAGS_max_num_write_errors);
+
+    writer.Start();
+    MultiThreadedReader reader(FLAGS_num_rows, FLAGS_num_reader_threads, session_factory,
+                               writer.InsertionPoint(), writer.InsertedKeys(), writer.FailedKeys(),
+                               &stop_flag, FLAGS_value_size_bytes, FLAGS_max_num_read_errors,
+                               FLAGS_retries_on_empty_read);
+
+    reader.Start();
+
+    writer.WaitForCompletion();
+
+    // The reader will not stop on its own, so we stop it as soon as the writer stops.
+    reader.Stop();
+    reader.WaitForCompletion();
+  }
 }

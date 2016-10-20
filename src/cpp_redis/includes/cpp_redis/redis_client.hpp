@@ -11,8 +11,8 @@
 
 namespace cpp_redis {
 
-class redis_client {
-public:
+typedef class redis_client {
+ public:
   //! ctor & dtor
   redis_client(void);
   ~redis_client(void);
@@ -278,6 +278,6 @@ private:
   std::mutex m_send_mutex;
   std::condition_variable m_sync_condvar;
   std::atomic_uint m_callbacks_running;
-};
+} RedisClient;
 
 } //! cpp_redis

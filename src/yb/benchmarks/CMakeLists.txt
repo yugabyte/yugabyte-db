@@ -56,6 +56,8 @@ set(YB_TEST_LINK_LIBS tpch ${YB_TEST_LINK_LIBS})
 
 ADD_YB_TEST(tpch/rpc_line_item_dao-test)
 
+include_directories(../../cpp_redis/includes)
+
 add_yb_executable(yb_load_test_tool yb_load_test_tool.cc)
 target_link_libraries(
     yb_load_test_tool
