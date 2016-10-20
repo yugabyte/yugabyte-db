@@ -2,19 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 
+import com.yugabyte.yw.forms.RollingRestartParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,24 +18,15 @@ import com.yugabyte.yw.cloud.AWSConstants;
 import com.yugabyte.yw.cloud.AWSCostUtil;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
-import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 import play.data.Form;
 import play.data.FormFactory;
@@ -55,9 +39,6 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   FormFactory formFactory;
-
-  @Inject
-  ApiHelper apiHelper;
 
   @Inject
   Commissioner commissioner;
@@ -231,6 +212,8 @@ public class UniverseController extends AuthenticatedController {
     // Create the Commissioner task to destroy the universe.
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.universeUUID = universeUUID;
+    // There is no staleness of a delete request. Perform it even if the universe has changed.
+    taskParams.expectedUniverseVersion = -1;
 
     // Submit the task to destroy the universe.
     UUID taskUUID = commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);
@@ -300,6 +283,84 @@ public class UniverseController extends AuthenticatedController {
                                "Error getting cost for customer " + customerUUID);
     }
     return ApiResponse.success(response);
+  }
+
+  /**
+   * API that queues a task to perform an upgrade and a subsequent rolling restart of a universe.
+   *
+   * @return result of the universe update operation.
+   */
+  public Result upgrade(UUID customerUUID, UUID universeUUID) {
+    try {
+      LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
+
+      // Verify the customer with this universe is present.
+      Customer customer = Customer.get(customerUUID);
+      if (customer == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+      }
+
+      // Get the user submitted form data.
+      Form<RollingRestartParams> formData = formFactory.form(RollingRestartParams.class).bindFromRequest();
+
+      // Check for any form errors.
+      if (formData.hasErrors()) {
+        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      }
+
+      RollingRestartParams taskParams = formData.get();
+
+      CustomerTask.TaskType customerTaskType = null;
+      // Validate if any required params are missed based on the taskType
+      switch(taskParams.taskType) {
+        case Software:
+          customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
+          if (taskParams.ybServerPkg == null || taskParams.ybServerPkg.isEmpty()) {
+            return ApiResponse.error(
+              BAD_REQUEST,
+              "ybServerPkg param is required for taskType: " + taskParams.taskType);
+          }
+          break;
+        case GFlags:
+          customerTaskType = CustomerTask.TaskType.UpgradeGflags;
+          if (taskParams.gflags == null || taskParams.gflags.isEmpty()) {
+            return ApiResponse.error(
+              BAD_REQUEST,
+              "gflags param is required for taskType: " + taskParams.taskType);
+          }
+          break;
+      }
+
+      LOG.info("Got task type {}", customerTaskType.toString());
+
+      // Get the universe. This makes sure that a universe of this name does exist
+      // for this customer id.
+      Universe universe = Universe.get(universeUUID);
+      taskParams.universeUUID = universe.universeUUID;
+      taskParams.expectedUniverseVersion = universe.version;
+      LOG.info("Found universe {} : name={} at version={}.",
+               universe.universeUUID, universe.name, universe.version);
+
+      UUID taskUUID = commissioner.submit(TaskInfo.Type.UpgradeUniverse, taskParams);
+      LOG.info("Submitted upgrade universe for {} : {}, task uuid = {}.",
+               universe.universeUUID, universe.name, taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(customer,
+                          universe,
+                          taskUUID,
+                          CustomerTask.TargetType.Universe,
+                          customerTaskType,
+                          universe.name);
+      LOG.info("Saved task uuid {} in customer tasks table for universe {} : {}.", taskUUID,
+               universe.universeUUID, universe.name);
+      ObjectNode resultNode = Json.newObject();
+      resultNode.put("taskUUID", taskUUID.toString());
+      return Results.status(OK, resultNode);
+    } catch (Throwable t) {
+      LOG.error("Error updating universe", t);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
   }
 
   /**

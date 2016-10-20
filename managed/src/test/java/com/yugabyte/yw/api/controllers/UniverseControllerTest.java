@@ -11,7 +11,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -21,12 +25,10 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import java.util.Map;
+
 
 import org.junit.Before;
 import org.junit.Test;
@@ -36,8 +38,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -48,9 +51,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -135,45 +135,13 @@ public class UniverseControllerTest extends FakeDBApplication {
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
     Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = 3;
+    userIntent.isMultiAZ = true;
+    userIntent.numNodes = 5;
+
     UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
-
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        if (universeDetails == null) {
-          universeDetails = new UniverseDefinitionTaskParams();
-        }
-        universeDetails.userIntent = new UserIntent();
-        universeDetails.userIntent.replicationFactor = 3;
-        universeDetails.userIntent.isMultiAZ = true;
-
-        List<String> subnets = new ArrayList<String>();
-        subnets.add("subnet-1");
-        subnets.add("subnet-2");
-        subnets.add("subnet-3");
-
-        // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 5;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = new NodeDetails();
-          node.nodeName = "host-n" + idx;
-          node.cloudInfo = new CloudSpecificInfo();
-          node.cloudInfo.cloud = "aws";
-          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
-          node.cloudInfo.private_ip = "host-n" + idx;
-          node.isTserver = true;
-          if (idx <= 3) {
-            node.isMaster = true;
-          }
-          node.nodeIdx = idx;
-          universeDetails.nodeDetailsSet.add(node);
-        }
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
     Result result =
       route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID).cookie(validCookie));
@@ -181,10 +149,10 @@ public class UniverseControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode universeDetails = json.get("universeDetails");
     assertThat(universeDetails, is(notNullValue()));
-    JsonNode userIntent = universeDetails.get("userIntent");
-    assertThat(userIntent, is(notNullValue()));
-    assertThat(userIntent.get("replicationFactor").asInt(), allOf(notNullValue(), equalTo(3)));
-    assertThat(userIntent.get("isMultiAZ").asBoolean(), allOf(notNullValue(), equalTo(true)));
+    JsonNode userIntentJson = universeDetails.get("userIntent");
+    assertThat(userIntentJson, is(notNullValue()));
+    assertThat(userIntentJson.get("replicationFactor").asInt(), allOf(notNullValue(), equalTo(3)));
+    assertThat(userIntentJson.get("isMultiAZ").asBoolean(), allOf(notNullValue(), equalTo(true)));
 
     JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsSet");
     assertThat(nodeDetailsMap, is(notNullValue()));
@@ -314,7 +282,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertThat(az.region.name, is(notNullValue()));
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
-                                      "/universes/" + universe.universeUUID)
+    		                          "/universes/" + universe.universeUUID)
                                       .cookie(validCookie).bodyJson(topJson));
 
     assertEquals(OK, result.status());
@@ -338,10 +306,9 @@ public class UniverseControllerTest extends FakeDBApplication {
 
     Provider p = Provider.create("aws", "Amazon");
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1a", "PlacementAZ 1a", "subnet-1a");
-    AvailabilityZone az2 = AvailabilityZone.create(r, "az-1b", "PlacementAZ 1b", "subnet-1b");
-    Region r2 = Region.create(p, "region-2", "PlacementRegion 2", "default-image");
-    AvailabilityZone az3 = AvailabilityZone.create(r2, "az-2a", "PlacementAZ 2a", "subnet-2a");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe universe = Universe.create("Test Universe", customer.getCustomerId());
     InstanceType i =
       InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
@@ -350,11 +317,10 @@ public class UniverseControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     ArrayNode regionList = Json.newArray();
     regionList.add(r.uuid.toString());
-    regionList.add(r2.uuid.toString());
     bodyJson.set("regionList", regionList);
     bodyJson.put("isMultiAZ", true);
     bodyJson.put("universeName", universe.name);
-    bodyJson.put("numNodes", 11);
+    bodyJson.put("numNodes", 5);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
     topJson.set("userIntent", bodyJson);
@@ -371,54 +337,8 @@ public class UniverseControllerTest extends FakeDBApplication {
     JsonNode userIntent = universeDetails.get("userIntent");
     assertThat(userIntent, is(notNullValue()));
 
-    List<UUID> azUuids = new ArrayList<UUID>();
-    azUuids.add(az1.uuid);
-    azUuids.add(az2.uuid);
-    azUuids.add(az3.uuid);
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = new UserIntent();
-        universeDetails.userIntent.replicationFactor = 3;
-        universeDetails.userIntent.isMultiAZ = true;
-        universeDetails.userIntent.regionList = new ArrayList<UUID>();
-        universeDetails.userIntent.regionList.add(r.uuid);
-        universeDetails.userIntent.regionList.add(r2.uuid);
-
-        universeDetails.placementInfo =
-            PlacementInfoUtil.getPlacementInfo(universeDetails.userIntent);
-        List<String> subnets = new ArrayList<String>();
-        subnets.add("subnet-1a");
-        subnets.add("subnet-1b");
-        subnets.add("subnet-2a");
-
-        // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 11;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = new NodeDetails();
-          node.nodeName = "host-n" + idx;
-          node.cloudInfo = new CloudSpecificInfo();
-          node.cloudInfo.cloud = "aws";
-          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
-          node.cloudInfo.private_ip = "host-n" + idx;
-          node.isTserver = true;
-          node.azUuid = azUuids.get(idx % 3);
-          if (idx <= 3) {
-            node.isMaster = true;
-          }
-          node.nodeIdx = idx;
-          universeDetails.nodeDetailsSet.add(node);
-        }
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-    Universe.saveDetails(universe.universeUUID, updater);
-
     // Try universe expand only, and re-check.
-    bodyJson.put("numNodes", 17);
+    bodyJson.put("numNodes", 9);
     result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
                                       "/universes/" + universe.universeUUID)
                        .cookie(validCookie).bodyJson(topJson));
@@ -460,5 +380,138 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
 
     assertTrue(customer.getUniverseUUIDs().isEmpty());
+  }
+
+  @Test
+  public void testUniverseUpgradeWithEmptyParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+
+    ObjectNode bodyJson = Json.newObject();
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+                            .cookie(validCookie).bodyJson(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), is(containsString("\"universeUUID\":[\"This field is required\"]")));
+    assertThat(json.get("error").toString(), is(containsString("\"taskType\":[\"This field is required\"]")));
+    assertThat(json.get("error").toString(), is(containsString("\"nodeNames\":[\"This field is required\"]")));
+
+    CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    assertNull(th);
+  }
+
+  @Test
+  public void testUniverseSoftwareUpgradeValidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "Software");
+    bodyJson.put("nodeNames",  "[\"host-n1\",\"host-n3\",\"host-n2\"]");
+    bodyJson.put("ybServerPkg", "awesomepkg-0123456");
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+                            .cookie(validCookie).bodyJson(bodyJson));
+
+    verify(mockCommissioner).submit(eq(TaskInfo.Type.UpgradeUniverse), any(UniverseTaskParams.class));
+
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("taskUUID").asText(), allOf(notNullValue(), equalTo(fakeTaskUUID.toString())));
+
+    CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeSoftware)));
+  }
+
+  @Test
+  public void testUniverseSoftwareUpgradeWithInvalidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "Software");
+    bodyJson.put("nodeNames", "[\"host-n1\",\"host-n3\",\"host-n2\"]");
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+                            .cookie(validCookie).bodyJson(bodyJson));
+
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), is(containsString("ybServerPkg param is required for taskType: Software")));
+  }
+
+  @Test
+  public void testUniverseGFlagsUpgradeValidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+
+    ArrayNode nodes = Json.newArray();
+    nodes.add("host-n1");
+    nodes.add("host-n2");
+    nodes.add("host-n3");
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "GFlags");
+    bodyJson.set("nodeNames", nodes);
+    bodyJson.set("gflags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
+
+    System.out.println(bodyJson);
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+                            .cookie(validCookie).bodyJson(bodyJson));
+
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    verify(mockCommissioner).submit(eq(TaskInfo.Type.UpgradeUniverse), any(UniverseTaskParams.class));
+    assertThat(json.get("taskUUID").asText(), allOf(notNullValue(), equalTo(fakeTaskUUID.toString())));
+
+    CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.UpgradeGflags)));
+  }
+
+
+  @Test
+  public void testUniverseGFlagsUpgradeWithInvalidParams() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("taskType", "GFlags");
+    bodyJson.put("nodeNames", "[\"host-n1\",\"host-n3\",\"host-n2\"]");
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/upgrade")
+                            .cookie(validCookie).bodyJson(bodyJson));
+
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").toString(), is(containsString("gflags param is required for taskType: GFlags")));
   }
 }

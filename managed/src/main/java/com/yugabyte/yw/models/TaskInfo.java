@@ -35,6 +35,9 @@ public class TaskInfo extends Model {
 
     @EnumValue("EditUniverse")
     EditUniverse,
+
+    @EnumValue("UpgradeUniverse")
+    UpgradeUniverse,
   }
 
   /**

@@ -2,12 +2,15 @@
 package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
@@ -15,11 +18,17 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
+import play.libs.Json;
 
 
+import java.util.HashMap;
+
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
+
 
 @RunWith(MockitoJUnitRunner.class)
 public class DevOpsHelperTest extends FakeDBApplication {
@@ -78,14 +87,17 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommandWithInvalidParam() {
+    Universe u = Universe.create("Test universe", 1L);
     NodeTaskParams params = new NodeTaskParams();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
+    params.universeUUID = u.universeUUID;
 
     try {
       devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
     } catch (RuntimeException re) {
-      assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleConfigureServers.Params"));
+      assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleConfigureServers.Params " +
+                                       "or AnsibleUpgradeServer.Params"));
     }
   }
 
@@ -97,15 +109,17 @@ public class DevOpsHelperTest extends FakeDBApplication {
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
-    params.isMasterInShellMode = false;
+    params.isMasterInShellMode = true;
     params.ybServerPkg = "yb-server-pkg";
     params.universeUUID = u.universeUUID;
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-    String expectedCommand = baseCommand + " instance configure" +
-      " --package " + params.ybServerPkg + " --master_addresses_for_tserver ";
 
-    assertThat(command, allOf(notNullValue(), startsWith(expectedCommand)));
+    String expectedCommand = baseCommand + " instance configure" +
+      " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
+      " --package " + params.ybServerPkg + " " + params.nodeName;
+
+    assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
 
   @Test
@@ -116,15 +130,151 @@ public class DevOpsHelperTest extends FakeDBApplication {
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
-    params.isMasterInShellMode = true;
+    params.isMasterInShellMode = false;
     params.ybServerPkg = "yb-server-pkg";
     params.universeUUID = u.universeUUID;
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-    String expectedCommand = baseCommand + " instance configure" +
-      " --package " + params.ybServerPkg;
 
-    assertThat(command, allOf(notNullValue(), startsWith(expectedCommand)));
+    String expectedCommand = baseCommand + " instance configure" +
+      " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
+      " --master_addresses_for_master (.*)(|:)([0-9]*)" +
+      " --package " + params.ybServerPkg + " " + params.nodeName;
+
+    assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
+  }
+
+
+  @Test
+  public void testSoftwareUpgradeWithoutRequiredProperties() {
+    Universe u = Universe.create("Test universe", 1L);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    params.ybServerPkg = "yb-server-pkg";
+    params.taskType = UpgradeUniverse.UpgradeTaskType.Software;
+    params.universeUUID = u.universeUUID;
+
+    try {
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
+    }
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithDownloadNodeCommand() {
+    Universe u = Universe.create("Test universe", 1L);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    params.ybServerPkg = "yb-server-pkg";
+    params.taskType = UpgradeUniverse.UpgradeTaskType.Software;
+    params.setProperty("taskSubType", Download.toString());
+    params.universeUUID = u.universeUUID;
+
+    String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+
+    String expectedCommand = baseCommand + " instance configure" +
+      " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
+      " --package " + params.ybServerPkg + " --tags download-software " + params.nodeName;
+
+    assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithInstallNodeCommand() {
+    Universe u = Universe.create("Test universe", 1L);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    params.ybServerPkg = "yb-server-pkg";
+    params.taskType = UpgradeUniverse.UpgradeTaskType.Software;
+    params.setProperty("taskSubType", Install.toString());
+    params.universeUUID = u.universeUUID;
+
+    String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+
+    String expectedCommand = baseCommand + " instance configure" +
+      " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
+      " --package " + params.ybServerPkg + " --tags install-software " + params.nodeName;
+
+    assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
+  }
+
+  @Test
+  public void testGFlagsUpgradeWithoutRequiredProperties() {
+    Universe u = Universe.create("Test universe", 1L);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    HashMap<String, String> gflags = new HashMap<>();
+    gflags.put("gflagName", "gflagValue");
+    params.gflags = gflags;
+    params.taskType = UpgradeUniverse.UpgradeTaskType.GFlags;
+    params.universeUUID = u.universeUUID;
+
+    try {
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType property: null")));
+    }
+  }
+
+  @Test
+  public void testGFlagsUpgradeWithEmptyGFlagsNodeCommand() {
+    Universe u = Universe.create("Test universe", 1L);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    params.taskType = UpgradeUniverse.UpgradeTaskType.GFlags;
+    params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
+    params.universeUUID = u.universeUUID;
+
+
+    try {
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), is("Empty GFlags data provided")));
+    }
+  }
+
+  @Test
+  public void testGFlagsUpgradeForMasterNodeCommand() {
+    Universe u = Universe.create("Test universe", 1L);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    params.cloud = Common.CloudType.aws;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    HashMap<String, String> gflags = new HashMap<>();
+    gflags.put("gflagName", "gflagValue");
+    params.gflags = gflags;
+    params.taskType = UpgradeUniverse.UpgradeTaskType.GFlags;
+    params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
+    params.universeUUID = u.universeUUID;
+
+    String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+    String gflagsJson =  Json.stringify(Json.toJson(gflags));
+
+    String expectedCommand = baseCommand + " instance configure" +
+      " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
+      " --force_gflags --gflags \\" + gflagsJson + "\\ " + params.nodeName;
+
+    assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
 
   @Test

@@ -102,7 +102,7 @@ function mapStateToProps(state, ownProps) {
     data.numNodes = currentUniverse.universeDetails.userIntent.numNodes;
     data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
     data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
-    data.ybServerPackage = currentUniverse.universeDetails.ybServerPkg;
+    data.ybServerPackage = currentUniverse.universeDetails.userIntent.ybServerPackage;
     data.universeId = currentUniverse.universeUUID;
     if (isValidObject(currentUniverse.universeDetails)  && currentUniverse.universeDetails.userIntent.isMultiAZ) {
       data.regionList = currentUniverse.regions.map(function (item, idx) {

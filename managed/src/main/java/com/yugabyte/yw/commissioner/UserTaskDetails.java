@@ -1,5 +1,9 @@
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,6 +11,8 @@ import java.util.List;
  * Class that encapsulates the user task details.
  */
 public class UserTaskDetails {
+  public static final Logger LOG = LoggerFactory.getLogger(UserTaskDetails.class);
+
   // The various user facing subtasks.
   public static enum SubTaskType {
     // Ignore this subtask and do not display it to the user.
@@ -15,6 +21,9 @@ public class UserTaskDetails {
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
     Provisioning,
+
+    // Download YB software locally but not install it.
+    DownloadingSoftware,
 
     // Configure the mount points and the directories, install the desired version of YB software,
     // add the control scripts to start and stop daemons, setup monitoring, etc.
@@ -29,6 +38,9 @@ public class UserTaskDetails {
 
     // Remove old, unused servers.
     RemovingUnusedServers,
+
+    // Updating GFlags
+    UpdatingGFlags,
   }
 
   // The user facing state of the various subtasks.
@@ -76,9 +88,16 @@ public class UserTaskDetails {
       title = "Removing servers no longer used";
       description = "Removing servers that are no longer needed once the configuration change has" +
                     " been successfully completed";
+    } else if (subTaskType == SubTaskType.DownloadingSoftware) {
+      title = "Downloading software";
+      description = "Downloading the YugaByte software on provisioned nodes.";
+    } else if (subTaskType == SubTaskType.UpdatingGFlags) {
+      title = "Updating gflags";
+      description = "Updating GFlags on provisioned nodes.";
     }
 
     if (title == null) {
+      LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskType);
       return null;
     }
     return new SubTaskDetails(title, description);

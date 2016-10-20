@@ -9,7 +9,9 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.TaskList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -163,5 +165,43 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     taskListQueue.add(taskList);
     return taskList;
+  }
+
+  /**
+   * Create task to execute a Cluster CTL command against specific process
+   *
+   * @param node node for which the CTL command needs to be executed
+   * @param processType, Master/TServer process type
+   * @param command, actual command (start, stop, create)
+   * @param sleepAfterCmdMillis, number of seconds to sleep after the command execution
+   * @param subTask, user subtask type to use for the tasklist
+   */
+  public void createServerControlTask(NodeDetails node,
+                                      UniverseDefinitionTaskBase.ServerType processType,
+                                      String command,
+                                      int sleepAfterCmdMillis,
+                                      UserTaskDetails.SubTaskType subTask) {
+    TaskList taskList = new TaskList("AnsibleClusterServerCtl", executor);
+    AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+    // Set the cloud name.
+    params.cloud = CloudType.aws;
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // The service and the command we want to run.
+    params.process = processType.toString().toLowerCase();
+    params.command = command;
+    params.sleepAfterCmdMills = sleepAfterCmdMillis;
+    // Create the Ansible task to get the server info.
+    AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
+    task.initialize(params);
+    // Add it to the task list.
+    taskList.setUserSubTask(subTask);
+    taskList.addTask(task);
+
+    taskListQueue.add(taskList);
   }
 }
