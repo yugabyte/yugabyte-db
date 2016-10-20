@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.Collection;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,16 +12,16 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class DestroyUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(DestroyUniverse.class);
 
-  public static class Params extends UniverseTaskParams { }
+  public static class Params extends UniverseTaskParams {
+  }
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -44,15 +43,10 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
-      // Unlock the universe in case of an error. Ignore if the universe entry is not present in the
-      // universe table.
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore.
-      }
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
   }

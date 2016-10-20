@@ -14,6 +14,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public String process;
     public String command;
+    public int sleepAfterCmdMills = 0;
   }
 
   @Override
@@ -33,5 +34,13 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
 
     // Execute the ansible command.
     execCommand(command);
+
+    if (taskParams().sleepAfterCmdMills > 0) {
+      try {
+        Thread.sleep(taskParams().sleepAfterCmdMills);
+      } catch (InterruptedException e) {
+        LOG.error("{} Thread Sleep failed: {}", getName(), e.getMessage());
+      }
+    }
   }
 }
