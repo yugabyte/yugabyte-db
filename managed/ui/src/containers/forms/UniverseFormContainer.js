@@ -75,7 +75,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       })
     },
-    
+
     getInstanceTypeListItems: (provider) => {
       dispatch(getInstanceTypeList(provider))
         .then((response) => {
@@ -92,17 +92,17 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
-    "serverPackage": "yb-server-0.0.1-SNAPSHOT.c31ccae363d3a94ab5ebc7088212a92729df17ea.tar.gz",
+    "ybServerPackage": "yb-server-0.0.1-SNAPSHOT.66a01f21a89450af4bfa4bf159811fd2191b83d0.tar.gz",
     "numNodes": 3, "isMultiAZ": true, "instanceType": "m3.medium"
   };
-  
+
   if (isValidObject(currentUniverse)) {
     data.universeName = currentUniverse.name;
     data.provider = currentUniverse.provider.uuid;
     data.numNodes = currentUniverse.universeDetails.userIntent.numNodes;
     data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
     data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
-    data.serverPackage = currentUniverse.universeDetails.userIntent.ybServerPackage;
+    data.ybServerPackage = currentUniverse.universeDetails.ybServerPkg;
     data.universeId = currentUniverse.universeUUID;
     if (isValidObject(currentUniverse.universeDetails)  && currentUniverse.universeDetails.userIntent.isMultiAZ) {
       data.regionList = currentUniverse.regions.map(function (item, idx) {
@@ -124,7 +124,7 @@ function mapStateToProps(state, ownProps) {
 var universeForm = reduxForm({
   form: 'UniverseForm',
   fields: ['formType', 'universeName', 'provider', 'regionList',
-    'numNodes', 'isMultiAZ', 'instanceType', 'serverPackage', 'universeId']
+    'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage', 'universeId']
 })
 
 
