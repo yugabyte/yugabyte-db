@@ -2,15 +2,19 @@
 
 package com.yugabyte.yw.models;
 
-import com.avaje.ebean.Model;
-import com.avaje.ebean.annotation.EnumValue;
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
 import java.util.Date;
 import java.util.UUID;
+
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.Id;
+
+import com.avaje.ebean.Model;
+import com.avaje.ebean.annotation.EnumValue;
+import com.fasterxml.jackson.annotation.JsonFormat;
+
+import play.data.validation.Constraints;
 
 @Entity
 public class CustomerTask extends Model {
@@ -30,7 +34,13 @@ public class CustomerTask extends Model {
     Update,
 
     @EnumValue("Delete")
-    Delete
+    Delete,
+
+    @EnumValue("UpgradeSoftware")
+    UpgradeSoftware,
+
+    @EnumValue("UpgradeGflags")
+    UpgradeGflags,
   }
 
   @Id @GeneratedValue
@@ -106,9 +116,16 @@ public class CustomerTask extends Model {
       case Update:
         sb.append( (completionTime != null) ? "Updated " : "Updating ");
         break;
-
       case Delete:
         sb.append( (completionTime != null) ? "Deleted " : "Deleting ");
+        break;
+      case UpgradeSoftware:
+        sb.append( (completionTime != null) ? "Upgraded " : "Upgrading ");
+        sb.append("software ");
+        break;
+      case UpgradeGflags:
+        sb.append( (completionTime != null) ? "Upgraded " : "Upgrading ");
+        sb.append("gflags ");
         break;
     }
 
