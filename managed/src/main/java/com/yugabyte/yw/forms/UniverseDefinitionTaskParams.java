@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+
 import play.data.validation.Constraints;
 
 /**
@@ -43,7 +45,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The placement information computed from the user intent.
   public PlacementInfo placementInfo;
 
-  // Internal UUID picked for this universe. 
+  // Internal UUID picked for this universe.
   public UUID universeUUID;
 
   // TODO: Add a version number to prevent stale updates.
@@ -62,6 +64,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Constraints.Required()
     // Nice name for the universe.
     public String universeName;
+
+    // The cloud provider UUID.
+    public String provider;
+
+    // The cloud provider type as an enum. This is set in the middleware from the provider UUID
+    // field above.
+    public CloudType providerType = CloudType.unknown;
 
     // The replication factor.
     @Constraints.Min(3)
@@ -89,6 +98,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Constraints.Required()
     public String ybServerPackage;
 
+    @Override
     public String toString() {
       return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type=" +
              instanceType + ", numNodes=" + numNodes;
