@@ -53,6 +53,9 @@ public class PlacementInfoUtil {
                                       Universe universe,
                                       Long customerId) {
     LOG.info("Setting params for universe {} : {}.", universe.universeUUID, universe.name);
+    // Setup the cloud.
+    taskParams.cloud = taskParams.userIntent.providerType;
+
     // Setup the create universe task.
     taskParams.universeUUID = universe.universeUUID;
 
@@ -528,8 +531,7 @@ public class PlacementInfoUtil {
       LOG.debug("Adding cloud: " + cloud.name);
       placementCloud = new PlacementCloud();
       placementCloud.uuid = cloud.uuid;
-      // TODO: fix this hardcode by creating a 'code' attribute in the cloud object.
-      placementCloud.name = "aws";
+      placementCloud.name = cloud.code;
       placementInfo.cloudList.add(placementCloud);
     }
 

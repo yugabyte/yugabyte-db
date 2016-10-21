@@ -6,7 +6,6 @@ import java.util.List;
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.models.Provider;
 
 import play.Application;
@@ -46,8 +45,8 @@ public class AppInit {
       com.yugabyte.yw.common.Configuration.initializeDB();
 
       // Initialize the cloud engine.
-      AWSInitializer aws = new AWSInitializer();
-      aws.run();
+//      AWSInitializer aws = new AWSInitializer();
+//      aws.run();
       }
     }
   }

@@ -8,8 +8,18 @@
 - &provider_aws !!com.yugabyte.yw.models.Provider
     code: aws
     name: Amazon
+- &provider_dockerlocal !!com.yugabyte.yw.models.Provider
+    code: docker
+    name: Docker Localhost
 
 # Region
+- &docker-local-region-1 !!com.yugabyte.yw.models.Region
+    code: docker-localhost-region-1
+    name: Docker Localhost Region 1
+    provider: *provider_dockerlocal
+    latitude: 36.778261
+    longitude: -119.417932
+    ybImage: local/yugabyte-server
 - &aws-us-west-1 !!com.yugabyte.yw.models.Region
     code: us-west-1
     name: US West (N. California)
@@ -81,6 +91,21 @@
     ybImage: ami-1052c27c
 
 # Availability Zones
+- &dockerlocal_zone1 !!com.yugabyte.yw.models.AvailabilityZone
+    code: docker-local-region-1a
+    name: docker-local-region-1a
+    region: *docker-local-region-1
+    subnet: yugabyte-bridge
+- &dockerlocal_zone2 !!com.yugabyte.yw.models.AvailabilityZone
+    code: docker-local-region-1b
+    name: docker-local-region-1b
+    region: *docker-local-region-1
+    subnet: yugabyte-bridge
+- &dockerlocal_zone3 !!com.yugabyte.yw.models.AvailabilityZone
+    code: docker-local-region-1c
+    name: docker-local-region-1c
+    region: *docker-local-region-1
+    subnet: yugabyte-bridge
 - &zone1 !!com.yugabyte.yw.models.AvailabilityZone
     code: us-west-2a
     name: us-west-2a
@@ -200,6 +225,15 @@
 
 
 # InstanceType
+- &docker-local-container-small !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: docker
+      instanceTypeCode: container.small
+    numCores: 2
+    memSizeGB: 3.7
+    volumeCount: 2
+    volumeSizeGB: 16
+    volumeType: SSD
 - &aws-c3large !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: aws
