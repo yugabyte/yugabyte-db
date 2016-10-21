@@ -139,6 +139,7 @@ build_glog() {
   CXXFLAGS="$EXTRA_CXXFLAGS" \
     LDFLAGS="$EXTRA_LDFLAGS" \
     LIBS="$EXTRA_LIBS" \
+    autoreconf --force --install
     ./configure --with-pic --prefix=$PREFIX --with-gflags=$PREFIX
   make -j$PARALLEL install
 }
@@ -174,6 +175,7 @@ build_protobuf() {
   cd $PROTOBUF_DIR
   # We build protobuf in both instrumented and non-instrumented modes.
   # If we don't clean in between, we may end up mixing modes.
+  autoreconf --force --install
   test -f Makefile && make distclean
   CFLAGS="$EXTRA_CFLAGS" \
     CXXFLAGS="$EXTRA_CXXFLAGS" \

@@ -148,7 +148,7 @@ fi
 # Check that the gperftools patch has been applied.
 # If you add or remove patches, bump the patchlevel below to ensure
 # that any new Jenkins builds pick up your patches.
-GPERFTOOLS_PATCHLEVEL=2
+GPERFTOOLS_PATCHLEVEL=3
 delete_if_wrong_patchlevel "$GPERFTOOLS_DIR" "$GPERFTOOLS_PATCHLEVEL"
 if [ ! -d "$GPERFTOOLS_DIR" ]; then
   fetch_and_expand gperftools-${GPERFTOOLS_VERSION}.tar.gz
@@ -157,6 +157,7 @@ if [ ! -d "$GPERFTOOLS_DIR" ]; then
     pushd "$GPERFTOOLS_DIR"
     patch -p1 < "$TP_DIR"/patches/gperftools-Change-default-TCMALLOC_TRANSFER_NUM_OBJ-to-40.patch
     patch -p1 < "$TP_DIR"/patches/gperftools-hook-mi_force_unlock-on-OSX-instead-of-pthread_atfork.patch
+    patch -p1 < "$TP_DIR"/patches/gperftools-Fix-finding-default-zone-on-Mac-Sierra.patch
     touch patchlevel-"$GPERFTOOLS_PATCHLEVEL"
     run_autoreconf -fvi
     popd
