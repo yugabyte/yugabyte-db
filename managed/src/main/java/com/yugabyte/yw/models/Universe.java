@@ -2,25 +2,20 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.Collection;
+import java.util.ConcurrentModificationException;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.List;
-import java.util.ConcurrentModificationException;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.HashSet;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +24,10 @@ import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
 import com.avaje.ebean.SqlUpdate;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import play.data.validation.Constraints;
 import play.libs.Json;
@@ -91,6 +90,7 @@ public class Universe extends Model {
 
       if (!regions.isEmpty()) {
         json.set("regions", Json.toJson(regions));
+        // TODO: change this when we want to deploy across clouds.
         json.set("provider", Json.toJson(regions.get(0).provider));
       }
     }

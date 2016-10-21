@@ -5,10 +5,10 @@ package com.yugabyte.yw.commissioner.tasks;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -62,6 +62,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           throw new RuntimeException(msg);
         }
         universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
+        universeDetails.cloud = taskParams().cloud;
         universeDetails.userIntent = taskParams().userIntent;
         universeDetails.nodePrefix = taskParams().nodePrefix;
         universeDetails.placementInfo = taskParams().placementInfo;
@@ -114,7 +115,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       // Set the cloud name.
-      params.cloud = CloudType.aws;
+      params.cloud = taskParams().userIntent.providerType;
       // Set the region code.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -146,7 +147,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       // Set the cloud name.
-      params.cloud = CloudType.aws;
+      params.cloud = taskParams().userIntent.providerType;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -177,7 +178,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the cloud name.
-      params.cloud = CloudType.aws;
+      params.cloud = taskParams().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -211,7 +212,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       // Set the cloud name.
-      params.cloud = CloudType.aws;
+      params.cloud = taskParams().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -242,7 +243,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       // Set the cloud name.
-      params.cloud = CloudType.aws;
+      params.cloud = taskParams().userIntent.providerType;
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -304,7 +305,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskList taskList = new TaskList("UpdatePlacementInfo", executor);
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Set the cloud name.
-    params.cloud = CloudType.aws;
+    params.cloud = taskParams().userIntent.providerType;
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
     // Set the number of masters.

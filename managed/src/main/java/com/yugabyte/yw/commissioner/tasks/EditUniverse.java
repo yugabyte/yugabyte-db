@@ -11,7 +11,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.TaskListQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -49,7 +48,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       writeUserIntentToUniverse();
 
       // Set the correct node names as they are finalized now. This is done just in case the user
-      // changes the universe name before submitting. 
+      // changes the universe name before submitting.
       updateNodeNames();
 
       LOG.info("Configure numNodes={}, numMasters={}",
@@ -197,7 +196,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // Create the task params.
     ChangeMasterConfig.Params params = new ChangeMasterConfig.Params();
     // Set the cloud name.
-    params.cloud = CloudType.aws;
+    params.cloud = taskParams().userIntent.providerType;
     // Add the node name.
     params.nodeName = nodeName;
     // Add the universe uuid.
@@ -229,7 +228,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     taskListQueue.add(taskList);
     return taskList;
   }
-  
+
   private TaskList createWaitForLoadBalanceTask() {
     TaskList taskList = new TaskList("WaitForDataMove", executor);
     WaitForLoadBalance.Params params = new WaitForLoadBalance.Params();

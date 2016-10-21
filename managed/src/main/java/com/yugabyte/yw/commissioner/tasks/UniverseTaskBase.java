@@ -9,8 +9,8 @@ import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.TaskList;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
@@ -127,7 +127,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     for (NodeDetails node : nodes) {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the cloud name.
-      params.cloud = CloudType.aws;
+      params.cloud = taskParams().cloud;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -146,7 +146,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Create tasks to update the state of the nodes.
-   * 
+   *
    * @param nodes set of nodes to be updated.
    * @param nodeState State into which these nodes will be transitioned.
    * @return

@@ -7,7 +7,6 @@ import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 
-import com.yugabyte.yw.forms.RollingRestartParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,13 +16,16 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.AWSConstants;
 import com.yugabyte.yw.cloud.AWSCostUtil;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -66,6 +68,11 @@ public class UniverseController extends AuthenticatedController {
       if (customer == null) {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
+
+      // Set the provider code.
+      String providerCode =
+          Provider.find.byId(UUID.fromString(taskParams.userIntent.provider)).code;
+      taskParams.userIntent.providerType = CloudType.valueOf(providerCode);
 
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
@@ -214,6 +221,7 @@ public class UniverseController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
     // There is no staleness of a delete request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
+    taskParams.cloud = universe.getUniverseDetails().userIntent.providerType;
 
     // Submit the task to destroy the universe.
     UUID taskUUID = commissioner.submit(TaskInfo.Type.DestroyUniverse, taskParams);

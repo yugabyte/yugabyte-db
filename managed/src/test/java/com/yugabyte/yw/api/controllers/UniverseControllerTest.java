@@ -9,9 +9,9 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -26,9 +26,8 @@ import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
 import java.util.Iterator;
-import java.util.UUID;
 import java.util.Map;
-
+import java.util.UUID;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -38,11 +37,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -189,6 +189,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("instanceType", "a-instance");
     bodyJson.put("replicationFactor", 3);
     bodyJson.put("numNodes", 3);
+    bodyJson.put("provider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
@@ -221,6 +222,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
     bodyJson.put("numNodes", 3);
+    bodyJson.put("provider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
@@ -276,6 +278,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
     bodyJson.put("numNodes", 3);
+    bodyJson.put("provider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
@@ -366,6 +369,21 @@ public class UniverseControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
     Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+
+    // Add the cloud info into the universe.
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        universeDetails = new UniverseDefinitionTaskParams();
+        universeDetails.userIntent = new UserIntent();
+        universeDetails.userIntent.providerType = CloudType.aws;
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    // Save the updates to the universe.
+    Universe.saveDetails(universe.universeUUID, updater);
+
 
     Result result = route(fakeRequest("DELETE", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie));
