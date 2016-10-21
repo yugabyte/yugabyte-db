@@ -70,7 +70,7 @@ class LookupRpc;
 class MetaCache;
 class RemoteTablet;
 class RemoteTabletServer;
-class WriteRpc;
+class AsyncRpc;
 }  // namespace internal
 
 // This must match TableType in common.proto.
@@ -326,7 +326,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   friend class internal::MetaCache;
   friend class internal::RemoteTablet;
   friend class internal::RemoteTabletServer;
-  friend class internal::WriteRpc;
+  friend class internal::AsyncRpc;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);

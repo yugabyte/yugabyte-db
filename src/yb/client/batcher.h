@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -45,7 +46,8 @@ struct InFlightOp;
 
 class ErrorCollector;
 class RemoteTablet;
-class WriteRpc;
+class AsyncRpc;
+
 
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
@@ -110,6 +112,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
  private:
   friend class RefCountedThreadSafe<Batcher>;
+  friend class AsyncRpc;
   friend class WriteRpc;
 
   ~Batcher();

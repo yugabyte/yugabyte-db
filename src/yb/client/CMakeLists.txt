@@ -16,12 +16,14 @@
 # under the License.
 
 set(CLIENT_SRCS
+  async_rpc.cc
   batcher.cc
   client.cc
   client_builder-internal.cc
   client-internal.cc
   error_collector.cc
   error-internal.cc
+  in_flight_op.cc
   meta_cache.cc
   redis_helpers.cc
   scan_batch.cc

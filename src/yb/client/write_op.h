@@ -33,7 +33,7 @@ namespace client {
 
 namespace internal {
 class Batcher;
-class WriteRpc;
+class AsyncRpc;
 } // namespace internal
 
 class YBTable;
@@ -71,7 +71,7 @@ class YB_EXPORT YBWriteOperation {
 
  private:
   friend class internal::Batcher;
-  friend class internal::WriteRpc;
+  friend class internal::AsyncRpc;
 
   const YBTable* table() const { return table_.get(); }
 
