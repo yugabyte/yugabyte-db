@@ -1,3 +1,4 @@
+#@IgnoreInspection BashAddShebang
 # Copyright (c) YugaByte, Inc.
 
 # This is common between build and test scripts.
@@ -407,7 +408,23 @@ set_cmake_build_type_and_compiler_type() {
   readonly YB_COMPILER_TYPE
   export YB_COMPILER_TYPE
 
-  cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
+  # We need to set CMAKE_C_COMPILER and CMAKE_CXX_COMPILER outside of CMake. We used to do that from
+  # CMakeLists.txt, and got into an infinite loop where CMake kept saying:
+  #
+  #   You have changed variables that require your cache to be deleted.
+  #   Configure will be re-run and you may have to reset some variables.
+  #   The following variables have changed:
+  #   CMAKE_CXX_COMPILER= /usr/bin/c++
+  #
+  # Not sure why it printed the old value there, since we tried to assign it the new value, the
+  # same as what's given below.
+  #
+  # So our new approach is to pass the correct command-line options to CMake, and still let CMake
+  # use the default compiler in CLion-triggered builds.
+
+  cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type"
+                "-DCMAKE_C_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/cc"
+                "-DCMAKE_CXX_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/c++" )
 }
 
 build_yb_java_code() {

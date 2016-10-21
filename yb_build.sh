@@ -179,9 +179,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-cmake_opts=()
-set_cmake_build_type_and_compiler_type  # this can also update cmake_opts
-cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
+unset cmake_opts
+set_cmake_build_type_and_compiler_type
 
 if "$verbose"; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"

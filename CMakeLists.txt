@@ -22,6 +22,19 @@
 # 1. https://cmake.org/Bug/view.php?id=14963
 cmake_minimum_required(VERSION 3.2.0)
 
+function(CHECK_YB_COMPILER_PATH COMPILER_PATH)
+  if(NOT "${COMPILER_PATH}" MATCHES "/compiler-wrappers/(cc|c[+][+])$" AND
+     NOT "${CMAKE_CURRENT_BINARY_DIR}" MATCHES "/[.]CLion" )
+    message(
+      SEND_ERROR
+      "Invalid compiler path: '${COMPILER_PATH}'. Expected to end with one of: "
+      "/compiler-wrappers/{cc,c++}. The only exception is for builds invoked from CLion, but "
+      "CMAKE_CURRENT_BINARY_DIR ('${CMAKE_CURRENT_BINARY_DIR}') does not contain a substring "
+      "'/.CLion' (feel free to tweak the pattern in the top-level CMakeLists.txt if it has to be "
+      "updated for the most recent version of CLion).")
+  endif()
+endfunction()
+
 # Prevent builds from the top-level source directory. This ensures that build
 # output is well isolated from the source tree.
 #
@@ -86,8 +99,11 @@ else()
 endif()
 message("Using shared library suffix '${YB_SHARED_LIBRARY_SUFFIX}'.")
 
-set(CMAKE_C_COMPILER "${CMAKE_SOURCE_DIR}/build-support/compiler-wrappers/cc")
-set(CMAKE_CXX_COMPILER "${CMAKE_SOURCE_DIR}/build-support/compiler-wrappers/c++")
+message("CMAKE_C_COMPILER=${CMAKE_C_COMPILER}")
+CHECK_YB_COMPILER_PATH(${CMAKE_C_COMPILER})
+
+message("CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
+CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 
 # Provide a 'latest' symlink to this build directory if the "blessed"
 # multi-build layout is detected:
