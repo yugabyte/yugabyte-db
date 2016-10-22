@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <unordered_map>
 
-#include "yb/sql/errcodes.h"
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/parser/scanner.h"
 #include "yb/sql/parser/scanner_util.h"
@@ -177,7 +176,7 @@ void LexProcessor::CountNewlineInToken(const string& token) {
 //--------------------------------------------------------------------------------------------------
 
 void LexProcessor::ScanError(const char *message) {
-  LOG(ERROR) << "SQL ERROR (" << token_loc_ << "): Lexical error at or near " << message;
+  parse_context_->ScanError(token_loc_, message);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -186,6 +185,60 @@ void LexProcessor::ScanNextToken(const ScanState& scan_state,
                                  GramProcessor::symbol_type *next_token) {
   GramProcessor::symbol_type new_token(yylex(scan_state));
   next_token->move(new_token);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+MCString::SharedPtr LexProcessor::ScanLiteral() {
+  // Convert the literal to string and count the newline character.
+  MCString::SharedPtr value = MCString::MakeShared(PTreeMem(), literalbuf_, literallen_);
+  // Count newlines in this literal.
+  CountNewlineInToken(value->c_str());
+
+  return value;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+MCString::SharedPtr LexProcessor::MakeIdentifier(const char *text, int len, bool warn) {
+  // SQL99 specifies Unicode-aware case normalization, which we don't yet
+  // have the infrastructure for.  Instead we use tolower() to provide a
+  // locale-aware translation.  However, there are some locales where this
+  // is not right either (eg, Turkish may do strange things with 'i' and
+  // 'I').  Our current compromise is to use tolower() for characters with
+  // the high bit set, as long as they aren't part of a multi-byte
+  // character, and use an ASCII-only downcasing for 7-bit characters.
+  MCString::SharedPtr ident = MCString::MakeShared(PTreeMem(), len + 1, '\0');
+  int i;
+  for (i = 0; i < len; i++) {
+    unsigned char ch = static_cast<unsigned char>(text[i]);
+    if (ch >= 'A' && ch <= 'Z') {
+      ch += 'a' - 'A';
+    }
+    (*ident)[i] = static_cast<char>(ch);
+  }
+
+  if (i >= NAMEDATALEN) {
+    TruncateIdentifier(ident, warn);
+  }
+  return ident;
+}
+
+void LexProcessor::TruncateIdentifier(const MCString::SharedPtr& ident, bool warn) {
+  int len = ident->length();
+  if (len >= NAMEDATALEN) {
+    len = pg_encoding_mbcliplen(ident->c_str(), len, NAMEDATALEN - 1);
+    if (warn) {
+      // We avoid using %.*s here because it can misbehave if the data
+      // is not valid in what libc thinks is the prevailing encoding.
+      char buf[NAMEDATALEN];
+      memcpy(buf, ident->c_str(), len);
+      buf[len] = '\0';
+      LOG(WARNING) << "SQL Warning: " << ErrorText(ErrorCode::NAME_TOO_LONG)
+                   << "Identifier " << *ident << " will be truncated to " << buf;
+    }
+    ident->resize(len);
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -227,16 +280,6 @@ void LexProcessor::addlitchar(unsigned char ychar) {
   literallen_ += 1;
 }
 
-char *LexProcessor::litbufdup() {
-  char *value = reinterpret_cast<char *>(PTreeMem()->Malloc(literallen_ + 1));
-  memcpy(value, literalbuf_, literallen_);
-  value[literallen_] = '\0';
-
-  // Count newlines in this literal.
-  CountNewlineInToken(value);
-  return value;
-}
-
 char *LexProcessor::litbuf_udeescape(unsigned char escape) {
   char     *new_litbuf;
   char     *litbuf, *in, *out;
@@ -248,7 +291,7 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
 
   // This relies on the subtle assumption that a UTF-8 expansion
   // cannot be longer than its escaped representation.
-  new_litbuf = reinterpret_cast<char *>(PTreeMem()->Malloc(literallen_ + 1));
+  new_litbuf = static_cast<char *>(PTempMem()->Malloc(literallen_ + 1));
 
   in = litbuf;
   out = new_litbuf;
@@ -354,18 +397,18 @@ char *LexProcessor::litbuf_udeescape(unsigned char escape) {
 void LexProcessor::check_string_escape_warning(unsigned char ychar) {
   if (ychar == '\'') {
     if (warn_on_first_escape_ && escape_string_warning_)
-      LOG(WARNING)
-        << "SQL ERROR " << ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER
-        << "(Nonstandard use of \\' in a string literal): "
-        << "Use '' to write quotes in strings, or use the escape string syntax (E'...').";
-    warn_on_first_escape_ = false;  /* warn only once per string */
+      parse_context_->Warn(token_loc_,
+                           "Nonstandard use of \\' in a string literal. Use '' to write quotes in "
+                           "strings, or use the escape string syntax (E'...').",
+                           ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER);
+    warn_on_first_escape_ = false;  // Warn only once per string.
   } else if (ychar == '\\') {
     if (warn_on_first_escape_ && escape_string_warning_)
-      LOG(WARNING)
-        << "SQL ERROR " << ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER
-        << "(Nonstandard use of \\\\ in a string literal): "
-        << "Use the escape string syntax for backslashes, e.g., E'\\\\'.";
-    warn_on_first_escape_ = false;  /* warn only once per string */
+      parse_context_->Warn(token_loc_,
+                           "(Nonstandard use of \\\\ in a string literal. Use the escape string "
+                           "syntax for backslashes, e.g., E'\\\\'.",
+                           ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER);
+    warn_on_first_escape_ = false;  // Warn only once per string.
   } else {
     check_escape_warning();
   }
@@ -373,11 +416,11 @@ void LexProcessor::check_string_escape_warning(unsigned char ychar) {
 
 void LexProcessor::check_escape_warning() {
   if (warn_on_first_escape_ && escape_string_warning_)
-    LOG(WARNING)
-      << "SQL ERROR " << ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER
-      << "(Nonstandard use of escape in a string literal): "
-      << "Use the escape string syntax for escapes, e.g., E'\\r\\n'.";
-  warn_on_first_escape_ = false;  /* warn only once per string */
+    parse_context_->Warn(token_loc_,
+                         "Nonstandard use of escape in a string literal. Use the escape string "
+                         "syntax for escapes, e.g., E'\\r\\n'.",
+                         ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER);
+  warn_on_first_escape_ = false;  // Warn only once per string.
 }
 
 unsigned char LexProcessor::unescape_single_char(unsigned char c) {
@@ -419,7 +462,6 @@ void LexProcessor::addunicode(pg_wchar c) {
 
 GramProcessor::symbol_type LexProcessor::process_integer_literal(const char *token) {
   int64_t  ival;
-  char    *number;
   char    *endptr;
 
   // Find ICONST token.
@@ -433,8 +475,7 @@ GramProcessor::symbol_type LexProcessor::process_integer_literal(const char *tok
     // This is a FCONST.
     // if long > 32 bits, check for overflow of int4.
     // integer too large, treat it as a float.
-    number = PTreeMem()->Strdup(token);
-    return GramProcessor::make_FCONST(number, cursor_);
+    return GramProcessor::make_FCONST(MakeString(token), cursor_);
 
   } else {
     ival = int64_t(uval);
@@ -487,5 +528,5 @@ ScanState::ScanState() {
 ScanState::~ScanState() {
 }
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb

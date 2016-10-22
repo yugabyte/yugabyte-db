@@ -22,7 +22,7 @@
 #include <FlexLexer.h>
 #endif
 
-#include "yb/sql/util/memory_context.h"
+#include "yb/sql/util/base_types.h"
 #include "yb/sql/parser/parse_context.h"
 
 // Include auto-generated file from YACC.
@@ -96,9 +96,6 @@ class ScanState {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef std::shared_ptr<ScanState> SharedPtr;
-  typedef std::shared_ptr<const ScanState> SharedPtrConst;
-
   typedef std::unique_ptr<ScanState> UniPtr;
   typedef std::unique_ptr<const ScanState> UniPtrConst;
 
@@ -113,9 +110,6 @@ class LexProcessor : public yyFlexLexer {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef std::shared_ptr<LexProcessor> SharedPtr;
-  typedef std::shared_ptr<const LexProcessor> SharedPtrConst;
-
   typedef std::unique_ptr<LexProcessor> UniPtr;
   typedef std::unique_ptr<const LexProcessor> UniPtrConst;
 
@@ -130,8 +124,8 @@ class LexProcessor : public yyFlexLexer {
   void ScanInit(ParseContext *parse_context);
 
   // Memory pool for allocating and deallocating operating memory spaces during parsing process.
-  MemoryContext *ParseMem() const {
-    return parse_context_->ParseMem();
+  MemoryContext *PTempMem() const {
+    return parse_context_->PTempMem();
   }
 
   // Memory pool for constructing the parse tree of a statement.
@@ -148,6 +142,9 @@ class LexProcessor : public yyFlexLexer {
 
   // Reports error.
   void ScanError(const char *message);
+
+  // Read literal value during a scan and convert it to MCString.
+  MCString::SharedPtr ScanLiteral();
 
   // Access function for current token location.
   const location &token_loc() const {
@@ -179,8 +176,19 @@ class LexProcessor : public yyFlexLexer {
   // this function to collect tokens from the input.
   int LexerInput(char* buf, int max_size) override;
 
-  // Scan the input statement for the next token.
+  // Scans the input statement for the next token.
   void ScanNextToken(const ScanState& scan_state, GramProcessor::symbol_type *next_token);
+
+  // Converts text into MCString and truncates it to allowable length, NAMEDATALEN, if needed.
+  MCString::SharedPtr MakeIdentifier(const char *text, int len, bool warn);
+
+  // Truncates identifier to allowable length, NAMEDATALEN, if necessary.
+  void TruncateIdentifier(const MCString::SharedPtr& ident, bool warn);
+
+  // Converts a char* to MCString.
+  MCString::SharedPtr MakeString(const char *str) {
+    return MCString::MakeShared(PTreeMem(), str);
+  }
 
   // Advance current token location by the given number of bytes.
   void AdvanceCursor(int bytes) {
@@ -197,7 +205,6 @@ class LexProcessor : public yyFlexLexer {
   void startlit();
   void addlit(char *ytext, int yleng);
   void addlitchar(unsigned char ychar);
-  char *litbufdup();
   char *litbuf_udeescape(unsigned char escape);
 
   // Scan integer literal.
@@ -240,7 +247,7 @@ class LexProcessor : public yyFlexLexer {
   bool standard_conforming_strings_;  // State when scaning standard string.
 };
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_PARSER_SCANNER_H_

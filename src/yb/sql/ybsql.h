@@ -17,8 +17,8 @@
 
 #include <cstddef>
 
-#include "yb/sql/errcodes.h"
 #include "yb/sql/parser/parser.h"
+#include "yb/sql/util/errcodes.h"
 #include "yb/sql/util/memory_context.h"
 
 namespace yb {
@@ -28,9 +28,6 @@ class YbSql {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef std::shared_ptr<YbSql> SharedPtr;
-  typedef std::shared_ptr<const YbSql> SharedPtrConst;
-
   typedef std::unique_ptr<YbSql> UniPtr;
   typedef std::unique_ptr<const YbSql> UniPtrConst;
 
@@ -41,15 +38,15 @@ class YbSql {
   virtual ~YbSql();
 
   // Process a SQL statement and return error codes.
-  int Process(const std::string& sql_stmt);
+  ErrorCode Process(const std::string& sql_stmt);
 
  private:
   //------------------------------------------------------------------------------------------------
   // Parsing processor.
-  Parser *parser_;
+  Parser::UniPtr parser_;
 };
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_YBSQL_H_

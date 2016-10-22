@@ -25,11 +25,8 @@ class UndefTreeNode : public TreeNode {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef std::shared_ptr<UndefTreeNode> SharedPtr;
-  typedef std::shared_ptr<const UndefTreeNode> SharedPtrConst;
-
-  typedef std::unique_ptr<UndefTreeNode> UniPtr;
-  typedef std::unique_ptr<const UndefTreeNode> UniPtrConst;
+  typedef MCSharedPtr<UndefTreeNode> SharedPtr;
+  typedef MCSharedPtr<const UndefTreeNode> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
@@ -273,7 +270,7 @@ typedef enum ImportForeignSchemaType {
   FDW_IMPORT_SCHEMA_EXCEPT  /* exclude listed tables from import */
 } ImportForeignSchemaType;
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_PARSER_PARSER_INACTIVE_NODES_H_

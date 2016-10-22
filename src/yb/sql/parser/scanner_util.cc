@@ -15,8 +15,8 @@
 #include <algorithm>
 
 #include "yb/gutil/macros.h"
-#include "yb/sql/errcodes.h"
 #include "yb/sql/parser/scanner_util.h"
+#include "yb/sql/util/errcodes.h"
 #include "yb/util/logging.h"
 
 namespace yb {
@@ -40,11 +40,8 @@ unsigned int hexval(unsigned char c) {
 
 //--------------------------------------------------------------------------------------------------
 
-char *downcase_truncate_identifier(const char *ident, int len, bool warn) {
-  char   *result;
-  int     i;
-
-  result = static_cast<char *>(malloc(len + 1));
+void downcase_truncate_identifier(char *result, const char *ident, int len, bool warn) {
+  int i;
 
   // SQL99 specifies Unicode-aware case normalization, which we don't yet
   // have the infrastructure for.  Instead we use tolower() to provide a
@@ -66,8 +63,6 @@ char *downcase_truncate_identifier(const char *ident, int len, bool warn) {
   if (i >= NAMEDATALEN) {
     truncate_identifier(result, i, warn);
   }
-
-  return result;
 }
 
 void truncate_identifier(char *ident, int len, bool warn) {
@@ -80,9 +75,8 @@ void truncate_identifier(char *ident, int len, bool warn) {
 
       memcpy(buf, ident, len);
       buf[len] = '\0';
-      LOG(WARNING)
-        << "SQL WARNING " << ERRCODE_NAME_TOO_LONG
-        << ": Identifier " << ident << " will be truncated to " << buf;
+      LOG(WARNING) << "SQL Warning: " << ErrorText(ErrorCode::NAME_TOO_LONG)
+                   << "Identifier " << ident << " will be truncated to " << buf;
     }
     ident[len] = '\0';
   }
@@ -236,9 +230,8 @@ void report_invalid_encoding(const char *mbstr, int len) {
       p += sprintf(p, " ");  // NOLINT(*)
   }
 
-  LOG(ERROR)
-    << "Error " << ERRCODE_CHARACTER_NOT_IN_REPERTOIRE
-    << " (Invalid byte sequence for UTF8): " << buf;
+  LOG(ERROR) << "SQL Error: " << ErrorText(ErrorCode::CHARACTER_NOT_IN_REPERTOIRE)
+             << ". Invalid byte sequence for UTF8 \"" << buf << "\"";
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -333,5 +326,5 @@ int pg_encoding_mbcliplen(const char *mbstr, int len, int limit) {
   return clen;
 }
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb

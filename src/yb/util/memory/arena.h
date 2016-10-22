@@ -23,14 +23,13 @@
 #ifndef YB_UTIL_MEMORY_ARENA_H_
 #define YB_UTIL_MEMORY_ARENA_H_
 
-#include <boost/signals2/dummy_mutex.hpp>
-#include <glog/logging.h>
 #include <memory>
 #include <mutex>
 #include <new>
-#include <stddef.h>
-#include <string.h>
 #include <vector>
+
+#include <boost/signals2/dummy_mutex.hpp>
+#include <glog/logging.h>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -207,10 +206,22 @@ class ArenaBase {
   DISALLOW_COPY_AND_ASSIGN(ArenaBase);
 };
 
+// This is a base class from which all Arena allocator classes are derived. It is to help caching
+// different pointers of different Arena allocator types in a container without having to cast them
+// to (void*). For correctness, this class should have a list of pure virtual functions that an
+// allocator must have. However, we'll work on that later.
+class  AllocatorBase {
+ public:
+  AllocatorBase() {
+  }
+  virtual ~AllocatorBase() {
+  }
+};
+
 // STL-compliant allocator, for use with hash_maps and other structures
 // which share lifetime with an Arena. Enables memory control and improves
 // performance.
-template<class T, bool THREADSAFE> class ArenaAllocator {
+template<class T, bool THREADSAFE> class ArenaAllocator : public AllocatorBase {
  public:
   typedef T value_type;
   typedef size_t size_type;
@@ -224,11 +235,22 @@ template<class T, bool THREADSAFE> class ArenaAllocator {
   const_pointer index(const_reference r) const  { return &r; }
   size_type max_size() const  { return size_t(-1) / sizeof(T); }
 
+  ArenaAllocator() : arena_(nullptr) {
+    // Datatype std::basic_string uses allocator default constructor to create a dummmy allocator
+    // instance which is NOT used for any allocation. The legacy code in basic_string uses this
+    // dummy value to optimize the case where the string is empty and therefore doesn't need any
+    // allocation. Search "_GLIBCXX_FULLY_DYNAMIC_STRING" for more info.
+    //
+    // We allow default allocator for char-based type (std::basic_string<char>) but not others.
+    CHECK_EQ(typeid(T).hash_code(), typeid(char).hash_code())
+      << "Default constructor is not allowed in this context";
+  }
+
   explicit ArenaAllocator(ArenaBase<THREADSAFE>* arena) : arena_(arena) {
     CHECK_NOTNULL(arena_);
   }
 
-  ~ArenaAllocator() { }
+  virtual ~ArenaAllocator() { }
 
   pointer allocate(size_type n, allocator<void>::const_pointer /*hint*/ = 0) {
     return reinterpret_cast<T*>(arena_->AllocateBytes(n * sizeof(T)));
@@ -261,7 +283,7 @@ template<class T, bool THREADSAFE> class ArenaAllocator {
     return arena_;
   }
 
- private:
+ protected:
 
   ArenaBase<THREADSAFE>* arena_;
 };
@@ -494,4 +516,4 @@ inline T *ArenaBase<THREADSAFE>::NewObject(A1 arg1, A2 arg2, A3 arg3) {
 
 }  // namespace yb
 
-#endif // YB_UTIL_MEMORY_ARENA_H_
+#endif  // YB_UTIL_MEMORY_ARENA_H_

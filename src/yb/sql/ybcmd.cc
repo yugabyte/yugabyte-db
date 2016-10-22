@@ -4,12 +4,12 @@
 // stdin, parses it, and returns result or reports errors.
 //--------------------------------------------------------------------------------------------------
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-
 #include <wchar.h>
 #include <iostream>
 #include <cstddef>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/sql/ybsql.h"
 #include "yb/util/flags.h"
@@ -42,16 +42,18 @@ int main(int argc, char** argv) {
       string sub_stmt;
       getline(cin, sub_stmt);
       sql_stmt += sub_stmt;
-      if (sql_stmt.size() != 0) {
-        sql_stmt += "\n";
-      }
 
-      if (sql_stmt.substr(0, 4) == exit_cmd && (isspace(sql_stmt[4]) || sql_stmt[4] == ';')) {
+      if (sql_stmt.substr(0, 4) == exit_cmd &&
+          (sql_stmt[4] == '\0' || isspace(sql_stmt[4]) || sql_stmt[4] == ';')) {
         goto exit_ybsql;
       }
 
       if (sub_stmt.find_first_of(";") != string::npos) {
         break;
+      }
+
+      if (sql_stmt.size() != 0) {
+        sql_stmt += "\n";
       }
     }
 

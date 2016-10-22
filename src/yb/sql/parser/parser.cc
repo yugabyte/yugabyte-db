@@ -4,15 +4,15 @@
 
 #include <cstring>
 
-#include "yb/sql/errcodes.h"
 #include "yb/sql/parser/parser.h"
 #include "yb/util/logging.h"
 
 namespace yb {
 namespace sql {
 
-using std::to_string;
 using std::endl;
+using std::string;
+using std::to_string;
 
 //--------------------------------------------------------------------------------------------------
 // Class Parser.
@@ -20,8 +20,6 @@ using std::endl;
 Parser::Parser()
     : lex_processor_(),
       gram_processor_(this) {
-
-  // TODO(neil) Complete this prototype.
 }
 
 Parser::~Parser() {
@@ -30,21 +28,28 @@ Parser::~Parser() {
 
 //--------------------------------------------------------------------------------------------------
 
-int Parser::Parse(ParseContext *parse_context) {
-  LOG(INFO) << "Parsing statement: " << parse_context->stmt();
-
-  parse_context_ = parse_context;
-  lex_processor_.ScanInit(parse_context);
+ErrorCode Parser::Parse(const string& sql_stmt) {
+  parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt));
+  lex_processor_.ScanInit(parse_context());
   gram_processor_.set_debug_level(parse_context_->trace_parsing());
-  const int error_code = gram_processor_.parse();
 
-  // TODO(neil) Redefine enum ERRCODE to class and use it properly.
-  if (error_code == ERRCODE_SUCCESSFUL_COMPLETION) {
-    LOG(INFO) << "Compiled successfully";
+  if (gram_processor_.parse() == 0 &&
+      parse_context_->error_code() == ErrorCode::SUCCESSFUL_COMPLETION) {
+    VLOG(3) << "Successfully parsed statement \"" << parse_context_->stmt() << "\"" << endl;
   } else {
-    LOG(ERROR) << "Failed to compile. Errorcode = " << error_code;
+    VLOG(3) << kErrorFontStart << "Failed to parse \"" << parse_context_->stmt() << "\""
+            << kErrorFontEnd << endl;
   }
-  return error_code;
+
+  return parse_context_->error_code();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+ParseTree::UniPtr Parser::Done() {
+  ParseTree::UniPtr ptree = parse_context_->AcquireParseTree();
+  parse_context_ = nullptr;
+  return ptree;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -53,15 +58,5 @@ GramProcessor::symbol_type Parser::Scan() {
   return lex_processor_.Scan();
 }
 
-//--------------------------------------------------------------------------------------------------
-
-void Parser::Error(const location& l, const std::string& m) {
-  LOG(ERROR) << "\033[31m" << l << ": " << m << "\033[0m" << endl;
-}
-
-void Parser::Error(const std::string& m) {
-  LOG(ERROR) << "\033[31m" << m << "\033[0m" << endl;
-}
-
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb

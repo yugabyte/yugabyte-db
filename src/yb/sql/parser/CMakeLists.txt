@@ -26,15 +26,19 @@ add_custom_command(
             > ${PARSER_GRAM_FINAL_Y_CC})
 
 add_library(ybsql_parser
-  ${BISON_YbSqlParser_OUTPUTS}
-  ${FLEX_YbSqlScanner_OUTPUTS}
-  ${PARSER_GRAM_FINAL_Y_CC}
   parser.cc
   parse_context.cc
-  parse_tree.cc
   scanner.cc
-  scanner_util.cc)
+  scanner_util.cc
+  ${BISON_YbSqlParser_OUTPUTS}
+  ${FLEX_YbSqlScanner_OUTPUTS}
+  ${PARSER_GRAM_FINAL_Y_CC})
 
 FIND_PATH(FLEX_INCLUDE_DIR FlexLexer.h)
 target_include_directories(ybsql_parser BEFORE PUBLIC ${FLEX_INCLUDE_DIR})
-target_link_libraries(ybsql_parser ybsql_util yb_util ${FLEX_LIBRARIES} ${BISON_LIBRARIES})
+target_link_libraries(ybsql_parser
+                      ${FLEX_LIBRARIES}
+                      ${BISON_LIBRARIES}
+                      ybsql_ptree
+                      ybsql_util
+                      yb_util)

@@ -8,7 +8,7 @@
 //
 // Examples:
 // - Suppose we have the following memory context.
-//     MemoryContext::Ptr mem_ctx;
+//     MemoryContext::UniPtr mem_ctx;
 //
 // - To allocate a buffer
 //     char *buffer = static_cast<char*>(mem_ctx->Malloc(size_in_bytes));
@@ -16,17 +16,13 @@
 // - Freeing this buffer would be a noop except maybe for debugging.
 //     mem_ctx->Free(buffer);
 //
-// - To allocate a shared_pointer.
-//     AClassName::Ptr ptr = mem_ctx->MakeShared<AClassName>("Constructor arguments", 1, 2, 3);
-//
-// - Freeing shared pointer. This is a must. Otherwise, the destructor will not be called.
-//     ptr = nullptr;
+// - To allocate a container, one can get the associated allocator by calling GetAllocator.
+//     mem_ctx->GetAllocator<ElementType>();
+//   The file "yb/sql/util/base_types.h" defines several containers including MCString that use
+//   custom allocator from MemoryContext.
 //
 // - When "mem_ctx" is destructed, its private allocator would be freed, and all associated
 //   allocated memory spaces would be deleted and released back to the system.
-//
-// NOTE: We haven't implemented this yet. The current code implementation simply forwards all calls
-// to std library without using allocator.
 //--------------------------------------------------------------------------------------------------
 #ifndef YB_SQL_UTIL_MEMORY_CONTEXT_H_
 #define YB_SQL_UTIL_MEMORY_CONTEXT_H_
@@ -34,27 +30,82 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include <memory>
+#include <type_traits>
 #include <unordered_map>
+
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace sql {
+
+class MemoryContext;
+
+//--------------------------------------------------------------------------------------------------
+// MC allocator class.
+template<class MCObject>
+using MCAllocatorBase = ArenaAllocator<MCObject, false>;
+
+template<class MCObject>
+class MCAllocator : public MCAllocatorBase<MCObject> {
+ public:
+  // IMPORTANT NOTE:
+  // Although C++ Standard does not require allocator to have default constructor, some linux C++
+  // compilers need default constructor to support String copy constructors that take default
+  // allocator as an argument.
+  //
+  // RESOLUTION:
+  // - Define our own MC type - such as MCString - whose constructor always take allocators as
+  //   argument.
+  // - We provide default constructor for basic_string<char> because this type uses default
+  //   constructor to create a dummy instance that is used for optimization but not for allocation.
+  //   Search "_GLIBCXX_FULLY_DYNAMIC_STRING" for more info.
+  // - The default constructor is marked as deprecated so that we don't mistakenly use it.
+  // - The dummy object created by the default constructor should never be used. If it's used, the
+  //   system will crash immediately due to nullptr memory manager. Our tests will catch it.
+  MCAllocator() __attribute__((deprecated)) : MCAllocatorBase<MCObject>() {
+  }
+  MCAllocator(MemoryContext *memory_context, Arena *a) : MCAllocatorBase<MCObject>(a) {
+  }
+
+  virtual ~MCAllocator() {
+  }
+};
+
+//--------------------------------------------------------------------------------------------------
+// MC deleter class for shared_ptr and unique_ptr.
+template<class MCObject = void>
+class MCDeleter {
+ public:
+  // Delete is a no-op because we use allocator to allocate and deallocate.
+  void operator()(MCObject *obj) {
+  }
+};
+
+//--------------------------------------------------------------------------------------------------
+// Context-control shared_ptr and unique_ptr
+template<class MCObject> using MCUniquePtr = std::unique_ptr<MCObject, MCDeleter<>>;
+template<class MCObject> using MCSharedPtr = std::shared_ptr<MCObject>;
+
+//--------------------------------------------------------------------------------------------------
 
 class MemoryContext {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef std::shared_ptr<MemoryContext> SharedPtr;
-  typedef std::shared_ptr<const MemoryContext> SharedPtrConst;
-
   typedef std::unique_ptr<MemoryContext> UniPtr;
   typedef std::unique_ptr<const MemoryContext> UniPtrConst;
+
+  // Constant variable.
+  static constexpr size_t kStartBlockSize = 4 * 1024;
+  static constexpr size_t kMaxBlockSize = 256 * 1024;
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
   MemoryContext();
+  virtual ~MemoryContext();
 
-  ~MemoryContext();
+  //------------------------------------------------------------------------------------------------
+  // Char* buffer support.
 
   // Allocate a memory space and save the free operator in the deallocation map.
   void *Malloc(size_t size);
@@ -64,23 +115,58 @@ class MemoryContext {
   void Free(void *ptr) {
   }
 
-  // Duplicate string.
-  char *Strdup(const char *str);
+  //------------------------------------------------------------------------------------------------
+  // Standard STL container support.
+
+  // Get the correct allocator for certain datatype.
+  template<class MCObject>
+  const MCAllocator<MCObject>& GetAllocator() {
+    const std::type_info& type_id = typeid(MCObject);
+    std::unordered_map<size_t, AllocatorBase*>::iterator iter =
+      allocator_map_.find(type_id.hash_code());
+    if (iter != allocator_map_.end()) {
+      return *static_cast<MCAllocator<MCObject> *>(iter->second);
+    }
+
+    // Use Arena to malloc the allocators for STD containers.
+    MCAllocator<MCObject> *allocator = manager_.NewObject<MCAllocator<MCObject>>(this, &manager_);
+    allocator_map_[type_id.hash_code()] = allocator;
+    return *allocator;
+  }
+  const MCDeleter<>& GetDeleter() {
+    return deleter_;
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Shared_ptr support.
+
+  // Allocate shared_ptr object.
+  template<class MCObject, typename... TypeArgs>
+  MCSharedPtr<MCObject> AllocateShared(TypeArgs&&... args) {
+    const MCAllocator<MCObject> alloc = GetAllocator<MCObject>();
+    return std::allocate_shared<MCObject>(alloc, std::forward<TypeArgs>(args)...);
+  }
+
+  // Convert raw pointer to shared pointer.
+  template<class MCObject>
+  MCSharedPtr<MCObject> ToShared(MCObject *raw_ptr) {
+    const MCAllocator<MCObject> alloc = GetAllocator<MCObject>();
+    return MCSharedPtr<MCObject>(raw_ptr, deleter_, alloc);
+  }
 
  private:
   //------------------------------------------------------------------------------------------------
-  // Private types.
-  typedef std::function<void()> DeallocFuncType;
+  // Allocate and deallocate memory from heap.
+  Arena manager_;
 
-  // Free the allocated space referenced by the given "ptr".
-  void Deallocate(void *ptr);
+  // Consists of all allocators for all types that are allocated by this context.
+  std::unordered_map<size_t, AllocatorBase*> allocator_map_;
 
-  //------------------------------------------------------------------------------------------------
-  // Consists of all std::function() for all deallocations.
-  std::unordered_map<const void *, DeallocFuncType> deallocate_map_;
+  // Deleter for all objects within this context.
+  MCDeleter<> deleter_;
 };
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_UTIL_MEMORY_CONTEXT_H_

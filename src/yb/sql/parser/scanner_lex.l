@@ -27,7 +27,7 @@
  * Postgres 9.2, this check is made automatically by the Makefile.)
  *--------------------------------------------------------------------------------------------------
  */
-#include "yb/sql/errcodes.h"
+
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/parser/parse_context.h"
 #include "yb/sql/parser/scanner.h"
@@ -59,10 +59,6 @@ using namespace yb::sql;
 
 // Advance yylloc by the given number of bytes.
 #define ADVANCE_YYLLOC(delta) AdvanceCursor(delta)
-
-#define scanner_strdup(x) PTreeMem()->Strdup(x)
-#define scanner_free(x) PTreeMem()->Free(x)
-
 %}
 
 /*------------------------------------------------------------------------------------------------*/
@@ -71,6 +67,7 @@ using namespace yb::sql;
 %option nodefault noinput nounput noyywrap batch warn
 %option c++
 %option yyclass="yb::sql::LexProcessor"
+%option noyyalloc noyyrealloc noyyfree
 
 /*------------------------------------------------------------------------------------------------*/
 /* LEX definitions */
@@ -404,7 +401,7 @@ other                     .
 <xb>{quotefail} {
   yyless(1);
   BEGIN(INITIAL);
-  return GramProcessor::make_BCONST(litbufdup(), cursor_);
+  return GramProcessor::make_BCONST(ScanLiteral(), cursor_);
 }
 
 <xh>{xhinside} |
@@ -439,7 +436,7 @@ other                     .
 <xh>{quotefail} {
   yyless(1);
   BEGIN(INITIAL);
-  return GramProcessor::make_XCONST(litbufdup(), cursor_);
+  return GramProcessor::make_XCONST(ScanLiteral(), cursor_);
 }
 
 <xh><<EOF>> {
@@ -458,7 +455,7 @@ other                     .
     return GramProcessor::make_NCHAR(keyword.name(), cursor_);
   } else {
     /* If NCHAR isn't a keyword, just return "n" */
-    return GramProcessor::make_IDENT(scanner_strdup("n"), cursor_);
+    return GramProcessor::make_IDENT(MakeString("n"), cursor_);
   }
 }
 
@@ -483,12 +480,13 @@ other                     .
 
 {xusstart} {
   SET_YYLLOC();
-  if (!standard_conforming_strings_)
-    LOG(ERROR)
-      << "SQL ERROR " << ERRCODE_FEATURE_NOT_SUPPORTED
-      << "(Unsafe use of string constant with Unicode escapes): "
-      << "String constants with Unicode escapes cannot be used when standard_conforming_strings_ "
-      << "is off";
+  if (!standard_conforming_strings_) {
+    parse_context_->Error(token_loc_,
+                          "Unsafe use of string constant with Unicode escapes. String constants "
+                          "with Unicode escapes cannot be used when standard_conforming_strings_ "
+                          "is off",
+                          ErrorCode::FEATURE_NOT_SUPPORTED);
+  }
   BEGIN(xus);
   startlit();
 }
@@ -501,8 +499,7 @@ other                     .
   // Check that the data remains valid if it might have been made invalid by unescaping any chars.
   if (saw_non_ascii_)
     pg_verify_mbstr_len(literalbuf_, literallen_, false);
-  char *str = litbufdup();
-  return GramProcessor::make_SCONST(str, cursor_);
+  return GramProcessor::make_SCONST(ScanLiteral(), cursor_);
 }
 
 <xus>{quotestop} |
@@ -529,7 +526,7 @@ other                     .
   yyless(0);
   BEGIN(INITIAL);
   char *str = litbuf_udeescape('\\');
-  return GramProcessor::make_SCONST(str, cursor_);
+  return GramProcessor::make_SCONST(MakeString(str), cursor_);
 }
 
 <xusend>{xustop2} {
@@ -544,7 +541,7 @@ other                     .
     yyerror("invalid Unicode escape character");
   }
   char *str = litbuf_udeescape(yytext[yyleng-2]);
-  return GramProcessor::make_SCONST(str, cursor_);
+  return GramProcessor::make_SCONST(MakeString(str), cursor_);
 }
 
 <xq,xe,xus>{xqdouble} {
@@ -591,20 +588,19 @@ other                     .
 <xeu><<EOF>>  { yyerror("invalid Unicode surrogate pair"); }
 
 <xe,xeu>{xeunicodefail} {
-  LOG(ERROR)
-    << "SQL ERROR " << ERRCODE_INVALID_ESCAPE_SEQUENCE
-    << "(Invalid Unicode escape): "
-    << "Unicode escapes must be \\uXXXX or \\UXXXXXXXX.";
+  parse_context_->Error(token_loc_,
+                        "Invalid Unicode escape. Unicode escapes must be \\uXXXX or \\UXXXXXXXX",
+                        ErrorCode::INVALID_ESCAPE_SEQUENCE);
 }
 
 <xe>{xeescape} {
   if (yytext[1] == '\'') {
     if (backslash_quote_ == BackslashQuoteType::OFF ||
         (backslash_quote_ == BackslashQuoteType::SAFE_ENCODING)) {
-      LOG(ERROR)
-        << "SQL ERROR " << ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER
-        << "(Unsafe use of \\' in a string literal): "
-        << "Use '' to write quotes in strings. \\' is insecure in client-only encodings";
+      parse_context_->Error(token_loc_,
+                            "Unsafe use of \\' in a string literal. Use '' to write quotes in "
+                            "strings. \\' is insecure in client-only encodings",
+                            ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER);
     }
   }
   check_string_escape_warning(yytext[1]);
@@ -644,7 +640,7 @@ other                     .
 
 {dolqdelim} {
   SET_YYLLOC();
-  dolqstart_ = scanner_strdup(yytext);
+  dolqstart_ = MCStrdup(PTempMem(), yytext);
   BEGIN(xdolq);
   startlit();
 }
@@ -659,11 +655,10 @@ other                     .
 
 <xdolq>{dolqdelim} {
   if (strcmp(yytext, dolqstart_) == 0) {
-    scanner_free(dolqstart_);
+    PTempMem()->Free(dolqstart_);
     dolqstart_ = NULL;
     BEGIN(INITIAL);
-    char *str = litbufdup();
-    return GramProcessor::make_SCONST(str, cursor_);
+    return GramProcessor::make_SCONST(ScanLiteral(), cursor_);
   } else {
     // When we fail to match $...$ to dolqstart_, transfer
     // the $... part to the output, but put back the final
@@ -701,14 +696,14 @@ other                     .
 }
 
 <xd>{xdstop} {
-  char *ident;
-
   BEGIN(INITIAL);
-  if (literallen_ == 0)
+  if (literallen_ == 0) {
     yyerror("zero-length delimited identifier");
-  ident = litbufdup();
-  if (literallen_ >= NAMEDATALEN)
-    truncate_identifier(ident, literallen_, true);
+  }
+  const MCString::SharedPtr ident = ScanLiteral();
+  if (literallen_ >= NAMEDATALEN) {
+    TruncateIdentifier(ident, true);
+  }
   return GramProcessor::make_IDENT(ident, cursor_);
 }
 
@@ -731,18 +726,15 @@ other                     .
   CountNewlineInToken(yytext);
 
   /* no UESCAPE after the quote, throw back everything */
-  char *ident;
-  int   identlen;
-
   yyless(0);
 
   BEGIN(INITIAL);
-  if (literallen_ == 0)
+  if (literallen_ == 0) {
     yyerror("zero-length delimited identifier");
-  ident = litbuf_udeescape('\\');
-  identlen = strlen(ident);
-  if (identlen >= NAMEDATALEN)
-    truncate_identifier(ident, identlen, true);
+  }
+
+  const MCString::SharedPtr ident = MakeString(litbuf_udeescape('\\'));
+  TruncateIdentifier(ident, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
 
@@ -751,21 +743,18 @@ other                     .
   CountNewlineInToken(yytext);
 
   /* found UESCAPE after the end quote */
-  char     *ident;
-  int     identlen;
-
   BEGIN(INITIAL);
-  if (literallen_ == 0)
+  if (literallen_ == 0) {
     yyerror("zero-length delimited identifier");
+  }
   if (!check_uescapechar(yytext[yyleng-2])) {
     SET_YYLLOC();
     ADVANCE_YYLLOC(yyleng-2);
     yyerror("invalid Unicode escape character");
   }
-  ident = litbuf_udeescape(yytext[yyleng - 2]);
-  identlen = strlen(ident);
-  if (identlen >= NAMEDATALEN)
-    truncate_identifier(ident, identlen, true);
+
+  const MCString::SharedPtr ident = MakeString(litbuf_udeescape(yytext[yyleng - 2]));
+  TruncateIdentifier(ident, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
 
@@ -780,20 +769,20 @@ other                     .
 <xd,xui><<EOF>> { yyerror("unterminated quoted identifier"); }
 
 {xufailed} {
-  char       *ident;
-
   SET_YYLLOC();
-  /* throw back all but the initial u/U */
+
+  // Throw back all but the initial u/U.
   yyless(1);
-  /* and treat it as {identifier} */
-  ident = downcase_truncate_identifier(yytext, yyleng, true);
+
+  // Treat it as {identifier}. Convert to lower-case and create IDENT totken.
+  const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
- }
+}
 
 {typecast} {
   SET_YYLLOC();
   return GramProcessor::make_TYPECAST(cursor_);
- }
+}
 
 {dot_dot} {
   SET_YYLLOC();
@@ -896,8 +885,7 @@ other                     .
   if (nchars >= NAMEDATALEN)
     yyerror("operator too long");
 
-  char *str = scanner_strdup(yytext);
-  return GramProcessor::make_Op(str, cursor_);
+  return GramProcessor::make_Op(MakeString(yytext), cursor_);
 }
 
 {param} {
@@ -913,8 +901,7 @@ other                     .
 
 {decimal} {
   SET_YYLLOC();
-  char *str = scanner_strdup(yytext);
-  return GramProcessor::make_FCONST(str, cursor_);
+  return GramProcessor::make_FCONST(MakeString(yytext), cursor_);
 }
 
 {decimalfail} {
@@ -926,8 +913,7 @@ other                     .
 
 {real} {
   SET_YYLLOC();
-  char *str = scanner_strdup(yytext);
-  return GramProcessor::make_FCONST(str, cursor_);
+  return GramProcessor::make_FCONST(MakeString(yytext), cursor_);
 }
 
 {realfail1} {
@@ -937,16 +923,14 @@ other                     .
   // syntax error anyway, we don't bother to distinguish.
   yyless(yyleng-1);
   SET_YYLLOC();
-  char *str = scanner_strdup(yytext);
-  return GramProcessor::make_FCONST(str, cursor_);
+  return GramProcessor::make_FCONST(MakeString(yytext), cursor_);
 }
 
 {realfail2} {
   /* throw back the [Ee][+-], and proceed as above */
   yyless(yyleng-2);
   SET_YYLLOC();
-  char *str = scanner_strdup(yytext);
-  return GramProcessor::make_FCONST(str, cursor_);
+  return GramProcessor::make_FCONST(MakeString(yytext), cursor_);
 }
 
 {identifier}  {
@@ -959,7 +943,7 @@ other                     .
   }
 
   // Not a keyword.  Convert the identifier to lower case, and truncate if necessary.
-  char *ident = downcase_truncate_identifier(yytext, yyleng, true);
+  const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
 
@@ -975,4 +959,31 @@ other                     .
 
 %%
 
-//--------------------------------------------------------------------------------------------------
+// FLEX C++ version doesn't allow us to change the specification of allocation routines, so we
+// cannot insert our own memory context here. As a result, to avoid memory fragmentation, we just
+// make sure that FLEX allocate its buffers by multiple of 4k.
+constexpr int kFlexBufferBlockSize = 4*1024;
+static yy_size_t YYRoundUpFlexBuffer(yy_size_t size) {
+  yy_size_t remainder = size % kFlexBufferBlockSize;
+  if (remainder == 0) {
+    return size;
+  } else {
+    return size + (kFlexBufferBlockSize - remainder);
+  }
+}
+
+void *yyalloc(yy_size_t size) {
+  // Round up size to multiple of kMinFlexBufferSize.
+  size = YYRoundUpFlexBuffer(size);
+  return malloc(size);
+}
+
+void *yyrealloc(void *ptr, yy_size_t size) {
+  // Round up size to multiple of kMinFlexBufferSize.
+  size = YYRoundUpFlexBuffer(size);
+  return realloc(static_cast<char *>(ptr), size);
+}
+
+void yyfree(void *ptr) {
+  free(static_cast<char *>(ptr));
+}

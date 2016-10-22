@@ -11,31 +11,23 @@ namespace yb {
 namespace sql {
 
 using std::string;
+using std::unique_ptr;
 
-YbSql::YbSql() : parser_(new Parser()) {
+YbSql::YbSql()
+    : parser_(unique_ptr<Parser>(new Parser())) {
 }
 
 YbSql::~YbSql() {
 }
 
-int YbSql::Process(const string& sql_stmt) {
-  // Temporary memory pool that is used during the parsing process. This pool is deleted as soon as
-  // the parsing process is completed.
-  MemoryContext *parse_mem = new MemoryContext();
-
-  // Parse tree memory pool. This pool is used to allocate parse tree and its nodes. This pool
-  // should be kept until the parse tree is no longer needed.
-  MemoryContext *ptree_mem = new MemoryContext();
-
-  // Parse the statement.
-  ParseContext parse_ctx(sql_stmt, parse_mem, ptree_mem);
-
-  int errcode = parser_->Parse(&parse_ctx);
-  delete parse_mem;
-  parse_mem = nullptr;
-  if (errcode != ERRCODE_SUCCESSFUL_COMPLETION) {
+ErrorCode YbSql::Process(const string& sql_stmt) {
+  ErrorCode errcode = parser_->Parse(sql_stmt);
+  if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
     return errcode;
   }
+
+  // Get the generated parse tree and clear the context.
+  ParseTree::UniPtr parse_tree = parser_->Done();
 
   // Semantic analysis.
   // Traverse, error-check, and decorate the parse tree nodes with datatypes.
@@ -51,9 +43,8 @@ int YbSql::Process(const string& sql_stmt) {
   // MemoryContext *exec_mem;
 
   // Return status.
-  delete ptree_mem;
   return errcode;
 }
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb

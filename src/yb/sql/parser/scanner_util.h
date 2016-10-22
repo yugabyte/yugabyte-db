@@ -41,7 +41,7 @@ unsigned int hexval(unsigned char c);
 // transformations that increase the string length, but we don't yet
 // support that.  If you want to implement it, you'll need to fix
 // SplitIdentifierString() in utils/adt/varlena.c.
-char *downcase_truncate_identifier(const char *ident, int len, bool warn);
+void downcase_truncate_identifier(char *result, const char *ident, int len, bool warn);
 
 // truncate_identifier() --- truncate an identifier to NAMEDATALEN-1 bytes.
 //
@@ -133,7 +133,7 @@ bool pg_utf8_islegal(const unsigned char *source, int length);
 // pg_mbcliplen with specified encoding
 int pg_encoding_mbcliplen(const char *mbstr, int len, int limit);
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_PARSER_SCANNER_UTIL_H_

@@ -11,8 +11,10 @@
 #include <iostream>
 #include <memory>
 
+#include "yb/sql/parser/location.hh"
+#include "yb/sql/ptree/parse_tree.h"
+#include "yb/sql/util/errcodes.h"
 #include "yb/sql/util/memory_context.h"
-#include "yb/sql/parser/parse_tree.h"
 
 namespace yb {
 namespace sql {
@@ -22,31 +24,52 @@ class ParseContext {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef std::shared_ptr<ParseContext> SharedPtr;
-  typedef std::shared_ptr<const ParseContext> SharedPtrConst;
-
   typedef std::unique_ptr<ParseContext> UniPtr;
   typedef std::unique_ptr<const ParseContext> UniPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  ParseContext(const std::string& sql_stmt,
-               MemoryContext *parse_mem,
-               MemoryContext *ptree_mem);
+  explicit ParseContext(const std::string& sql_stmt);
   virtual ~ParseContext();
 
   // Read a maximum of 'max_size' bytes from SQL statement of this parsing context into the
   // provided buffer 'buf'. Scanner will call this function when looking for next token.
   size_t Read(char* buf, size_t max_size);
 
+  // Saves the generated parse tree from the parsing process to this context.
+  void SaveGeneratedParseTree(TreeNode::SharedPtr generated_parse_tree);
+
+  // Handling parsing warning.
+  void Warn(const location& l, const std::string& m, ErrorCode error_code);
+
+  // Handling scanning error.
+  void ScanError(const location& l, const std::string& token);
+
+  // Handling parsing error.
+  void Error(const location& l,
+             const std::string& m,
+             ErrorCode error_code,
+             const char* token = nullptr);
+  void Error(const location& l, const std::string& m, const char* token = nullptr);
+  void Error(const location& l, ErrorCode error_code, const char* token = nullptr);
+  void Error(const std::string& m);
+
+  // Returns the token at location 'l' of the input SQL statement stmt_.
+  const pair<const char *, const size_t> ReadToken(const location& l);
+
+  // Returns the generated parse tree and release the ownership from this context.
+  ParseTree::UniPtr AcquireParseTree() {
+    return move(parse_tree_);
+  }
+
   // Memory pool for constructing the parse tree of a statement.
   MemoryContext *PTreeMem() const {
-    return ptree_mem_;
+    return parse_tree_->PTreeMem();
   }
 
   // Memory pool for allocating and deallocating operating memory spaces during parsing process.
-  MemoryContext *ParseMem() const {
-    return parse_mem_;
+  MemoryContext *PTempMem() const {
+    return ptemp_mem_.get();
   }
 
   // Access function for trace_scanning_.
@@ -57,6 +80,15 @@ class ParseContext {
   // Access function for trace_parsing_.
   bool trace_parsing() const {
     return trace_parsing_;
+  }
+
+  // Read and write access functions for error_code_.
+  ErrorCode error_code() const {
+    return error_code_;
+  }
+
+  void set_error_code(ErrorCode error_code) {
+    error_code_ = error_code;
   }
 
   //------------------------------------------------------------------------------------------------
@@ -82,9 +114,15 @@ class ParseContext {
 
  private:
   //------------------------------------------------------------------------------------------------
-  ParseTree *parse_tree_;      // Generated parse tree (output).
-  MemoryContext *parse_mem_;   // MemPool for spaces used during scanning and parsing.
-  MemoryContext *ptree_mem_;   // Memory pool for the resulted parse tree.
+  // Generated parse tree (output).
+  ParseTree::UniPtr parse_tree_;
+
+  // Temporary memory pool is used during the parsing process. This pool is deleted as soon as the
+  // parsing process is completed.
+  MemoryContext::UniPtr ptemp_mem_;
+
+  // Latest parsing or scanning error code.
+  ErrorCode error_code_;
 
   // We don't use istream (i.e. file) as input when parsing. In the future, if we also support file
   // as an SQL input, we need to define a constructor that takes a file as input and initializes
@@ -103,7 +141,7 @@ class ParseContext {
   bool trace_parsing_;         // Parser trace flag.
 };
 
-}  // namespace sql.
-}  // namespace yb.
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_PARSER_PARSE_CONTEXT_H_
