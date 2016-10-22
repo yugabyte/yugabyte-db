@@ -8,13 +8,14 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpgradeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.models.Universe;
+
 import play.libs.Json;
 
 @Singleton
@@ -76,7 +77,7 @@ public class DevOpsHelper {
   }
 
   public String nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) throws RuntimeException {
-    String command = cloudBaseCommand(Common.CloudType.aws);
+    String command = cloudBaseCommand(nodeTaskParam.cloud);
 
     if (nodeTaskParam.cloud == Common.CloudType.aws) {
       command += " --region " + nodeTaskParam.getRegion().code;
