@@ -1,5 +1,17 @@
 # Copyright (c) YugaByte, Inc.
 
+# docdb_proto
+
+PROTOBUF_GENERATE_CPP(
+  DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES docdb.proto)
+ADD_EXPORTABLE_LIBRARY(docdb_proto
+  SRCS ${DOCDB_PROTO_SRCS}
+  DEPS protobuf
+  NONLINK_DEPS ${DOCDB_PROTO_TGTS})
+
 set(DOCDB_SRCS
     doc_key.cc
     doc_kv_util.cc
@@ -17,7 +29,8 @@ set(DOCDB_DEPS
     rocksdb
     yb_util
     yb_rocksutil
-    yb_common)
+    yb_common
+    docdb_proto)
 
 ADD_EXPORTABLE_LIBRARY(yb_docdb
                        SRCS ${DOCDB_SRCS}

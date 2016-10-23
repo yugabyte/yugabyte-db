@@ -434,7 +434,7 @@ MvccSnapshot::MvccSnapshot(const MvccManager &manager) {
 MvccSnapshot::MvccSnapshot(const Timestamp& timestamp)
   : all_committed_before_(timestamp),
     none_committed_at_or_after_(timestamp) {
- }
+}
 
 MvccSnapshot MvccSnapshot::CreateSnapshotIncludingAllTransactions() {
   return MvccSnapshot(Timestamp::kMax);
@@ -469,7 +469,7 @@ std::string MvccSnapshot::ToString() const {
   string ret("MvccSnapshot[committed={T|");
 
   if (committed_timestamps_.size() == 0) {
-    StrAppend(&ret, "T < ", all_committed_before_.ToString(),"}]");
+    StrAppend(&ret, "T < ", all_committed_before_.ToString(), "}]");
     return ret;
   }
   StrAppend(&ret, "T < ", all_committed_before_.ToString(),
@@ -528,11 +528,12 @@ ScopedTransaction::ScopedTransaction(MvccManager *mgr, TimestampAssignmentType a
   }
 }
 
-ScopedTransaction::ScopedTransaction(MvccManager *mgr, Timestamp timestamp)
-  : done_(false),
-    manager_(DCHECK_NOTNULL(mgr)),
-    assignment_type_(PRE_ASSIGNED),
-    timestamp_(timestamp) {
+ScopedTransaction::ScopedTransaction(MvccManager *mgr,
+                                     Timestamp timestamp)
+    : done_(false),
+      manager_(DCHECK_NOTNULL(mgr)),
+      assignment_type_(PRE_ASSIGNED),
+      timestamp_(timestamp) {
   CHECK_OK(mgr->StartTransactionAtTimestamp(timestamp));
 }
 
@@ -551,18 +552,16 @@ void ScopedTransaction::Commit() {
     case NOW:
     case NOW_LATEST: {
       manager_->CommitTransaction(timestamp_);
-      break;
+      done_ = true;
+      return;
     }
     case PRE_ASSIGNED: {
       manager_->OfflineCommitTransaction(timestamp_);
-      break;
-    }
-    default: {
-      LOG(FATAL) << "Unexpected transaction assignment type.";
+      done_ = true;
+      return;
     }
   }
-
-  done_ = true;
+  LOG(FATAL) << "Unexpected transaction assignment type " << assignment_type_;
 }
 
 void ScopedTransaction::Abort() {

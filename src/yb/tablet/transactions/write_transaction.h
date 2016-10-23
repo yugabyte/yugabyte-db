@@ -165,18 +165,9 @@ class WriteTransactionState : public TransactionState {
     return row_ops_;
   }
 
-  rocksdb::WriteBatch* kv_write_batch() {
-    return &kv_write_batch_;
-  }
-
   void swap_row_ops(std::vector<RowOp*>* new_ops) {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     row_ops_.swap(*new_ops);
-  }
-
-  void swap_kv_write_batch(rocksdb::WriteBatch* kv_batch) {
-    std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    kv_write_batch_ = *kv_batch;
   }
 
   void swap_docdb_locks(std::vector<std::string>* docdb_locks) {
@@ -202,10 +193,14 @@ class WriteTransactionState : public TransactionState {
   // A copy is made at initialization, so we don't need to reset it.
   void ResetRpcFields();
 
+  // Sets mvcc_tx_ to nullptr after commit/abort in a thread-safe manner.
+  void ResetMvccTx(std::function<void(ScopedTransaction*)> txn_action);
+
   // pointers to the rpc context, request and response, lifecyle
   // is managed by the rpc subsystem. These pointers maybe NULL if the
   // transaction was not initiated by an RPC call.
   const std::unique_ptr<const tserver::WriteRequestPB> request_;
+
   tserver::WriteResponsePB* response_;
 
   // The row operations which are decoded from the request during PREPARE
@@ -215,12 +210,16 @@ class WriteTransactionState : public TransactionState {
   // Store the ids that have been locked for docdb transaction. They need to be released on commit.
   std::vector<std::string> docdb_locks_;
 
-  // For transactions that work on KV tables, the KV batch is constructed and appended
-  // to Raft log before applying.
-  rocksdb::WriteBatch kv_write_batch_;
-
   // The MVCC transaction, set up during PREPARE phase
   gscoped_ptr<ScopedTransaction> mvcc_tx_;
+
+  // A lock protecting mvcc_tx_. This is important at least because mvcc_tx_ can be reset to nullptr
+  // when a transaction is being aborted (e.g. on server shutdown), and we don't want that to race
+  // with committing the transaction.
+  // TODO(mbautin): figure out why Kudu did not need this originally. Maybe that's because a
+  //                transaction cannot be aborted after the Apply process has started? See if
+  //                we actually get counterexamples for this in tests.
+  std::mutex mvcc_tx_mutex_;
 
   // The tablet components, acquired at the same time as mvcc_tx_ is set.
   scoped_refptr<const TabletComponents> tablet_components_;
@@ -256,7 +255,7 @@ class WriteTransaction : public Transaction {
   virtual Status Prepare() OVERRIDE;
 
   // Actually starts the Mvcc transaction and assigns a timestamp to this transaction.
-  virtual Status Start() OVERRIDE;
+  virtual void Start() OVERRIDE;
 
   // Executes an Apply for a write transaction.
   //
@@ -293,7 +292,8 @@ class WriteTransaction : public Transaction {
 
   gscoped_ptr<WriteTransactionState> state_;
 
- private:
+  TabletPeer* tablet_peer() { return state()->tablet_peer(); }
+
   DISALLOW_COPY_AND_ASSIGN(WriteTransaction);
 };
 

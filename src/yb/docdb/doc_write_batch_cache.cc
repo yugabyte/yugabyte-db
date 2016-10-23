@@ -49,7 +49,7 @@ boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
   }
 #endif
   return iter == prefix_to_gen_ts_.end() ? boost::optional<Entry>() : iter->second;
-};
+}
 
 string DocWriteBatchCache::ToDebugString() {
   vector<pair<string, Entry>> sorted_contents;
@@ -74,5 +74,9 @@ string DocWriteBatchCache::EntryToStr(const Entry& entry) {
   return ss.str();
 }
 
+void DocWriteBatchCache::Clear() {
+  prefix_to_gen_ts_.clear();
 }
-}
+
+}  // namespace docdb
+}  // namespace yb

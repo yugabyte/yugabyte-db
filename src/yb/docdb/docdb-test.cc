@@ -6,6 +6,7 @@
 #include <string>
 
 #include "rocksdb/db.h"
+#include "rocksdb/status.h"
 
 #include "yb/common/timestamp.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -112,6 +113,8 @@ class DocDBTest : public YBTest {
                     Timestamp timestamp,
                     string expected_write_batch_str);
 
+  rocksdb::Status WriteToRocksDB(const DocWriteBatch& write_batch);
+
   string DebugDumpDocument(const KeyBytes& encoded_doc_key);
 
   rocksdb::Options rocksdb_options_;
@@ -126,9 +129,7 @@ void DocDBTest::TestInsertion(DocPath doc_path,
                               string expected_write_batch_str) {
   DocWriteBatch dwb(rocksdb_.get());
   ASSERT_OK(dwb.SetPrimitive(doc_path, value, timestamp));
-  if (dwb.write_batch()->Count() > 0) {
-    rocksdb_->Write(write_options_, dwb.write_batch());
-  }
+  dwb.WriteToRocksDB(timestamp, write_options_);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected_write_batch_str),
                                 dwb.ToDebugString());
 }
@@ -144,11 +145,19 @@ void DocDBTest::TestDeletion(DocPath doc_path,
   string expected_write_batch_str) {
   DocWriteBatch dwb(rocksdb_.get());
   ASSERT_OK(dwb.DeleteSubDoc(doc_path, timestamp));
-  if (dwb.write_batch()->Count() > 0) {
-    rocksdb_->Write(write_options_, dwb.write_batch());
-  }
+  dwb.WriteToRocksDB(timestamp, write_options_);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected_write_batch_str),
-    dwb.ToDebugString());
+      dwb.ToDebugString());
+}
+
+rocksdb::Status DocDBTest::WriteToRocksDB(const DocWriteBatch& doc_write_batch) {
+  // We specify Timestamp::kMax to disable timestamp substitution before we write to RocksDB, as
+  // we typically already specify the timestamp while constructing DocWriteBatch.
+  rocksdb::Status status = doc_write_batch.WriteToRocksDB(Timestamp::kMax, write_options_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed writing to RocksDB: " << status.ToString();
+  }
+  return status;
 }
 
 TEST_F(DocDBTest, DocPathTest) {
@@ -336,7 +345,7 @@ TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
   ASSERT_OK(
       dwb.SetPrimitive(DocPath(encoded_doc_key, "c", "e"), PrimitiveValue("v3"), Timestamp(3000)));
 
-  ASSERT_TRUE(rocksdb_->Write(write_options_, dwb.write_batch()).ok());
+  ASSERT_TRUE(WriteToRocksDB(dwb).ok());
 
   // TODO: we need to be able to do these debug dumps with one line of code.
   std::stringstream debug_dump;
@@ -389,7 +398,7 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   dwb.SetPrimitive(DocPath(encoded_doc_key2, 40), PrimitiveValue(30000), Timestamp(3000));
   dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e"), Timestamp(2000));
   dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e'"), Timestamp(4000));
-  ASSERT_TRUE(rocksdb_->Write(write_options, dwb.write_batch()).ok());
+  ASSERT_TRUE(WriteToRocksDB(dwb).ok());
 
   std::stringstream debug_dump;
   ASSERT_OK(DocDBDebugDump(rocksdb_.get(), debug_dump));
@@ -559,9 +568,7 @@ TEST_F(DocDBTest, RandomizedDocDBTest) {
       ASSERT_OK(debug_db_state.SetPrimitive(doc_path, value));
     }
 
-    if (dwb.write_batch()->Count() > 0) {
-      rocksdb_->Write(write_options_, dwb.write_batch());
-    }
+    WriteToRocksDB(dwb);
     SubDocument doc_from_rocksdb;
     bool subdoc_found_in_rocksdb = false;
     ASSERT_OK(

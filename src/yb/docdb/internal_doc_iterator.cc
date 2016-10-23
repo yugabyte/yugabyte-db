@@ -96,8 +96,8 @@ void InternalDocIterator::SeekToKeyPrefix() {
   subdoc_type_ = ValueType::kInvalidValueType;
 
   DOCDB_DEBUG_LOG("key_prefix=$0", BestEffortKeyBytesToStr(key_prefix_));
-  boost::optional<DocWriteBatchCache::Entry> previous_entry = doc_write_batch_cache_->Get(
-      key_prefix_.AsStringRef());
+  boost::optional<DocWriteBatchCache::Entry> previous_entry =
+      doc_write_batch_cache_->Get(KeyBytes(key_prefix_.AsStringRef()));
   if (previous_entry) {
     subdoc_gen_ts_ = previous_entry->first;
     key_prefix_.AppendTimestamp(subdoc_gen_ts_);

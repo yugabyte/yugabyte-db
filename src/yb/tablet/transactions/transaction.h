@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_TABLET_TRANSACTION_H_
-#define YB_TABLET_TRANSACTION_H_
+#ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_H_
+#define YB_TABLET_TRANSACTIONS_TRANSACTION_H_
 
 #include <string>
 #include <mutex>
@@ -84,10 +84,9 @@ class Transaction {
   // Builds the ReplicateMsg for this transaction.
   virtual void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) = 0;
 
-  // Executes the prepare phase of this transaction, the actual actions
-  // of this phase depend on the transaction type, but usually are limited
-  // to what can be done without actually changing data structures and without
-  // side-effects.
+  // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
+  // transaction type, but usually are limited to what can be done without actually changing shared
+  // data structures (such as the RocksDB memtable) and without side-effects.
   virtual Status Prepare() = 0;
 
   // Actually starts a transaction, assigning a timestamp to the transaction.
@@ -96,7 +95,7 @@ class Transaction {
   // timestamp is only available on the LEADER's commit message.
   // Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
-  virtual Status Start() = 0;
+  virtual void Start() = 0;
 
   // Executes the Apply() phase of the transaction, the actual actions of
   // this phase depend on the transaction type, but usually this is the
@@ -209,6 +208,11 @@ class TransactionState {
   Timestamp timestamp() const {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     DCHECK(timestamp_ != Timestamp::kInvalidTimestamp);
+    return timestamp_;
+  }
+
+  Timestamp timestamp_even_if_unset() const {
+    std::lock_guard<simple_spinlock> l(txn_state_lock_);
     return timestamp_;
   }
 
@@ -325,21 +329,7 @@ class LatchTransactionCompletionCallback : public TransactionCompletionCallback 
   ResponsePB* response_;
 };
 
-// A transaction completion callback that takes a StatusCallback and simply
-// calls it with the transaction status when it completes.
-class StatusTransactionCompletionCallback : public TransactionCompletionCallback {
- public:
-  explicit StatusTransactionCompletionCallback(StatusCallback callback)
-      : callback_(std::move(callback)) {}
-
-  virtual void TransactionCompleted() OVERRIDE {
-    callback_.Run(status());
-  }
- private:
-  StatusCallback callback_;
-};
-
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_TRANSACTION_H_ */
+#endif  // YB_TABLET_TRANSACTIONS_TRANSACTION_H_

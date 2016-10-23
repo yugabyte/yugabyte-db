@@ -9,6 +9,7 @@
 
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
@@ -43,7 +44,7 @@ Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
                                 const std::vector<DocWriteOperation>& doc_write_ops,
                                 util::SharedLockManager* const lock_manager,
                                 vector<string>* keys_locked,
-                                rocksdb::WriteBatch* write_batch) {
+                                KeyValueWriteBatchPB* dest) {
   unordered_map<string, LockType> lock_type_map;
   for (const DocWriteOperation& doc_op : doc_write_ops) {
     // TODO(akashnil): avoid materializing the vector, do the work of the called function in place.
@@ -65,9 +66,9 @@ Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
   }
   DocWriteBatch doc_write_batch(rocksdb);
   for (DocWriteOperation doc_op : doc_write_ops) {
-    doc_write_batch.SetPrimitive(doc_op.doc_path, doc_op.value, doc_op.timestamp);
+    doc_write_batch.SetPrimitive(doc_op);
   }
-  *write_batch = std::move(*doc_write_batch.write_batch());
+  doc_write_batch.MoveToWriteBatchPB(dest);
   return Status::OK();
 }
 
@@ -80,14 +81,13 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
 }
 
 Status DocWriteBatch::SetPrimitive(DocWriteOperation doc_write_op) {
-  return SetPrimitive(doc_write_op.doc_path, doc_write_op.value, doc_write_op.timestamp);
+  return SetPrimitive(doc_write_op.doc_path, doc_write_op.value, Timestamp::kMax);
 }
 
 // This codepath is used to handle both primitive upserts and deletions.
-Status DocWriteBatch::SetPrimitive(
-    const DocPath& doc_path, const PrimitiveValue& value, const Timestamp timestamp) {
-  // TODO(mbautin): add a check that this method is always being called with non-decreasing
-  //                timestamps.
+Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
+                                   const PrimitiveValue& value,
+                                   Timestamp timestamp) {
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, timestamp=$2",
       doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
@@ -163,12 +163,12 @@ Status DocWriteBatch::SetPrimitive(
       }
 
       // The document/subdocument that this subkey is supposed to live in does not exist, create it.
-      write_batch_.Put(doc_iter.key_prefix().AsSlice(), rocksdb::Slice(kObjectValueType, 1));
+      put_batch_.emplace_back(doc_iter.key_prefix().AsStringRef(), kObjectValueType);
 
       // Record the fact that we're adding this subdocument in our local cache so that future
       // operations in this document write batch don't have to add it or look for it in RocksDB.
       // Note that the key we're using in the cache does not have the timestamp at the end.
-      cache_.Put(doc_iter.key_prefix().AsSliceWithoutTimestamp().ToString(),
+      cache_.Put(KeyBytes(doc_iter.key_prefix().AsSliceWithoutTimestamp()),
                  timestamp, ValueType::kObject);
 
       doc_iter.AppendToPrefix(subkey);
@@ -176,13 +176,12 @@ Status DocWriteBatch::SetPrimitive(
     }
   }
 
-
-  write_batch_.Put(doc_iter.key_prefix().AsSlice(), value.ToValue());
+  put_batch_.emplace_back(doc_iter.key_prefix().AsStringRef(), value.ToValue());
 
   // The key we use in the DocWriteBatchCache does not have a final timestamp, because that's the
   // key we expect to look up.
-  cache_.Put(doc_iter.key_prefix().AsSliceWithoutTimestamp().ToString(),
-      timestamp, value.value_type());
+  cache_.Put(KeyBytes(doc_iter.key_prefix().AsSliceWithoutTimestamp()),
+             timestamp, value.value_type());
 
   return Status::OK();
 }
@@ -193,13 +192,50 @@ Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const Timestamp time
 
 string DocWriteBatch::ToDebugString() {
   WriteBatchFormatter formatter;
-  rocksdb::Status iteration_status = write_batch_.Iterate(&formatter);
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PopulateRocksDBWriteBatch(&rocksdb_write_batch);
+  rocksdb::Status iteration_status = rocksdb_write_batch.Iterate(&formatter);
   CHECK(iteration_status.ok());
   return formatter.str();
 }
 
 void DocWriteBatch::Clear() {
-  write_batch_.Clear();
+  put_batch_.clear();
+  cache_.Clear();
+}
+
+void DocWriteBatch::PopulateRocksDBWriteBatch(rocksdb::WriteBatch* rocksdb_write_batch,
+                                              Timestamp timestamp) const {
+  for (const auto& entry : put_batch_) {
+    SubDocKey subdoc_key;
+    // We don't expect any invalid encoded keys in the write batch.
+    CHECK_OK(subdoc_key.DecodeFrom(entry.first));
+    if (timestamp != Timestamp::kMax) {
+      subdoc_key.ReplaceMaxTimestampWith(timestamp);
+    }
+
+    rocksdb_write_batch->Put(subdoc_key.Encode().AsSlice(), entry.second);
+  }
+}
+
+rocksdb::Status DocWriteBatch::WriteToRocksDB(
+    const Timestamp timestamp,
+    const rocksdb::WriteOptions& write_options) const {
+  if (IsEmpty()) {
+    return rocksdb::Status::OK();
+  }
+
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PopulateRocksDBWriteBatch(&rocksdb_write_batch, timestamp);
+  return rocksdb_->Write(write_options, &rocksdb_write_batch);
+}
+
+void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
+  for (auto& entry : put_batch_) {
+    KeyValuePairPB* kv_pair = kv_pb->add_kv_pairs();
+    kv_pair->mutable_key()->swap(entry.first);
+    kv_pair->mutable_value()->swap(entry.second);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------

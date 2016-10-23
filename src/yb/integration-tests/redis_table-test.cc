@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#include "yb/integration-tests/redis_table-test.h"
+#include "yb/integration-tests/redis_table_test_base.h"
 
 #include <glog/logging.h>
 
@@ -14,7 +14,10 @@ using std::vector;
 using std::unique_ptr;
 
 namespace yb {
-namespace tablet {
+namespace integration_tests {
+
+class RedisTableTest : public RedisTableTestBase {
+};
 
 using client::RedisWriteOp;
 using client::RedisWriteOpForSetKV;
@@ -27,30 +30,9 @@ using client::YBSession;
 
 using integration_tests::YBTableTestBase;
 
-void RedisTableTest::CreateTable() {
-  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-
-  ASSERT_OK(table_creator->table_name(table_name())
-                .table_type(YBTableType::REDIS_TABLE_TYPE)
-                .num_replicas(3)
-                .Create());
-  table_exists_ = true;
-}
-
-void RedisTableTest::PutKeyValue(YBSession* session, string key, string value) {
-  ASSERT_OK(session->Apply(RedisWriteOpForSetKV(table_.get(), key, value).release()));
-  ASSERT_OK(session->Flush());
-}
-
-void RedisTableTest::RedisSimpleSetCommands() {
-  YBTableTestBase::PutKeyValue("key123", "value123");
-  YBTableTestBase::PutKeyValue("key200", "value200");
-  YBTableTestBase::PutKeyValue("key300", "value300");
-}
-
 TEST_F(RedisTableTest, SimpleRedisSetTest) {
   NO_FATALS(RedisSimpleSetCommands());
 }
 
-}  // namespace tablet
+}  // namespace integration_tests
 }  // namespace yb

@@ -256,6 +256,11 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return meta_;
   }
 
+  TableType table_type() {
+    // TODO: what if tablet is not set?
+    return tablet()->table_type();
+  }
+
  private:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -346,8 +351,8 @@ class FlushInflightsToLogCallback : public RefCountedThreadSafe<FlushInflightsTo
  public:
   FlushInflightsToLogCallback(Tablet* tablet,
                               const scoped_refptr<log::Log>& log)
-   : tablet_(tablet),
-     log_(log) {}
+      : tablet_(tablet),
+        log_(log) {}
 
   Status WaitForInflightsAndFlushLog();
 

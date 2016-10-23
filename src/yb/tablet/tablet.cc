@@ -51,6 +51,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
@@ -130,9 +131,9 @@ using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
 using yb::util::ScopedPendingOperation;
 using yb::tserver::WriteRequestPB;
-using yb::tserver::KeyValueWriteBatchPB;
 using yb::docdb::ValueType;
 using yb::docdb::KeyBytes;
+using yb::docdb::KeyValueWriteBatchPB;
 
 // Make sure RocksDB does not disappear while we're using it. This is used at the top level of
 // functions that perform RocksDB operations (directly or indirectly). Once a function is using
@@ -438,15 +439,13 @@ Status Tablet::DecodeWriteOperations(const Schema* client_schema,
   TRACE_EVENT0("tablet", "Tablet::DecodeWriteOperations");
 
   DCHECK_EQ(tx_state->row_ops().size(), 0);
-  DCHECK_EQ(tx_state->kv_write_batch()->Count(), 0);
 
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     CHECK(tx_state->request()->has_write_batch())
         << "Write request for kv-table has no write batch";
     CHECK(!tx_state->request()->has_row_operations())
         << "Write request for kv-table has row operations";
-    WriteBatch write_batch(tx_state->request()->write_batch().serialized_write_batch());
-    tx_state->swap_kv_write_batch(&write_batch);
+    // We construct a RocksDB write batch immediately before applying it.
   } else {
     CHECK(!tx_state->request()->has_write_batch())
         << "Write request for kudu-table has write batch";
@@ -533,9 +532,10 @@ void Tablet::StartTransaction(WriteTransactionState* tx_state) {
 
   // If the state already has a timestamp then we're replaying a transaction that occurred
   // before a crash or at another node...
-  if (tx_state->has_timestamp()) {
-    mvcc_tx.reset(new ScopedTransaction(&mvcc_, tx_state->timestamp()));
+  const Timestamp existing_timestamp = tx_state->timestamp_even_if_unset();
 
+  if (existing_timestamp != Timestamp::kInvalidTimestamp) {
+    mvcc_tx.reset(new ScopedTransaction(&mvcc_, existing_timestamp));
   // ... otherwise this is a new transaction and we must assign a new timestamp. We either
   // assign a timestamp in the future, if the consistency mode is COMMIT_WAIT, or we assign
   // one in the present if the consistency mode is any other one.
@@ -551,8 +551,8 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
                               RowOp* insert) {
   // A check only needed for Kudu's columnar format that has to happen before the row lock.
   const TabletComponents* comps =
-    table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ?
-      DCHECK_NOTNULL(tx_state->tablet_components()) : nullptr;
+      table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ?
+          DCHECK_NOTNULL(tx_state->tablet_components()) : nullptr;
 
   CHECK(state_ == kOpen || state_ == kBootstrapping);
   // make sure that the WriteTransactionState has the component lock and that
@@ -701,28 +701,40 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
 }
 
 void Tablet::StartApplying(WriteTransactionState* tx_state) {
-  shared_lock<rw_spinlock> lock(component_lock_);
-  tx_state->StartApplying();
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    shared_lock<rw_spinlock> lock(component_lock_);
+    tx_state->StartApplying();
     tx_state->set_tablet_components(components_);
+  } else {
+    tx_state->StartApplying();
   }
 }
 
 void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
   StartApplying(tx_state);
   switch (table_type_) {
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
       for (RowOp* row_op : tx_state->row_ops()) {
         ApplyKuduRowOperation(tx_state, row_op);
       }
-      break;
-    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-    case TableType::REDIS_TABLE_TYPE:
-      ApplyKeyValueRowOperations(tx_state->kv_write_batch(), tx_state->op_id().index());
-      break;
-    default:
-      LOG(FATAL) << "Invalid table type: " << table_type_;
+      return;
+    }
+    case TableType::YSQL_TABLE_TYPE:
+    case TableType::REDIS_TABLE_TYPE: {
+      const KeyValueWriteBatchPB& put_batch =
+          tx_state->consensus_round() && tx_state->consensus_round()->replicate_msg()
+              // Online case.
+              ? tx_state->consensus_round()->replicate_msg()->write_request().write_batch()
+              // Bootstrap case.
+              : tx_state->request()->write_batch();
+
+      ApplyKeyValueRowOperations(put_batch,
+                                 tx_state->op_id().index(),
+                                 tx_state->timestamp());
+      return;
+    }
   }
+  LOG(FATAL) << "Invalid table type: " << table_type_;
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir,
@@ -774,19 +786,39 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
   return Status::OK();
 }
 
-void Tablet::ApplyKeyValueRowOperations(WriteBatch* write_batch,
-                                        const SequenceNumber seq_num) {
-  assert(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  write_batch->AddAllUserSequenceNumbers(seq_num);
+void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
+                                        uint64_t raft_index,
+                                        const Timestamp timestamp) {
+  DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+
+  WriteBatch rocksdb_write_batch;
+
+  for (int i = 0; i < put_batch.kv_pairs_size(); ++i) {
+    const auto& kv_pair = put_batch.kv_pairs(i);
+    CHECK(kv_pair.has_key());
+    CHECK(kv_pair.has_value());
+    docdb::SubDocKey subdoc_key;
+
+    const auto s = subdoc_key.DecodeFrom(kv_pair.key());
+    CHECK(s.ok())
+        << "Failed decoding key: " << s.ToString() << "; "
+        << "Problematic key: " << docdb::BestEffortKeyBytesToStr(KeyBytes(kv_pair.key())) << "\n"
+        << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
+        << "put_batch:\n" << put_batch.DebugString();
+    subdoc_key.ReplaceMaxTimestampWith(timestamp);
+    rocksdb_write_batch.Put(subdoc_key.Encode().AsSlice(), kv_pair.value());
+  }
+  rocksdb_write_batch.AddAllUserSequenceNumbers(raft_index);
+
   // We are using Raft replication index for the RocksDB sequence number for
   // all members of this write batch.
   rocksdb::WriteOptions write_options;
   InitRocksDBWriteOptions(&write_options);
 
-  auto rocksdb_write_status = rocksdb_->Write(write_options, write_batch);
+  auto rocksdb_write_status = rocksdb_->Write(write_options, &rocksdb_write_batch);
   if (!rocksdb_write_status.ok()) {
-    LOG(FATAL) << "Failed to write a batch with " << write_batch->Count() << " operations"
-               << " into RocksDB";
+    LOG(FATAL) << "Failed to write a batch with " << rocksdb_write_batch.Count() << " operations"
+               << " into RocksDB: " << rocksdb_write_status.ToString();
   }
 }
 
@@ -797,32 +829,28 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<docdb::DocWriteOperation> doc_ops;
-  const Timestamp current_time = clock_->Now();
-  DocWriteBatch doc_write_batch(rocksdb_.get());
   for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
     RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
     switch (req.redis_op_type()) {
       case RedisWriteRequestPB_Type::RedisWriteRequestPB_Type_SET: {
         RedisSetRequestPB set = req.set_request();
-        const DocPath doc_path(set.key_value().key());
+        const DocPath doc_path(DocKey({ PrimitiveValue(set.key_value().key()) }).Encode());
         const PrimitiveValue value(set.key_value().value(0));
-        doc_ops.emplace_back(doc_path, value, current_time);
+        doc_ops.emplace_back(doc_path, value);
       } break;
       default:
         LOG(FATAL) << "Unsupported row operation type " << req.redis_op_type()
                    << " for key-value tables";
     }
   }
-  rocksdb::WriteBatch write_batch;
-  docdb::StartDocWriteTransaction(
-      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked, &write_batch);
 
   WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
-
   kudu_write_batch_pb->reset(write_request_copy);
 
+  docdb::StartDocWriteTransaction(
+      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked,
+      write_request_copy->mutable_write_batch());
   write_request_copy->clear_row_operations();
-  write_request_copy->mutable_write_batch()->set_serialized_write_batch(write_batch.Data());
 
   return Status::OK();
 }
@@ -853,16 +881,10 @@ Status Tablet::KeyValueBatchFromYSQLRowOps(const WriteRequestPB &kudu_write_requ
 
   RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
 
-  rocksdb::WriteBatch write_batch;
-
-  CreateWriteBatchFromKuduRowOps(row_ops, &write_batch, keys_locked);
-
   WriteRequestPB* const write_request_copy = new WriteRequestPB(kudu_write_request_pb);
-
   kudu_write_batch_pb->reset(write_request_copy);
-
+  CreateWriteBatchFromKuduRowOps(row_ops, write_request_copy->mutable_write_batch(), keys_locked);
   write_request_copy->clear_row_operations();
-  write_request_copy->mutable_write_batch()->set_serialized_write_batch(write_batch.Data());
 
   return Status::OK();
 }
@@ -876,12 +898,11 @@ DocPath DocPathForColumn(const KeyBytes& encoded_doc_key, ColumnId col_id) {
 }  // namespace
 
 Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                              WriteBatch* write_batch,
+                                              KeyValueWriteBatchPB* write_batch_pb,
                                               vector<string>* keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<docdb::DocWriteOperation> doc_ops;
-  const Timestamp current_time = clock_->Now();
   for (DecodedRowOperation row_op : row_ops) {
     // row_data contains the row key for all Kudu operation types (insert/update/delete).
     ConstContiguousRow contiguous_row(schema(), row_op.row_data);
@@ -899,8 +920,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
     switch (row_op.type) {
       case RowOperationsPB_Type_DELETE: {
         doc_ops.emplace_back(DocPath(encoded_doc_key),
-                             PrimitiveValue(ValueType::kTombstone),
-                             current_time);
+                             PrimitiveValue(ValueType::kTombstone));
         break;
       }
       case RowOperationsPB_Type_UPDATE: {
@@ -915,8 +935,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
               update.null ? PrimitiveValue(ValueType::kTombstone)
                           : PrimitiveValue::FromKuduValue(
                                 schema()->column_by_id(update.col_id).type_info()->type(),
-                                update.raw_value),
-              current_time);
+                                update.raw_value));
         }
         break;
       }
@@ -927,19 +946,15 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           const DataType data_type = col_schema.type_info()->type();
 
           PrimitiveValue column_value;
-          if (col_schema.is_nullable()) {
-            if (contiguous_row.is_null(i)) {
-              // TODO(mbautin): for now we're explicitly deleting null values.
-              // We don't need to do that when we start overwriting the entire document at the top.
-              column_value = PrimitiveValue(ValueType::kTombstone);
-            } else {
-              column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
-            }
+          if (col_schema.is_nullable() && contiguous_row.is_null(i)) {
+            // TODO(mbautin): for now we're explicitly deleting null values.
+            // We don't need to do that when we start overwriting the entire document at the top.
+            column_value = PrimitiveValue(ValueType::kTombstone);
           } else {
             column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
           }
           doc_ops.emplace_back(DocPathForColumn(encoded_doc_key, schema()->column_id(i)),
-                               column_value, current_time);
+                               column_value);
         }
         break;
       }
@@ -949,7 +964,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
     }
   }
   docdb::StartDocWriteTransaction(
-      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked, write_batch);
+      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked, write_batch_pb);
   return Status::OK();
 }
 
@@ -1884,6 +1899,10 @@ Status Tablet::CaptureConsistentIterators(
     const MvccSnapshot &snap,
     const ScanSpec *spec,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
+//  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+//    LOG(INFO) << __func__ << ": snapshot=" << snap.ToString();
+//  }
+
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);

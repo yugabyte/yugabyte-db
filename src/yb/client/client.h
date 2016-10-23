@@ -82,7 +82,7 @@ enum YBTableType {
   UNKNOWN_TABLE_TYPE = -1
 };
 
-  // Installs a callback for internal client logging. It is invoked for a
+// Installs a callback for internal client logging. It is invoked for a
 // log event of any severity, across any YBClient instance.
 //
 // Only the first invocation has any effect; subsequent invocations are

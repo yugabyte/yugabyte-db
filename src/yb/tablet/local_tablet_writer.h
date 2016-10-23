@@ -111,7 +111,6 @@ class LocalTabletWriter {
       if (result.has_failed_status()) {
         return StatusFromPB(result.failed_status())
           .CloneAndPrepend(ops[op_idx].row->ToString());
-        break;
       }
       op_idx++;
     }

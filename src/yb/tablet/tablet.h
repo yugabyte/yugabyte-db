@@ -36,6 +36,7 @@
 #include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
 #include "yb/common/row_operations.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -210,8 +211,9 @@ class Tablet {
                              RowOp* row_op);
 
   // Apply a set of RocksDB row operations.
-  void ApplyKeyValueRowOperations(rocksdb::WriteBatch* write_batch,
-                                  rocksdb::SequenceNumber seq_num);
+  void ApplyKeyValueRowOperations(const docdb::KeyValueWriteBatchPB& put_batch,
+                                  uint64_t raft_index,
+                                  Timestamp timestamp);
 
   Status KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
@@ -233,7 +235,7 @@ class Tablet {
 
   // Uses primary_key:column_name for key encoding.
   Status CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
-                                        rocksdb::WriteBatch* write_batch,
+                                        yb::docdb::KeyValueWriteBatchPB* write_batch_pb,
                                         std::vector<std::string>* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==

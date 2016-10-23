@@ -94,12 +94,15 @@ Status AlterSchemaTransaction::Prepare() {
   return s;
 }
 
-Status AlterSchemaTransaction::Start() {
-  if (!state_->has_timestamp()) {
-    state_->set_timestamp(state_->tablet_peer()->clock()->Now());
+void AlterSchemaTransaction::Start() {
+  if (state_->tablet_peer()->tablet()->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // Only set the timestamp here for Kudu tables. For YB tables, we set the timestamp
+    // when appending entries to the Raft log.
+    if (!state_->has_timestamp()) {
+      state_->set_timestamp(state_->tablet_peer()->clock()->Now());
+    }
+    TRACE("START. Timestamp: $0", server::HybridClock::GetPhysicalValueMicros(state_->timestamp()));
   }
-  TRACE("START. Timestamp: $0", server::HybridClock::GetPhysicalValueMicros(state_->timestamp()));
-  return Status::OK();
 }
 
 Status AlterSchemaTransaction::Apply(gscoped_ptr<CommitMsg>* commit_msg) {

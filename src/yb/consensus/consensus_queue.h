@@ -218,8 +218,6 @@ class PeerMessageQueue {
   // queued.
   virtual void Close();
 
-  virtual int64_t GetQueuedOperationsSizeBytesForTests() const;
-
   // Returns the last message replicated by all peers, for tests.
   virtual OpId GetAllReplicatedIndexForTests() const;
 
@@ -234,9 +232,6 @@ class PeerMessageQueue {
   virtual TrackedPeer GetTrackedPeerForTests(std::string uuid);
 
   virtual std::string ToString() const;
-
-  // Dumps the contents of the queue to the provided string vector.
-  virtual void DumpToStrings(std::vector<std::string>* lines) const;
 
   virtual void DumpToHtml(std::ostream& out) const;
 
@@ -339,8 +334,6 @@ class PeerMessageQueue {
 
   std::string LogPrefixUnlocked() const;
 
-  void DumpToStringsUnlocked(std::vector<std::string>* lines) const;
-
   // Updates the metrics based on index math.
   void UpdateMetrics();
 
@@ -428,4 +421,4 @@ class PeerMessageQueueObserver {
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_CONSENSUS_QUEUE_H_ */
+#endif // YB_CONSENSUS_CONSENSUS_QUEUE_H_

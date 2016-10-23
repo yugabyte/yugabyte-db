@@ -17,11 +17,12 @@
 #include "yb/consensus/consensus_queue.h"
 
 #include <algorithm>
-#include <gflags/gflags.h>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <utility>
+
+#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/log.h"
@@ -678,21 +679,6 @@ void PeerMessageQueue::UpdateMetrics() {
     queue_state_.committed_index.index());
 }
 
-void PeerMessageQueue::DumpToStrings(vector<string>* lines) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
-  DumpToStringsUnlocked(lines);
-}
-
-void PeerMessageQueue::DumpToStringsUnlocked(vector<string>* lines) const {
-  lines->push_back("Watermarks:");
-  for (const PeersMap::value_type& entry : peers_map_) {
-    lines->push_back(
-        Substitute("Peer: $0 Watermark: $1", entry.first, entry.second->ToString()));
-  }
-
-  log_cache_.DumpToStrings(lines);
-}
-
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   using std::endl;
 
@@ -719,10 +705,6 @@ void PeerMessageQueue::Close() {
   observers_pool_->Shutdown();
   std::lock_guard<simple_spinlock> lock(queue_lock_);
   ClearUnlocked();
-}
-
-int64_t PeerMessageQueue::GetQueuedOperationsSizeBytesForTests() const {
-  return log_cache_.BytesUsed();
 }
 
 string PeerMessageQueue::ToString() const {
@@ -817,7 +799,6 @@ void PeerMessageQueue::NotifyObserversOfTermChangeTask(int64_t term) {
     std::lock_guard<simple_spinlock> lock(queue_lock_);
     copy = observers_;
   }
-  OpId new_committed_index;
   for (PeerMessageQueueObserver* observer : copy) {
     observer->NotifyTermChange(term);
   }
@@ -841,7 +822,6 @@ void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
     std::lock_guard<simple_spinlock> lock(queue_lock_);
     observers_copy = observers_;
   }
-  OpId new_committed_index;
   for (PeerMessageQueueObserver* observer : observers_copy) {
     observer->NotifyFailedFollower(uuid, term, reason);
   }

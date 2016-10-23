@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_TABLET_TRANSACTION_DRIVER_H_
-#define YB_TABLET_TRANSACTION_DRIVER_H_
+#ifndef YB_TABLET_TRANSACTIONS_TRANSACTION_DRIVER_H_
+#define YB_TABLET_TRANSACTIONS_TRANSACTION_DRIVER_H_
 
 #include <string>
 
@@ -37,6 +37,7 @@ class Log;
 namespace tablet {
 class TransactionOrderVerifier;
 class TransactionTracker;
+class TransactionDriver;
 
 // Base class for transaction drivers.
 //
@@ -90,7 +91,8 @@ class TransactionTracker;
 // [1] - see 'Implementation Techniques for Main Memory Database Systems', DeWitt et. al.
 //
 // This class is thread safe.
-class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
+class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
+                          public consensus::ConsensusAppendCallback {
 
  public:
   // Construct TransactionDriver. TransactionDriver does not take ownership
@@ -148,6 +150,8 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
 
   Trace* trace() { return trace_.get(); }
 
+  void HandleConsensusAppend() override;
+
  private:
   friend class RefCountedThreadSafe<TransactionDriver>;
   enum ReplicationState {
@@ -172,11 +176,12 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
     PREPARED
   };
 
-  ~TransactionDriver() {}
+  ~TransactionDriver() override {}
 
   // The task submitted to the prepare threadpool to prepare and start
   // the transaction. If PrepareAndStart() fails, calls HandleFailure.
   void PrepareAndStartTask();
+
   // Actually prepare and start.
   Status PrepareAndStart();
 
@@ -251,12 +256,12 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
   // This is used for debugging only, not any actual operation ordering.
   MicrosecondsInt64 prepare_physical_timestamp_;
 
-  DISALLOW_COPY_AND_ASSIGN(TransactionDriver);
-
   TableType table_type_;
+
+  DISALLOW_COPY_AND_ASSIGN(TransactionDriver);
 };
 
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_TRANSACTION_DRIVER_H_ */
+#endif /* YB_TABLET_TRANSACTIONS_TRANSACTION_DRIVER_H_ */

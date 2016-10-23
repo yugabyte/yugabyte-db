@@ -24,26 +24,29 @@
 #include <vector>
 
 #include <gflags/gflags.h>
+
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/local_consensus.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/docdb/docdb.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
-#include "yb/tablet/transactions/transaction_driver.h"
-#include "yb/tablet/transactions/alter_schema_transaction.h"
-#include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
-#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/transactions/alter_schema_transaction.h"
+#include "yb/tablet/transactions/transaction_driver.h"
+#include "yb/tablet/transactions/write_transaction.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stopwatch.h"
@@ -88,6 +91,7 @@ using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using consensus::RaftConsensus;
+using consensus::ReplicateMsg;
 using consensus::ALTER_SCHEMA_OP;
 using consensus::WRITE_OP;
 using log::Log;

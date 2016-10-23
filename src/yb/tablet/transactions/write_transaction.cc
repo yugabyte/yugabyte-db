@@ -46,6 +46,8 @@ TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
 namespace yb {
 namespace tablet {
 
+using std::lock_guard;
+using std::mutex;
 using std::unique_ptr;
 using consensus::ReplicateMsg;
 using consensus::CommitMsg;
@@ -71,6 +73,7 @@ void WriteTransaction::NewReplicateMsg(gscoped_ptr<ReplicateMsg>* replicate_msg)
 Status WriteTransaction::Prepare() {
   TRACE_EVENT0("txn", "WriteTransaction::Prepare");
   TRACE("PREPARE: Starting");
+
   // Decode everything first so that we give up if something major is wrong.
   Schema client_schema;
   RETURN_NOT_OK_PREPEND(SchemaFromPB(state_->request()->schema(), &client_schema),
@@ -83,7 +86,7 @@ Status WriteTransaction::Prepare() {
     return s;
   }
 
-  Tablet* tablet = state()->tablet_peer()->tablet();
+  auto* tablet = tablet_peer()->tablet();
 
   Status s = tablet->DecodeWriteOperations(&client_schema, state());
   if (!s.ok()) {
@@ -99,12 +102,12 @@ Status WriteTransaction::Prepare() {
   return Status::OK();
 }
 
-Status WriteTransaction::Start() {
+void WriteTransaction::Start() {
   TRACE_EVENT0("txn", "WriteTransaction::Start");
   TRACE("Start()");
   state_->tablet_peer()->tablet()->StartTransaction(state_.get());
+
   TRACE("Timestamp: $0", state_->tablet_peer()->clock()->Stringify(state_->timestamp()));
-  return Status::OK();
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,
@@ -215,11 +218,13 @@ string WriteTransaction::ToString() const {
 WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
                                              const tserver::WriteRequestPB *request,
                                              tserver::WriteResponsePB *response)
-  : TransactionState(tablet_peer),
-    request_(unique_ptr<const WriteRequestPB>(new WriteRequestPB(*request))),
-    response_(response),
-    mvcc_tx_(nullptr),
-    schema_at_decode_time_(nullptr) {
+    : TransactionState(tablet_peer),
+      // TODO: why do we need to copy the request here?
+      request_(request ? unique_ptr<const WriteRequestPB>(new WriteRequestPB(*request))
+                       : nullptr),
+      response_(response),
+      mvcc_tx_(nullptr),
+      schema_at_decode_time_(nullptr) {
   if (request) {
     external_consistency_mode_ = request->external_consistency_mode();
   } else {
@@ -235,6 +240,8 @@ void WriteTransactionState::SetMvccTxAndTimestamp(gscoped_ptr<ScopedTransaction>
   } else {
     set_timestamp(mvcc_tx->timestamp());
   }
+
+  lock_guard<mutex> lock(mvcc_tx_mutex_);
   mvcc_tx_ = mvcc_tx.Pass();
 }
 
@@ -259,31 +266,28 @@ void WriteTransactionState::ReleaseSchemaLock() {
 }
 
 void WriteTransactionState::StartApplying() {
+  lock_guard<mutex> lock(mvcc_tx_mutex_);
+  if (!mvcc_tx_) {
+    LOG(INFO) << "mvcc_tx is nullptr for timestamp " << timestamp() << ":\n" << GetStackTrace();
+  }
   CHECK_NOTNULL(mvcc_tx_.get())->StartApplying();
 }
 
 void WriteTransactionState::Abort() {
-  if (mvcc_tx_.get() != nullptr) {
-    // Abort the transaction.
-    mvcc_tx_->Abort();
-  }
-  mvcc_tx_.reset();
+  ResetMvccTx([](ScopedTransaction* mvcc_tx) { mvcc_tx->Abort(); });
 
   release_row_locks();
   ReleaseSchemaLock();
 
-  // After commiting, we may respond to the RPC and delete the
+  // After aborting, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
-void WriteTransactionState::Commit() {
-  if (mvcc_tx_.get() != nullptr) {
-    // Commit the transaction.
-    mvcc_tx_->Commit();
-  }
-  mvcc_tx_.reset();
 
-  // After commiting, we may respond to the RPC and delete the
+void WriteTransactionState::Commit() {
+  ResetMvccTx([](ScopedTransaction* mvcc_tx) { mvcc_tx->Commit(); });
+
+  // After committing, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
@@ -317,18 +321,19 @@ void WriteTransactionState::UpdateMetricsForOp(const RowOp& op) {
 }
 
 void WriteTransactionState::release_row_locks() {
-  // Release Kudu row locks.
-  // TODO(mbautin): only do this for Kudu tables
-  //                (but row_ops_ locks should not be held for YB tables anyway).
+  // Kudu-only, to be removed.
   for (RowOp* op : row_ops_) {
     op->row_lock.Release();
   }
 
-  if (tablet_peer() != nullptr &&
-      tablet_peer()->tablet()->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Free docdb multi-level locks.
-    for (const string& locked_key : docdb_locks_) {
-      tablet_peer()->tablet()->shared_lock_manager()->Unlock(locked_key);
+  if (tablet_peer() != nullptr) {
+    const auto table_type = tablet_peer()->tablet()->table_type();;
+    if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+      CHECK(row_ops_.empty());  // Kudu-specific row_ops_ data structure must be empty in this case.
+      // Free docdb multi-level locks.
+      for (const string& locked_key : docdb_locks_) {
+        tablet_peer()->tablet()->shared_lock_manager()->Unlock(locked_key);
+      }
     }
   }
 }
@@ -350,6 +355,15 @@ void WriteTransactionState::ResetRpcFields() {
   std::lock_guard<simple_spinlock> l(txn_state_lock_);
   response_ = nullptr;
   STLDeleteElements(&row_ops_);
+}
+
+void WriteTransactionState::ResetMvccTx(std::function<void(ScopedTransaction*)> txn_action) {
+  lock_guard<mutex> lock(mvcc_tx_mutex_);
+  if (mvcc_tx_.get() != nullptr) {
+    // Abort the transaction.
+    txn_action(mvcc_tx_.get());
+  }
+  mvcc_tx_.reset();
 }
 
 string WriteTransactionState::ToString() const {

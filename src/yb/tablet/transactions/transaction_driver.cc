@@ -19,6 +19,7 @@
 
 #include <mutex>
 
+#include "yb/client/client.h"
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/tablet/tablet_peer.h"
@@ -32,13 +33,15 @@
 namespace yb {
 namespace tablet {
 
+using std::shared_ptr;
+
 using consensus::CommitMsg;
 using consensus::Consensus;
 using consensus::ConsensusRound;
 using consensus::ReplicateMsg;
 using consensus::DriverType;
 using log::Log;
-using std::shared_ptr;
+using server::Clock;
 
 static const char* kTimestampFieldName = "timestamp";
 
@@ -88,6 +91,9 @@ Status TransactionDriver::Init(gscoped_ptr<Transaction> transaction,
       mutable_state()->set_consensus_round(
         consensus_->NewRound(replicate_msg.Pass(),
                              Bind(&TransactionDriver::ReplicationFinished, Unretained(this))));
+      if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+        mutable_state()->consensus_round()->SetAppendCallback(this);
+      }
     }
   }
 
@@ -154,6 +160,15 @@ Status TransactionDriver::ExecuteAsync() {
   return Status::OK();
 }
 
+void TransactionDriver::HandleConsensusAppend() {
+  // YB tables only.
+  CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  transaction_->Start();
+  auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
+  CHECK(!replicate_msg->has_timestamp());
+  replicate_msg->set_timestamp(transaction_->state()->timestamp().ToUint64());
+}
+
 void TransactionDriver::PrepareAndStartTask() {
   TRACE_EVENT_FLOW_END0("txn", "PrepareAndStartTask", this);
   Status prepare_status = PrepareAndStart();
@@ -169,9 +184,6 @@ Status TransactionDriver::PrepareAndStart() {
   prepare_physical_timestamp_ = GetMonoTimeMicros();
   RETURN_NOT_OK(transaction_->Prepare());
 
-  RETURN_NOT_OK(transaction_->Start());
-
-
   // Only take the lock long enough to take a local copy of the
   // replication state and set our prepare state. This ensures that
   // exactly one of Replicate/Prepare callbacks will trigger the apply
@@ -180,17 +192,46 @@ Status TransactionDriver::PrepareAndStart() {
   {
     std::lock_guard<simple_spinlock> lock(lock_);
     CHECK_EQ(prepare_state_, NOT_PREPARED);
+    repl_state_copy = replication_state_;
+  }
+
+  if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ||
+      repl_state_copy != NOT_REPLICATING) {
+    // For Kudu tables and for non-leader codepath in YB tables, we want to call Start() as soon
+    // as possible, because the transaction already has the timestamp assigned. This will get a bit
+    // simpler as Kudu tables go away.
+    transaction_->Start();
+  }
+
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    // No one should have modified prepare_state_ since we've read it under the lock a few lines
+    // above, because PrepareAndStart should only run once per transaction.
+    CHECK_EQ(prepare_state_, NOT_PREPARED);
+    // After this update, the ReplicationFinished callback will be able to apply this transaction.
+    // We can only do this after we've called Start()
     prepare_state_ = PREPARED;
+
+    // On the replica (non-leader) side, the replication state might have been REPLICATING during
+    // our previous acquisition of this lock, but it might have changed to REPLICATED in the
+    // meantime. That would mean ReplicationFinished got called, but ReplicationFinished would not
+    // trigger Apply unless the transaction is PREPARED, so we are responsible for doing that.
+    // If we fail to capture the new replication state here, the transaction will never be applied.
     repl_state_copy = replication_state_;
   }
 
   switch (repl_state_copy) {
     case NOT_REPLICATING:
     {
+      ReplicateMsg* replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
 
-      // Set the timestamp in the message, now that it's prepared.
-      transaction_->state()->consensus_round()->replicate_msg()->set_timestamp(
-          transaction_->state()->timestamp().ToUint64());
+      if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+        // Kudu tables only: set the timestamp in the message, now that it's prepared.
+        replicate_msg->set_timestamp(transaction_->state()->timestamp().ToUint64());
+
+        // For YB tables, we set the timestamp at the same time as we append the entry to the
+        // consensus queue, to guarantee that timestamps increase monotonically with Raft indexes.
+      }
 
       VLOG_WITH_PREFIX(4) << "Triggering consensus repl";
       // Trigger the consensus replication.
@@ -296,12 +337,10 @@ void TransactionDriver::ReplicationFinished(const Status& status) {
     prepare_state_copy = prepare_state_;
   }
 
-  // If we have prepared and replicated, we're ready
-  // to move ahead and apply this operation.
-  // Note that if we set the state to REPLICATION_FAILED above,
-  // ApplyAsync() will actually abort the transaction, i.e.
-  // ApplyTask() will never be called and the transaction will never
-  // be applied to the tablet.
+  // If we have prepared and replicated, we're ready to move ahead and apply this operation.
+  // Note that if we set the state to REPLICATION_FAILED above, ApplyAsync() will actually abort the
+  // transaction, i.e. ApplyTask() will never be called and the transaction will never be applied to
+  // the tablet.
   if (prepare_state_copy == PREPARED) {
     // We likely need to do cleanup if this fails so for now just
     // CHECK_OK

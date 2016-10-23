@@ -35,8 +35,8 @@ class MvccManager;
 
 using std::string;
 
-// A snapshot of the current MVCC state, which can determine whether
-// a transaction ID should be considered visible.
+// A snapshot of the current MVCC state, which can determine whether a transaction ID (represented
+// as a timestamp unique within a tablet) should be considered visible.
 class MvccSnapshot {
  public:
   MvccSnapshot();
@@ -46,8 +46,8 @@ class MvccSnapshot {
 
   // Create a snapshot at a specific Timestamp.
   //
-  // This snapshot considers all transactions with lower timestamps to
-  // be committed, and those with higher timestamps to be uncommitted.
+  // This snapshot considers all transactions timestamps lower than the provided 'timestamp' to be
+  // committed, and all other transactions to be uncommitted.
   explicit MvccSnapshot(const Timestamp& timestamp);
 
   // Create a snapshot which considers all transactions as committed.
@@ -74,14 +74,18 @@ class MvccSnapshot {
 
   // Returns true if this snapshot may have any committed transactions with ID
   // equal to or higher than the provided 'timestamp'.
-  // This is mostly useful to avoid scanning REDO deltas in certain cases.
+  //
+  // Kudu-specific:
   // If MayHaveCommittedTransactionsAtOrAfter(delta_stats.min) returns true
   // it means that there might be transactions that need to be applied in the
   // context of this snapshot; otherwise no scanning is necessary.
+  // This is mostly useful to avoid scanning REDO deltas in certain cases.
   bool MayHaveCommittedTransactionsAtOrAfter(const Timestamp& timestamp) const;
 
   // Returns true if this snapshot may have any uncommitted transactions with ID
   // equal to or lower than the provided 'timestamp'.
+  //
+  // Kudu-specific:
   // This is mostly useful to avoid scanning UNDO deltas in certain cases.
   // If MayHaveUncommittedTransactionsAtOrBefore(delta_stats.max) returns false it
   // means that all UNDO delta transactions are committed in the context of this
@@ -109,9 +113,11 @@ class MvccSnapshot {
   void AddCommittedTimestamps(const std::vector<Timestamp>& timestamps);
 
   // We use this to translate between Kudu's MVCC snapshots and timestamps needed for reading from
-  // our DocDB. This assumes the snapshot is "clean" (no "holes" in the set of committed
-  // timestamps). We should gradually get rid of the need for handling dirty snapshots in YB,
-  // because our MVCC design does not need them.
+  // DocDB. This assumes the snapshot is "clean" (no "holes" in the set of committed timestamps).
+  // We should gradually get rid of the need for handling dirty snapshots in YB, because we are
+  // making sure timestamps increase monotonically along with Raft indexes, at least in the absence
+  // of cross-shard transactions, and we always commit/apply REPLICATE messages in the Raft log
+  // order.
   Timestamp LastCommittedTimestamp() const {
     if (!is_clean()) {
       if (committed_timestamps_.size() == 1 &&
@@ -427,7 +433,8 @@ class ScopedTransaction {
   // When this transaction is committed it will use MvccManager::OfflineCommitTransaction()
   // so this is appropriate for offline replaying of transactions for replica catch-up or
   // bootstrap.
-  explicit ScopedTransaction(MvccManager *manager, Timestamp timestamp);
+  explicit ScopedTransaction(MvccManager *manager,
+                             Timestamp timestamp);
 
   // Commit the transaction referenced by this scoped object, if it hasn't
   // already been committed.

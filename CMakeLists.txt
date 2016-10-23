@@ -791,6 +791,7 @@ endfunction()
 function(FIX_ROCKSDB_RPATH TEST_OR_LIB_NAME)
   if(APPLE AND "${YB_LINK}" STREQUAL "d" AND
      NOT "${TEST_OR_LIB_NAME}" STREQUAL "rocksdb" AND
+     NOT "${TEST_OR_LIB_NAME}" STREQUAL "cpp_redis" AND
      NOT "${TEST_OR_LIB_NAME}" MATCHES "_exported$")
     add_custom_command(TARGET "${TEST_OR_LIB_NAME}"
       POST_BUILD COMMAND
@@ -948,15 +949,18 @@ endfunction()
 set(THIRDPARTY_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed)
 set(CMAKE_PREFIX_PATH ${THIRDPARTY_PREFIX} ${CMAKE_PREFIX_PATH})
 if (${YB_USE_TSAN})
-  set(YB_INSTALLED_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps-tsan)
+  set(YB_THIRDPARTY_INSTALLED_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps-tsan)
 else()
-  set(YB_INSTALLED_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps)
+  set(YB_THIRDPARTY_INSTALLED_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed-deps)
 endif()
-set(YB_INSTALLED_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed)
-set(CMAKE_PREFIX_PATH ${YB_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
+set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
 
-ADD_GLOBAL_RPATH_ENTRY("${YB_INSTALLED_DEPS_DIR}/lib")
-ADD_GLOBAL_RPATH_ENTRY("${YB_INSTALLED_DIR}/lib")
+set(YB_THIRDPARTY_INSTALLED_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/installed)
+
+# See thirdparty/build-thirdparty.sh for an explanation of differences between installed and
+# installed-deps.
+ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DIR}/lib")
+ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
 
 ## Cyrus SASL
 find_package(CyrusSASL REQUIRED)

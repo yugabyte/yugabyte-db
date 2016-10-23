@@ -8,7 +8,7 @@
 #include "cpp_redis/reply.hpp"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/redis_table-test.h"
+#include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/redisserver/redis_server.h"
 #include "yb/rpc/redis_encoding.h"
 #include "yb/util/cast.h"
@@ -21,7 +21,7 @@ using std::string;
 using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
-using yb::tablet::RedisTableTest;
+using yb::integration_tests::RedisTableTestBase;
 using yb::rpc::EncodeAsArrays;
 using yb::rpc::EncodeAsBulkString;
 using yb::rpc::EncodeAsSimpleString;
@@ -29,7 +29,7 @@ using yb::rpc::EncodeAsSimpleString;
 typedef cpp_redis::redis_client RedisClient;
 typedef cpp_redis::reply RedisReply;
 
-class TestRedisService : public RedisTableTest {
+class TestRedisService : public RedisTableTestBase {
  public:
   void SetUp() override;
   void TearDown() override;
@@ -53,7 +53,7 @@ class TestRedisService : public RedisTableTest {
 };
 
 void TestRedisService::SetUp() {
-  RedisTableTest::SetUp();
+  RedisTableTestBase::SetUp();
 
   redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
@@ -80,7 +80,7 @@ void TestRedisService::SetUp() {
 
 void TestRedisService::TearDown() {
   EXPECT_OK(client_sock_.Close());
-  RedisTableTest::TearDown();
+  RedisTableTestBase::TearDown();
 }
 
 Status TestRedisService::SendCommandAndGetResponse(

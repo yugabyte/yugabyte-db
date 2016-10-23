@@ -37,12 +37,14 @@ class DocWriteBatchCache {
 
   static std::string EntryToStr(const Entry& entry);
 
+  void Clear();
+
  private:
   std::unordered_map<std::string, Entry> prefix_to_gen_ts_;
 };
 
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_DOC_WRITE_BATCH_CACHE_H_

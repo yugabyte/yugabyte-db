@@ -14,19 +14,21 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDO_QUORUM_CONSENSUS_H_
-#define KUDO_QUORUM_CONSENSUS_H_
+#ifndef YB_CONSENSUS_CONSENSUS_H_
+#define YB_CONSENSUS_CONSENSUS_H_
 
-#include <boost/optional/optional_fwd.hpp>
 #include <iosfwd>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <boost/optional/optional_fwd.hpp>
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/ref_counted_replicate.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
@@ -89,6 +91,16 @@ struct ConsensusBootstrapInfo {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ConsensusBootstrapInfo);
+};
+
+// Used for a callback that sets a transaction's timestamp and starts the MVCC transaction for
+// YB tables. In YB tables, we assign timestamp at the time of appending an entry to the Raft
+// log, so that timestamps always keep increasing in the log, unless entries are being overwritten.
+class ConsensusAppendCallback {
+ public:
+  virtual void HandleConsensusAppend() = 0;
+  virtual ~ConsensusAppendCallback() {}
+ private:
 };
 
 // The external interface for a consensus peer.
@@ -294,6 +306,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     kConfiguring,
     kRunning,
   };
+
  private:
   DISALLOW_COPY_AND_ASSIGN(Consensus);
 };
@@ -314,7 +327,7 @@ struct StateChangeContext {
 
   const StateChangeReason reason;
 
-  StateChangeContext(StateChangeReason in_reason)
+  explicit StateChangeContext(StateChangeReason in_reason)
       : reason(in_reason) {
   }
 
@@ -400,7 +413,7 @@ struct StateChangeContext {
 // - When the CommitMsg for a replicate is first received from the leader
 //   the replica waits for the corresponding Prepare() to finish (if it has
 //   not completed yet) and then proceeds to trigger the Apply().
-//   TODO (mbautin, 03/11/2016): Outdated? (Does the leader still ever send CommitMsg to followers?)
+// TODO (mbautin, 03/11/2016): Outdated? (Does the leader still ever send CommitMsg to followers?)
 //
 // - Once Apply() completes the ReplicaTransactionFactory is responsible for logging
 //   a CommitMsg to the log to ensure that the operation can be properly restored
@@ -455,6 +468,14 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
     replicated_cb_ = replicated_cb;
   }
 
+  void SetAppendCallback(ConsensusAppendCallback* append_cb) {
+    append_cb_ = append_cb;
+  }
+
+  ConsensusAppendCallback* append_callback() {
+    return append_cb_;
+  }
+
   // If a continuation was set, notifies it that the round has been replicated.
   void NotifyReplicationFinished(const Status& status);
 
@@ -496,6 +517,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   //
   // Set to -1 if no term has been bound.
   int64_t bound_term_;
+
+  ConsensusAppendCallback* append_cb_;
 };
 
 class Consensus::ConsensusFaultHooks {
@@ -516,4 +539,4 @@ class Consensus::ConsensusFaultHooks {
 } // namespace consensus
 } // namespace yb
 
-#endif /* CONSENSUS_H_ */
+#endif // YB_CONSENSUS_CONSENSUS_H_

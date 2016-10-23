@@ -18,12 +18,11 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include <algorithm>
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <iostream>
 #include <mutex>
 
-#include <yb/tserver/tserver.pb.h>
+#include <boost/optional.hpp>
+#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.pb.h"
@@ -564,10 +563,22 @@ Status RaftConsensus::CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRo
 }
 
 Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round) {
-  // We include the last committed id into every REPLICATE log record so we can bootstrap
-  // RocksDB-backed tablets more efficiently.
-  round->replicate_msg()->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
   state_->NewIdUnlocked(round->replicate_msg()->mutable_id());
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    ReplicateMsg* const replicate_msg = round->replicate_msg();
+
+    // In YB tables we include the last committed id into every REPLICATE log record so we can
+    // perform local bootstrap more efficiently.
+    replicate_msg->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
+
+    // We use this callback to transform write operations by substituting the timestamp into the
+    // write batch inside the write operation.
+    auto* const append_cb = round->append_callback();
+    if (append_cb != nullptr) {
+      append_cb->HandleConsensusAppend();
+    }
+
+  }
   RETURN_NOT_OK(state_->AddPendingOperation(round));
 
   Status s = queue_->AppendOperation(round->replicate_scoped_refptr());
@@ -1465,7 +1476,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     if (!s.ok()) {
       LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type)
                 << " due to error " << s.ToString();
-      *error_code = TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG ;
+      *error_code = TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG;
       return s;
     }
 

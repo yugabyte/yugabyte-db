@@ -45,13 +45,15 @@ ConsensusRound::ConsensusRound(Consensus* consensus,
     : consensus_(consensus),
       replicate_msg_(new RefCountedReplicate(replicate_msg.release())),
       replicated_cb_(std::move(replicated_cb)),
-      bound_term_(-1) {}
+      bound_term_(-1),
+      append_cb_(nullptr) {}
 
 ConsensusRound::ConsensusRound(Consensus* consensus,
                                const ReplicateRefPtr& replicate_msg)
     : consensus_(consensus),
       replicate_msg_(replicate_msg),
-      bound_term_(-1) {
+      bound_term_(-1),
+      append_cb_(nullptr) {
   DCHECK_NOTNULL(replicate_msg_.get());
 }
 

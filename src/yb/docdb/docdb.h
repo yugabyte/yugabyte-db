@@ -4,6 +4,7 @@
 #define YB_DOCDB_DOCDB_H_
 
 #include <cstdint>
+#include <map>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -11,14 +12,14 @@
 #include "rocksdb/db.h"
 
 #include "yb/common/timestamp.h"
-#include "yb/util/shared_lock_manager.h"
-#include "yb/util/status.h"
-
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/util/shared_lock_manager.h"
+#include "yb/util/status.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
 // <document_key> <doc_gen_ts> -> <doc_type>
@@ -61,10 +62,9 @@ namespace docdb {
 struct DocWriteOperation {
   DocPath doc_path;
   PrimitiveValue value;
-  Timestamp timestamp;
 
-  DocWriteOperation(DocPath doc_path, PrimitiveValue value, Timestamp timestamp)
-      : doc_path(doc_path), value(value), timestamp(timestamp) {}
+  DocWriteOperation(DocPath doc_path, PrimitiveValue value)
+      : doc_path(doc_path), value(value) {}
 };
 
 
@@ -90,7 +90,7 @@ Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
                                 const std::vector<DocWriteOperation>& doc_write_ops,
                                 util::SharedLockManager* const lock_manager,
                                 vector<string>* keys_locked,
-                                rocksdb::WriteBatch* write_batch);
+                                KeyValueWriteBatchPB* dest);
 
 // The DocWriteBatch class is used to build a rocksdb write batch for a doc db batch of operations
 // that may include a mix or write (set) or delete operations. It may read from rocksdb while
@@ -108,14 +108,24 @@ class DocWriteBatch {
   Status DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp);
 
   std::string ToDebugString();
-  rocksdb::WriteBatch* write_batch() { return &write_batch_; }
   void Clear();
+  bool IsEmpty() const { return put_batch_.empty(); }
+
+  void PopulateRocksDBWriteBatch(
+      rocksdb::WriteBatch* rocksdb_write_batch,
+      Timestamp timestamp = Timestamp::kMax) const;
+
+  rocksdb::Status WriteToRocksDB(
+      Timestamp timestamp, const rocksdb::WriteOptions& write_options) const;
+
+  void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
 
  private:
   DocWriteBatchCache cache_;
 
   rocksdb::DB* rocksdb_;
-  rocksdb::WriteBatch write_batch_;
+  std::vector<std::pair<std::string, std::string>> put_batch_;
+
 };
 
 // A visitor class that could be overridden to consume results of scanning of one or more document.
@@ -163,6 +173,7 @@ yb::Status GetDocument(rocksdb::DB* rocksdb,
 // Reports all errors to the output stream and returns the status of the first failed operation,
 // if any.
 yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out);
+
 
 }  // namespace docdb
 }  // namespace yb

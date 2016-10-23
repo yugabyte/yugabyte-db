@@ -24,12 +24,25 @@ Options:
     The current approach is somewhat simplistic in that we attribute the test failure to the
     "address already in use" issue, even if other issues may be present, but that's OK as long as
     we believe "address already in use" only happens a small percentage of the time.
+  --test-args "<arguments>"
+    Pass additional arguments to the test.
 EOT
+}
+
+delete_tmp_files() {
+  # Be extra careful before we nuke a directory.
+  if [[ -n ${TEST_TMPDIR:-} && $TEST_TMPDIR =~ ^/tmp/ ]]; then
+    rm -rf "$TEST_TMPDIR"
+  fi
 }
 
 set -euo pipefail
 
 . "${0%/*}"/../build-support/common-test-env.sh
+
+unset TEST_TMPDIR
+
+trap delete_tmp_files EXIT
 
 script_name=${0##*/}
 script_name_no_ext=${script_name%.sh}
@@ -91,6 +104,10 @@ while [[ $# -gt 0 ]]; do
     --skip-address-already-in-use)
       skip_address_already_in_use=true
     ;;
+    --test-args)
+      more_test_args+=" $2"
+      shift
+    ;;
     *)
       positional_args+=( "$1" )
     ;;
@@ -112,7 +129,13 @@ fi
 test_binary_name=${positional_args[0]}
 test_filter=${positional_args[1]}
 
-test_binary=$( find_test_binary "$test_binary_name" )
+abs_test_binary_path=$( find_test_binary "$test_binary_name" )
+rel_test_binary=${abs_test_binary_path#$BUILD_ROOT}
+
+if [[ $rel_test_binary == $abs_test_binary_path ]]; then
+  fatal "Expected absolute test binary path ('$abs_test_binary_path') to start with" \
+        "BUILD_ROOT ('$BUILD_ROOT')"
+fi
 
 if [[ -z $log_dir ]]; then
   log_dir=$HOME/logs/$script_name_no_ext/$test_binary_name/$test_filter/$(
@@ -122,33 +145,43 @@ if [[ -z $log_dir ]]; then
 fi
 
 if [[ $iteration -gt 0 ]]; then
-  log_path=$log_dir/$iteration.log
-  # One iteration
+  # One iteration with a specific "id" ($iteration).
+  test_log_path_prefix=$log_dir/$iteration
+  raw_test_log_path=${test_log_path_prefix}__raw.log
+  test_log_path=$test_log_path_prefix.log
+
   set +e
   export TEST_TMPDIR=/tmp/yb__${0##*/}__$RANDOM.$RANDOM.$RANDOM.$$
-  "$test_binary" --gtest_filter="$test_filter" $more_test_args &>"$log_path"
+  mkdir -p "$TEST_TMPDIR"
+  core_dir=$TEST_TMPDIR
+  (
+    cd "$TEST_TMPDIR"
+    set -x
+    "$abs_test_binary_path" --gtest_filter="$test_filter" $more_test_args &>"$raw_test_log_path"
+  )
   exit_code=$?
   set -e
-  if ! did_test_succeed "$exit_code" "$log_path"; then
+  if ! did_test_succeed "$exit_code" "$raw_test_log_path"; then
+    postprocess_test_log
+    process_core_file
     if "$skip_address_already_in_use" && \
-       ( egrep '\bAddress already in use\b' "$log_path" >/dev/null ||
-         egrep '\bWebserver: Could not start on address\b' "$log_path" >/dev/null ); then
+       ( egrep '\bAddress already in use\b' "$test_log_path" >/dev/null ||
+         egrep '\bWebserver: Could not start on address\b' "$test_log_path" >/dev/null ); then
       # TODO: perhaps we should not skip some types of errors that did_test_succeed finds in the
       # logs (ASAN/TSAN, check failures, etc.), even if we see "address already in use".
       echo "PASSED: iteration $iteration (assuming \"Address already in use\" is a false positive)"
-      rm -f "$log_path"
+      rm -f "$test_log_path"
     else
-      gzip "$log_path"
-      echo "FAILED: iteration $iteration (log: $log_path.gz)"
+      gzip "$test_log_path"
+      echo "FAILED: iteration $iteration (log: $test_log_path.gz)"
     fi
   elif "$keep_all_logs"; then
-    gzip "$log_path"
-    echo "PASSED: iteration $iteration (log: $log_path.gz)"
+    gzip "$test_log_path"
+    echo "PASSED: iteration $iteration (log: $test_log_path.gz)"
   else
     echo "PASSED: iteration $iteration"
-    rm -f "$log_path"
+    rm -f "$test_log_path"
   fi
-  rm -rf "$TEST_TMPDIR"
 else
   # Parallel execution of many iterations
   seq 1 $num_iter | \

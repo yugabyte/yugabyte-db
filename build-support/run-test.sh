@@ -24,6 +24,8 @@
 # Path to the test executable or script to be run.
 # May be relative or absolute.
 
+# Portions Copyright (c) YugaByte, Inc.
+
 set -euo pipefail
 
 TEST_PATH=${1:-}
@@ -66,14 +68,15 @@ fi
 
 TEST_NAME_WITH_EXT=$(basename "$TEST_PATH")
 TMP_DIR_NAME_PREFIX=$( echo "$TEST_NAME_WITH_EXT" | tr '.' '_' )
-ABS_TEST_PATH=$TEST_DIR/$TEST_NAME_WITH_EXT
+abs_test_binary_path=$TEST_DIR/$TEST_NAME_WITH_EXT
 
 # Remove path and extension, if any.
 TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 
 # We run each test in its own subdir to avoid core file related races.
 TEST_WORKDIR="$BUILD_ROOT/test-work/$TEST_NAME"
-mkdir -p "$TEST_WORKDIR"
+
+mkdir_safe "$TEST_WORKDIR"
 pushd "$TEST_WORKDIR" >/dev/null || exit 1
 rm -f *
 
@@ -109,43 +112,13 @@ set -u
 set_test_log_url_prefix
 
 global_exit_code=0
+
+# Loop over all tests in a gtest binary, or just one element (the whole test binary) for tests that
+# we have to run in one shot.
 for test_descriptor in "${tests[@]}"; do
   prepare_for_running_test
   run_test_and_process_results
-  if [ ]; then
-    # TODO: look into these after TSAN/ASAN are enabled.
-
-    # TSAN doesn't always exit with a non-zero exit code due to a bug:
-    # mutex errors don't get reported through the normal error reporting infrastructure.
-    # So we make sure to detect this and exit 1.
-    #
-    # Additionally, certain types of failures won't show up in the standard JUnit
-    # XML output from gtest. We assume that gtest knows better than us and our
-    # regexes in most cases, but for certain errors we delete the resulting xml
-    # file and let our own post-processing step regenerate it.
-    export GREP=$(which egrep)
-    if grep --silent "ThreadSanitizer|Leak check.*detected leaks" "$test_log_path" ; then
-      echo "ThreadSanitizer or leak check failures in '$test_log_path'"
-      global_exit_code=1
-      rm -f "$xml_output_file"
-    fi
-
-    # If we have a LeakSanitizer report, and XML reporting is configured, add a new test
-    # case result to the XML file for the leak report. Otherwise Jenkins won't show
-    # us which tests had LSAN errors.
-    if grep --silent "ERROR: LeakSanitizer: detected memory leaks" "$test_log_path" ; then
-      echo Test had memory leaks. Editing XML
-      perl -p -i -e '
-      if (m#</testsuite>#) {
-        print "<testcase name=\"LeakSanitizer\" status=\"run\" classname=\"LSAN\">\n";
-        print "  <failure message=\"LeakSanitizer failed\" type=\"\">\n";
-        print "    See txt log file for details\n";
-        print "  </failure>\n";
-        print "</testcase>\n";
-      }' $xml_output_file
-    fi
-  fi
-done # looping over all tests in a gtest binary, or just one element (the whole test binary).
+done
 
 popd >/dev/null
 if [ -d "$TEST_WORKDIR" ]; then

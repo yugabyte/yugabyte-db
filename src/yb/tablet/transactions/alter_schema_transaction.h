@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_TABLET_ALTER_SCHEMA_TRANSACTION_H_
-#define YB_TABLET_ALTER_SCHEMA_TRANSACTION_H_
+#ifndef YB_TABLET_TRANSACTIONS_ALTER_SCHEMA_TRANSACTION_H_
+#define YB_TABLET_TRANSACTIONS_ALTER_SCHEMA_TRANSACTION_H_
 
 #include <mutex>
 #include <string>
@@ -86,7 +86,6 @@ class AlterSchemaTransactionState : public TransactionState {
   virtual std::string ToString() const OVERRIDE;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(AlterSchemaTransactionState);
 
   // The new (target) Schema.
   const Schema* schema_;
@@ -97,6 +96,8 @@ class AlterSchemaTransactionState : public TransactionState {
 
   // The lock held on the tablet's schema_lock_.
   std::unique_lock<rw_semaphore> schema_lock_;
+
+  DISALLOW_COPY_AND_ASSIGN(AlterSchemaTransactionState);
 };
 
 // Executes the alter schema transaction,.
@@ -116,7 +117,7 @@ class AlterSchemaTransaction : public Transaction {
   virtual Status Prepare() OVERRIDE;
 
   // Starts the AlterSchemaTransaction by assigning it a timestamp.
-  virtual Status Start() OVERRIDE;
+  virtual void Start() OVERRIDE;
 
   // Executes an Apply for the alter schema transaction
   virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
@@ -134,4 +135,4 @@ class AlterSchemaTransaction : public Transaction {
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* YB_TABLET_ALTER_SCHEMA_TRANSACTION_H_ */
+#endif  // YB_TABLET_TRANSACTIONS_ALTER_SCHEMA_TRANSACTION_H_

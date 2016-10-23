@@ -129,6 +129,12 @@ Status LocalConsensus::Replicate(const scoped_refptr<ConsensusRound>& round) {
 
     // create the new op id for the entry.
     cur_op_id->set_index(next_op_id_index_++);
+
+    auto* const append_cb = round->append_callback();
+    if (append_cb != nullptr) {
+      append_cb->HandleConsensusAppend();
+    }
+
     // Reserve the correct slot in the log for the replication operation.
     // It's important that we do this under the same lock as we generate
     // the op id, so that we log things in-order.

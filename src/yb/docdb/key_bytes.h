@@ -20,7 +20,8 @@ class KeyBytes {
  public:
 
   KeyBytes() {}
-  KeyBytes(const std::string& data) : data_(data) {}
+  explicit KeyBytes(const std::string& data) : data_(data) {}
+  explicit KeyBytes(const rocksdb::Slice& slice) : data_(slice.data(), slice.size()) {}
 
   std::string ToString() const {
     return yb::util::FormatBytesAsStr(data_);
@@ -126,11 +127,17 @@ class KeyBytes {
     return *this;
   }
 
+  // This can be used to e.g. move the internal state of KeyBytes somewhere else, including a
+  // string field in a protobuf, without copying the bytes.
+  std::string* mutable_data() {
+    return &data_;
+  }
+
  private:
   std::string data_;
 };
 
-}
-}
+}  // namespace docdb
+}  // namespace yb
 
-#endif
+#endif  // YB_DOCDB_KEY_BYTES_H_

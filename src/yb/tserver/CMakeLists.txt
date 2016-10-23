@@ -50,7 +50,8 @@ set(TSERVER_PROTO_LIBS
   consensus_metadata_proto
   tablet_proto
   wire_protocol_proto
-  redis_protocol_proto)
+  redis_protocol_proto
+  docdb_proto)
 ADD_EXPORTABLE_LIBRARY(tserver_proto
   SRCS ${TSERVER_PROTO_SRCS}
   DEPS ${TSERVER_PROTO_LIBS}

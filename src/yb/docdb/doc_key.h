@@ -200,7 +200,7 @@ class SubDocKey {
 
   SubDocKey(const DocKey& doc_key,
             Timestamp doc_gen_ts,
-            std::vector<std::pair<PrimitiveValue, yb::Timestamp>> subkeys)
+            std::vector<std::pair<PrimitiveValue, Timestamp>> subkeys)
       : doc_key_(doc_key),
         doc_gen_ts_(doc_gen_ts),
         subkeys_(subkeys) {
@@ -270,12 +270,18 @@ class SubDocKey {
   int CompareTo(const SubDocKey& other) const;
 
   Timestamp doc_gen_ts() const { return doc_gen_ts_; }
-  void set_doc_gen_ts(yb::Timestamp new_doc_gen_ts) { doc_gen_ts_ = new_doc_gen_ts; }
+  void set_doc_gen_ts(Timestamp new_doc_gen_ts) { doc_gen_ts_ = new_doc_gen_ts; }
+
+  // When we come up with a batch of DocDB updates, we don't yet know the timestamp, because the
+  // timestamp is only determined at the time the write operation is appended to the Raft log.
+  // Therefore, we initially use Timestamp::kMax, and we have to replace it with the actual
+  // timestamp later.
+  void ReplaceMaxTimestampWith(Timestamp timetamp);
 
  private:
   DocKey doc_key_;
   Timestamp doc_gen_ts_;
-  std::vector<std::pair<PrimitiveValue, yb::Timestamp>> subkeys_;
+  std::vector<std::pair<PrimitiveValue, Timestamp>> subkeys_;
 };
 
 inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key) {

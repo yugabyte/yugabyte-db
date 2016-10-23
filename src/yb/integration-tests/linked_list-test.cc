@@ -160,9 +160,9 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   // of seeing a thread error. We don't do this in normal builds since we
   // also use this test as a benchmark and it soaks up a lot of CPU.
 #ifdef THREAD_SANITIZER
-  MonoDelta check_freq = MonoDelta::FromMilliseconds(10);
+  const MonoDelta check_freq = MonoDelta::FromMilliseconds(10);
 #else
-  MonoDelta check_freq = MonoDelta::FromSeconds(1);
+  const MonoDelta check_freq = MonoDelta::FromSeconds(1);
 #endif
 
   PeriodicWebUIChecker checker(*cluster_.get(), tablet_id,
@@ -178,7 +178,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   // TODO: currently we don't use hybridtime on the C++ client, so it's possible when we
   // scan after writing we may not see all of our writes (we may scan a replica). So,
   // we use WaitAndVerify here instead of a plain Verify.
-  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
   ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
 
   LOG(INFO) << "Successfully verified " << written << " rows before killing any servers.";
@@ -188,7 +188,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     WaitForTSAndReplicas();
     LOG(INFO) << "Will restart the tablet server during verification scan.";
     ASSERT_OK(tester_->WaitAndVerify(
-        FLAGS_seconds_to_run, written,
+        FLAGS_seconds_to_run, written, /* latest_at_leader = */ true,
         std::bind(&TabletServerIntegrationTestBase::RestartServerWithUUID, this, _1)));
     LOG(INFO) << "Done with tserver restart test.";
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
@@ -198,7 +198,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     // even harder.
     LOG(INFO) << "Will kill the tablet server during verification scan.";
     ASSERT_OK(tester_->WaitAndVerify(
-        FLAGS_seconds_to_run, written,
+        FLAGS_seconds_to_run, written, /* latest_at_leader = */ true,
         std::bind(&TabletServerIntegrationTestBase::ShutdownServerWithUUID, this, _1)));
     LOG(INFO) << "Done with tserver kill test.";
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()-1));
@@ -213,7 +213,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     LOG(INFO) << "Killing TS: " << leader->instance_id.permanent_uuid() << ", leader of tablet: "
         << tablet << " and verifying that we can still read all results";
     ASSERT_OK(ShutdownServerWithUUID(leader->uuid()));
-    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size() - 1));
   }
 
@@ -225,14 +225,14 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   // We need to loop here because the tablet may spend some time in BOOTSTRAPPING state
   // initially after a restart. TODO: Scanner should support its own retries in this circumstance.
   // Remove this loop once client is more fleshed out.
-  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
 
   // In slow tests mode, we'll wait for a little bit to allow time for the tablet to
   // compact. This is a regression test for bugs where compaction post-bootstrap
   // could cause data loss.
   if (AllowSlowTests()) {
     SleepFor(MonoDelta::FromSeconds(10));
-    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
   }
   ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
 
@@ -244,7 +244,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     LOG(INFO) << "Killing TS: " << leader->instance_id.permanent_uuid() << ", leader of tablet: "
         << tablet << " and verifying that we can still read all results";
     ASSERT_OK(ShutdownServerWithUUID(leader->uuid()));
-    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+    ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size() - 1));
   }
 
@@ -256,7 +256,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   // Restart while bootstrapping
   ASSERT_NO_FATAL_FAILURE(RestartCluster());
 
-  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
   ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
 
   // Dump the performance info at the very end, so it's easy to read. On a failed
@@ -298,7 +298,7 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   // inserted for. This prevents flakiness in TSAN builds in particular.
   const int kBaseTimeToWaitSecs = 5;
   const int kWaitTime = FLAGS_seconds_to_run + kBaseTimeToWaitSecs;
-  string tablet_id = tablet_replicas_.begin()->first;
+  const string tablet_id = tablet_replicas_.begin()->first;
   ASSERT_NO_FATAL_FAILURE(WaitForServersToAgree(
                             MonoDelta::FromSeconds(kWaitTime),
                             tablet_servers_,
@@ -307,7 +307,9 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
 
   cluster_->tablet_server(1)->Shutdown();
   cluster_->tablet_server(2)->Shutdown();
-  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
+  // We can't force reads to go to the leader, because with two out of the three servers down there
+  // won't be a leader.
+  ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ false));
 }
 
 } // namespace yb

@@ -22,6 +22,7 @@ import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/common/redis_protocol.proto";
 import "yb/tablet/tablet.proto";
+import "yb/docdb/docdb.proto";
 
 // Tablet-server specific errors use this protobuf.
 message TabletServerErrorPB {
@@ -117,7 +118,7 @@ message WriteRequestPB {
 
   // When replicating RocksDB write operations through Raft for single-shard transactions,
   // we put a write batch here.
-  optional KeyValueWriteBatchPB write_batch = 7;
+  optional yb.docdb.KeyValueWriteBatchPB write_batch = 7;
 
   // A batch of redis operations.
   repeated RedisWriteRequestPB redis_write_batch = 8;
@@ -135,11 +136,6 @@ message WriteRequestPB {
   // TODO crypto sign this and propagate the signature along with
   // the timestamp.
   optional fixed64 propagated_timestamp = 5;
-}
-
-// A RocksDB write batch serialized to bytes.
-message KeyValueWriteBatchPB {
-  optional bytes serialized_write_batch = 1;
 }
 
 message WriteResponsePB {

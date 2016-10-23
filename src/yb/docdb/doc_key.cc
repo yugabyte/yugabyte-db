@@ -274,5 +274,16 @@ string BestEffortKeyBytesToStr(const KeyBytes& key_bytes) {
   return key_bytes.ToString();
 }
 
+void SubDocKey::ReplaceMaxTimestampWith(Timestamp timestamp) {
+  if (doc_gen_ts_ == Timestamp::kMax) {
+    doc_gen_ts_ = timestamp;
+  }
+  for (auto& subkey_and_ts : subkeys_) {
+    if (subkey_and_ts.second == Timestamp::kMax) {
+      subkey_and_ts.second = timestamp;
+    }
+  }
+}
+
 }  // namespace docdb
 }  // namespace yb

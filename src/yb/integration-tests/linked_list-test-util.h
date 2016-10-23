@@ -103,13 +103,16 @@ class LinkedListTester {
   // Variant of VerifyLinkedListRemote that verifies at the specified snapshot timestamp.
   Status VerifyLinkedListAtSnapshotRemote(
       const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
-      const std::function<Status(const std::string&)>& cb, int64_t* verified_count) {
+      const bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
+      int64_t* verified_count) {
     LOG(INFO) << __func__ << ": snapshot_timestamp=" << snapshot_timestamp
+                          << ", latest_at_leader=" << latest_at_leader
                           << ", expected=" << expected
                           << ", log_errors=" << log_errors;
     return VerifyLinkedListRemote(snapshot_timestamp,
                                   expected,
                                   log_errors,
+                                  latest_at_leader,
                                   cb,
                                   verified_count);
   }
@@ -117,18 +120,22 @@ class LinkedListTester {
   // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot timestamp.
   Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
                                           const bool log_errors,
+                                          const bool latest_at_leader,
                                           int64_t* verified_count) {
-    LOG(INFO) << __func__ << ": expected=" << expected << ", log_errors=" << log_errors;
+    LOG(INFO) << __func__ << ": expected=" << expected
+                          << ", log_errors=" << log_errors
+                          << ", latest_at_leader=" << latest_at_leader;
     return VerifyLinkedListRemote(
-        kNoSnapshot, expected, log_errors, std::bind(&LinkedListTester::ReturnOk, this, _1),
-        verified_count);
+        kNoSnapshot, expected, log_errors, latest_at_leader,
+        std::bind(&LinkedListTester::ReturnOk, this, _1), verified_count);
   }
 
   // Run the verify step on a table with RPCs. Calls the provided callback 'cb' once during
   // verification to test scanner fault tolerance.
   Status VerifyLinkedListRemote(
       const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
-      const std::function<Status(const std::string&)>& cb, int64_t* verified_count);
+      bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
+      int64_t* verified_count);
 
   // Run the verify step on a specific tablet.
   Status VerifyLinkedListLocal(const tablet::Tablet* tablet,
@@ -137,16 +144,20 @@ class LinkedListTester {
 
   // A variant of VerifyLinkedListRemote that is more robust towards ongoing
   // bootstrapping and replication.
-  Status WaitAndVerify(int seconds_to_run,
-                       int64_t expected) {
-    LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run << ", expected=" << expected;
-    return WaitAndVerify(
-        seconds_to_run, expected, std::bind(&LinkedListTester::ReturnOk, this, _1));
+  Status WaitAndVerify(const int seconds_to_run,
+                       const int64_t expected,
+                       const bool latest_at_leader) {
+    LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run
+                          << ", expected=" << expected
+                          << ", latest_at_leader=" << latest_at_leader;
+    return WaitAndVerify(seconds_to_run, expected, latest_at_leader,
+                         std::bind(&LinkedListTester::ReturnOk, this, _1));
   }
 
   // A variant of WaitAndVerify that also takes a callback to be run once during verification.
   Status WaitAndVerify(
-      int seconds_to_run, int64_t expected, const std::function<Status(const std::string&)>& cb);
+      int seconds_to_run, int64_t expected, bool latest_at_leader,
+      const std::function<Status(const std::string&)>& cb);
 
   // Generates a vector of keys for the table such that each tablet is
   // responsible for an equal fraction of the int64 key space.
@@ -562,15 +573,20 @@ static void VerifyNoDuplicateEntries(const std::vector<int64_t>& ints, int* erro
 
 Status LinkedListTester::VerifyLinkedListRemote(
     const uint64_t snapshot_timestamp, const int64_t expected, bool log_errors,
-    const std::function<Status(const std::string&)>& cb, int64_t* verified_count) {
-  LOG(INFO) << __func__ << ": snapshot_timestamp=" << snapshot_timestamp
-                        << ", expected=" << expected
-                        << ", log_errors=" << log_errors;
+    bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
+    int64_t* verified_count) {
+  const bool is_latest = snapshot_timestamp == kNoSnapshot;
+  LOG(INFO) << __func__
+            << ": snapshot_timestamp="
+            << (is_latest ? "LATEST" : std::to_string(snapshot_timestamp))
+            << ", expected=" << expected
+            << ", log_errors=" << log_errors
+            << ", latest_at_leader=" << latest_at_leader;
   client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table));
 
   string snapshot_str;
-  if (snapshot_timestamp == kNoSnapshot) {
+  if (is_latest) {
     snapshot_str = "LATEST";
   } else {
     snapshot_str = server::HybridClock::StringifyTimestamp(Timestamp(snapshot_timestamp));
@@ -580,7 +596,19 @@ Status LinkedListTester::VerifyLinkedListRemote(
   RETURN_NOT_OK_PREPEND(scanner.SetProjectedColumns(verify_projection_), "Bad projection");
   RETURN_NOT_OK(scanner.SetBatchSizeBytes(0));  // Force at least one NextBatch RPC.
 
-  if (snapshot_timestamp != kNoSnapshot) {
+  if (is_latest) {
+    if (latest_at_leader) {
+      // Only the leader has latest data. Furthermore, even the leader might not know the latest
+      // data if it has not replicated its NoOp entry of the current term yet. However, in some
+      // cases, we simply don't have enough tablet servers online to have a leader, so this is
+      // an optional flag.
+      RETURN_NOT_OK(scanner.SetSelection(client::YBClient::ReplicaSelection::LEADER_ONLY));
+      LOG(INFO) << "Forcing a LATEST read to go to the leader";
+    } else {
+      LOG(INFO) << "Not forcing a LATEST read to go to the leader. "
+                << "This is appropriate when e.g. only one tablet server is up.";
+    }
+  } else {
     RETURN_NOT_OK(scanner.SetReadMode(client::YBScanner::READ_AT_SNAPSHOT));
     RETURN_NOT_OK(scanner.SetFaultTolerant());
     RETURN_NOT_OK(scanner.SetSnapshotRaw(snapshot_timestamp));
@@ -675,7 +703,8 @@ Status LinkedListTester::VerifyLinkedListLocal(const tablet::Tablet* tablet,
 }
 
 Status LinkedListTester::WaitAndVerify(
-    int seconds_to_run, int64_t expected, const std::function<Status(const std::string&)>& cb) {
+    int seconds_to_run, int64_t expected, bool latest_at_leader,
+    const std::function<Status(const std::string&)>& cb) {
   std::list<pair<int64_t, int64_t> > samples_as_list(sampled_timestamps_and_counts_.begin(),
                                                      sampled_timestamps_and_counts_.end());
 
@@ -697,13 +726,13 @@ Status LinkedListTester::WaitAndVerify(
     while (iter != samples_as_list.end()) {
       // Only call the callback once, on the first verify pass, since it may be destructive.
       if (iter == samples_as_list.begin() && !called) {
-        s = VerifyLinkedListAtSnapshotRemote((*iter).first, (*iter).second, last_attempt, cb,
-                                             &seen);
+        s = VerifyLinkedListAtSnapshotRemote(
+                iter->first, iter->second, last_attempt, latest_at_leader, cb, &seen);
         called = true;
       } else {
         s = VerifyLinkedListAtSnapshotRemote(
-            (*iter).first, (*iter).second, last_attempt,
-            std::bind(&LinkedListTester::ReturnOk, this, _1), &seen);
+                iter->first, iter->second, last_attempt, latest_at_leader,
+                std::bind(&LinkedListTester::ReturnOk, this, _1), &seen);
       }
 
       if (s.ok() && (*iter).second != seen) {
@@ -729,7 +758,7 @@ Status LinkedListTester::WaitAndVerify(
       iter = samples_as_list.erase(iter);
     }
     if (s.ok()) {
-      s = VerifyLinkedListNoSnapshotRemote(expected, last_attempt, &seen);
+      s = VerifyLinkedListNoSnapshotRemote(expected, last_attempt, latest_at_leader, &seen);
     }
 
     // TODO: when we enable hybridtime consistency for the scans,

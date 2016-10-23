@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <memory>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/transactions/transaction_driver.h"
@@ -66,7 +67,7 @@ class TransactionTrackerTest : public YBTest {
     }
 
     virtual Status Prepare() OVERRIDE { return Status::OK(); }
-    virtual Status Start() OVERRIDE { return Status::OK(); }
+    virtual void Start() OVERRIDE {}
     virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE {
       return Status::OK();
     }
@@ -228,7 +229,7 @@ TEST_F(TransactionTrackerTest, TestTooManyTransactions) {
   // and check that when we fail, it's because we've hit the limit.
   Status s;
   vector<scoped_refptr<TransactionDriver> > drivers;
-  for (int i = 0; s.ok();i++) {
+  for (int i = 0; s.ok(); i++) {
     s = AddDrivers(1, &drivers);
   }
 
