@@ -1,6 +1,10 @@
 Changelog
 =========
 
+2016-10-24 version 1.0.0:
+
+  - fix memory leak in hypopg() function
+
 2016-07-07 version 0.0.5:
 
   - add support for PostgreSQL 9.6, thanks to Konstantin Mosolov for fixing some
