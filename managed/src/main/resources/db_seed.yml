@@ -15,10 +15,17 @@
 # Region
 - &docker-local-region-1 !!com.yugabyte.yw.models.Region
     code: docker-localhost-region-1
-    name: Docker Localhost Region 1
+    name: Localhost Region US-West
     provider: *provider_dockerlocal
     latitude: 36.778261
     longitude: -119.417932
+    ybImage: local/yugabyte-server
+- &docker-local-region-2 !!com.yugabyte.yw.models.Region
+    code: docker-localhost-region-2
+    name: Localhost Region US-East
+    provider: *provider_dockerlocal
+    latitude: 37.478397
+    longitude: -76.453077
     ybImage: local/yugabyte-server
 - &aws-us-west-1 !!com.yugabyte.yw.models.Region
     code: us-west-1
@@ -93,18 +100,33 @@
 # Availability Zones
 - &dockerlocal_zone1 !!com.yugabyte.yw.models.AvailabilityZone
     code: docker-local-region-1a
-    name: docker-local-region-1a
+    name: zone-a
     region: *docker-local-region-1
     subnet: yugabyte-bridge
 - &dockerlocal_zone2 !!com.yugabyte.yw.models.AvailabilityZone
     code: docker-local-region-1b
-    name: docker-local-region-1b
+    name: zone-b
     region: *docker-local-region-1
     subnet: yugabyte-bridge
 - &dockerlocal_zone3 !!com.yugabyte.yw.models.AvailabilityZone
     code: docker-local-region-1c
-    name: docker-local-region-1c
+    name: zone-c
     region: *docker-local-region-1
+    subnet: yugabyte-bridge
+- &dockerlocal_zone4 !!com.yugabyte.yw.models.AvailabilityZone
+    code: docker-local-region-2a
+    name: zone-a
+    region: *docker-local-region-2
+    subnet: yugabyte-bridge
+- &dockerlocal_zone5 !!com.yugabyte.yw.models.AvailabilityZone
+    code: docker-local-region-2b
+    name: zone-b
+    region: *docker-local-region-2
+    subnet: yugabyte-bridge
+- &dockerlocal_zone6 !!com.yugabyte.yw.models.AvailabilityZone
+    code: docker-local-region-2c
+    name: zone-c
+    region: *docker-local-region-2
     subnet: yugabyte-bridge
 - &zone1 !!com.yugabyte.yw.models.AvailabilityZone
     code: us-west-2a

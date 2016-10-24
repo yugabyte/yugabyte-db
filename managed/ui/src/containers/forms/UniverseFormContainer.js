@@ -3,8 +3,9 @@
 import UniverseForm from '../../components/forms/UniverseForm';
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
-import { getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure
-          } from '../../actions/cloud';
+import { getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure,
+         getRegionList, getRegionListSuccess, getRegionListFailure
+       } from '../../actions/cloud';
 import { createUniverse, createUniverseSuccess, createUniverseFailure,
   editUniverse, editUniverseSuccess, editUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog }
@@ -85,7 +86,18 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(getInstanceTypeListSuccess(response.payload));
           }
         });
-    }
+    },
+    
+    getRegionListItems: (provider, isMultiAZ) => {
+      dispatch(getRegionList(provider, isMultiAZ))
+        .then((response) => {
+          if(response.payload.status !== 200) {
+            dispatch(getRegionListFailure(response.payload));
+          } else {
+            dispatch(getRegionListSuccess(response.payload));
+          }
+        });
+    }    
   }
 }
 
