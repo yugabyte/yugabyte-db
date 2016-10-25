@@ -17,9 +17,12 @@ public class NodeTaskParams extends UniverseTaskParams {
   // The node about which we need to fetch details.
   public String nodeName;
 
+  public AvailabilityZone getAZ() {
+    return AvailabilityZone.find.byId(azUuid);
+  }
+
   public Region getRegion() {
-    AvailabilityZone az = AvailabilityZone.find.byId(azUuid);
-    return az.region;
+    return getAZ().region;
   }
 
   // Less prominent params can be added to properties variable
