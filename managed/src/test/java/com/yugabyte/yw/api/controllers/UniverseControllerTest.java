@@ -435,7 +435,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", universe.universeUUID.toString());
     bodyJson.put("taskType", "Software");
     bodyJson.put("nodeNames",  "[\"host-n1\",\"host-n3\",\"host-n2\"]");
-    bodyJson.put("ybServerPkg", "awesomepkg-0123456");
+    bodyJson.put("ybServerPackage", "awesomepkg-0123456");
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
@@ -472,7 +472,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").toString(), is(containsString("ybServerPkg param is required for taskType: Software")));
+    assertThat(json.get("error").toString(), is(containsString("ybServerPackage param is required for taskType: Software")));
   }
 
   @Test

@@ -3,14 +3,12 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
@@ -25,6 +23,8 @@ import java.util.HashMap;
 
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
@@ -96,8 +96,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     try {
       devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
     } catch (RuntimeException re) {
-      assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleConfigureServers.Params " +
-                                       "or AnsibleUpgradeServer.Params"));
+      assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleConfigureServers.Params"));
     }
   }
 
@@ -110,14 +109,14 @@ public class DevOpsHelperTest extends FakeDBApplication {
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
     params.isMasterInShellMode = true;
-    params.ybServerPkg = "yb-server-pkg";
+    params.ybServerPackage = "yb-server-pkg";
     params.universeUUID = u.universeUUID;
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
 
     String expectedCommand = baseCommand + " instance configure" +
       " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
-      " --package " + params.ybServerPkg + " " + params.nodeName;
+      " --package " + params.ybServerPackage + " " + params.nodeName;
 
     assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
@@ -131,7 +130,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
     params.isMasterInShellMode = false;
-    params.ybServerPkg = "yb-server-pkg";
+    params.ybServerPackage = "yb-server-pkg";
     params.universeUUID = u.universeUUID;
 
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
@@ -139,7 +138,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     String expectedCommand = baseCommand + " instance configure" +
       " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
       " --master_addresses_for_master (.*)(|:)([0-9]*)" +
-      " --package " + params.ybServerPkg + " " + params.nodeName;
+      " --package " + params.ybServerPackage + " " + params.nodeName;
 
     assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
@@ -149,12 +148,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithoutRequiredProperties() {
     Universe u = Universe.create("Test universe", 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
-    params.ybServerPkg = "yb-server-pkg";
-    params.taskType = UpgradeUniverse.UpgradeTaskType.Software;
+    params.ybServerPackage = "yb-server-pkg";
+    params.type = Software;
     params.universeUUID = u.universeUUID;
 
     try {
@@ -169,12 +168,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithDownloadNodeCommand() {
     Universe u = Universe.create("Test universe", 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
-    params.ybServerPkg = "yb-server-pkg";
-    params.taskType = UpgradeUniverse.UpgradeTaskType.Software;
+    params.ybServerPackage = "yb-server-pkg";
+    params.type = Software;
     params.setProperty("taskSubType", Download.toString());
     params.universeUUID = u.universeUUID;
 
@@ -182,7 +181,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
     String expectedCommand = baseCommand + " instance configure" +
       " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
-      " --package " + params.ybServerPkg + " --tags download-software " + params.nodeName;
+      " --package " + params.ybServerPackage + " --tags download-software " + params.nodeName;
 
     assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
@@ -191,12 +190,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testSoftwareUpgradeWithInstallNodeCommand() {
     Universe u = Universe.create("Test universe", 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
-    params.ybServerPkg = "yb-server-pkg";
-    params.taskType = UpgradeUniverse.UpgradeTaskType.Software;
+    params.ybServerPackage = "yb-server-pkg";
+    params.type = Software;
     params.setProperty("taskSubType", Install.toString());
     params.universeUUID = u.universeUUID;
 
@@ -204,7 +203,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
     String expectedCommand = baseCommand + " instance configure" +
       " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
-      " --package " + params.ybServerPkg + " --tags install-software " + params.nodeName;
+      " --package " + params.ybServerPackage + " --tags install-software " + params.nodeName;
 
     assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
@@ -213,14 +212,14 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testGFlagsUpgradeWithoutRequiredProperties() {
     Universe u = Universe.create("Test universe", 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
     HashMap<String, String> gflags = new HashMap<>();
     gflags.put("gflagName", "gflagValue");
     params.gflags = gflags;
-    params.taskType = UpgradeUniverse.UpgradeTaskType.GFlags;
+    params.type = GFlags;
     params.universeUUID = u.universeUUID;
 
     try {
@@ -235,11 +234,11 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testGFlagsUpgradeWithEmptyGFlagsNodeCommand() {
     Universe u = Universe.create("Test universe", 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
-    params.taskType = UpgradeUniverse.UpgradeTaskType.GFlags;
+    params.type = GFlags;
     params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
     params.universeUUID = u.universeUUID;
 
@@ -256,14 +255,14 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testGFlagsUpgradeForMasterNodeCommand() {
     Universe u = Universe.create("Test universe", 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
     HashMap<String, String> gflags = new HashMap<>();
     gflags.put("gflagName", "gflagValue");
     params.gflags = gflags;
-    params.taskType = UpgradeUniverse.UpgradeTaskType.GFlags;
+    params.type = GFlags;
     params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
     params.universeUUID = u.universeUUID;
 

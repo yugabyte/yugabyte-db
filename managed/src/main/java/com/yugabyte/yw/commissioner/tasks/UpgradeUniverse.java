@@ -3,7 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpgradeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -19,8 +19,9 @@ import java.util.stream.Collectors;
 public class UpgradeUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
 
-  // Upgrade task type
+  // Upgrade Task Type
   public enum UpgradeTaskType {
+    Everything,
     Software,
     GFlags
   }
@@ -56,8 +57,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
+
+        if (taskParams().ybServerPackage.equals(universe.getUniverseDetails().userIntent.ybServerPackage)) {
+          throw new RuntimeException("Cluster is already on ybServerPackage: " + taskParams().ybServerPackage);
+        }
+
         LOG.info("Upgrading software version to {} for {} nodes in universe {}",
-                 taskParams().ybServerPkg, taskParams().nodeNames.size(), universe.name);
+                 taskParams().ybServerPackage, taskParams().nodeNames.size(), universe.name);
       } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
         LOG.info("Updating gflags: {} for {} nodes in universe {}",
                  taskParams().getGFlagsAsMap(), taskParams().nodeNames.size(), universe.name);
@@ -86,23 +92,26 @@ public class UpgradeUniverse extends UniverseTaskBase {
     nodes = filterByNodeName(nodes, taskParams().nodeNames);
     for (NodeDetails node : nodes) {
       if (taskParams().taskType == UpgradeTaskType.Software) {
+        createSetNodeStateTask(node, NodeDetails.NodeState.UpgradeSoftware);
         createSoftwareUpgradeTask(node, processType);
       } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
+        createSetNodeStateTask(node, NodeDetails.NodeState.UpdateGFlags);
         createGFlagsUpgradeTask(node, processType);
       }
+      createSetNodeStateTask(node, NodeDetails.NodeState.Running);
     }
   }
 
   public void createSoftwareUpgradeTask(NodeDetails node, UniverseDefinitionTaskBase.ServerType processType) {
-    TaskList taskList = new TaskList("AnsibleUpgradeServer (Download Software) for: " + node.nodeName, executor);
-    taskList.addTask(getTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
+    TaskList taskList = new TaskList("AnsibleConfigureServers (Download Software) for: " + node.nodeName, executor);
+    taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
     taskList.setUserSubTask(UserTaskDetails.SubTaskType.DownloadingSoftware);
     taskListQueue.add(taskList);
 
     createServerControlTask(node, processType, "stop", 0, UserTaskDetails.SubTaskType.DownloadingSoftware);
 
-    taskList = new TaskList("AnsibleUpgradeServer (Install Software) for: " + node.nodeName, executor);
-    taskList.addTask(getTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
+    taskList = new TaskList("AnsibleConfigureServers (Install Software) for: " + node.nodeName, executor);
+    taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
     taskList.setUserSubTask(UserTaskDetails.SubTaskType.InstallingSoftware);
     taskListQueue.add(taskList);
     int sleepMillis = processType == UniverseDefinitionTaskBase.ServerType.MASTER ?
@@ -114,9 +123,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
   public void createGFlagsUpgradeTask(NodeDetails node, UniverseDefinitionTaskBase.ServerType processType) {
     createServerControlTask(node, processType, "stop", 0, UserTaskDetails.SubTaskType.UpdatingGFlags);
 
-    String taskListName = "AnsibleUpgradeServer (GFlags Update) for :" + node.nodeName;
+    String taskListName = "AnsibleConfigureServers (GFlags Update) for :" + node.nodeName;
     TaskList taskList = new TaskList(taskListName, executor);
-    taskList.addTask(getTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
+    taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
     taskList.setUserSubTask(UserTaskDetails.SubTaskType.UpdatingGFlags);
     taskListQueue.add(taskList);
 
@@ -125,11 +134,11 @@ public class UpgradeUniverse extends UniverseTaskBase {
     createServerControlTask(node, processType, "start", sleepMillis, UserTaskDetails.SubTaskType.UpdatingGFlags);
   }
 
-  private AnsibleUpgradeServer getTask(NodeDetails node,
-                                       UniverseDefinitionTaskBase.ServerType processType,
-                                       UpgradeTaskType taskType,
-                                       UpgradeTaskSubType taskSubType) {
-    AnsibleUpgradeServer.Params params = new AnsibleUpgradeServer.Params();
+  private AnsibleConfigureServers getConfigureTask(NodeDetails node,
+                                                   UniverseDefinitionTaskBase.ServerType processType,
+                                                   UpgradeTaskType type,
+                                                   UpgradeTaskSubType taskSubType) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     // Set the cloud name.
     params.cloud = Common.CloudType.aws;
     // Add the node name.
@@ -139,18 +148,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
     // Add the az uuid.
     params.azUuid = node.azUuid;
     // Add task type
-    params.taskType =  taskType;
+    params.type = type;
     params.setProperty("processType", processType.toString());
     params.setProperty("taskSubType", taskSubType.toString());
 
-    if (taskType == UpgradeTaskType.Software) {
-      params.ybServerPkg = taskParams().ybServerPkg;
-    } else if (taskType == UpgradeTaskType.GFlags) {
+    if (type == UpgradeTaskType.Software) {
+      params.ybServerPackage = taskParams().ybServerPackage;
+    } else if (type == UpgradeTaskType.GFlags) {
       params.gflags = taskParams().getGFlagsAsMap();
     }
 
     // Create the Ansible task to get the server info.
-    AnsibleUpgradeServer task = new AnsibleUpgradeServer();
+    AnsibleConfigureServers task = new AnsibleConfigureServers();
     task.initialize(params);
 
     return task;
