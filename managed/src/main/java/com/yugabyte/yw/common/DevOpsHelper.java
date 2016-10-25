@@ -35,8 +35,11 @@ public class DevOpsHelper {
   @Inject
   play.Configuration appConfig;
 
-  private String cloudBaseCommand(Common.CloudType cloud) {
-    return appConfig.getString("yb.devops.home") + YBCLOUD_SCRIPT + " " + cloud;
+  private String cloudBaseCommand(NodeTaskParams nodeTaskParam) {
+    String command = appConfig.getString("yb.devops.home") + YBCLOUD_SCRIPT + " " + nodeTaskParam.cloud;
+    command += " --zone " + nodeTaskParam.getAZ().code;
+    command += " --region " + nodeTaskParam.getRegion().code;
+    return command;
   }
 
   private String getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
@@ -89,11 +92,7 @@ public class DevOpsHelper {
   }
 
   public String nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) throws RuntimeException {
-    String command = cloudBaseCommand(nodeTaskParam.cloud);
-
-    if (nodeTaskParam.cloud == Common.CloudType.aws) {
-      command += " --region " + nodeTaskParam.getRegion().code;
-    }
+    String command = cloudBaseCommand(nodeTaskParam);
 
     command += " instance " + type.toString().toLowerCase();
 

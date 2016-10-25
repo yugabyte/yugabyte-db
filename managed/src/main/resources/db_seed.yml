@@ -8,11 +8,49 @@
 - &provider_aws !!com.yugabyte.yw.models.Provider
     code: aws
     name: Amazon
+- &provider_gcp !!com.yugabyte.yw.models.Provider
+    code: gcp
+    name: Google
 - &provider_dockerlocal !!com.yugabyte.yw.models.Provider
     code: docker
     name: Docker Localhost
 
 # Region
+- &gcp-asia-east1 !!com.yugabyte.yw.models.Region
+    code: asia-east1
+    name: Gcp Asia East 1
+    provider: *provider_gcp
+    latitude: 37.478397
+    longitude: -76.453077
+    ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+- &gcp-europe-west1 !!com.yugabyte.yw.models.Region
+    code: europe-west1
+    name: Gcp Europe West  1
+    provider: *provider_gcp
+    latitude: 36.778261
+    longitude: -119.417932
+    ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+- &gcp-us-central1 !!com.yugabyte.yw.models.Region
+    code: us-central1
+    name: Gcp US Central 1
+    provider: *provider_gcp
+    latitude: 43.804133
+    longitude: -120.554201
+    ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+- &gcp-us-west1 !!com.yugabyte.yw.models.Region
+    code: us-west1
+    name: Gcp US West 1
+    provider: *provider_gcp
+    latitude: 36.778261
+    longitude: -119.417932
+    ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+- &gcp-us-east1 !!com.yugabyte.yw.models.Region
+    code: us-east1
+    name: Gcp US East 1
+    provider: *provider_gcp
+    latitude: 37.478397
+    longitude: -76.453077
+    ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 - &docker-local-region-1 !!com.yugabyte.yw.models.Region
     code: docker-localhost-region-1
     name: Localhost Region US-West
@@ -98,6 +136,81 @@
     ybImage: ami-1052c27c
 
 # Availability Zones
+- &gcp-asia-east1-a !!com.yugabyte.yw.models.AvailabilityZone
+    code: asia-east1-a
+    name: gcp-asia-east1-a
+    region: *gcp-asia-east1
+    subnet: subnet-asia-east1
+- &gcp-asia-east1-b !!com.yugabyte.yw.models.AvailabilityZone
+    code: asia-east1-b
+    name: gcp-asia-east1-b
+    region: *gcp-asia-east1
+    subnet: subnet-asia-east1
+- &gcp-asia-east1-c !!com.yugabyte.yw.models.AvailabilityZone
+    code: asia-east1-c
+    name: gcp-asia-east1-c
+    region: *gcp-asia-east1
+    subnet: subnet-asia-east1
+- &gcp-europe-west1-b !!com.yugabyte.yw.models.AvailabilityZone
+    code: europe-west1-b
+    name: gcp-europe-west1-b
+    region: *gcp-europe-west1
+    subnet: subnet-europe-west1
+- &gcp-europe-west1-c !!com.yugabyte.yw.models.AvailabilityZone
+    code: europe-west1-c
+    name: gcp-europe-west1-c
+    region: *gcp-europe-west1
+    subnet: subnet-europe-west1
+- &gcp-europe-west1-d !!com.yugabyte.yw.models.AvailabilityZone
+    code: europe-west1-d
+    name: gcp-europe-west1-d
+    region: *gcp-europe-west1
+    subnet: subnet-europe-west1
+- &gcp-us-central1-a !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-central1-a
+    name: gcp-us-central1-a
+    region: *gcp-us-central1
+    subnet: subnet-us-central1
+- &gcp-us-central1-b !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-central1-b
+    name: gcp-us-central1-b
+    region: *gcp-us-central1
+    subnet: subnet-us-central1
+- &gcp-us-central1-c !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-central1-c
+    name: gcp-us-central1-c
+    region: *gcp-us-central1
+    subnet: subnet-us-central1
+- &gcp-us-central1-f !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-central1-f
+    name: gcp-us-central1-f
+    region: *gcp-us-central1
+    subnet: subnet-us-central1
+- &gcp-us-east1-b !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-east1-b
+    name: gcp-us-east1-b
+    region: *gcp-us-east1
+    subnet: subnet-us-east1
+- &gcp-us-east1-c !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-east1-c
+    name: gcp-us-east1-c
+    region: *gcp-us-east1
+    subnet: subnet-us-east1
+- &gcp-us-east1-d !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-east1-d
+    name: gcp-us-east1-d
+    region: *gcp-us-east1
+    subnet: subnet-us-east1
+- &gcp-us-west1-a !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-west1-a
+    name: gcp-us-west1-a
+    region: *gcp-us-west1
+    subnet: subnet-us-west1
+- &gcp-us-west1-b !!com.yugabyte.yw.models.AvailabilityZone
+    code: us-west1-b
+    name: gcp-us-west1-b
+    region: *gcp-us-west1
+    subnet: subnet-us-west1
 - &dockerlocal_zone1 !!com.yugabyte.yw.models.AvailabilityZone
     code: docker-local-region-1a
     name: zone-a
@@ -247,6 +360,24 @@
 
 
 # InstanceType
+- &gcp-n1-standard-1 !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: gcp
+      instanceTypeCode: n1-standard-1
+    numCores: 1
+    memSizeGB: 3.75
+    volumeCount: 2
+    volumeSizeGB: 16
+    volumeType: SSD
+- &gcp-n1-standard-8 !!com.yugabyte.yw.models.InstanceType
+    idKey: !!com.yugabyte.yw.models.InstanceTypeKey
+      providerCode: gcp
+      instanceTypeCode: n1-standard-8
+    numCores: 8
+    memSizeGB: 30
+    volumeCount: 2
+    volumeSizeGB: 16
+    volumeType: SSD
 - &docker-local-container-small !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: docker
