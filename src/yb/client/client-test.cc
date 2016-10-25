@@ -31,7 +31,7 @@
 #include "yb/client/row_result.h"
 #include "yb/client/scanner-internal.h"
 #include "yb/client/value.h"
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -1408,7 +1408,7 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
   // Get error
   ASSERT_EQ(session->CountPendingErrors(), 1) << "Should report bad key to error container";
   gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
-  YBWriteOperation* failed_op = error->release_failed_op();
+  YBOperation* failed_op = error->release_failed_op();
   ASSERT_EQ(failed_op, ptr) << "Should be able to retrieve failed operation";
   insert.reset(ptr);
 

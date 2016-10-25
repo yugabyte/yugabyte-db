@@ -19,7 +19,7 @@ namespace integration_tests {
 class RedisTableTest : public RedisTableTestBase {
 };
 
-using client::RedisWriteOp;
+using client::YBRedisWriteOp;
 using client::RedisWriteOpForSetKV;
 using client::YBColumnSchema;
 using client::YBTableCreator;

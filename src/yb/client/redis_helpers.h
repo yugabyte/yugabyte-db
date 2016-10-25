@@ -6,7 +6,7 @@
 #include <string>
 
 class YBTable;
-class RedisWriteOp;
+class YBRedisWriteOp;
 
 namespace yb {
 namespace client {
@@ -14,7 +14,7 @@ namespace client {
 using std::unique_ptr;
 using std::string;
 
-unique_ptr<RedisWriteOp> RedisWriteOpForSetKV(YBTable *table, string key, string value);
+unique_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(YBTable *table, string key, string value);
 
 class RedisConstants {
  public:

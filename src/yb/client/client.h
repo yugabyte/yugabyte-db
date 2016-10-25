@@ -35,7 +35,7 @@
 #else
 #include "yb/client/stubs.h"
 #endif
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -61,7 +61,7 @@ class YBTableAlterer;
 class YBTableCreator;
 class YBTabletServer;
 class YBValue;
-class YBWriteOperation;
+class YBOperation;
 
 namespace internal {
 class Batcher;
@@ -254,7 +254,7 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  sp::shared_ptr<YBSession> NewSession();
+  sp::shared_ptr<YBSession> NewSession(bool read_only = false);
 
   // Return the socket address of the master leader for this client
   Status SetMasterLeaderSocket(Sockaddr* leader_socket);
@@ -472,7 +472,7 @@ class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
   // Create a new write operation for this table. It is the caller's
   // responsibility to free it, unless it is passed to YBSession::Apply().
   YBInsert* NewInsert();
-  RedisWriteOp* NewRedisWrite();
+  YBRedisWriteOp* NewRedisWrite();
   YBUpdate* NewUpdate();
   YBDelete* NewDelete();
 
@@ -584,11 +584,11 @@ class YB_EXPORT YBError {
   const Status& status() const;
 
   // Return the operation which failed.
-  const YBWriteOperation& failed_op() const;
+  const YBOperation& failed_op() const;
 
   // Release the operation that failed. The caller takes ownership. Must only
   // be called once.
-  YBWriteOperation* release_failed_op();
+  YBOperation* release_failed_op();
 
   // In some cases, it's possible that the server did receive and successfully
   // perform the requested operation, but the client can't tell whether or not
@@ -606,7 +606,7 @@ class YB_EXPORT YBError {
   friend class internal::Batcher;
   friend class YBSession;
 
-  YBError(YBWriteOperation* failed_op, const Status& error);
+  YBError(YBOperation* failed_op, const Status& error);
 
   // Owned.
   Data* data_;
@@ -778,7 +778,7 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   // may be retrieved at any time.
   //
   // This is thread safe.
-  Status Apply(YBWriteOperation* write_op) WARN_UNUSED_RESULT;
+  Status Apply(YBOperation* write_op) WARN_UNUSED_RESULT;
 
   // Similar to the above, except never blocks. Even in the flush modes that
   // return immediately, 'cb' is triggered with the result. The callback may be
@@ -786,7 +786,7 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   // same thread which calls ApplyAsync(). 'cb' must remain valid until it called.
   //
   // TODO: not yet implemented.
-  void ApplyAsync(YBWriteOperation* write_op, YBStatusCallback* cb);
+  void ApplyAsync(YBOperation* write_op, YBStatusCallback* cb);
 
   // Flush any pending writes.
   //
@@ -875,6 +875,9 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   friend class YBClient;
   friend class internal::Batcher;
   explicit YBSession(const sp::shared_ptr<YBClient>& client);
+
+  // In case of read_only YBSessions, writes are not allowed. Otherwise, reads are not allowed.
+  bool read_only_;
 
   // Owned.
   Data* data_;

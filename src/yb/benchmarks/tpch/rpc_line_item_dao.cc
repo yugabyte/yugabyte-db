@@ -26,7 +26,7 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/value.h"
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"

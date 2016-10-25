@@ -26,7 +26,7 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"

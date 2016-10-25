@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/client/client.h"
 #include "yb/common/encoded_key.h"
@@ -28,25 +28,25 @@ namespace client {
 
 using sp::shared_ptr;
 
-RowOperationsPB_Type ToInternalWriteType(YBWriteOperation::Type type) {
+RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
   switch (type) {
-    case YBWriteOperation::INSERT: return RowOperationsPB_Type_INSERT;
-    case YBWriteOperation::UPDATE: return RowOperationsPB_Type_UPDATE;
-    case YBWriteOperation::DELETE: return RowOperationsPB_Type_DELETE;
+    case YBOperation::INSERT: return RowOperationsPB_Type_INSERT;
+    case YBOperation::UPDATE: return RowOperationsPB_Type_UPDATE;
+    case YBOperation::DELETE: return RowOperationsPB_Type_DELETE;
     default: LOG(FATAL) << "Unexpected write operation type: " << type;
   }
 }
 
 // WriteOperation --------------------------------------------------------------
 
-YBWriteOperation::YBWriteOperation(const shared_ptr<YBTable>& table)
+YBOperation::YBOperation(const shared_ptr<YBTable>& table)
   : table_(table),
     row_(table->schema().schema_) {
 }
 
-YBWriteOperation::~YBWriteOperation() {}
+YBOperation::~YBOperation() {}
 
-int64_t YBWriteOperation::SizeInBuffer() const {
+int64_t YBOperation::SizeInBuffer() const {
   const Schema* schema = row_.schema();
   int size = 1; // for the operation type
 
@@ -72,27 +72,39 @@ int64_t YBWriteOperation::SizeInBuffer() const {
 // Insert -----------------------------------------------------------------------
 
 YBInsert::YBInsert(const shared_ptr<YBTable>& table)
-  : YBWriteOperation(table) {
+  : YBOperation(table) {
 }
 
 YBInsert::~YBInsert() {}
 
-// RedisWriteOp -----------------------------------------------------------------
+// YBRedisWriteOp -----------------------------------------------------------------
 
-RedisWriteOp::RedisWriteOp(const shared_ptr<YBTable>& table)
-    : YBWriteOperation(table), redis_write_request_(new RedisWriteRequestPB()) {
+YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
+    : YBOperation(table), redis_write_request_(new RedisWriteRequestPB()) {
 }
 
-RedisWriteOp::~RedisWriteOp() {}
+YBRedisWriteOp::~YBRedisWriteOp() {}
 
-std::string RedisWriteOp::ToString() const {
+std::string YBRedisWriteOp::ToString() const {
   return "REDIS_WRITE " + redis_write_request_->set_request().key_value().key();
+}
+
+// YBRedisReadOp -----------------------------------------------------------------
+
+YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
+    : YBOperation(table), redis_read_request_(new RedisReadRequestPB()) {
+}
+
+YBRedisReadOp::~YBRedisReadOp() {}
+
+std::string YBRedisReadOp::ToString() const {
+  return "REDIS_WRITE " + redis_read_request_->get_request().key_value().key();
 }
 
 // Update -----------------------------------------------------------------------
 
 YBUpdate::YBUpdate(const shared_ptr<YBTable>& table)
-  : YBWriteOperation(table) {
+  : YBOperation(table) {
 }
 
 YBUpdate::~YBUpdate() {}
@@ -100,7 +112,7 @@ YBUpdate::~YBUpdate() {}
 // Delete -----------------------------------------------------------------------
 
 YBDelete::YBDelete(const shared_ptr<YBTable>& table)
-  : YBWriteOperation(table) {
+  : YBOperation(table) {
 }
 
 YBDelete::~YBDelete() {}

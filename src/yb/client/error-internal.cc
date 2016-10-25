@@ -21,7 +21,7 @@ namespace yb {
 
 namespace client {
 
-YBError::Data::Data(gscoped_ptr<YBWriteOperation> failed_op,
+YBError::Data::Data(gscoped_ptr<YBOperation> failed_op,
                       const Status& status) :
   failed_op_(failed_op.Pass()),
   status_(status) {

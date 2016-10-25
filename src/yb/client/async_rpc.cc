@@ -6,7 +6,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/write_op-internal.h"
+#include "yb/client/yb_op-internal.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/common/wire_protocol.h"
@@ -262,10 +262,10 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     << "Row " << partition_schema.RowDebugString(row)
     << "not in partition " << partition_schema.PartitionDebugString(partition, *schema);
 #endif
-    if (op->write_op->type() == YBWriteOperation::Type::REDIS_WRITE) {
+    if (op->write_op->type() == YBOperation::Type::REDIS_WRITE) {
       CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
       RedisWriteRequestPB* redis_req = req_.mutable_redis_write_batch()->Add();
-      *redis_req = down_cast<RedisWriteOp&> (*(op->write_op)).request();
+      *redis_req = down_cast<YBRedisWriteOp&> (*(op->write_op)).request();
     } else {
       CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
       enc.Add(ToInternalWriteType(op->write_op->type()), op->write_op->row());

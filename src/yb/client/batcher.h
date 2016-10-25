@@ -38,7 +38,7 @@ namespace client {
 class YBClient;
 class YBSession;
 class YBStatusCallback;
-class YBWriteOperation;
+class YBOperation;
 
 namespace internal {
 
@@ -86,7 +86,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  Status Add(YBWriteOperation* write_op) WARN_UNUSED_RESULT;
+  Status Add(YBOperation* write_op) WARN_UNUSED_RESULT;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending

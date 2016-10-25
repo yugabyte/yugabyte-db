@@ -207,7 +207,7 @@ void Batcher::FlushAsync(YBStatusCallback* cb) {
   FlushBuffersIfReady();
 }
 
-Status Batcher::Add(YBWriteOperation* write_op) {
+Status Batcher::Add(YBOperation* write_op) {
   int64_t required_size = write_op->SizeInBuffer();
   int64_t size_after_adding = buffer_bytes_used_.IncrementBy(required_size);
   if (PREDICT_FALSE(size_after_adding > max_buffer_size_)) {
@@ -444,7 +444,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
                  << rpc.resp().DebugString();
       continue;
     }
-    gscoped_ptr<YBWriteOperation> op = rpc.ops()[err_pb.row_index()]->write_op.Pass();
+    gscoped_ptr<YBOperation> op = rpc.ops()[err_pb.row_index()]->write_op.Pass();
     VLOG(1) << "Error on op " << op->ToString() << ": "
             << err_pb.error().ShortDebugString();
     Status op_status = StatusFromPB(err_pb.error());

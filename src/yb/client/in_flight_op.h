@@ -9,7 +9,7 @@
 namespace yb {
 namespace client {
 
-class YBWriteOperation;
+class YBOperation;
 
 namespace internal {
 
@@ -88,7 +88,7 @@ struct InFlightOp {
   State state;
 
   // The actual operation.
-  gscoped_ptr<YBWriteOperation> write_op;
+  gscoped_ptr<YBOperation> write_op;
 
   std::string partition_key;
 

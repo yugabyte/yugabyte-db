@@ -47,7 +47,7 @@ class WriteRpc;
 class YBClient;
 class YBSchema;
 class YBSchemaBuilder;
-class YBWriteOperation;
+class YBOperation;
 
 class YB_EXPORT YBColumnStorageAttributes {
  public:
@@ -326,7 +326,7 @@ class YB_EXPORT YBSchema {
   friend class YBSchemaBuilder;
   friend class YBTable;
   friend class YBTableCreator;
-  friend class YBWriteOperation;
+  friend class YBOperation;
   friend class internal::GetTableSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::WriteRpc;

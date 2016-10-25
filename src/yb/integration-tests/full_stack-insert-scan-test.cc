@@ -28,7 +28,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/row_result.h"
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"

@@ -43,7 +43,7 @@
 #include "yb/client/table_alterer-internal.h"
 #include "yb/client/table_creator-internal.h"
 #include "yb/client/tablet_server-internal.h"
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/partition.h"
 #include "yb/common/row_operations.h"
@@ -540,8 +540,9 @@ Status YBClient::OpenTable(const string& table_name, shared_ptr<YBTable>* table)
   return Status::OK();
 }
 
-shared_ptr<YBSession> YBClient::NewSession() {
+shared_ptr<YBSession> YBClient::NewSession(bool read_only) {
   shared_ptr<YBSession> ret(new YBSession(shared_from_this()));
+  ret->read_only_ = read_only;
   ret->data_->Init(ret);
   return ret;
 }
@@ -780,8 +781,8 @@ YBInsert* YBTable::NewInsert() {
   return new YBInsert(shared_from_this());
 }
 
-RedisWriteOp* YBTable::NewRedisWrite() {
-  return new RedisWriteOp(shared_from_this());
+YBRedisWriteOp* YBTable::NewRedisWrite() {
+  return new YBRedisWriteOp(shared_from_this());
 }
 
 YBUpdate* YBTable::NewUpdate() {
@@ -827,11 +828,11 @@ const Status& YBError::status() const {
   return data_->status_;
 }
 
-const YBWriteOperation& YBError::failed_op() const {
+const YBOperation& YBError::failed_op() const {
   return *data_->failed_op_;
 }
 
-YBWriteOperation* YBError::release_failed_op() {
+YBOperation* YBError::release_failed_op() {
   CHECK_NOTNULL(data_->failed_op_.get());
   return data_->failed_op_.release();
 }
@@ -841,9 +842,9 @@ bool YBError::was_possibly_successful() const {
   return true;
 }
 
-YBError::YBError(YBWriteOperation* failed_op,
+YBError::YBError(YBOperation* failed_op,
                      const Status& status)
-  : data_(new YBError::Data(gscoped_ptr<YBWriteOperation>(failed_op),
+  : data_(new YBError::Data(gscoped_ptr<YBOperation>(failed_op),
                               status)) {
 }
 
@@ -945,7 +946,7 @@ bool YBSession::HasPendingOperations() const {
   return false;
 }
 
-Status YBSession::Apply(YBWriteOperation* write_op) {
+Status YBSession::Apply(YBOperation* write_op) {
   if (!write_op->row().IsKeySet()) {
     Status status = STATUS(IllegalState, "Key not specified", write_op->ToString());
     data_->error_collector_->AddError(gscoped_ptr<YBError>(

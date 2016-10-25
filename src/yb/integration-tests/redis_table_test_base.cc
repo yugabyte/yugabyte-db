@@ -17,7 +17,7 @@ namespace yb {
 namespace integration_tests {
 
 using client::RedisConstants;
-using client::RedisWriteOp;
+using client::YBRedisWriteOp;
 using client::RedisWriteOpForSetKV;
 using client::YBColumnSchema;
 using client::YBTableCreator;

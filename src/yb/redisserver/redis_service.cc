@@ -25,7 +25,7 @@ namespace yb {
 namespace redisserver {
 
 using yb::client::RedisConstants;
-using yb::client::RedisWriteOp;
+using yb::client::YBRedisWriteOp;
 using yb::client::RedisWriteOpForSetKV;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;

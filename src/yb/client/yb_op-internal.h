@@ -17,14 +17,14 @@
 #ifndef YB_CLIENT_WRITE_OP_INTERNAL_H
 #define YB_CLIENT_WRITE_OP_INTERNAL_H
 
-#include "yb/client/write_op.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/wire_protocol.pb.h"
 
 namespace yb {
 
 namespace client {
 
-RowOperationsPB_Type ToInternalWriteType(YBWriteOperation::Type type);
+RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type);
 
 } // namespace client
 } // namespace yb

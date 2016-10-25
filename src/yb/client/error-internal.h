@@ -26,10 +26,10 @@ namespace client {
 
 class YBError::Data {
  public:
-  Data(gscoped_ptr<YBWriteOperation> failed_op, const Status& error);
+  Data(gscoped_ptr<YBOperation> failed_op, const Status& error);
   ~Data();
 
-  gscoped_ptr<YBWriteOperation> failed_op_;
+  gscoped_ptr<YBOperation> failed_op_;
   Status status_;
 
   DISALLOW_COPY_AND_ASSIGN(Data);

@@ -44,7 +44,7 @@ using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBValue;
-using client::YBWriteOperation;
+using client::YBOperation;
 using client::sp::shared_ptr;
 using std::make_pair;
 using std::map;
@@ -358,7 +358,7 @@ struct MirrorTable {
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(15 * 1000);
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    gscoped_ptr<YBWriteOperation> op;
+    gscoped_ptr<YBOperation> op;
     switch (op_type) {
       case INSERT: op.reset(table->NewInsert()); break;
       case UPDATE: op.reset(table->NewUpdate()); break;
