@@ -146,6 +146,13 @@ readonly RED_COLOR="\033[0;31m"
 readonly CYAN_COLOR="\033[0;36m"
 readonly NO_COLOR="\033[0m"
 
+# We first use this to find ephemeral drives.
+readonly EPHEMERAL_DRIVES_GLOB="/mnt/ephemeral* /mnt/d*"
+
+# We then filter the drives found using this.
+# The way we use this regex we expect it NOT to be anchored in the end.
+readonly EPHEMERAL_DRIVES_FILTER_REGEX="^/mnt/(ephemeral|d)[0-9]+"  # No "$" in the end.
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -216,13 +223,25 @@ normalize_build_type() {
 # Sets the build directory based on the given build type (the build_type variable) and the value of
 # the YB_COMPILER_TYPE environment variable.
 set_build_root() {
+
+  if [[ ${1:-} == "--no-readonly" ]]; then
+    local -r make_build_root_readonly=false
+    shift
+  else
+    local -r make_build_root_readonly=true
+  fi
+
   expect_num_args 0 "$@"
   normalize_build_type
   readonly build_type
 
   validate_compiler_type "$YB_COMPILER_TYPE"
   determine_linking_type
-  readonly BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE-$YB_LINK
+  BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE-$YB_LINK
+
+  if "$make_build_root_readonly"; then
+    readonly BUILD_ROOT
+  fi
 }
 
 determine_linking_type() {
@@ -463,6 +482,51 @@ build_yb_java_code_with_retries() {
     let attempt+=1
   done
   return 1
+}
+
+# Create a directory on an ephemeral drive and link it into the given target location. If there are
+# no ephemeral drives, create the directory in place.
+# Parameters:
+#   target_path - The target path to create the directory or symlink at.
+#   directory_identifier - A unique identifier that will be used in naming the new directory
+#                          created on an ephemeral drive.
+create_dir_on_ephemeral_drive() {
+  expect_num_args 2 "$@"
+  local target_path=$1
+  local directory_identifier=$2
+
+  if [[ -z ${num_ephemeral_drives:-} ]]; then
+    # Collect available ephemeral drives. This is only done once.
+    local ephemeral_mountpoint
+    # EPHEMERAL_DRIVES_FILTER_REGEX is not supposed to be anchored in the end, so we need to add
+    # a "$" to filter ephemeral mountpoints correctly.
+    for ephemeral_mountpoint in $EPHEMERAL_DRIVES_GLOB; do
+      if [[ -d $ephemeral_mountpoint &&
+            $ephemeral_mountpoint =~ $EPHEMERAL_DRIVES_FILTER_REGEX$ ]]; then
+        ephemeral_drives+=( "$ephemeral_mountpoint" )
+      fi
+    done
+
+    declare -r -i num_ephemeral_drives=${#ephemeral_drives[@]}  # "-r -i" means readonly integer.
+  fi
+
+  if [[ $num_ephemeral_drives -eq 0 ]]; then
+    log "No ephemeral drives found, created directory '$target_path' in place."
+    mkdir_safe "$target_path"
+  else
+    local random_drive=${ephemeral_drives[$RANDOM % $num_ephemeral_drives]}
+    local actual_dir=$random_drive/${USER}__$jenkins_job_and_build/$directory_identifier
+    mkdir_safe "$actual_dir"
+
+    # Create the parent directory that we'll be creating a link in, if necessary.
+    if [[ ! -d ${target_path%/*} ]]; then
+      log "Directory $target_path does not exist, creating it before creating a symlink inside."
+      mkdir_safe "${target_path%/*}"
+    fi
+
+    ln -s "$actual_dir" "$target_path"
+    log "Created '$target_path' as a symlink to an ephemeral drive location '$actual_dir'."
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

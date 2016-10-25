@@ -4,7 +4,7 @@
 
 # Common bash code for test scripts/
 
-if [ "$BASH_SOURCE" == "$0" ]; then
+if [[ $BASH_SOURCE == $0 ]]; then
   echo "$BASH_SOURCE must be sourced, not executed" >&2
   exit 1
 fi
@@ -47,8 +47,10 @@ GDB_CORE_BACKTRACE_CMD_PREFIX=( gdb -q -n -ex bt -batch )
 DEFAULT_TEST_TIMEOUT_SEC=600
 INCREASED_TEST_TIMEOUT_SEC=1200
 
-EPHEMERAL_DRIVES_GLOB="/mnt/ephemeral* /mnt/d*"  # We first use this to find ephemeral drives.
-EPHEMERAL_DRIVES_FILTER_REGEX="/(ephemeral|d)[0-9]+$"  # We then filter the drives found using this.
+# We grep for these log lines and show them in the main log on test failure. This regular expression
+# is used with egrep.
+readonly RELEVANT_LOG_LINES_RE=\
+'^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|: Failure$'
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -382,28 +384,12 @@ prepare_for_running_test() {
   local test_name_sanitized=$( sanitize_for_path "$test_name" )
 
   # If there are ephermeral drives, pick a random one for this test and create a symlink from
-  # $BUILD_ROOT/yb-test-logs/<testname> to /mnt/<drive>/test-workspace/<testname>.
+  # $BUILD_ROOT/yb-test-logs/<testname> to
+  # /mnt/<drive>/<some_unique_path>/test-workspace/<testname>.
   # Otherwise, simply create the directory under $BUILD_ROOT/yb-test-logs.
   test_dir="$YB_TEST_LOG_ROOT_DIR/$test_binary_sanitized"
   if [[ ! -d $test_dir ]]; then
-    local ephemeral_drives=()
-    local ephemeral_mountpoint
-    for ephemeral_mountpoint in $EPHEMERAL_DRIVES_GLOB; do
-      if [[ -d $ephemeral_mountpoint &&
-            $ephemeral_mountpoint =~ $EPHEMERAL_DRIVES_FILTER_REGEX ]]; then
-        ephemeral_drives+=( "$ephemeral_mountpoint" )
-      fi
-    done
-
-    local -r -i num_ephemeral_drives=${#ephemeral_drives[@]}  # "-r -i" means readonly integer.
-    if [[ $num_ephemeral_drives -eq 0 ]]; then
-      mkdir_safe "$test_dir"
-    else
-      local random_drive=${ephemeral_drives[$RANDOM % $num_ephemeral_drives]}
-      local actual_test_dir=$random_drive/test-workspace/$test_binary_sanitized
-      mkdir_safe "$actual_test_dir"
-      ln -s "$actual_test_dir" "$test_dir"
-    fi
+    create_dir_on_ephemeral_drive "$test_dir" "test-workspace/$test_binary_sanitized"
   fi
 
   rel_test_log_path_prefix="$test_binary_sanitized"
@@ -674,18 +660,19 @@ handle_test_failure() {
       echo "Test command: ${test_cmd_line[@]}"
       echo "Test exit status: $test_exit_code"
       echo "Log path: $test_log_path"
-      if [ -n "${BUILD_URL:-}" ]; then
-        if [ -z "${test_log_url_prefix:-}" ]; then
+      if [[ -n ${BUILD_URL:-} ]]; then
+        if [[ -z ${test_log_url_prefix:-} ]]; then
           fatal "Expected test_log_url_prefix to be set if BUILD_URL is defined"
         fi
         # Produce a URL like
         # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
         echo "Log URL: $test_log_url_prefix/$rel_test_log_path_prefix.log"
       fi
-      if [[ -f "$test_log_path" ]]; then
-        echo "Relevant log lines:"
-        egrep "^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|: Failure$" \
-              "$test_log_path"
+      if [[ -f $test_log_path ]]; then
+        if egrep -q "$RELEVANT_LOG_LINES_RE" "$test_log_path"; then
+          echo "Relevant log lines:"
+          egrep "$RELEVANT_LOG_LINES_RE" "$test_log_path"
+        fi
       fi
     ) >&2
     core_dir=$TEST_TMPDIR
@@ -831,10 +818,50 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep -q 'Segmentation fault: ' "$log_path"; then
+  if egrep -q 'Segmentation fault: ' "$log_path"; then
     log 'Segmentation fault'
     return 1
   fi
+
+  # When signals show up in the test log, that's usually not good. We can see how many of these we
+  # get and gradually prune false positives.
+  local signal_str
+  for signal_str in \
+      SIGHUP \
+      SIGINT \
+      SIGQUIT \
+      SIGILL \
+      SIGTRAP \
+      SIGIOT \
+      SIGBUS \
+      SIGFPE \
+      SIGKILL \
+      SIGUSR1 \
+      SIGSEGV \
+      SIGUSR2 \
+      SIGPIPE \
+      SIGALRM \
+      SIGTERM \
+      SIGSTKFLT \
+      SIGCHLD \
+      SIGCONT \
+      SIGSTOP \
+      SIGTSTP \
+      SIGTTIN \
+      SIGTTOU \
+      SIGURG \
+      SIGXCPU \
+      SIGXFSZ \
+      SIGVTALRM \
+      SIGPROF \
+      SIGWINCH \
+      SIGIO \
+      SIGPWR; do
+    if grep -q " $signal_str " "$log_path"; then
+      log "Caught signal: $signal_str"
+      return 1
+    fi
+  done
 
   if grep -q 'Check failed: ' "$log_path"; then
     log 'Check failed'
@@ -889,3 +916,5 @@ if is_mac; then
 else
   STACK_TRACE_FILTER=$YB_SRC_ROOT/build-support/stacktrace_addr2line.pl
 fi
+
+readonly jenkins_job_and_build=${JOB_NAME:-unknown_job}__${BUILD_NUMBER:-unknown_build}

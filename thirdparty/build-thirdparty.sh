@@ -35,9 +35,32 @@
 #   * EXTRA_LDFLAGS - additional flags passed to the linker.
 #   * EXTRA_LIBS - additional libraries to link.
 
-# TODO: also enable -u
+# Portions Copyright (c) YugaByte, Inc.
 
+# TODO: also enable -u
 set -eo pipefail
+
+if [[ -n ${CC:-} ]]; then
+  echo "Unsetting CC for third-party build (was set to '$CC')." >&2
+  unset CC
+fi
+
+if [[ -n ${CXX:-} ]]; then
+  echo "Unsetting CXX for third-party build (was set to '$CXX')." >&2
+  unset CXX
+fi
+
+if [[ -n ${YB_BUILD_THIRDPARTY_DUMP_ENV:-} ]]; then
+  echo >&2
+  echo >&2 "--------------------------------------------------------------------------------------"
+  echo >&2 "Environment of ${BASH_SOURCE##*/}:"
+  echo >&2 "--------------------------------------------------------------------------------------"
+  echo >&2
+  env >&2
+  echo >&2
+  echo >&2 "--------------------------------------------------------------------------------------"
+  echo >&2
+fi
 
 wrap_build_output() {
   local args=( "$@" )
@@ -55,6 +78,44 @@ YB_SRC_ROOT=$( cd "$TP_DIR"/.. && pwd )
 source "$TP_DIR/vars.sh"
 source "$TP_DIR/build-definitions.sh"
 source "$TP_DIR/thirdparty-packaging-common.sh"
+
+F_ALL=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-prebuilt)
+      export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
+      echo "--no-prebuilt is specified, will not download prebuilt third-party dependencies." >&2
+    ;;
+
+    "cmake")        F_ALL=""; F_CMAKE=1 ;;
+    "gflags")       F_ALL=""; F_GFLAGS=1 ;;
+    "glog")         F_ALL=""; F_GLOG=1 ;;
+    "gmock")        F_ALL=""; F_GMOCK=1 ;;
+    "gperftools")   F_ALL=""; F_GPERFTOOLS=1 ;;
+    "libev")        F_ALL=""; F_LIBEV=1 ;;
+    "lz4")          F_ALL=""; F_LZ4=1 ;;
+    "bitshuffle")   F_ALL=""; F_BITSHUFFLE=1;;
+    "protobuf")     F_ALL=""; F_PROTOBUF=1 ;;
+    "rapidjson")    F_ALL=""; F_RAPIDJSON=1 ;;
+    "snappy")       F_ALL=""; F_SNAPPY=1 ;;
+    "zlib")         F_ALL=""; F_ZLIB=1 ;;
+    "squeasel")     F_ALL=""; F_SQUEASEL=1 ;;
+    "gsg")          F_ALL=""; F_GSG=1 ;;
+    "gcovr")        F_ALL=""; F_GCOVR=1 ;;
+    "curl")         F_ALL=""; F_CURL=1 ;;
+    "crcutil")      F_ALL=""; F_CRCUTIL=1 ;;
+    "libunwind")    F_ALL=""; F_LIBUNWIND=1 ;;
+    "llvm")         F_ALL=""; F_LLVM=1 ;;
+    "libstdcxx")    F_ALL=""; F_LIBSTDCXX=1 ;;
+    "trace-viewer") F_ALL=""; F_TRACE_VIEWER=1 ;;
+    "nvml")         F_ALL=""; F_NVML=1 ;;
+    *)
+      echo "Invalid option: $1" >&2
+      exit 1
+  esac
+  shift
+done
 
 if download_prebuilt_thirdparty_deps; then
   echo "Using prebuilt third-party code, skipping the build"
@@ -125,41 +186,6 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 else
   echo Unsupported platform $OSTYPE
   exit 1
-fi
-
-################################################################################
-
-if [ "$#" = "0" ]; then
-  F_ALL=1
-else
-  # Allow passing specific libs to build on the command line
-  for arg in "$*"; do
-    case $arg in
-      "cmake")      F_CMAKE=1 ;;
-      "gflags")     F_GFLAGS=1 ;;
-      "glog")       F_GLOG=1 ;;
-      "gmock")      F_GMOCK=1 ;;
-      "gperftools") F_GPERFTOOLS=1 ;;
-      "libev")      F_LIBEV=1 ;;
-      "lz4")        F_LZ4=1 ;;
-      "bitshuffle") F_BITSHUFFLE=1;;
-      "protobuf")   F_PROTOBUF=1 ;;
-      "rapidjson")  F_RAPIDJSON=1 ;;
-      "snappy")     F_SNAPPY=1 ;;
-      "zlib")       F_ZLIB=1 ;;
-      "squeasel")   F_SQUEASEL=1 ;;
-      "gsg")        F_GSG=1 ;;
-      "gcovr")      F_GCOVR=1 ;;
-      "curl")       F_CURL=1 ;;
-      "crcutil")    F_CRCUTIL=1 ;;
-      "libunwind")  F_LIBUNWIND=1 ;;
-      "llvm")       F_LLVM=1 ;;
-      "libstdcxx")  F_LIBSTDCXX=1 ;;
-      "trace-viewer") F_TRACE_VIEWER=1 ;;
-      "nvml")       F_NVML=1 ;;
-      *)            echo "Unknown module: $arg"; exit 1 ;;
-    esac
-  done
 fi
 
 ################################################################################

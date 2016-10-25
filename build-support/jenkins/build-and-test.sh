@@ -56,7 +56,7 @@ set -e
 # This bash setting ensures that the script exits if the build fails.
 set -o pipefail
 
-. "${0%/*}/../common-test-env.sh"
+. "${BASH_SOURCE%/*}/../common-test-env.sh"
 
 MAX_NUM_PARALLEL_TESTS=3
 
@@ -90,7 +90,8 @@ BUILD_TYPE=$build_type
 readonly BUILD_TYPE
 
 set_cmake_build_type_and_compiler_type
-set_build_root
+
+set_build_root --no-readonly
 
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
@@ -104,8 +105,27 @@ CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
 # archive the test logs from the previous run, thinking they came from
 # this run, and confuse us when we look at the failed build.
 
+
+if [[ -h $BUILD_ROOT ]]; then
+  build_root_real_path=$( readlink "$BUILD_ROOT" )
+  log "BUILD_ROOT ('$BUILD_ROOT') is a symlink to '$build_root_real_path'"
+  # EPHEMERAL_DRIVES_FILTER_REGEX is not supposed to be anchored in the end, so we can add a "/".
+  if [[ $build_root_real_path =~ $EPHEMERAL_DRIVES_FILTER_REGEX/ ]]; then
+    log "Deleting '$build_root_real_path' because it is on an ephemeral drive."
+    rm -rf "$build_root_real_path"
+  else
+    log "Not deleting '$build_root_real_path' because it is not on an ephemeral drive."
+  fi
+fi
+
+log "Deleting BUILD_ROOT ('$BUILD_ROOT')."
 rm -rf "$BUILD_ROOT"
-mkdir -p "$BUILD_ROOT"
+
+create_dir_on_ephemeral_drive "$BUILD_ROOT" "build/${BUILD_ROOT##*/}"
+
+# Now make BUILD_ROOT actually point to the target of the build link
+BUILD_ROOT=$( readlink "$BUILD_ROOT" )
+readonly BUILD_ROOT
 
 #
 # Create or clean (if already present) a "test-workspace" directory
@@ -237,7 +257,7 @@ if [ "$BUILD_CPP" == "1" ]; then
   time make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | tee build.log
   log "Finished building C++ code (see timing information above)"
 
-  if [ -h "$LATEST_BUILD_LINK" ]; then
+  if [[ -h $LATEST_BUILD_LINK ]]; then
     # This helps prevent Jenkins from showing every test twice in test results.
     unlink "$LATEST_BUILD_LINK"
   fi
@@ -277,7 +297,7 @@ if [ "$BUILD_CPP" == "1" ]; then
   fi
 fi
 
-if [ "$BUILD_JAVA" == "1" ]; then
+if [[ $BUILD_JAVA == "1" ]]; then
   # Disk usage might have changed after the C++ build.
   show_disk_usage
 
@@ -308,7 +328,7 @@ if [ "$BUILD_JAVA" == "1" ]; then
 fi
 
 
-if [ "$BUILD_PYTHON" == "1" ]; then
+if [[ $BUILD_PYTHON == "1" ]]; then
   show_disk_usage
 
   echo
@@ -345,7 +365,7 @@ fi
 
 set -e
 
-if [ -n "$FAILURES" ]; then
+if [[ -n $FAILURES ]]; then
   echo Failure summary
   echo ------------------------------------------------------------
   echo $FAILURES

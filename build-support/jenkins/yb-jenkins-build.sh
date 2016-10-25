@@ -53,20 +53,18 @@ echo "Build type: ${BUILD_TYPE}";
 
 set_compiler_type_based_on_jenkins_job_name
 
-if "$delete_arc_patch_branches"; then
-  echo "Deleting branches starting with 'arcpatch-D'"
-  current_branch=$( git rev-parse --abbrev-ref HEAD )
-  for branch_name in $( git for-each-ref --format="%(refname)" refs/heads/ ); do
-    branch_name=${branch_name#refs/heads/}
-    if [[ "$branch_name" =~ ^arcpatch-D ]]; then
-      if [ "$branch_name" == "$current_branch" ]; then
-        echo "'$branch_name' is the current branch, not deleting."
-      else
-        ( set -x; git branch -D "$branch_name" )
-      fi
+echo "Deleting branches starting with 'arcpatch-D'"
+current_branch=$( git rev-parse --abbrev-ref HEAD )
+for branch_name in $( git for-each-ref --format="%(refname)" refs/heads/ ); do
+  branch_name=${branch_name#refs/heads/}
+  if [[ "$branch_name" =~ ^arcpatch-D ]]; then
+    if [ "$branch_name" == "$current_branch" ]; then
+      echo "'$branch_name' is the current branch, not deleting."
+    else
+      ( set -x; git branch -D "$branch_name" )
     fi
-  done
-fi
+  fi
+done
 
 if [ -n "${YB_NUM_TESTS_TO_RUN:-}" ]; then
 
