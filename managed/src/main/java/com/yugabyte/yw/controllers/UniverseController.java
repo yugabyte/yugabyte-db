@@ -139,6 +139,12 @@ public class UniverseController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
       }
 
+      // Set the provider code.
+      String providerCode =
+          Provider.find.byId(UUID.fromString(taskParams.userIntent.provider)).code;
+      taskParams.userIntent.providerType = CloudType.valueOf(providerCode);
+
+
       // Get the universe. This makes sure that a universe of this name does exist
       // for this customer id.
       Universe universe = Universe.get(universeUUID);

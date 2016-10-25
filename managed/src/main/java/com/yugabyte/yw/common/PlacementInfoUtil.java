@@ -60,7 +60,7 @@ public class PlacementInfoUtil {
     taskParams.universeUUID = universe.universeUUID;
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix = Long.toString(customerId) + "-" + universe.name;
+    taskParams.nodePrefix = "node-" + Long.toString(customerId) + "-" + universe.name;
 
     // Save the universe version to check for ops like edit universe as we did not lock the
     // universe and might get overwritten when this operation is finally run.
