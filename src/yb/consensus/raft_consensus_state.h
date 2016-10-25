@@ -277,6 +277,9 @@ class ReplicaState {
   // to complete. This does not cancel transactions being applied.
   Status CancelPendingTransactions();
 
+  // API to dump pending transactions. Added to debug ENG-520.
+  void DumpPendingTransactions();
+
   void NewIdUnlocked(OpId* id);
 
   // Used when, for some reason, an operation that failed before it could be considered
@@ -366,4 +369,4 @@ class ReplicaState {
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_RAFT_CONSENSUS_STATE_H */
+#endif // YB_CONSENSUS_RAFT_CONSENSUS_STATE_H_

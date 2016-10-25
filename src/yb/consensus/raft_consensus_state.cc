@@ -269,6 +269,10 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
 
   *term_mismatch = false;
 
+  if (cmeta_ == nullptr) {
+    LOG(FATAL) << "cmeta_ cannot be NULL";
+  }
+
   int64_t committed_index = GetCommittedOpIdUnlocked().index();
   if (op_id.index() <= committed_index) {
     return true;
@@ -280,9 +284,14 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
   }
 
   scoped_refptr<ConsensusRound> round = GetPendingOpByIndexOrNullUnlocked(op_id.index());
-  DCHECK(round) << "(consensus round not found for op id " << op_id << ": "
-      << "committed_index=" << committed_index << ", "
-      << "last_received_index=" << last_received_index << ")";
+  if (round == nullptr) {
+    LOG(ERROR) << "Consensus round not found for op id " << op_id << ": "
+               << "committed_index=" << committed_index << ", "
+               << "last_received_index=" << last_received_index << ". Current state:"
+               << ToStringUnlocked();
+    DumpPendingTransactions();
+    CHECK(false);
+  }
 
   if (round->id().term() != op_id.term()) {
     *term_mismatch = true;
@@ -353,6 +362,15 @@ const string& ReplicaState::GetPeerUuid() const {
 
 const ConsensusOptions& ReplicaState::GetOptions() const {
   return options_;
+}
+
+void ReplicaState::DumpPendingTransactions() {
+  UniqueLock lock(update_lock_);
+
+  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_txns_.size() << " pending transactions.";
+  for (const auto& txn : pending_txns_) {
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << txn.second->replicate_msg()->ShortDebugString();
+  }
 }
 
 Status ReplicaState::CancelPendingTransactions() {
@@ -713,9 +731,10 @@ string ReplicaState::ToStringUnlocked() const {
                       peer_uuid_, state_,
                       RaftPeerPB::Role_Name(GetActiveRoleUnlocked()));
 
-  SubstituteAndAppend(&ret, "Watermarks: {Received: $0 Committed: $1}\n",
+  SubstituteAndAppend(&ret, "Watermarks: {Received: $0 Committed: $1} Leader: $2\n",
                       last_received_op_id_.ShortDebugString(),
-                      last_committed_index_.ShortDebugString());
+                      last_committed_index_.ShortDebugString(),
+                      last_received_op_id_current_leader_.ShortDebugString());
   return ret;
 }
 
