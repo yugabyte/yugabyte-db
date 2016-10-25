@@ -165,6 +165,41 @@ static CompactionPolicy *CreateCompactionPolicy() {
 }
 
 ////////////////////////////////////////////////////////////
+// LargestFlushedSeqNumCollector
+////////////////////////////////////////////////////////////
+
+class LargestFlushedSeqNumCollector : public rocksdb::EventListener {
+ public:
+  explicit LargestFlushedSeqNumCollector(const string& tablet_id)
+      : largest_seqno_(0), tablet_id_(tablet_id) {}
+
+  ~LargestFlushedSeqNumCollector() {}
+
+  virtual void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& info) override {
+    SetLargestSeqNum(info.largest_seqno);
+    VLOG(1) << "RocksDB flushed up to seqno = " << info.largest_seqno
+            << " for tablet " << tablet_id_;
+  }
+
+  void SetLargestSeqNum(SequenceNumber largest_seqno) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (largest_seqno > largest_seqno_) {
+      largest_seqno_ = largest_seqno;
+    }
+  }
+
+  SequenceNumber GetLargestSeqNum() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return largest_seqno_;
+  }
+
+ private:
+  SequenceNumber largest_seqno_;
+  std::mutex mutex_;
+  std::string tablet_id_;
+};
+
+////////////////////////////////////////////////////////////
 // TabletComponents
 ////////////////////////////////////////////////////////////
 
@@ -200,6 +235,11 @@ Tablet::Tablet(
       shutdown_requested_(false) {
   CHECK(schema()->has_column_ids());
   compaction_policy_.reset(CreateCompactionPolicy());
+
+  if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
+    largest_flushed_seqno_collector_ =
+        std::make_shared<LargestFlushedSeqNumCollector>(metadata_->table_id());
+  }
 
   if (metric_registry) {
     MetricEntity::AttributeMap attrs;
@@ -266,6 +306,7 @@ Status Tablet::OpenKeyValueTablet() {
   table_options.block_cache = block_cache_;
   table_options.block_size = FLAGS_db_block_size_bytes;
   rocksdb_options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+  rocksdb_options.listeners.emplace_back(largest_flushed_seqno_collector_);
 
   const string db_dir = metadata()->rocksdb_dir();
   LOG(INFO) << "Creating RocksDB database in dir " << db_dir;
@@ -278,7 +319,7 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(rocksdb_options, db_dir, &db);
   if (!rocksdb_open_status.ok()) {
     LOG(ERROR) << "Failed to open a RocksDB database in directory " << db_dir << ": "
-    << rocksdb_open_status.ToString();
+               << rocksdb_open_status.ToString();
     if (db != nullptr) {
       delete db;
     }
@@ -286,6 +327,7 @@ Status Tablet::OpenKeyValueTablet() {
   }
   rocksdb_.reset(db);
   LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
+  largest_flushed_seqno_collector_->SetLargestSeqNum(MaxPersistentSequenceNumber());
   return Status::OK();
 }
 
@@ -790,6 +832,9 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
                                         uint64_t raft_index,
                                         const Timestamp timestamp) {
   DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  if (put_batch.kv_pairs_size() == 0) {
+    return;
+  }
 
   WriteBatch rocksdb_write_batch;
 
@@ -1608,6 +1653,11 @@ SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
   return max_seqno;
 }
 
+SequenceNumber Tablet::LargestFlushedSequenceNumber() const {
+  DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  return largest_flushed_seqno_collector_->GetLargestSeqNum();
+}
+
 Status Tablet::FlushMetadata(const RowSetVector& to_remove,
                              const RowSetMetadataVector& to_add,
                              int64_t mrs_being_flushed) {
@@ -2140,6 +2190,9 @@ int64_t Tablet::GetLogRetentionSizeForIndex(int64_t min_log_index,
 }
 
 Status Tablet::FlushBiggestDMS() {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    return Status::OK();
+  }
   CHECK_EQ(state_, kOpen);
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);

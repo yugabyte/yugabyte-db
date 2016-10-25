@@ -81,6 +81,7 @@ namespace tablet {
 
 class AlterSchemaTransactionState;
 class CompactionPolicy;
+class LargestFlushedSeqNumCollector;
 class MemRowSet;
 class MvccSnapshot;
 struct RowOp;
@@ -438,6 +439,8 @@ class Tablet {
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }
 
+  rocksdb::SequenceNumber LargestFlushedSequenceNumber() const;
+
   static const char* kDMSMemTrackerId;
 
  private:
@@ -672,6 +675,8 @@ class Tablet {
   //
   // This is marked mutable because read path member functions (which are const) are using this.
   mutable yb::util::PendingOperationCounter pending_op_counter_;
+
+  std::shared_ptr<LargestFlushedSeqNumCollector> largest_flushed_seqno_collector_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

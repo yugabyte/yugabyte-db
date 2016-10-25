@@ -472,6 +472,10 @@ void TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
       *min_index = std::min(*min_index, tx_op_id.index());
     }
   }
+
+  if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
+    *min_index = std::min(*min_index, static_cast<int64>(tablet_->LargestFlushedSequenceNumber()));
+  }
 }
 
 Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {

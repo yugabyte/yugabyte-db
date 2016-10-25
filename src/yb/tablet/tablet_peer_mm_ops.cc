@@ -212,7 +212,6 @@ void LogGCOp::UpdateStats(MaintenanceOpStats* stats) {
   if (!tablet_peer_->GetGCableDataSize(&retention_size).ok()) {
     return;
   }
-
   stats->set_logs_retained_bytes(retention_size);
   stats->set_runnable(sem_.GetValue() == 1);
 }

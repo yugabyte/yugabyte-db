@@ -160,7 +160,6 @@ Status LogReader::Init(const string& tablet_wal_path) {
   // Sort the segments by sequence number.
   std::sort(read_segments.begin(), read_segments.end(), LogSegmentSeqnoComparator());
 
-
   {
     std::lock_guard<simple_spinlock> lock(lock_);
 
