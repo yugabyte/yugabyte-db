@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
 public class RollingRestartParams extends UniverseTaskParams {
@@ -27,7 +27,7 @@ public class RollingRestartParams extends UniverseTaskParams {
   public UpgradeUniverse.UpgradeTaskType taskType;
 
   // The software package to install. Do not set this value if no software needs to be installed.
-  public String ybServerPkg;
+  public String ybServerPackage;
 
   // The new gflag values to update on the desired set of nodes.
   public List<GFlag> gflags;

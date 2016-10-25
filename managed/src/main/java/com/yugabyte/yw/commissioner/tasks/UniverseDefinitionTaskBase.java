@@ -188,7 +188,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
-      params.ybServerPkg = taskParams().userIntent.ybServerPackage;
+      params.ybServerPackage = taskParams().userIntent.ybServerPackage;
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);

@@ -204,4 +204,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     taskListQueue.add(taskList);
   }
+
+  /**
+   * Create task to update the state of single node.
+   *
+   * @param node node for which we need to update the state
+   * @param nodeState State into which these nodes will be transitioned.
+   */
+  public void createSetNodeStateTask(NodeDetails node, NodeDetails.NodeState nodeState) {
+    TaskList taskList = new TaskList("SetNodeState", executor);
+    SetNodeState.Params params = new SetNodeState.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.nodeName = node.nodeName;
+    params.state = nodeState;
+    SetNodeState task = new SetNodeState();
+    task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+  }
 }

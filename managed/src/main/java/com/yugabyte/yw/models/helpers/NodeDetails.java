@@ -29,9 +29,9 @@ public class NodeDetails {
     // Set after the YB software installed and some basic configuration done on a provisioned node.
     SoftwareInstalled,
     // Set after the YB software is upgraded via Rolling Restart.
-    UpgradingSoftware,
+    UpgradeSoftware,
     // Set after the YB specific GFlags are updated via Rolling Restart.
-    UpdatingGFlags,
+    UpdateGFlags,
     // Set after all the services (master, tserver, etc) on a node are started and successfully
     // running.
     Running,

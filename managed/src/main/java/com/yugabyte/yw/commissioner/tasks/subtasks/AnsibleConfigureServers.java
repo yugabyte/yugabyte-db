@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.common.DevOpsHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,13 +8,19 @@ import org.slf4j.LoggerFactory;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-public class AnsibleConfigureServers extends NodeTaskBase {
+import java.util.HashMap;
+import java.util.Map;
 
+public class AnsibleConfigureServers extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleConfigureServers.class);
 
   public static class Params extends NodeTaskParams {
+    public UpgradeUniverse.UpgradeTaskType type = UpgradeUniverse.UpgradeTaskType.Everything;
+    public String ybServerPackage;
+
+    // Optional params
     public boolean isMasterInShellMode = false;
-    public String ybServerPkg;
+    public Map<String, String> gflags = new HashMap<>();
   }
 
   @Override
@@ -28,7 +35,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // Execute the ansible command.
     execCommand(command);
 
-    // Update the node state once the software is installed.
-    setNodeState(NodeDetails.NodeState.SoftwareInstalled);
+    if (taskParams().type == UpgradeUniverse.UpgradeTaskType.Everything) {
+      // We set the node state to SoftwareInstalled when configuration type is Everything
+      setNodeState(NodeDetails.NodeState.SoftwareInstalled);
+    }
   }
 }

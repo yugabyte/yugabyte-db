@@ -13,7 +13,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpgradeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.models.Universe;
 
 import play.libs.Json;
@@ -38,12 +39,23 @@ public class DevOpsHelper {
     return appConfig.getString("yb.devops.home") + YBCLOUD_SCRIPT + " " + cloud;
   }
 
-  private String upgradeSpecificSubCommand(AnsibleUpgradeServer.Params taskParam) {
+  private String getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     String subcommand = "";
-    switch(taskParam.taskType) {
+
+    String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses();
+    subcommand += " --master_addresses_for_tserver " + masterAddresses;
+
+    if (!taskParam.isMasterInShellMode) {
+      subcommand += " --master_addresses_for_master " + masterAddresses;
+    }
+
+    switch(taskParam.type) {
+      case Everything:
+        subcommand += " --package " + taskParam.ybServerPackage;
+        break;
       case Software:
         {
-          subcommand += " --package " + taskParam.ybServerPkg;
+          subcommand += " --package " + taskParam.ybServerPackage;
           String taskSubType = taskParam.getProperty("taskSubType");
           if (taskSubType == null) {
             throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
@@ -100,25 +112,11 @@ public class DevOpsHelper {
       }
       case Configure:
       {
-        String masterAddresses = Universe.get(nodeTaskParam.universeUUID).getMasterAddresses();
-        command += " --master_addresses_for_tserver " + masterAddresses;
-
-        if (nodeTaskParam instanceof AnsibleConfigureServers.Params) {
-          AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
-
-          if (!taskParam.isMasterInShellMode) {
-            command += " --master_addresses_for_master " + masterAddresses;
-          }
-
-          command += " --package " + taskParam.ybServerPkg;
-        } else if (nodeTaskParam instanceof AnsibleUpgradeServer.Params) {
-          AnsibleUpgradeServer.Params taskParam = (AnsibleUpgradeServer.Params)nodeTaskParam;
-          command += upgradeSpecificSubCommand(taskParam);
-        } else {
-          throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params or " +
-                                       "AnsibleUpgradeServer.Params");
+        if (!(nodeTaskParam instanceof AnsibleConfigureServers.Params)) {
+          throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
         }
-
+        AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
+        command += getConfigureSubCommand(taskParam);
         break;
       }
       case List:
