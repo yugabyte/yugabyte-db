@@ -19,6 +19,9 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <boost/bind.hpp>
+#include <boost/thread/shared_mutex.hpp>
+
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -28,9 +31,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <boost/bind.hpp>
-#include <boost/thread/shared_mutex.hpp>
 
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
@@ -2287,6 +2287,10 @@ size_t Tablet::num_rowsets() const {
 }
 
 void Tablet::PrintRSLayout(ostream* o) {
+  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    *o << "<p>This tablet doesn't use a rowset representation</p>";
+    return;
+  }
   shared_ptr<RowSetTree> rowsets_copy;
   {
     shared_lock<rw_spinlock> lock(component_lock_);

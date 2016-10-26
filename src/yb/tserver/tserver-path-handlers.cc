@@ -325,11 +325,13 @@ void TabletServerPathHandlers::HandleTabletPage(const Webserver::WebRequest& req
   // List of links to various tablet-specific info pages
   *output << "<ul>";
 
-  // Link to output svg of current DiskRowSet layout over keyspace.
-  *output << "<li>" << Substitute("<a href=\"/tablet-rowsetlayout-svg?id=$0\">$1</a>",
-                                  UrlEncodeToString(tablet_id),
-                                  "Rowset Layout Diagram")
-          << "</li>" << endl;
+  if (peer->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // Link to output svg of current DiskRowSet layout over keyspace.
+    *output << "<li>" << Substitute("<a href=\"/tablet-rowsetlayout-svg?id=$0\">$1</a>",
+                                    UrlEncodeToString(tablet_id),
+                                    "Rowset Layout Diagram")
+            << "</li>" << endl;
+  }
 
   // Link to consensus status page.
   *output << "<li>" << Substitute("<a href=\"/tablet-consensus-status?id=$0\">$1</a>",
