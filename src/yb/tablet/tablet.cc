@@ -985,16 +985,24 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
         break;
       }
       case RowOperationsPB_Type_INSERT: {
-        // TODO(mbautin): insert a special operation into doc_ops to overwrite the entire document.
+        // Insert a top-level overwrite of the entire object.
+        // TODO: for Cassandra-style inserts, which are really upserts, we probably should not
+        //       overwrite/nullify columns that are not explicitly mentioned in the SQL statement.
+        doc_ops.emplace_back(DocPath(encoded_doc_key), PrimitiveValue(ValueType::kObject));
         for (int i = schema()->num_key_columns(); i < schema()->num_columns(); i++) {
           const ColumnSchema& col_schema = schema()->column(i);
           const DataType data_type = col_schema.type_info()->type();
 
           PrimitiveValue column_value;
           if (col_schema.is_nullable() && contiguous_row.is_null(i)) {
-            // TODO(mbautin): for now we're explicitly deleting null values.
-            // We don't need to do that when we start overwriting the entire document at the top.
-            column_value = PrimitiveValue(ValueType::kTombstone);
+            // Skip this column as it is null and we are already overwriting the entire row at
+            // the top. Another option would be to explicitly delete it like so:
+            //
+            //   column_value = PrimitiveValue(ValueType::kTombstone);
+            //
+            // This would make sense in case we just wanted to update a few columns in a
+            // Cassandra-style INSERT ("upsert").
+            continue;
           } else {
             column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
           }

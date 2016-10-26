@@ -500,6 +500,7 @@ create_dir_on_ephemeral_drive() {
     local ephemeral_mountpoint
     # EPHEMERAL_DRIVES_FILTER_REGEX is not supposed to be anchored in the end, so we need to add
     # a "$" to filter ephemeral mountpoints correctly.
+    ephemeral_drives=()
     for ephemeral_mountpoint in $EPHEMERAL_DRIVES_GLOB; do
       if [[ -d $ephemeral_mountpoint &&
             $ephemeral_mountpoint =~ $EPHEMERAL_DRIVES_FILTER_REGEX$ ]]; then

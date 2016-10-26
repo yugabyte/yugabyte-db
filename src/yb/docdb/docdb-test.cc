@@ -333,6 +333,24 @@ SubDocKey(DocKey([], ["mydockey", 123456]), \
       )#",
       subdoc.ToString()
   );
+
+  // Test overwriting an entire document with an empty object. This should ideally happen with no
+  // reads.
+  TestInsertion(
+      DocPath(encoded_doc_key),
+      PrimitiveValue(ValueType::kObject),
+      Timestamp(8000),
+      R"#(
+1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\
+          \x01\xe2@\x00\
+          \xff\xff\xff\xff\xff\xff\xe0\xbf', '@')
+)#");
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      "StartDocument(DocKey([], [\"mydockey\", 123456]))\n"
+      "StartObject\n"
+      "EndObject\n"
+      "EndDocument\n", DebugDumpDocument(encoded_doc_key));
 }
 
 TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
@@ -386,18 +404,38 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   const auto encoded_doc_key2 = DocKey(PrimitiveValues("row2", 22222)).Encode();
 
   // Row 1
+  // We only perform one seek to get the timestamp of the top-level document. Additional writes to
+  // fields within that document do not incur any reads.
   dwb.SetPrimitive(DocPath(encoded_doc_key1, 30), PrimitiveValue("row1_c"), Timestamp(1000));
+  ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
   dwb.SetPrimitive(DocPath(encoded_doc_key1, 40), PrimitiveValue(10000), Timestamp(1000));
+  ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
   dwb.SetPrimitive(DocPath(encoded_doc_key1, 50), PrimitiveValue("row1_e"), Timestamp(1000));
+  ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // Row 2: one null column, one column that gets deleted and overwritten, another that just gets
-  // overwritten.
+  // overwritten. We should still need one seek, because the document key has changed.
   dwb.SetPrimitive(DocPath(encoded_doc_key2, 40), PrimitiveValue(20000), Timestamp(2000));
+  ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
 
+  // Deletions normally perform a lookup of the key to see whether it's already there. We will use
+  // that to provide the expected result (the number of rows deleted in SQL or whether a key was
+  // deleted in Redis). However, because we've just set a value at this path, we don't expect to
+  // perform any reads for this deletion.
   dwb.DeleteSubDoc(DocPath(encoded_doc_key2, 40), Timestamp(2500));
+  ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
+
+  // The entire subdocument under DocPath(encoded_doc_key2, 40) just got deleted, and that fact
+  // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
   dwb.SetPrimitive(DocPath(encoded_doc_key2, 40), PrimitiveValue(30000), Timestamp(3000));
+  ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
+
   dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e"), Timestamp(2000));
-  dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e'"), Timestamp(4000));
+  ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
+
+  dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e_prime"), Timestamp(4000));
+  ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
+
   ASSERT_TRUE(WriteToRocksDB(dwb).ok());
 
   std::stringstream debug_dump;
@@ -412,7 +450,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [TS(2000)]) -> {}
 SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 40, TS(3000)]) -> 30000
 SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 40, TS(2500)]) -> DEL
 SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 40, TS(2000)]) -> 20000
-SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(4000)]) -> "row2_e'"
+SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(4000)]) -> "row2_e_prime"
 SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(2000)]) -> "row2_e"
       )#"),
       debug_dump.str());
@@ -498,10 +536,11 @@ SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(2000)]) -> "row2_e"
     ASSERT_EQ(1, row_block.nrows());
     ASSERT_TRUE(row_block.row(0).is_null(0));
     ASSERT_FALSE(row_block.row(0).is_null(1));
+
     // These two rows have different values compared to the previous case.
     ASSERT_EQ(30000, row1.get_field<DataType::INT64>(1));
     ASSERT_FALSE(row_block.row(0).is_null(2));
-    ASSERT_EQ("row2_e'", row2.get_field<DataType::STRING>(2));
+    ASSERT_EQ("row2_e_prime", row2.get_field<DataType::STRING>(2));
 
     ASSERT_FALSE(iter.HasNext());
   }

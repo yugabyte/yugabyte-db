@@ -120,12 +120,21 @@ class DocWriteBatch {
 
   void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
 
+  // This is used in tests when measuring the number of seeks that a given update to this batch
+  // performs. The internal seek count is reset.
+  int GetAndResetNumRocksDBSeeks() {
+    const int ret_val = num_rocksdb_seeks_;
+    num_rocksdb_seeks_ = 0;
+    return ret_val;
+  }
+
  private:
   DocWriteBatchCache cache_;
 
   rocksdb::DB* rocksdb_;
   std::vector<std::pair<std::string, std::string>> put_batch_;
 
+  int num_rocksdb_seeks_;
 };
 
 // A visitor class that could be overridden to consume results of scanning of one or more document.

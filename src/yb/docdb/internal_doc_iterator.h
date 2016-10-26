@@ -39,7 +39,9 @@ class InternalDocIterator {
  public:
   // @param rocksdb RocksDB database to operate on.
   // @param doc_write_batch_cache A utility that allows us to avoid redundant lookups.
-  InternalDocIterator(rocksdb::DB* rocksdb, DocWriteBatchCache* doc_write_batch_cache);
+  InternalDocIterator(rocksdb::DB* rocksdb,
+                      DocWriteBatchCache* doc_write_batch_cache,
+                      int* seek_counter = nullptr);
 
   // Positions this iterator at the root of a document identified by the given encoded document key.
   // The key must not end with a generation timestamp.
@@ -131,6 +133,10 @@ class InternalDocIterator {
   Timestamp subdoc_gen_ts_;
 
   Trilean subdoc_exists_;
+
+  // A count to increment to count RocksDB seeks. Not using an atomic here because this is not
+  // thread-safe.
+  int* num_rocksdb_seeks_;
 };
 
 }  // namespace docdb

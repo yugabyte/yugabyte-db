@@ -123,8 +123,11 @@ rm -rf "$BUILD_ROOT"
 
 create_dir_on_ephemeral_drive "$BUILD_ROOT" "build/${BUILD_ROOT##*/}"
 
-# Now make BUILD_ROOT actually point to the target of the build link
-BUILD_ROOT=$( readlink "$BUILD_ROOT" )
+if [[ -h $BUILD_ROOT ]]; then
+  # If we ended up creating BUILD_ROOT as a symlink to an ephemeral drive, now make BUILD_ROOT
+  # actually point to the target of that symlink.
+  BUILD_ROOT=$( readlink "$BUILD_ROOT" )
+fi
 readonly BUILD_ROOT
 
 #

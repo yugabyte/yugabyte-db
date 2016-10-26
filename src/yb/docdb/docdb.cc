@@ -77,7 +77,8 @@ Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
 // ------------------------------------------------------------------------------------------------
 
 DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
-    : rocksdb_(rocksdb) {
+    : rocksdb_(rocksdb),
+      num_rocksdb_seeks_(0) {
 }
 
 Status DocWriteBatch::SetPrimitive(DocWriteOperation doc_write_op) {
@@ -94,7 +95,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
   const int num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.value_type() == ValueType::kTombstone;
 
-  InternalDocIterator doc_iter(rocksdb_, &cache_);
+  InternalDocIterator doc_iter(rocksdb_, &cache_, &num_rocksdb_seeks_);
 
   if (num_subkeys > 0 || is_deletion) {
     // Navigate to the root of the document, not including the generation timestamp. We don't yet

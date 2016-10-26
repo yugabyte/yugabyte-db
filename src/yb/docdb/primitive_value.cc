@@ -121,6 +121,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kFalse: return result;
     case ValueType::kTrue: return result;
     case ValueType::kTombstone: return result;
+    case ValueType::kObject: return result;
 
     case ValueType::kString:
       // No zero encoding necessary when storing the string in a value.
@@ -152,8 +153,7 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
-    case ValueType::kObject:
+    case ValueType::kInvalidValueType:
       break;
   }
 

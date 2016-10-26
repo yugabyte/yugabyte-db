@@ -25,10 +25,12 @@ std::unique_ptr<rocksdb::Iterator> InternalDocIterator::CreateRocksDBIterator(
 }
 
 InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
-                                         DocWriteBatchCache* doc_write_batch_cache)
+                                         DocWriteBatchCache* doc_write_batch_cache,
+                                         int* num_rocksdb_seeks)
     : doc_write_batch_cache_(doc_write_batch_cache),
       key_prefix_ends_with_ts_(false),
-      subdoc_exists_(Trilean::kUnknown) {
+      subdoc_exists_(Trilean::kUnknown),
+      num_rocksdb_seeks_(num_rocksdb_seeks) {
   iter_ = CreateRocksDBIterator(rocksdb);
 }
 
@@ -105,7 +107,11 @@ void InternalDocIterator::SeekToKeyPrefix() {
     subdoc_type_ = previous_entry->second;
     subdoc_exists_ = ToTrilean(subdoc_type_ != ValueType::kTombstone);
   } else {
+    DOCDB_DEBUG_LOG("Performing a seek at $0", BestEffortKeyBytesToStr(key_prefix_));
     iter_->Seek(key_prefix_.AsSlice());
+    if (num_rocksdb_seeks_ != nullptr) {
+      (*num_rocksdb_seeks_)++;
+    }
     if (HasMoreData()) {
       const rocksdb::Slice& key = iter_->key();
       // If the first key >= key_prefix_ in RocksDB starts with key_prefix_, then a
