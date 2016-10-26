@@ -382,6 +382,11 @@ message RunLeaderElectionRequestPB {
 
   // the id of the tablet
   required bytes tablet_id = 1;
+
+  // The id of the last operation the current leader has committed to its log.
+  // When specified, the peer must wait till the operation has been committed
+  // to its log before starting the election to be qualified as a leader.
+  optional OpId committed_index = 3;
 }
 
 message RunLeaderElectionResponsePB {
@@ -395,6 +400,9 @@ message LeaderStepDownRequestPB {
 
   // The id of the tablet.
   required bytes tablet_id = 1;
+
+  // UUID of the server that should run the election to become the new leader.
+  optional bytes new_leader_uuid = 3;
 }
 
 message LeaderStepDownResponsePB {

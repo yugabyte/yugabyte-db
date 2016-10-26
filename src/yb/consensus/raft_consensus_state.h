@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CONSENSUS_RAFT_CONSENSUS_UTIL_H_
-#define YB_CONSENSUS_RAFT_CONSENSUS_UTIL_H_
+#ifndef YB_CONSENSUS_RAFT_CONSENSUS_STATE_H
+#define YB_CONSENSUS_RAFT_CONSENSUS_STATE_H
 
 #include <map>
 #include <mutex>
@@ -284,6 +284,14 @@ class ReplicaState {
   // generating 'id'.
   void CancelPendingOperation(const OpId& id);
 
+  // Accessors for pending election op id. These must be called under a lock.
+  const OpId& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
+  void SetPendingElectionOpIdUnlocked(const OpId& opid) { pending_election_opid_ = opid; }
+  void ClearPendingElectionOpIdUnlocked() { pending_election_opid_.Clear(); }
+  bool HasOpIdCommittedUnlocked(const OpId& opid) {
+    return (opid.IsInitialized() && OpIdCompare(opid, GetCommittedOpIdUnlocked()) <= 0);
+  }
+
   std::string ToString() const;
   std::string ToStringUnlocked() const;
 
@@ -349,10 +357,13 @@ class ReplicaState {
   // was received. Initialized to MinimumOpId().
   OpId last_committed_index_;
 
+  // If set, a leader election is pending upon the specific op id commitment to this peer's log.
+  OpId pending_election_opid_;
+
   State state_;
 };
 
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_RAFT_CONSENSUS_UTIL_H_ */
+#endif /* YB_CONSENSUS_RAFT_CONSENSUS_STATE_H */

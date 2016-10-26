@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+#include <unordered_map>
 #include <boost/optional.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-#include <string>
-#include <unordered_map>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -237,7 +237,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // in the bootstrap source's consensus metadata would still be old.
   LOG(INFO) << "Forcing rogue leader T " << tablet_id << " P " << zombie_leader_uuid
             << " to step down...";
-  ASSERT_OK(itest::LeaderStepDown(ts_map_[zombie_leader_uuid], tablet_id, timeout));
+  ASSERT_OK(itest::LeaderStepDown(ts_map_[zombie_leader_uuid], tablet_id, nullptr, timeout));
   ExternalTabletServer* zombie_ets = cluster_->tablet_server(zombie_leader_index);
   // It's not necessarily part of the API but this could return faliure due to
   // rejecting the remote. We intend to make that part async though, so ignoring

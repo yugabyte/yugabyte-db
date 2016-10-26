@@ -37,6 +37,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/server/clock.h"
 #include "yb/server/metadata.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -150,6 +151,7 @@ namespace consensus {
 
 using log::LogEntryBatch;
 using std::shared_ptr;
+using std::unique_ptr;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
@@ -350,7 +352,8 @@ Status RaftConsensus::EmulateElection() {
   return BecomeLeaderUnlocked();
 }
 
-Status RaftConsensus::StartElection(ElectionMode mode) {
+Status RaftConsensus::StartElection(
+    ElectionMode mode, const bool pending_commit, const OpId& opid) {
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
@@ -378,64 +381,87 @@ Status RaftConsensus::StartElection(ElectionMode mode) {
                                   state_->GetActiveConfigUnlocked().ShortDebugString());
     }
 
-    if (state_->HasLeaderUnlocked()) {
-      LOG_WITH_PREFIX_UNLOCKED(INFO)
-          << "Failure of leader " << state_->GetLeaderUuidUnlocked()
-          << " detected. Triggering leader election, mode=" << mode;
-    } else {
-      LOG_WITH_PREFIX_UNLOCKED(INFO)
-          << "No leader contacted us within the election timeout. "
-          << "Triggering leader election, mode=" << mode;
+    // Default is to start the election now. But if we are starting a pending election, see if
+    // there is an op id pending upon indeed and if it has been committed to the log. The op id
+    // could have been cleared if the pending election has already been started or another peer
+    // has jumped before we can start.
+    bool start_now = true;
+    if (pending_commit) {
+      start_now = state_->HasOpIdCommittedUnlocked(
+          opid.IsInitialized() ? opid : state_->GetPendingElectionOpIdUnlocked());
     }
 
-    // Increment the term.
-    RETURN_NOT_OK(IncrementTermUnlocked());
+    if (start_now) {
+      if (state_->HasLeaderUnlocked()) {
+        LOG_WITH_PREFIX_UNLOCKED(INFO)
+            << "Failure of leader " << state_->GetLeaderUuidUnlocked()
+            << " detected. Triggering leader election, mode=" << mode;
+      } else {
+        LOG_WITH_PREFIX_UNLOCKED(INFO)
+            << "No leader contacted us within the election timeout. "
+            << "Triggering leader election, mode=" << mode;
+      }
 
-    // Snooze to avoid the election timer firing again as much as possible.
-    // We do not disable the election timer while running an election.
-    RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
+      // Increment the term.
+      RETURN_NOT_OK(IncrementTermUnlocked());
 
-    MonoDelta timeout = LeaderElectionExpBackoffDeltaUnlocked();
-    RETURN_NOT_OK(SnoozeFailureDetectorUnlocked(timeout, ALLOW_LOGGING));
+      // Snooze to avoid the election timer firing again as much as possible.
+      // We do not disable the election timer while running an election.
+      RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
 
-    const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Starting election with config: "
-                                   << active_config.ShortDebugString();
+      MonoDelta timeout = LeaderElectionExpBackoffDeltaUnlocked();
+      RETURN_NOT_OK(SnoozeFailureDetectorUnlocked(timeout, ALLOW_LOGGING));
 
-    // Initialize the VoteCounter.
-    int num_voters = CountVoters(active_config);
-    int majority_size = MajoritySize(num_voters);
-    gscoped_ptr<VoteCounter> counter(new VoteCounter(num_voters, majority_size));
-    // Vote for ourselves.
-    // TODO: Consider using a separate Mutex for voting, which must sync to disk.
-    RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
-    bool duplicate;
-    RETURN_NOT_OK(counter->RegisterVote(state_->GetPeerUuid(), VOTE_GRANTED, &duplicate));
-    CHECK(!duplicate) << state_->LogPrefixUnlocked()
-                      << "Inexplicable duplicate self-vote for term "
-                      << state_->GetCurrentTermUnlocked();
+      const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Starting election with config: "
+                                     << active_config.ShortDebugString();
 
-    VoteRequestPB request;
-    request.set_ignore_live_leader(mode == ELECT_EVEN_IF_LEADER_IS_ALIVE);
-    request.set_candidate_uuid(state_->GetPeerUuid());
-    request.set_candidate_term(state_->GetCurrentTermUnlocked());
-    request.set_tablet_id(state_->GetOptions().tablet_id);
-    *request.mutable_candidate_status()->mutable_last_received() =
+      // Initialize the VoteCounter.
+      int num_voters = CountVoters(active_config);
+      int majority_size = MajoritySize(num_voters);
+      gscoped_ptr<VoteCounter> counter(new VoteCounter(num_voters, majority_size));
+      // Vote for ourselves.
+      // TODO: Consider using a separate Mutex for voting, which must sync to disk.
+      RETURN_NOT_OK(state_->SetVotedForCurrentTermUnlocked(state_->GetPeerUuid()));
+      bool duplicate;
+      RETURN_NOT_OK(counter->RegisterVote(state_->GetPeerUuid(), VOTE_GRANTED, &duplicate));
+      CHECK(!duplicate) << state_->LogPrefixUnlocked()
+                        << "Inexplicable duplicate self-vote for term "
+                        << state_->GetCurrentTermUnlocked();
+
+      VoteRequestPB request;
+      request.set_ignore_live_leader(mode == ELECT_EVEN_IF_LEADER_IS_ALIVE);
+      request.set_candidate_uuid(state_->GetPeerUuid());
+      request.set_candidate_term(state_->GetCurrentTermUnlocked());
+      request.set_tablet_id(state_->GetOptions().tablet_id);
+      *request.mutable_candidate_status()->mutable_last_received() =
         state_->GetLastReceivedOpIdUnlocked();
 
-    election.reset(new LeaderElection(active_config,
-                                      peer_proxy_factory_.get(),
-                                      request, counter.Pass(), timeout,
-                                      Bind(&RaftConsensus::ElectionCallback, this)));
+      election.reset(new LeaderElection(active_config,
+                                        peer_proxy_factory_.get(),
+                                        request, counter.Pass(), timeout,
+                                        Bind(&RaftConsensus::ElectionCallback, this)));
+
+      // Clear the pending election op id so that we won't start the same pending election again.
+      state_->ClearPendingElectionOpIdUnlocked();
+
+    } else if (pending_commit && opid.IsInitialized()) {
+      // Queue up the pending op id if specified.
+      state_->SetPendingElectionOpIdUnlocked(opid);
+      LOG(INFO) << "Leader election is pending upon log commitment of OpId "
+                << opid.ShortDebugString();
+    }
   }
 
   // Start the election outside the lock.
-  election->Run();
+  if (election) {
+    election->Run();
+  }
 
   return Status::OK();
 }
 
-Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
+Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
   TRACE_EVENT0("consensus", "RaftConsensus::StepDown");
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForConfigChange(&lock));
@@ -461,9 +487,62 @@ Status RaftConsensus::StepDown(LeaderStepDownResponsePB* resp) {
     return Status::OK();
   }
 
+  // If a new leader is nominated, find it among peers to send RunLeaderElection request.
+  // See https://ramcloud.stanford.edu/~ongaro/thesis.pdf, section 3.10 for this mechanism
+  // to transfer the leadership.
+  if (req->has_new_leader_uuid()) {
+    const auto& new_leader_uuid = req->new_leader_uuid();
+    const auto& tablet_id = req->tablet_id();
+    bool new_leader_found = false;
+    const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+    for (const RaftPeerPB& peer : active_config.peers()) {
+      if (peer.member_type() == RaftPeerPB::VOTER &&
+          peer.permanent_uuid() == new_leader_uuid) {
+        shared_ptr<RunLeaderElectionState> election_state(new RunLeaderElectionState());
+        RETURN_NOT_OK(peer_proxy_factory_->NewProxy(peer, &election_state->proxy));
+        election_state->req.set_dest_uuid(new_leader_uuid);
+        election_state->req.set_tablet_id(tablet_id);
+        election_state->req.mutable_committed_index()->CopyFrom(
+            state_->GetCommittedOpIdUnlocked());
+        election_state->proxy->RunLeaderElectionAsync(
+            &election_state->req, &election_state->resp, &election_state->rpc,
+            std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
+                election_state));
+        new_leader_found = true;
+        LOG(INFO) << "Transferring leadership of tablet " << tablet_id
+                  << " from " << state_->GetPeerUuid() << " to " << new_leader_uuid;
+        break;
+      }
+    }
+    if (!new_leader_found) {
+      LOG(WARNING) << "New leader " << new_leader_uuid << " not found among " << tablet_id
+                   << " tablet peers.";
+      resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+      StatusToPB(STATUS(IllegalState, "New leader not found among peers"),
+                 resp->mutable_error()->mutable_status());
+      // We return OK so that the tablet service won't overwrite the error code.
+      return Status::OK();
+    }
+  }
+
   RETURN_NOT_OK(BecomeReplicaUnlocked());
 
   return Status::OK();
+}
+
+void RaftConsensus::RunLeaderElectionResponseRpcCallback(
+    shared_ptr<RunLeaderElectionState> election_state) {
+  // Check for RPC errors.
+  if (!election_state->rpc.status().ok()) {
+    LOG(WARNING) << "RPC error from RunLeaderElection() call to peer "
+                 << election_state->req.dest_uuid() << ": "
+                 << election_state->rpc.status().ToString();
+  // Check for tablet errors.
+  } else if (election_state->resp.has_error()) {
+    LOG(WARNING) << "Tablet error from RunLeaderElection() call to peer "
+                 << election_state->req.dest_uuid() << ": "
+                 << StatusFromPB(election_state->resp.error().status()).ToString();
+  }
 }
 
 void RaftConsensus::ReportFailureDetected(const std::string& name, const Status& msg) {
@@ -1087,6 +1166,9 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
   // The deduplicated request.
   LeaderRequest deduped_req;
 
+  // Start an election after the writes are committed?
+  bool start_election = false;
+
   {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForUpdate(&lock));
@@ -1260,6 +1342,11 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     // Fill the response with the current state. We will not mutate anymore state until
     // we actually reply to the leader, we'll just wait for the messages to be durable.
     FillConsensusResponseOKUnlocked(response);
+
+    // Check if there is an election pending and the op id pending upon has just been committed.
+    if (state_->HasOpIdCommittedUnlocked(state_->GetPendingElectionOpIdUnlocked())) {
+      start_election = true;
+    }
   }
   // Release the lock while we wait for the log append to finish so that commits can go through.
   // We'll re-acquire it before we update the state again.
@@ -1290,6 +1377,13 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     VLOG_WITH_PREFIX(2) << "Replica updated."
         << state_->ToString() << " Request: " << request->ShortDebugString();
+  }
+
+  // If an election pending on a specific op id and it has just been commmitted, start it now.
+  // StartElection will ensure the pending election will be started just once only even if
+  // UpdateReplica happens in multiple threads in parallel.
+  if (start_election) {
+    StartElection(consensus::Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE, true);
   }
 
   TRACE("UpdateReplicas() finished");
@@ -1408,6 +1502,11 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   if (OpIdLessThan(request->candidate_status().last_received(), local_last_logged_opid)) {
     return RequestVoteRespondLastOpIdTooOld(local_last_logged_opid, request, response);
   }
+
+  // Clear the pending election op id if any before granting the vote. If another peer jumps in
+  // before we can catch up and start the election, let's not disrupt the quorum with another
+  // election.
+  state_->ClearPendingElectionOpIdUnlocked();
 
   // Passed all our checks. Vote granted.
   return RequestVoteRespondVoteGranted(request, response);

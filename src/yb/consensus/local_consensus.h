@@ -58,7 +58,11 @@ class LocalConsensus : public Consensus {
 
   virtual Status EmulateElection() OVERRIDE { return Status::OK(); }
 
-  virtual Status StartElection(ElectionMode mode) OVERRIDE { return Status::OK(); }
+  virtual Status StartElection(
+      ElectionMode mode, const bool pending_commit = false,
+      const OpId& opid = OpId::default_instance()) OVERRIDE {
+    return Status::OK();
+  }
 
   virtual Status Replicate(const scoped_refptr<ConsensusRound>& context) OVERRIDE;
 

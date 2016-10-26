@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/optional.hpp>
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <boost/optional.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/common/wire_protocol.h"
@@ -149,6 +149,21 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                           kTimeout));
 
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
+
+  // Rotate leaders among the replicas and verify the new leader is the designated one each time.
+  int last_op = 5;
+  for (const auto ts_map : active_ts_map) {
+    TServerDetails* current_leader;
+    TServerDetails* new_leader = ts_map.second;
+    ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
+    ASSERT_OK(itest::LeaderStepDown(current_leader, tablet_id, new_leader, kTimeout));
+    ASSERT_OK(WaitUntilCommittedOpIdIndexIs(workload.batches_completed() + (++last_op),
+                                            new_leader, tablet_id, kTimeout));
+    current_leader = new_leader;
+    ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &new_leader));
+    ASSERT_EQ(current_leader->uuid(), new_leader->uuid());
+  }
+
 }
 
 } // namespace yb

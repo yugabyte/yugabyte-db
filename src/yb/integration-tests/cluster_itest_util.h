@@ -27,11 +27,11 @@
 #ifndef YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
 #define YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
 
-#include <boost/optional/optional_fwd.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -210,8 +210,11 @@ Status StartElection(const TServerDetails* replica,
 // 'timeout' refers to the RPC timeout waiting synchronously for stepdown to
 // complete on the leader side. Since that does not require communication with
 // other nodes at this time, this call is rather quick.
+// 'new_leader', if not null, is the replica that should start the election to
+// become the new leader.
 Status LeaderStepDown(const TServerDetails* replica,
                       const std::string& tablet_id,
+                      const TServerDetails* new_leader,
                       const MonoDelta& timeout,
                       tserver::TabletServerErrorPB* error = NULL);
 

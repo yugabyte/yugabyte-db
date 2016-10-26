@@ -129,7 +129,9 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // Emulates a leader election by simply making this peer leader.
   virtual Status EmulateElection() = 0;
 
-  // Triggers a leader election.
+  // Triggers a leader election. Start an election now or start a pending election. A pending
+  // election will be started pending upon the opid having been committed to this peer's log.
+  // If omitted, the previously queued opid is assumed.
   enum ElectionMode {
     // A normal leader election. Peers will not vote for this node
     // if they believe that a leader is alive.
@@ -140,10 +142,12 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     // between a leader and one of its replicas.
     ELECT_EVEN_IF_LEADER_IS_ALIVE
   };
-  virtual Status StartElection(ElectionMode mode) = 0;
+  virtual Status StartElection(
+      ElectionMode mode, const bool pending_commit = false,
+      const OpId& opid = OpId::default_instance()) = 0;
 
   // Implement a LeaderStepDown() request.
-  virtual Status StepDown(LeaderStepDownResponsePB* resp) {
+  virtual Status StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
     return STATUS(NotSupported, "Not implemented.");
   }
 

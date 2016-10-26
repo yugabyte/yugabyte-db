@@ -27,6 +27,7 @@
 #include <boost/optional/optional_fwd.hpp>
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/util/atomic.h"
@@ -103,9 +104,12 @@ class RaftConsensus : public Consensus,
   // enabled, as it could result in a split-brain scenario.
   virtual Status EmulateElection() OVERRIDE;
 
-  virtual Status StartElection(ElectionMode mode) OVERRIDE;
+  virtual Status StartElection(
+      ElectionMode mode, const bool pending_commit = false,
+      const OpId& opid = OpId::default_instance()) OVERRIDE;
 
-  virtual Status StepDown(LeaderStepDownResponsePB* resp) OVERRIDE;
+  virtual Status StepDown(const LeaderStepDownRequestPB* req,
+                          LeaderStepDownResponsePB* resp) OVERRIDE;
 
   // Call StartElection(), log a warning if the call fails (usually due to
   // being shut down).
@@ -343,6 +347,18 @@ class RaftConsensus : public Consensus,
   // reactor thread, so it simply defers its work to DoElectionCallback.
   void ElectionCallback(const ElectionResult& result);
   void DoElectionCallback(const ElectionResult& result);
+
+
+  // Helper struct that tracks the RunLeaderElection as part of leadership transferral.
+  struct RunLeaderElectionState {
+    gscoped_ptr<PeerProxy> proxy;
+    RunLeaderElectionRequestPB req;
+    RunLeaderElectionResponsePB resp;
+    rpc::RpcController rpc;
+  };
+
+  // Callback for RunLeaderElection async request.
+  void RunLeaderElectionResponseRpcCallback(std::shared_ptr<RunLeaderElectionState> election_state);
 
   // Start tracking the leader for failures. This typically occurs at startup
   // and when the local peer steps down as leader.

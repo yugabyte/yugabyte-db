@@ -494,8 +494,13 @@ Status ClusterAdminClient::ListLeaderCounts(const string& table_name) {
     TabletLocationsPB locs = resp.tablet_locations(i);
     for (int i = 0; i < locs.replicas_size(); i++) {
       if (locs.replicas(i).role() == RaftPeerPB::LEADER) {
+        // If this is a leader, increment leader counts.
         leader_counts[locs.replicas(i).ts_info().permanent_uuid()]++;
         total_leader_count++;
+      } else if (locs.replicas(i).role() == RaftPeerPB::FOLLOWER) {
+        // If this is a follower, touch the leader count entry also so that tablet server with
+        // followers only and 0 leader will be accounted for still.
+        leader_counts[locs.replicas(i).ts_info().permanent_uuid()];
       }
     }
   }

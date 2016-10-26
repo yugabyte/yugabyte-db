@@ -27,7 +27,7 @@ namespace master {
 //  enlarging the replica set for a tablet by adding a new peer on a less loaded TS, and
 //  subsequently removing a peer that is more loaded.
 //
-//  The policy for the balancer involves a two step process:
+//  The policy for balancing the relicas involves a two step process:
 //  1) Add replicas to tablet peer groups, if required, potentially leading to temporary
 //  over-replication.
 //  1.1) If any tablet has less replicas than the configured RF, or if there is any placement block
@@ -46,6 +46,11 @@ namespace master {
 //  priority, but naturally, only if removing said replica does not lead to under-replication.
 //  2.2) If we have no placement related issues, then we just try to shrink back any temporarily
 //  over-replicated tablet peer groups, while still conforming to the placement requirements.
+//
+//  This class also balances the leaders on tablet servers, starting from the server with the most
+//  leaders and moving some leaders to the servers with less to achieve an even distribution. If
+//  a threshold is set in the configuration, the balancer will just keep the numbers of leaders
+//  on each server below it instead of maintaining an even distribution.
 class ClusterLoadBalancer {
  public:
   explicit ClusterLoadBalancer(CatalogManager* cm);
@@ -68,13 +73,17 @@ class ClusterLoadBalancer {
     // If variance between load on TS goes past this number, we should try to balance.
     double kMinLoadVarianceToBalance = 2.0;
 
+    // If variance between leader load on TS goes past this number, we should try to balance.
+    double kMinLeaderLoadVarianceToBalance = 2.0;
+
     // Whether to limit the number of tablets being spun up on the cluster at any given time.
     bool kAllowLimitStartingTablets = true;
 
     // Max number of tablets being started across the cluster, if we enable limiting this.
     int kMaxStartingTablets = 3;
 
-    // Wether to limit the number of tablets that have more peers than configured at any given time.
+    // Whether to limit the number of tablets that have more peers than configured at any given
+    // time.
     bool kAllowLimitOverReplicatedTablets = true;
 
     // Max number of running tablet replicas that are over the configured limit.
@@ -86,9 +95,8 @@ class ClusterLoadBalancer {
     // Max number of tablet peer replicas to add in any one run of the load balancer.
     int kMaxConcurrentAdds = 3;
 
-    // Max number of tablet leaders on overloaded tablet servers to step down and move in any one
-    // run of the load balancer.
-    int kMaxConcurrentOverloadedLeaderStepDowns = 3;
+    // Max number of tablet leaders on tablet servers to move in any one run of the load balancer.
+    int kMaxConcurrentLeaderMoves = 3;
 
     // TODO(bogdan): actually use these...
     // TODO(bogdan): add state for leaders starting remote bootstraps, to limit on that end too.
@@ -125,11 +133,12 @@ class ClusterLoadBalancer {
 
   // Issue the call to CatalogManager to change the config for this particular tablet, either
   // adding or removing the peer at ts_uuid, based on the is_add argument. Removing the peer
-  // is optional. When neither adding nor removing peer, it means just stepping down a leader
-  // from an overloaded tablet server to move it to a peer.
+  // is optional. When neither adding nor removing peer, it means just moving a leader from one
+  // tablet server to another. If new_leader_ts_uuid is empty, a server will be picked by random
+  // to be the new leader.
   virtual void SendReplicaChanges(
       scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
-      const bool should_remove_leader);
+      const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid = "");
 
   //
   // Higher level methods and members.
@@ -185,10 +194,11 @@ class ClusterLoadBalancer {
   // Returns true if a move was actually made.
   bool HandleRemoveIfWrongPlacement(TabletId* out_tablet_id, TabletServerId* out_from_ts);
 
-  // Processes any tablet leaders that are on an overloaded tablet server and need to step down.
+  // Processes any tablet leaders that are on a highly loaded tablet server and need to be moved.
   //
   // Returns true if a move was actually made.
-  bool HandleOverloadedLeaderStepDowns(TabletId* stepdown_tablet_id, TabletServerId* from_ts_uuid);
+  bool HandleLeaderMoves(
+      TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   // Go through sorted_load_ and figure out which tablet to rebalance and from which TS that is
   // serving it to which other TS.
@@ -199,6 +209,13 @@ class ClusterLoadBalancer {
 
   bool GetTabletToMove(
       const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id);
+
+  // Go through sorted_leader_load_ and figure out which leader to rebalance and from which TS
+  // that is serving it to which other TS.
+  //
+  // Returns true if we could find a leader to rebalance and sets the three output parameters.
+  // Returns false otherwise.
+  bool GetLeaderToMove(TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId* to_ts);
 
   // Issue the change config and modify the in-memory state for moving a replica from one tablet
   // server to another.
@@ -214,9 +231,10 @@ class ClusterLoadBalancer {
   void RemoveReplica(
       const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader);
 
-  // Issue the change config and modify the in-memory state for stepping down a tablet leader
-  // on the specified tablet server.
-  void StepDownLeader(const TabletId& tablet_id, const TabletServerId& ts_uuid);
+  // Issue the change config and modify the in-memory state for moving a tablet leader on the
+  // specified tablet server to the other specified tablet server.
+  void MoveLeader(
+      const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
 

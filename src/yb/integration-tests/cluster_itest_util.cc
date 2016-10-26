@@ -17,9 +17,9 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include <algorithm>
+#include <limits>
 #include <boost/optional.hpp>
 #include <glog/stl_logging.h>
-#include <limits>
 
 #include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
@@ -496,11 +496,15 @@ Status StartElection(const TServerDetails* replica,
 
 Status LeaderStepDown(const TServerDetails* replica,
                       const string& tablet_id,
+                      const TServerDetails* new_leader,
                       const MonoDelta& timeout,
                       TabletServerErrorPB* error) {
   LeaderStepDownRequestPB req;
   req.set_dest_uuid(replica->uuid());
   req.set_tablet_id(tablet_id);
+  if (new_leader) {
+    req.set_new_leader_uuid(new_leader->uuid());
+  }
   LeaderStepDownResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout);

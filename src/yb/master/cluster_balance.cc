@@ -30,6 +30,11 @@ DEFINE_bool(enable_load_balancing,
             true,
             "Choose whether to enable the load balancing algorithm, to move tablets around.");
 
+DEFINE_int32(leader_balance_threshold,
+             0,
+             "Number of leaders per each tablet server to balance below. If this is configured to "
+             "0 (the default), the leaders will be balanced optimally at extra cost.");
+
 class TabletMetadata {
  public:
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
@@ -76,32 +81,26 @@ class TabletMetadata {
 
   // The tablet server id of the leader in this tablet's peer group.
   TabletServerId leader_uuid;
-
-  // The max leader count among this tablet's follower tablet servers.
-  int max_follower_leader_count = 0;
 };
 
 class TabletServerMetadata {
  public:
-  // Number of running tablets on this tablet server.
-  int running = 0;
-
-  // Number of starting tablets on this tablet server.
-  int starting = 0;
-
-  // Number of tablet leaders running on this tablet server.
-  int leader_count = 0;
-
   // The TSDescriptor for this tablet server.
   shared_ptr<TSDescriptor> descriptor = nullptr;
 
   // The set of tablet ids that this tablet server is currently running.
-  set<TabletId> tablets;
+  set<TabletId> running_tablets;
+
+  // The set of tablet ids that this tablet server is currently starting.
+  set<TabletId> starting_tablets;
+
+  // The set of tablet leader ids that this tablet server is currently running.
+  set<TabletId> leaders;
 };
 
 class ClusterLoadBalancer::ClusterLoadState {
  public:
-  ClusterLoadState() {}
+  ClusterLoadState() : leader_balance_threshold_(FLAGS_leader_balance_threshold) {}
 
   // Comparators used for sorting by load.
   bool CompareByUuid(const TabletServerId& a, const TabletServerId& b) {
@@ -133,20 +132,11 @@ class ClusterLoadBalancer::ClusterLoadState {
     ClusterLoadState* state_;
   };
 
-  // Comparator to sort tablet servers' leader counts in decreasing order.
-  struct LeaderCountComparator {
-    explicit LeaderCountComparator(ClusterLoadState* state) : state_(state) {}
+  // Comparator to sort tablet servers' leader load.
+  struct LeaderLoadComparator {
+    explicit LeaderLoadComparator(ClusterLoadState* state) : state_(state) {}
     bool operator()(const TabletServerId& a, const TabletServerId& b) {
-      return state_->per_ts_meta_[a].leader_count > state_->per_ts_meta_[b].leader_count;
-    }
-    ClusterLoadState* state_;
-  };
-
-  // Comparator to sort tablets' load gaps in decreasing order.
-  struct TabletLoadGapComparator {
-    explicit TabletLoadGapComparator(ClusterLoadState* state) : state_(state) {}
-    bool operator()(const TabletId& a, const TabletId& b) {
-      return state_->GetTabletLoadGap(a) > state_->GetTabletLoadGap(b);
+      return state_->GetLeaderLoad(a) < state_->GetLeaderLoad(b);
     }
     ClusterLoadState* state_;
   };
@@ -154,39 +144,12 @@ class ClusterLoadBalancer::ClusterLoadState {
   // Get the load for a certain TS.
   int GetLoad(const TabletServerId& ts_uuid) const {
     const auto& ts_meta = per_ts_meta_.at(ts_uuid);
-    return ts_meta.starting + ts_meta.running;
+    return ts_meta.starting_tablets.size() + ts_meta.running_tablets.size();
   }
 
-  // Get the load gap for a certain tablet to balance the leader load. The leader gap is the
-  // difference between the leader count on the tablet's leader tablet server and that on the
-  // tablet's follower that has the most leaders. The narrower the gap, the more balanced the
-  // leader load distribution is. For example, a tablet leader on ts0 in a leader distribution
-  // of {7, 5, 4} has a load gap of 2.
-  int GetTabletLoadGap(const TabletId& tablet_id) const {
-    const auto& tablet_meta = per_tablet_meta_.at(tablet_id);
-    // If the tablet's leader has already been moved, return the smallest gap possible so to push
-    // it to the bottom of the list to consider for moving.
-    if (tablet_meta.leader_uuid.empty()) {
-      return INT_MIN;
-    }
-    const auto& leader_meta = per_ts_meta_.at(tablet_meta.leader_uuid);
-    return leader_meta.leader_count - tablet_meta.max_follower_leader_count;
-  }
-
-  // Analyze the tablets' leader data.
-  void AnalyzeTabletLeaderData() {
-    // Traverse all tablet servers. And for each TS, go through all its tablets that are followers
-    // and update their max follower leader count.
-    for (const auto& ts_meta : per_ts_meta_) {
-      for (const auto& tablet_id : ts_meta.second.tablets) {
-        auto& tablet_meta = per_tablet_meta_[tablet_id];
-        // TODO(robert): we will need to ignore tablets which are observers and not followers.
-        if (ts_meta.first != tablet_meta.leader_uuid) {
-          tablet_meta.max_follower_leader_count =
-            max(tablet_meta.max_follower_leader_count, ts_meta.second.leader_count);
-        }
-      }
-    }
+  // Get the load for a certain TS.
+  int GetLeaderLoad(const TabletServerId& ts_uuid) const {
+    return per_ts_meta_.at(ts_uuid).leaders.size();
   }
 
   void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
@@ -221,22 +184,20 @@ class ClusterLoadBalancer::ClusterLoadState {
         return false;
       }
 
-      // Fill leader info and increment the tablet server's leader count.
+      // Fill leader info.
       if (replica.second.role == consensus::RaftPeerPB::LEADER) {
         tablet_meta.leader_uuid = ts_uuid;
-        ++ts_meta_it->second.leader_count;
+        ts_meta_it->second.leaders.insert(tablet_id);
       }
 
       const tablet::TabletStatePB& tablet_state = replica.second.state;
       if (tablet_state == tablet::RUNNING) {
-        ts_meta_it->second.tablets.insert(tablet_id);
-        ++ts_meta_it->second.running;
+        ts_meta_it->second.running_tablets.insert(tablet_id);
         ++tablet_meta.running;
         ++total_running_;
       } else if (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED) {
         // Keep track of transitioning state (not running, but not in a stopped or failed state).
-        ts_meta_it->second.tablets.insert(tablet_id);
-        ++ts_meta_it->second.starting;
+        ts_meta_it->second.starting_tablets.insert(tablet_id);
         ++tablet_meta.starting;
         ++total_starting_;
       }
@@ -247,9 +208,6 @@ class ClusterLoadBalancer::ClusterLoadState {
         tablet_meta.blacklisted_tablet_servers.insert(ts_uuid);
       }
     }
-
-    // Add this tablet to the tablet list to have their their load gaps sorted.
-    sorted_tablet_load_gaps_.push_back(tablet_id);
 
     // Only set the over-replication section if we need to.
     tablet_meta.is_over_replicated = placement.num_replicas() < replica_map.size();
@@ -344,7 +302,7 @@ class ClusterLoadBalancer::ClusterLoadState {
 
     // Add this tablet server for leader load-balancing only if it is not blacklisted.
     if (!is_blacklisted) {
-      sorted_leader_counts_.push_back(ts_uuid);
+      sorted_leader_load_.push_back(ts_uuid);
     }
 
     if (ts_desc->HasTabletDeletePending()) {
@@ -366,7 +324,7 @@ class ClusterLoadBalancer::ClusterLoadState {
       return false;
     }
     // We cannot add a tablet to a tablet server if it is already serving it.
-    if (ts_meta.tablets.count(tablet_id)) {
+    if (ts_meta.running_tablets.count(tablet_id) || ts_meta.starting_tablets.count(tablet_id)) {
       return false;
     }
     // If we ask to use placement information, check against it.
@@ -464,55 +422,27 @@ class ClusterLoadBalancer::ClusterLoadState {
     return false;
   }
 
-  bool SelectOverloadedLeaderToMove(TabletId* overloaded_tablet_id, TabletServerId* from_ts_uuid) {
-    if (!sorted_leader_counts_.empty()) {
-      // Find out the expected average leader count on each tablet server. When the number of
-      // leaders is not exact multiple of the tablet server count, a few more tablet servers
-      // can have one more leader than average.
-      int tablet_count = per_tablet_meta_.size();
-      int ts_count = sorted_leader_counts_.size();
-      int average_leader_count = tablet_count / ts_count;
-      int remainder_leader_count = tablet_count % ts_count;
-
-      for (const auto& ts_uuid : sorted_leader_counts_) {
-        auto& ts_meta = per_ts_meta_[ts_uuid];
-        // For each tablet server, find out how much the server is overloaded.
-        int expected_leader_count = average_leader_count + ((remainder_leader_count-- > 0) ? 1 : 0);
-        if (ts_meta.leader_count <= expected_leader_count) {
-          // TODO(robert): we may want to tolerate less-than-perfect distribution in future with a
-          // threshold and stop searching when we hit a tablet server that is below the threshold.
-          continue;
-        }
-
-        // Walk through the list of tablets sorted by decreasing load gap. Return the next tablet
-        // whose leader is on the tablet server.
-        for (const auto& tablet_id : sorted_tablet_load_gaps_) {
-          const auto& tablet_meta = per_tablet_meta_[tablet_id];
-          if (tablet_meta.leader_uuid == ts_uuid) {
-            *overloaded_tablet_id = tablet_id;
-            *from_ts_uuid = ts_uuid;
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   void AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
+    per_ts_meta_[to_ts].starting_tablets.insert(tablet_id);
     ++per_tablet_meta_[tablet_id].starting;
-    ++per_ts_meta_[to_ts].starting;
     ++total_starting_;
     tablets_added_.insert(tablet_id);
     SortLoad();
   }
 
   void RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
-    --per_tablet_meta_[tablet_id].running;
-    --per_ts_meta_[from_ts].running;
-    --total_running_;
+    if (per_ts_meta_[from_ts].running_tablets.count(tablet_id)) {
+      per_ts_meta_[from_ts].running_tablets.erase(tablet_id);
+      --per_tablet_meta_[tablet_id].running;
+      --total_running_;
+    }
+    if (per_ts_meta_[from_ts].starting_tablets.count(tablet_id)) {
+      per_ts_meta_[from_ts].starting_tablets.erase(tablet_id);
+      --per_tablet_meta_[tablet_id].starting;
+      --total_starting_;
+    }
     if (per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
-      StepDownLeader(tablet_id, from_ts);
+      MoveLeader(tablet_id, from_ts);
     }
     SortLoad();
   }
@@ -522,20 +452,41 @@ class ClusterLoadBalancer::ClusterLoadState {
     sort(sorted_load_.begin(), sorted_load_.end(), comparator);
   }
 
-  void StepDownLeader(const TabletId& tablet_id, const TabletServerId& from_ts) {
+  void MoveLeader(
+      const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts = "") {
     DCHECK_EQ(per_tablet_meta_[tablet_id].leader_uuid, from_ts);
-    sorted_tablet_load_gaps_.erase(std::find(sorted_tablet_load_gaps_.begin(),
-        sorted_tablet_load_gaps_.end(), tablet_id));
-    per_tablet_meta_[tablet_id].leader_uuid = "";
-    --per_ts_meta_[from_ts].leader_count;
-    SortLeaderData();
+    per_tablet_meta_[tablet_id].leader_uuid = to_ts;
+    per_ts_meta_[from_ts].leaders.erase(tablet_id);
+    if (!to_ts.empty()) {
+      per_ts_meta_[to_ts].leaders.insert(tablet_id);
+    }
+    SortLeaderLoad();
   }
 
-  void SortLeaderData() {
-    auto leader_count_comparator = LeaderCountComparator(this);
-    sort(sorted_leader_counts_.begin(), sorted_leader_counts_.end(), leader_count_comparator);
-    auto load_gap_comparator = TabletLoadGapComparator(this);
-    sort(sorted_tablet_load_gaps_.begin(), sorted_tablet_load_gaps_.end(), load_gap_comparator);
+  void SortLeaderLoad() {
+    auto leader_count_comparator = LeaderLoadComparator(this);
+    sort(sorted_leader_load_.begin(), sorted_leader_load_.end(), leader_count_comparator);
+  }
+
+  inline bool IsLeaderLoadBelowThreshold(const TabletServerId& ts_uuid) {
+      return ((leader_balance_threshold_ > 0) &&
+              (GetLeaderLoad(ts_uuid) <= leader_balance_threshold_));
+  }
+
+  void AdjustLeaderBalanceThreshold() {
+    if (leader_balance_threshold_ != 0) {
+      int min_threshold = sorted_leader_load_.empty() ? 0 :
+          static_cast<int>(std::ceil(
+              static_cast<double>(per_tablet_meta_.size()) /
+                  static_cast<double>(sorted_leader_load_.size())));
+      if (leader_balance_threshold_ < min_threshold) {
+        LOG(WARNING) << Substitute(
+            "leader_balance_threshold flag is set to $0 but is too low for the current "
+            "configuration. Adjusting it to $1.",
+            leader_balance_threshold_, min_threshold);
+        leader_balance_threshold_ = min_threshold;
+      }
+    }
   }
 
   // Map from tablet ids to the metadata we store for each.
@@ -585,11 +536,11 @@ class ClusterLoadBalancer::ClusterLoadState {
   // List of tablet ids that have been added to a new tablet server.
   set<TabletId> tablets_added_;
 
-  // List of table server ids sorted by their leader counts in decreasing order.
-  vector<TabletServerId> sorted_leader_counts_;
+  // Number of leaders per each tablet server to balance below.
+  int leader_balance_threshold_ = 0;
 
-  // List of tablet ids sorted by their load gaps in decreasing order.
-  vector<TabletId> sorted_tablet_load_gaps_;
+  // List of table server ids sorted by their leader load.
+  vector<TabletServerId> sorted_leader_load_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
@@ -684,10 +635,9 @@ void ClusterLoadBalancer::RunLoadBalancer() {
     }
   }
 
-  // Output parameter is unused in the load balancer, but useful in testing.
-  TabletId stepdown_tablet_id;
-  for (int i = 0; i < options_.kMaxConcurrentOverloadedLeaderStepDowns; ++i) {
-    if (!HandleOverloadedLeaderStepDowns(&stepdown_tablet_id, &out_from_ts)) {
+  // Handle tablet servers with too many leaders.
+  for (int i = 0; i < options_.kMaxConcurrentLeaderMoves; ++i) {
+    if (!HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts)) {
       break;
     }
   }
@@ -740,19 +690,16 @@ bool ClusterLoadBalancer::AnalyzeTablets() {
     }
   }
 
+  // After updating the tablets and tablet servers, adjust the configured threshold if it is too
+  // low for the given configuration.
+  state_->AdjustLeaderBalanceThreshold();
+
   // Once we've analyzed both the tablet server information as well as the tablets, we can sort the
   // load and are ready to apply the load balancing rules.
   state_->SortLoad();
 
-  // Analyze the tablets' leader data.
-  state_->AnalyzeTabletLeaderData();
-
-  // Since leader data are only needed when we rebalance overloaded leaders, we keep the sorting
-  // separate.
-  // TODO(robert): When we analyze the leader data in AnalyzeTabletLeaderData, we should also find
-  // out if there is any skew needing balancing as we scan the tablet servers once, and skip the
-  // sorting here and balancing in HandleOverloadedLeaderStepDowns afterwards.
-  state_->SortLeaderData();
+  // Since leader load are only needed to rebalance leaders, we keep the sorting separate.
+  state_->SortLeaderLoad();
 
   VLOG(1) << Substitute(
       "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
@@ -938,7 +885,12 @@ bool ClusterLoadBalancer::GetTabletToMove(
     const TabletServerId& from_ts, const TabletServerId& to_ts, TabletId* moving_tablet_id) {
   const auto& from_ts_meta = state_->per_ts_meta_[from_ts];
   set<TabletId> non_over_replicated_tablets;
-  for (const TabletId& tablet_id : from_ts_meta.tablets) {
+  set<TabletId> all_tablets;
+  std::merge(
+      from_ts_meta.running_tablets.begin(), from_ts_meta.running_tablets.end(),
+      from_ts_meta.starting_tablets.begin(), from_ts_meta.starting_tablets.end(),
+      std::inserter(all_tablets, all_tablets.begin()));
+  for (const TabletId& tablet_id : all_tablets) {
     // We don't want to add a new replica to an already over-replicated tablet.
     //
     // TODO(bogdan): should make sure we pick tablets that this TS is not a leader of, so we
@@ -976,6 +928,74 @@ bool ClusterLoadBalancer::GetTabletToMove(
     return true;
   }
   // If we couldn't select a tablet above, we have to return failure.
+  return false;
+}
+
+bool ClusterLoadBalancer::GetLeaderToMove(
+    TabletId* moving_tablet_id, TabletServerId* from_ts, TabletServerId *to_ts) {
+  if (state_->sorted_leader_load_.empty() ||
+      state_->IsLeaderLoadBelowThreshold(state_->sorted_leader_load_.back())) {
+    return false;
+  }
+
+  // The algorithm to balance the leaders is very similar to the one for tablets:
+  //
+  // Start with two indices pointing at left and right most ends of the sorted_leader_load_
+  // structure.
+  //
+  // We will try to find two TSs that have at least one leader that can be moved amongst them, from
+  // the higher load to the lower load TS. To do this, we will go through comparing the TSs
+  // corresponding to our left and right indices. We go through leaders on the higher loaded TS
+  // and find a running replica on the lower loaded TS to move the leader. If no leader can be
+  // be picked, we advance our state.
+  //
+  // The state is defined as the positions of the start and end indices. We always try to move the
+  // right index back, until we cannot any more, due to either reaching the left index (cannot
+  // rebalance from one TS to itself), or the difference of load between the two TSs is too low to
+  // try to rebalance (if load variance is 1, it does not make sense to move leaders between the
+  // TSs). When we cannot lower the right index any further, we reset it back to last_pos and
+  // increment the left index.
+  //
+  // We stop the whole algorithm if the left index reaches last_pos, or if we reset the right index
+  // and are already breaking the invariance rule, as that means that any further differences in
+  // the interval between left and right cannot have load > kMinLeaderLoadVarianceToBalance.
+  int last_pos = state_->sorted_leader_load_.size() - 1;
+  for (int left = 0; left <= last_pos; ++left) {
+    for (int right = last_pos; right >= 0; --right) {
+      const TabletServerId& low_load_uuid = state_->sorted_leader_load_[left];
+      const TabletServerId& high_load_uuid = state_->sorted_leader_load_[right];
+      int load_variance =
+          state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
+
+      // Check for state change or end conditions.
+      if (left == right || load_variance < options_.kMinLeaderLoadVarianceToBalance) {
+        // Either both left and right are at the end, or our load_variance is already too small,
+        // which means it will be too small for any TSs between left and right, so we can return.
+        if (right == last_pos) {
+          return false;
+        } else {
+          break;
+        }
+      }
+
+      // Find the leaders on the higher loaded TS that have running peers on the lower loaded TS.
+      // If there are, we have a candidate we want, so fill in the output params and return.
+      const set<TabletId>& leaders = state_->per_ts_meta_[high_load_uuid].leaders;
+      const set<TabletId>& peers = state_->per_ts_meta_[low_load_uuid].running_tablets;
+      set<TabletId> intersection;
+      const auto& itr = std::inserter(intersection, intersection.begin());
+      std::set_intersection(leaders.begin(), leaders.end(), peers.begin(), peers.end(), itr);
+      if (!intersection.empty()) {
+        *moving_tablet_id = *intersection.begin();
+        *from_ts = high_load_uuid;
+        *to_ts = low_load_uuid;
+        return true;
+      }
+    }
+  }
+
+  // Should never get here.
+  LOG(FATAL) << "Load balancing algorithm reached invalid state!";
   return false;
 }
 
@@ -1054,10 +1074,10 @@ bool ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
   return false;
 }
 
-bool ClusterLoadBalancer::HandleOverloadedLeaderStepDowns(
-    TabletId* stepdown_tablet_id, TabletServerId* from_ts_uuid) {
-  if (state_->SelectOverloadedLeaderToMove(stepdown_tablet_id, from_ts_uuid)) {
-    StepDownLeader(*stepdown_tablet_id, *from_ts_uuid);
+bool ClusterLoadBalancer::HandleLeaderMoves(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  if (GetLeaderToMove(out_tablet_id, out_from_ts, out_to_ts)) {
+    MoveLeader(*out_tablet_id, *out_from_ts, *out_to_ts);
     return true;
   }
   return false;
@@ -1088,12 +1108,12 @@ void ClusterLoadBalancer::RemoveReplica(
   state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
-void ClusterLoadBalancer::StepDownLeader(
-     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
-  LOG(INFO) << Substitute("Stepping down leader $0 from tablet $1.", ts_uuid, tablet_id);
-  SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
-     false /* should_remove_leader */);
-  state_->StepDownLeader(tablet_id, ts_uuid);
+void ClusterLoadBalancer::MoveLeader(
+    const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
+  LOG(INFO) << Substitute("Moving leader $0 from tablet $1 to $2", tablet_id, from_ts, to_ts);
+  SendReplicaChanges(GetTabletMap().at(tablet_id), from_ts, false /* is_add */,
+     false /* should_remove_leader */, to_ts);
+  state_->MoveLeader(tablet_id, from_ts, to_ts);
 }
 
 // CatalogManager indirection methods that are set as virtual to be bypassed in testing.
@@ -1122,7 +1142,7 @@ const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
 
 void ClusterLoadBalancer::SendReplicaChanges(
     scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
-    const bool should_remove_leader) {
+    const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) {
   TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
   if (is_add) {
     catalog_manager_->SendAddServerRequest(
@@ -1131,7 +1151,8 @@ void ClusterLoadBalancer::SendReplicaChanges(
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
       catalog_manager_->SendLeaderStepDownRequest(
-        tablet, l.data().pb.committed_consensus_state(), ts_uuid, should_remove_leader);
+        tablet, l.data().pb.committed_consensus_state(), ts_uuid, should_remove_leader,
+        new_leader_ts_uuid);
     } else {
       catalog_manager_->SendRemoveServerRequest(
         tablet, l.data().pb.committed_consensus_state(), ts_uuid);

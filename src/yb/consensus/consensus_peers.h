@@ -257,6 +257,14 @@ class PeerProxy {
     LOG(DFATAL) << "Not implemented";
   }
 
+  // Sends a RunLeaderElection request to a peer.
+  virtual void RunLeaderElectionAsync(const RunLeaderElectionRequestPB* request,
+                                      RunLeaderElectionResponsePB* response,
+                                      rpc::RpcController* controller,
+                                      const rpc::ResponseCallback& callback) {
+    LOG(DFATAL) << "Not implemented";
+  }
+
   virtual ~PeerProxy() {}
 };
 
@@ -291,6 +299,11 @@ class RpcPeerProxy : public PeerProxy {
                                     StartRemoteBootstrapResponsePB* response,
                                     rpc::RpcController* controller,
                                     const rpc::ResponseCallback& callback) OVERRIDE;
+
+  virtual void RunLeaderElectionAsync(const RunLeaderElectionRequestPB* request,
+                                      RunLeaderElectionResponsePB* response,
+                                      rpc::RpcController* controller,
+                                      const rpc::ResponseCallback& callback) OVERRIDE;
 
   virtual ~RpcPeerProxy();
 

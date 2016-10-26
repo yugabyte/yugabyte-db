@@ -1586,9 +1586,9 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 2));
 
   // Step down and test that a 2nd stepdown returns the expected result.
-  ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
   TabletServerErrorPB error;
-  s = LeaderStepDown(tservers[0], tablet_id_, MonoDelta::FromSeconds(10), &error);
+  s = LeaderStepDown(tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10), &error);
   ASSERT_TRUE(s.IsIllegalState()) << "TS #0 should not be leader anymore: " << s.ToString();
   ASSERT_EQ(TabletServerErrorPB::NOT_THE_LEADER, error.code()) << error.ShortDebugString();
 
@@ -1637,7 +1637,7 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
     ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 
     // Step down.
-    ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, MonoDelta::FromSeconds(10)));
+    ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
 
     // Assert that elections time out without a live majority.
     // We specify a very short timeout here to keep the tests fast.
@@ -1945,7 +1945,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Now that TS 4 is electable (and pending), have TS 0 step down.
   LOG(INFO) << "Forcing Peer " << initial_leader->uuid() << " to step down...";
-  ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
 
   // Resume TS 1 so we have a majority of 3 to elect a new leader.
   LOG(INFO) << "Resuming Peer " << tservers[1]->uuid() << " ...";

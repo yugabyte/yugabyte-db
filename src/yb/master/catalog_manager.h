@@ -782,10 +782,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                const std::string& reason);
 
   // Start a task to request the specified tablet leader to step down and optionally to remove
-  // the tablet that is over-replicated.
+  // the server that is over-replicated. A new tablet server can be specified to start an election
+  // immediately to become the new leader. If new_leader_ts_uuid is empty, the election will be run
+  // following the protocol's default mechanism.
   void SendLeaderStepDownRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid, bool should_remove);
+      const string& change_config_ts_uuid, bool should_remove,
+      const string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.

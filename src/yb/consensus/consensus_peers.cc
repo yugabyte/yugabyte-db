@@ -18,13 +18,13 @@
 #include "yb/consensus/consensus.proxy.h"
 
 #include <algorithm>
-#include <boost/bind.hpp>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include <boost/bind.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_peers.h"
@@ -361,6 +361,14 @@ void RpcPeerProxy::RequestConsensusVoteAsync(const VoteRequestPB* request,
   consensus_proxy_->RequestConsensusVoteAsync(*request, response, controller, callback);
 }
 
+void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* request,
+                                          RunLeaderElectionResponsePB* response,
+                                          rpc::RpcController* controller,
+                                          const rpc::ResponseCallback& callback) {
+  controller->set_timeout(MonoDelta::FromMilliseconds(FLAGS_consensus_rpc_timeout_ms));
+  consensus_proxy_->RunLeaderElectionAsync(*request, response, controller, callback);
+}
+
 void RpcPeerProxy::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* request,
                                         StartRemoteBootstrapResponsePB* response,
                                         rpc::RpcController* controller,
@@ -420,6 +428,8 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_raft_get_node_instance_timeout_ms));
   int attempt = 1;
+  // Normal rand is seeded by default with 1. Using the same for rand_r seed.
+  unsigned int seed = 1;
   while (true) {
     VLOG(2) << "Getting uuid from remote peer. Request: " << req.ShortDebugString();
 
@@ -438,7 +448,7 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
     if (now.ComesBefore(deadline)) {
       int64_t remaining_ms = deadline.GetDeltaSince(now).ToMilliseconds();
       int64_t base_delay_ms = 1 << (attempt + 3); // 1st retry delayed 2^4 ms, 2nd 2^5, etc..
-      int64_t jitter_ms = rand() % 50; // Add up to 50ms of additional random delay.
+      int64_t jitter_ms = rand_r(&seed) % 50; // Add up to 50ms of additional random delay.
       int64_t delay_ms = std::min<int64_t>(base_delay_ms + jitter_ms, remaining_ms);
       VLOG(1) << "Sleeping " << delay_ms << " ms. before retrying to get uuid from remote peer...";
       SleepFor(MonoDelta::FromMilliseconds(delay_ms));

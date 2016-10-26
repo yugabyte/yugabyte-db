@@ -2861,9 +2861,10 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
  public:
   AsyncTryStepDown(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const ConsensusStatePB& cstate, const string& change_config_ts_uuid, bool should_remove)
+      const ConsensusStatePB& cstate, const string& change_config_ts_uuid, bool should_remove,
+      const string& new_leader_uuid = "")
     : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
-      should_remove_(should_remove) {}
+      should_remove_(should_remove), new_leader_uuid_(new_leader_uuid) {}
 
   string type_name() const OVERRIDE { return "Stepdown Leader"; }
 
@@ -2877,6 +2878,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   virtual void HandleResponse(int attempt) OVERRIDE;
 
   const bool should_remove_;
+  const string new_leader_uuid_;
   consensus::LeaderStepDownRequestPB stepdown_req_;
   consensus::LeaderStepDownResponsePB stepdown_resp_;
 };
@@ -2898,6 +2900,9 @@ bool AsyncTryStepDown::PrepareRequest(int attempt) {
 
   stepdown_req_.set_dest_uuid(change_config_ts_uuid_);
   stepdown_req_.set_tablet_id(tablet_->tablet_id());
+  if (!new_leader_uuid_.empty()) {
+    stepdown_req_.set_new_leader_uuid(new_leader_uuid_);
+  }
 
   return true;
 }
@@ -3033,9 +3038,10 @@ bool CatalogManager::getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
 
 void CatalogManager::SendLeaderStepDownRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
-    const string& change_config_ts_uuid, bool should_remove) {
+    const string& change_config_ts_uuid, bool should_remove, const string& new_leader_uuid) {
   AsyncTryStepDown* task = new AsyncTryStepDown(
-      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, should_remove);
+      master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, should_remove,
+      new_leader_uuid);
 
   tablet->table()->AddTask(task);
   Status status = task->Run();
