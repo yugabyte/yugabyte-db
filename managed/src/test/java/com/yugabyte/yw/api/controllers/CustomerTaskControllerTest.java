@@ -5,7 +5,6 @@ package com.yugabyte.yw.api.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -13,7 +12,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Matchers;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -87,7 +85,6 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
-    int currentTimeStamp = Calendar.getInstance().get(Calendar.MILLISECOND);
     JsonNode universeTasks = json.get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
@@ -95,8 +92,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
-    assertTrue(universeTasks.get(0).get("createTime").asInt() < currentTimeStamp);
-    assertNotNull(universeTasks.get(0).get("completionTime").asText());
+    assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
+    assertTrue(universeTasks.get(0).get("completionTime").isNull());
     assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
   }
 
@@ -122,13 +119,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     JsonNode universeTasks = json.get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
-    int currentTimeStamp = Calendar.getInstance().get(Calendar.MILLISECOND);
     assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Bar")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
-    assertTrue(universeTasks.get(0).get("createTime").asInt() < currentTimeStamp);
-    assertNotNull(universeTasks.get(0).get("completionTime").asText());
+    assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
+    assertTrue(universeTasks.get(0).get("completionTime").isNull());
     assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
   }
 
