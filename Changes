@@ -5,13 +5,18 @@ Revision history for pgTAP
 ---------------------------
 * Fixed the default description for `hasnt_opclass()` to say "should not
   exist" instead of "should exist", thanks to Rodolphe Quiédeville (PR #99).
-* Added `is_indexed()`, which test to see that specific table columns are
+* Added `is_indexed()`, which tests to see if specific table columns are
   indexed. It's effectively the same as `has_index()` except that it doesn't
-  require an index name and does require one or more column names or
-  expressions in the defined for the index. Thanks to Rodolphe Quiédeville
-  (PR #103).
+  require an index name and does require one or more column names or index
+  expressions. Thanks to Rodolphe Quiédeville (PR #103).
 * Fixed `pg_version_num()` to work with the new version format coming in
   PostgreSQL 10.
+* Fix lives_ok() and throws_ok() to also trap ASSERT_FAILURE (PR #119).
+* Add negation functions isnt_aggregate() and isnt_definer(), which return the
+  opposite of is_aggregate() and is_definer(). Thanks to Rodolphe Quiédeville
+  (PR #106).
+* Add has_extension() and hasnt_extension(). Thanks to Rodolphe Quiédeville (PR
+  #101).
  
 0.96.0 2016-05-16T20:53:57Z
 ---------------------------
