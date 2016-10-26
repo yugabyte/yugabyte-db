@@ -43,10 +43,14 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
+      // If for any reason destroy fails we would just unlock the universe for update
+      try {
+        unlockUniverseForUpdate();
+      } catch (Throwable t1) {
+        // Ignore the error
+      }
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
-    } finally {
-      unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
   }
