@@ -26,6 +26,9 @@ Options:
     we believe "address already in use" only happens a small percentage of the time.
   --test-args "<arguments>"
     Pass additional arguments to the test.
+  --clang
+    Use binaries built with Clang (e.g. to distinguish between debug/release builds made with
+    gcc vs. clang).
 EOT
 }
 
@@ -60,6 +63,9 @@ declare -i iteration=0
 declare -i num_iter=1000
 keep_all_logs=false
 original_args=( "$@" )
+verbose_level=0
+
+unset YB_COMPILER_TYPE
 
 while [[ $# -gt 0 ]]; do
   if [[ ${#positional_args[@]} -eq 0 ]] && is_valid_build_type "$1"; then
@@ -74,6 +80,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     -v)
       more_test_args+=" $1=$2"
+      verbose_level=$2
       shift
     ;;
     -p|--parallelism)
@@ -107,6 +114,9 @@ while [[ $# -gt 0 ]]; do
     --test-args)
       more_test_args+=" $2"
       shift
+    ;;
+    --clang)
+      YB_COMPILER_TYPE="clang"
     ;;
     *)
       positional_args+=( "$1" )
@@ -156,7 +166,9 @@ if [[ $iteration -gt 0 ]]; then
   core_dir=$TEST_TMPDIR
   (
     cd "$TEST_TMPDIR"
-    set -x
+    if [[ $verbose_level -gt 0 ]]; then
+      set -x
+    fi
     "$abs_test_binary_path" --gtest_filter="$test_filter" $more_test_args &>"$raw_test_log_path"
   )
   exit_code=$?

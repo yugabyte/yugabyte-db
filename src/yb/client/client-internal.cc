@@ -367,6 +367,15 @@ Status YBClient::Data::CreateTable(
       YBSchema actual_schema;
       string table_id;
       PartitionSchema actual_partition_schema;
+
+      // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
+      // If we've been retrying table creation, and the table is now in the process is being
+      // created, we can sometimes see an empty schema. Wait until the table is fully created
+      // before we compare the schema.
+      RETURN_NOT_OK_PREPEND(
+          WaitForCreateTableToFinish(client, req.name(), deadline),
+          Substitute("Failed waiting for table $0 to finish being created", req.name()));
+
       RETURN_NOT_OK_PREPEND(
           GetTableSchema(client, req.name(), deadline, &actual_schema,
                          &actual_partition_schema, &table_id),
@@ -379,8 +388,10 @@ Status YBClient::Data::CreateTable(
         return STATUS(AlreadyPresent, msg);
       } else {
         PartitionSchema partition_schema;
+        // We need to use the schema received from the server, because the user-constructed
+        // schema might not have column ids.
         RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(),
-                                              *schema.schema_, &partition_schema));
+                                              *actual_schema.schema_, &partition_schema));
         if (!partition_schema.Equals(actual_partition_schema)) {
           string msg = Substitute("Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",

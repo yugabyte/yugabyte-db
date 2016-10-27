@@ -18,13 +18,14 @@
 #define YB_COMMON_SCHEMA_H
 
 #include <functional>
-#include <glog/logging.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/common/id_mapping.h"
 #include "yb/common/key_encoder.h"
@@ -209,7 +210,7 @@ class ColumnSchema {
     if (!EqualsType(other) || this->name_ != other.name_)
       return false;
 
-    // For Key comparison checking the defauls doesn't make sense,
+    // For Key comparison checking the defaults doesn't make sense,
     // since we don't support them, for server vs user schema this comparison
     // will always fail, since the user does not specify the defaults.
     if (check_defaults) {
@@ -845,13 +846,14 @@ class SchemaBuilder {
   Status RenameColumn(const string& old_name, const string& new_name);
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 
   ColumnId next_id_;
   vector<ColumnId> col_ids_;
   vector<ColumnSchema> cols_;
   unordered_set<string> col_names_;
   size_t num_key_columns_;
+
+  DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };
 
 } // namespace yb
@@ -866,4 +868,4 @@ struct hash<yb::ColumnId> {
 };
 } // namespace std
 
-#endif
+#endif  // YB_COMMON_SCHEMA_H
