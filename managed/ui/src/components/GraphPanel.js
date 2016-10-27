@@ -29,7 +29,7 @@ export default class GraphPanel extends Component {
     const panelFrames = panelIds.map(function(panelId) {
       var panelUrl = grafanaUrl + "?panelId=" + panelId +
         "&from=" + fromTimestampMs + "&to=" + toTimestampMs +
-        "&var-host=" + nodePrefix + "&fullscreen";
+        "&var-cluster=" + encodeURI(nodePrefix) + "&fullscreen&var-host=All";
       return (<InlineFrame key={panelId} src={panelUrl} className="graph-panel" />);
     });
     return (
