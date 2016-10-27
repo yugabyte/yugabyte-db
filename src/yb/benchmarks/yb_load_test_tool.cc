@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < FLAGS_num_iter; ++i) {
     if (!use_redis_table) {
-      const string table_name;
+      const string table_name(FLAGS_table_name);
       shared_ptr<YBClient> client = CreateYBClient();
       SetupYBTable(client);
 
