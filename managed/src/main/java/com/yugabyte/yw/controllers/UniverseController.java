@@ -375,6 +375,14 @@ public class UniverseController extends AuthenticatedController {
    * Helper Method to fetch API Responses for Instance costs
    */
   private ObjectNode getUniverseCostUtil(Universe universe) throws Exception {
+    ObjectNode universeCostItem = Json.newObject();
+    // Make sure we support pricing for the cloud.
+    if (universe.getUniverseDetails().userIntent.providerType != CloudType.aws) {
+      LOG.warn("Pricing information not supported for cloud {}",
+               universe.getUniverseDetails().userIntent.providerType);
+      return universeCostItem;
+    }
+
     Collection<NodeDetails> nodes = universe.getNodes();
     // TODO: only pick the newly configured nodes in case of the universe being edited.
     double instanceCostPerDay = 0;
@@ -390,7 +398,8 @@ public class UniverseController extends AuthenticatedController {
     Calendar currentCalender = Calendar.getInstance();
     int monthDays = currentCalender.getActualMaximum(Calendar.DAY_OF_MONTH);
     double costPerMonth = monthDays * universeCostPerDay;
-    ObjectNode universeCostItem = Json.newObject();
+
+    // Fill up the responses.
     universeCostItem.put("costPerDay", universeCostPerDay);
     universeCostItem.put("costPerMonth", costPerMonth);
     universeCostItem.put("name", universe.name);

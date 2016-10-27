@@ -119,10 +119,6 @@ public class InstanceType extends Model {
     instanceType.numCores = numCores;
     instanceType.instanceTypeDetails = instanceTypeDetails;
     instanceType.instanceTypeDetailsJson = Json.stringify(Json.toJson(instanceTypeDetails));
-    LOG.debug("Saving {} ({} cores, {}GB, {}x{}GB {}) with details {}",
-              instanceType.idKey.toString(), instanceType.numCores, instanceType.memSizeGB,
-              instanceType.volumeCount, instanceType.volumeSizeGB,
-              instanceType.volumeType.toString(), instanceType.instanceTypeDetailsJson);
     // Update the in-memory fields.
     instanceType.save();
     // Update the JSON field - this does not seem to be updated by the save above.
