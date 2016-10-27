@@ -3,7 +3,9 @@
 #ifndef YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
 #define YB_DOCDB_DOCDB_ROCKSDB_UTIL_H_
 
+#include "rocksdb/cache.h"
 #include "rocksdb/db.h"
+#include "rocksdb/include/rocksdb/options.h"
 
 namespace yb {
 namespace docdb {
@@ -22,6 +24,14 @@ void PerformRocksDBSeek(
   } while (0)
 
 std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb);
+
+// Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The
+// 'statistics' object provided by the caller will be used by RocksDB to maintain
+// the stats for the tablet specified by 'tablet_id'.
+void InitRocksDBOptions(
+    rocksdb::Options* options, const std::string& tablet_id,
+    const std::shared_ptr<rocksdb::Statistics>& statistics,
+    const std::shared_ptr<rocksdb::Cache>& block_cache);
 
 }  // namespace docdb
 }  // namespace yb

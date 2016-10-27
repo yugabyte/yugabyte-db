@@ -4,10 +4,10 @@
 
 #include "yb/util/condition_variable.h"
 
-#include <glog/logging.h>
-
 #include <errno.h>
 #include <sys/time.h>
+
+#include <glog/logging.h>
 
 #include "yb/util/monotime.h"
 #include "yb/util/thread_restrictions.h"
@@ -51,7 +51,7 @@ ConditionVariable::~ConditionVariable() {
     struct timespec ts;
     ts.tv_sec = 0;
     ts.tv_nsec = 1;
-    pthread_cond_timedwait_relative_np(&condition_, lock.native_handle, &ts);
+    pthread_cond_timedwait_relative_np(&condition_, &lock.native_handle_, &ts);
   }
 #endif
   int rv = pthread_cond_destroy(&condition_);

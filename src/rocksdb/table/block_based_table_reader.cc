@@ -25,17 +25,18 @@
 #include "rocksdb/table_properties.h"
 
 #include "table/block.h"
-#include "table/filter_block.h"
 #include "table/block_based_filter_block.h"
 #include "table/block_based_table_factory.h"
-#include "table/full_filter_block.h"
 #include "table/block_hash_index.h"
 #include "table/block_prefix_index.h"
+#include "table/filter_block.h"
 #include "table/format.h"
+#include "table/forwarding_iterator.h"
+#include "table/full_filter_block.h"
+#include "table/get_context.h"
 #include "table/internal_iterator.h"
 #include "table/meta_blocks.h"
 #include "table/two_level_iterator.h"
-#include "table/get_context.h"
 
 #include "util/coding.h"
 #include "util/file_reader_writer.h"
@@ -458,6 +459,42 @@ void BlockBasedTable::GenerateCachePrefix(Cache* cc,
   }
 }
 
+// Indirection to TwoLevelIterator as it's a private class we cannot inherit from.
+class BloomFilterAwareIterator : public ForwardingIterator {
+ public:
+  BloomFilterAwareIterator(
+      BlockBasedTable* table, const ReadOptions& ro, bool skip_filters,
+      InternalIterator* internal_iter)
+      : ForwardingIterator(internal_iter),
+        table_(table),
+        read_options_(ro),
+        skip_filters_(skip_filters) {}
+
+  virtual void Seek(const Slice& target) override {
+    if (skip_filters_) {
+      internal_iter_->Seek(target);
+    } else {
+      auto filter_entry = table_->GetFilter(read_options_.read_tier == kBlockCacheTier /* no_io */);
+      FilterBlockReader* filter = filter_entry.value;
+
+      if (table_->FullFilterKeyMayMatch(filter, target)) {
+        // If bloom filter was not useful, then take this file into account.
+        internal_iter_->Seek(target);
+      } else {
+        // Else, record that the bloom filter was useful.
+        RecordTick(table_->rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
+      }
+      filter_entry.Release(table_->rep_->table_options.block_cache.get());
+    }
+  }
+
+ private:
+  // No ownership.
+  BlockBasedTable* table_;
+  const ReadOptions read_options_;
+  const bool skip_filters_;
+};
+
 namespace {
 // Return True if table_properties has `user_prop_name` has a `true` value
 // or it doesn't contain this property (for backward compatible).
@@ -660,7 +697,7 @@ Status BlockBasedTable::ReadMetaBlock(Rep* rep,
                                       std::unique_ptr<InternalIterator>* iter) {
   // TODO(sanjay): Skip this if footer.metaindex_handle() size indicates
   // it is an empty block.
-  //  TODO: we never really verify check sum for meta index block
+  // TODO: we never really verify check sum for meta index block
   std::unique_ptr<Block> meta;
   Status s = ReadBlockFromFile(
       rep->file.get(),
@@ -1218,9 +1255,22 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
 InternalIterator* BlockBasedTable::NewIterator(const ReadOptions& read_options,
                                                Arena* arena,
                                                bool skip_filters) {
-  return NewTwoLevelIterator(
+  unique_ptr<InternalIterator> internal_iterator(NewTwoLevelIterator(
       new BlockEntryIteratorState(this, read_options, skip_filters),
-      NewIndexIterator(read_options), arena);
+      NewIndexIterator(read_options)));
+
+  if (!read_options.use_bloom_on_scan) {
+    return internal_iterator.release();
+  }
+
+  if (arena == nullptr) {
+    return new BloomFilterAwareIterator(
+        this, read_options, skip_filters, internal_iterator.release());
+  } else {
+    auto mem = arena->AllocateAligned(sizeof(BloomFilterAwareIterator));
+    return new (mem)
+        BloomFilterAwareIterator(this, read_options, skip_filters, internal_iterator.release());
+  }
 }
 
 bool BlockBasedTable::FullFilterKeyMayMatch(FilterBlockReader* filter,

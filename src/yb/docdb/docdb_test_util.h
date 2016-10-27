@@ -105,6 +105,8 @@ class DocDBRocksDBFixture {
 
   const rocksdb::WriteOptions& write_options() const { return write_options_; }
 
+  const rocksdb::Options& options() const { return rocksdb_options_; }
+
   void OpenRocksDB();
   void DestroyRocksDB();
 

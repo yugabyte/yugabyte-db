@@ -7,13 +7,14 @@
 
 #include "rocksdb/db.h"
 #include "rocksdb/status.h"
+#include "rocksdb/util/statistics.h"
 
 #include "yb/common/timestamp.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -35,6 +36,8 @@ using yb::util::TrimStr;
 using yb::util::ApplyEagerLineContinuation;
 
 using rocksdb::WriteOptions;
+
+DECLARE_bool(use_docdb_aware_bloom_filter);
 
 namespace yb {
 namespace docdb {
@@ -117,6 +120,13 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) 
   // state of documents matters for this check, so it is OK to call this after compacting previous
   // history.
   void CheckExpectedLatestDBState();
+
+  void CheckBloom(const int expected_counter_val) {
+    if (FLAGS_use_docdb_aware_bloom_filter) {
+      ASSERT_EQ(
+          options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL), expected_counter_val);
+    }
+  }
 };
 
 KeyBytes DocDBTest::kEncodedDocKey1;
@@ -705,6 +715,92 @@ SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2000)]) -> 20000
 
     ASSERT_FALSE(iter.HasNext());
   }
+}
+
+TEST_F(DocDBTest, BloomFilterTest) {
+  // Write batch and flush options.
+  DocWriteBatch dwb(rocksdb());
+  FlushRocksDB();
+
+  DocKey key1(PrimitiveValues("key1"));
+  DocKey key2(PrimitiveValues("key2"));
+  DocKey key3(PrimitiveValues("key3"));
+  Timestamp ts;
+
+  SubDocument doc_from_rocksdb;
+  bool subdoc_found_in_rocksdb = false;
+  int total_bloom_usage = 0;
+
+  // The following code will set 2/3 keys at a time and flush those 2 writes in a new file. That
+  // way we can control and know exactly when the bloom filter is useful.
+  // We first write out k1 and k3 and confirm the bloom filter usage is bumped only for checking for
+  // k2, as the file does not contain it:
+  // file1: k1, k3
+  //
+  // We then proceed to write k1 and k2 in a new file and check the bloom usage again. At this
+  // point, we have:
+  // file1: k1, k3
+  // file2: k1, k2
+  // So the blooms will prune out one file each for k2 and k3 and nothing for k1.
+  //
+  // Finally, we write out k2 and k3 in a third file, leaving us with:
+  // file1: k1, k3
+  // file2: k1, k2
+  // file3: k2, k3
+  // At this point, the blooms will effectively filter out one file for each key.
+
+  dwb.Clear();
+  ts.FromUint64(1000);
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value"), ts));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value"), ts));
+  WriteToRocksDB(dwb);
+  FlushRocksDB();
+
+  auto get_doc = [this, &doc_from_rocksdb, &subdoc_found_in_rocksdb](const DocKey& key) {
+    ASSERT_OK(
+        GetDocument(this->rocksdb(), key.Encode(), &doc_from_rocksdb, &subdoc_found_in_rocksdb));
+  };
+
+  // Bloom usage starts at the default 0.
+  NO_FATALS(CheckBloom(total_bloom_usage));
+  NO_FATALS(get_doc(key1));
+  ASSERT_TRUE(subdoc_found_in_rocksdb);
+  NO_FATALS(CheckBloom(total_bloom_usage));
+
+  NO_FATALS(get_doc(key2));
+  ASSERT_TRUE(!subdoc_found_in_rocksdb);
+  // Bloom filter excluded this file.
+  NO_FATALS(CheckBloom(++total_bloom_usage));
+
+  NO_FATALS(get_doc(key3));
+  ASSERT_TRUE(subdoc_found_in_rocksdb);
+  NO_FATALS(CheckBloom(total_bloom_usage));
+
+  dwb.Clear();
+  ts.FromUint64(2000);
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value"), ts));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value"), ts));
+  WriteToRocksDB(dwb);
+  FlushRocksDB();
+  NO_FATALS(get_doc(key1));
+  NO_FATALS(CheckBloom(total_bloom_usage));
+  NO_FATALS(get_doc(key2));
+  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(get_doc(key3));
+  NO_FATALS(CheckBloom(++total_bloom_usage));
+
+  dwb.Clear();
+  ts.FromUint64(3000);
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value"), ts));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value"), ts));
+  WriteToRocksDB(dwb);
+  FlushRocksDB();
+  NO_FATALS(get_doc(key1));
+  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(get_doc(key2));
+  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(get_doc(key3));
+  NO_FATALS(CheckBloom(++total_bloom_usage));
 }
 
 }  // namespace docdb

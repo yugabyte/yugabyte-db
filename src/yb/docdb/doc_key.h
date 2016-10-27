@@ -6,6 +6,7 @@
 #include <ostream>
 #include <vector>
 
+#include "rocksdb/filter_policy.h"
 #include "rocksdb/slice.h"
 
 #include "yb/common/encoded_key.h"
@@ -340,6 +341,27 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 // A best-effort to decode the given sequence of key bytes as either a DocKey or a SubDocKey.
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
 std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice);
+
+class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
+ public:
+  // Use the full file bloom filter and 10 bits, by default.
+  DocDbAwareFilterPolicy() { builtin_policy_.reset(rocksdb::NewBloomFilterPolicy(10, false)); }
+
+  const char* Name() const override { return "DocDbAwareFilterPolicy"; }
+
+  void CreateFilter(const rocksdb::Slice* keys, int n, std::string* dst) const override;
+
+  bool KeyMayMatch(const rocksdb::Slice& key, const rocksdb::Slice& filter) const override;
+
+  rocksdb::FilterBitsBuilder* GetFilterBitsBuilder() const override;
+
+  rocksdb::FilterBitsReader* GetFilterBitsReader(const rocksdb::Slice& contents) const override;
+
+ private:
+  static int32_t GetEncodedDocKeyPrefixSize(const rocksdb::Slice& slice);
+
+  std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
+};
 
 }  // namespace docdb
 }  // namespace yb

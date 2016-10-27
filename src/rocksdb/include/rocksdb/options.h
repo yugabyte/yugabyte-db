@@ -1414,6 +1414,11 @@ struct ReadOptions {
   // Default: false
   bool pin_data;
 
+  // When scanning, choose whether to use the bloom filters for pruning the files to open or not.
+  // If true, this will check the bloom filters for the scan key and, iff the file might match the
+  // key, then we include the file in the iterator merge. Otherwise, the files are ignored.
+  bool use_bloom_on_scan = false;
+
   ReadOptions();
   ReadOptions(bool cksum, bool cache);
 };

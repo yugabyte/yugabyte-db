@@ -35,7 +35,6 @@
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "rocksdb/statistics.h"
-#include "rocksdb/table.h"
 #include "rocksdb/utilities/checkpoint.h"
 #include "rocksdb/write_batch.h"
 
@@ -50,10 +49,11 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
@@ -75,9 +75,9 @@
 #include "yb/tablet/svg_dump.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_mm_ops.h"
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
-#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
@@ -121,9 +121,6 @@ METRIC_DEFINE_gauge_size(tablet, on_disk_size, "Tablet Size On Disk",
                          yb::MetricUnit::kBytes,
                          "Size of this tablet on disk.");
 
-DEFINE_int64(db_block_size_bytes, 64 * 1024,
-             "Size of RocksDB block (in bytes).");
-
 using std::shared_ptr;
 using std::make_shared;
 using std::string;
@@ -164,11 +161,13 @@ using log::LogAnchorRegistry;
 using strings::Substitute;
 using base::subtle::Barrier_AtomicIncrement;
 
+using docdb::DocDbAwareFilterPolicy;
 using docdb::DocKey;
-using docdb::PrimitiveValue;
-using docdb::DocWriteBatch;
 using docdb::DocPath;
 using docdb::DocRowwiseIterator;
+using docdb::DocWriteBatch;
+using docdb::SubDocKey;
+using docdb::PrimitiveValue;
 
 static CompactionPolicy *CreateCompactionPolicy() {
   return new BudgetedCompactionPolicy(FLAGS_tablet_compaction_budget_mb);
@@ -309,17 +308,12 @@ Status Tablet::Open() {
 
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
-  InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_);
+  docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, block_cache_);
 
   // Install the history cleanup handler.
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
       make_shared<TabletRetentionPolicy>(clock_));
 
-  // Set block cache options.
-  rocksdb::BlockBasedTableOptions table_options;
-  table_options.block_cache = block_cache_;
-  table_options.block_size = FLAGS_db_block_size_bytes;
-  rocksdb_options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
   rocksdb_options.listeners.emplace_back(largest_flushed_seqno_collector_);
 
   const string db_dir = metadata()->rocksdb_dir();

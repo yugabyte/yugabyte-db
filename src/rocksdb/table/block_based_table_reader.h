@@ -185,6 +185,7 @@ class BlockBasedTable : public TableReader {
   // May not make such a call if filter policy says that key is not present.
   friend class TableCache;
   friend class BlockBasedTableBuilder;
+  friend class BloomFilterAwareIterator;
 
   void ReadMeta(const Footer& footer);
 

@@ -21,29 +21,30 @@
 #include <mutex>
 #include <string>
 
-#include <boost/optional.hpp>
 #include <gflags/gflags.h>
+#include <boost/optional.hpp>
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/opid.pb.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/server/metadata.h"
-#include "yb/tablet/rowset_metadata.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+#include "yb/server/metadata.h"
+#include "yb/tablet/rowset_metadata.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
 #include "yb/util/status.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/trace.h"
 
 DEFINE_bool(enable_tablet_orphaned_block_deletion, true,
@@ -198,7 +199,8 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 
   if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     rocksdb::Options rocksdb_options;
-    InitRocksDBOptions(&rocksdb_options, tablet_id_, nullptr /* statistics */);
+    docdb::InitRocksDBOptions(
+        &rocksdb_options, tablet_id_, nullptr /* statistics */, nullptr /* block_cache */);
 
     LOG(INFO) << "Destroying RocksDB at: " << rocksdb_dir_;
     rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);

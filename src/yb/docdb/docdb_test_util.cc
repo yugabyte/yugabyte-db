@@ -6,10 +6,15 @@
 #include <memory>
 #include <sstream>
 
+#include "rocksdb/table.h"
+#include "rocksdb/util/statistics.h"
+
 #include "yb/common/timestamp.h"
-#include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/docdb.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/path_util.h"
@@ -268,10 +273,11 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
 
 DocDBRocksDBFixture::DocDBRocksDBFixture()
     : retention_policy_(make_shared<FixedTimestampRetentionPolicy>(Timestamp::kMin)) {
-  InitRocksDBOptions(&rocksdb_options_, "mytablet", nullptr);
+  InitRocksDBOptions(&rocksdb_options_, "mytablet", rocksdb::CreateDBStatistics(), nullptr);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
       make_shared<DocDBCompactionFilterFactory>(retention_policy_);
+
   string test_dir;
   CHECK_OK(Env::Default()->GetTestDirectory(&test_dir));
   rocksdb_dir_ = JoinPathSegments(test_dir, StringPrintf("mytestdb-%d", rand()));

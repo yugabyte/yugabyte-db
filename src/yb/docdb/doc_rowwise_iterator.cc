@@ -54,8 +54,7 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
 Status DocRowwiseIterator::Init(ScanSpec *spec) {
-  rocksdb::ReadOptions read_options;
-  db_iter_.reset(db_->NewIterator(read_options));
+  db_iter_ = CreateRocksDBIterator(db_);
 
   if (spec->lower_bound_key() != nullptr) {
     ROCKSDB_SEEK(db_iter_.get(),

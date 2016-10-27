@@ -214,6 +214,13 @@ set(CXX_GLOBAL_COMMON_FLAGS "${CXX_GLOBAL_COMMON_FLAGS} -DGFLAGS=gflags")
 #     This has a small perf hit but worth it to avoid hard to debug crashes.
 set(CXX_COMMON_FLAGS "-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
 set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
+set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DROCKSDB_PLATFORM_POSIX")
+
+# For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
+# distinguishes further into BSD vs everything else, but we probably do not care further.
+if(APPLE)
+  set(CXX_COMMON_FLAGS "${CXX_COMMON_FLAGS} -DOS_MACOSX")
+endif()
 
 # Explicitly disable the new gcc5 ABI. Until clang supports abi tags [1], any
 # generated code (which always uses clang) must be built against the old ABI.

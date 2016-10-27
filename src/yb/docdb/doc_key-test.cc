@@ -4,6 +4,9 @@
 
 #include <memory>
 
+#include "rocksdb/table.h"
+#include "rocksdb/table/full_filter_block.h"
+
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -15,6 +18,8 @@ using std::unique_ptr;
 using strings::Substitute;
 using yb::util::ApplyEagerLineContinuation;
 using yb::util::FormatBytesAsStr;
+using rocksdb::FilterBitsBuilder;
+using rocksdb::FilterBitsReader;
 
 static constexpr int kNumDocOrSubDocKeysPerBatch = 1000;
 static constexpr int kNumTestDocOrSubDocKeyComparisons = 10000;
@@ -280,6 +285,51 @@ TEST(DocKeyTest, TestNumSharedPrefixComponents) {
                 PrimitiveValue("value"),
                 PrimitiveValue(1000L),
                 PrimitiveValue("some_more"))));
+}
+
+std::string EncodeSimpleSubDocKeyFromSlice(const rocksdb::Slice& input) {
+  DocKey dk(DocKey(PrimitiveValues(std::string(input.data()))));
+  return SubDocKey(dk, Timestamp(12345L)).Encode().AsStringRef();
+}
+
+TEST(DocKeyTest, TestKeyMatchingThroughFilter) {
+  DocDbAwareFilterPolicy policy;
+  int test_size = 3;
+  // Hold onto the memory of these encoded SubDocKeys.
+  std::string strings[] = {EncodeSimpleSubDocKeyFromSlice("foo"),
+                           EncodeSimpleSubDocKeyFromSlice("bar"),
+                           EncodeSimpleSubDocKeyFromSlice("test")};
+
+  // Create slices off of the encoded strings, as CreateFilter expects an array of slices.
+  std::unique_ptr<rocksdb::Slice[]> data(new rocksdb::Slice[test_size]);
+  for (int i = 0; i < test_size; ++i) {
+    data[i] = strings[i];
+  }
+  // Create the filter and save the output in a local string.
+  std::string dst;
+  policy.CreateFilter(data.get(), test_size, &dst);
+
+  rocksdb::Slice filter(dst);
+  ASSERT_TRUE(policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("foo"), filter));
+  ASSERT_TRUE(policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("bar"), filter));
+  ASSERT_TRUE(policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("test"), filter));
+  ASSERT_TRUE(!policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("fake"), filter));
+}
+
+TEST(DocKeyTest, TestKeyMatchingThroughNewInterface) {
+  DocDbAwareFilterPolicy policy;
+  std::shared_ptr<FilterBitsBuilder> builder(policy.GetFilterBitsBuilder());
+  builder->AddKey(EncodeSimpleSubDocKeyFromSlice("foo"));
+  builder->AddKey(EncodeSimpleSubDocKeyFromSlice("bar"));
+  builder->AddKey(EncodeSimpleSubDocKeyFromSlice("test"));
+  std::unique_ptr<const char[]> buf;
+  rocksdb::Slice filter = builder->Finish(&buf);
+
+  std::unique_ptr<FilterBitsReader> reader(policy.GetFilterBitsReader(filter));
+  ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("foo")));
+  ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("bar")));
+  ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("test")));
+  ASSERT_TRUE(!reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("fake")));
 }
 
 }  // namespace docdb
