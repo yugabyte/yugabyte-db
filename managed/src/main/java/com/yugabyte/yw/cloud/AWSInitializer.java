@@ -40,6 +40,8 @@ import play.mvc.Result;
 public class AWSInitializer extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(AWSInitializer.class);
 
+  public static final boolean enableVerboseLogging = false;
+
   @Inject
   ApiHelper apiHelper;
 
@@ -55,6 +57,8 @@ public class AWSInitializer extends Controller {
 
   public Result run() {
     try {
+      LOG.info("Initializing AWS instance type and pricing info from {}", awsEc2PriceUrl);
+      LOG.info("This operation may take a few minutes...");
       // Get the price Json object from the aws price url.
       JsonNode ec2PriceResponseJson = doGetRequestAsJson(awsEc2PriceUrl);
 
@@ -80,6 +84,7 @@ public class AWSInitializer extends Controller {
 
       // Create the instance types.
       storeInstanceTypeInfoToDB();
+      LOG.info("Successfully finished parsing info from {}", awsEc2PriceUrl);
     } catch (Exception e) {
       LOG.error("AWS initialize failed", e);
       return internalServerError(e.getMessage());
@@ -209,9 +214,11 @@ public class AWSInitializer extends Controller {
           }
           priceDetails.currency = PriceDetails.Currency.USD;
           priceDetails.pricePerUnit = Double.parseDouble(priceInUSDStr);
-          LOG.info("Parsed price entry sku={}, effectiveDate={}, description={}, priceInUSD={}",
-                   sku, priceDetails.effectiveDate, priceDetails.description,
-                   priceDetails.pricePerUnit);
+          if (enableVerboseLogging) {
+            LOG.info("Parsed price entry sku={}, effectiveDate={}, description={}, priceInUSD={}",
+                     sku, priceDetails.effectiveDate, priceDetails.description,
+                     priceDetails.pricePerUnit);
+          }
 
           // Add the price details to the map.
           List<PriceDetails> priceDetailsList = ec2SkuToPriceDetails.get(sku);
@@ -279,12 +286,16 @@ public class AWSInitializer extends Controller {
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
 
       if (!include) {
-        LOG.info("Skipping product");
+        if (enableVerboseLogging) {
+          LOG.info("Skipping product");
+        }
         continue;
       }
 
-      LOG.info("Found matching product with sku={}, instanceType={}",
-               productAttrs.get("sku"), productAttrs.get("instanceType"));
+      if (enableVerboseLogging) {
+        LOG.info("Found matching product with sku={}, instanceType={}",
+                 productAttrs.get("sku"), productAttrs.get("instanceType"));
+      }
 
       ec2AvailableInstances.add(productAttrs);
     }
@@ -295,6 +306,7 @@ public class AWSInitializer extends Controller {
    * the row for the instance type already exists.
    */
   private void storeInstanceTypeInfoToDB() {
+    LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetAllInstanceTypeDetails();
 
@@ -353,9 +365,11 @@ public class AWSInitializer extends Controller {
         throw new RuntimeException(msg);
       }
 
-      LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {} in region {}",
-               providerCode, instanceTypeCode, numCores, memSizeGB,
-               volumeCount, volumeSizeGB, volumeType, regionCode);
+      if (enableVerboseLogging) {
+        LOG.info("Instance type entry ({}, {}): {} cores, {} GB RAM, {} x {} GB {} in region {}",
+                 providerCode, instanceTypeCode, numCores, memSizeGB,
+                 volumeCount, volumeSizeGB, volumeType, regionCode);
+      }
 
       // Create the instance type model.
       InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
@@ -376,6 +390,13 @@ public class AWSInitializer extends Controller {
       instanceType.instanceTypeDetails.regionCodeToDetailsMap.put(regionCode, detailsList);
 
       // Update the object.
+      if (enableVerboseLogging) {
+        LOG.debug("Saving {} ({} cores, {}GB, {}x{}GB {}) with details {}",
+            instanceType.idKey.toString(), instanceType.numCores, instanceType.memSizeGB,
+            instanceType.volumeCount, instanceType.volumeSizeGB,
+            instanceType.volumeType.toString(),
+            Json.stringify(Json.toJson(instanceType.instanceTypeDetails)));
+      }
       InstanceType.upsert(providerCode,
                           instanceTypeCode,
                           numCores,
@@ -418,7 +439,9 @@ public class AWSInitializer extends Controller {
       productAttrs.put(entry.getKey(), entry.getValue().textValue());
       sb.append(", " + entry.getKey() + "=" + entry.getValue().textValue());
     }
-    LOG.info(sb.toString());
+    if (enableVerboseLogging) {
+      LOG.info(sb.toString());
+    }
     return productAttrs;
   }
 }
