@@ -530,6 +530,16 @@ create_dir_on_ephemeral_drive() {
   fi
 }
 
+mkdir_safe() {
+  expect_num_args 1 "$@"
+  local dir_path=$1
+  # Check if this is a broken link.
+  if [[ -h $dir_path && ! -d $dir_path ]]; then
+    unlink "$dir_path"
+  fi
+  mkdir -p "$dir_path"
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

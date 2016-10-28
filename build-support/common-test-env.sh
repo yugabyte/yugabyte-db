@@ -89,16 +89,6 @@ validate_relative_test_binary_path() {
   fi
 }
 
-mkdir_safe() {
-  expect_num_args 1 "$@"
-  local dir_path=$1
-  # Check if this is a broken link.
-  if [[ -h $dir_path && ! -d $dir_path ]]; then
-    unlink "$dir_path"
-  fi
-  mkdir -p "$dir_path"
-}
-
 create_abs_test_binary_path() {
   expect_num_args 1 "$@"
   local rel_test_binary_path=$1

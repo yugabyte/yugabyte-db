@@ -188,7 +188,7 @@ fi
 
 if "$save_log"; then
   log_dir="$HOME/logs"
-  mkdir -p "$log_dir"
+  mkdir_safe "$log_dir"
   log_name_prefix="$log_dir/${script_name}_${build_type}"
   log_path="${log_name_prefix}_$( date +%Y-%m-%d_%H_%M_%S ).log"
   latest_log_symlink_path="${log_name_prefix}_latest.log"
@@ -253,7 +253,7 @@ if "$clean_before_build"; then
   ( set -x; rm -rf "$BUILD_ROOT" )
 fi
 
-mkdir -p "$BUILD_ROOT"
+mkdir_safe "$BUILD_ROOT"
 cd "$BUILD_ROOT"
 
 # Even though thirdparty/build-if-necessary.sh has its own build stamp file,
