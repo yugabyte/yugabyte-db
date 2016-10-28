@@ -50,6 +50,7 @@ class KeyIndexSet {
 
 class SessionFactory {
  public:
+  virtual ~SessionFactory() {}
   virtual string ClientId() = 0;
   virtual SingleThreadedWriter* GetWriter(MultiThreadedWriter* writer, int idx) = 0;
   virtual SingleThreadedReader* GetReader(MultiThreadedReader* reader, int idx) = 0;
@@ -174,6 +175,7 @@ class SingleThreadedWriter {
  public:
   SingleThreadedWriter(MultiThreadedWriter* writer, int writer_index)
       : multi_threaded_writer_(writer), writer_index_(writer_index) {}
+  virtual ~SingleThreadedWriter() {}
 
   void Run();
 
@@ -293,6 +295,7 @@ class SingleThreadedReader {
  public:
   SingleThreadedReader(MultiThreadedReader* reader, int reader_index)
       : multi_threaded_reader_(reader), reader_index_(reader_index) {}
+  virtual ~SingleThreadedReader() {}
 
   void Run();
 
