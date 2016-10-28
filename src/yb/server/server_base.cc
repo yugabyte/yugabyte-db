@@ -16,10 +16,13 @@
 // under the License.
 #include "yb/server/server_base.h"
 
+#include <algorithm>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include <boost/algorithm/string/predicate.hpp>
 #include <gflags/gflags.h>
-#include <string>
-#include <vector>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
@@ -53,7 +56,8 @@
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
 
-DEFINE_int32(num_reactor_threads, 4, "Number of libev reactor threads to start.");
+DEFINE_int32(num_reactor_threads, -1,
+             "Number of libev reactor threads to start. If -1, the value is automatically set.");
 TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
@@ -145,6 +149,16 @@ Status RpcServerBase::Init() {
 
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
+
+  if (FLAGS_num_reactor_threads == -1) {
+    // Auto set the number of reactors based on the number of cores.
+    // But bound it between 2 & 8.
+    LOG(INFO) << "Auto setting FLAGS_num_reactor_threads...";
+    const int32 num_cores = std::thread::hardware_concurrency();
+    const int32 num_reactors = std::min(8, num_cores);
+    FLAGS_num_reactor_threads = std::max(2, num_reactors);
+  }
+  LOG(INFO) << "FLAGS_num_reactor_threads=" << FLAGS_num_reactor_threads;
 
   builder.set_num_reactors(FLAGS_num_reactor_threads);
   builder.set_metric_entity(metric_entity());

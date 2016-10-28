@@ -1448,6 +1448,12 @@ Status ExternalTabletServer::Start() {
                              bind_host_));
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
+
+  // Use conservative number of threads for the mini cluster for unit test env
+  // where several unit tests tend to run in parallel.
+  flags.push_back("--tablet_server_svc_num_threads=64");
+  flags.push_back("--ts_consensus_svc_num_threads=20");
+
   RETURN_NOT_OK(StartProcess(flags));
   return Status::OK();
 }

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TSERVER_TABLET_SERVER_H
-#define YB_TSERVER_TABLET_SERVER_H
+#ifndef YB_TSERVER_TABLET_SERVER_H_
+#define YB_TSERVER_TABLET_SERVER_H_
 
 #include <memory>
 #include <string>
@@ -95,6 +95,10 @@ class TabletServer : public server::RpcAndWebServerBase {
   Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config);
 
  private:
+  // Auto initialize some of the service flags that are defaulted to -1.
+  void AutoInitServiceFlags();
+
+ private:
   friend class TabletServerTestBase;
 
   Status ValidateMasterAddressResolution() const;
@@ -132,4 +136,4 @@ class TabletServer : public server::RpcAndWebServerBase {
 
 } // namespace tserver
 } // namespace yb
-#endif
+#endif // YB_TSERVER_TABLET_SERVER_H_

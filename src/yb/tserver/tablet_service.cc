@@ -58,7 +58,7 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/trace.h"
 
-DEFINE_int32(scanner_default_batch_size_bytes, 1024 * 1024,
+DEFINE_int32(scanner_default_batch_size_bytes, 64 * 1024,
              "The default size for batches of scan results");
 TAG_FLAG(scanner_default_batch_size_bytes, advanced);
 TAG_FLAG(scanner_default_batch_size_bytes, runtime);

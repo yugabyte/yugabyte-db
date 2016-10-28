@@ -1110,7 +1110,7 @@ void ClusterLoadBalancer::RemoveReplica(
 
 void ClusterLoadBalancer::MoveLeader(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
-  LOG(INFO) << Substitute("Moving leader $0 from tablet $1 to $2", tablet_id, from_ts, to_ts);
+  LOG(INFO) << Substitute("Moving leader of $0 from TS $1 to $2", tablet_id, from_ts, to_ts);
   SendReplicaChanges(GetTabletMap().at(tablet_id), from_ts, false /* is_add */,
      false /* should_remove_leader */, to_ts);
   state_->MoveLeader(tablet_id, from_ts, to_ts);

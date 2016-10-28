@@ -15,19 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_peers.h"
 
 #include <algorithm>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+
 #include <boost/bind.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/map-util.h"
@@ -40,7 +41,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/threadpool.h"
 
-DEFINE_int32(consensus_rpc_timeout_ms, 1000,
+DEFINE_int32(consensus_rpc_timeout_ms, 2000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 

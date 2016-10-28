@@ -36,6 +36,9 @@
 
 using strings::Substitute;
 
+DECLARE_int32(tablet_server_svc_num_threads);
+DECLARE_int32(ts_consensus_svc_num_threads);
+
 namespace yb {
 
 using client::YBClient;
@@ -51,7 +54,7 @@ using tserver::TabletServer;
 static const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 
 MiniClusterOptions::MiniClusterOptions()
- :  num_masters(1),
+  : num_masters(1),
     num_tablet_servers(1) {
 }
 
@@ -84,6 +87,11 @@ Status MiniCluster::Start() {
   if (!env_->FileExists(fs_root_)) {
     RETURN_NOT_OK(env_->CreateDir(fs_root_));
   }
+
+  // Use conservative number of threads for the mini cluster for unit test env
+  // where several unit tests tend to run in parallel.
+  FLAGS_tablet_server_svc_num_threads = 64;
+  FLAGS_ts_consensus_svc_num_threads = 20;
 
   // start the masters
   if (num_masters_initial_ > 1) {
