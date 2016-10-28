@@ -219,7 +219,11 @@ class Tablet {
   Status KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb,
-      vector<string> *keys_locked);
+      vector<string> *keys_locked,
+      vector<RedisResponsePB>* responses);
+
+  Status HandleRedisReadRequest(const RedisReadRequestPB redis_read_request,
+                                RedisResponsePB* response);
 
   // Takes a Kudu WriteRequestPB as input with its row operations.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be

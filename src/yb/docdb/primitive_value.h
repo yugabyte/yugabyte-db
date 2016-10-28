@@ -136,6 +136,11 @@ class PrimitiveValue {
     return Slice(str_val_);
   }
 
+  void SwapStringValue(std::string *other) {
+    DCHECK_EQ(ValueType::kString, type_);
+    str_val_.swap(*other);
+  }
+
   int64_t GetInt64() const {
     DCHECK_EQ(ValueType::kInt64, type_);
     return int64_val_;

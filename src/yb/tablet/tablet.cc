@@ -131,9 +131,13 @@ using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
 using yb::util::ScopedPendingOperation;
 using yb::tserver::WriteRequestPB;
+using yb::docdb::KeyValueWriteBatchPB;
+using yb::tserver::ReadRequestPB;
 using yb::docdb::ValueType;
 using yb::docdb::KeyBytes;
-using yb::docdb::KeyValueWriteBatchPB;
+using yb::docdb::DocOperation;
+using yb::docdb::RedisWriteOperation;
+using yb::docdb::YSQLWriteOperation;
 
 // Make sure RocksDB does not disappear while we're using it. This is used at the top level of
 // functions that perform RocksDB operations (directly or indirectly). Once a function is using
@@ -260,11 +264,11 @@ Tablet::Tablet(
     }
     metrics_.reset(new TabletMetrics(metric_entity_));
     METRIC_memrowset_size.InstantiateFunctionGauge(
-      metric_entity_, Bind(&Tablet::MemRowSetSize, Unretained(this)))
-      ->AutoDetach(&metric_detacher_);
+            metric_entity_, Bind(&Tablet::MemRowSetSize, Unretained(this)))
+        ->AutoDetach(&metric_detacher_);
     METRIC_on_disk_size.InstantiateFunctionGauge(
-      metric_entity_, Bind(&Tablet::EstimateOnDiskSize, Unretained(this)))
-      ->AutoDetach(&metric_detacher_);
+            metric_entity_, Bind(&Tablet::EstimateOnDiskSize, Unretained(this)))
+        ->AutoDetach(&metric_detacher_);
   }
 }
 
@@ -290,7 +294,7 @@ Status Tablet::Open() {
       break;
     default:
       LOG(FATAL) << "Cannot open tablet " << tablet_id() << " with unknown table type "
-        << table_type_;
+                 << table_type_;
   }
 
   state_ = kBootstrapping;
@@ -428,7 +432,7 @@ void Tablet::Shutdown() {
   UnregisterMaintenanceOps();
 
   LOG_SLOW_EXECUTION(WARNING, 1000,
-      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
+                     Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
     CHECK_OK(pending_op_counter_.WaitForAllOpsToFinish(MonoDelta::FromSeconds(60)));
   }
 
@@ -546,10 +550,10 @@ Status Tablet::CheckRowInTablet(const ConstContiguousRow& row) const {
 
   if (PREDICT_FALSE(!contains_row)) {
     return STATUS(NotFound,
-        Substitute("Row not in tablet partition. Partition: '$0', row: '$1'.",
-                   metadata_->partition_schema().PartitionDebugString(metadata_->partition(),
-                                                                      *schema()),
-                   metadata_->partition_schema().RowDebugString(row)));
+                  Substitute("Row not in tablet partition. Partition: '$0', row: '$1'.",
+                             metadata_->partition_schema().PartitionDebugString(
+                                 metadata_->partition(), *schema()),
+                             metadata_->partition_schema().RowDebugString(row)));
   }
   return Status::OK();
 }
@@ -594,7 +598,7 @@ Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
   // A check only needed for Kudu's columnar format that has to happen before the row lock.
   const TabletComponents* comps =
       table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ?
-          DCHECK_NOTNULL(tx_state->tablet_components()) : nullptr;
+      DCHECK_NOTNULL(tx_state->tablet_components()) : nullptr;
 
   CHECK(state_ == kOpen || state_ == kBootstrapping);
   // make sure that the WriteTransactionState has the component lock and that
@@ -698,11 +702,11 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
 
   // First try to update in memrowset.
   s = comps->memrowset->MutateRow(ts,
-                            *mutate->key_probe,
-                            mutate->decoded_op.changelist,
-                            tx_state->op_id(),
-                            &stats,
-                            result.get());
+                                  *mutate->key_probe,
+                                  mutate->decoded_op.changelist,
+                                  tx_state->op_id(),
+                                  &stats,
+                                  result.get());
   if (s.ok()) {
     mutate->SetMutateSucceeded(result.Pass());
     return s;
@@ -816,7 +820,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 
   for (const auto& file_attrs : files_attrs) {
     if (file_attrs.name == "." || file_attrs.name == "..") {
-        continue;
+      continue;
     }
     auto rocksdb_file_pb = rocksdb_files->Add();
     rocksdb_file_pb->set_name(file_attrs.name);
@@ -870,33 +874,34 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 Status Tablet::KeyValueBatchFromRedisWriteBatch(
     const WriteRequestPB& redis_write_request,
     unique_ptr<const WriteRequestPB>* kudu_write_batch_pb,
-    vector<string> *keys_locked) {
+    vector<string> *keys_locked,
+    vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-
-  vector<docdb::DocWriteOperation> doc_ops;
+  vector<unique_ptr<DocOperation>> doc_ops;
   for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
     RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
-    switch (req.redis_op_type()) {
-      case RedisWriteRequestPB_Type::RedisWriteRequestPB_Type_SET: {
-        RedisSetRequestPB set = req.set_request();
-        const DocPath doc_path(DocKey({ PrimitiveValue(set.key_value().key()) }).Encode());
-        const PrimitiveValue value(set.key_value().value(0));
-        doc_ops.emplace_back(doc_path, value);
-      } break;
-      default:
-        LOG(FATAL) << "Unsupported row operation type " << req.redis_op_type()
-                   << " for key-value tables";
-    }
+    doc_ops.emplace_back(new RedisWriteOperation(req));
   }
-
   WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
   kudu_write_batch_pb->reset(write_request_copy);
-
-  docdb::StartDocWriteTransaction(
-      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked,
-      write_request_copy->mutable_write_batch());
+  docdb::StartDocWriteTransaction(rocksdb_.get(), &doc_ops, &shared_lock_manager_,
+                                  keys_locked, write_request_copy->mutable_write_batch());
+  for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
+    responses->emplace_back(
+        (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
+  }
   write_request_copy->clear_row_operations();
 
+  return Status::OK();
+}
+
+Status Tablet::HandleRedisReadRequest(const RedisReadRequestPB redis_read_request,
+                                      RedisResponsePB* response) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
+  docdb::RedisReadOperation doc_op(redis_read_request);
+  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), Timestamp::kMax));
+  *response = std::move(doc_op.response());
   return Status::OK();
 }
 
@@ -946,8 +951,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
                                               KeyValueWriteBatchPB* write_batch_pb,
                                               vector<string>* keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-
-  vector<docdb::DocWriteOperation> doc_ops;
+  vector<unique_ptr<DocOperation>> doc_ops;
   for (DecodedRowOperation row_op : row_ops) {
     // row_data contains the row key for all Kudu operation types (insert/update/delete).
     ConstContiguousRow contiguous_row(schema(), row_op.row_data);
@@ -964,8 +968,9 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
 
     switch (row_op.type) {
       case RowOperationsPB_Type_DELETE: {
-        doc_ops.emplace_back(DocPath(encoded_doc_key),
-                             PrimitiveValue(ValueType::kTombstone));
+        doc_ops.emplace_back(
+            new YSQLWriteOperation(DocPath(encoded_doc_key),
+            PrimitiveValue(ValueType::kTombstone)));
         break;
       }
       case RowOperationsPB_Type_UPDATE: {
@@ -975,12 +980,12 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           CHECK(decoder.is_update());
           RowChangeListDecoder::DecodedUpdate update;
           RETURN_NOT_OK(decoder.DecodeNext(&update));
-          doc_ops.emplace_back(
+          doc_ops.emplace_back(new YSQLWriteOperation(
               DocPathForColumn(encoded_doc_key, update.col_id),
               update.null ? PrimitiveValue(ValueType::kTombstone)
                           : PrimitiveValue::FromKuduValue(
                                 schema()->column_by_id(update.col_id).type_info()->type(),
-                                update.raw_value));
+                                update.raw_value)));
         }
         break;
       }
@@ -988,9 +993,10 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
         // Insert a top-level overwrite of the entire object.
         // TODO: for Cassandra-style inserts, which are really upserts, we probably should not
         //       overwrite/nullify columns that are not explicitly mentioned in the SQL statement.
-        doc_ops.emplace_back(DocPath(encoded_doc_key), PrimitiveValue(ValueType::kObject));
+        doc_ops.emplace_back(new YSQLWriteOperation(
+            DocPath(encoded_doc_key), PrimitiveValue(ValueType::kObject)));
         for (int i = schema()->num_key_columns(); i < schema()->num_columns(); i++) {
-          const ColumnSchema& col_schema = schema()->column(i);
+          const ColumnSchema &col_schema = schema()->column(i);
           const DataType data_type = col_schema.type_info()->type();
 
           PrimitiveValue column_value;
@@ -1006,18 +1012,19 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           } else {
             column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
           }
-          doc_ops.emplace_back(DocPathForColumn(encoded_doc_key, schema()->column_id(i)),
-                               column_value);
+          doc_ops.emplace_back(new YSQLWriteOperation(DocPathForColumn(
+              encoded_doc_key, schema()->column_id(i)), column_value));
         }
         break;
       }
-      default:
+      default: {
         LOG(FATAL) << "Unsupported row operation type " << row_op.type
                    << " for a RocksDB-backed table";
+      }
     }
   }
   docdb::StartDocWriteTransaction(
-      rocksdb_.get(), doc_ops, &shared_lock_manager_, keys_locked, write_batch_pb);
+      rocksdb_.get(), &doc_ops, &shared_lock_manager_, keys_locked, write_batch_pb);
   return Status::OK();
 }
 
@@ -1145,7 +1152,7 @@ Status Tablet::ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
   compaction->AddRowSet(*old_ms, std::move(ms_lock));
 
   shared_ptr<MemRowSet> new_mrs(new MemRowSet(next_mrs_id_++, *schema(), log_anchor_registry_.get(),
-                                mem_tracker_));
+                                              mem_tracker_));
   shared_ptr<RowSetTree> new_rst(new RowSetTree());
   ModifyRowSetTree(*components_->rowsets,
                    RowSetVector(),  // remove nothing
@@ -1200,7 +1207,7 @@ Status Tablet::CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
                                          const Schema* schema) {
   if (!key_schema_.KeyEquals(*schema)) {
     return STATUS(InvalidArgument, "Schema keys cannot be altered",
-                                   schema->CreateKeyProjection().ToString());
+                  schema->CreateKeyProjection().ToString());
   }
 
   if (!schema->has_column_ids()) {
@@ -1218,8 +1225,8 @@ Status Tablet::CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
 }
 
 Status Tablet::AlterSchema(AlterSchemaTransactionState *tx_state) {
-  DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(tx_state->schema()))) <<
-    "Schema keys cannot be altered";
+  DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(tx_state->schema())))
+      << "Schema keys cannot be altered";
 
   // Prevent any concurrent flushes. Otherwise, we run into issues where
   // we have an MRS in the rowset tree, and we can't alter its schema
@@ -1307,17 +1314,17 @@ Status Tablet::RewindSchemaForBootstrap(const Schema& new_schema,
 }
 
 void Tablet::SetCompactionHooksForTests(
-  const shared_ptr<Tablet::CompactionFaultHooks> &hooks) {
+    const shared_ptr<Tablet::CompactionFaultHooks> &hooks) {
   compaction_hooks_ = hooks;
 }
 
 void Tablet::SetFlushHooksForTests(
-  const shared_ptr<Tablet::FlushFaultHooks> &hooks) {
+    const shared_ptr<Tablet::FlushFaultHooks> &hooks) {
   flush_hooks_ = hooks;
 }
 
 void Tablet::SetFlushCompactCommonHooksForTests(
-  const shared_ptr<Tablet::FlushCompactCommonHooks> &hooks) {
+    const shared_ptr<Tablet::FlushCompactCommonHooks> &hooks) {
   common_hooks_ = hooks;
 }
 
@@ -1331,11 +1338,11 @@ int32_t Tablet::CurrentMrsIdForTests() const {
 ////////////////////////////////////////////////////////////
 
 CompactRowSetsOp::CompactRowSetsOp(Tablet* tablet)
-  : MaintenanceOp(Substitute("CompactRowSetsOp($0)", tablet->tablet_id()),
-                  MaintenanceOp::HIGH_IO_USAGE),
-    last_num_mrs_flushed_(0),
-    last_num_rs_compacted_(0),
-    tablet_(tablet) {
+    : MaintenanceOp(Substitute("CompactRowSetsOp($0)", tablet->tablet_id()),
+                    MaintenanceOp::HIGH_IO_USAGE),
+      last_num_mrs_flushed_(0),
+      last_num_rs_compacted_(0),
+      tablet_(tablet) {
 }
 
 void CompactRowSetsOp::UpdateStats(MaintenanceOpStats* stats) {
@@ -1393,13 +1400,13 @@ scoped_refptr<AtomicGauge<uint32_t> > CompactRowSetsOp::RunningGauge() const {
 ////////////////////////////////////////////////////////////
 
 MinorDeltaCompactionOp::MinorDeltaCompactionOp(Tablet* tablet)
-  : MaintenanceOp(Substitute("MinorDeltaCompactionOp($0)", tablet->tablet_id()),
-                  MaintenanceOp::HIGH_IO_USAGE),
-    last_num_mrs_flushed_(0),
-    last_num_dms_flushed_(0),
-    last_num_rs_compacted_(0),
-    last_num_rs_minor_delta_compacted_(0),
-    tablet_(tablet) {
+    : MaintenanceOp(Substitute("MinorDeltaCompactionOp($0)", tablet->tablet_id()),
+                    MaintenanceOp::HIGH_IO_USAGE),
+      last_num_mrs_flushed_(0),
+      last_num_dms_flushed_(0),
+      last_num_rs_compacted_(0),
+      last_num_rs_minor_delta_compacted_(0),
+      tablet_(tablet) {
 }
 
 void MinorDeltaCompactionOp::UpdateStats(MaintenanceOpStats* stats) {
@@ -1464,14 +1471,14 @@ scoped_refptr<AtomicGauge<uint32_t> > MinorDeltaCompactionOp::RunningGauge() con
 ////////////////////////////////////////////////////////////
 
 MajorDeltaCompactionOp::MajorDeltaCompactionOp(Tablet* tablet)
-  : MaintenanceOp(Substitute("MajorDeltaCompactionOp($0)", tablet->tablet_id()),
-                  MaintenanceOp::HIGH_IO_USAGE),
-    last_num_mrs_flushed_(0),
-    last_num_dms_flushed_(0),
-    last_num_rs_compacted_(0),
-    last_num_rs_minor_delta_compacted_(0),
-    last_num_rs_major_delta_compacted_(0),
-    tablet_(tablet) {
+    : MaintenanceOp(Substitute("MajorDeltaCompactionOp($0)", tablet->tablet_id()),
+                    MaintenanceOp::HIGH_IO_USAGE),
+      last_num_mrs_flushed_(0),
+      last_num_dms_flushed_(0),
+      last_num_rs_compacted_(0),
+      last_num_rs_minor_delta_compacted_(0),
+      last_num_rs_major_delta_compacted_(0),
+      tablet_(tablet) {
 }
 
 void MajorDeltaCompactionOp::UpdateStats(MaintenanceOpStats* stats) {
@@ -1583,8 +1590,8 @@ Status Tablet::PickRowSetsToCompact(RowSetsInCompaction *picked,
     // flushed.
     std::unique_lock<std::mutex> lock(*rs->compact_flush_lock(), std::try_to_lock);
     CHECK(lock.owns_lock()) << rs->ToString() << " appeared available for "
-      "compaction when inputs were selected, but was unable to lock its "
-      "compact_flush_lock to prepare for compaction.";
+        "compaction when inputs were selected, but was unable to lock its "
+        "compact_flush_lock to prepare for compaction.";
 
     // Push the lock on our scoped list, so we unlock when done.
     picked->AddRowSet(rs, std::move(lock));
@@ -1683,14 +1690,14 @@ Status Tablet::FlushMetadata(const RowSetVector& to_remove,
 
 Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs_being_flushed) {
   const char *op_name =
-        (mrs_being_flushed == TabletMetadata::kNoMrsFlushed) ? "Compaction" : "Flush";
+      (mrs_being_flushed == TabletMetadata::kNoMrsFlushed) ? "Compaction" : "Flush";
   TRACE_EVENT2("tablet", "Tablet::DoCompactionOrFlush",
                "tablet_id", tablet_id(),
                "op", op_name);
 
   MvccSnapshot flush_snap(mvcc_);
   LOG(INFO) << op_name << ": entering phase 1 (flushing snapshot). Phase 1 snapshot: "
-      << flush_snap.ToString();
+            << flush_snap.ToString();
 
   if (common_hooks_) {
     RETURN_NOT_OK_PREPEND(common_hooks_->PostTakeMvccSnapshot(),
@@ -1782,7 +1789,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
   LOG(INFO) << op_name << ": entering phase 2 (starting to duplicate updates "
             << "in new rowsets)";
   shared_ptr<DuplicatingRowSet> inprogress_rowset(
-    new DuplicatingRowSet(input.rowsets(), new_disk_rowsets));
+      new DuplicatingRowSet(input.rowsets(), new_disk_rowsets));
 
   // The next step is to swap in the DuplicatingRowSet, and at the same time, determine an
   // MVCC snapshot which includes all of the transactions that saw a pre-DuplicatingRowSet
@@ -1838,7 +1845,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
   LOG(INFO) << "Phase 2 snapshot: " << non_duplicated_txns_snap.ToString();
   RETURN_NOT_OK_PREPEND(
       input.CreateCompactionInput(non_duplicated_txns_snap, schema(), &merge),
-          Substitute("Failed to create $0 inputs", op_name).c_str());
+      Substitute("Failed to create $0 inputs", op_name).c_str());
 
   // Update the output rowsets with the deltas that came in in phase 1, before we swapped
   // in the DuplicatingRowSets. This will perform a flush of the updated DeltaTrackers
@@ -1849,8 +1856,8 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
                                              flush_snap,
                                              non_duplicated_txns_snap,
                                              new_disk_rowsets),
-        Substitute("Failed to re-update deltas missed during $0 phase 1",
-                     op_name).c_str());
+                        Substitute("Failed to re-update deltas missed during $0 phase 1",
+                                   op_name).c_str());
 
   if (common_hooks_) {
     RETURN_NOT_OK_PREPEND(common_hooks_->PostReupdateMissedDeltas(),
@@ -2141,7 +2148,7 @@ void Tablet::GetInfoForBestDMSToFlush(const MaxIdxToSegmentMap& max_idx_to_segme
 
   if (rowset) {
     *retention_size = GetLogRetentionSizeForIndex(rowset->MinUnflushedLogIndex(),
-                                            max_idx_to_segment_size);
+                                                  max_idx_to_segment_size);
     *mem_size = rowset->DeltaMemStoreSize();
   } else {
     *retention_size = 0;
@@ -2149,8 +2156,8 @@ void Tablet::GetInfoForBestDMSToFlush(const MaxIdxToSegmentMap& max_idx_to_segme
   }
 }
 
-Status Tablet::FlushDMSWithHighestRetention(const MaxIdxToSegmentMap&
-                                            max_idx_to_segment_size) const {
+Status Tablet::FlushDMSWithHighestRetention(
+    const MaxIdxToSegmentMap& max_idx_to_segment_size) const {
   shared_ptr<RowSet> rowset = FindBestDMSToFlush(max_idx_to_segment_size);
   if (rowset) {
     return rowset->FlushDeltas();
@@ -2158,8 +2165,8 @@ Status Tablet::FlushDMSWithHighestRetention(const MaxIdxToSegmentMap&
   return Status::OK();
 }
 
-shared_ptr<RowSet> Tablet::FindBestDMSToFlush(const MaxIdxToSegmentMap&
-                                              max_idx_to_segment_size) const {
+shared_ptr<RowSet> Tablet::FindBestDMSToFlush(
+    const MaxIdxToSegmentMap& max_idx_to_segment_size) const {
   scoped_refptr<TabletComponents> comps;
   GetComponents(&comps);
   int64_t mem_size = 0;
@@ -2251,7 +2258,7 @@ Status Tablet::CompactWorstDeltas(RowSet::DeltaCompactionType type) {
 }
 
 double Tablet::GetPerfImprovementForBestDeltaCompact(RowSet::DeltaCompactionType type,
-                                                             shared_ptr<RowSet>* rs) const {
+                                                     shared_ptr<RowSet>* rs) const {
   std::lock_guard<std::mutex> compact_lock(compact_select_lock_);
   return GetPerfImprovementForBestDeltaCompactUnlocked(type, rs);
 }

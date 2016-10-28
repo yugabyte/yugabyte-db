@@ -49,7 +49,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
   explicit TabletServiceImpl(TabletServer* server);
 
   virtual void Write(const WriteRequestPB* req, WriteResponsePB* resp,
-                   rpc::RpcContext* context) OVERRIDE;
+                     rpc::RpcContext* context) OVERRIDE;
+
+  virtual void Read(const ReadRequestPB *req,
+                    ReadResponsePB *resp, ::yb::rpc::RpcContext *context) OVERRIDE;
 
   virtual void Scan(const ScanRequestPB* req,
                     ScanResponsePB* resp,
@@ -72,9 +75,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
                                           rpc::RpcContext* context) OVERRIDE;
 
   virtual void GetLogLocation(
-    const GetLogLocationRequestPB* req,
-    GetLogLocationResponsePB* resp,
-    rpc::RpcContext* context) OVERRIDE;
+      const GetLogLocationRequestPB* req,
+      GetLogLocationResponsePB* resp,
+      rpc::RpcContext* context) OVERRIDE;
 
   virtual void Checksum(const ChecksumRequestPB* req,
                         ChecksumResponsePB* resp,
@@ -142,8 +145,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                     rpc::RpcContext* context) OVERRIDE;
 
   virtual void ChangeConfig(const consensus::ChangeConfigRequestPB* req,
-                         consensus::ChangeConfigResponsePB* resp,
-                         rpc::RpcContext* context) OVERRIDE;
+                            consensus::ChangeConfigResponsePB* resp,
+                            rpc::RpcContext* context) OVERRIDE;
 
   virtual void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
                                consensus::GetNodeInstanceResponsePB* resp,
@@ -154,8 +157,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                  rpc::RpcContext* context) OVERRIDE;
 
   virtual void LeaderStepDown(const consensus::LeaderStepDownRequestPB* req,
-                                 consensus::LeaderStepDownResponsePB* resp,
-                                 rpc::RpcContext* context) OVERRIDE;
+                              consensus::LeaderStepDownResponsePB* resp,
+                              rpc::RpcContext* context) OVERRIDE;
 
   virtual void GetLastOpId(const consensus::GetLastOpIdRequestPB *req,
                            consensus::GetLastOpIdResponsePB *resp,
@@ -176,4 +179,4 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 } // namespace tserver
 } // namespace yb
 
-#endif
+#endif  // YB_TSERVER_TABLET_SERVICE_H

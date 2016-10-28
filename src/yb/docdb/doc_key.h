@@ -155,6 +155,9 @@ class DocKey {
   // even be a way to encode null fields in an EncodedKey.
   static DocKey FromKuduEncodedKey(const EncodedKey& encoded_key, const Schema& schema);
 
+  // Converts a redis string key to a doc key
+  static DocKey FromRedisStringKey(const string& key);
+
  private:
 
   bool hash_present_;

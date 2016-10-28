@@ -51,7 +51,7 @@ message RedisReadRequestPB {
     GETRANGE = 4;
   }
 
-  optional Type redisOpType = 1;
+  optional Type redis_op_type = 1;
 
   // Only one of the following fields should be set.
   optional RedisGetRequestPB get_request = 2;
@@ -201,14 +201,18 @@ message RedisRemoveRequestPB {
   optional int32 count = 2;                 // Optional for LREM.
 }
 
-enum RedisStatusCode {
-  OK = 1;
-  NIL = 2;
-  UNKNOWN_COMMAND = 3;
-  WRONG_TYPE = 4;
-}
+
 
 message RedisResponsePB {
+
+  enum RedisStatusCode {
+    OK = 1;
+    NIL = 2;
+    UNKNOWN_COMMAND = 3;
+    WRONG_TYPE = 4;
+    NOT_FOUND = 5;
+  }
+
   optional RedisStatusCode code = 1;
   optional int64 int_response = 2;
   optional bytes string_response = 3;

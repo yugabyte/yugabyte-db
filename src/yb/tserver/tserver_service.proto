@@ -23,6 +23,7 @@ import "yb/tablet/metadata.proto";
 
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
+  rpc Read(ReadRequestPB) returns (ReadResponsePB);
   rpc Scan(ScanRequestPB) returns (ScanResponsePB);
   rpc NoOp(NoOpRequestPB) returns (NoOpResponsePB);
   rpc ScannerKeepAlive(ScannerKeepAliveRequestPB) returns (ScannerKeepAliveResponsePB);

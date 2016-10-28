@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/timestamp.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -18,12 +20,15 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 using std::endl;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
+using std::shared_ptr;
 using std::stack;
+using std::vector;
 
 using yb::Timestamp;
 using yb::util::FormatBytesAsStr;
@@ -40,15 +45,15 @@ namespace {
 const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
 }  // namespace
 
-Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
-                                const std::vector<DocWriteOperation>& doc_write_ops,
-                                util::SharedLockManager* const lock_manager,
-                                vector<string>* keys_locked,
+Status StartDocWriteTransaction(rocksdb::DB *rocksdb,
+                                vector<unique_ptr<DocOperation>>* doc_write_ops,
+                                util::SharedLockManager *lock_manager,
+                                vector<string> *keys_locked,
                                 KeyValueWriteBatchPB* dest) {
   unordered_map<string, LockType> lock_type_map;
-  for (const DocWriteOperation& doc_op : doc_write_ops) {
+  for (const unique_ptr<DocOperation>& doc_op : *doc_write_ops) {
     // TODO(akashnil): avoid materializing the vector, do the work of the called function in place.
-    vector<string> doc_op_locks = doc_op.doc_path.GetLockPrefixKeys();
+    const vector<string> doc_op_locks = doc_op->DocPathToLock().GetLockPrefixKeys();
     assert(doc_op_locks.size() > 0);
     for (int i = 0; i < doc_op_locks.size(); i++) {
       auto iter = lock_type_map.find(doc_op_locks[i]);
@@ -65,12 +70,85 @@ Status StartDocWriteTransaction(rocksdb::DB* rocksdb,
     lock_manager->Lock(key, lock_type_map[key]);
   }
   DocWriteBatch doc_write_batch(rocksdb);
-  for (DocWriteOperation doc_op : doc_write_ops) {
-    doc_write_batch.SetPrimitive(doc_op);
+  for (const unique_ptr<DocOperation>& doc_op : *doc_write_ops) {
+    doc_op->Apply(&doc_write_batch);
   }
   doc_write_batch.MoveToWriteBatchPB(dest);
   return Status::OK();
 }
+
+Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,
+                                  const vector<unique_ptr<RedisReadOperation>>& doc_read_ops,
+                                  Timestamp timestamp) {
+  for (const unique_ptr<RedisReadOperation>& doc_op : doc_read_ops) {
+    doc_op->Execute(rocksdb, timestamp);
+  }
+  return Status::OK();
+}
+
+DocPath YSQLWriteOperation::DocPathToLock() const {
+  return doc_path_;
+}
+
+Status YSQLWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
+  return doc_write_batch->SetPrimitive(doc_path_, value_, Timestamp::kMax);
+}
+
+DocPath RedisWriteOperation::DocPathToLock() const {
+  CHECK_EQ(request_.redis_op_type(), RedisWriteRequestPB_Type_SET)
+      << "Currently only SET is supported";
+  return DocPath::DocPathFromRedisKey(request_.set_request().key_value().key());
+}
+
+Status RedisWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
+  CHECK_EQ(request_.redis_op_type(), RedisWriteRequestPB_Type_SET)
+      << "Currently only SET is supported";
+  const auto kv = request_.set_request().key_value();
+  CHECK_EQ(kv.value().size(), 1)
+      << "Set operations are expected have exactly one value, found " << kv.value().size();
+  doc_write_batch->SetPrimitive(
+      DocPath::DocPathFromRedisKey(kv.key()), PrimitiveValue(kv.value(0)), Timestamp::kMax);
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
+}
+
+const RedisResponsePB& RedisWriteOperation::response() { return response_; }
+
+Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, Timestamp timestamp) {
+  CHECK_EQ(request_.redis_op_type(), RedisReadRequestPB_Type_GET)
+      << "Currently only GET is supported";
+  const KeyBytes doc_key = DocKey::FromRedisStringKey(
+      request_.get_request().key_value().key()).Encode();
+  KeyBytes timestamped_key = doc_key;
+  timestamped_key.AppendTimestamp(timestamp);
+  rocksdb::ReadOptions read_opts;
+  auto iter = std::unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
+  iter->Seek(timestamped_key.AsSlice());
+  if (!iter->Valid()) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    return Status::OK();
+  }
+  const rocksdb::Slice key = iter->key();
+  const rocksdb::Slice value = iter->value();
+  if (!timestamped_key.OnlyDiffersByLastTimestampFrom(key)) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    return Status::OK();
+  }
+  PrimitiveValue pv;
+  RETURN_NOT_OK(pv.DecodeFromValue(value));
+  if (pv.value_type() != ValueType::kString) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    return Status::OK();
+  }
+  pv.SwapStringValue(response_.mutable_string_response());
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  return Status::OK();
+}
+
+const RedisResponsePB& RedisReadOperation::response() {
+  return response_;
+}
+
 
 // ------------------------------------------------------------------------------------------------
 // DocWriteBatch
@@ -81,16 +159,12 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
       num_rocksdb_seeks_(0) {
 }
 
-Status DocWriteBatch::SetPrimitive(DocWriteOperation doc_write_op) {
-  return SetPrimitive(doc_write_op.doc_path, doc_write_op.value, Timestamp::kMax);
-}
-
 // This codepath is used to handle both primitive upserts and deletions.
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
                                    const PrimitiveValue& value,
                                    Timestamp timestamp) {
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, timestamp=$2",
-      doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
+                  doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
   const int num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.value_type() == ValueType::kTombstone;
@@ -271,7 +345,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
   }
 
   return STATUS(Corruption, Substitute("Invalid value type at the top level of a document: $0",
-      ValueTypeToStr(top_level_value.value_type())));
+                                       ValueTypeToStr(top_level_value.value_type())));
 }
 
 
@@ -322,8 +396,8 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
   RETURN_NOT_OK(doc_key.DecodeFrom(rocksdb_iter->key()));
   if (doc_key.num_subkeys() > 0) {
     return STATUS(Corruption,
-        Substitute("A top-level document key is not supposed to contain any sub-keys: $0",
-                   doc_key.ToString()));
+                  Substitute("A top-level document key is not supposed to contain any sub-keys: $0",
+                             doc_key.ToString()));
   }
 
   RETURN_NOT_OK(visitor->StartDocument(doc_key.doc_key()));
@@ -398,7 +472,7 @@ class SubDocumentBuildingVisitor : public DocVisitor {
       } else {
         return STATUS(Corruption,
                       Substitute("Cannot set a value within a subdocument of type $0",
-                                  ValueTypeToStr(value_type)));
+                                 ValueTypeToStr(value_type)));
       }
     }
     return Status::OK();

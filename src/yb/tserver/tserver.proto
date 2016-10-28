@@ -232,6 +232,8 @@ message ReadResponsePB {
 
   // The timestamp chosen by the server for this read.
   optional fixed64 timestamp = 2;
+
+  optional TabletServerErrorPB error = 3;
 }
 
 

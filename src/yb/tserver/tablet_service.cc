@@ -149,7 +149,7 @@ bool LookupTabletPeerOrRespond(TabletPeerLookupIf* tablet_manager,
   tablet::TabletStatePB state = (*peer)->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
     Status s = STATUS(IllegalState, "Tablet not RUNNING",
-                                    tablet::TabletStatePB_Name(state));
+                      tablet::TabletStatePB_Name(state));
     if (state == tablet::FAILED) {
       s = s.CloneAndAppend((*peer)->error().ToString());
     }
@@ -180,7 +180,7 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
   }
   if (PREDICT_FALSE(req->dest_uuid() != local_uuid)) {
     Status s = STATUS(InvalidArgument, Substitute("$0: Wrong destination UUID requested. "
-                                                  "Local UUID: $1. Requested UUID: $2",
+                                                      "Local UUID: $1. Requested UUID: $2",
                                                   method_name, local_uuid, req->dest_uuid()));
     LOG(WARNING) << s.ToString() << ": from " << context->requestor_string()
                  << ": " << req->ShortDebugString();
@@ -281,8 +281,8 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
  public:
   RpcTransactionCompletionCallback(rpc::RpcContext* context,
                                    Response* response)
-  : context_(context),
-    response_(response) {}
+      : context_(context),
+        response_(response) {}
 
   virtual void TransactionCompleted() OVERRIDE {
     if (!status_.ok()) {
@@ -487,13 +487,13 @@ static size_t GetMaxBatchSizeBytesHint(const ScanRequestPB* req) {
 }
 
 TabletServiceImpl::TabletServiceImpl(TabletServer* server)
-  : TabletServerServiceIf(server->metric_entity()),
-    server_(server) {
+    : TabletServerServiceIf(server->metric_entity()),
+      server_(server) {
 }
 
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
-  : TabletServerAdminServiceIf(server->metric_entity()),
-    server_(server) {
+    : TabletServerAdminServiceIf(server->metric_entity()),
+      server_(server) {
 }
 
 void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
@@ -553,7 +553,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
   }
 
   gscoped_ptr<AlterSchemaTransactionState> tx_state(
-    new AlterSchemaTransactionState(tablet_peer.get(), req, resp));
+      new AlterSchemaTransactionState(tablet_peer.get(), req, resp));
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
       new RpcTransactionCompletionCallback<AlterSchemaResponsePB>(context,
@@ -607,7 +607,7 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
   VLOG(1) << "Full request: " << req->DebugString();
 
   s = server_->tablet_manager()->CreateNewTablet(req->table_id(), req->tablet_id(), partition,
-    req->table_name(), req->table_type(), schema, partition_schema, req->config(), nullptr);
+      req->table_name(), req->table_type(), schema, partition_schema, req->config(), nullptr);
   if (PREDICT_FALSE(!s.ok())) {
     TabletServerErrorPB::Code code;
     if (s.IsAlreadyPresent()) {
@@ -706,7 +706,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-    // If the client sent us a timestamp, decode it and update the clock so that all future
+  // If the client sent us a timestamp, decode it and update the clock so that all future
   // timestamps are greater than the passed timestamp.
   if (req->has_propagated_timestamp()) {
     Timestamp ts(req->propagated_timestamp());
@@ -721,8 +721,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   if (PREDICT_FALSE(req->has_write_batch())) {
     Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
-                                    "used only for post-processed write requests during "
-                                    "Raft replication.");
+        "used only for post-processed write requests during "
+        "Raft replication.");
     SetupErrorAndRespond(resp->mutable_error(), s,
                          TabletServerErrorPB::INVALID_MUTATION,
                          context);
@@ -750,13 +750,17 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     }
     case TableType::REDIS_TABLE_TYPE: {
       unique_ptr<const WriteRequestPB> key_value_write_request;
+      vector<RedisResponsePB> responses;
       s = tablet->KeyValueBatchFromRedisWriteBatch(
-          *req, &key_value_write_request, &locks_held);
+          *req, &key_value_write_request, &locks_held, &responses);
       if (PREDICT_FALSE(!s.ok())) {
         SetupErrorAndRespond(resp->mutable_error(), s,
                              TabletServerErrorPB::UNKNOWN_ERROR,
                              context);
         return;
+      }
+      for (auto& redis_resp : responses) {
+        *(resp->add_redis_response_batch()) = std::move(redis_resp);
       }
       tx_state = unique_ptr<WriteTransactionState>(
           new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
@@ -794,10 +798,50 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 }
 
+void TabletServiceImpl::Read(const ReadRequestPB* req,
+                             ReadResponsePB* resp,
+                             rpc::RpcContext* context) {
+  TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
+               "tablet_id", req->tablet_id());
+  DVLOG(3) << "Received Read RPC: " << req->DebugString();
+
+  scoped_refptr<TabletPeer> tablet_peer;
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
+                                 &tablet_peer)) {
+    return;
+  }
+
+  shared_ptr<Tablet> tablet;
+  TabletServerErrorPB::Code error_code;
+  Status s = GetTabletRef(tablet_peer, &tablet, &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    return;
+  }
+
+  CHECK_EQ(tablet->table_type(), TableType::REDIS_TABLE_TYPE)
+      << "Currently, read requests are only "
+      << "supported for Redis table type. Existing tablet's table type is: "
+      << tablet->table_type();
+  for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
+    RedisResponsePB redis_response;
+    s = tablet->HandleRedisReadRequest(redis_read_req, &redis_response);
+    if (PREDICT_FALSE(!s.ok())) {
+      SetupErrorAndRespond(resp->mutable_error(), s,
+                           TabletServerErrorPB::UNKNOWN_ERROR,
+                           context);
+      return;
+    }
+    *(resp->add_redis_batch()) = redis_response;
+  }
+  RpcTransactionCompletionCallback<ReadResponsePB> rpc(context, resp);
+  rpc.TransactionCompleted();
+}
+
 ConsensusServiceImpl::ConsensusServiceImpl(const scoped_refptr<MetricEntity>& metric_entity,
                                            TabletPeerLookupIf* tablet_manager)
-  : ConsensusServiceIf(metric_entity),
-    tablet_manager_(tablet_manager) {
+    : ConsensusServiceIf(metric_entity),
+      tablet_manager_(tablet_manager) {
 }
 
 ConsensusServiceImpl::~ConsensusServiceImpl() {
@@ -1031,10 +1075,10 @@ void TabletServiceImpl::ScannerKeepAlive(const ScannerKeepAliveRequestPB *req,
   DCHECK(req->has_scanner_id());
   SharedScanner scanner;
   if (!server_->scanner_manager()->LookupScanner(req->scanner_id(), &scanner)) {
-      resp->mutable_error()->set_code(TabletServerErrorPB::SCANNER_EXPIRED);
-      StatusToPB(STATUS(NotFound, "Scanner not found"),
-                 resp->mutable_error()->mutable_status());
-      return;
+    resp->mutable_error()->set_code(TabletServerErrorPB::SCANNER_EXPIRED);
+    StatusToPB(STATUS(NotFound, "Scanner not found"),
+               resp->mutable_error()->mutable_status());
+    return;
   }
   scanner->UpdateAccessTime();
   context->RespondSuccess();
@@ -1055,7 +1099,7 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
   if (PREDICT_FALSE(req->has_scanner_id() &&
                     req->has_new_scan_request())) {
     context->RespondFailure(STATUS(InvalidArgument,
-                            "Must not pass both a scanner_id and new_scan_request"));
+                                   "Must not pass both a scanner_id and new_scan_request"));
     return;
   }
 
@@ -1099,7 +1143,7 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
     }
   } else {
     context->RespondFailure(STATUS(InvalidArgument,
-                              "Must pass either a scanner_id or new_scan_request"));
+                                   "Must pass either a scanner_id or new_scan_request"));
     return;
   }
   resp->set_has_more_results(has_more_results);
@@ -1190,7 +1234,7 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
   if (PREDICT_FALSE(req->has_new_request() &&
                     req->has_continue_request())) {
     context->RespondFailure(STATUS(InvalidArgument,
-                            "Must not pass both a scanner_id and new_scan_request"));
+                                   "Must not pass both a scanner_id and new_scan_request"));
     return;
   }
 
@@ -1236,7 +1280,7 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
     }
   } else {
     context->RespondFailure(STATUS(InvalidArgument,
-                            "Must pass either new_request or continue_request"));
+                                   "Must pass either new_request or continue_request"));
     return;
   }
 
@@ -1272,8 +1316,8 @@ static Status ExtractPredicateValue(const ColumnSchema& schema,
     size_t expected_size = schema.type_info()->size();
     if (pb_value.size() != expected_size) {
       return STATUS(InvalidArgument,
-        StringPrintf("Bad predicate on %s. Expected value size %zd, got %zd",
-                     schema.ToString().c_str(), expected_size, pb_value.size()));
+                    StringPrintf("Bad predicate on %s. Expected value size %zd, got %zd",
+                                 schema.ToString().c_str(), expected_size, pb_value.size()));
     }
     *result = data_copy;
   }
@@ -1288,16 +1332,16 @@ static Status DecodeEncodedKeyRange(const NewScanRequestPB& scan_pb,
   gscoped_ptr<EncodedKey> start, stop;
   if (scan_pb.has_start_primary_key()) {
     RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(
-                            tablet_schema, scanner->arena(),
-                            scan_pb.start_primary_key(), &start),
-                          "Invalid scan start key");
+        tablet_schema, scanner->arena(),
+        scan_pb.start_primary_key(), &start),
+        "Invalid scan start key");
   }
 
   if (scan_pb.has_stop_primary_key()) {
     RETURN_NOT_OK_PREPEND(EncodedKey::DecodeEncodedString(
-                            tablet_schema, scanner->arena(),
-                            scan_pb.stop_primary_key(), &stop),
-                          "Invalid scan stop key");
+        tablet_schema, scanner->arena(),
+        scan_pb.stop_primary_key(), &stop),
+        "Invalid scan stop key");
   }
 
   if (scan_pb.order_mode() == ORDERED && scan_pb.has_last_primary_key()) {
@@ -1340,8 +1384,8 @@ static Status SetupScanSpec(const NewScanRequestPB& scan_pb,
   for (const ColumnRangePredicatePB& pred_pb : scan_pb.range_predicates()) {
     if (!pred_pb.has_lower_bound() && !pred_pb.has_upper_bound()) {
       return STATUS(InvalidArgument,
-        string("Invalid predicate ") + pred_pb.ShortDebugString() +
-        ": has no lower or upper bound.");
+                    string("Invalid predicate ") + pred_pb.ShortDebugString() +
+                    ": has no lower or upper bound.");
     }
     ColumnSchema col(ColumnSchemaFromPB(pred_pb.column()));
     if (projection.find_column(col.name()) == -1 &&
@@ -1444,7 +1488,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
     // resumed). Otherwise, this would be read committed isolation, which is not resumable.
     if (scan_pb.read_mode() != READ_AT_SNAPSHOT) {
       *error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
-          return STATUS(InvalidArgument, "Cannot do an ordered scan that is not a snapshot read");
+      return STATUS(InvalidArgument, "Cannot do an ordered scan that is not a snapshot read");
     }
   }
 
@@ -1502,8 +1546,8 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
           tmp_error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
         }
       }
-      TRACE("Iterator created");
     }
+    TRACE("Iterator created");
   }
 
   if (PREDICT_TRUE(s.ok())) {
@@ -1726,21 +1770,21 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
   // time as the snapshot timestamp.
   if (!scan_pb.has_snap_timestamp()) {
     tmp_snap_timestamp = server_->clock()->Now();
-  // ... else we use the client provided one, but make sure it is not too far
-  // in the future as to be invalid.
+    // ... else we use the client provided one, but make sure it is not too far
+    // in the future as to be invalid.
   } else {
     tmp_snap_timestamp.FromUint64(scan_pb.snap_timestamp());
     Timestamp max_allowed_ts;
     Status s = server_->clock()->GetGlobalLatest(&max_allowed_ts);
     if (!s.ok()) {
       return STATUS(NotSupported, "Snapshot scans not supported on this server",
-                                  s.ToString());
+                    s.ToString());
     }
     if (tmp_snap_timestamp.CompareTo(max_allowed_ts) > 0) {
       return STATUS(InvalidArgument,
-          Substitute("Snapshot time $0 in the future. Max allowed timestamp is $1",
-                     server_->clock()->Stringify(tmp_snap_timestamp),
-                     server_->clock()->Stringify(max_allowed_ts)));
+                    Substitute("Snapshot time $0 in the future. Max allowed timestamp is $1",
+                               server_->clock()->Stringify(tmp_snap_timestamp),
+                               server_->clock()->Stringify(max_allowed_ts)));
     }
   }
 

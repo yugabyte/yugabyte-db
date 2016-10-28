@@ -73,6 +73,10 @@ class DocPath {
     return prefix_list;
   }
 
+  static DocPath DocPathFromRedisKey(const string& key) {
+    return DocPath(DocKey::FromRedisStringKey(key).Encode());
+  }
+
  private:
   // Encoded key identifying the document. This key can itself contain multiple components
   // (hash bucket, hashed components, range components).

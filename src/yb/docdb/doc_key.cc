@@ -167,6 +167,12 @@ DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &s
   return new_doc_key;
 }
 
+DocKey DocKey::FromRedisStringKey(const string& key) {
+  DocKey new_doc_key;
+  new_doc_key.range_group_.emplace_back(key);
+  return new_doc_key;
+}
+
 // ------------------------------------------------------------------------------------------------
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
