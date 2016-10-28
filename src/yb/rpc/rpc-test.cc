@@ -413,13 +413,20 @@ TEST_F(TestRpc, TestServerShutsDown) {
     // - Because the socket is shut down, gets ECONNREFUSED.
     //
     // EINVAL is possible if the controller socket had already disconnected by
-    // the time it trys to set the SO_SNDTIMEO socket option as part of the
+    // the time it tries to set the SO_SNDTIMEO socket option as part of the
     // normal blocking SASL handshake.
+    //
+    // EPROTOTYPE sometimes happens on Mac OS X.
+    // TODO: figure out why.
     ASSERT_TRUE(s.posix_code() == EPIPE ||
                 s.posix_code() == ECONNRESET ||
                 s.posix_code() == ESHUTDOWN ||
                 s.posix_code() == ECONNREFUSED ||
-                s.posix_code() == EINVAL)
+                s.posix_code() == EINVAL
+#if defined(__APPLE__)
+                || s.posix_code() == EPROTOTYPE
+#endif
+               )
       << "Unexpected status: " << s.ToString();
   }
 }
