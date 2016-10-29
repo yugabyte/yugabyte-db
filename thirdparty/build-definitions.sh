@@ -136,10 +136,10 @@ build_libunwind() {
 
 build_glog() {
   cd $GLOG_DIR
+  autoreconf --force --install
   CXXFLAGS="$EXTRA_CXXFLAGS" \
     LDFLAGS="$EXTRA_LDFLAGS" \
     LIBS="$EXTRA_LIBS" \
-    autoreconf --force --install
     ./configure --with-pic --prefix=$PREFIX --with-gflags=$PREFIX
   make -j$PARALLEL install
 }

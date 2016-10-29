@@ -45,6 +45,8 @@ Options:
     Do not use tcmalloc.
   --no-rebuild-thirdparty
     Skip building third-party libraries, even if the thirdparty directory has changed in git.
+  --no-prebuilt-thirdparty
+    Don't download prebuilt third-party libraries, build them locally instead.
   --show-compiler-cmd-line
     Show compiler command line.
   --skip-test-existence-check, --no-test-existence-check
@@ -153,6 +155,9 @@ while [ $# -gt 0 ]; do
     ;;
     --no-rebuild-thirdparty)
       export NO_REBUILD_THIRDPARTY=1
+    ;;
+    --no-prebuilt-thirdparty)
+      export YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY=1
     ;;
     --show-compiler-cmd-line)
       export YB_SHOW_COMPILER_COMMAND_LINE=1

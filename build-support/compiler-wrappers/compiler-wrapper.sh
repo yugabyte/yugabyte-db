@@ -32,7 +32,24 @@ show_compiler_command_line() {
   # As part of that, replace the ccache invocation with the actual compiler executable.
   compiler_cmdline="&& $compiler_cmdline"
   compiler_cmdline=${compiler_cmdline//&& ccache compiler/&& $compiler_executable}
-  echo -e "$prefix( cd \"$PWD\" $compiler_cmdline )$suffix$NO_COLOR" >&2
+  # Split the failed compilation command over multiple lines for easier reading.
+  echo -e "$prefix( cd \"$PWD\" $compiler_cmdline )$suffix$NO_COLOR" | python -c "
+import sys
+
+line_length = 0
+buffer = ''
+for line in sys.stdin:
+  for c in line.rstrip():
+    if c.isspace() and line_length > 80:
+      print buffer + c + '\\\\'
+      buffer = ''
+      line_length = 0
+    else:
+      buffer += c
+      line_length += 1
+if buffer:
+  print buffer,
+  " >&2
 }
 
 SCRIPT_NAME="compiler-wrapper.sh"
