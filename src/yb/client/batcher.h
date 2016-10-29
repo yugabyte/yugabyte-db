@@ -86,7 +86,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  Status Add(YBOperation* write_op) WARN_UNUSED_RESULT;
+  Status Add(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -114,15 +114,17 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;
   friend class WriteRpc;
+  friend class ReadRpc;
 
   ~Batcher();
 
   // Add an op to the in-flight set and increment the ref-count.
   void AddInFlightOp(InFlightOp* op);
 
-  void RemoveInFlightOp(InFlightOp* op);
+  void RemoveInFlightOps(const vector<InFlightOp*>& ops);
 
-  // Return true if the batch has been aborted, and any in-flight ops should stop
+
+    // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
   bool IsAbortedUnlocked() const;
 
@@ -134,11 +136,14 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // The operation is reported to the ErrorReporter as having failed with the
   // given status.
   void MarkInFlightOpFailed(InFlightOp* op, const Status& s);
-  void MarkInFlightOpFailedUnlocked(InFlightOp* op, const Status& s);
+  void MarkInFlightOpFailedUnlocked(InFlightOp* in_flight_op, const Status& s);
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
   void FlushBuffer(RemoteTablet* tablet, const std::vector<InFlightOp*>& ops);
+
+  // Log an error where an Rpc callback has response count mismatch.
+  void AddOpCountMismatchError();
 
   // Cleans up an RPC response, scooping out any errors and passing them up
   // to the batcher.
@@ -175,12 +180,16 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Protected by lock_
   bool had_errors_;
 
+  // Is this batcher for read_only_ sessions?
+  bool read_only_;
+
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
   // will be called exactly once (and the state changed to kFlushed).
   YBStatusCallback* flush_callback_;
 
   // All buffered or in-flight ops.
+  // Added to this set during apply, removed during SendRpcCb of AsyncRpc.
   std::unordered_set<InFlightOp*> ops_;
   // Each tablet's buffered ops.
   typedef std::unordered_map<RemoteTablet*, std::vector<InFlightOp*> > OpsMap;

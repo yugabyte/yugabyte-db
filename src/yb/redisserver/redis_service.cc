@@ -131,8 +131,10 @@ void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
 void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
   // TODO: Using a synchronous call, as we do here, is going to quickly block up all
   // our threads. Switch this to FlushAsync as soon as it is ready.
-  CHECK_OK(session_->Apply(RedisWriteOpForSetKV(
-    table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString()).release()));
+  shared_ptr<YBRedisWriteOp> write_op =
+      RedisWriteOpForSetKV(table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString());
+  shared_ptr<client::YBOperation> yb_op = std::static_pointer_cast<client::YBOperation>(write_op);
+  CHECK_OK(session_->Apply(yb_op));
   Status status = session_->Flush();
   LOG(INFO) << "Received status from Flush " << status.ToString(true);
   RedisResponsePB* ok_response = new RedisResponsePB();

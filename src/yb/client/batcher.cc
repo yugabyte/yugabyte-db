@@ -18,8 +18,6 @@
 #include "yb/client/batcher.h"
 
 #include <algorithm>
-#include <boost/bind.hpp>
-#include <glog/logging.h>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -27,6 +25,9 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <glog/logging.h>
+#include <boost/bind.hpp>
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/callbacks.h"
@@ -44,6 +45,7 @@
 
 using std::pair;
 using std::set;
+using std::unique_ptr;
 using std::shared_ptr;
 using std::unordered_map;
 using strings::Substitute;
@@ -80,6 +82,7 @@ Batcher::Batcher(YBClient* client,
     consistency_mode_(consistency_mode),
     error_collector_(error_collector),
     had_errors_(false),
+    read_only_(session->is_read_only()),
     flush_callback_(NULL),
     next_op_sequence_number_(0),
     outstanding_lookups_(0),
@@ -207,8 +210,8 @@ void Batcher::FlushAsync(YBStatusCallback* cb) {
   FlushBuffersIfReady();
 }
 
-Status Batcher::Add(YBOperation* write_op) {
-  int64_t required_size = write_op->SizeInBuffer();
+Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
+  int64_t required_size = yb_op->SizeInBuffer();
   int64_t size_after_adding = buffer_bytes_used_.IncrementBy(required_size);
   if (PREDICT_FALSE(size_after_adding > max_buffer_size_)) {
     buffer_bytes_used_.IncrementBy(-required_size);
@@ -223,14 +226,14 @@ Status Batcher::Add(YBOperation* write_op) {
 
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
-  gscoped_ptr<InFlightOp> op(new InFlightOp());
-  RETURN_NOT_OK(write_op->table_->partition_schema()
-                    .EncodeKey(write_op->row(), &op->partition_key));
-  op->write_op.reset(write_op);
-  op->state = InFlightOp::kLookingUpTablet;
+  unique_ptr<InFlightOp> in_flight_op(new InFlightOp());
+  RETURN_NOT_OK(
+      yb_op->table_->partition_schema().EncodeKey(yb_op->row(), &in_flight_op->partition_key));
+  in_flight_op->yb_op = yb_op;
+  in_flight_op->state = InFlightOp::kLookingUpTablet;
 
-  AddInFlightOp(op.get());
-  VLOG(3) << "Looking up tablet for " << op->write_op->ToString();
+  AddInFlightOp(in_flight_op.get());
+  VLOG(3) << "Looking up tablet for " << in_flight_op->yb_op->ToString();
 
   // Increment our reference count for the outstanding callback.
   //
@@ -239,12 +242,9 @@ Status Batcher::Add(YBOperation* write_op) {
   MonoTime deadline = ComputeDeadlineUnlocked();
   base::RefCountInc(&outstanding_lookups_);
   client_->data_->meta_cache_->LookupTabletByKey(
-      op->write_op->table(),
-      op->partition_key,
-      deadline,
-      &op->tablet,
-      Bind(&Batcher::TabletLookupFinished, this, op.get()));
-  IgnoreResult(op.release());
+      in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline, &in_flight_op->tablet,
+      Bind(&Batcher::TabletLookupFinished, this, in_flight_op.get()));
+  IgnoreResult(in_flight_op.release());
   return Status::OK();
 }
 
@@ -271,13 +271,13 @@ void Batcher::MarkInFlightOpFailed(InFlightOp* op, const Status& s) {
   MarkInFlightOpFailedUnlocked(op, s);
 }
 
-void Batcher::MarkInFlightOpFailedUnlocked(InFlightOp* op, const Status& s) {
-  CHECK_EQ(1, ops_.erase(op))
-    << "Could not remove op " << op->ToString() << " from in-flight list";
-  gscoped_ptr<YBError> error(new YBError(op->write_op.release(), s));
+void Batcher::MarkInFlightOpFailedUnlocked(InFlightOp* in_flight_op, const Status& s) {
+  CHECK_EQ(1, ops_.erase(in_flight_op)) << "Could not remove op " << in_flight_op->ToString()
+                                        << " from in-flight list";
+  gscoped_ptr<YBError> error(new YBError(in_flight_op->yb_op, s));
   error_collector_->AddError(error.Pass());
   had_errors_ = true;
-  delete op;
+  delete in_flight_op;
 }
 
 void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
@@ -289,15 +289,14 @@ void Batcher::TabletLookupFinished(InFlightOp* op, const Status& s) {
   std::unique_lock<simple_spinlock> l(lock_);
 
   if (IsAbortedUnlocked()) {
-    VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->write_op->ToString();
+    VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->yb_op->ToString();
     MarkInFlightOpFailedUnlocked(op, STATUS(Aborted, "Batch aborted"));
     // 'op' is deleted by above function.
     return;
   }
 
   if (VLOG_IS_ON(3)) {
-    VLOG(3) << "TabletLookupFinished for " << op->write_op->ToString()
-            << ": " << s.ToString();
+    VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << s.ToString();
     if (s.ok()) {
       VLOG(3) << "Result: tablet_id = " << op->tablet->tablet_id();
     }
@@ -389,13 +388,33 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const vector<InFlightOp*>& ops) 
   // Create and send an RPC that aggregates the ops. The RPC is freed when
   // its callback completes.
   //
-  // The RPC object takes ownership of the ops.
-  WriteRpc* rpc = new WriteRpc(this,
-                               tablet,
-                               ops,
-                               deadline_,
-                               client_->data_->messenger_);
-  rpc->SendRpc();
+  // The RPC object takes ownership of the in flight ops.
+  // The underlying YB OP is not directly owned, only a reference is kept.
+  if (read_only_) {
+    ReadRpc* rpc = new ReadRpc(this, tablet, ops, deadline_, client_->data_->messenger_);
+    rpc->SendRpc();
+  } else {
+    WriteRpc* rpc = new WriteRpc(this, tablet, ops, deadline_, client_->data_->messenger_);
+    rpc->SendRpc();
+  }
+}
+
+using tserver::ReadResponsePB;
+
+void Batcher::AddOpCountMismatchError() {
+  // TODO: how to handle this kind of error where the array of response PB's don't match
+  //       the size of the array of requests. We don't have a specific YBOperation to
+  //       create an error with, because there are multiple YBOps in one Rpc.
+  LOG(FATAL) << "Server sent wrong number of redis responses compared to request";
+}
+
+void Batcher::RemoveInFlightOps(const vector<InFlightOp*>& ops) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  for (InFlightOp* op : ops) {
+    CHECK_EQ(1, ops_.erase(op))
+      << "Could not remove op " << op->ToString()
+      << " from in-flight list";
+  }
 }
 
 void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
@@ -412,23 +431,12 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
     }
   } else {
     // Mark each of the rows in the write op as failed, since the whole RPC failed.
-    for (InFlightOp* op : rpc.ops()) {
-      gscoped_ptr<YBError> error(new YBError(op->write_op.release(), s));
+    for (InFlightOp* in_flight_op : rpc.ops()) {
+      gscoped_ptr<YBError> error(new YBError(in_flight_op->yb_op, s));
       error_collector_->AddError(error.Pass());
     }
 
     MarkHadErrors();
-  }
-
-
-  // Remove all the ops from the "in-flight" list.
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    for (InFlightOp* op : rpc.ops()) {
-      CHECK_EQ(1, ops_.erase(op))
-            << "Could not remove op " << op->ToString()
-            << " from in-flight list";
-    }
   }
 
   // Check individual row errors.
@@ -444,16 +452,13 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
                  << rpc.resp().DebugString();
       continue;
     }
-    gscoped_ptr<YBOperation> op = rpc.ops()[err_pb.row_index()]->write_op.Pass();
-    VLOG(1) << "Error on op " << op->ToString() << ": "
-            << err_pb.error().ShortDebugString();
+    shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()]->yb_op;
+    VLOG(1) << "Error on op " << yb_op->ToString() << ": " << err_pb.error().ShortDebugString();
     Status op_status = StatusFromPB(err_pb.error());
-    gscoped_ptr<YBError> error(new YBError(op.release(), op_status));
+    gscoped_ptr<YBError> error(new YBError(yb_op, op_status));
     error_collector_->AddError(error.Pass());
     MarkHadErrors();
   }
-
-  CheckForFinishedFlush();
 }
 
 } // namespace internal

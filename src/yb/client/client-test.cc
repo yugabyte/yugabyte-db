@@ -168,7 +168,7 @@ class ClientTest : public YBTest {
     req.mutable_table()->set_table_name(table->name());
     CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(
         &req, &resp));
-    CHECK(resp.tablet_locations_size() > 0);
+    CHECK_GT(resp.tablet_locations_size(), 0);
     return resp.tablet_locations(0).tablet_id();
   }
 
@@ -189,8 +189,7 @@ class ClientTest : public YBTest {
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = first_row; i < num_rows + first_row; i++) {
-      gscoped_ptr<YBInsert> insert(BuildTestRow(table, i));
-      ASSERT_OK(session->Apply(insert.release()));
+      ASSERT_OK(session->Apply(BuildTestRow(table, i)));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
@@ -206,8 +205,8 @@ class ClientTest : public YBTest {
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
-      gscoped_ptr<YBUpdate> update(UpdateTestRow(table, i));
-      ASSERT_OK(session->Apply(update.release()));
+      shared_ptr<YBUpdate> update(UpdateTestRow(table, i));
+      ASSERT_OK(session->Apply(update));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
@@ -218,37 +217,37 @@ class ClientTest : public YBTest {
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
-      gscoped_ptr<YBDelete> del(DeleteTestRow(table, i));
-      ASSERT_OK(session->Apply(del.release()));
+      shared_ptr<YBDelete> del(DeleteTestRow(table, i));
+      ASSERT_OK(session->Apply(del));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
   }
 
-  gscoped_ptr<YBInsert> BuildTestRow(YBTable* table, int index) {
-    gscoped_ptr<YBInsert> insert(table->NewInsert());
+  shared_ptr<YBInsert> BuildTestRow(YBTable* table, int index) {
+    shared_ptr<YBInsert> insert(table->NewInsert());
     YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2));
     CHECK_OK(row->SetStringCopy(2, Slice(StringPrintf("hello %d", index))));
     CHECK_OK(row->SetInt32(3, index * 3));
-    return insert.Pass();
+    return insert;
   }
 
-  gscoped_ptr<YBUpdate> UpdateTestRow(YBTable* table, int index) {
-    gscoped_ptr<YBUpdate> update(table->NewUpdate());
+  shared_ptr<YBUpdate> UpdateTestRow(YBTable* table, int index) {
+    shared_ptr<YBUpdate> update(table->NewUpdate());
     YBPartialRow* row = update->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2 + 1));
     CHECK_OK(row->SetStringCopy(2, Slice(StringPrintf("hello again %d", index))));
-    return update.Pass();
+    return update;
   }
 
-  gscoped_ptr<YBDelete> DeleteTestRow(YBTable* table, int index) {
-    gscoped_ptr<YBDelete> del(table->NewDelete());
+  shared_ptr<YBDelete> DeleteTestRow(YBTable* table, int index) {
+    shared_ptr<YBDelete> del(table->NewDelete());
     YBPartialRow* row = del->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
-    return del.Pass();
+    return del;
   }
 
   void DoTestScanWithoutPredicates() {
@@ -612,15 +611,15 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(5000);
   for (int i = 1; i < 5; i++) {
-    gscoped_ptr<YBInsert> insert;
+    shared_ptr<YBInsert> insert;
     insert = BuildTestRow(table.get(), 2 + (i * 10));
-    ASSERT_OK(session->Apply(insert.release()));
+    ASSERT_OK(session->Apply(insert));
     insert = BuildTestRow(table.get(), 3 + (i * 10));
-    ASSERT_OK(session->Apply(insert.release()));
+    ASSERT_OK(session->Apply(insert));
     insert = BuildTestRow(table.get(), 5 + (i * 10));
-    ASSERT_OK(session->Apply(insert.release()));
+    ASSERT_OK(session->Apply(insert));
     insert = BuildTestRow(table.get(), 7 + (i * 10));
-    ASSERT_OK(session->Apply(insert.release()));
+    ASSERT_OK(session->Apply(insert));
   }
   FlushSessionOrDie(session);
 
@@ -638,11 +637,11 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    gscoped_ptr<YBUpdate> update;
+    shared_ptr<YBUpdate> update;
     update = UpdateTestRow(table.get(), 2 + i * 10);
-    ASSERT_OK(session->Apply(update.release()));
+    ASSERT_OK(session->Apply(update));
     update = UpdateTestRow(table.get(), 5 + i * 10);
-    ASSERT_OK(session->Apply(update.release()));
+    ASSERT_OK(session->Apply(update));
   }
   FlushSessionOrDie(session);
 
@@ -660,11 +659,11 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    gscoped_ptr<YBDelete> del;
+    shared_ptr<YBDelete> del;
     del = DeleteTestRow(table.get(), 5 + i*10);
-    ASSERT_OK(session->Apply(del.release()));
+    ASSERT_OK(session->Apply(del));
     del = DeleteTestRow(table.get(), 7 + i*10);
-    ASSERT_OK(session->Apply(del.release()));
+    ASSERT_OK(session->Apply(del));
   }
   FlushSessionOrDie(session);
 
@@ -682,11 +681,11 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    gscoped_ptr<YBDelete> del;
+    shared_ptr<YBDelete> del;
     del = DeleteTestRow(table.get(), 2 + i*10);
-    ASSERT_OK(session->Apply(del.release()));
+    ASSERT_OK(session->Apply(del));
     del = DeleteTestRow(table.get(), 3 + i*10);
-    ASSERT_OK(session->Apply(del.release()));
+    ASSERT_OK(session->Apply(del));
   }
   FlushSessionOrDie(session);
 
@@ -1394,13 +1393,11 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
 
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
-  gscoped_ptr<YBInsert> insert(client_table_->NewInsert());
+  shared_ptr<YBInsert> insert(client_table_->NewInsert());
   // Try inserting without specifying a key: should fail.
   ASSERT_OK(insert->mutable_row()->SetInt32("int_val", 54321));
   ASSERT_OK(insert->mutable_row()->SetStringCopy("string_val", "hello world"));
-
-  YBInsert* ptr = insert.get();
-  Status s = session->Apply(insert.release());
+  Status s = session->Apply(insert);
   ASSERT_EQ("Illegal state: Key not specified: "
             "INSERT int32 int_val=54321, string string_val=hello world",
             s.ToString(false));  // No file or line number.
@@ -1408,14 +1405,11 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
   // Get error
   ASSERT_EQ(session->CountPendingErrors(), 1) << "Should report bad key to error container";
   gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
-  YBOperation* failed_op = error->release_failed_op();
-  ASSERT_EQ(failed_op, ptr) << "Should be able to retrieve failed operation";
-  insert.reset(ptr);
+  const YBOperation& failed_op = error->failed_op();
 
   // Retry
   ASSERT_OK(insert->mutable_row()->SetInt32("key", 12345));
-  ASSERT_OK(session->Apply(insert.release()));
-  ASSERT_TRUE(insert == nullptr) << "Successful insert should take ownership";
+  ASSERT_OK(session->Apply(insert));
   ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
 
   FlushSessionOrDie(session);
@@ -1426,29 +1420,29 @@ static Status ApplyInsertToSession(YBSession* session,
                                    int row_key,
                                    int int_val,
                                    const char* string_val) {
-  gscoped_ptr<YBInsert> insert(table->NewInsert());
+  shared_ptr<YBInsert> insert(table->NewInsert());
   RETURN_NOT_OK(insert->mutable_row()->SetInt32("key", row_key));
   RETURN_NOT_OK(insert->mutable_row()->SetInt32("int_val", int_val));
   RETURN_NOT_OK(insert->mutable_row()->SetStringCopy("string_val", string_val));
-  return session->Apply(insert.release());
+  return session->Apply(insert);
 }
 
 static Status ApplyUpdateToSession(YBSession* session,
                                    const shared_ptr<YBTable>& table,
                                    int row_key,
                                    int int_val) {
-  gscoped_ptr<YBUpdate> update(table->NewUpdate());
+  shared_ptr<YBUpdate> update(table->NewUpdate());
   RETURN_NOT_OK(update->mutable_row()->SetInt32("key", row_key));
   RETURN_NOT_OK(update->mutable_row()->SetInt32("int_val", int_val));
-  return session->Apply(update.release());
+  return session->Apply(update);
 }
 
 static Status ApplyDeleteToSession(YBSession* session,
                                    const shared_ptr<YBTable>& table,
                                    int row_key) {
-  gscoped_ptr<YBDelete> del(table->NewDelete());
+  shared_ptr<YBDelete> del(table->NewDelete());
   RETURN_NOT_OK(del->mutable_row()->SetInt32("key", row_key));
-  return session->Apply(del.release());
+  return session->Apply(del);
 }
 
 TEST_F(ClientTest, TestWriteTimeout) {

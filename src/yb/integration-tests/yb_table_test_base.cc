@@ -136,18 +136,18 @@ void YBTableTestBase::DeleteTable() {
   }
 }
 
-shared_ptr<YBSession> YBTableTestBase::NewSession() {
-  shared_ptr<YBSession> session = client_->NewSession();
+shared_ptr<YBSession> YBTableTestBase::NewSession(bool read_only) {
+  shared_ptr<YBSession> session = client_->NewSession(read_only);
   session->SetTimeoutMillis(session_timeout_ms());
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   return session;
 }
 
 void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
-  unique_ptr<YBInsert> insert(table_->NewInsert());
+  shared_ptr<YBInsert> insert(table_->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetBinary("k", key));
   ASSERT_OK(insert->mutable_row()->SetBinary("v", value));
-  ASSERT_OK(session->Apply(insert.release()));
+  ASSERT_OK(session->Apply(insert));
   ASSERT_OK(session->Flush());
 }
 

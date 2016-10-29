@@ -33,8 +33,8 @@
 // and std::shared_ptr on OS X. Clients are encouraged to use these typedefs in
 // order to ensure that applications will compile on both Linux and OS X.
 
-#if defined(__APPLE__)
-#include <memory>
+// NOTE(akashnil): We are always compiling with C++11, so this in unnesseccary
+// right now. The sp namespace will be renamed to std:: everywhere.
 
 namespace yb {
 namespace client {
@@ -45,19 +45,5 @@ namespace sp {
 }
 }
 }
-
-#else
-#include <tr1/memory>
-
-namespace yb {
-namespace client {
-namespace sp {
-  using std::tr1::shared_ptr;
-  using std::tr1::weak_ptr;
-  using std::tr1::enable_shared_from_this;
-}
-}
-}
-#endif
 
 #endif // YB_CLIENT_SHARED_PTR_H

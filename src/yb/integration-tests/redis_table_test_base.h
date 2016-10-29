@@ -18,8 +18,10 @@ class RedisTableTestBase : public YBTableTestBase {
 
   void CreateTable() override;
   void PutKeyValue(client::YBSession* session, std::string key, std::string value) override;
+  void GetKeyValue(std::string key, std::string value);
 
   void RedisSimpleSetCommands();
+  void RedisSimpleGetCommands();
 };
 
 }  // namespace integration_tests

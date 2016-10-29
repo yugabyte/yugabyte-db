@@ -72,6 +72,7 @@ DECLARE_bool(enable_maintenance_manager);
 
 using std::string;
 using std::vector;
+using std::shared_ptr;
 
 namespace yb {
 namespace tablet {
@@ -210,7 +211,7 @@ class FullStackInsertScanTest : public YBTest {
   Random random_;
 
   YBSchema schema_;
-  std::shared_ptr<MiniCluster> cluster_;
+  shared_ptr<MiniCluster> cluster_;
   client::sp::shared_ptr<YBClient> client_;
   client::sp::shared_ptr<YBTable> reader_table_;
   // Concurrent client insertion test variables
@@ -366,9 +367,9 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   char randstr[kRandomStrMaxLength + 1];
   // Insert in the id's key range
   for (int64_t key = start; key < end; ++key) {
-    gscoped_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<YBInsert> insert(table->NewInsert());
     RandomRow(&rng, insert->mutable_row(), randstr, key, id);
-    CHECK_OK(session->Apply(insert.release()));
+    CHECK_OK(session->Apply(insert));
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.

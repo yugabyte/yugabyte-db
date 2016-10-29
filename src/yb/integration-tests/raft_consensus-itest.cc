@@ -214,12 +214,12 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        gscoped_ptr<YBInsert> insert(table->NewInsert());
+        shared_ptr<YBInsert> insert(table->NewInsert());
         YBPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, j));
         CHECK_OK(row->SetInt32(1, j * 2));
         CHECK_OK(row->SetStringCopy(2, Slice(StringPrintf("hello %d", j))));
-        CHECK_OK(session->Apply(insert.release()));
+        CHECK_OK(session->Apply(insert));
       }
 
       // We don't handle write idempotency yet. (i.e making sure that when a leader fails

@@ -191,10 +191,10 @@ Status FlexPartitioningITest::InsertRandomRows() {
   session->SetTimeoutMillis(10000);
   RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   for (uint64_t i = 0; i < kNumRows; i++) {
-    gscoped_ptr<YBInsert> insert(table_->NewInsert());
+    shared_ptr<YBInsert> insert(table_->NewInsert());
     tools::GenerateDataForRow(table_->schema(), i, &random_, insert->mutable_row());
     inserted_rows_.push_back(new YBPartialRow(*insert->mutable_row()));
-    RETURN_NOT_OK(session->Apply(insert.release()));
+    RETURN_NOT_OK(session->Apply(insert));
 
     if (i > 0 && i % 1000 == 0) {
       RETURN_NOT_OK(session->Flush());

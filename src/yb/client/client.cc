@@ -114,7 +114,7 @@ using internal::Batcher;
 using internal::ErrorCollector;
 using internal::MetaCache;
 using internal::RemoteTabletServer;
-using sp::shared_ptr;
+using std::shared_ptr;
 
 static const int kHtTimestampBitsToShift = 12;
 static const char* kProgName = "yb_client";
@@ -785,6 +785,8 @@ YBRedisWriteOp* YBTable::NewRedisWrite() {
   return new YBRedisWriteOp(shared_from_this());
 }
 
+YBRedisReadOp* YBTable::NewRedisRead() { return new YBRedisReadOp(shared_from_this()); }
+
 YBUpdate* YBTable::NewUpdate() {
   return new YBUpdate(shared_from_this());
 }
@@ -832,21 +834,13 @@ const YBOperation& YBError::failed_op() const {
   return *data_->failed_op_;
 }
 
-YBOperation* YBError::release_failed_op() {
-  CHECK_NOTNULL(data_->failed_op_.get());
-  return data_->failed_op_.release();
-}
-
 bool YBError::was_possibly_successful() const {
   // TODO: implement me - right now be conservative.
   return true;
 }
 
-YBError::YBError(YBOperation* failed_op,
-                     const Status& status)
-  : data_(new YBError::Data(gscoped_ptr<YBOperation>(failed_op),
-                              status)) {
-}
+YBError::YBError(shared_ptr<YBOperation> failed_op, const Status& status)
+    : data_(new YBError::Data(failed_op, status)) {}
 
 YBError::~YBError() {
   delete data_;
@@ -946,18 +940,33 @@ bool YBSession::HasPendingOperations() const {
   return false;
 }
 
-Status YBSession::Apply(YBOperation* write_op) {
-  if (!write_op->row().IsKeySet()) {
-    Status status = STATUS(IllegalState, "Key not specified", write_op->ToString());
-    data_->error_collector_->AddError(gscoped_ptr<YBError>(
-        new YBError(write_op, status)));
+Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
+  Synchronizer s;
+  YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
+  ReadAsync(yb_op, &ksmcb);
+  return s.Wait();
+}
+
+void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb) {
+  CHECK(read_only_);
+  CHECK(yb_op->read_only());
+  CHECK_OK(Apply(yb_op));
+  FlushAsync(cb);
+}
+
+Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
+  CHECK_EQ(yb_op->read_only(), read_only_);
+  if (!yb_op->row().IsKeySet()) {
+    Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
+    data_->error_collector_->AddError(
+        gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), status)));
     return status;
   }
 
-  Status s = data_->batcher_->Add(write_op);
+  Status s = data_->batcher_->Add(shared_ptr<YBOperation>(yb_op));
   if (!PREDICT_FALSE(s.ok())) {
-    data_->error_collector_->AddError(gscoped_ptr<YBError>(
-        new YBError(write_op, s)));
+    data_->error_collector_->AddError(
+        gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), s)));
     return s;
   }
 

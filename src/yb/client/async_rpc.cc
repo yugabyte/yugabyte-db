@@ -131,7 +131,7 @@ string AsyncRpc::ToString() const {
 const YBTable* AsyncRpc::table() const {
   // All of the ops for a given tablet obviously correspond to the same table,
   // so we'll just grab the table from the first.
-  return ops_[0]->write_op->table();
+  return ops_[0]->yb_op->table();
 }
 
 void AsyncRpc::LookupTabletCb(const Status& status) {
@@ -149,9 +149,9 @@ void AsyncRpc::FailToNewReplica(const Status& reason) {
   VLOG(1) << "Failing " << ToString() << " to a new replica: "
           << reason.ToString();
   bool found = tablet_->MarkReplicaFailed(current_ts_, reason);
-  DCHECK(found)
-        << "Tablet " << tablet_->tablet_id() << ": Unable to mark replica " << current_ts_->ToString()
-        << " as failed. Replicas: " << tablet_->ReplicasAsString();
+  DCHECK(found) << "Tablet " << tablet_->tablet_id() << ": Unable to mark replica "
+                << current_ts_->ToString()
+                << " as failed. Replicas: " << tablet_->ReplicasAsString();
 
   mutable_retrier()->DelayedRetry(this, reason);
 }
@@ -205,6 +205,8 @@ void AsyncRpc::SendRpcCb(const Status& status) {
     LOG(WARNING) << new_status.ToString();
   }
   ProcessResponseFromTserver(new_status);
+  batcher_->RemoveInFlightOps(ops_);
+  batcher_->CheckForFinishedFlush();
   delete this;
 }
 
@@ -253,7 +255,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   for (InFlightOp* op : ops_) {
     const Partition& partition = op->tablet->partition();
     const PartitionSchema& partition_schema = table()->partition_schema();
-    const YBPartialRow& row = op->write_op->row();
+    const YBPartialRow& row = op->yb_op->row();
 
 #ifndef NDEBUG
     bool partition_contains_row;
@@ -262,20 +264,21 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     << "Row " << partition_schema.RowDebugString(row)
     << "not in partition " << partition_schema.PartitionDebugString(partition, *schema);
 #endif
-    if (op->write_op->type() == YBOperation::Type::REDIS_WRITE) {
+    if (op->yb_op->type() == YBOperation::Type::REDIS_WRITE) {
       CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
       RedisWriteRequestPB* redis_req = req_.mutable_redis_write_batch()->Add();
-      *redis_req = down_cast<YBRedisWriteOp&> (*(op->write_op)).request();
+      // We are copying the redis request for now. In future it may be prevented.
+      *redis_req = down_cast<YBRedisWriteOp*>(op->yb_op.get())->request();
     } else {
       CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-      enc.Add(ToInternalWriteType(op->write_op->type()), op->write_op->row());
+      enc.Add(ToInternalWriteType(op->yb_op->type()), op->yb_op->row());
     }
     // Set the state now, even though we haven't yet sent it -- at this point
     // there is no return, and we're definitely going to send it. If we waited
     // until after we sent it, the RPC callback could fire before we got a chance
     // to change its state to 'sent'.
     op->state = InFlightOp::kRequestSent;
-    VLOG(4) << ++ctr << ". Encoded row " << op->write_op->ToString();
+    VLOG(4) << ++ctr << ". Encoded row " << op->yb_op->ToString();
   }
 
   if (VLOG_IS_ON(3)) {
@@ -297,8 +300,66 @@ Status WriteRpc::response_error_status() {
 
 void WriteRpc::ProcessResponseFromTserver(Status status) {
   batcher_->ProcessWriteResponse(*this, status);
+  size_t response_idx = 0;
+  for (int i = 0; i < ops_.size(); i++) {
+    YBOperation* yb_op = ops_[i]->yb_op.get();
+    if (yb_op->type() == YBOperation::REDIS_WRITE) {
+      if (response_idx >= resp_.redis_response_batch().size()) {
+        batcher_->AddOpCountMismatchError();
+        return;
+      }
+      *(down_cast<YBRedisWriteOp*>(yb_op)->mutable_response()) =
+          std::move(resp_.redis_response_batch(response_idx));
+      response_idx++;
+    }
+  }
+  if (response_idx != resp_.redis_response_batch().size()) {
+    batcher_->AddOpCountMismatchError();
+    return;
+  }
 }
 
+ReadRpc::ReadRpc(
+    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
+    const MonoTime& deadline, const shared_ptr<Messenger>& messenger)
+    : AsyncRpc(batcher, tablet, ops, deadline, messenger) {
+  req_.set_tablet_id(tablet->tablet_id());
+  int ctr = 0;
+  for (InFlightOp* op : ops_) {
+    CHECK_EQ(op->yb_op->type(), YBOperation::Type::REDIS_READ);
+    CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
+    RedisReadRequestPB* redis_req = req_.mutable_redis_batch()->Add();
+    *redis_req = down_cast<YBRedisReadOp*>(op->yb_op.get())->request();
+    op->state = InFlightOp::kRequestSent;
+    VLOG(4) << ++ctr << ". Encoded row " << op->yb_op->ToString();
+  }
+
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Created batch for " << tablet->tablet_id() << ":\n" << req_.ShortDebugString();
+  }
 }
+
+void ReadRpc::SendRpcToTserver() {
+  current_ts_->proxy()->ReadAsync(
+      req_, &resp_, mutable_retrier()->mutable_controller(),
+      std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
 }
+
+Status ReadRpc::response_error_status() { return Status::OK(); }
+
+void ReadRpc::ProcessResponseFromTserver(Status status) {
+  // Read response handling
+  size_t n = ops_.size();
+  if (resp_.redis_batch().size() != n) {
+    batcher_->AddOpCountMismatchError();
+    return;
+  }
+  for (int i = 0; i < n; i++) {
+    *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) =
+        std::move(resp_.redis_batch(i));
+  }
 }
+
+}  // namespace internal
+}  // namespace client
+}  // namespace yb

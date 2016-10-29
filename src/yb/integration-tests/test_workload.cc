@@ -108,13 +108,13 @@ void TestWorkload::WriteThread() {
   while (should_run_.Load()) {
     for (int i = 0; i < write_batch_size_; i++) {
       if (pathological_one_row_enabled_) {
-        gscoped_ptr<YBUpdate> update(table->NewUpdate());
+        shared_ptr<YBUpdate> update(table->NewUpdate());
         YBPartialRow* row = update->mutable_row();
         CHECK_OK(row->SetInt32(0, 0));
         CHECK_OK(row->SetInt32(1, r.Next()));
-        CHECK_OK(session->Apply(update.release()));
+        CHECK_OK(session->Apply(update));
       } else {
-        gscoped_ptr<YBInsert> insert(table->NewInsert());
+        shared_ptr<YBInsert> insert(table->NewInsert());
         YBPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, r.Next()));
         CHECK_OK(row->SetInt32(1, r.Next()));
@@ -124,7 +124,7 @@ void TestWorkload::WriteThread() {
           test_payload.assign(payload_bytes_, '0');
         }
         CHECK_OK(row->SetStringCopy(2, test_payload));
-        CHECK_OK(session->Apply(insert.release()));
+        CHECK_OK(session->Apply(insert));
       }
     }
 
@@ -212,12 +212,12 @@ void TestWorkload::Setup(YBTableType table_type) {
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     shared_ptr<YBTable> table;
     CHECK_OK(client_->OpenTable(table_name_, &table));
-    gscoped_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<YBInsert> insert(table->NewInsert());
     YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, 0));
     CHECK_OK(row->SetInt32(1, 0));
     CHECK_OK(row->SetStringCopy(2, "hello world"));
-    CHECK_OK(session->Apply(insert.release()));
+    CHECK_OK(session->Apply(insert));
     CHECK_OK(session->Flush());
   }
 }

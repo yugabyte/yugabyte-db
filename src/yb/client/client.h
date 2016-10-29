@@ -473,6 +473,7 @@ class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
   // responsibility to free it, unless it is passed to YBSession::Apply().
   YBInsert* NewInsert();
   YBRedisWriteOp* NewRedisWrite();
+  YBRedisReadOp* NewRedisRead();
   YBUpdate* NewUpdate();
   YBDelete* NewDelete();
 
@@ -586,10 +587,6 @@ class YB_EXPORT YBError {
   // Return the operation which failed.
   const YBOperation& failed_op() const;
 
-  // Release the operation that failed. The caller takes ownership. Must only
-  // be called once.
-  YBOperation* release_failed_op();
-
   // In some cases, it's possible that the server did receive and successfully
   // perform the requested operation, but the client can't tell whether or not
   // it was successful. For example, if the call times out, the server may still
@@ -606,7 +603,7 @@ class YB_EXPORT YBError {
   friend class internal::Batcher;
   friend class YBSession;
 
-  YBError(YBOperation* failed_op, const Status& error);
+  YBError(std::shared_ptr<YBOperation> failed_op, const Status& error);
 
   // Owned.
   Data* data_;
@@ -762,10 +759,14 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   // Set the timeout for writes made in this session.
   void SetTimeoutMillis(int millis);
 
+  Status ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+
+  void ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb);
+
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
 
-  // Apply the write operation. Transfers the write_op's ownership to the YBSession.
+  // Apply the write operation.
   //
   // The behavior of this function depends on the current flush mode. Regardless
   // of flush mode, however, Apply may begin to perform processing in the background
@@ -778,7 +779,7 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   // may be retrieved at any time.
   //
   // This is thread safe.
-  Status Apply(YBOperation* write_op) WARN_UNUSED_RESULT;
+  Status Apply(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
   // Similar to the above, except never blocks. Even in the flush modes that
   // return immediately, 'cb' is triggered with the result. The callback may be
@@ -868,6 +869,8 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
   void GetPendingErrors(std::vector<YBError*>* errors, bool* overflowed);
 
   YBClient* client() const;
+
+  bool is_read_only() { return read_only_; }
 
  private:
   class YB_NO_EXPORT Data;

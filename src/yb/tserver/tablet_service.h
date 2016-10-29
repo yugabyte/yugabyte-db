@@ -51,8 +51,8 @@ class TabletServiceImpl : public TabletServerServiceIf {
   virtual void Write(const WriteRequestPB* req, WriteResponsePB* resp,
                      rpc::RpcContext* context) OVERRIDE;
 
-  virtual void Read(const ReadRequestPB *req,
-                    ReadResponsePB *resp, ::yb::rpc::RpcContext *context) OVERRIDE;
+  virtual void Read(
+      const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext* context) OVERRIDE;
 
   virtual void Scan(const ScanRequestPB* req,
                     ScanResponsePB* resp,

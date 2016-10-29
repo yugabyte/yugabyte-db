@@ -103,7 +103,7 @@ class YBTableTestBase : public YBTest {
   vector<uint16_t> master_rpc_ports();
   void CreateClient();
 
-  yb::client::sp::shared_ptr<yb::client::YBSession> NewSession();
+  yb::client::sp::shared_ptr<yb::client::YBSession> NewSession(bool read_only_ = false);
 
   yb::client::YBSchema schema_;
   yb::client::sp::shared_ptr<yb::client::YBSession> session_;

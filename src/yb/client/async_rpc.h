@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_CLIENT_ASYNCRPC_H
-#define YB_CLIENT_ASYNCRPC_H
+#ifndef YB_CLIENT_ASYNC_RPC_H
+#define YB_CLIENT_ASYNC_RPC_H
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
@@ -28,7 +28,7 @@ class RemoteTabletServer;
 // but ProcessResponseFromTserver will update the state after getting the end response.
 // This class deletes itself after Rpc returns and is processed.
 class AsyncRpc : public rpc::Rpc {
-public:
+ public:
   AsyncRpc(const scoped_refptr<Batcher> &batcher,
            RemoteTablet *const tablet,
            vector<InFlightOp*> ops,
@@ -43,7 +43,7 @@ public:
   const RemoteTablet* tablet() const { return tablet_; }
   const vector<InFlightOp*>& ops() const { return ops_; }
 
-protected:
+ protected:
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
   void LookupTabletCb(const Status& status);
@@ -87,23 +87,22 @@ protected:
 };
 
 class WriteRpc : public AsyncRpc {
-public:
+ public:
   WriteRpc(const scoped_refptr<Batcher>& batcher,
            RemoteTablet* const tablet,
            vector<InFlightOp*> ops,
            const MonoTime& deadline,
            const std::shared_ptr<rpc::Messenger>& messenger);
-  virtual ~WriteRpc() {};
+  virtual ~WriteRpc() {}
 
   const tserver::WriteResponsePB& resp() const { return resp_; }
 
  protected:
+  void SendRpcToTserver() OVERRIDE;
 
-  void SendRpcToTserver();
+  Status response_error_status() OVERRIDE;
 
-  Status response_error_status();
-
-  void ProcessResponseFromTserver(Status status);
+  void ProcessResponseFromTserver(Status status) OVERRIDE;
 
  private:
   // Request body.
@@ -113,8 +112,32 @@ public:
   tserver::WriteResponsePB resp_;
 };
 
-}
-}
-}
+class ReadRpc : public AsyncRpc {
+ public:
+  ReadRpc(
+      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
+      const MonoTime& deadline, const std::shared_ptr<rpc::Messenger>& messenger);
+  virtual ~ReadRpc() {}
 
-#endif // YB_CLIENT_ASYNCRPC_H
+  const tserver::ReadResponsePB& resp() const { return resp_; }
+
+ protected:
+  void SendRpcToTserver() OVERRIDE;
+
+  void ProcessResponseFromTserver(Status status) OVERRIDE;
+
+  Status response_error_status() OVERRIDE;
+
+ private:
+  // Request body.
+  tserver::ReadRequestPB req_;
+
+  // Response body.
+  tserver::ReadResponsePB resp_;
+};
+
+}  // namespace internal
+}  // namespace client
+}  // namespace yb
+
+#endif  // YB_CLIENT_ASYNC_RPC_H

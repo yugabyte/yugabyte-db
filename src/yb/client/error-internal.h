@@ -26,12 +26,13 @@ namespace client {
 
 class YBError::Data {
  public:
-  Data(gscoped_ptr<YBOperation> failed_op, const Status& error);
+  Data(std::shared_ptr<YBOperation> failed_op, const Status& error);
   ~Data();
 
-  gscoped_ptr<YBOperation> failed_op_;
+  std::shared_ptr<YBOperation> failed_op_;
   Status status_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 

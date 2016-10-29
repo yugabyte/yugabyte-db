@@ -98,7 +98,7 @@ YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
 YBRedisReadOp::~YBRedisReadOp() {}
 
 std::string YBRedisReadOp::ToString() const {
-  return "REDIS_WRITE " + redis_read_request_->get_request().key_value().key();
+  return "REDIS_READ " + redis_read_request_->get_request().key_value().key();
 }
 
 // Update -----------------------------------------------------------------------

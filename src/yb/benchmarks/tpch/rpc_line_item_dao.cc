@@ -55,6 +55,7 @@ using client::YBTableCreator;
 using client::YBUpdate;
 using client::YBValue;
 using std::vector;
+using std::shared_ptr;
 
 namespace {
 
@@ -125,9 +126,9 @@ void RpcLineItemDAO::Init() {
 }
 
 void RpcLineItemDAO::WriteLine(std::function<void(YBPartialRow*)> f) {
-  gscoped_ptr<YBInsert> insert(client_table_->NewInsert());
+  shared_ptr<YBInsert> insert(client_table_->NewInsert());
   f(insert->mutable_row());
-  CHECK_OK(session_->Apply(insert.release()));
+  CHECK_OK(session_->Apply(insert));
   ++batch_size_;
   FlushIfBufferFull();
 }
@@ -142,9 +143,9 @@ void RpcLineItemDAO::FlushIfBufferFull() {
 }
 
 void RpcLineItemDAO::MutateLine(std::function<void(YBPartialRow*)> f) {
-  gscoped_ptr<YBUpdate> update(client_table_->NewUpdate());
+  shared_ptr<YBUpdate> update(client_table_->NewUpdate());
   f(update->mutable_row());
-  CHECK_OK(session_->Apply(update.release()));
+  CHECK_OK(session_->Apply(update));
   ++batch_size_;
   FlushIfBufferFull();
 }

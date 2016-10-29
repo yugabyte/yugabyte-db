@@ -414,7 +414,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
 
   // Insert a bunch of rows with the current schema
   for (int i = start_row; i < start_row + num_rows; i++) {
-    gscoped_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<YBInsert> insert(table->NewInsert());
     // Endian-swap the key so that we spew inserts randomly
     // instead of just a sequential write pattern. This way
     // compactions may actually be triggered.
@@ -425,7 +425,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
       CHECK_OK(insert->mutable_row()->SetInt32(1, i));
     }
 
-    CHECK_OK(session->Apply(insert.release()));
+    CHECK_OK(session->Apply(insert));
 
     if (i % 50 == 0) {
       FlushSessionOrDie(session);
@@ -442,14 +442,14 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   CHECK_OK(client_->OpenTable(kTableName, &table));
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15 * 1000);
-  gscoped_ptr<YBUpdate> update(table->NewUpdate());
+  shared_ptr<YBUpdate> update(table->NewUpdate());
   int32_t key = bswap_32(row_key); // endian swap to match 'InsertRows'
   CHECK_OK(update->mutable_row()->SetInt32(0, key));
   typedef map<string, int32_t>::value_type entry;
   for (const entry& e : updates) {
     CHECK_OK(update->mutable_row()->SetInt32(e.first, e.second));
   }
-  CHECK_OK(session->Apply(update.release()));
+  CHECK_OK(session->Apply(update));
   FlushSessionOrDie(session);
 }
 
@@ -794,14 +794,14 @@ void AlterTableTest::InserterThread() {
   CHECK_OK(client_->OpenTable(kTableName, &table));
   int32_t i = 0;
   while (!stop_threads_.Load()) {
-    gscoped_ptr<YBInsert> insert(table->NewInsert());
+    shared_ptr<YBInsert> insert(table->NewInsert());
     // Endian-swap the key so that we spew inserts randomly
     // instead of just a sequential write pattern. This way
     // compactions may actually be triggered.
     int32_t key = bswap_32(i++);
     CHECK_OK(insert->mutable_row()->SetInt32(0, key));
     CHECK_OK(insert->mutable_row()->SetInt32(1, i));
-    CHECK_OK(session->Apply(insert.release()));
+    CHECK_OK(session->Apply(insert));
 
     if (i % 50 == 0) {
       FlushSessionOrDie(session);
@@ -826,7 +826,7 @@ void AlterTableTest::UpdaterThread() {
   Random rng(1);
   int32_t i = 0;
   while (!stop_threads_.Load()) {
-    gscoped_ptr<YBUpdate> update(table->NewUpdate());
+    shared_ptr<YBUpdate> update(table->NewUpdate());
 
     int32_t max = inserted_idx_.Load();
     if (max == 0) {
@@ -839,7 +839,7 @@ void AlterTableTest::UpdaterThread() {
     int32_t key = bswap_32(rng.Uniform(max));
     CHECK_OK(update->mutable_row()->SetInt32(0, key));
     CHECK_OK(update->mutable_row()->SetInt32(1, i));
-    CHECK_OK(session->Apply(update.release()));
+    CHECK_OK(session->Apply(update));
 
     if (i++ % 50 == 0) {
       FlushSessionOrDie(session);
@@ -926,14 +926,14 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   ASSERT_OK(AddNewI32Column(kSplitTableName, "new-i32", 10));
   shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kSplitTableName, &table));
-  gscoped_ptr<YBInsert> insert(table->NewInsert());
+  shared_ptr<YBInsert> insert(table->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetInt32("c0", 1));
   ASSERT_OK(insert->mutable_row()->SetInt32("c1", 1));
   ASSERT_OK(insert->mutable_row()->SetInt32("new-i32", 1));
   shared_ptr<YBSession> session = client_->NewSession();
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15000);
-  ASSERT_OK(session->Apply(insert.release()));
+  ASSERT_OK(session->Apply(insert));
   Status s = session->Flush();
   if (!s.ok()) {
     ASSERT_EQ(1, session->CountPendingErrors());

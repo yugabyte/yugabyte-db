@@ -88,7 +88,7 @@ struct InFlightOp {
   State state;
 
   // The actual operation.
-  gscoped_ptr<YBOperation> write_op;
+  std::shared_ptr<YBOperation> yb_op;
 
   std::string partition_key;
 

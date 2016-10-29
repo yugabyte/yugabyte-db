@@ -17,15 +17,14 @@
 
 #include "yb/client/error-internal.h"
 
+using std::shared_ptr;
+
 namespace yb {
 
 namespace client {
 
-YBError::Data::Data(gscoped_ptr<YBOperation> failed_op,
-                      const Status& status) :
-  failed_op_(failed_op.Pass()),
-  status_(status) {
-}
+YBError::Data::Data(shared_ptr<YBOperation> failed_op, const Status& status)
+    : failed_op_(failed_op), status_(status) {}
 
 YBError::Data::~Data() {
 }

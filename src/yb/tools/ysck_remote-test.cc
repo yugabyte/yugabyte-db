@@ -117,9 +117,9 @@ class RemoteYsckTest : public YBTest {
     }
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
-      gscoped_ptr<YBInsert> insert(table->NewInsert());
+      shared_ptr<YBInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
-      status = session->Apply(insert.release());
+      status = session->Apply(insert);
       if (!status.ok()) {
         promise->Set(status);
       }
@@ -153,9 +153,9 @@ class RemoteYsckTest : public YBTest {
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
-      gscoped_ptr<YBInsert> insert(table->NewInsert());
+      shared_ptr<YBInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
-      RETURN_NOT_OK(session->Apply(insert.release()));
+      RETURN_NOT_OK(session->Apply(insert));
 
       if (i > 0 && i % 1000 == 0) {
         RETURN_NOT_OK(session->Flush());

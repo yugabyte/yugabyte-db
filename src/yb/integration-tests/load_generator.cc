@@ -344,13 +344,13 @@ void YBSingleThreadedWriter::ConfigureSession() {
 
 bool YBSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
-  gscoped_ptr<YBInsert> insert(table_->NewInsert());
+  shared_ptr<YBInsert> insert(table_->NewInsert());
   // Generate a Put for key_str, value_str
   CHECK_OK(insert->mutable_row()->SetBinary("k", key_str.c_str()));
   CHECK_OK(insert->mutable_row()->SetBinary("v", value_str.c_str()));
   // submit a the put to apply.
   // If successful, add to inserted
-  Status apply_status = session_->Apply(insert.release());
+  Status apply_status = session_->Apply(insert);
   if (apply_status.ok()) {
     Status flush_status = session_->Flush();
     if (flush_status.ok()) {

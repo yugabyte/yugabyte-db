@@ -11,8 +11,7 @@ namespace client {
 namespace internal {
 
 std::string InFlightOp::ToString() const {
-  return strings::Substitute("op[state=$0, write_op=$1]",
-                             state, write_op->ToString());
+  return strings::Substitute("op[state=$0, yb_op=$1]", state, yb_op->ToString());
 }
 
 }

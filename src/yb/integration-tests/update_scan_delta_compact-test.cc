@@ -185,9 +185,9 @@ void UpdateScanDeltaCompactionTest::InsertBaseData() {
 
   LOG_TIMING(INFO, "Insert") {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
-      gscoped_ptr<YBInsert> insert(table_->NewInsert());
+      shared_ptr<YBInsert> insert(table_->NewInsert());
       MakeRow(key, 0, insert->mutable_row());
-      ASSERT_OK(session->Apply(insert.release()));
+      ASSERT_OK(session->Apply(insert));
       ASSERT_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
     }
     ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, &last_s_cb, session));
@@ -247,9 +247,9 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
     last_s_cb.Run(Status::OK());
     LOG_TIMING(INFO, "Update") {
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
-        gscoped_ptr<YBUpdate> update(table_->NewUpdate());
+        shared_ptr<YBUpdate> update(table_->NewUpdate());
         MakeRow(key, iteration, update->mutable_row());
-        CHECK_OK(session->Apply(update.release()));
+        CHECK_OK(session->Apply(update));
         CHECK_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
       }
       CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, &last_s_cb, session));

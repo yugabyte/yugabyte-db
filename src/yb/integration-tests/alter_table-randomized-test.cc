@@ -358,7 +358,7 @@ struct MirrorTable {
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(15 * 1000);
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    gscoped_ptr<YBOperation> op;
+    shared_ptr<YBOperation> op;
     switch (op_type) {
       case INSERT: op.reset(table->NewInsert()); break;
       case UPDATE: op.reset(table->NewUpdate()); break;
@@ -371,7 +371,7 @@ struct MirrorTable {
         CHECK_OK(op->mutable_row()->SetInt32(d.first, d.second));
       }
     }
-    RETURN_NOT_OK(session->Apply(op.release()));
+    RETURN_NOT_OK(session->Apply(op));
     Status s = session->Flush();
     if (s.ok()) {
       return s;

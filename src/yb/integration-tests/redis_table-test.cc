@@ -34,5 +34,10 @@ TEST_F(RedisTableTest, SimpleRedisSetTest) {
   NO_FATALS(RedisSimpleSetCommands());
 }
 
+TEST_F(RedisTableTest, SimpleRedisGetTest) {
+  NO_FATALS(RedisSimpleSetCommands());
+  NO_FATALS(RedisSimpleGetCommands());
+}
+
 }  // namespace integration_tests
 }  // namespace yb

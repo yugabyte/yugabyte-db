@@ -21,6 +21,7 @@
 
 #include "yb/client/shared_ptr.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/redis_protocol.pb.h"
 #include "yb/util/yb_export.h"
 
 namespace yb {
@@ -29,6 +30,7 @@ class EncodedKey;
 
 class RedisWriteRequestPB;
 class RedisReadRequestPB;
+class RedisResponsePB;
 
 namespace client {
 
@@ -55,6 +57,7 @@ class YB_EXPORT YBOperation {
     UPDATE = 2,
     DELETE = 3,
     REDIS_WRITE = 4,
+    REDIS_READ = 5,
   };
   virtual ~YBOperation();
 
@@ -114,6 +117,15 @@ public:
 
   RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
 
+  const RedisResponsePB& response() { return *redis_response_; }
+
+  RedisResponsePB* mutable_response() {
+    if (!redis_response_) {
+      redis_response_.reset(new RedisResponsePB());
+    }
+    return redis_response_.get();
+  }
+
   virtual std::string ToString() const OVERRIDE;
 
   bool read_only() OVERRIDE { return false; };
@@ -127,6 +139,7 @@ private:
   friend class YBTable;
   explicit YBRedisWriteOp(const sp::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
+  std::unique_ptr<RedisResponsePB> redis_response_;
 };
 
 class YB_EXPORT YBRedisReadOp : public YBOperation {
@@ -137,19 +150,27 @@ public:
 
   RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
 
+  const RedisResponsePB& response() { return *redis_response_; }
+
+  RedisResponsePB* mutable_response() {
+    if (!redis_response_) {
+      redis_response_.reset(new RedisResponsePB());
+    }
+    return redis_response_.get();
+  }
+
   virtual std::string ToString() const OVERRIDE;
 
   bool read_only() OVERRIDE { return true; };
 
 protected:
-  virtual Type type() const OVERRIDE {
-    return REDIS_WRITE;
-  }
+ virtual Type type() const OVERRIDE { return REDIS_READ; }
 
 private:
   friend class YBTable;
   explicit YBRedisReadOp(const sp::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisReadRequestPB> redis_read_request_;
+  std::unique_ptr<RedisResponsePB> redis_response_;
 };
 
 

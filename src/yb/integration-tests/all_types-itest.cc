@@ -267,7 +267,7 @@ class AllTypesItest : public YBTest {
     RETURN_NOT_OK(row->SetFloat("float_val", double_val));
     RETURN_NOT_OK(row->SetBool("bool_val", int_val % 2));
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
-    RETURN_NOT_OK(session->Apply(insert));
+    RETURN_NOT_OK(session->Apply(shared_ptr<YBInsert>(insert)));
     return Status::OK();
   }
 

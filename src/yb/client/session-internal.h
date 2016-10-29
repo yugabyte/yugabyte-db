@@ -33,14 +33,14 @@ class ErrorCollector;
 
 class YBSession::Data {
  public:
-  explicit Data(sp::shared_ptr<YBClient> client);
+  explicit Data(std::shared_ptr<YBClient> client);
   ~Data();
 
-  void Init(const sp::shared_ptr<YBSession>& session);
+  void Init(const std::shared_ptr<YBSession>& session);
 
   // Swap in a new Batcher instance, returning the old one in '*old_batcher', unless it is
   // NULL.
-  void NewBatcher(const sp::shared_ptr<YBSession>& session,
+  void NewBatcher(const std::shared_ptr<YBSession>& session,
                   scoped_refptr<internal::Batcher>* old_batcher);
 
   // Called by Batcher when a flush has finished.
@@ -52,7 +52,7 @@ class YBSession::Data {
   Status Close(bool force);
 
   // The client that this session is associated with.
-  const sp::shared_ptr<YBClient> client_;
+  const std::shared_ptr<YBClient> client_;
 
   // Lock protecting internal state.
   // Note that this lock should not be taken if the thread is already holding
