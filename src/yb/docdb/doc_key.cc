@@ -151,9 +151,11 @@ DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &s
     const auto& type_info = *schema.column(i).type_info();
     const void* const raw_key = encoded_key.raw_keys()[i];
     switch (type_info.type()) {
-      case DataType::INT64: FALLTHROUGH_INTENDED;
-      case DataType::INT32:
+      case DataType::INT64:
         new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int64_t*>(raw_key));
+        break;
+      case DataType::INT32:
+        new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int32_t*>(raw_key));
         break;
       case DataType::STRING: FALLTHROUGH_INTENDED;
       case DataType::BINARY:
