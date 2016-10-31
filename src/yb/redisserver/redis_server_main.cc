@@ -11,8 +11,8 @@
 
 using yb::redisserver::RedisServer;
 
-DECLARE_string(rpc_bind_addresses);
-DECLARE_int32(rpc_num_service_threads);
+DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to.");
+DEFINE_string(master_addresses, "", "Master addresses for the YB tier that the proxy talks to.");
 
 namespace yb {
 namespace redisserver {
@@ -21,9 +21,7 @@ static int RedisServerMain(int argc, char** argv) {
   InitYBOrDie();
 
   // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
-                                                 RedisServer::kDefaultPort);
-
+  FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;
@@ -32,6 +30,8 @@ static int RedisServerMain(int argc, char** argv) {
   InitGoogleLoggingSafe(argv[0]);
 
   RedisServerOptions opts;
+  opts.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
+  opts.master_addresses_flag = FLAGS_master_addresses;
   RedisServer server(opts);
   LOG(INFO) << "Initializing redis server...";
   CHECK_OK(server.Init());
@@ -47,8 +47,8 @@ static int RedisServerMain(int argc, char** argv) {
   return 0;
 }
 
-} // namespace redisserver
-} // namespace yb
+}  // namespace redisserver
+}  // namespace yb
 
 int main(int argc, char** argv) {
   return yb::redisserver::RedisServerMain(argc, argv);

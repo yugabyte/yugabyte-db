@@ -27,18 +27,13 @@ using client::YBColumnSchema;
 using client::YBTableType;
 using client::YBSession;
 
-std::string RedisTableTestBase::table_name() {
-  return RedisConstants::kRedisTableName;
-}
+std::string RedisTableTestBase::table_name() { return RedisConstants::kRedisTableName; }
 
 void RedisTableTestBase::CreateTable() {
-  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-
-  ASSERT_OK(table_creator->table_name(table_name())
-                .table_type(YBTableType::REDIS_TABLE_TYPE)
-                .num_replicas(3)
-                .Create());
-  table_exists_ = true;
+  if (!table_exists_) {
+    CreateRedisTable(client_, table_name());
+    table_exists_ = true;
+  }
 }
 
 void RedisTableTestBase::PutKeyValue(YBSession* session, string key, string value) {

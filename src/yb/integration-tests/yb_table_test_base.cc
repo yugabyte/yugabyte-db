@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/integration-tests/yb_table_test_base.h"
+#include "yb/client/redis_helpers.h"
 #include "yb/util/curl_util.h"
 
 using std::unique_ptr;
@@ -8,6 +9,7 @@ using std::shared_ptr;
 
 namespace yb {
 
+using client::RedisConstants;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
@@ -72,6 +74,7 @@ void YBTableTestBase::SetUp() {
   }
 
   CreateClient();
+  CreateDefaultTables();
   CreateTable();
   OpenTable();
 }
@@ -114,19 +117,41 @@ void YBTableTestBase::OpenTable() {
   session_ = NewSession();
 }
 
-void YBTableTestBase::CreateTable() {
-  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  YBSchemaBuilder b;
-  b.AddColumn("k")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
-  b.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
-  ASSERT_OK(b.Build(&schema_));
+void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client, string table_name) {
+  unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(table_name)
+                .table_type(YBTableType::REDIS_TABLE_TYPE)
+                .num_replicas(3)
+                .Create());
+}
 
-  ASSERT_OK(table_creator->table_name(table_name())
-      .table_type(YBTableType::YSQL_TABLE_TYPE)
-      .num_replicas(3)
-      .schema(&schema_)
-      .Create());
-  table_exists_ = true;
+void YBTableTestBase::CreateDefaultTables() {
+  // Redis Proxy requires ".redis" to be present
+  CreateRedisTable(client_, RedisConstants::kRedisTableName);
+  default_tables_created_.push_back(string(RedisConstants::kRedisTableName));
+  // If the desired table for the test -- table_name() has already been created, ensure that
+  // CreateTable() does not try to create it again.
+  if (std::find(default_tables_created_.begin(), default_tables_created_.end(), table_name()) !=
+      default_tables_created_.end()) {
+    table_exists_ = true;
+  }
+}
+
+void YBTableTestBase::CreateTable() {
+  if (!table_exists_) {
+    unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+    YBSchemaBuilder b;
+    b.AddColumn("k")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
+    b.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
+    ASSERT_OK(b.Build(&schema_));
+
+    ASSERT_OK(table_creator->table_name(table_name())
+                  .table_type(YBTableType::YSQL_TABLE_TYPE)
+                  .num_replicas(3)
+                  .schema(&schema_)
+                  .Create());
+    table_exists_ = true;
+  }
 }
 
 void YBTableTestBase::DeleteTable() {

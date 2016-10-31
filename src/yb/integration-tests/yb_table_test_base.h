@@ -55,6 +55,8 @@ class YBTableTestBase : public YBTest {
   virtual int client_rpc_timeout_ms();
   virtual string table_name();
 
+  void CreateRedisTable(shared_ptr<yb::client::YBClient> client, string table_name);
+  void CreateDefaultTables();
   virtual void CreateTable();
   void OpenTable();
   void DeleteTable();
@@ -111,6 +113,10 @@ class YBTableTestBase : public YBTest {
   // Exactly one of the following two pointers will be set.
   std::unique_ptr<yb::MiniCluster> mini_cluster_;
   std::unique_ptr<yb::ExternalMiniCluster> external_mini_cluster_;
+
+  // All the default tables that are pre-created. Used to skip the initial create table step, when
+  // the given table has been already pre-created.
+  vector<string> default_tables_created_;
 };
 
 }  // namespace integration_tests

@@ -24,11 +24,6 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flag_tags.h"
 
-using std::vector;
-
-namespace yb {
-namespace tserver {
-
 DEFINE_string(tserver_master_addrs, "127.0.0.1:7051",
               "Comma separated addresses of the masters which the "
               "tablet server should connect to. The masters do not "
@@ -36,6 +31,10 @@ DEFINE_string(tserver_master_addrs, "127.0.0.1:7051",
               "using 'rpc_bind_addresses'.");
 TAG_FLAG(tserver_master_addrs, stable);
 
+using std::vector;
+
+namespace yb {
+namespace tserver {
 
 TabletServerOptions::TabletServerOptions() {
   rpc_opts.default_port = TabletServer::kDefaultPort;
@@ -52,5 +51,5 @@ TabletServerOptions::TabletServerOptions() {
   }
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb
