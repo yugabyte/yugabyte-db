@@ -36,6 +36,8 @@
 // NOTE(akashnil): We are always compiling with C++11, so this in unnesseccary
 // right now. The sp namespace will be renamed to std:: everywhere.
 
+#include<memory>
+
 namespace yb {
 namespace client {
 namespace sp {
