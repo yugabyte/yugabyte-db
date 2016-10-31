@@ -159,9 +159,24 @@ TEST_F(TestRedisService, TestSetOnly) {
   SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$4\r\nfool\r\n$4\r\nBEST\r\n", "+OK\r\n");
 }
 
-TEST_F(TestRedisService, DISABLED_TestSetThenGet) {
+TEST_F(TestRedisService, TestSetThenGet) {
   SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
   SendCommandAndExpectResponse("*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n", "+TEST\r\n");
+  SendCommandAndExpectResponse(
+      EncodeAsArrays({  // The request is sent as a multi bulk array.
+                         EncodeAsBulkString("set"),
+                         EncodeAsBulkString("name"),
+                         EncodeAsBulkString("yugabyte")
+                     }),
+      EncodeAsSimpleString("OK")  // The response is in the simple string format.
+  );
+  SendCommandAndExpectResponse(
+      EncodeAsArrays({  // The request is sent as a multi bulk array.
+                         EncodeAsBulkString("get"),
+                         EncodeAsBulkString("name")
+                     }),
+      EncodeAsSimpleString("yugabyte")  // The response is in the simple string format.
+  );
 }
 
 TEST_F(TestRedisService, TestUsingOpenSourceClient) {

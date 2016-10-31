@@ -26,6 +26,7 @@ namespace redisserver {
 
 using yb::client::RedisConstants;
 using yb::client::YBRedisWriteOp;
+using yb::client::RedisReadOpForGetKey;
 using yb::client::RedisWriteOpForSetKV;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
@@ -102,6 +103,8 @@ void RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
 
   session_ = client_->NewSession();
   CHECK_OK(session_->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
+  read_only_session_ = client_->NewSession(true);
+  CHECK_OK(read_only_session_->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
 }
 
 void RedisServiceImpl::Handle(InboundCall* inbound_call) {
@@ -125,16 +128,22 @@ void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
 }
 
 void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
-  DummyCommand(call, c);  // Not yet Implemented.
+  VLOG(1) << "Processing Get.";
+  auto get_op = RedisReadOpForGetKey(table_.get(), c->cmd_args[1].ToString());
+  CHECK_OK(read_only_session_->ReadSync(get_op));
+  RedisResponsePB* ok_response = new RedisResponsePB(get_op->response());
+  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
+  context->RespondSuccess();
 }
 
 void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
+  VLOG(1) << "Processing Set.";
   // TODO: Using a synchronous call, as we do here, is going to quickly block up all
   // our threads. Switch this to FlushAsync as soon as it is ready.
-  shared_ptr<YBRedisWriteOp> write_op =
-      RedisWriteOpForSetKV(table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString());
-  shared_ptr<client::YBOperation> yb_op = std::static_pointer_cast<client::YBOperation>(write_op);
-  CHECK_OK(session_->Apply(yb_op));
+  auto set_op = RedisWriteOpForSetKV(table_.get(),
+                                     c->cmd_args[1].ToString(),
+                                     c->cmd_args[2].ToString());
+  CHECK_OK(session_->Apply(set_op));
   Status status = session_->Flush();
   LOG(INFO) << "Received status from Flush " << status.ToString(true);
   RedisResponsePB* ok_response = new RedisResponsePB();
