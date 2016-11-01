@@ -25,7 +25,7 @@ export const LOGOUT_FAILURE = 'LOGOUT_FAILURE';
 
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
-  var auth_token = localStorage.getItem("customer_token").toString();
+  var auth_token = localStorage.getItem("customer_token");
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
   const request = axios(`${ROOT_URL}/customers/${cUUID}`);
   return {

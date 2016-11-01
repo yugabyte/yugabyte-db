@@ -23,8 +23,8 @@ public class CustomerController extends AuthenticatedController {
 
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
-
-    if (customer == null) {
+    String customerToken = request().getHeader("X-AUTH-TOKEN");
+    if (customer == null || Customer.authWithToken(customerToken) == null) {
       ObjectNode responseJson = Json.newObject();
       responseJson.put("error", "Invalid Customer UUID:" + customerUUID);
       return badRequest(responseJson);
