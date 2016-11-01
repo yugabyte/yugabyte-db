@@ -35,10 +35,6 @@ add_library(yb_tools_util
 target_link_libraries(yb_tools_util
   ${LINK_LIBS})
 
-add_yb_executable(create-demo-table create-demo-table.cc)
-target_link_libraries(create-demo-table
-  ${LINK_LIBS})
-
 add_yb_executable(insert-generated-rows insert-generated-rows.cc)
 target_link_libraries(insert-generated-rows
   yb_tools_util
