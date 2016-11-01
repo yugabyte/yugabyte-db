@@ -14,6 +14,7 @@ export default class TopNavBar extends Component {
 	}
 
 	handleLogout(event) {
+		localStorage.clear();
 		this.props.logoutProfile();
 	}
 
