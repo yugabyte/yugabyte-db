@@ -109,7 +109,7 @@ const formFieldNames = ['formType', 'universeName', 'provider',  'providerType',
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
-    "ybServerPackage": "yb-server-0.0.1-SNAPSHOT.66a01f21a89450af4bfa4bf159811fd2191b83d0.tar.gz",
+    "ybServerPackage": "yb-server-0.0.1-SNAPSHOT.ac3893d5e619667fd46fcbfc35bc916476439e73.tar.gz",
     "numNodes": 3, "isMultiAZ": true, "instanceType": "m3.medium"
   };
 
