@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -240,5 +241,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     taskList.setUserSubTask(subTask);
     taskList.addTask(task);
     taskListQueue.add(taskList);
+  }
+
+  /**
+   * Create a task to create a redis table.
+   * 
+   * @param tableName name of the table.
+   * @param numTablets number of tablets.
+   */
+  public TaskList createTableTask(String tableName, int numTablets) {
+    TaskList taskList = new TaskList("CreateTable", executor);
+    CreateTable task = new CreateTable();
+    CreateTable.Params params = new CreateTable.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.tableName = tableName;
+    params.numTablets = numTablets;
+    task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
   }
 }
