@@ -40,6 +40,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Create tasks to remove the universe entry from the Universe table.
       createRemoveUniverseEntryTask().setUserSubTask(SubTaskType.RemovingUnusedServers);
 
+      // Update the swamper target file
+      createSwamperTargetUpdateTask(true /* removeFile */, SubTaskType.RemovingUnusedServers);
+
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {

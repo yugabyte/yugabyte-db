@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -219,6 +220,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.state = nodeState;
     SetNodeState task = new SetNodeState();
     task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+  }
+
+  /**
+   * Create a task to update the swamper target file
+   *
+   * @param removeFile, flag to state if we want to remove the swamper or not
+   * @param subTask, user subtask type to use for the tasklist
+   */
+  public void createSwamperTargetUpdateTask(boolean removeFile, UserTaskDetails.SubTaskType subTask) {
+    TaskList taskList = new TaskList("SwamperTargetFileUpdate", executor);
+    SwamperTargetsFileUpdate.Params params = new SwamperTargetsFileUpdate.Params();
+    SwamperTargetsFileUpdate task = new SwamperTargetsFileUpdate();
+    params.universeUUID = taskParams().universeUUID;
+    params.removeFile = removeFile;
+    task.initialize(params);
+    taskList.setUserSubTask(subTask);
     taskList.addTask(task);
     taskListQueue.add(taskList);
   }
