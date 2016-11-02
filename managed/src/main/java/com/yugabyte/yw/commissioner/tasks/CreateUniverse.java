@@ -79,6 +79,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
 
+      // Update the swamper target file
+      createSwamperTargetUpdateTask(false /* removeFile */, SubTaskType.ConfigureUniverse);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
 

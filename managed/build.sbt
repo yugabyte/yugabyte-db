@@ -31,6 +31,7 @@ publishTo := Some("yugabyteS3" at "s3://no-such-url/")
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 
-PlayKeys.playMonitoredFiles ++= (sourceDirectories in (Compile, TwirlKeys.compileTemplates)).value
+// Skip packaging javadoc for now
+mappings in (Compile, packageDoc) := Seq()
 
 topLevelDirectory := None
