@@ -34,7 +34,7 @@ unsigned int hexval(unsigned char c) {
   if (c >= 'A' && c <= 'F')
     return c - 'A' + 0xA;
 
-  LOG(FATAL) << "invalid hexadecimal digit";
+  LOG(ERROR) << "invalid hexadecimal digit";
   return 0; /* not reached */
 }
 

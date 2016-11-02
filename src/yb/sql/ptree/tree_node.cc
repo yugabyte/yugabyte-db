@@ -4,7 +4,6 @@
 // Parse Tree Declaration.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/ptree/parse_tree.h"
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/sem_context.h"
 
@@ -12,26 +11,20 @@ namespace yb {
 namespace sql {
 
 //--------------------------------------------------------------------------------------------------
-// Parse Tree
+// TreeNode base class.
 //--------------------------------------------------------------------------------------------------
 
-ParseTree::ParseTree()
-    : root_(nullptr),
-      ptree_mem_(new MemoryContext()) {
+TreeNode::TreeNode(MemoryContext *memctx, YBLocation::SharedPtr loc) : loc_(loc) {
 }
 
-ParseTree::~ParseTree() {
-  // Make sure we delete the tree first before deleting the tree memory pool.
-  root_ = nullptr;
-  ptree_mem_ = nullptr;
+TreeNode::~TreeNode() {
 }
 
-ErrorCode ParseTree::Analyze(SemContext *sem_context) {
-  if (root_ == nullptr) {
-    return ErrorCode::SUCCESSFUL_COMPLETION;
-  }
-
-  return root_->Analyze(sem_context);
+// Run semantics analysis on this node.
+ErrorCode TreeNode::Analyze(SemContext *sem_context) {
+  // Raise unsupported error when a treenode does not implement this method.
+  sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+  return ErrorCode::FEATURE_NOT_SUPPORTED;
 }
 
 }  // namespace sql

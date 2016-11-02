@@ -13,13 +13,11 @@
 #ifndef YB_SQL_YBSQL_H_
 #define YB_SQL_YBSQL_H_
 
-#include <stdio.h>
-
-#include <cstddef>
-
+#include "yb/sql/session_context.h"
 #include "yb/sql/parser/parser.h"
+#include "yb/sql/sem/analyzer.h"
+#include "yb/sql/exec/executor.h"
 #include "yb/sql/util/errcodes.h"
-#include "yb/sql/util/memory_context.h"
 
 namespace yb {
 namespace sql {
@@ -38,12 +36,26 @@ class YbSql {
   virtual ~YbSql();
 
   // Process a SQL statement and return error codes.
-  ErrorCode Process(const std::string& sql_stmt);
+  ErrorCode Process(SessionContext *session_context, const std::string& sql_stmt);
 
  private:
   //------------------------------------------------------------------------------------------------
+  // Friends.
+  friend class YbSqlTestBase;
+
+  //------------------------------------------------------------------------------------------------
+  // Parse SQL statements.
+  ErrorCode TestParser(const std::string& sql_stmt);
+
+  //------------------------------------------------------------------------------------------------
   // Parsing processor.
   Parser::UniPtr parser_;
+
+  // Semantic analysis processor.
+  Analyzer::UniPtr analyzer_;
+
+  // Tree execution.
+  Executor::UniPtr executor_;
 };
 
 }  // namespace sql

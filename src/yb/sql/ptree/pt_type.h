@@ -7,17 +7,16 @@
 #ifndef YB_SQL_PTREE_PT_TYPE_H_
 #define YB_SQL_PTREE_PT_TYPE_H_
 
-#include <cstdlib>
-
-#include "yb/sql/ptree/parse_tree.h"
+#include "yb/client/client.h"
+#include "yb/sql/ptree/tree_node.h"
 
 namespace yb {
 namespace sql {
 
 enum class PTTypeId {
-  kInt = 0,
-  kTinyInt,
+  kTinyInt = 0,
   kSmallInt,
+  kInt,
   kBigInt,
   kFloat,
   kDouble,
@@ -37,23 +36,28 @@ class PTBaseType : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTBaseType(MemoryContext *memctx = nullptr) {
+  explicit PTBaseType(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+      : TreeNode(memctx, loc) {
   }
   virtual ~PTBaseType() {
   }
+
+  virtual PTTypeId type_id() const = 0;
+  virtual client::YBColumnSchema::DataType yb_data_type() const = 0;
 };
 
-template<PTTypeId type_id_>
+template<PTTypeId type_id_, client::YBColumnSchema::DataType yb_data_type_>
 class PTPrimitiveType : public PTBaseType {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTPrimitiveType<type_id_>> SharedPtr;
-  typedef MCSharedPtr<const PTPrimitiveType<type_id_>> SharedPtrConst;
+  typedef MCSharedPtr<PTPrimitiveType<type_id_, yb_data_type_>> SharedPtr;
+  typedef MCSharedPtr<const PTPrimitiveType<type_id_, yb_data_type_>> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTPrimitiveType(MemoryContext *memctx = nullptr) {
+  explicit PTPrimitiveType(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+      : PTBaseType(memctx, loc) {
   }
   virtual ~PTPrimitiveType() {
   }
@@ -63,26 +67,32 @@ class PTPrimitiveType : public PTBaseType {
     return MCMakeShared<PTPrimitiveType>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual PTTypeId type_id() {
+  virtual PTTypeId type_id() const {
     return type_id_;
+  }
+
+  virtual client::YBColumnSchema::DataType yb_data_type() const {
+    return yb_data_type_;
   }
 };
 
 //--------------------------------------------------------------------------------------------------
 // Numeric Types.
 
-using PTBoolean = PTPrimitiveType<PTTypeId::kBoolean>;
-using PTTinyInt = PTPrimitiveType<PTTypeId::kTinyInt>;
-using PTSmallInt = PTPrimitiveType<PTTypeId::kSmallInt>;
-using PTInt = PTPrimitiveType<PTTypeId::kInt>;
-using PTBigInt = PTPrimitiveType<PTTypeId::kBigInt>;
+using PTBoolean = PTPrimitiveType<PTTypeId::kBoolean, client::YBColumnSchema::BOOL>;
+using PTTinyInt = PTPrimitiveType<PTTypeId::kTinyInt, client::YBColumnSchema::INT8>;
+using PTSmallInt = PTPrimitiveType<PTTypeId::kSmallInt, client::YBColumnSchema::INT16>;
+using PTInt = PTPrimitiveType<PTTypeId::kInt, client::YBColumnSchema::INT32>;
+using PTBigInt = PTPrimitiveType<PTTypeId::kBigInt, client::YBColumnSchema::INT64>;
 
-class PTFloat : public PTPrimitiveType<PTTypeId::kFloat> {
+class PTFloat : public PTPrimitiveType<PTTypeId::kFloat, client::YBColumnSchema::FLOAT> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
 
-  explicit PTFloat(MemoryContext *memctx = nullptr, int8_t precision = 24);
+  explicit PTFloat(MemoryContext *memctx = nullptr,
+                   YBLocation::SharedPtr loc = nullptr,
+                   int8_t precision = 24);
   virtual ~PTFloat();
 
   template<typename... TypeArgs>
@@ -90,7 +100,7 @@ class PTFloat : public PTPrimitiveType<PTTypeId::kFloat> {
     return MCMakeShared<PTFloat>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  int8_t precision() {
+  int8_t precision() const {
     return precision_;
   }
 
@@ -98,12 +108,14 @@ class PTFloat : public PTPrimitiveType<PTTypeId::kFloat> {
   int8_t precision_;
 };
 
-class PTDouble : public PTPrimitiveType<PTTypeId::kDouble> {
+class PTDouble : public PTPrimitiveType<PTTypeId::kDouble, client::YBColumnSchema::DOUBLE> {
  public:
   typedef MCSharedPtr<PTDouble> SharedPtr;
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
 
-  explicit PTDouble(MemoryContext *memctx = nullptr, int8_t precision = 24);
+  explicit PTDouble(MemoryContext *memctx = nullptr,
+                    YBLocation::SharedPtr loc = nullptr,
+                    int8_t precision = 24);
   virtual ~PTDouble();
 
   template<typename... TypeArgs>
@@ -111,7 +123,7 @@ class PTDouble : public PTPrimitiveType<PTTypeId::kDouble> {
     return MCMakeShared<PTDouble>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  int8_t precision() {
+  int8_t precision() const {
     return precision_;
   }
 
@@ -122,12 +134,15 @@ class PTDouble : public PTPrimitiveType<PTTypeId::kDouble> {
 //--------------------------------------------------------------------------------------------------
 // Char-based types.
 
-class PTCharBaseType : public PTPrimitiveType<PTTypeId::kCharBaseType> {
+class PTCharBaseType
+    : public PTPrimitiveType<PTTypeId::kCharBaseType, client::YBColumnSchema::STRING> {
  public:
   typedef MCSharedPtr<PTCharBaseType> SharedPtr;
   typedef MCSharedPtr<const PTCharBaseType> SharedPtrConst;
 
-  explicit PTCharBaseType(MemoryContext *memctx = nullptr, int32_t max_length = -1);
+  explicit PTCharBaseType(MemoryContext *memctx = nullptr,
+                          YBLocation::SharedPtr loc = nullptr,
+                          int32_t max_length = -1);
   virtual ~PTCharBaseType();
 
   int32_t max_length() {
@@ -146,7 +161,9 @@ class PTChar : public PTCharBaseType {
   typedef MCSharedPtr<PTChar> SharedPtr;
   typedef MCSharedPtr<const PTChar> SharedPtrConst;
 
-  explicit PTChar(MemoryContext *memctx = nullptr, int32_t max_length = 30);
+  explicit PTChar(MemoryContext *memctx = nullptr,
+                  YBLocation::SharedPtr loc = nullptr,
+                  int32_t max_length = 1);
   virtual ~PTChar();
 
   template<typename... TypeArgs>
@@ -154,7 +171,7 @@ class PTChar : public PTCharBaseType {
     return MCMakeShared<PTChar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual PTTypeId type_id() {
+  virtual PTTypeId type_id() const {
     return PTTypeId::kChar;
   }
 };
@@ -164,7 +181,9 @@ class PTVarchar : public PTCharBaseType {
   typedef MCSharedPtr<PTVarchar> SharedPtr;
   typedef MCSharedPtr<const PTVarchar> SharedPtrConst;
 
-  explicit PTVarchar(MemoryContext *memctx = nullptr, int32_t max_length = 64*1024);
+  explicit PTVarchar(MemoryContext *memctx = nullptr,
+                     YBLocation::SharedPtr loc = nullptr,
+                     int32_t max_length = 64*1024);
   virtual ~PTVarchar();
 
   template<typename... TypeArgs>
@@ -172,7 +191,7 @@ class PTVarchar : public PTCharBaseType {
     return MCMakeShared<PTVarchar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual PTTypeId type_id() {
+  virtual PTTypeId type_id() const {
     return PTTypeId::kVarchar;
   }
 };

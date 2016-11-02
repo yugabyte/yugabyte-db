@@ -62,6 +62,8 @@
 #include <stdbool.h>
 
 #include "yb/sql/ptree/parse_tree.h"
+#include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/list_node.h"
 #include "yb/sql/parser/parser_inactive_nodes.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_type.h"
@@ -119,13 +121,13 @@ using namespace yb::sql;
 #undef yylex
 #define yylex parser_->Scan
 
-#define PTREE_MEM parser_->PTreeMem()
-#define PARSER_MAKE_TNODE(obj) new(PTREE_MEM) obj
-
 #define PARSER_ERROR(loc, code) parser_->Error(loc, ErrorCode:##:code)
 #define PARSER_ERROR_MSG(loc, code, msg) parser_->Error(loc, msg, ErrorCode:##:code)
 #define PARSER_UNSUPPORTED(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_SUPPORTED)
 
+#define PTREE_MEM parser_->PTreeMem()
+#define PTREE_LOC(loc) Location::MakeShared(PTREE_MEM, loc)
+#define MAKE_NODE(loc, node, ...) node::MakeShared(PTREE_MEM, PTREE_LOC(loc), ##__VA_ARGS__)
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -540,6 +542,7 @@ using namespace yb::sql;
 %left     '(' ')'
 %left     TYPECAST
 %left     '.'
+%nonassoc ','
 
 // These might seem to be low-precedence, but actually they are not part
 // of the arithmetic hierarchy at all in their use as JOIN operators.
@@ -577,7 +580,7 @@ stmtblock:
 // The thrashing around here is to discard "empty" statements...
 stmtmulti:
   stmt {
-    $$ = PTListNode::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTListNode);
     $$->Append($1);
   }
   | stmtmulti ';' stmt {
@@ -632,11 +635,11 @@ schema_stmt:
 CreateStmt:
   CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
   OptInherit OptWith OnCommitOption OptTableSpace {
-    $$ = PTCreateTable::MakeShared(PTREE_MEM, $4, $6);
+    $$ = MAKE_NODE(@1, PTCreateTable, $4, $6);
   }
   | CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '(' OptTableElementList ')'
   OptInherit OptWith OnCommitOption OptTableSpace {
-    $$ = PTCreateTable::MakeShared(PTREE_MEM, $7, $9);
+    $$ = MAKE_NODE(@1, PTCreateTable, $7, $9);
   }
   | CREATE OptTemp TABLE qualified_name OF any_name
   OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
@@ -662,12 +665,12 @@ OptTableElementList:
 
 TableElementList:
   TableElement {
-    $$ = PTListNode::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTListNode);
     $$->Append($1);
   }
   | TableElementList ',' TableElement {
     if ($1 == nullptr) {
-      $1 = PTListNode::MakeShared(PTREE_MEM);
+      $1 = MAKE_NODE(@1, PTListNode);
     }
     $1->Append($3);
     $$ = $1;
@@ -688,7 +691,7 @@ TableElement:
 
 columnDef:
   ColId Typename create_generic_options ColQualList {
-    $$ = PTColumnDefinition::MakeShared(PTREE_MEM, $1, $2, $4);
+    $$ = MAKE_NODE(@1, PTColumnDefinition, $1, $2, $4);
   }
 ;
 
@@ -698,7 +701,7 @@ ColQualList:
   }
   | ColQualList ColConstraint {
     if ($1 == nullptr) {
-      $1 = PTListNode::MakeShared(PTREE_MEM);
+      $1 = MAKE_NODE(@1, PTListNode);
     }
     $1->Append($2);
     $$ = $1;
@@ -736,7 +739,7 @@ ColConstraint:
 // or be part of a_expr NOT LIKE or similar constructs).
 ColConstraintElem:
   PRIMARY KEY opt_definition OptConsTableSpace {
-    $$ = PTPrimaryKey::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTPrimaryKey);
   }
   | NOT NULL_P {
     PARSER_UNSUPPORTED(@1);
@@ -796,7 +799,7 @@ TableConstraint:
 
 ConstraintElem:
   PRIMARY KEY '(' NestedColumnList ')' opt_definition OptConsTableSpace ConstraintAttributeSpec {
-    $$ = PTPrimaryKey::MakeShared(PTREE_MEM, $4);
+    $$ = MAKE_NODE(@1, PTPrimaryKey, $4);
   }
   | PRIMARY KEY ExistingIndex ConstraintAttributeSpec {
     PARSER_UNSUPPORTED(@3);
@@ -833,18 +836,23 @@ opt_column_list:
 
 NestedColumnList:
   columnElem {
-    $$ = PTListNode::MakeShared(PTREE_MEM);
+    // $$ = PTListNode::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTListNode);
     $$->Append($1);
   }
   | NestedColumnList ',' columnElem {
     if ($1 == nullptr) {
-      $1 = PTListNode::MakeShared(PTREE_MEM);
+      $1 = MAKE_NODE(@1, PTListNode);
     }
     $1->Append($3);
     $$ = $1;
   }
+  | '(' NestedColumnList ')' {
+    $$ = MAKE_NODE(@1, PTListNode);
+    $$->Append($2);
+  }
   | '(' NestedColumnList ')' ',' columnElem {
-    $$ = PTListNode::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTListNode);
     $$->Append($2);
     $$->Append($5);
   }
@@ -852,12 +860,12 @@ NestedColumnList:
 
 columnList:
   columnElem {
-    $$ = PTListNode::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTListNode);
     $$->Append($1);
   }
   | columnList ',' columnElem {
     if ($1 == nullptr) {
-      $1 = PTListNode::MakeShared(PTREE_MEM);
+      $1 = MAKE_NODE(@1, PTListNode);
     }
     $1->Append($3);
     $$ = $1;
@@ -866,7 +874,7 @@ columnList:
 
 columnElem:
   ColId {
-    $$ = PTName::MakeShared(PTREE_MEM, $1);
+    $$ = MAKE_NODE(@1, PTName, $1);
   }
 ;
 
@@ -2028,10 +2036,10 @@ columnref:
 
 indirection_el:
   '.' attr_name {
-    $$ = PTName::MakeShared(PTREE_MEM, $2);
+    $$ = MAKE_NODE(@1, PTName, $2);
   }
   | '.' '*' {
-    $$ = PTNameAll::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTNameAll);
   }
   | '[' a_expr ']' {
     PARSER_UNSUPPORTED(@1);
@@ -2043,7 +2051,7 @@ indirection_el:
 
 indirection:
   indirection_el {
-    $$ = PTQualifiedName::MakeShared(PTREE_MEM, $1);
+    $$ = MAKE_NODE(@1, PTQualifiedName, $1);
   }
   | indirection indirection_el {
     $1->Append($2);
@@ -2116,10 +2124,10 @@ qualified_name_list:
 // which may contain subscripts, and reject that case in the C code.
 qualified_name:
   ColId {
-    $$ = PTQualifiedName::MakeShared(PTREE_MEM, $1);
+    $$ = MAKE_NODE(@1, PTQualifiedName, $1);
   }
   | ColId indirection {
-    PTName::SharedPtr name_node = PTName::MakeShared(PTREE_MEM, $1);
+    PTName::SharedPtr name_node = MAKE_NODE(@1, PTName, $1);
     $2->Prepend(name_node);
     $$ = $2;
   }
@@ -2378,25 +2386,25 @@ opt_type_modifiers:
  */
 Numeric:
   BOOLEAN_P {
-    $$ = PTBoolean::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTBoolean);
   }
   | INT_P {
-    $$ = PTInt::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTInt);
   }
   | INTEGER {
-    $$ = PTInt::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTInt);
   }
   | SMALLINT {
-    $$ = PTSmallInt::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTSmallInt);
   }
   | BIGINT {
-    $$ = PTBigInt::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTBigInt);
   }
   | REAL {
-    $$ = PTFloat::MakeShared(PTREE_MEM, 24);
+    $$ = MAKE_NODE(@1, PTFloat, 24);
   }
   | FLOAT_P opt_float {
-    $$ = PTFloat::MakeShared(PTREE_MEM, $2);
+    $$ = MAKE_NODE(@1, PTFloat, $2);
   }
   | DOUBLE_P PRECISION {
     PARSER_UNSUPPORTED(@1);
@@ -2497,15 +2505,15 @@ CharacterWithoutLength:
 
 character:
   VARCHAR {
-    $$ = PTVarchar::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTVarchar);
   }
   | CHARACTER opt_varying {
     PARSER_UNSUPPORTED(@1);
-    $$ = PTChar::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTChar);
   }
   | CHAR_P opt_varying {
     PARSER_UNSUPPORTED(@1);
-    $$ = PTChar::MakeShared(PTREE_MEM);
+    $$ = MAKE_NODE(@1, PTChar);
   }
   | NATIONAL CHARACTER opt_varying {
     PARSER_UNSUPPORTED(@1);

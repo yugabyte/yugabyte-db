@@ -29,13 +29,14 @@ Parser::~Parser() {
 //--------------------------------------------------------------------------------------------------
 
 ErrorCode Parser::Parse(const string& sql_stmt) {
-  parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt));
+  parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt.c_str(), sql_stmt.length()));
   lex_processor_.ScanInit(parse_context());
   gram_processor_.set_debug_level(parse_context_->trace_parsing());
 
   if (gram_processor_.parse() == 0 &&
       parse_context_->error_code() == ErrorCode::SUCCESSFUL_COMPLETION) {
-    VLOG(3) << "Successfully parsed statement \"" << parse_context_->stmt() << "\"" << endl;
+    VLOG(3) << "Successfully parsed statement \"" << parse_context_->stmt()
+            << "\". Result = <" << parse_context_->parse_tree() << ">" << endl;
   } else {
     VLOG(3) << kErrorFontStart << "Failed to parse \"" << parse_context_->stmt() << "\""
             << kErrorFontEnd << endl;

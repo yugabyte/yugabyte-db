@@ -12,6 +12,7 @@
 #include <glog/logging.h>
 
 #include "yb/sql/ybsql.h"
+#include "yb/sql/session_context.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -59,7 +60,7 @@ int main(int argc, char** argv) {
 
     // Execute.
     cout << "\033[1;34mExecute statement: " << sql_stmt << "\033[0m" << endl;
-    ybsql.Process(sql_stmt);
+    ybsql.Process(nullptr, sql_stmt);
   }
 
 exit_ybsql:

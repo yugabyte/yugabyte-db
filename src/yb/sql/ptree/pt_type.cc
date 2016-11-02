@@ -11,15 +11,17 @@ namespace sql {
 
 //--------------------------------------------------------------------------------------------------
 
-PTFloat::PTFloat(MemoryContext *memctx, int8_t precision)
-    : precision_(precision) {
+PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
+    : PTPrimitiveType<PTTypeId::kFloat, client::YBColumnSchema::FLOAT>(memctx, loc),
+      precision_(precision) {
 }
 
 PTFloat::~PTFloat() {
 }
 
-PTDouble::PTDouble(MemoryContext *memctx, int8_t precision)
-    : precision_(precision) {
+PTDouble::PTDouble(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
+    : PTPrimitiveType<PTTypeId::kDouble, client::YBColumnSchema::DOUBLE>(memctx, loc),
+      precision_(precision) {
 }
 
 PTDouble::~PTDouble() {
@@ -27,22 +29,25 @@ PTDouble::~PTDouble() {
 
 //--------------------------------------------------------------------------------------------------
 
-PTCharBaseType::PTCharBaseType(MemoryContext *memctx, int32_t max_length)
-    : max_length_(max_length) {
+PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
+                               YBLocation::SharedPtr loc,
+                               int32_t max_length)
+    : PTPrimitiveType<PTTypeId::kCharBaseType, client::YBColumnSchema::STRING>(memctx, loc),
+      max_length_(max_length) {
 }
 
 PTCharBaseType::~PTCharBaseType() {
 }
 
-PTChar::PTChar(MemoryContext *memctx, int32_t max_length)
-    : PTCharBaseType(memctx, max_length) {
+PTChar::PTChar(MemoryContext *memctx, YBLocation::SharedPtr loc, int32_t max_length)
+    : PTCharBaseType(memctx, loc, max_length) {
 }
 
 PTChar::~PTChar() {
 }
 
-PTVarchar::PTVarchar(MemoryContext *memctx, int32_t max_length)
-    : PTCharBaseType(memctx, max_length) {
+PTVarchar::PTVarchar(MemoryContext *memctx, YBLocation::SharedPtr loc, int32_t max_length)
+    : PTCharBaseType(memctx, loc, max_length) {
 }
 
 PTVarchar::~PTVarchar() {

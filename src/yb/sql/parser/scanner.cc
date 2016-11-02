@@ -7,10 +7,7 @@
 // convention because they are PostgreSql code.
 //--------------------------------------------------------------------------------------------------
 
-#include <assert.h>
-#include <ctype.h>
-
-#include <algorithm>
+// #include <algorithm>
 #include <unordered_map>
 
 #include "yb/sql/parser/parser.h"
@@ -234,8 +231,10 @@ void LexProcessor::TruncateIdentifier(const MCString::SharedPtr& ident, bool war
       char buf[NAMEDATALEN];
       memcpy(buf, ident->c_str(), len);
       buf[len] = '\0';
-      LOG(WARNING) << "SQL Warning: " << ErrorText(ErrorCode::NAME_TOO_LONG)
-                   << "Identifier " << *ident << " will be truncated to " << buf;
+      char warn_msg[1024];
+      snprintf(warn_msg, sizeof(warn_msg),
+               "Identifier %s will be truncated to %s", ident->c_str(), buf);
+      parse_context_->Warn(token_loc_, warn_msg, ErrorCode::NAME_TOO_LONG);
     }
     ident->resize(len);
   }

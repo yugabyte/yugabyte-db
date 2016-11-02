@@ -83,7 +83,7 @@ class MCDeleter {
 
 //--------------------------------------------------------------------------------------------------
 // Context-control shared_ptr and unique_ptr
-template<class MCObject> using MCUniquePtr = std::unique_ptr<MCObject, MCDeleter<>>;
+template<class MCObject> using MCUniPtr = std::unique_ptr<MCObject, MCDeleter<>>;
 template<class MCObject> using MCSharedPtr = std::shared_ptr<MCObject>;
 
 //--------------------------------------------------------------------------------------------------

@@ -7,9 +7,7 @@
 #ifndef YB_SQL_PTREE_PT_NAME_H_
 #define YB_SQL_PTREE_PT_NAME_H_
 
-#include <cstdlib>
-
-#include "yb/sql/ptree/parse_tree.h"
+#include "yb/sql/ptree/tree_node.h"
 
 namespace yb {
 namespace sql {
@@ -24,12 +22,21 @@ class PTName : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTName(MemoryContext *memctx = nullptr, const MCString::SharedPtr& name = nullptr);
+  explicit PTName(MemoryContext *memctx = nullptr,
+                  YBLocation::SharedPtr loc = nullptr,
+                  const MCString::SharedPtr& name = nullptr);
   virtual ~PTName();
 
   template<typename... TypeArgs>
   inline static PTName::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTName>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  ErrorCode SetupPrimaryKey(SemContext *sem_context);
+  ErrorCode SetupHashAndPrimaryKey(SemContext *sem_context);
+
+  MCString *name() {
+    return name_.get();
   }
 
  private:
@@ -46,7 +53,7 @@ class PTNameAll : public PTName {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTNameAll(MemoryContext *memctx);
+  PTNameAll(MemoryContext *memctx, YBLocation::SharedPtr loc);
   virtual ~PTNameAll();
 
   template<typename... TypeArgs>
@@ -65,8 +72,12 @@ class PTQualifiedName : public PTName {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTQualifiedName(MemoryContext *mctx, const PTName::SharedPtr& ptname);
-  explicit PTQualifiedName(MemoryContext *mctx, const MCString::SharedPtr& name);
+  PTQualifiedName(MemoryContext *mctx,
+                  YBLocation::SharedPtr loc,
+                  const PTName::SharedPtr& ptname);
+  PTQualifiedName(MemoryContext *mctx,
+                  YBLocation::SharedPtr loc,
+                  const MCString::SharedPtr& name);
   virtual ~PTQualifiedName();
 
   template<typename... TypeArgs>
@@ -79,6 +90,13 @@ class PTQualifiedName : public PTName {
 
   // Forming qualified name by prepending.
   void Prepend(const PTName::SharedPtr& ptname);
+
+  // Node semantics analysis.
+  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+
+  MCString *last_name() {
+    return ptnames_.back()->name();
+  }
 
  private:
   MCList<PTName::SharedPtr> ptnames_;

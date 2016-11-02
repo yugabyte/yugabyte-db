@@ -10,23 +10,23 @@ namespace sql {
 using std::make_shared;
 using std::string;
 
-class YbSqlTestStmt : public YbSqlTestBase {
+class YbSqlTestParser : public YbSqlTestBase {
  public:
-  YbSqlTestStmt() : YbSqlTestBase() {
+  YbSqlTestParser() : YbSqlTestBase() {
   }
 };
 
-TEST_F(YbSqlTestStmt, TestSqlScanner) {
+TEST_F(YbSqlTestParser, TestSqlParser) {
 
 #define EXEC_VALID_STMT(sql_stmt) \
 do { \
-  ErrorCode errcode = ybsql_->Process(sql_stmt); \
+  ErrorCode errcode = TestParser(sql_stmt); \
   ASSERT_EQ(errcode, ErrorCode::SUCCESSFUL_COMPLETION); \
 } while (false)
 
 #define EXEC_INVALID_STMT(sql_stmt) \
 do { \
-  ErrorCode errcode = ybsql_->Process(sql_stmt); \
+  ErrorCode errcode = TestParser(sql_stmt); \
   ASSERT_NE(errcode, ErrorCode::SUCCESSFUL_COMPLETION); \
 } while (false)
 

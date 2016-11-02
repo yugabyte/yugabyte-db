@@ -7,7 +7,8 @@
 #ifndef YB_SQL_PTREE_PT_CREATE_TABLE_H_
 #define YB_SQL_PTREE_PT_CREATE_TABLE_H_
 
-#include "yb/sql/ptree/parse_tree.h"
+#include "yb/sql/ptree/list_node.h"
+#include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
 
@@ -33,7 +34,8 @@ class PTConstraint : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTConstraint() {
+  explicit PTConstraint(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+      : TreeNode(memctx, loc) {
   }
   virtual ~PTConstraint() {
   }
@@ -50,11 +52,12 @@ class PTPrimaryKey : public PTConstraint {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTPrimaryKey(MemoryContext *memctx,
-                        const PTListNode::SharedPtr& columns_ = nullptr);
+  PTPrimaryKey(MemoryContext *memctx,
+               YBLocation::SharedPtr loc,
+               const PTListNode::SharedPtr& columns_ = nullptr);
   virtual ~PTPrimaryKey();
 
-  virtual PTConstraintType constraint_type() {
+  virtual PTConstraintType constraint_type() OVERRIDE {
     return PTConstraintType::kPrimaryKey;
   }
 
@@ -62,6 +65,9 @@ class PTPrimaryKey : public PTConstraint {
   inline static PTPrimaryKey::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTPrimaryKey>(memctx, std::forward<TypeArgs>(args)...);
   }
+
+  // Node semantics analysis.
+  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
 
  private:
   PTListNode::SharedPtr columns_;
@@ -80,6 +86,7 @@ class PTColumnDefinition : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTColumnDefinition(MemoryContext *memctx,
+                     YBLocation::SharedPtr loc,
                      const MCString::SharedPtr& name,
                      const PTBaseType::SharedPtr& datatype,
                      const PTListNode::SharedPtr& constraints);
@@ -91,14 +98,43 @@ class PTColumnDefinition : public TreeNode {
     return MCMakeShared<PTColumnDefinition>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  // Node semantics analysis.
+  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+
+  // Access function for is_primary_key_.
+  bool is_primary_key() const {
+    return is_primary_key_;
+  }
+  void set_is_primary_key(bool value) {
+    is_primary_key_ = value;
+  }
+
+  // Access function for is_hash_key_.
+  bool is_hash_key() const {
+    return is_hash_key_;
+  }
+  void set_is_hash_key(bool value) {
+    is_hash_key_ = value;
+  }
+
+  // Return the data types that are expected by docdb.
+  const char *yb_name() const {
+    return name_->c_str();
+  }
+  client::YBColumnSchema::DataType yb_data_type() const {
+    return datatype_->yb_data_type();
+  }
+
  private:
   const MCString::SharedPtr name_;
   PTBaseType::SharedPtr datatype_;
   PTListNode::SharedPtr constraints_;
+  bool is_primary_key_;
+  bool is_hash_key_;
 };
 
 //--------------------------------------------------------------------------------------------------
-// Create table statement.
+// CREATE TABLE statement.
 
 class PTCreateTable : public TreeNode {
  public:
@@ -110,18 +146,72 @@ class PTCreateTable : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTCreateTable(MemoryContext *memctx,
+                YBLocation::SharedPtr loc,
                 const PTQualifiedName::SharedPtr& name,
                 const PTListNode::SharedPtr& elements);
   ~PTCreateTable();
 
+  // Node type.
+  virtual TreeNodeOpcode opcode() const OVERRIDE {
+    return TreeNodeOpcode::kPTCreateTable;
+  }
+
+  // Support for shared_ptr.
   template<typename... TypeArgs>
   inline static PTCreateTable::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTCreateTable>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  // Node semantics analysis.
+  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  // column lists.
+  const MCList<PTColumnDefinition *>& columns() const {
+    return columns_;
+  }
+
+  const MCList<PTColumnDefinition *>& primary_columns() const {
+    return primary_columns_;
+  }
+
+  const MCList<PTColumnDefinition *>& hash_columns() const {
+    return hash_columns_;
+  }
+
+  void AppendColumn(PTColumnDefinition *column) {
+    columns_.push_back(column);
+  }
+
+  void AppendPrimaryColumn(PTColumnDefinition *column) {
+    primary_columns_.push_back(column);
+  }
+
+  void AppendHashColumn(PTColumnDefinition *column) {
+    hash_columns_.push_back(column);
+  }
+
+  // Table name.
+  const char *yb_table_name() const {
+    return relation_->last_name()->c_str();
+  }
+
+  // Returns location of table name.
+  const YBLocation& name_loc() const {
+    return relation_->loc();
+  }
+
+  // Returns location of table columns.
+  const YBLocation& columns_loc() const {
+    return elements_->loc();
+  }
+
  private:
   PTQualifiedName::SharedPtr relation_;
   PTListNode::SharedPtr elements_;
+  MCList<PTColumnDefinition *> columns_;
+  MCList<PTColumnDefinition *> primary_columns_;
+  MCList<PTColumnDefinition *> hash_columns_;
 };
 
 }  // namespace sql

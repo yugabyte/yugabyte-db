@@ -35,7 +35,9 @@
 #define YB_SQL_UTIL_BASE_TYPES_H_
 
 #include <list>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "yb/sql/util/memory_context.h"
 
@@ -64,11 +66,35 @@ class MCStl : public MCStlBase<StlType, MCObject> {
   }
 };
 
+template<template<class, class, class, class> class StlType,
+         class MCKey,
+         class MCObject,
+         class Compare = std::less<MCKey>>
+using MCStlBase3 = StlType<MCKey, MCObject, Compare, MCAllocator<pair<const MCKey, MCObject>>>;
+
+template<template<class, class, class, class> class StlType,
+         class MCKey,
+         class MCObject,
+         class Compare = std::less<MCKey>>
+class MCStl3 : public MCStlBase3<StlType, MCKey, MCObject, Compare> {
+ public:
+  // Constructor for STL types.
+  explicit MCStl3(MemoryContext *mem_ctx)
+      : MCStlBase3<StlType, MCKey, MCObject, Compare>(
+          mem_ctx->GetAllocator<pair<const MCKey, MCObject>>()) {
+    CHECK(mem_ctx) << "Memory context must be provided";
+  }
+};
+
 // Class MCList
 template<class MCObject> using MCList = MCStl<std::list, MCObject>;
 
 // Class MCVector.
 template<class MCObject> using MCVector = MCStl<std::vector, MCObject>;
+
+// Class MCMap.
+template<class MCKey, class MCObject, class Compare = std::less<MCKey>>
+using MCMap = MCStl3<std::map, MCKey, MCObject, Compare>;
 
 //--------------------------------------------------------------------------------------------------
 // String support.
@@ -111,6 +137,11 @@ class MCString : public MCStringBase {
 template<class MCObject, typename... TypeArgs>
 MCSharedPtr<MCObject> MCMakeShared(MemoryContext *memctx, TypeArgs&&... args) {
   return memctx->AllocateShared<MCObject>(memctx, std::forward<TypeArgs>(args)...);
+}
+
+template<class MCObject>
+MCSharedPtr<MCObject> MCToShared(MemoryContext *memctx, MCObject *raw_ptr) {
+  return memctx->ToShared<MCObject>(raw_ptr);
 }
 
 // MC base class.

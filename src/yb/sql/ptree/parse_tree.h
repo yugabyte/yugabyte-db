@@ -3,62 +3,17 @@
 //
 // Parse Tree Declaration.
 //
-// This modules includes declarations for parse tree and base class for tree nodes. The parser
-// (parser_gram.y) will create these nodes and link them together to from parse tree.
+// This modules includes declarations for parse tree. The parser whose rules are defined in
+// parser_gram.y will link the tree nodes together to form this parse tree.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_SQL_PTREE_PARSE_TREE_H_
 #define YB_SQL_PTREE_PARSE_TREE_H_
 
-#include "yb/sql/util/base_types.h"
+#include "yb/sql/ptree/tree_node.h"
 
 namespace yb {
 namespace sql {
-
-// TreeNode base class.
-class TreeNode : public MCBase {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<TreeNode> SharedPtr;
-  typedef MCSharedPtr<const TreeNode> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Public functions.
-  explicit TreeNode(MemoryContext *memctx = nullptr);
-  virtual ~TreeNode();
-
-  template<typename... TypeArgs>
-  inline static TreeNode::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<TreeNode>(memctx, std::forward<TypeArgs>(args)...);
-  }
-};
-using TreeNodeList = MCList<TreeNode::SharedPtr>;
-
-// TreeNode base class.
-class PTListNode : public TreeNode {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTListNode> SharedPtr;
-  typedef MCSharedPtr<const PTListNode> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Public functions.
-  explicit PTListNode(MemoryContext *memory_context);
-  virtual ~PTListNode();
-
-  void Append(const TreeNode::SharedPtr& tnode);
-  void Prepend(const TreeNode::SharedPtr& tnode);
-
-  template<typename... TypeArgs>
-  inline static PTListNode::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTListNode>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
- private:
-  TreeNodeList node_list_;
-};
 
 // Parse Tree
 class ParseTree {
@@ -73,11 +28,14 @@ class ParseTree {
   ParseTree();
   ~ParseTree();
 
+  // Run semantics analysis.
+  ErrorCode Analyze(SemContext *sem_context);
+
   // Access functions to root_.
   void set_root(const TreeNode::SharedPtr& root) {
     root_ = root;
   }
-  const TreeNode::SharedPtr& root() {
+  const TreeNode::SharedPtr& root() const {
     return root_;
   }
 
