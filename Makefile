@@ -132,7 +132,7 @@ endif
 	mv sql/pgtap.tmp sql/pgtap.sql
 
 # Ugly hack for now...
-EXCRA_CLEAN += sql/pgtap--0.96.0--0.97.0.sql
+EXTRA_CLEAN += sql/pgtap--0.96.0--0.97.0.sql
 sql/pgtap--0.96.0--0.97.0.sql: sql/pgtap--0.96.0--0.97.0.sql.in
 	cp $< $@
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
@@ -141,7 +141,7 @@ endif
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.]0|8[.][1234]" && echo yes || echo no),yes)
 	patch -p0 < compat/9.0/pgtap--0.96.0--0.97.0.patch
 endif
-EXCRA_CLEAN += sql/pgtap--0.95.0--0.96.0.sql
+EXTRA_CLEAN += sql/pgtap--0.95.0--0.96.0.sql
 sql/pgtap--0.95.0--0.96.0.sql: sql/pgtap--0.95.0--0.96.0.sql.in
 	cp $< $@
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.][012]|8[.][1234]" && echo yes || echo no),yes)
