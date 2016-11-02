@@ -66,4 +66,10 @@ public class NodeDetails {
       .append(", isTserver: ").append(isTserver);
     return sb.toString();
   }
+
+  public boolean isActive() {
+    return !(state == NodeState.ToBeDecommissioned ||
+             state == NodeState.BeingDecommissioned ||
+             state == NodeState.Destroyed);
+  }
 }

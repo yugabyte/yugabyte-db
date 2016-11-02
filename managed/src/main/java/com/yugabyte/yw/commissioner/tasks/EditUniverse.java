@@ -110,6 +110,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         createMoveMastersTasks(SubTaskType.WaitForDataMigration);
       }
 
+      SubTaskType lastSubTaskType;
       if (!blacklistNodes.isEmpty()) {
         // Persist the placement info and blacklisted node info into the YB master.
         // This is done after master config change jobs, so that the new master leader can perform
@@ -121,12 +122,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
         // Send destroy old set of nodes to ansible and remove them from this universe.
         createDestroyServerTasks(blacklistNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
-
+        lastSubTaskType = SubTaskType.RemovingUnusedServers;
         // Clearing the blacklist on the yb cluster master is handled on the server side.
       } else {
         // If only tservers are added or removed, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setUserSubTask(SubTaskType.WaitForDataMigration);
+        lastSubTaskType = SubTaskType.WaitForDataMigration;
       }
+
+      // Update the swamper target file
+      createSwamperTargetUpdateTask(false /* removeFile */, lastSubTaskType);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks();
