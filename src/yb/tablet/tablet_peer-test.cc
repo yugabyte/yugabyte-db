@@ -163,6 +163,20 @@ class TabletPeerTest : public YBTabletTest,
   }
 
  protected:
+  Status CreateKeyValueRequestFromWriteRequest(WriteRequestPB* write_req) {
+    std::unique_ptr<const WriteRequestPB> key_value_write_request;
+    std::vector<std::string> locks_held;
+    RETURN_NOT_OK(
+        tablet()->KeyValueBatchFromYSQLRowOps(*write_req, &key_value_write_request, &locks_held));
+
+    for (const auto& lock : locks_held) {
+        tablet()->shared_lock_manager()->Unlock(lock);
+    }
+    write_req->CopyFrom(*key_value_write_request);
+    LOG(INFO) << "write_req: " << write_req->ShortDebugString();
+    return Status::OK();
+  }
+
   // Generate monotonic sequence of key column integers.
   Status GenerateSequentialInsertRequest(WriteRequestPB* write_req) {
     Schema schema(GetTestSchema());
@@ -175,13 +189,7 @@ class TabletPeerTest : public YBTabletTest,
     RowOperationsPBEncoder enc(write_req->mutable_row_operations());
     enc.Add(RowOperationsPB::INSERT, row);
     if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
-      std::unique_ptr<const WriteRequestPB> key_value_write_request;
-      std::vector<std::string> locks_held;
-      auto status =
-          tablet()->KeyValueBatchFromYSQLRowOps(*write_req, &key_value_write_request, &locks_held);
-
-      write_req->CopyFrom(*key_value_write_request);
-      LOG(INFO) << "write_req: " << write_req->ShortDebugString();
+      CHECK_OK(CreateKeyValueRequestFromWriteRequest(write_req));
     }
     return Status::OK();
   }
@@ -200,12 +208,7 @@ class TabletPeerTest : public YBTabletTest,
     RowOperationsPBEncoder enc(write_req->mutable_row_operations());
     enc.Add(RowOperationsPB::DELETE, row);
     if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
-      std::unique_ptr<const WriteRequestPB> key_value_write_request;
-      std::vector<std::string> locks_held;
-      auto status =
-          tablet()->KeyValueBatchFromYSQLRowOps(*write_req, &key_value_write_request, &locks_held);
-
-      write_req->CopyFrom(*key_value_write_request);
+      CHECK_OK(CreateKeyValueRequestFromWriteRequest(write_req));
     }
     return Status::OK();
   }
