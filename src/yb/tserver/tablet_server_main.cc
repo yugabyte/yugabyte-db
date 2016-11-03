@@ -69,8 +69,6 @@ static int TabletServerMain(int argc, char** argv) {
     redis_server_options.master_addresses_flag =
         yb::HostPort::ToCommaSeparatedString(*tablet_server_options.GetMasterAddresses());
     redis_server.reset(new RedisServer(redis_server_options));
-    LOG(INFO) << "Initializing redis server...";
-    CHECK_OK(redis_server->Init());
     LOG(INFO) << "Starting redis server...";
     CHECK_OK(redis_server->Start());
     LOG(INFO) << "Redis server successfully started.";

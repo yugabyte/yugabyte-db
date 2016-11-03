@@ -66,7 +66,7 @@ class RedisServiceImpl : public RedisServerServiceIf {
   };
 
   constexpr static int kRpcTimeoutSec = 5;
-  constexpr static int kMethodCount = 3;
+  constexpr static int kMethodCount = 4;
 
   void PopulateHandlers();
   RedisCommandFunctionPtr FetchHandler(const std::vector<Slice>& cmd_args);
@@ -84,9 +84,10 @@ class RedisServiceImpl : public RedisServerServiceIf {
   const struct RedisCommandInfo kRedisCommandTable[kMethodCount] = {
       {"get", &RedisServiceImpl::GetCommand, 2},
       {"set", &RedisServiceImpl::SetCommand, -3},
-      {"echo", &RedisServiceImpl::EchoCommand, 2}};
+      {"echo", &RedisServiceImpl::EchoCommand, 2},
+      {"dummy", &RedisServiceImpl::DummyCommand, -1}};
 
-  yb::rpc::RpcMethodMetrics metrics_[kMethodCount];
+  std::map<string, yb::rpc::RpcMethodMetrics> metrics_;
   std::map<string, const RedisCommandInfo*> command_name_to_info_map_;
 
   shared_ptr<client::YBClient> client_;

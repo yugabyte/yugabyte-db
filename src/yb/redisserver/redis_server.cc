@@ -21,23 +21,15 @@ namespace yb {
 namespace redisserver {
 
 RedisServer::RedisServer(const RedisServerOptions& opts)
-  : RpcServerBase("RedisServer", opts, "yb.redisserver"),
-    opts_(opts) {
-}
-
-Status RedisServer::Init() {
-  RETURN_NOT_OK(server::RpcServerBase::Init());
-
-  return Status::OK();
-}
+    : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts) {}
 
 Status RedisServer::Start() {
-  CHECK(initialized_);
+  server::RpcAndWebServerBase::Init();
 
   gscoped_ptr<ServiceIf> redis_service(new RedisServiceImpl(this, opts_.master_addresses_flag));
   RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(redis_svc, redissvc), redis_service.Pass()));
 
-  RETURN_NOT_OK(server::RpcServerBase::StartRpcServer());
+  RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 
   return Status::OK();
 }

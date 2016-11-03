@@ -14,16 +14,47 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/util/bytes_formatter.h"
 
-METRIC_DEFINE_histogram(server,
-                        handler_latency_yb_redisserver_RedisServerService_Any,
-                        "yb.redisserver.RedisServerService.AnyMethod RPC Time",
-                        yb::MetricUnit::kMicroseconds,
-                        "Microseconds spent handling "
-                            "yb.redisserver.RedisServerService.AnyMethod() "
-                            "RPC requests",
-                        60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_get,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+    "yb.redisserver.RedisServerService.GetCommand() "
+    "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_set,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+    "yb.redisserver.RedisServerService.SetCommand() "
+    "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_echo,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+    "yb.redisserver.RedisServerService.EchoCommand() "
+    "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_dummy,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+    "yb.redisserver.RedisServerService.DummyCommand() "
+    "RPC requests",
+    60000000LU, 2);
 namespace yb {
 namespace redisserver {
+
+#define SETUP_METRICS_FOR_METHOD(method, idx)                                          \
+  do {                                                                                 \
+    CHECK_EQ(#method, RedisServiceImpl::kRedisCommandTable[idx].name)                  \
+        << "Expected command " << #method << " at index " << idx;                      \
+    command_name_to_info_map_[#method] = &(RedisServiceImpl::kRedisCommandTable[idx]); \
+    metrics_[#method] = yb::rpc::RpcMethodMetrics();                                   \
+    metrics_[#method].handler_latency =                                                \
+        METRIC_handler_latency_yb_redisserver_RedisServerService_##method.Instantiate( \
+            server_->metric_entity());                                                 \
+  } while (0)
 
 using yb::client::RedisConstants;
 using yb::client::YBRedisReadOp;
@@ -47,10 +78,16 @@ using strings::Substitute;
 void RedisServiceImpl::PopulateHandlers() {
   CHECK_EQ(kMethodCount, sizeof(kRedisCommandTable) / sizeof(RedisCommandInfo))
       << "Expect to see " << kMethodCount << " elements in kRedisCommandTable";
-  for (int i = 0; i < kMethodCount; i++) {
-    command_name_to_info_map_[RedisServiceImpl::kRedisCommandTable[i].name] =
-        &(RedisServiceImpl::kRedisCommandTable[i]);
-  }
+  int idx = 0;
+  SETUP_METRICS_FOR_METHOD(get, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(set, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(echo, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(dummy, idx);
+  idx++;
+  CHECK_EQ(kMethodCount, idx);
 }
 
 RedisServiceImpl::RedisCommandFunctionPtr RedisServiceImpl::FetchHandler(
@@ -83,9 +120,6 @@ RedisServiceImpl::RedisCommandFunctionPtr RedisServiceImpl::FetchHandler(
 RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_addresses)
     : RedisServerServiceIf(server->metric_entity()), server_(server) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
-  metrics_[0].handler_latency =
-      METRIC_handler_latency_yb_redisserver_RedisServerService_Any.Instantiate(
-          server->metric_entity());
   PopulateHandlers();
   SetUpYBClient(yb_tier_master_addresses);
 }
@@ -121,7 +155,7 @@ void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
   RedisResponsePB* echo_response = new RedisResponsePB();
   echo_response->set_string_response(c->cmd_args[1].ToString());
   VLOG(4) << "Responding to Echo with " << c->cmd_args[1].ToString();
-  RpcContext* context = new RpcContext(call, nullptr, echo_response, metrics_[0]);
+  RpcContext* context = new RpcContext(call, nullptr, echo_response, metrics_["echo"]);
   context->RespondSuccess();
   VLOG(4) << "Done Responding to Echo.";
 }
@@ -163,7 +197,7 @@ void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
   CHECK_OK(read_only_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   auto get_op = RedisReadOpForGetKey(table_.get(), c->cmd_args[1].ToString());
   read_only_session->ReadAsync(
-      get_op, new GetCommandCb(read_only_session, call, get_op, metrics_[0]));
+      get_op, new GetCommandCb(read_only_session, call, get_op, metrics_["get"]));
 }
 
 class SetCommandCb : public YBStatusCallback {
@@ -212,7 +246,7 @@ void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
   CHECK_OK(tmp_session->Apply(
       RedisWriteOpForSetKV(table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString())));
   // Callback will delete itself, after processing the callback.
-  tmp_session->FlushAsync(new SetCommandCb(tmp_session, call, metrics_[0]));
+  tmp_session->FlushAsync(new SetCommandCb(tmp_session, call, metrics_["set"]));
 }
 
 void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {
@@ -227,7 +261,7 @@ void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {
   DVLOG(4) << "Responding to call " << call->ToString();
   RedisResponsePB* ok_response = new RedisResponsePB();
   ok_response->set_string_response("OK");
-  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_[0]);
+  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_["dummy"]);
   context->RespondSuccess();
   DVLOG(4) << "Done Responding.";
 }

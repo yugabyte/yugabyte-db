@@ -62,9 +62,6 @@ void TestRedisService::SetUp() {
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
 
   server_.reset(new RedisServer(opts));
-  LOG(INFO) << "Initializing redis server...";
-  CHECK_OK(server_->Init());
-
   LOG(INFO) << "Starting redis server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "Redis server successfully started.";

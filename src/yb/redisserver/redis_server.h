@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_REDIS_SERVER_H
-#define YB_REDIS_SERVER_H
+#ifndef YB_REDISSERVER_REDIS_SERVER_H_
+#define YB_REDISSERVER_REDIS_SERVER_H_
 
 #include <string>
 
@@ -15,13 +15,12 @@ namespace yb {
 
 namespace redisserver {
 
-class RedisServer : public server::RpcServerBase {
+class RedisServer : public server::RpcAndWebServerBase {
  public:
   static const uint16_t kDefaultPort = 6379;
+  static const uint16_t kDefaultWebPort = 11000;
 
   explicit RedisServer(const RedisServerOptions& opts);
-
-  Status Init();
 
   Status Start();
 
@@ -31,6 +30,6 @@ class RedisServer : public server::RpcServerBase {
   DISALLOW_COPY_AND_ASSIGN(RedisServer);
 };
 
-} // namespace redisserver
-} // namespace yb
-#endif
+}  // namespace redisserver
+}  // namespace yb
+#endif  // YB_REDISSERVER_REDIS_SERVER_H_

@@ -33,9 +33,6 @@ static int RedisServerMain(int argc, char** argv) {
   opts.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
   opts.master_addresses_flag = FLAGS_master_addresses;
   RedisServer server(opts);
-  LOG(INFO) << "Initializing redis server...";
-  CHECK_OK(server.Init());
-
   LOG(INFO) << "Starting redis server...";
   CHECK_OK(server.Start());
 
