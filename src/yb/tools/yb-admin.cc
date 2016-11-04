@@ -223,7 +223,7 @@ class ClusterAdminClient {
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
-  client::sp::shared_ptr<YBClient> yb_client_;
+  std::shared_ptr<YBClient> yb_client_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };

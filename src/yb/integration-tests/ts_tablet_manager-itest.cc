@@ -82,7 +82,7 @@ class TsTabletManagerITest : public YBTest {
   const YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
-  client::sp::shared_ptr<YBClient> client_;
+  std::shared_ptr<YBClient> client_;
   std::shared_ptr<Messenger> client_messenger_;
 };
 
@@ -116,7 +116,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   OverrideFlagForSlowTests("num_election_test_loops", "10");
 
   // Create the table.
-  client::sp::shared_ptr<YBTable> table;
+  std::shared_ptr<YBTable> table;
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
@@ -192,5 +192,5 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   }
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb

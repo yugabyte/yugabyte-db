@@ -51,7 +51,7 @@ using client::YBInsert;
 using client::YBSchema;
 using client::YBSession;
 using client::YBTable;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 
 void PrintUsage(char** argv) {
   std::cerr << "usage: " << argv[0] << " [--master_address localhost] <table_name>"
@@ -120,8 +120,8 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   return 0;
 }
 
-} // namespace tools
-} // namespace yb
+}  // namespace tools
+}  // namespace yb
 
 int main(int argc, char** argv) {
   return yb::tools::WriteRandomDataToTable(argc, argv);

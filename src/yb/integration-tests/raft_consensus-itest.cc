@@ -62,7 +62,7 @@ namespace tserver {
 using client::YBInsert;
 using client::YBSession;
 using client::YBTable;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 using consensus::ConsensusRequestPB;
 using consensus::ConsensusResponsePB;
 using consensus::ConsensusServiceProxy;

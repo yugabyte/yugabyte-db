@@ -28,7 +28,7 @@
 
 using yb::client::CountTableRows;
 using yb::client::YBTable;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using std::set;
@@ -166,4 +166,4 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
 
 }
 
-} // namespace yb
+}  // namespace yb

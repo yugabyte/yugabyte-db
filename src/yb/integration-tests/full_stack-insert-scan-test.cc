@@ -177,7 +177,7 @@ class FullStackInsertScanTest : public YBTest {
   // Adds newly generated client's session and table pointers to arrays at id
   void CreateNewClient(int id) {
     ASSERT_OK(client_->OpenTable(kTableName, &tables_[id]));
-    client::sp::shared_ptr<YBSession> session = client_->NewSession();
+    std::shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(kSessionTimeoutMs);
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     sessions_[id] = session;
@@ -212,11 +212,11 @@ class FullStackInsertScanTest : public YBTest {
 
   YBSchema schema_;
   shared_ptr<MiniCluster> cluster_;
-  client::sp::shared_ptr<YBClient> client_;
-  client::sp::shared_ptr<YBTable> reader_table_;
+  std::shared_ptr<YBClient> client_;
+  std::shared_ptr<YBTable> reader_table_;
   // Concurrent client insertion test variables
-  vector<client::sp::shared_ptr<YBSession> > sessions_;
-  vector<client::sp::shared_ptr<YBTable> > tables_;
+  vector<std::shared_ptr<YBSession> > sessions_;
+  vector<std::shared_ptr<YBTable> > tables_;
 };
 
 namespace {
@@ -351,8 +351,8 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
 
   start_latch->Wait();
   // Retrieve id's session and table
-  client::sp::shared_ptr<YBSession> session = sessions_[id];
-  client::sp::shared_ptr<YBTable> table = tables_[id];
+  std::shared_ptr<YBSession> session = sessions_[id];
+  std::shared_ptr<YBTable> table = tables_[id];
   // Identify start and end of keyrange id is responsible for
   int64_t start = kNumInsertsPerClient * id;
   int64_t end = start + kNumInsertsPerClient;
@@ -454,5 +454,5 @@ vector<string> FullStackInsertScanTest::Int64ColumnNames() const {
            "int64_val4" };
 }
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

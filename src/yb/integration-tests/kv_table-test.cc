@@ -33,7 +33,7 @@ using yb::client::YBScanBatch;
 using yb::client::YBPredicate;
 using yb::client::YBValue;
 
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 
 namespace yb {
 namespace integration_tests {

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TPCH_RPC_LINE_ITEM_DAO_H
-#define YB_TPCH_RPC_LINE_ITEM_DAO_H
+#ifndef YB_TPCH_RPC_LINE_ITEM_DAO_H_
+#define YB_TPCH_RPC_LINE_ITEM_DAO_H_
 
 #include <set>
 #include <string>
@@ -87,9 +87,9 @@ class RpcLineItemDAO {
                    gscoped_ptr<Scanner>* scanner);
 
   simple_spinlock lock_;
-  client::sp::shared_ptr<client::YBClient> client_;
-  client::sp::shared_ptr<client::YBSession> session_;
-  client::sp::shared_ptr<client::YBTable> client_table_;
+  std::shared_ptr<client::YBClient> client_;
+  std::shared_ptr<client::YBSession> session_;
+  std::shared_ptr<client::YBTable> client_table_;
   const std::string master_address_;
   const std::string table_name_;
   const MonoDelta timeout_;

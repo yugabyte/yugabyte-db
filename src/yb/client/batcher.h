@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_BATCHER_H
-#define YB_CLIENT_BATCHER_H
+#ifndef YB_CLIENT_BATCHER_H_
+#define YB_CLIENT_BATCHER_H_
 
 #include <unordered_map>
 #include <unordered_set>
@@ -66,7 +66,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
-          const client::sp::shared_ptr<YBSession>& session,
+          const std::shared_ptr<YBSession>& session,
           yb::client::YBSession::ExternalConsistencyMode consistency_mode);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
@@ -168,7 +168,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   State state_;
 
   YBClient* const client_;
-  client::sp::weak_ptr<YBSession> weak_session_;
+  std::weak_ptr<YBSession> weak_session_;
 
   // The consistency mode set in the session.
   yb::client::YBSession::ExternalConsistencyMode consistency_mode_;
@@ -225,7 +225,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
 
-} // namespace internal
-} // namespace client
-} // namespace yb
+}  // namespace internal
+}  // namespace client
+}  // namespace yb
 #endif /* YB_CLIENT_BATCHER_H */

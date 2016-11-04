@@ -18,6 +18,7 @@
 #define YB_CLIENT_CLIENT_H_
 
 #include <stdint.h>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,6 @@
 #include "yb/client/scan_batch.h"
 #include "yb/client/scan_predicate.h"
 #include "yb/client/schema.h"
-#include "yb/client/shared_ptr.h"
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/gutil/macros.h"
@@ -159,7 +159,7 @@ class YB_EXPORT YBClientBuilder {
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  Status Build(sp::shared_ptr<YBClient>* client);
+  Status Build(std::shared_ptr<YBClient>* client);
  private:
   class YB_NO_EXPORT Data;
 
@@ -193,7 +193,7 @@ class YB_EXPORT YBClientBuilder {
 // as well.
 //
 // This class is thread-safe.
-class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
+class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
  public:
   ~YBClient();
 
@@ -249,12 +249,12 @@ class YB_EXPORT YBClient : public sp::enable_shared_from_this<YBClient> {
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const std::string& table_name,
-                   sp::shared_ptr<YBTable>* table);
+                   std::shared_ptr<YBTable>* table);
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  sp::shared_ptr<YBSession> NewSession(bool read_only = false);
+  std::shared_ptr<YBSession> NewSession(bool read_only = false);
 
   // Return the socket address of the master leader for this client
   Status SetMasterLeaderSocket(Sockaddr* leader_socket);
@@ -454,7 +454,7 @@ class YB_EXPORT YBTableCreator {
 // and the schema fetched for introspection.
 //
 // This class is thread-safe.
-class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
+class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
  public:
   ~YBTable();
 
@@ -505,7 +505,7 @@ class YB_EXPORT YBTable : public sp::enable_shared_from_this<YBTable> {
 
   friend class YBClient;
 
-  YBTable(const sp::shared_ptr<YBClient>& client,
+  YBTable(const std::shared_ptr<YBClient>& client,
           const std::string& name,
           const std::string& table_id,
           const YBSchema& schema,
@@ -668,7 +668,7 @@ class YB_EXPORT YBError {
 // concept of a Session familiar.
 //
 // This class is not thread-safe except where otherwise specified.
-class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
+class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
  public:
   ~YBSession();
 
@@ -877,7 +877,7 @@ class YB_EXPORT YBSession : public sp::enable_shared_from_this<YBSession> {
 
   friend class YBClient;
   friend class internal::Batcher;
-  explicit YBSession(const sp::shared_ptr<YBClient>& client);
+  explicit YBSession(const std::shared_ptr<YBClient>& client);
 
   // In case of read_only YBSessions, writes are not allowed. Otherwise, reads are not allowed.
   bool read_only_;

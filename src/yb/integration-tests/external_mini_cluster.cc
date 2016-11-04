@@ -1010,7 +1010,7 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
 }
 
 Status ExternalMiniCluster::CreateClient(client::YBClientBuilder& builder,
-                                         client::sp::shared_ptr<client::YBClient>* client) {
+                                         std::shared_ptr<client::YBClient>* client) {
   CHECK(!masters_.empty());
   builder.clear_master_server_addrs();
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
@@ -1221,7 +1221,7 @@ void ExternalDaemon::Shutdown() {
 }
 
 void ExternalDaemon::FlushCoverage() {
-#ifndef COVERAGE_BUILD
+#ifndef COVERAGE_BUILD_
   return;
 #else
   LOG(INFO) << "Attempting to flush coverage for " << exe_ << " pid " << process_->pid();

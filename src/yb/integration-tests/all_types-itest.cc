@@ -31,7 +31,7 @@ using std::vector;
 namespace yb {
 namespace client {
 
-using sp::shared_ptr;
+using std::shared_ptr;
 
 static const int kNumTabletServers = 3;
 static const int kNumTablets = 3;
@@ -446,6 +446,6 @@ TYPED_TEST(AllTypesItest, TestAllKeyTypes) {
   this->RunTest();
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 

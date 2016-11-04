@@ -17,11 +17,11 @@
 
 #include "yb/client/session-internal.h"
 
+#include <memory>
 #include <mutex>
 
 #include "yb/client/batcher.h"
 #include "yb/client/error_collector.h"
-#include "yb/client/shared_ptr.h"
 
 namespace yb {
 
@@ -30,7 +30,7 @@ namespace client {
 using internal::Batcher;
 using internal::ErrorCollector;
 
-using sp::shared_ptr;
+using std::shared_ptr;
 
 YBSession::Data::Data(shared_ptr<YBClient> client)
     : client_(std::move(client)),
@@ -79,5 +79,5 @@ Status YBSession::Data::Close(bool force) {
   return Status::OK();
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

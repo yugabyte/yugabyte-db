@@ -59,7 +59,7 @@ using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBUpdate;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 
 // This integration test tries to trigger all the update-related bits while also serving as a
 // foundation for benchmarking. It first inserts 'row_count' rows and then starts two threads,
@@ -310,5 +310,5 @@ Status UpdateScanDeltaCompactionTest::WaitForLastBatchAndFlush(int64_t key,
   return Status::OK();
 }
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

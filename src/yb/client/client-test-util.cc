@@ -25,7 +25,7 @@
 namespace yb {
 namespace client {
 
-void LogSessionErrorsAndDie(const sp::shared_ptr<YBSession>& session,
+void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
                             const Status& s) {
   CHECK(!s.ok());
   std::vector<YBError*> errors;
@@ -77,5 +77,5 @@ YBSchema YBSchemaFromSchema(const Schema& schema) {
   return YBSchema(schema);
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

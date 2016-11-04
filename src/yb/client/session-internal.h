@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_SESSION_INTERNAL_H
-#define YB_CLIENT_SESSION_INTERNAL_H
+#ifndef YB_CLIENT_SESSION_INTERNAL_H_
+#define YB_CLIENT_SESSION_INTERNAL_H_
 
 #include <unordered_set>
 
@@ -83,7 +83,7 @@ class YBSession::Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
 #endif

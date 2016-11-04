@@ -66,8 +66,8 @@ class YBTableTestBase : public YBTest {
                       vector<pair<string, string>>* result_kvs);
   void FetchTSMetricsPage();
 
-  yb::client::sp::shared_ptr<yb::client::YBTable> table_;
-  yb::client::sp::shared_ptr<yb::client::YBClient> client_;
+  std::shared_ptr<yb::client::YBTable> table_;
+  std::shared_ptr<yb::client::YBClient> client_;
   bool table_exists_ = false;
 
   yb::MiniCluster* mini_cluster() {
@@ -103,10 +103,10 @@ class YBTableTestBase : public YBTest {
   vector<uint16_t> master_rpc_ports();
   void CreateClient();
 
-  yb::client::sp::shared_ptr<yb::client::YBSession> NewSession(bool read_only_ = false);
+  std::shared_ptr<yb::client::YBSession> NewSession(bool read_only_ = false);
 
   yb::client::YBSchema schema_;
-  yb::client::sp::shared_ptr<yb::client::YBSession> session_;
+  std::shared_ptr<yb::client::YBSession> session_;
 
   // Exactly one of the following two pointers will be set.
   std::unique_ptr<yb::MiniCluster> mini_cluster_;

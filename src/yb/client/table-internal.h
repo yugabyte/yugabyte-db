@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_TABLE_INTERNAL_H
-#define YB_CLIENT_TABLE_INTERNAL_H
+#ifndef YB_CLIENT_TABLE_INTERNAL_H_
+#define YB_CLIENT_TABLE_INTERNAL_H_
 
 #include <string>
 
@@ -28,7 +28,7 @@ namespace client {
 
 class YBTable::Data {
  public:
-  Data(sp::shared_ptr<YBClient> client,
+  Data(std::shared_ptr<YBClient> client,
        std::string name,
        std::string table_id,
        const YBSchema& schema,
@@ -37,7 +37,7 @@ class YBTable::Data {
 
   Status Open();
 
-  sp::shared_ptr<YBClient> client_;
+  std::shared_ptr<YBClient> client_;
 
   std::string name_;
   YBTableType table_type_;
@@ -52,7 +52,7 @@ class YBTable::Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
 #endif

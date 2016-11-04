@@ -339,7 +339,7 @@ Status MiniCluster::WaitForTabletServerCount(int count,
 }
 
 Status MiniCluster::CreateClient(YBClientBuilder* builder,
-                                 client::sp::shared_ptr<YBClient>* client) {
+                                 std::shared_ptr<YBClient>* client) {
   YBClientBuilder default_builder;
   if (builder == nullptr) {
     builder = &default_builder;
@@ -359,4 +359,4 @@ uint16_t MiniCluster::AllocateFreePort() {
   return GetFreePort(&free_port_file_locks_.back());
 }
 
-} // namespace yb
+}  // namespace yb

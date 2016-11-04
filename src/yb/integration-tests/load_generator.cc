@@ -28,7 +28,7 @@ using std::unique_ptr;
 
 using strings::Substitute;
 
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 using yb::Status;
 using yb::ThreadPool;
 using yb::ThreadPoolBuilder;

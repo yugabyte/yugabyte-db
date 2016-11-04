@@ -45,7 +45,7 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBValue;
 using client::YBOperation;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 using std::make_pair;
 using std::map;
 using std::pair;
@@ -445,4 +445,4 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
   NO_FATALS(v.CheckCluster());
 }
 
-} // namespace yb
+}  // namespace yb

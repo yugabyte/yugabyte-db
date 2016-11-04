@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_CLIENT_INFLIGHTOP_H
-#define YB_CLIENT_INFLIGHTOP_H
+#ifndef YB_CLIENT_INFLIGHTOP_H_
+#define YB_CLIENT_INFLIGHTOP_H_
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/locks.h"

@@ -26,7 +26,7 @@
 namespace yb {
 namespace client {
 
-using sp::shared_ptr;
+using std::shared_ptr;
 
 RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
   switch (type) {
@@ -131,5 +131,5 @@ YBDelete::YBDelete(const shared_ptr<YBTable>& table)
 
 YBDelete::~YBDelete() {}
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

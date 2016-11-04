@@ -93,7 +93,7 @@ using master::CatalogManager;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TabletLocationsPB;
-using sp::shared_ptr;
+using std::shared_ptr;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
@@ -946,7 +946,7 @@ static void DoScanWithCallback(
   ASSERT_EQ(expected_rows.size(), rows.size());
 }
 
-} // namespace internal
+}  // namespace internal
 
 // Test that ordered snapshot scans can be resumed in the case of different tablet server failures.
 TEST_F(ClientTest, TestScanFaultTolerance) {
@@ -2713,5 +2713,5 @@ TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
   }
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

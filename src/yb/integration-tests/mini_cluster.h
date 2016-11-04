@@ -15,14 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_H
-#define YB_INTEGRATION_TESTS_MINI_CLUSTER_H
+#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
+#define YB_INTEGRATION_TESTS_MINI_CLUSTER_H_
 
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/client/shared_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/env.h"
 
@@ -155,7 +154,7 @@ class MiniCluster {
   //
   // REQUIRES: the cluster must have already been Start()ed.
   Status CreateClient(client::YBClientBuilder* builder,
-                      client::sp::shared_ptr<client::YBClient>* client);
+                      std::shared_ptr<client::YBClient>* client);
 
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.
@@ -184,6 +183,6 @@ class MiniCluster {
   std::vector<std::unique_ptr<FileLock> > free_port_file_locks_;
 };
 
-} // namespace yb
+}  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H */

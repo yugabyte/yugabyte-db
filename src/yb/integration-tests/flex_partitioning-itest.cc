@@ -52,7 +52,7 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBValue;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
@@ -564,5 +564,5 @@ TEST_F(FlexPartitioningITest, TestCompositePK_MultipleBucketingsNoRange) {
   InsertAndVerifyScans();
 }
 
-} // namespace itest
-} // namespace yb
+}  // namespace itest
+}  // namespace yb

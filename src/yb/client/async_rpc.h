@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_CLIENT_ASYNC_RPC_H
-#define YB_CLIENT_ASYNC_RPC_H
+#ifndef YB_CLIENT_ASYNC_RPC_H_
+#define YB_CLIENT_ASYNC_RPC_H_
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"

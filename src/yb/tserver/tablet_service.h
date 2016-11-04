@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TSERVER_TABLET_SERVICE_H
-#define YB_TSERVER_TABLET_SERVICE_H
+#ifndef YB_TSERVER_TABLET_SERVICE_H_
+#define YB_TSERVER_TABLET_SERVICE_H_
 
 #include <memory>
 #include <string>
@@ -36,7 +36,7 @@ namespace tablet {
 class Tablet;
 class TabletPeer;
 class TransactionState;
-} // namespace tablet
+}  // namespace tablet
 
 namespace tserver {
 
@@ -176,7 +176,7 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
   TabletPeerLookupIf* tablet_manager_;
 };
 
-} // namespace tserver
-} // namespace yb
+}  // namespace tserver
+}  // namespace yb
 
 #endif  // YB_TSERVER_TABLET_SERVICE_H

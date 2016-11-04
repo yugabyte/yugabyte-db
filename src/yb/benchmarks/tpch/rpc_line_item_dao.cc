@@ -61,7 +61,7 @@ namespace {
 
 class FlushCallback : public YBStatusCallback {
  public:
-  FlushCallback(client::sp::shared_ptr<YBSession> session, Semaphore* sem)
+  FlushCallback(std::shared_ptr<YBSession> session, Semaphore* sem)
       : session_(std::move(session)),
         sem_(sem) {
     sem_->Acquire();
@@ -92,7 +92,7 @@ class FlushCallback : public YBStatusCallback {
     }
   }
 
-  client::sp::shared_ptr<YBSession> session_;
+  std::shared_ptr<YBSession> session_;
   Semaphore *sem_;
 };
 
@@ -235,4 +235,4 @@ RpcLineItemDAO::RpcLineItemDAO(string master_address, string table_name,
       semaphore_(1) {
 }
 
-} // namespace yb
+}  // namespace yb

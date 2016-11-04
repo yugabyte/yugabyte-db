@@ -14,12 +14,12 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_YB_OP_H
-#define YB_CLIENT_YB_OP_H
+#ifndef YB_CLIENT_YB_OP_H_
+#define YB_CLIENT_YB_OP_H_
 
+#include <memory>
 #include <string>
 
-#include "yb/client/shared_ptr.h"
 #include "yb/common/partial_row.h"
 #include "yb/util/yb_export.h"
 
@@ -36,7 +36,7 @@ namespace client {
 namespace internal {
 class Batcher;
 class AsyncRpc;
-} // namespace internal
+}  // namespace internal
 
 class YBTable;
 
@@ -68,9 +68,9 @@ class YB_EXPORT YBOperation {
   virtual Type type() const = 0;
   virtual bool read_only() = 0;
  protected:
-  explicit YBOperation(const sp::shared_ptr<YBTable>& table);
+  explicit YBOperation(const std::shared_ptr<YBTable>& table);
 
-  sp::shared_ptr<YBTable> const table_;
+  std::shared_ptr<YBTable> const table_;
   YBPartialRow row_;
 
  private:
@@ -105,7 +105,7 @@ class YB_EXPORT YBInsert : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBInsert(const sp::shared_ptr<YBTable>& table);
+  explicit YBInsert(const std::shared_ptr<YBTable>& table);
 };
 
 class YB_EXPORT YBRedisWriteOp : public YBOperation {
@@ -131,7 +131,7 @@ class YB_EXPORT YBRedisWriteOp : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBRedisWriteOp(const sp::shared_ptr<YBTable>& table);
+  explicit YBRedisWriteOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
   std::unique_ptr<RedisResponsePB> redis_response_;
 };
@@ -157,7 +157,7 @@ class YB_EXPORT YBRedisReadOp : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBRedisReadOp(const sp::shared_ptr<YBTable>& table);
+  explicit YBRedisReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisReadRequestPB> redis_read_request_;
   std::unique_ptr<RedisResponsePB> redis_response_;
 };
@@ -183,7 +183,7 @@ class YB_EXPORT YBUpdate : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBUpdate(const sp::shared_ptr<YBTable>& table);
+  explicit YBUpdate(const std::shared_ptr<YBTable>& table);
 };
 
 
@@ -206,10 +206,10 @@ class YB_EXPORT YBDelete : public YBOperation {
 
  private:
   friend class YBTable;
-  explicit YBDelete(const sp::shared_ptr<YBTable>& table);
+  explicit YBDelete(const std::shared_ptr<YBTable>& table);
 };
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
-#endif  // YB_CLIENT_YB_OP_H
+#endif  // YB_CLIENT_YB_OP_H_

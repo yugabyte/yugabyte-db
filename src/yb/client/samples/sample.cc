@@ -42,7 +42,7 @@ using yb::client::YBTable;
 using yb::client::YBTableAlterer;
 using yb::client::YBTableCreator;
 using yb::client::YBValue;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 using yb::YBPartialRow;
 using yb::MonoDelta;
 using yb::Status;

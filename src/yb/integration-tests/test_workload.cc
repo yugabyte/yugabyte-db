@@ -47,7 +47,7 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 using client::YBUpdate;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 
 const char* const TestWorkload::kDefaultTableName = "test-workload";
 
@@ -244,4 +244,4 @@ void TestWorkload::StopAndJoin() {
   threads_.clear();
 }
 
-} // namespace yb
+}  // namespace yb

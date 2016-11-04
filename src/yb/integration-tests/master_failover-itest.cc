@@ -38,7 +38,7 @@ namespace client {
 
 const int kNumTabletServerReplicas = 3;
 
-using sp::shared_ptr;
+using std::shared_ptr;
 using std::string;
 using std::vector;
 
@@ -257,5 +257,5 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
   ASSERT_TRUE(s.IsNotFound());
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

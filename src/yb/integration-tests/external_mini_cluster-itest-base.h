@@ -66,7 +66,7 @@ class ExternalMiniClusterITestBase : public YBTest {
 
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
-  client::sp::shared_ptr<client::YBClient> client_;
+  std::shared_ptr<client::YBClient> client_;
   std::unordered_map<std::string, itest::TServerDetails*> ts_map_;
 };
 
@@ -88,6 +88,6 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   ASSERT_OK(cluster_->CreateClient(builder, &client_));
 }
 
-} // namespace yb
+}  // namespace yb
 
 #endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_

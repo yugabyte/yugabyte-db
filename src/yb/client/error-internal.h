@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_ERROR_INTERNAL_H
-#define YB_CLIENT_ERROR_INTERNAL_H
+#ifndef YB_CLIENT_ERROR_INTERNAL_H_
+#define YB_CLIENT_ERROR_INTERNAL_H_
 
 #include "yb/client/client.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -36,7 +36,7 @@ class YBError::Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
 #endif

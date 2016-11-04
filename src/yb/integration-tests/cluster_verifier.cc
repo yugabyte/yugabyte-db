@@ -106,12 +106,12 @@ void ClusterVerifier::CheckRowCount(const std::string& table_name,
 Status ClusterVerifier::DoCheckRowCount(const std::string& table_name,
                                         ComparisonMode mode,
                                         int expected_row_count) {
-  client::sp::shared_ptr<client::YBClient> client;
+  std::shared_ptr<client::YBClient> client;
   client::YBClientBuilder builder;
   RETURN_NOT_OK_PREPEND(cluster_->CreateClient(builder,
                                                &client),
                         "Unable to connect to cluster");
-  client::sp::shared_ptr<client::YBTable> table;
+  std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(client->OpenTable(table_name, &table),
                         "Unable to open table");
   client::YBScanner scanner(table.get());
@@ -152,4 +152,4 @@ void ClusterVerifier::CheckRowCountWithRetries(const std::string& table_name,
   ASSERT_OK(s);
 }
 
-} // namespace yb
+}  // namespace yb

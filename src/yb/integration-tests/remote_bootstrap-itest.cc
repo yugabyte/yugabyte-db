@@ -57,7 +57,7 @@ using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
 using yb::client::YBTableType;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
@@ -756,4 +756,4 @@ TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDel
   DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::YSQL_TABLE_TYPE);
 }
 
-} // namespace yb
+}  // namespace yb

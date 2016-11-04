@@ -29,5 +29,5 @@ YBError::Data::Data(shared_ptr<YBOperation> failed_op, const Status& status)
 YBError::Data::~Data() {
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

@@ -66,7 +66,7 @@ typedef vector<pair<uint64_t, int64_t> > SnapsAndCounts;
 // facilitates checking for data integrity.
 class LinkedListTester {
  public:
-  LinkedListTester(client::sp::shared_ptr<client::YBClient> client,
+  LinkedListTester(std::shared_ptr<client::YBClient> client,
                    std::string table_name, int num_chains, int num_tablets,
                    int num_replicas, bool enable_mutation)
       : verify_projection_(
@@ -177,7 +177,7 @@ class LinkedListTester {
   const int num_replicas_;
   const bool enable_mutation_;
   HdrHistogram latency_histogram_;
-  client::sp::shared_ptr<client::YBClient> client_;
+  std::shared_ptr<client::YBClient> client_;
   SnapsAndCounts sampled_timestamps_and_counts_;
 
  private:
@@ -265,7 +265,7 @@ class ScopedRowUpdater {
 
  private:
   void RowUpdaterThread() {
-    client::sp::shared_ptr<client::YBSession> session(table_->client()->NewSession());
+    std::shared_ptr<client::YBSession> session(table_->client()->NewSession());
     session->SetTimeoutMillis(15000);
     CHECK_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
 
@@ -446,7 +446,7 @@ Status LinkedListTester::LoadLinkedList(
     int64_t *written_count) {
 
   sampled_timestamps_and_counts_.clear();
-  client::sp::shared_ptr<client::YBTable> table;
+  std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name_, &table),
                         "Could not open table " + table_name_);
 
@@ -462,7 +462,7 @@ Status LinkedListTester::LoadLinkedList(
   MonoTime deadline = start;
   deadline.AddDelta(run_for);
 
-  client::sp::shared_ptr<client::YBSession> session = client_->NewSession();
+  std::shared_ptr<client::YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(15000);
   RETURN_NOT_OK_PREPEND(session->SetFlushMode(client::YBSession::MANUAL_FLUSH),
                         "Couldn't set flush mode");
@@ -582,7 +582,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
             << ", expected=" << expected
             << ", log_errors=" << log_errors
             << ", latest_at_leader=" << latest_at_leader;
-  client::sp::shared_ptr<client::YBTable> table;
+  std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table));
 
   string snapshot_str;

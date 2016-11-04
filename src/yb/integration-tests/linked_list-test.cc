@@ -68,7 +68,7 @@ namespace yb {
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 using yb::itest::TServerDetails;
 
 using namespace std::placeholders;
@@ -312,4 +312,4 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ false));
 }
 
-} // namespace yb
+}  // namespace yb

@@ -21,7 +21,7 @@
 
 using cpp_redis::RedisClient;
 using cpp_redis::RedisReply;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 
 namespace yb {
 namespace load_generator {

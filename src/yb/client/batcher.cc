@@ -74,7 +74,7 @@ namespace internal {
 
 Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
-                 const sp::shared_ptr<YBSession>& session,
+                 const std::shared_ptr<YBSession>& session,
                  yb::client::YBSession::ExternalConsistencyMode consistency_mode)
   : state_(kGatheringOps),
     client_(client),
@@ -148,7 +148,7 @@ int Batcher::CountBufferedOperations() const {
 }
 
 void Batcher::CheckForFinishedFlush() {
-  sp::shared_ptr<YBSession> session;
+  std::shared_ptr<YBSession> session;
   {
     std::lock_guard<simple_spinlock> l(lock_);
     if (state_ != kFlushing || !ops_.empty()) {
@@ -461,6 +461,6 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
   }
 }
 
-} // namespace internal
-} // namespace client
-} // namespace yb
+}  // namespace internal
+}  // namespace client
+}  // namespace yb

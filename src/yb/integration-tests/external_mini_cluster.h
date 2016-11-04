@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H
-#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H
+#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
+#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 
 #include <memory>
 #include <string>
@@ -49,15 +49,15 @@ class Subprocess;
 
 namespace master {
 class MasterServiceProxy;
-} // namespace master
+}  // namespace master
 
 namespace rpc {
 class Messenger;
-} // namespace rpc
+}  // namespace rpc
 
 namespace server {
 class ServerStatusPB;
-} // namespace server
+}  // namespace server
 
 using yb::consensus::ChangeConfigType;
 using yb::consensus::ConsensusServiceProxy;
@@ -298,7 +298,7 @@ class ExternalMiniCluster {
   //
   // REQUIRES: the cluster must have already been Start()ed.
   Status CreateClient(client::YBClientBuilder& builder,
-                      client::sp::shared_ptr<client::YBClient>* client);
+                      std::shared_ptr<client::YBClient>* client);
 
   // Sets the given flag on the given daemon, which must be running.
   //
@@ -563,5 +563,5 @@ struct MasterComparator {
   const ExternalMaster* master_;
 };
 
-} // namespace yb
+}  // namespace yb
 #endif /* YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H */

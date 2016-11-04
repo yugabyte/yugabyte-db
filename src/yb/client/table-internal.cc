@@ -37,7 +37,7 @@ using std::string;
 
 namespace client {
 
-using sp::shared_ptr;
+using std::shared_ptr;
 
 static Status PBToClientTableType(
     TableType table_type_from_pb,
@@ -175,5 +175,5 @@ Status YBTable::Data::Open() {
   return Status::OK();
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

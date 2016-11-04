@@ -99,7 +99,7 @@ using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTable;
 using yb::client::YBTableCreator;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 using yb::Status;
 using yb::ThreadPool;
 using yb::ThreadPoolBuilder;

@@ -42,7 +42,7 @@ using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 
 const char * const kTableId1 = "testMasterReplication-1";
 const char * const kTableId2 = "testMasterReplication-2";
@@ -233,5 +233,5 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   ASSERT_OK(ThreadJoiner(start_thread.get()).Join());
 }
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb

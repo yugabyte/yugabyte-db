@@ -38,7 +38,7 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 using std::static_pointer_cast;
 using std::string;
 using std::vector;
@@ -299,5 +299,5 @@ TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
   writer_thread->Join();
 }
 
-} // namespace tools
-} // namespace yb
+}  // namespace tools
+}  // namespace yb

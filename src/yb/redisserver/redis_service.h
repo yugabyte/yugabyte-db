@@ -5,14 +5,14 @@
 
 #include "yb/redisserver/redis_service.service.h"
 
+#include <memory>
 #include <vector>
 
-#include "yb/client/shared_ptr.h"
 #include "yb/rpc/transfer.h"
 #include "yb/util/string_case.h"
 
 using std::string;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 
 namespace yb {
 

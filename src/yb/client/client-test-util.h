@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_CLIENT_TEST_UTIL_H
-#define YB_CLIENT_CLIENT_TEST_UTIL_H
+#ifndef YB_CLIENT_CLIENT_TEST_UTIL_H_
+#define YB_CLIENT_CLIENT_TEST_UTIL_H_
 
 #include <string>
 #include <vector>
@@ -32,12 +32,12 @@ class YBSchema;
 
 // Log any pending errors in the given session, and then crash the current
 // process.
-void LogSessionErrorsAndDie(const sp::shared_ptr<YBSession>& session,
+void LogSessionErrorsAndDie(const std::shared_ptr<YBSession>& session,
                             const Status& s);
 
 // Flush the given session. If any errors occur, log them and crash
 // the process.
-inline void FlushSessionOrDie(const sp::shared_ptr<YBSession>& session) {
+inline void FlushSessionOrDie(const std::shared_ptr<YBSession>& session) {
   Status s = session->Flush();
   if (PREDICT_FALSE(!s.ok())) {
     LogSessionErrorsAndDie(session, s);
@@ -55,7 +55,7 @@ void ScanToStrings(YBScanner* scanner, std::vector<std::string>* row_strings);
 // Convert a yb::Schema to a yb::client::YBSchema.
 YBSchema YBSchemaFromSchema(const Schema& schema);
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
 #endif /* YB_CLIENT_CLIENT_TEST_UTIL_H */

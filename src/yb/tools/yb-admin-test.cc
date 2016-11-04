@@ -32,7 +32,7 @@ namespace tools {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 using itest::TabletServerMap;
 using itest::TServerDetails;
 using strings::Substitute;
@@ -186,5 +186,5 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   ASSERT_TRUE(tables.empty());
 }
 
-} // namespace tools
-} // namespace yb
+}  // namespace tools
+}  // namespace yb

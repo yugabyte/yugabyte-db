@@ -68,7 +68,7 @@ class ClientStressTest : public YBTest {
 
  protected:
   void ScannerThread(YBClient* client, const CountDownLatch* go_latch, int32_t start_key) {
-    client::sp::shared_ptr<YBTable> table;
+    std::shared_ptr<YBTable> table;
     CHECK_OK(client->OpenTable(TestWorkload::kDefaultTableName, &table));
     vector<string> rows;
 
@@ -128,7 +128,7 @@ TEST_F(ClientStressTest, TestStartScans) {
   for (int run = 1; run <= (AllowSlowTests() ? 10 : 2); run++) {
     LOG(INFO) << "Starting run " << run;
     YBClientBuilder builder;
-    client::sp::shared_ptr<YBClient> client;
+    std::shared_ptr<YBClient> client;
     CHECK_OK(cluster_->CreateClient(builder, &client));
 
     CountDownLatch go_latch(1);

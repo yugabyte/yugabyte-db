@@ -1619,5 +1619,5 @@ const string& YBTabletServer::hostname() const {
   return data_->hostname_;
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

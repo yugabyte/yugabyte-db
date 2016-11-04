@@ -69,7 +69,7 @@ using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBUpdate;
 using client::YBValue;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 using master::AlterTableRequestPB;
 using master::AlterTableResponsePB;
 using master::MiniMaster;
@@ -1000,4 +1000,4 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
 }
 
-} // namespace yb
+}  // namespace yb

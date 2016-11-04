@@ -4,7 +4,7 @@
 #include "yb/util/curl_util.h"
 
 using std::unique_ptr;
-using yb::client::sp::shared_ptr;
+using std::shared_ptr;
 
 namespace yb {
 

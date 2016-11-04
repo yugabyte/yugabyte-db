@@ -118,7 +118,7 @@ class CreateTableStressTest : public YBTest {
   void CreateBigTable(const string& table_name, int num_tablets);
 
  protected:
-  client::sp::shared_ptr<YBClient> client_;
+  std::shared_ptr<YBClient> client_;
   gscoped_ptr<MiniCluster> cluster_;
   YBSchema schema_;
   std::shared_ptr<Messenger> messenger_;
@@ -370,4 +370,4 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
   reload_metadata_thread.join();
 }
 
-} // namespace yb
+}  // namespace yb

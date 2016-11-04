@@ -24,7 +24,7 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBScanner;
 using client::YBTable;
-using client::sp::shared_ptr;
+using std::shared_ptr;
 
 using integration_tests::YBTableTestBase;
 
