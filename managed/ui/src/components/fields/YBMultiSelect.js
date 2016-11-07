@@ -8,15 +8,22 @@ export default class YBSelect extends Component {
 
   render() {
     const { input, label, meta, options, multi,
-       name} = this.props;
+            name, selectValChanged} = this.props;
+    var self = this;
+    
+    function onChange(val) {
+      self.props.input.onChange(val);
+      selectValChanged(val);
+    }
     return (
       <YBLabel label={label} meta={meta}>
-          <Select {...input}
-            name={name}
-            options={options}
-            multi={multi}
-            onBlur={() => {}}
-          />
+        <Select {...input}
+          name={name}
+          options={options}
+          multi={multi}
+          onBlur={() => {}}
+          onChange={onChange}
+        />
       </YBLabel>
     )
   }

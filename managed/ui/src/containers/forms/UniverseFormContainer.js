@@ -1,34 +1,45 @@
 // Copyright (c) YugaByte, Inc.
 
 import UniverseForm from '../../components/forms/UniverseForm';
-import { reduxForm } from 'redux-form';
+import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';
 import { getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure,
          getRegionList, getRegionListSuccess, getRegionListFailure
        } from '../../actions/cloud';
 import { createUniverse, createUniverseSuccess, createUniverseFailure,
   editUniverse, editUniverseSuccess, editUniverseFailure,
-  fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog }
+  fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog, configureUniverseTemplate,
+  configureUniverseTemplateSuccess, configureUniverseTemplateFailure, configureUniverseResources,
+  configureUniverseResourcesFailure, configureUniverseResourcesSuccess }
   from '../../actions/universe';
-import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
+import {isValidObject} from '../../utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
 
 const mapDispatchToProps = (dispatch) => {
   return {
 
-    submitCreateUniverse: (values) => {
+    submitConfigureUniverse: (values) => {
+      dispatch(configureUniverseTemplate(values)).then((response) => {
+          if (response.payload.status !== 200) {
+            dispatch(configureUniverseTemplateFailure(response.payload));
+          } else {
+            dispatch(configureUniverseTemplateSuccess(response.payload));
+            dispatch(configureUniverseResources(response.payload.data)).then((resourceData) => {
+              if (response.payload.status !== 200) {
+                dispatch(configureUniverseResourcesFailure(resourceData.payload));
+              } else {
+                dispatch(configureUniverseResourcesSuccess(resourceData.payload));
+              }
+            }); 
 
-      if (!isValidArray(values.regionList)) {
-        values.regionList = [values.regionList.value];
-      } else {
-        values.regionList = values.regionList.map(function (item, idx) {
-          return item.value;
+          }
         });
-      }
-      var payload = {"userIntent": values};
+    },
+    
+    submitCreateUniverse: (values) => {
       return new Promise((resolve, reject) => {
-        dispatch(createUniverse(payload)).then((response) => {
+        dispatch(createUniverse(values)).then((response) => {
           if (response.payload.status !== 200) {
             dispatch(createUniverseFailure(response.payload));
           } else {
@@ -47,18 +58,9 @@ const mapDispatchToProps = (dispatch) => {
         });
       })
     },
-    submitEditUniverse: (values) => {
 
-      if (!isValidArray(values.regionList)) {
-        values.regionList = [values.regionList.value];
-      } else {
-        values.regionList = values.regionList.map(function (item, idx) {
-          return item.value;
-        });
-      }
-      var payload = {"userIntent": values};
-      var universeUUID = values.universeId;
-      dispatch(editUniverse(universeUUID, payload)).then((response) => {
+    submitEditUniverse: (values, universeUUID) => {
+      dispatch(editUniverse(values, universeUUID)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(editUniverseFailure(response.payload));
         } else {
@@ -101,6 +103,9 @@ const mapDispatchToProps = (dispatch) => {
   }
 }
 
+const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
+  'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage'];
+
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
@@ -115,28 +120,32 @@ function mapStateToProps(state, ownProps) {
     data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
     data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
     data.ybServerPackage = currentUniverse.universeDetails.userIntent.ybServerPackage;
-    data.universeId = currentUniverse.universeUUID;
     if (isValidObject(currentUniverse.universeDetails)  && currentUniverse.universeDetails.userIntent.isMultiAZ) {
       data.regionList = currentUniverse.regions.map(function (item, idx) {
         return {'value': item.uuid, 'name': item.name, "label": item.name};
       })
     } else {
-      data.regionList = {'value': currentUniverse.regions[0].uuid, 'name': currentUniverse.regions[0].name, "label": currentUniverse.regions[0].name};
+      data.regionList = {'value': currentUniverse.regions[0].uuid,
+                         'name': currentUniverse.regions[0].name,
+                         "label": currentUniverse.regions[0].name};
     }
   }
+
+  const selector = formValueSelector('UniverseForm');
 
   return {
     universe: state.universe,
     cloud: state.cloud,
-    initialValues: data
+    initialValues: data,
+    formValues: selector(state, 'formType', 'universeName', 'provider', 'providerType', 'regionList',
+                         'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage')
   };
 }
 
 
 var universeForm = reduxForm({
   form: 'UniverseForm',
-  fields: ['formType', 'universeName', 'provider', 'regionList',
-    'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage', 'universeId']
+  fields: formFieldNames
 })
 
 

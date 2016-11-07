@@ -7,13 +7,12 @@ export default class DescriptionItem extends Component {
   static propTypes = {
     children: PropTypes.element.isRequired
   };
-
   render() {
     const {title} = this.props;
     return (
       <div>
-        <small className="table-cell-sub-text">{title}</small>
-        <div>
+        <small className="description-item-sub-text">{title}</small>
+        <div className="description-item-text">
           {this.props.children}
         </div>
       </div>
