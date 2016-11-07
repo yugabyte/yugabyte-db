@@ -50,6 +50,15 @@ export const CLOSE_DIALOG = 'CLOSE_DIALOG';
 // Submit G-Flag Tasks
 export const SUBMIT_GFLAGS = 'SUBMIT_GFLAGS';
 
+// Universe Template Tasks
+export const CONFIGURE_UNIVERSE_TEMPLATE = 'CONFIGURE_UNIVERSE_TEMPLATE';
+export const CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS = 'CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS';
+export const CONFIGURE_UNIVERSE_TEMPLATE_FAILURE = 'CONFIGURE_UNIVERSE_TEMPLATE_FAILURE';
+
+export const CONFIGURE_UNIVERSE_RESOURCES = 'CONFIGURE_UNIVERSE_RESOURCES';
+export const CONFIGURE_UNIVERSE_RESOURCES_SUCCESS = 'CONFIGURE_UNIVERSE_RESOURCES_SUCCESS';
+export const CONFIGURE_UNIVERSE_RESOURCES_FAILURE = 'CONFIGURE_UNIVERSE_RESOURCES_FAILURE';
+
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -155,7 +164,7 @@ export function deleteUniverseFailure(error) {
   }
 }
 
-export function editUniverse(universeUUID, formValues) {
+export function editUniverse(formValues, universeUUID) {
   var cUUID = localStorage.getItem("customer_id");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, formValues);
   return {
@@ -209,7 +218,6 @@ export function resetCustomerCost() {
 
 export function fetchUniverseTasks(universeUUID) {
   var customerUUID = localStorage.getItem("customer_id");
-
   var requestUrl;
   if (isValidObject(universeUUID)) {
     requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`;
@@ -260,5 +268,51 @@ export function closeDialog() {
 export function submitGFlags() {
   return {
     type: SUBMIT_GFLAGS
+  }
+}
+
+export function configureUniverseTemplate(values) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universe_configure`, values);
+  return {
+    type: CONFIGURE_UNIVERSE_TEMPLATE,
+    payload: request
+  };
+}
+
+export function configureUniverseTemplateSuccess(result) {
+  return {
+    type: CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
+    payload: result
+  };
+}
+
+export function configureUniverseTemplateFailure(error) {
+  return {
+    type: CONFIGURE_UNIVERSE_TEMPLATE_FAILURE,
+    payload: error
+  }
+}
+
+export function configureUniverseResources(values) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universe_resources`, values);
+  return {
+    type: CONFIGURE_UNIVERSE_RESOURCES,
+    payload: request
+  }
+}
+
+export function configureUniverseResourcesSuccess(result) {
+  return {
+    type: CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
+    payload: result
+  };
+}
+
+export function configureUniverseResourcesFailure(error) {
+  return {
+    type: CONFIGURE_UNIVERSE_RESOURCES_FAILURE,
+    payload: error
   }
 }

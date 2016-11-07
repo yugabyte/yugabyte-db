@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
-import YBInputField from './YBInputField';
+import YBInputField from './fields/YBInputField';
 
 class RegisterForm extends Component {
   static contextTypes = {
