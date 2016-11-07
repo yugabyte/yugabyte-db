@@ -679,15 +679,16 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     final Channel c = event.getChannel();
 
     if (e instanceof RejectedExecutionException) {
-      LOG.warn(getPeerUuidLoggingString() + "RPC rejected by the executor,"
-          + " ignore this if we're shutting down", e);
+      LOG.warn(getPeerUuidLoggingString() + "RPC rejected by the executor," +
+               " ignore this if we're shutting down", e);
     } else if (e instanceof ReadTimeoutException) {
       LOG.debug(getPeerUuidLoggingString() + "Encountered a read timeout");
       // Doing the cleanup here since we want to invalidate all the RPCs right _now_, and not let
       // the ReplayingDecoder continue decoding through Channels.close() below.
       cleanup(c);
     } else {
-      LOG.error(getPeerUuidLoggingString() + "Unexpected exception from downstream on " + c, e);
+      LOG.warn(getPeerUuidLoggingString() + "Unexpected exception " + e.getMessage() +
+               " from downstream on " + c);
     }
     if (c.isOpen()) {
       Channels.close(c);  // Will trigger channelClosed(), which will cleanup()
