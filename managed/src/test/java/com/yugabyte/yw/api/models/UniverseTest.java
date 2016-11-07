@@ -33,7 +33,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Universe u = Universe.create("Test Universe", defaultCustomer.getCustomerId());
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
     assertNotNull(u);
     assertThat(u.universeUUID, is(allOf(notNullValue(), equalTo(u.universeUUID))));
     assertThat(u.version, is(allOf(notNullValue(), equalTo(1))));
@@ -43,7 +43,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetSingleUniverse() {
-    Universe newUniverse = Universe.create("Test Universe", defaultCustomer.getCustomerId());
+    Universe newUniverse = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
     assertNotNull(newUniverse);
     Universe fetchedUniverse = Universe.get(newUniverse.universeUUID);
     assertNotNull(fetchedUniverse);
@@ -52,9 +52,9 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetMultipleUniverse() {
-    Universe u1 = Universe.create("Universe1", defaultCustomer.getCustomerId());
-    Universe u2 = Universe.create("Universe2", defaultCustomer.getCustomerId());
-    Universe u3 = Universe.create("Universe3", defaultCustomer.getCustomerId());
+    Universe u1 = Universe.create("Universe1", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u2 = Universe.create("Universe2", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    Universe u3 = Universe.create("Universe3", UUID.randomUUID(), defaultCustomer.getCustomerId());
     Set<UUID> uuids = Sets.newHashSet(u1.universeUUID, u2.universeUUID, u3.universeUUID);
 
     Set<Universe> universes = Universe.get(uuids);
@@ -70,7 +70,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testSaveDetails() {
-    Universe u = Universe.create("Test Universe", defaultCustomer.getCustomerId());
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
@@ -131,7 +131,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testGetMasterAddresses() {
-    Universe u = Universe.create("Test Universe", defaultCustomer.getCustomerId());
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
 
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
@@ -172,7 +172,7 @@ public class UniverseTest extends FakeDBApplication {
 
   @Test
   public void testToJSON() {
-    Universe u = Universe.create("Test Universe", defaultCustomer.getCustomerId());
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
 
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");

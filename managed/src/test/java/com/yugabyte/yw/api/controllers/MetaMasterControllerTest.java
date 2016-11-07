@@ -11,11 +11,6 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.Set;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.HashSet;
-
 import com.yugabyte.yw.controllers.MetaMasterController;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -30,6 +25,12 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
 
 public class MetaMasterControllerTest extends FakeDBApplication {
 
@@ -42,7 +43,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetWithValidUniverse() {
-    Universe u = Universe.create("Test Universe", 0L);
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), 0L);
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
