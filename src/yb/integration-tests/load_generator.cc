@@ -184,6 +184,9 @@ SingleThreadedReader* RedisSessionFactory::GetReader(MultiThreadedReader* reader
   return new RedisSingleThreadedReader(reader, redis_server_address_, idx);
 }
 
+SingleThreadedWriter* RedisNoopSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
+  return new RedisNoopSingleThreadedWriter(writer, redis_server_address_, idx);
+}
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedAction
 // ------------------------------------------------------------------------------------------------
@@ -336,6 +339,25 @@ void RedisSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const 
 }
 
 void RedisSingleThreadedWriter::CloseSession() { client_->disconnect(); }
+
+bool RedisNoopSingleThreadedWriter::Write(
+    int64_t key_index, const string& key_str, const string& value_str) {
+  bool success = false;
+  auto writer_index = writer_index_;
+  client_->echo("OK", [&success, key_index, writer_index](RedisReply& reply) {
+    if ("OK" == reply.as_string()) {
+      VLOG(2) << "Writer " << writer_index << " Successfully inserted key #" << key_index
+              << " into redis ";
+      success = true;
+    } else {
+      VLOG(1) << "Failed Insersion key #" << key_index << reply.as_string();
+      success = false;
+    }
+  });
+  client_->sync_commit();
+
+  return success;
+}
 
 void YBSingleThreadedWriter::ConfigureSession() {
   session_ = client_->NewSession();

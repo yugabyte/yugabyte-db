@@ -85,8 +85,16 @@ class RedisSessionFactory : public SessionFactory {
   SingleThreadedWriter* GetWriter(MultiThreadedWriter* writer, int idx) override;
   SingleThreadedReader* GetReader(MultiThreadedReader* reader, int idx) override;
 
- private:
+ protected:
   string redis_server_address_;
+};
+
+class RedisNoopSessionFactory : public RedisSessionFactory {
+ public:
+  explicit RedisNoopSessionFactory(const string& redis_server_address)
+      : RedisSessionFactory(redis_server_address) {}
+
+  SingleThreadedWriter* GetWriter(MultiThreadedWriter* writer, int idx) override;
 };
 
 class MultiThreadedAction {
@@ -226,7 +234,7 @@ class RedisSingleThreadedWriter : public SingleThreadedWriter {
   RedisSingleThreadedWriter(MultiThreadedWriter* writer, string redis_server_addr, int writer_index)
       : SingleThreadedWriter(writer, writer_index), redis_server_address_(redis_server_addr) {}
 
- private:
+ protected:
   virtual bool Write(int64_t key_index, const string& key_str, const string& value_str) override;
   virtual void ConfigureSession() override;
   virtual void CloseSession() override;
@@ -236,6 +244,15 @@ class RedisSingleThreadedWriter : public SingleThreadedWriter {
   const string redis_server_address_;
 };
 
+class RedisNoopSingleThreadedWriter : public RedisSingleThreadedWriter {
+ public:
+  RedisNoopSingleThreadedWriter(
+      MultiThreadedWriter* writer, string redis_server_addr, int writer_index)
+      : RedisSingleThreadedWriter(writer, redis_server_addr, writer_index) {}
+
+ protected:
+  virtual bool Write(int64_t key_index, const string& key_str, const string& value_str) override;
+};
 // ------------------------------------------------------------------------------------------------
 // SingleThreadedScanner
 // ------------------------------------------------------------------------------------------------

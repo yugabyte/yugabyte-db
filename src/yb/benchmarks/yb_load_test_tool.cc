@@ -119,6 +119,7 @@ using yb::load_generator::KeyIndexSet;
 using yb::load_generator::SessionFactory;
 using yb::load_generator::NoopSessionFactory;
 using yb::load_generator::YBSessionFactory;
+using yb::load_generator::RedisNoopSessionFactory;
 using yb::load_generator::RedisSessionFactory;
 using yb::load_generator::MultiThreadedReader;
 using yb::load_generator::MultiThreadedWriter;
@@ -188,8 +189,13 @@ int main(int argc, char *argv[]) {
       if (FLAGS_drop_table) {  // Don't require the above flags, unless --drop_table is specified.
         SetupYBTable(CreateYBClient());
       }
-      RedisSessionFactory session_factory(FLAGS_target_redis_server_address);
-      LaunchYBLoadTest(&session_factory);
+      if (FLAGS_noop_only) {
+        RedisNoopSessionFactory session_factory(FLAGS_target_redis_server_address);
+        LaunchYBLoadTest(&session_factory);
+      } else {
+        RedisSessionFactory session_factory(FLAGS_target_redis_server_address);
+        LaunchYBLoadTest(&session_factory);
+      }
     }
 
     LOG(INFO) << "Test completed (iteration: " << i + 1 << " out of " << FLAGS_num_iter << ")";
