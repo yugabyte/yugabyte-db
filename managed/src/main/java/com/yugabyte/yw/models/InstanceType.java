@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
+import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,7 +80,38 @@ public class InstanceType extends Model {
   public InstanceTypeDetails instanceTypeDetails;
 
   private static final Find<InstanceTypeKey, InstanceType> find =
-      new Find<InstanceTypeKey, InstanceType>() {};
+    new Find<InstanceTypeKey, InstanceType>() {};
+
+  public List<InstanceTypeRegionDetails> getRegionDetails(String regionCode) {
+    return instanceTypeDetails.regionCodeToDetailsMap.get(regionCode);
+  }
+
+  public PriceDetails getPriceDetails(String regionCode,
+                                      AWSConstants.Tenancy tenancy,
+                                      String azCode) {
+    // Fetch the region info object.
+    List<InstanceTypeRegionDetails> regionDetailsList = getRegionDetails(regionCode);
+    InstanceTypeRegionDetails regionDetails = null;
+    for (InstanceTypeRegionDetails rDetails : regionDetailsList) {
+      if (rDetails.tenancy.equals(tenancy) && rDetails.operatingSystem.equals("Linux")) {
+        regionDetails = rDetails;
+        break;
+      }
+    }
+    if (regionDetails == null) {
+      String msg = "Tenancy " + tenancy.toString() + " not found for, region " + regionCode;
+      LOG.error(msg);
+      throw new RuntimeException(msg);
+    }
+
+    if (regionDetails.priceDetailsList.size() > 1) {
+      String msg = "Found multiple price details for instance type " +
+        ", region " + regionCode;
+      LOG.error(msg);
+      throw new RuntimeException(msg);
+    }
+    return (regionDetails.priceDetailsList.get(0));
+  }
 
   public static InstanceType get(String providerCode, String instanceTypeCode) {
     InstanceType instanceType = find.byId(InstanceTypeKey.create(instanceTypeCode, providerCode));
@@ -88,12 +121,12 @@ public class InstanceType extends Model {
     // Since 'instanceTypeDetailsJson' can be null (populated externally), we need to populate these
     // fields explicitly.
     if (instanceType.instanceTypeDetailsJson == null ||
-        instanceType.instanceTypeDetailsJson.isEmpty()) {
+      instanceType.instanceTypeDetailsJson.isEmpty()) {
       instanceType.instanceTypeDetails = new InstanceTypeDetails();
       instanceType.instanceTypeDetailsJson =
-          Json.stringify(Json.toJson(instanceType.instanceTypeDetails));
+        Json.stringify(Json.toJson(instanceType.instanceTypeDetails));
     } else {
-    instanceType.instanceTypeDetails =
+      instanceType.instanceTypeDetails =
         Json.fromJson(Json.parse(instanceType.instanceTypeDetailsJson), InstanceTypeDetails.class);
     }
     return instanceType;
@@ -123,8 +156,8 @@ public class InstanceType extends Model {
     instanceType.save();
     // Update the JSON field - this does not seem to be updated by the save above.
     String updateQuery = "UPDATE instance_type " +
-        "SET instance_type_details_json = :instanceTypeDetails " +
-        "WHERE provider_code = :providerCode AND instance_type_code = :instanceTypeCode";
+      "SET instance_type_details_json = :instanceTypeDetails " +
+      "WHERE provider_code = :providerCode AND instance_type_code = :instanceTypeCode";
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
     update.setParameter("instanceTypeDetails", instanceType.instanceTypeDetailsJson);
     update.setParameter("providerCode", providerCode);
@@ -159,11 +192,11 @@ public class InstanceType extends Model {
    */
   public static List<InstanceType> findByProvider(Provider provider) {
     List<InstanceType> entries =
-        InstanceType.find.where().eq("provider_code", provider.code).findList();
+      InstanceType.find.where().eq("provider_code", provider.code).findList();
     List<InstanceType> instanceTypes = new ArrayList<InstanceType>();
     for (InstanceType entry : entries) {
       InstanceType instanceType =
-          InstanceType.get(entry.getProviderCode(), entry.getInstanceTypeCode());
+        InstanceType.get(entry.getProviderCode(), entry.getInstanceTypeCode());
       instanceTypes.add(instanceType);
     }
     return instanceTypes;

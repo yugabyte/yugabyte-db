@@ -91,7 +91,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseListWithValidUUID() {
-    Universe u1 = Universe.create("Universe-1", customer.getCustomerId());
+    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
 
@@ -134,7 +134,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = 3;
     userIntent.isMultiAZ = true;
@@ -171,7 +171,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
                       .cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result), is(containsString("\"userIntent\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("userIntent: This field is required")));
   }
 
   @Test
@@ -192,7 +192,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("provider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
-    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universes")
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universe_configure")
                       .cookie(validCookie).bodyJson(topJson));
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -245,12 +245,12 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseUpdateWithInvalidParams() {
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     ObjectNode emptyJson = Json.newObject();
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID)
                             .cookie(validCookie).bodyJson(emptyJson));
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result), is(containsString("\"userIntent\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("userIntent: This field is required")));
   }
 
   @Test
@@ -264,7 +264,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i =
         InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
@@ -312,7 +312,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i =
       InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
 
@@ -368,7 +368,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     // Add the cloud info into the universe.
     Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
@@ -405,7 +405,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
 
     ObjectNode bodyJson = Json.newObject();
@@ -429,7 +429,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", universe.universeUUID.toString());
@@ -459,7 +459,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", universe.universeUUID.toString());
@@ -480,7 +480,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ArrayNode nodes = Json.newArray();
     nodes.add("host-n1");
@@ -517,7 +517,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskInfo.Type.class), any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
-    Universe universe = Universe.create("Test Universe", customer.getCustomerId());
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
 
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", universe.universeUUID.toString());

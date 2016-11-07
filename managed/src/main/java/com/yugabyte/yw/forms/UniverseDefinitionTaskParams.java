@@ -56,7 +56,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
   public boolean updateSucceeded = true;
-
+  
   /**
    * The user defined intent for the universe.
    */

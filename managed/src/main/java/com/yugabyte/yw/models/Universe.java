@@ -82,7 +82,7 @@ public class Universe extends Model {
     json.put("name", name);
     json.put("creationDate", creationDate.toString());
     json.set("universeDetails", Json.parse(universeDetailsJson));
-
+    json.put("version", version);
     if (getUniverseDetails().userIntent != null &&
         getUniverseDetails().userIntent.regionList != null) {
       List<Region> regions =
@@ -103,15 +103,16 @@ public class Universe extends Model {
 
   /**
    * Creates an empty universe.
-   *
    * @param name : name of the universe
+   * @param universeUUID: UUID of the universe to be created
+   * @param customerId: UUID of the customer creating the universe
    * @return the newly created universe
    */
-  public static Universe create(String name, Long customerId) {
+  public static Universe create(String name, UUID universeUUID, Long customerId) {
     // Create the universe object.
     Universe universe = new Universe();
     // Generate a new UUID.
-    universe.universeUUID = UUID.randomUUID();
+    universe.universeUUID = universeUUID;
     // Set the version of the object to 1.
     universe.version = 1;
     // Set the creation date.
@@ -125,7 +126,7 @@ public class Universe extends Model {
     universe.universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
     universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
     LOG.debug("Created universe {} with details [{}] with name {}.",
-              universe.universeUUID, universe.universeDetailsJson, name);
+      universe.universeUUID, universe.universeDetailsJson, name);
     // Save the object.
     universe.save();
     return universe;

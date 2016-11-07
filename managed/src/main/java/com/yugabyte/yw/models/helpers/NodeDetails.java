@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.UUID;
 
 /**
@@ -67,6 +69,7 @@ public class NodeDetails {
     return sb.toString();
   }
 
+  @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.ToBeDecommissioned ||
              state == NodeState.BeingDecommissioned ||

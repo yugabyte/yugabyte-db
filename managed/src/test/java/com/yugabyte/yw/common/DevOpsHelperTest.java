@@ -18,8 +18,8 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
-
 import java.util.HashMap;
+import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
@@ -87,7 +87,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommandWithInvalidParam() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     NodeTaskParams params = new NodeTaskParams();
     params.cloud = Common.CloudType.aws;
     params.azUuid = defaultAZ.uuid;
@@ -102,7 +102,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommand() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -123,7 +123,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommandInShellMode() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -146,7 +146,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testSoftwareUpgradeWithoutRequiredProperties() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -166,7 +166,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testSoftwareUpgradeWithDownloadNodeCommand() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -188,7 +188,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testSoftwareUpgradeWithInstallNodeCommand() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -210,7 +210,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testGFlagsUpgradeWithoutRequiredProperties() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -232,7 +232,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testGFlagsUpgradeWithEmptyGFlagsNodeCommand() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;
@@ -253,7 +253,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Test
   public void testGFlagsUpgradeForMasterNodeCommand() {
-    Universe u = Universe.create("Test universe", 1L);
+    Universe u = Universe.create("Test universe", UUID.randomUUID(), 1L);
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     params.cloud = Common.CloudType.aws;

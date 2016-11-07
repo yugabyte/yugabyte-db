@@ -40,6 +40,8 @@ DELETE  /api/customers/:cUUID                         com.yugabyte.yw.controller
 
 # Universe, table, etc management API
 POST    /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
+POST    /api/customers/:cUUID/universe_configure          com.yugabyte.yw.controllers.UniverseController.configure(cUUID: java.util.UUID)
+POST    /api/customers/:cUUID/universe_resources          com.yugabyte.yw.controllers.UniverseController.getUniverseResources(cUUID: java.util.UUID)
 PUT     /api/customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.update(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.list(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/:uniUUID          com.yugabyte.yw.controllers.UniverseController.index(cUUID: java.util.UUID, uniUUID: java.util.UUID)
