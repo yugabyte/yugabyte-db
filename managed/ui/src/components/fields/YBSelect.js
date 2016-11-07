@@ -5,13 +5,15 @@ import YBLabel from './YBLabel';
 
 export default class YBSelect extends Component {
   render() {
-    const { input, label, meta, options, onChange,
-      value, readOnlySelect, name, defaultValue} = this.props;
+    const { input, label, meta, options, onSelectChange, readOnlySelect, name} = this.props;
+    var onChange = function(event) {
+      input.onChange(event.target.value);
+      onSelectChange(event.target.value);
+    }
     return (
       <YBLabel label={label} meta={meta}>
           <select {...input} name={name} className="form-control"
-                  disabled={readOnlySelect} onChange={onChange} value={value}
-                  defaultValue={defaultValue}
+                  disabled={readOnlySelect} onChange={onChange} 
                  >
             {options}
           </select>

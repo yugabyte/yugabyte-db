@@ -1,7 +1,7 @@
 import React, { Component, PropTypes } from 'react';
 import YBButton from './../fields/YBButton';
 import { Field, FieldArray } from 'redux-form';
-import YBInputField from '../../components/YBInputField'
+import YBInputField from '../fields/YBInputField'
 import {Row, Col} from 'react-bootstrap';
 import YBModal from '../../components/fields/YBModal';
 

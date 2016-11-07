@@ -15,3 +15,9 @@ export function isValidArray(arr) {
     return false;
   }
 }
+
+export function daysInCurrentMonth() {
+  var date = new Date();
+  var d = new Date(date.getFullYear(), date.getMonth()+1, 0);
+  return d.getDate();
+}

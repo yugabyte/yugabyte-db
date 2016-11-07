@@ -111,7 +111,7 @@ ul {
     font-size: 1.3em;
 }
 
-.table-cell-sub-text {
+.description-item-sub-text {
     color:grey;
 }
 
@@ -376,7 +376,6 @@ ul.progress-list li i {
     padding-top: 25px;
 }
 
-
 .inline-display {
     display: inline;
 }
@@ -387,6 +386,15 @@ ul.progress-list li i {
     margin-bottom: 2px;
     color: white;
 }
+
+.universe-resource-preview {
+    background-color: #f4f6f6;
+    border: 1px solid #e8e9e9;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
 
 .legend-img {
     width: 30px;
@@ -412,5 +420,75 @@ ul.progress-list li i {
 
 #dc-config-val {
     width: 100% !important;
+}
 
+.text-bold {
+    text-align: center;
+    font-size: 1.4em;
+}
+
+.config-main-heading {
+    font-size: 16px;
+    padding: 2px;
+    font-weight: 500;
+    color: #464c4f;
+}
+
+.preview-row {
+    margin-top: 15px;
+    border-top: 1px solid #e8e9e9;
+    padding: 10px 0 10px;
+}
+
+.preview-item-half-left {
+    border-right: 1px solid #e8e9e9;
+    padding: 2px;
+    -webkit-box-flex: 1;
+    -webkit-flex-grow: 1;
+    -ms-flex-positive: 1;
+    flex-grow: 1;
+}
+
+.config-price-display {
+    font-size: 24px;
+    font-weight: 400;
+}
+
+.cost-preview-row {
+    line-height: 1.4;
+}
+
+.config-price-subscript {
+    font-size: 16px;
+    font-weight: 100;
+    width: 30px;
+    display: inline-block;
+    text-align: left;
+}
+
+.config-az-item {
+    padding-left: 1px;
+}
+
+.az-preview-row {
+    padding: 10px 0 0;
+}
+
+.react-bs-table .universe-item-cell {
+    white-space: normal;
+}
+
+.description-item-sub-text {
+    color: grey;
+}
+
+.universe-resource-preview .description-item-sub-text {
+    font-size: 13px;
+    color: #babdbe;
+    font-weight: 600;
+}
+
+.universe-resource-preview .description-item-text {
+    font-size: 16px;
+    font-weight: 100;
 }

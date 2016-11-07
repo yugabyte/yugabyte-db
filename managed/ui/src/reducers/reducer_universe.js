@@ -2,16 +2,20 @@
 
 import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_FAILURE, RESET_UNIVERSE_INFO,
          CREATE_UNIVERSE, CREATE_UNIVERSE_SUCCESS, CREATE_UNIVERSE_FAILURE,
+         EDIT_UNIVERSE, EDIT_UNIVERSE_SUCCESS, EDIT_UNIVERSE_FAILURE,
          FETCH_UNIVERSE_LIST, FETCH_UNIVERSE_LIST_SUCCESS, FETCH_UNIVERSE_LIST_FAILURE,
          RESET_UNIVERSE_LIST, DELETE_UNIVERSE, DELETE_UNIVERSE_SUCCESS,
          DELETE_UNIVERSE_FAILURE, FETCH_CUSTOMER_COST, FETCH_CUSTOMER_COST_SUCCESS,
          FETCH_CUSTOMER_COST_FAILURE, RESET_CUSTOMER_COST,
          FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS,
          FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS,
-         OPEN_DIALOG, CLOSE_DIALOG} from '../actions/universe';
+         OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
+         CONFIGURE_UNIVERSE_TEMPLATE_FAILURE, CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
+         CONFIGURE_UNIVERSE_RESOURCES_FAILURE } from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], universeCurrentCostList: [],
-                       currentTotalCost: 0, error: null, showModal: false, visibleModal: ""};
+                       currentTotalCost: 0, error: null, showModal: false, visibleModal: "",
+                       universeConfigTemplate: {}, universeResourceTemplate: {}};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -19,14 +23,21 @@ export default function(state = INITIAL_STATE, action) {
     case CREATE_UNIVERSE:
       return { ...state, loading: true};
     case CREATE_UNIVERSE_SUCCESS:
-      return { ...state, loading: false};
+      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
     case CREATE_UNIVERSE_FAILURE:
+      error = action.payload.data || {message: action.payload.error};
+      return { ...state, loading: false, error: error};
+    case EDIT_UNIVERSE:
+      return { ...state, loading: true};
+    case EDIT_UNIVERSE_SUCCESS:
+      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
+    case EDIT_UNIVERSE_FAILURE:
       error = action.payload.data || {message: action.payload.error};
       return { ...state, loading: false, error: error};
     case OPEN_DIALOG:
       return { ...state, showModal: true, visibleModal: action.payload};
     case CLOSE_DIALOG:
-      return { ...state, showModal: false, visibleModal: ""};
+      return { ...state, showModal: false, visibleModal: "", universeConfigTemplate: {}, universeResourceTemplate: {}};
     case FETCH_UNIVERSE_INFO:
       return { ...state, loading: true};
     case FETCH_UNIVERSE_INFO_SUCCESS:
@@ -68,13 +79,24 @@ export default function(state = INITIAL_STATE, action) {
           currentTotalCost += action.payload[counter].costPerMonth;
         }
       }
-
       return { ...state, universeCurrentCostList: action.payload,
                currentTotalCost: currentTotalCost}
     case FETCH_CUSTOMER_COST_FAILURE:
       return { ...state}
     case RESET_CUSTOMER_COST:
       return { ...state, currentTotalCost: 0, universeCurrentCostList: []}
+    case CONFIGURE_UNIVERSE_TEMPLATE:
+      return { ...state, universeConfigTemplate: {}, universeResourceTemplate: {}}
+    case CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS:
+      return { ...state, universeConfigTemplate: action.payload.data}
+    case CONFIGURE_UNIVERSE_TEMPLATE_FAILURE:
+      return { ...state, universeConfigTemplate: {}, universeResourceTemplate: {}}
+    case CONFIGURE_UNIVERSE_RESOURCES:
+      return { ...state,  universeResourceTemplate: {}}
+    case CONFIGURE_UNIVERSE_RESOURCES_SUCCESS:
+      return { ...state, universeResourceTemplate: action.payload.data}
+    case CONFIGURE_UNIVERSE_RESOURCES_FAILURE:
+      return { ...state, universeResourceTemplate: {}}
     default:
       return state;
   }
