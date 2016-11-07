@@ -51,7 +51,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     baseCommand = "/my/devops/bin/ybcloud.sh " + defaultProvider.code +
-      " --region " + defaultRegion.code;
+      " --zone " + defaultAZ.code +  " --region " + defaultRegion.code;
   }
 
   @Test
