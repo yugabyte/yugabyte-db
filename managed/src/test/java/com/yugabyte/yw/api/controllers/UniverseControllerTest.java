@@ -139,6 +139,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     userIntent.replicationFactor = 3;
     userIntent.isMultiAZ = true;
     userIntent.numNodes = 5;
+    userIntent.provider = "aws";
 
     UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -285,7 +286,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertThat(az.region.name, is(notNullValue()));
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
-    		                          "/universes/" + universe.universeUUID)
+                                      "/universes/" + universe.universeUUID)
                                       .cookie(validCookie).bodyJson(topJson));
 
     assertEquals(OK, result.status());
@@ -326,6 +327,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.put("numNodes", 5);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
+    bodyJson.put("provider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +
