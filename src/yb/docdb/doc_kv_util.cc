@@ -22,7 +22,7 @@ using yb::util::FormatBytesAsStr;
 namespace yb {
 namespace docdb {
 
-bool KeyBelongsToDocKey(const rocksdb::Slice &key, const string &encoded_doc_key) {
+bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_doc_key) {
   if (key.starts_with(encoded_doc_key)) {
     const int encoded_doc_key_size = encoded_doc_key.size();
     const char* key_data = key.data();
@@ -35,7 +35,7 @@ bool KeyBelongsToDocKey(const rocksdb::Slice &key, const string &encoded_doc_key
 }
 
 Timestamp DecodeTimestampFromKey(const rocksdb::Slice& key, const int pos) {
-  assert(key.size() >= pos + sizeof(int64_t));
+  CHECK_GE(key.size(), pos + sizeof(int64_t));
   // We invert all bits of the 64-bit timestamp (which is equivalent to subtracting the timestamp
   // from the maximum unsigned 64-bit integer) so that newer timestamps are sorted first.
 
@@ -122,5 +122,9 @@ string DecodeZeroEncodedStr(string encoded_str) {
   return result;
 }
 
+std::string ToShortDebugStr(rocksdb::Slice slice) {
+  return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
 }
-}
+
+}  // namespace docdb
+}  // namespace yb

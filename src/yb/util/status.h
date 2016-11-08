@@ -25,6 +25,7 @@
 
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
+#include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
 #define YB_RETURN_NOT_OK(s) do { \
@@ -429,6 +430,8 @@ inline void Status::operator=(Status&& s) {
 }  // namespace yb
 
 #define STATUS(status_type, ...) (Status::status_type(__FILE__, __LINE__, __VA_ARGS__))
+#define STATUS_SUBSTITUTE(status_type, ...) \
+    (Status::status_type(__FILE__, __LINE__, Substitute(__VA_ARGS__)))
 
 #define CHECKED_STATUS MUST_USE_RESULT yb::Status
 

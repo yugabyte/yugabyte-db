@@ -7,10 +7,11 @@
 
 #include <string>
 
+#include "rocksdb/slice.h"
+
 #include "yb/common/timestamp.h"
 #include "yb/gutil/endian.h"
 #include "yb/util/status.h"
-#include "rocksdb/slice.h"
 
 namespace yb {
 namespace docdb {
@@ -31,10 +32,10 @@ constexpr uint64_t kTimestampInversionMask = 0xffffffffffffffffL;
 constexpr uint64_t kInt64SignBitFlipMask = 0x8000000000000000L;
 
 // Checks whether the given RocksDB key belongs to a document identified by the given encoded
-// document key (a key that has already had zero characters escaped). This is done simply by checking
-// that the key starts with the encoded document key followed by two zero characters.
+// document key (a key that has already had zero characters escaped). This is done simply by
+// checking that the key starts with the encoded document key followed by two zero characters.
 // This is only used in unit tests as of 08/02/2016.
-bool KeyBelongsToDocKey(const rocksdb::Slice& key, const std::string& encoded_doc_key);
+bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &encoded_doc_key);
 
 // Decode a timestamp stored at the given position in the given slice. Timestamps are stored
 // inside keys as big-endian 64-bit integers with all bits inverted for reverse sorting.
@@ -109,7 +110,20 @@ yb::Status DecodeZeroEncodedStr(rocksdb::Slice* slice, std::string* result);
 // consumed.
 std::string DecodeZeroEncodedStr(std::string encoded_str);
 
-}
+// We try to use up to this number of characters when converting raw bytes to strings for debug
+// purposes.
+constexpr int kShortDebugStringLength = 40;
+
+// Produces a debug-friendly representation of a sequence of bytes that may contain non-printable
+// characters.
+// @return A human-readable representation of the given slice, capped at a fixed short length.
+std::string ToShortDebugStr(rocksdb::Slice slice);
+
+inline std::string ToShortDebugStr(const std::string& raw_str) {
+  return ToShortDebugStr(rocksdb::Slice(raw_str));
 }
 
-#endif
+}  // namespace docdb
+}  // namespace yb
+
+#endif  // YB_DOCDB_DOC_KV_UTIL_H_

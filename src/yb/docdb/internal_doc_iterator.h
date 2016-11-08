@@ -47,42 +47,41 @@ class InternalDocIterator {
   // The key must not end with a generation timestamp.
   //
   // @param encoded_doc_key The encoded key pointing to the document.
-  void SeekToDocument(const KeyBytes& encoded_doc_key);
+  CHECKED_STATUS SeekToDocument(const KeyBytes& encoded_doc_key);
 
   // Sets the iterator to a state where it is positioned at the top of a document, but does not
   // actually know whether that subdocument exists in the underlying RocksDB database.
   void SetDocumentKey(const KeyBytes& encoded_doc_key) {
     key_prefix_ = encoded_doc_key;
-    key_prefix_ends_with_ts_ = false;
     subdoc_exists_ = Trilean::kUnknown;
     subdoc_type_ = ValueType::kInvalidValueType;
   }
 
   // Go one level deeper in the document hierarchy. This assumes the iterator is already positioned
-  // inside an existing object-type subdocument, and that the prefix ends with a generation
-  // timestamp, effectively pointing to a particular "revision" of that subdocument.
+  // inside an existing object-type subdocument, but the prefix does not yet end with a timestamp.
+  // Note: in our MVCC data model with no intermediate generation timestamps in the key, only the
+  // last component of a SubDocKey can be a timestamp.
   //
   // @param subkey The key identifying the subdocument within the current document to navigate to.
-  void SeekToSubDocument(const PrimitiveValue& subkey);
+  CHECKED_STATUS SeekToSubDocument(const PrimitiveValue& subkey);
 
   // Append the given subkey to the document. We are assuming that we have already made sure that
-  // the iterator is positioned inside an existing subdocument, and therefore the current key
-  // prefix ends with a timestamp.
+  // the iterator is positioned inside an existing subdocument.
   void AppendSubkeyInExistingSubDoc(const PrimitiveValue &subkey) {
-    assert(subdoc_exists());
-    assert(subdoc_type_ == ValueType::kObject);
+    CHECK(subdoc_exists());
+    CHECK_EQ(ValueType::kObject, subdoc_type_);
     AppendToPrefix(subkey);
   }
 
   // @return Whether the subdocument pointed to by this iterator exists.
   bool subdoc_exists() {
-    assert(subdoc_exists_ != Trilean::kUnknown);
+    CHECK_NE(subdoc_exists_, Trilean::kUnknown);
     return static_cast<bool>(subdoc_exists_);
   }
 
   // @return The type of subdocument pointed to by this iterator, if it exists.
   ValueType subdoc_type() {
-    assert(subdoc_exists());
+    CHECK(subdoc_exists());
     return subdoc_type_;
   }
 
@@ -91,7 +90,7 @@ class InternalDocIterator {
   }
 
   const KeyBytes& key_prefix() { return key_prefix_; }
-  bool key_prefix_ends_with_ts() { return key_prefix_ends_with_ts_; }
+  KeyBytes* mutable_key_prefix() { return &key_prefix_; }
 
   // Encode and append the given primitive value to the current key prefix. We are assuming the
   // current key prefix already ends with a timestamp, but we don't assume it corresponds to an
@@ -99,8 +98,7 @@ class InternalDocIterator {
   void AppendToPrefix(const PrimitiveValue& subkey);
 
   void AppendTimestampToPrefix(Timestamp ts);
-  void AppendUpdateTimestampIfNotFound(Timestamp ts);
-  void ReplaceTimestampInPrefix(Timestamp ts);
+
   std::string ToDebugString();
 
   bool HasMoreData() {
@@ -113,7 +111,7 @@ class InternalDocIterator {
   // An internal helper method that seeks the RocksDB iterator to the current document/subdocument
   // key prefix (which is assumed not to end with a generation timestamp), and checks whether or not
   // that document/subdocument actually exists.
-  void SeekToKeyPrefix();
+  CHECKED_STATUS SeekToKeyPrefix();
 
   DocWriteBatchCache* doc_write_batch_cache_;
 
@@ -123,14 +121,12 @@ class InternalDocIterator {
   // subdocument.
   KeyBytes key_prefix_;
 
-  bool key_prefix_ends_with_ts_;
-
   ValueType subdoc_type_;
 
   // The "generation timestamp" of the current subdocument, i.e. the timestamp at which the document
   // was last fully overwritten or deleted. The notion of "last" may mean "last as of the timestamp
   // we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
-  Timestamp subdoc_gen_ts_;
+  Timestamp subdoc_ts_;
 
   Trilean subdoc_exists_;
 

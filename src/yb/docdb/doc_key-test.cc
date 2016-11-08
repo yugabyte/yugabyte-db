@@ -129,48 +129,71 @@ TEST(DocKeyTest, TestSubDocKeyToString) {
                 Timestamp(12345L)).ToString());
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), "
-      "[TS(12345), \"subkey1\", TS(20000)])",
+      "[\"subkey1\"; TS(20000)])",
       SubDocKey(
           DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-          Timestamp(12345L), PrimitiveValue("subkey1"), Timestamp(20000L)
+          PrimitiveValue("subkey1"), Timestamp(20000L)
       ).ToString());
 
 }
 
 TEST(DocKeyTest, TestDocKeyEncoding) {
   // A few points to make it easier to understand the expected binary representations here:
-  // - Initial bytes such as \x04, \x05 correspond to instances of the enum ValueType
-  // - Strings are terminated with \x00\x00
+  // - Initial bytes such as '$', 'I' correspond the ValueType enum.
+  // - Strings are terminated with \x00\x00.
   // - Groups of key components in the document key ("hashed" and "range" components) are separated
-  //   terminated with another \x00.
+  //   with '!'.
   // - 64-bit signed integers are encoded using big-endian format with sign bit inverted.
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
-          R"#("\x04val1\x00\
-               \x00\
-               \x05\x80\x00\x00\x00\x00\x00\x03\xe8\
-               \x04val2\x00\x00\
-               \x05\x80\x00\x00\x00\x00\x00\x07\xd0\
-               \x00")#"),
+          R"#(
+              "$val1\x00\x00\
+               I\x80\x00\x00\x00\x00\x00\x03\xe8\
+               $val2\x00\x00\
+               I\x80\x00\x00\x00\x00\x00\x07\xd0\
+               !"
+          )#"),
       FormatBytesAsStr(DocKey(PrimitiveValues("val1", 1000, "val2", 2000)).Encode().data()));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
-          R"#("\x09\
+          R"#("H\
                \xca\xfeg\x89\
-               \x04hashed1\x00\x00\
-               \x04hashed2\x00\x00\
-               \x00\
-               \x04range1\x00\x00\
-               \x05\x80\x00\x00\x00\x00\x00\x03\xe8\
-               \x04range2\x00\x00\
-               \x05\x80\x00\x00\x00\x00\x00\x07\xd0\
-               \x00")#"),
+               $hashed1\x00\x00\
+               $hashed2\x00\x00\
+               !\
+               $range1\x00\x00\
+               I\x80\x00\x00\x00\x00\x00\x03\xe8\
+               $range2\x00\x00\
+               I\x80\x00\x00\x00\x00\x00\x07\xd0\
+               !")#"),
       FormatBytesAsStr(DocKey(
           0xcafe6789,
           PrimitiveValues("hashed1", "hashed2"),
           PrimitiveValues("range1", 1000, "range2", 2000)).Encode().data()));
 }
+
+TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
+  const SubDocKey subdoc_key(DocKey({PrimitiveValue("some_doc_key")}),
+                             PrimitiveValue("sk1"),
+                             PrimitiveValue("sk2"),
+                             Timestamp(1000));
+  const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      ApplyEagerLineContinuation(
+          R"#("$some_doc_key\x00\x00\
+               !\
+               $sk1\x00\x00\
+               $sk2\x00\x00\
+               #\xff\xff\xff\xff\xff\xff\xfc\x17"
+          )#"
+      ),
+      encoded_subdoc_key.ToString()
+  );
+  SubDocKey decoded_subdoc_key;
+  ASSERT_OK(decoded_subdoc_key.DecodeFrom(encoded_subdoc_key.AsSlice()));
+}
+
 
 TEST(DocKeyTest, TestRandomizedDocKeyRoundTripEncodingDecoding) {
   TestRoundTripDocOrSubDocKeyEncodingDecoding<DocKey>();
@@ -219,12 +242,14 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
   auto subdoc_keys = GenRandomSubDocKeys(&rng, /* use_hash = */ false, 1000);
   for (const auto& subdoc_key : subdoc_keys) {
     if (subdoc_key.num_subkeys() > 0) {
-      const SubDocKey doc_key_only = SubDocKey(subdoc_key.doc_key(), subdoc_key.doc_gen_ts());
+      const SubDocKey doc_key_only = SubDocKey(subdoc_key.doc_key());
+      const SubDocKey doc_key_only_with_ts =
+          SubDocKey(subdoc_key.doc_key(), subdoc_key.timestamp());
       ASSERT_TRUE(subdoc_key.StartsWith(doc_key_only));
       ASSERT_FALSE(doc_key_only.StartsWith(subdoc_key));
       SubDocKey with_another_doc_gen_ts(subdoc_key);
-      with_another_doc_gen_ts.set_doc_gen_ts(Timestamp(subdoc_key.doc_gen_ts().ToUint64() + 1));
-      ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(doc_key_only));
+      with_another_doc_gen_ts.set_timestamp(Timestamp(subdoc_key.timestamp().ToUint64() + 1));
+      ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(doc_key_only_with_ts));
       ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(subdoc_key));
       ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ts));
     }

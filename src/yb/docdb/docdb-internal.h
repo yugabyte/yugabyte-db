@@ -10,7 +10,7 @@
 
 // Enable this during debugging only. This enables very verbose logging. Should always be undefined
 // when code is checked in.
-#undef DOCDB_DEBUG
+#undef  DOCDB_DEBUG
 
 #ifdef DOCDB_DEBUG
 #define DOCDB_DEBUG_LOG(...) \
@@ -23,4 +23,4 @@
 #define DOCDB_DEBUG_LOG(...)
 #endif
 
-#endif
+#endif  // YB_DOCDB_DOCDB_INTERNAL_H_

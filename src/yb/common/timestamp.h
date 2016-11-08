@@ -68,6 +68,18 @@ class Timestamp {
     return CompareTo(other) < 0;
   }
 
+  bool operator >(const Timestamp& other) const {
+    return CompareTo(other) > 0;
+  }
+
+  bool operator <=(const Timestamp& other) const {
+    return CompareTo(other) <= 0;
+  }
+
+  bool operator >=(const Timestamp& other) const {
+    return CompareTo(other) >= 0;
+  }
+
   // An initial transaction timestamp, higher than min so that we can have
   // a Timestamp guaranteed to be lower than all generated timestamps.
   static const Timestamp kInitialTimestamp;

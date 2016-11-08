@@ -18,6 +18,7 @@ set(DOCDB_SRCS
     doc_rowwise_iterator.cc
     doc_write_batch_cache.cc
     docdb.cc
+    docdb_rocksdb_util.cc
     docdb_test_util.cc
     in_mem_docdb.cc
     internal_doc_iterator.cc

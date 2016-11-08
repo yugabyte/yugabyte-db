@@ -9,6 +9,7 @@
 
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/util/malloc.h"
+#include "yb/util/debug-util.h"
 
 namespace yb {
 
@@ -131,7 +132,7 @@ std::string Status::ToString(bool include_file_and_line) const {
     // However, neither Jenkins, nor our standard code location on a developer workstation
     // (~/code/yugabyte) should have that problem.
     const char* src_subpath = strstr(file_name_, "/src/");
-    result.append(src_subpath != nullptr ? src_subpath + 1 : file_name_);
+    result.append(src_subpath != nullptr ? src_subpath + 5 : file_name_);
 
     result.append(":");
     result.append(std::to_string(line_number_));

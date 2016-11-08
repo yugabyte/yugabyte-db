@@ -2,10 +2,12 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/common/iterator.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::string;
 
@@ -95,17 +97,38 @@ bool DocRowwiseIterator::HasNext() const {
       return true;
     }
 
+    if (subdoc_key_.num_subkeys() == 1) {
+      // Even without optional init markers (i.e. if we require an object init marker at the top of
+      // each row), we may get into the row/column section if we don't have any data at or older
+      // than our scan timestamp. In this case, we need to skip the row and go to the next row.
+      //
+      // When we switch to supporting optional init markers for SQL rows, we'll need to add a check
+      // to see if we've got any row/column keys within the expected timestamp range, or perhaps
+      // perform a seek into the row/column section with the specified scan timestamp, skip
+      // key/value pairs outside of the timestamp range (the lower end of that range is based on
+      // the delete timestamp), and come up with a return value for HasNext. We might also have to
+      // go the next row as part of this process.
+      //
+      // TODO: the pattern below repeats in a few places, need to encapsulate and deduplicate it.
+      KeyBytes subdoc_key_no_ts = subdoc_key_.Encode(/* include_timestamp = */ false);
+      subdoc_key_no_ts.AppendRawBytes("\xff", 1);
+      ROCKSDB_SEEK(db_iter_.get(), subdoc_key_no_ts.AsSlice());
+      continue;
+    }
+
     if (subdoc_key_.num_subkeys() > 0) {
       // Defer error reporting to NextBlock.
-      status_ = STATUS(Corruption, "A top-level document key must not have any subkeys");
+      status_ = STATUS(Corruption,
+                       Substitute("Did not expect to find any subkeys when starting row "
+                                  "iteration, found $0", subdoc_key_.num_subkeys()));
       return true;
     }
 
-    if (subdoc_key_.doc_gen_ts().CompareTo(timestamp_) > 0) {
+    if (subdoc_key_.timestamp().CompareTo(timestamp_) > 0) {
       // This document was fully overwritten after the timestamp we are trying to scan at. We have
       // to read the latest version of the document that existed at the specified timestamp instead.
-      subdoc_key_.set_doc_gen_ts(timestamp_);
-      db_iter_->Seek(subdoc_key_.Encode().AsSlice());
+      subdoc_key_.set_timestamp(timestamp_);
+      ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.Encode().AsSlice());
       continue;
     }
 
@@ -225,23 +248,25 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
-    subdoc_key_.AppendSubKeysAndTimestamps(
+    subdoc_key_.RemoveTimestamp();
+    subdoc_key_.AppendSubKeysAndMaybeTimestamp(
         PrimitiveValue(static_cast<int32_t>(column_id)), timestamp_);
 
-    KeyBytes key_for_column = subdoc_key_.Encode();
-    db_iter_->Seek(key_for_column.AsSlice());
+    const KeyBytes key_for_column = subdoc_key_.Encode();
+    ROCKSDB_SEEK(db_iter_.get(), key_for_column.AsSlice());
 
     bool is_null = true;
     const bool is_nullable = dst->column_block(i).is_nullable();
-    if (db_iter_->Valid() &&
-        key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
-      // TODO: we are doing a lot of unnecessary buffer copies here.
+    if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
       PrimitiveValue value;
       RETURN_NOT_OK(value.DecodeFromValue(db_iter_->value()));
       if (value.value_type() != ValueType::kNull &&
           value.value_type() != ValueType::kTombstone) {
+        DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
         RETURN_NOT_OK(PrimitiveValueToKudu(i, value, &dst_row));
         is_null = false;
+      } else {
+        DOCDB_DEBUG_LOG("Found a null value for column #$0: $1", i, value.ToString());
       }
     }
 
@@ -253,14 +278,15 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
       dst->column_block(i).SetCellIsNull(0, is_null);
     }
 
-    subdoc_key_.RemoveLastSubKeyAndTimestamp();
+    subdoc_key_.RemoveLastSubKey();
   }
 
-  // Seek to the next row (document). We model this by adding the minimum possible timestamp
-  // as the document generation timestamp, and further incrementing the key so that even if the
-  // minimum timestamp is present, we'll still navigate to the next document key.
-  // TODO: reduce unnecessary buffer copies.
-  db_iter_->Seek(SubDocKey(subdoc_key_.doc_key(), Timestamp::kMin).Encode().Increment().AsSlice());
+  // Advance to the next column (the next field of the top-level document in our SQL to DocDB
+  // mapping).
+  // TODO: reduce buffer copies.
+  KeyBytes subdoc_key_no_ts = subdoc_key_.Encode(/* include_timestamp = */ false);
+  subdoc_key_no_ts.AppendRawBytes("\xff", 1);
+  ROCKSDB_SEEK(db_iter_.get(), subdoc_key_no_ts.AsSlice());
 
   return Status::OK();
 }

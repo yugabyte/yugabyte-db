@@ -19,9 +19,6 @@
 
 #include "yb/tablet/tablet.h"
 
-#include <boost/bind.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -31,6 +28,9 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <boost/bind.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
@@ -851,7 +851,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
     const auto s = subdoc_key.DecodeFrom(kv_pair.key());
     CHECK(s.ok())
         << "Failed decoding key: " << s.ToString() << "; "
-        << "Problematic key: " << docdb::BestEffortKeyBytesToStr(KeyBytes(kv_pair.key())) << "\n"
+        << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
         << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
         << "put_batch:\n" << put_batch.DebugString();
     subdoc_key.ReplaceMaxTimestampWith(timestamp);

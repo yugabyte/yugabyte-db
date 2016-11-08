@@ -23,13 +23,13 @@
 #include "yb/common/redis_protocol.pb.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
-// <document_key> <doc_gen_ts> -> <doc_type>
-// <document_key> <doc_gen_ts> <key_a> <gen_ts_a> -> <subdoc_a_type_or_value>
+// <document_key> <timestamp> -> <doc_type>
+// <document_key> <timestamp> <key_a> <gen_ts_a> -> <subdoc_a_type_or_value>
 //
 // Assuming the type of subdocument corresponding to key_a in the above example is "object", the
 // contents of that subdocument are stored in a similar way:
-// <document_key> <doc_gen_ts> <key_a> <gen_ts_a> <key_aa> <gen_ts_aa> -> <subdoc_aa_type_or_value>
-// <document_key> <doc_gen_ts> <key_a> <gen_ts_a> <key_ab> <gen_ts_ab> -> <subdoc_ab_type_or_value>
+// <document_key> <timestamp> <key_a> <gen_ts_a> <key_aa> <gen_ts_aa> -> <subdoc_aa_type_or_value>
+// <document_key> <timestamp> <key_a> <gen_ts_a> <key_ab> <gen_ts_ab> -> <subdoc_ab_type_or_value>
 // ...
 //
 // See doc_key.h for the encoding of the <document_key> part.
@@ -40,7 +40,7 @@
 //   <value_specific_encoding> -- e.g. a big-endian 8-byte integer, or a string in a "zero encoded"
 //                                format. This is empty for null or true/false values.
 //
-// <doc_gen_ts>, <gen_ts_a>, <gen_ts_ab> are "generation timestamps" corresponding to hybrid clock
+// <timestamp>, <gen_ts_a>, <gen_ts_ab> are "generation timestamps" corresponding to hybrid clock
 // timestamps of the last time a particular top-level document / subdocument was fully overwritten
 // or deleted.
 //
@@ -76,12 +76,12 @@ class DocWriteBatch {
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
 
-  void PopulateRocksDBWriteBatch(
-      rocksdb::WriteBatch* rocksdb_write_batch,
+  void PopulateRocksDBWriteBatchInTest(
+      rocksdb::WriteBatch *rocksdb_write_batch,
       Timestamp timestamp = Timestamp::kMax) const;
 
-  rocksdb::Status WriteToRocksDB(
-      Timestamp timestamp, const rocksdb::WriteOptions& write_options) const;
+  rocksdb::Status WriteToRocksDBInTest(
+      const Timestamp timestamp, const rocksdb::WriteOptions &write_options) const;
 
   void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
 
@@ -218,7 +218,8 @@ class DocVisitor {
 
 yb::Status ScanDocument(rocksdb::DB* rocksdb,
                         const KeyBytes& document_key,
-                        DocVisitor* visitor);
+                        DocVisitor* visitor,
+                        Timestamp scan_ts = Timestamp::kMax);
 
 yb::Status GetDocument(rocksdb::DB* rocksdb,
                        const KeyBytes& document_key,
@@ -229,6 +230,8 @@ yb::Status GetDocument(rocksdb::DB* rocksdb,
 // Reports all errors to the output stream and returns the status of the first failed operation,
 // if any.
 yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out);
+
+std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb);
 
 
 }  // namespace docdb

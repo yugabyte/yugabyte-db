@@ -84,11 +84,11 @@
 // values without any escaping.
 #define ASSERT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
   do { \
-    auto expected_tmp = yb::util::TrimStr(expected); \
-    auto actual_tmp = yb::util::TrimStr(actual); \
+    const auto expected_tmp = yb::util::TrimStr(expected); \
+    const auto actual_tmp = yb::util::TrimStr(actual); \
     ASSERT_EQ(expected_tmp, actual_tmp) \
-        << "Actual (trimmed):\n" << actual_tmp \
-        << "\nExpected (trimmed):\n" << expected_tmp; \
+        << "\nActual (trimmed):\n" << actual_tmp \
+        << "\n\nExpected (trimmed):\n" << expected_tmp; \
   } while(0)
 
 #define CURRENT_TEST_NAME() \
@@ -97,4 +97,4 @@
 #define CURRENT_TEST_CASE_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->test_case_name()
 
-#endif
+#endif  // YB_UTIL_TEST_MACROS_H

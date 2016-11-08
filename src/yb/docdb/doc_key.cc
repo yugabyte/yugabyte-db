@@ -11,15 +11,19 @@
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/util/enums.h"
 
 using std::ostringstream;
 
 using strings::Substitute;
 
+using yb::util::to_underlying;
+
 namespace yb {
 namespace docdb {
 
 Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValue>* result) {
+  const auto initial_slice(*slice);  // For error reporting.
   while (true) {
     if (slice->empty()) {
       return STATUS(Corruption, "Unexpected end of key when decoding document key");
@@ -32,7 +36,9 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValu
     DCHECK(IsPrimitiveValueType(current_value_type))
         << "Expected a primitive value type, got " << ValueTypeToStr(current_value_type);
     result->emplace_back();
-    RETURN_NOT_OK(result->back().DecodeFromKey(slice));
+    RETURN_NOT_OK_PREPEND(result->back().DecodeFromKey(slice),
+                          Substitute("while consuming primitive values from $0",
+                                     ToShortDebugStr(initial_slice)));
   }
 }
 
@@ -179,37 +185,64 @@ DocKey DocKey::FromRedisStringKey(const string& key) {
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
 
-KeyBytes SubDocKey::Encode() const {
+KeyBytes SubDocKey::Encode(bool include_timestamp) const {
   KeyBytes key_bytes = doc_key_.Encode();
-  key_bytes.AppendTimestamp(doc_gen_ts_);
-  for (const auto& subkey_and_gen_ts : subkeys_) {
-    subkey_and_gen_ts.first.AppendToKey(&key_bytes);
-    key_bytes.AppendTimestamp(subkey_and_gen_ts.second);
+  for (const auto& subkey : subkeys_) {
+    subkey.AppendToKey(&key_bytes);
+  }
+  if (has_timestamp() && include_timestamp) {
+    key_bytes.AppendValueType(ValueType::kTimestamp);
+    key_bytes.AppendTimestamp(timestamp_);
   }
   return key_bytes;
 }
 
-Status SubDocKey::DecodeFrom(const rocksdb::Slice& key_bytes) {
-  rocksdb::Slice slice(key_bytes);
+Status SubDocKey::DecodeFrom(const rocksdb::Slice& original_bytes,
+                             const bool require_timestamp) {
+  rocksdb::Slice slice(original_bytes);
 
   Clear();
   RETURN_NOT_OK(doc_key_.DecodeFrom(&slice));
-  RETURN_NOT_OK(ConsumeTimestampFromKey(&slice, &doc_gen_ts_));
-  while (!slice.empty()) {
+  while (!slice.empty() &&
+         *slice.data() != static_cast<char>(ValueType::kTimestamp)) {
     subkeys_.emplace_back();
-    auto& current_key_and_timestamp = subkeys_.back();
-    RETURN_NOT_OK(current_key_and_timestamp.first.DecodeFromKey(&slice));
-    RETURN_NOT_OK(ConsumeTimestampFromKey(&slice, &current_key_and_timestamp.second));
+    auto& current_subkey = subkeys_.back();
+    RETURN_NOT_OK_PREPEND(
+        current_subkey.DecodeFromKey(&slice),
+        Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
   }
+  if (slice.empty()) {
+    if (!require_timestamp) {
+      return Status::OK();
+    }
+    return STATUS(Corruption,
+                  Substitute("SubDocKey does not end with a type-prefixed timestamp: $0",
+                             ToShortDebugStr(original_bytes)));
+  }
+  CHECK_EQ(to_underlying(ValueType::kTimestamp), slice.ConsumeByte());
+  RETURN_NOT_OK(ConsumeTimestampFromKey(&slice, &timestamp_));
+
   return Status::OK();
 }
 
 string SubDocKey::ToString() const {
   std::stringstream result;
-  result << "SubDocKey(" << doc_key_.ToString() << ", ["  << doc_gen_ts_.ToDebugString();
+  result << "SubDocKey(" << doc_key_.ToString() << ", [";
 
-  for (const auto& subkey_and_ts : subkeys_) {
-    result << ", " << subkey_and_ts.first << ", " << subkey_and_ts.second.ToDebugString();
+  bool need_comma = false;
+  for (const auto& subkey : subkeys_) {
+    if (need_comma) {
+      result << ", ";
+    }
+    need_comma = true;
+    result << subkey.ToString();
+  }
+
+  if (has_timestamp()) {
+    if (need_comma) {
+      result << "; ";
+    }
+    result << timestamp_.ToDebugString();
   }
   result << "])";
   return result.str();
@@ -218,51 +251,52 @@ string SubDocKey::ToString() const {
 void SubDocKey::Clear() {
   doc_key_.Clear();
   subkeys_.clear();
-  doc_gen_ts_ = Timestamp::kMin;
+  timestamp_ = Timestamp::kInvalidTimestamp;
 }
 
-bool SubDocKey::StartsWith(const SubDocKey& other) const {
-  return doc_key_ == other.doc_key_ &&
-         doc_gen_ts_ == other.doc_gen_ts_ &&
-         other.num_subkeys() <= num_subkeys() &&
+bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
+  return doc_key_ == prefix.doc_key_ &&
+         // Subkeys precede the timestamp field in the encoded representation, so the timestamp
+         // either has to be undefined in the prefix, or the entire key must match, including
+         // subkeys and the timestamp (in this case the prefix is the same as this key).
+         (!prefix.has_timestamp() ||
+          (timestamp_ == prefix.timestamp_ && prefix.num_subkeys() == num_subkeys())) &&
+         prefix.num_subkeys() <= num_subkeys() &&
          // std::mismatch finds the first difference between two sequences. Prior to C++14, the
          // behavior is undefined if the second range is shorter than the first range, so we make
          // sure the potentially shorter range is first.
          std::mismatch(
-             other.subkeys_.begin(), other.subkeys_.end(), subkeys_.begin()
-         ).first == other.subkeys_.end();
+             prefix.subkeys_.begin(), prefix.subkeys_.end(), subkeys_.begin()
+         ).first == prefix.subkeys_.end();
 }
 
 bool SubDocKey::operator ==(const SubDocKey& other) const {
   return doc_key_ == other.doc_key_ &&
-         doc_gen_ts_ == other.doc_gen_ts_ &&
+         timestamp_ == other.timestamp_&&
          subkeys_ == other.subkeys_;
-}
-
-SubDocKey SubDocKey::AdvanceToNextSubkey() const {
-  assert(!subkeys_.empty());
-  CHECK_NE(subkeys_.back().second, yb::Timestamp::kMin) << "Real data should not use min timestamp";
-  SubDocKey next_subkey(*this);
-  next_subkey.subkeys_.back().second = yb::Timestamp::kMin;
-  return next_subkey;
 }
 
 int SubDocKey::CompareTo(const SubDocKey& other) const {
   int result = doc_key_.CompareTo(other.doc_key_);
   if (result != 0) return result;
 
-  result = doc_gen_ts_.CompareTo(other.doc_gen_ts_);
-  // Timestamps are sorted in reverse order.
-  if (result != 0) return -result;
-
   // We specify reverse_second_component = true to implement inverse timestamp ordering.
-  return ComparePairVectors<PrimitiveValue, Timestamp, true>(subkeys_, other.subkeys_);
+  result = CompareVectors<PrimitiveValue>(subkeys_, other.subkeys_);
+  if (result != 0) return result;
+
+  // Timestamps are sorted in reverse order.
+  return -timestamp_.CompareTo(other.timestamp_);
 }
 
-string BestEffortKeyBytesToStr(const KeyBytes& key_bytes) {
+string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   SubDocKey subdoc_key;
-  Status subdoc_key_decode_status = subdoc_key.FullyDecodeFrom(key_bytes.AsSlice());
+  Status subdoc_key_decode_status =
+      subdoc_key.DecodeFrom(key_bytes.AsSlice(), /* require_timestamp = */ false);
   if (subdoc_key_decode_status.ok()) {
+    if (!subdoc_key.has_timestamp() && subdoc_key.num_subkeys() == 0) {
+      // This is really just a DocKey.
+      return subdoc_key.doc_key().ToString();
+    }
     return subdoc_key.ToString();
   }
   DocKey doc_key;
@@ -282,14 +316,13 @@ string BestEffortKeyBytesToStr(const KeyBytes& key_bytes) {
   return key_bytes.ToString();
 }
 
+std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice) {
+  return BestEffortDocDBKeyToStr(KeyBytes(slice));
+}
+
 void SubDocKey::ReplaceMaxTimestampWith(Timestamp timestamp) {
-  if (doc_gen_ts_ == Timestamp::kMax) {
-    doc_gen_ts_ = timestamp;
-  }
-  for (auto& subkey_and_ts : subkeys_) {
-    if (subkey_and_ts.second == Timestamp::kMax) {
-      subkey_and_ts.second = timestamp;
-    }
+  if (timestamp_ == Timestamp::kMax) {
+    timestamp_ = timestamp;
   }
 }
 

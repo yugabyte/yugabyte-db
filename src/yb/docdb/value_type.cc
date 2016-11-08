@@ -28,8 +28,8 @@ string ValueTypeToStr(ValueType value_type) {
     // No default case so that we get a compiler warning (which we treat as an error) if we miss
     // a valid enum value here.
   }
-  return StringPrintf("ValueType(0x%02x)", static_cast<char>(value_type));
+  return StringPrintf("ValueType(0x%02x)", static_cast<uint8_t>(value_type));
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

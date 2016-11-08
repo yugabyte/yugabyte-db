@@ -181,62 +181,93 @@ inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
 
-// A key pointing to a subdocument. Consists of a DocKey identifying the document, a "generation
-// timestamp" for this top-level document, and a list of (primitive_value, generation_timestamp)
-// pairs leading to the subdocument in question, in the outermost to innermost order.
-// "Generation timestamp" is a timestamp at which a particular subdocument was completely
-// overwritten or deleted.
+// A key pointing to a subdocument. Consists of a DocKey identifying the document, a list of
+// primitive values leading to the subdocument in question, from the outermost to innermost order,
+// and an optional timestamp of when the subdocument (which may itself be a primitive value) was
+// last fully overwritten or deleted.
+//
+// Keys stored in RocksDB should always have the timestamp field set. However, it is useful to make
+// the timestamp field optional while a SubDocKey is being constructed. If the timestamp is not set,
+// it is omitted from the encoded representation of a SubDocKey.
+//
+// Implementation note: we use Timestamp::kInvalidTimestamp to represent an omitted timestamp.
+// We heavily rely on that being the default-constructed value of a Timestamp.
+//
+// TODO: this should be renamed to something more generic, e.g. Key or LogicalKey, to reflect that
+// this is actually the logical representation of keys that we store in the RocksDB key-value store.
 class SubDocKey {
  public:
   SubDocKey() {}
-  SubDocKey(const DocKey& doc_key,
-            Timestamp doc_gen_ts)
+  explicit SubDocKey(const DocKey& doc_key) : doc_key_(doc_key) {}
+  explicit SubDocKey(DocKey&& doc_key) : doc_key_(std::move(doc_key)) {}
+
+  SubDocKey(const DocKey& doc_key, Timestamp timestamp)
       : doc_key_(doc_key),
-        doc_gen_ts_(doc_gen_ts) {
+        timestamp_(timestamp) {
   }
 
   SubDocKey(DocKey&& doc_key,
-            Timestamp doc_gen_ts)
+            Timestamp timestamp)
       : doc_key_(std::move(doc_key)),
-        doc_gen_ts_(doc_gen_ts) {
+        timestamp_(timestamp) {
   }
 
   SubDocKey(const DocKey& doc_key,
-            Timestamp doc_gen_ts,
-            std::vector<std::pair<PrimitiveValue, Timestamp>> subkeys)
+            Timestamp timestamp,
+            std::vector<PrimitiveValue> subkeys)
       : doc_key_(doc_key),
-        doc_gen_ts_(doc_gen_ts),
+        timestamp_(timestamp),
         subkeys_(subkeys) {
   }
 
   template <class ...T>
-  SubDocKey(const DocKey& doc_key, Timestamp doc_gen_ts, T... subkeys_and_timestamps)
+  SubDocKey(const DocKey& doc_key, T... subkeys_and_maybe_timestamp)
       : doc_key_(doc_key),
-        doc_gen_ts_(doc_gen_ts) {
-    AppendSubKeysAndTimestamps(subkeys_and_timestamps...);
+        timestamp_(Timestamp::kInvalidTimestamp) {
+    AppendSubKeysAndMaybeTimestamp(subkeys_and_maybe_timestamp...);
   }
 
-  void AppendSubKeysAndTimestamps() {}
+  void AppendSubKeys() {}
 
-  template <class ...T>
-  void AppendSubKeysAndTimestamps(PrimitiveValue subdoc_key, Timestamp gen_ts,
-                                  T... subkeys_and_timestamps) {
-    subkeys_.emplace_back(subdoc_key, gen_ts);
-    AppendSubKeysAndTimestamps(subkeys_and_timestamps...);
+  // Append a sequence of sub-keys to this key. We require that the timestamp is not set, because
+  // we append it last.
+  template<class ...T>
+  void AppendSubKeysAndMaybeTimestamp(PrimitiveValue subdoc_key,
+                                      T... subkeys_and_maybe_timestamp) {
+    EnsureHasNoTimestampYet();
+    subkeys_.emplace_back(subdoc_key);
+    AppendSubKeysAndMaybeTimestamp(subkeys_and_maybe_timestamp...);
   }
 
-  void RemoveLastSubKeyAndTimestamp() {
-    assert(!subkeys_.empty());
+  template<class ...T>
+  void AppendSubKeysAndMaybeTimestamp(PrimitiveValue subdoc_key) {
+    EnsureHasNoTimestampYet();
+    subkeys_.emplace_back(subdoc_key);
+  }
+
+  template<class ...T>
+  void AppendSubKeysAndMaybeTimestamp(PrimitiveValue subdoc_key, Timestamp timestamp) {
+    DCHECK_EQ(Timestamp::kInvalidTimestamp, timestamp_);
+    subkeys_.emplace_back(subdoc_key);
+    DCHECK_NE(Timestamp::kInvalidTimestamp, timestamp);
+    timestamp_ = timestamp;
+  }
+
+  void RemoveLastSubKey() {
+    DCHECK(!subkeys_.empty());
     subkeys_.pop_back();
   }
 
   void Clear();
 
-  KeyBytes Encode() const;
+  KeyBytes Encode(bool include_timestamp = true) const;
 
-  // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key. All bytes
-  // of the slice have to be successfully decoded.
-  Status DecodeFrom(const rocksdb::Slice& slice);
+  // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key.
+  // @param require_timestamp
+  //     Whether a timestamp is required in the end of the SubDocKey. If this is set to false, we
+  //     allow decoding an incomplete SubDocKey without a timestamp.
+  Status DecodeFrom(const rocksdb::Slice& original_bytes,
+                    bool require_timestamp = true);
 
   // Unlike the DocKey case, this is the same as DecodeFrom, because a "subdocument key" occupies
   // the entire RocksDB key. This is here for compatibility with templates that can operate both on
@@ -253,7 +284,7 @@ class SubDocKey {
     return subkeys_.size();
   }
 
-  bool StartsWith(const SubDocKey& other) const;
+  bool StartsWith(const SubDocKey& prefix) const;
 
   bool operator ==(const SubDocKey& other) const;
 
@@ -263,28 +294,45 @@ class SubDocKey {
 
   const PrimitiveValue& last_subkey() const {
     assert(!subkeys_.empty());
-    return subkeys_.back().first;
+    return subkeys_.back();
   }
-
-  // Produces a subdocument key that could be used to seek to the next subkey in an object. We do
-  // this by setting the generation timestamp to its minimum value.
-  SubDocKey AdvanceToNextSubkey() const;
 
   int CompareTo(const SubDocKey& other) const;
 
-  Timestamp doc_gen_ts() const { return doc_gen_ts_; }
-  void set_doc_gen_ts(Timestamp new_doc_gen_ts) { doc_gen_ts_ = new_doc_gen_ts; }
+  Timestamp timestamp() const {
+    DCHECK(has_timestamp());
+    return timestamp_;
+  }
+
+  void set_timestamp(Timestamp timestamp) {
+    DCHECK_NE(timestamp, Timestamp::kInvalidTimestamp);
+    timestamp_ = timestamp;
+  }
 
   // When we come up with a batch of DocDB updates, we don't yet know the timestamp, because the
   // timestamp is only determined at the time the write operation is appended to the Raft log.
   // Therefore, we initially use Timestamp::kMax, and we have to replace it with the actual
   // timestamp later.
-  void ReplaceMaxTimestampWith(Timestamp timetamp);
+  void ReplaceMaxTimestampWith(Timestamp timestamp);
+
+  bool has_timestamp() const {
+    return timestamp_ != Timestamp::kInvalidTimestamp;
+  }
+
+  void RemoveTimestamp() {
+    timestamp_ = Timestamp::kInvalidTimestamp;
+  }
 
  private:
   DocKey doc_key_;
-  Timestamp doc_gen_ts_;
-  std::vector<std::pair<PrimitiveValue, Timestamp>> subkeys_;
+  Timestamp timestamp_;
+  std::vector<PrimitiveValue> subkeys_;
+
+  void EnsureHasNoTimestampYet() {
+    DCHECK(!has_timestamp())
+        << "Trying to append a primitive value to a SubDocKey " << ToString()
+        << " that already has a timestamp set: " << timestamp_.ToDebugString();
+  }
 };
 
 inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key) {
@@ -293,7 +341,8 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 }
 
 // A best-effort to decode the given sequence of key bytes as either a DocKey or a SubDocKey.
-std::string BestEffortKeyBytesToStr(const KeyBytes& key_bytes);
+std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
+std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice);
 
 }  // namespace docdb
 }  // namespace yb

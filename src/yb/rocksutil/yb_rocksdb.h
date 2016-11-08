@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_YB_ROCKSDB_H
-#define YB_YB_ROCKSDB_H
+#ifndef YB_ROCKSUTIL_YB_ROCKSDB_H
+#define YB_ROCKSUTIL_YB_ROCKSDB_H
 
 #include <string>
 #include <cstddef>
@@ -21,7 +21,8 @@ void InitRocksDBOptions(rocksdb::Options* options,
 
 void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options);
 
-std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice);
+std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice,
+                                    size_t max_length = std::numeric_limits<size_t>::max());
 
 inline rocksdb::Slice YBToRocksDBSlice(const yb::Slice& yb_slice) {
   return rocksdb::Slice(reinterpret_cast<const char*>(yb_slice.data()), yb_slice.size());
@@ -31,6 +32,6 @@ inline yb::Slice RocksDBToYBSlice(const rocksdb::Slice& rocksdb_slice) {
   return yb::Slice(reinterpret_cast<const uint8_t*>(rocksdb_slice.data()), rocksdb_slice.size());
 }
 
-}
+}  // namespace yb
 
-#endif // YB_YB_ROCKSDB_H
+#endif // YB_ROCKSUTIL_YB_ROCKSDB_H

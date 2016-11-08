@@ -64,10 +64,11 @@ vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, bool use_hash,
   vector<SubDocKey> result;
   result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), Timestamp((*rng)())));
   for (int iteration = 0; iteration < num_keys; ++iteration) {
-    result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash), Timestamp((*rng)())));
+    result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash)));
     for (int i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
-      result.back().AppendSubKeysAndTimestamps(GenRandomPrimitiveValue(rng), Timestamp((*rng)()));
+      result.back().AppendSubKeysAndMaybeTimestamp(GenRandomPrimitiveValue(rng));
     }
+    result.back().set_timestamp(Timestamp((*rng)()));
   }
   return result;
 }

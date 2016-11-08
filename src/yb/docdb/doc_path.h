@@ -42,7 +42,7 @@ class DocPath {
 
   std::string ToString() const {
     return strings::Substitute("DocPath($0, $1)",
-        BestEffortKeyBytesToStr(encoded_doc_key_), rocksdb::VectorToString(subkeys_));
+        BestEffortDocDBKeyToStr(encoded_doc_key_), rocksdb::VectorToString(subkeys_));
   }
 
   void AddSubKey(const PrimitiveValue& subkey) {

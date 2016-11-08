@@ -10,6 +10,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::string;
 using strings::Substitute;
@@ -161,9 +162,13 @@ string PrimitiveValue::ToValue() const {
 }
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
+  // A copy for error reporting.
+  const rocksdb::Slice input_slice(*slice);
+
   if (slice->empty()) {
-    return STATUS(Corruption,
-        "Cannot decode a primitive value in the key encoding format from an empty slice");
+    return STATUS_SUBSTITUTE(Corruption,
+        "Cannot decode a primitive value in the key encoding format from an empty slice: $0",
+        ToShortDebugStr(input_slice));
   }
   ValueType value_type = ConsumeValueType(slice);
 
@@ -191,8 +196,9 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       if (slice->size() < sizeof(int64_t)) {
-        return STATUS(Corruption, Substitute("Not enough bytes to decode a 64-bit integer: $0",
-            slice->size()));
+        return STATUS_SUBSTITUTE(Corruption,
+            "Not enough bytes to decode a 64-bit integer: $0",
+            slice->size());
       }
       int64_val_ = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
       slice->remove_prefix(sizeof(int64_t));
@@ -215,9 +221,9 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
             Substitute("Not enough bytes to decode a timestamp: $0, need $1",
                 slice->size(), kBytesPerTimestamp));
       }
+      timestamp_val_ = DecodeTimestampFromKey(*slice, /* pos = */ 0);
       slice->remove_prefix(kBytesPerTimestamp);
       type_ = value_type;
-      int64_val_ = BigEndian::Load64(slice->data());
       return Status::OK();
 
     case ValueType::kDouble:
@@ -227,8 +233,9 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   return STATUS(Corruption,
-      Substitute("Cannot decode value type $0 from the key encoding format",
-          ValueTypeToStr(value_type)));
+      Substitute("Cannot decode value type $0 from the key encoding format: $1",
+          ValueTypeToStr(value_type),
+          ToShortDebugStr(input_slice)));
 }
 
 Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {

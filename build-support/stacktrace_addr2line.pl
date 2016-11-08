@@ -42,8 +42,11 @@
 #######################################################################
 use strict;
 use warnings;
+no warnings 'portable';  # Support for 64-bit ints required
 
 use File::Basename;
+
+use constant DEBUG => 0;
 
 if (!@ARGV) {
   die <<EOF
@@ -70,6 +73,11 @@ sub parse_addr2line_output($$) {
   return $pretty_str;
 }
 
+sub to_hex_str($) {
+  my $number = shift;
+  return sprintf("0x%x", $number)
+}
+
 my $binary = shift @ARGV;
 if (! -x $binary || ! -r $binary) {
   die "Error: Cannot access executable ($binary)";
@@ -85,10 +93,18 @@ my %addr2line_map = ();
 # Disable stdout buffering
 $| = 1;
 
+my @library_offsets;
+my $library_offsets_sorted = 0;
+
 # Reading from <ARGV> is magical in Perl.
 while (defined(my $input = <ARGV>)) {
   # ExternalMiniCluster tests can produce stack traces prefixed by [m-1], [m-2], [m-3], [ts-1],
   # [ts-2], [ts-3], e.g.
+  if ($input =~ /Shared library '(.*)' loaded at address 0x([0-9a-f]+)\s*$/) {
+    push(@library_offsets, [$1, hex($2)]);
+    $library_offsets_sorted = 0;
+  }
+
   if ($input =~ /^(?:\[([a-z]+)-\d+\])?\s+\@\s+(0x[[:xdigit:]]{6,})(?:\s+(\S+))?/) {
     my $minicluster_daemon_prefix = $1;
     my $addr = $2;
@@ -104,7 +120,41 @@ while (defined(my $input = <ARGV>)) {
     }
 
     if (!exists($addr2line_map{$addr})) {
-      $addr2line_map{$addr} = `addr2line -ifC -e "$current_binary" $addr`;
+      if (!$library_offsets_sorted) {
+        @library_offsets = sort { $a->[1] <=> $b->[1] } @library_offsets;
+        if (DEBUG) {
+          for my $library_entry (@library_offsets) {
+            print "Library " . $library_entry->[0] . " is loaded at offset " .
+                  to_hex_str($library_entry->[1]) . "\n";;
+          }
+        }
+        $library_offsets_sorted = 1;
+      }
+
+      # The following could be optimized with binary search.
+      my $parsed_addr = hex($addr);
+      my $addr_to_use = $parsed_addr;
+      my $binary_to_use = $current_binary;
+      for my $library_entry (@library_offsets) {
+        my ($library_path, $library_offset) = @$library_entry;
+        if ($parsed_addr >= $library_offset) {
+          $binary_to_use = $library_path;
+          $addr_to_use = $parsed_addr - $library_offset;
+        } else {
+          # This library and all following libraries are loaded at higher addresses than the address
+          # we are looking for.
+          last;
+        }
+      }
+      if (DEBUG) {
+        print "For input line '$input' address '$addr' appears to be in the binary " .
+              "'$binary_to_use'\n";
+      }
+
+      my $addr2line_cmd = "addr2line -ifC -e \"" . $binary_to_use . '" ' .
+                          to_hex_str($addr_to_use);
+
+      $addr2line_map{$addr} = `$addr2line_cmd`;
     }
     chomp $input;
     $input .= parse_addr2line_output($addr2line_map{$addr}, $lookup_func_name) . "\n";

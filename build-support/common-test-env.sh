@@ -50,7 +50,7 @@ INCREASED_TEST_TIMEOUT_SEC=1200
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with egrep.
 readonly RELEVANT_LOG_LINES_RE=\
-'^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|: Failure$'
+'^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|^Which is:|: Failure$'
 
 # -------------------------------------------------------------------------------------------------
 # Functions

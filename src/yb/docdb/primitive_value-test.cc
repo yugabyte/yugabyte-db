@@ -34,7 +34,8 @@ void EncodeAndDecode(const PrimitiveValue& primitive_value) {
       << primitive_value.ToString() << ": "
       << slice.size() << " bytes left."
       << "Key bytes: " << key_bytes.ToString() << ".";
-  ASSERT_EQ(primitive_value.ToString(), decoded.ToString());
+  ASSERT_EQ(primitive_value.ToString(), decoded.ToString())
+      << "String representation of decoded value is different from that of the original value.";
 }
 
 void TestEncoding(const char* expected_str, const PrimitiveValue& primitive_value) {
@@ -67,10 +68,8 @@ TEST(PrimitiveValueTest, TestToString) {
 
   // Timestamps use an unsigned 64-bit integer as an internal representation.
   ASSERT_EQ("TS(0)", PrimitiveValue(Timestamp(0)).ToString());
-  ASSERT_EQ("TS(18446744073709551615)",
-      PrimitiveValue(Timestamp(numeric_limits<uint64_t>::max())).ToString());
-  ASSERT_EQ("TS(18446744073709551615)",
-    PrimitiveValue(Timestamp(-1)).ToString());
+  ASSERT_EQ("TS(Max)", PrimitiveValue(Timestamp(numeric_limits<uint64_t>::max())).ToString());
+  ASSERT_EQ("TS(Max)", PrimitiveValue(Timestamp(-1)).ToString());
 
   ASSERT_EQ("UInt32Hash(4294967295)",
       PrimitiveValue::UInt32Hash(numeric_limits<uint32_t>::max()).ToString());
@@ -82,19 +81,20 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
   for (auto primitive_value : {
       PrimitiveValue("foo"),
       PrimitiveValue(string("foo\0bar\x01", 8)),
-      PrimitiveValue(123L)
+      PrimitiveValue(123L),
+      PrimitiveValue(Timestamp(1000L))
   }) {
     EncodeAndDecode(primitive_value);
   }
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
-  TestEncoding(R"#("\x04foo\x00\x00")#", PrimitiveValue("foo"));
-  TestEncoding(R"#("\x04foo\x00\x01bar\x01\x00\x00")#", PrimitiveValue(string("foo\0bar\x01", 8)));
-  TestEncoding(R"#("\x05\x80\x00\x00\x00\x00\x00\x00{")#", PrimitiveValue(123L));
-  TestEncoding(R"#("\x05\x00\x00\x00\x00\x00\x00\x00\x00")#",
+  TestEncoding(R"#("$foo\x00\x00")#", PrimitiveValue("foo"));
+  TestEncoding(R"#("$foo\x00\x01bar\x01\x00\x00")#", PrimitiveValue(string("foo\0bar\x01", 8)));
+  TestEncoding(R"#("I\x80\x00\x00\x00\x00\x00\x00{")#", PrimitiveValue(123L));
+  TestEncoding(R"#("I\x00\x00\x00\x00\x00\x00\x00\x00")#",
       PrimitiveValue(std::numeric_limits<int64_t>::min()));
-  TestEncoding(R"#("\x05\xff\xff\xff\xff\xff\xff\xff\xff")#",
+  TestEncoding(R"#("I\xff\xff\xff\xff\xff\xff\xff\xff")#",
       PrimitiveValue(std::numeric_limits<int64_t>::max()));
 }
 
@@ -131,5 +131,5 @@ TEST(PrimitiveValueTest, TestPrimitiveValuesAsMapKeys) {
   ASSERT_NE(m.find(key1), m.end());
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

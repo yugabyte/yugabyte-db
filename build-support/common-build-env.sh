@@ -475,9 +475,8 @@ set_cmake_build_type_and_compiler_type() {
   # So our new approach is to pass the correct command-line options to CMake, and still let CMake
   # use the default compiler in CLion-triggered builds.
 
-  cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type"
-                "-DCMAKE_C_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/cc"
-                "-DCMAKE_CXX_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/c++" )
+  cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
+  cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
 }
 
 build_yb_java_code() {
@@ -598,3 +597,8 @@ if [[ ! -d $YB_SRC_ROOT/build-support ]]; then
 fi
 
 readonly YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
+
+readonly YB_DEFAULT_CMAKE_OPTS=(
+  "-DCMAKE_C_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/cc"
+  "-DCMAKE_CXX_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/c++"
+)

@@ -30,7 +30,7 @@ void DocWriteBatchCache::Put(const KeyBytes& key_bytes,
                              ValueType value_type) {
   DOCDB_DEBUG_LOG(
       "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ts=$1, value_type=$2",
-      BestEffortKeyBytesToStr(key_bytes),
+      BestEffortDocDBKeyToStr(key_bytes),
       gen_ts.ToDebugString(),
       ValueTypeToStr(value_type));
   prefix_to_gen_ts_[key_bytes.AsStringRef()] = std::make_pair(gen_ts, value_type);
@@ -58,7 +58,7 @@ string DocWriteBatchCache::ToDebugString() {
   ostringstream ss;
   ss << "DocWriteBatchCache[" << endl;
   for (const auto& kv : sorted_contents) {
-    ss << "  " << BestEffortKeyBytesToStr(KeyBytes(kv.first)) << " -> "
+    ss << "  " << BestEffortDocDBKeyToStr(KeyBytes(kv.first)) << " -> "
        << EntryToStr(kv.second) << endl;
   }
   ss << "]";

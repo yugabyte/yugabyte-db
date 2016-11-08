@@ -162,7 +162,6 @@ install(FILES
   scan_batch.h
   scan_predicate.h
   schema.h
-  shared_ptr.h
   stubs.h
   value.h
         yb_op.h

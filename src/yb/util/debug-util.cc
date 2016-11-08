@@ -19,10 +19,15 @@
 
 #include <execinfo.h>
 #include <dirent.h>
-#include <glog/logging.h>
 #include <signal.h>
-#include <string>
 #include <sys/syscall.h>
+#ifdef __linux__
+#include <link.h>
+#endif
+
+#include <string>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/spinlock.h"
@@ -387,5 +392,36 @@ uint64_t StackTrace::HashCode() const {
   return util_hash::CityHash64(reinterpret_cast<const char*>(frames_),
                                sizeof(frames_[0]) * num_frames_);
 }
+
+namespace {
+#ifdef __linux__
+int DynamcLibraryListCallback(struct dl_phdr_info *info, size_t size, void *data) {
+  if (*info->dlpi_name != '\0') {
+    LOG(INFO) << "Shared library '" << info->dlpi_name << "' loaded at address 0x"
+              << StringPrintf("%" PRIx64, info->dlpi_addr);
+  }
+  return 0;
+}
+#endif
+
+bool PrintLoadedDynamicLibrariesOnceHelper() {
+  const char* list_dl_env_var = std::getenv("YB_LIST_LOADED_DYNAMIC_LIBS");
+  if (list_dl_env_var != nullptr && *list_dl_env_var != '\0') {
+    PrintLoadedDynamicLibraries();
+  }
+  return true;
+}
+}  // anonymous namespace
+
+void PrintLoadedDynamicLibraries() {
+#ifdef __linux__
+  dl_iterate_phdr(DynamcLibraryListCallback, nullptr);
+#else
+  LOG(WARNING) << __func__ << " is only supported on Linux";
+#endif
+}
+
+// List the load addresses of dynamic libraries once on process startup if required.
+const bool kPrintedLoadedDynamicLibraries = PrintLoadedDynamicLibrariesOnceHelper();
 
 }  // namespace yb

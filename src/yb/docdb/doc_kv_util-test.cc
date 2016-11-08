@@ -17,21 +17,21 @@ using yb::util::FormatBytesAsStr;
 namespace yb {
 namespace docdb {
 
-TEST(DocKVUtilTest, KeyBelongsToDocKey) {
+TEST(DocKVUtilTest, KeyBelongsToDocKeyInTest) {
   string actual_key = "mydockey";
   actual_key.push_back('\x0');
   const string actual_key_with_one_zero = actual_key;
   actual_key.push_back('\x0');
-  ASSERT_TRUE(KeyBelongsToDocKey(rocksdb::Slice(actual_key), "mydockey"));
-  ASSERT_FALSE(KeyBelongsToDocKey(rocksdb::Slice(actual_key_with_one_zero), "mydockey"));
-  ASSERT_FALSE(KeyBelongsToDocKey(rocksdb::Slice("mydockey"), "mydockey"));
-  ASSERT_FALSE(KeyBelongsToDocKey(rocksdb::Slice(""), ""));
+  ASSERT_TRUE(KeyBelongsToDocKeyInTest(rocksdb::Slice(actual_key), "mydockey"));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(actual_key_with_one_zero), "mydockey"));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice("mydockey"), "mydockey"));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(""), ""));
 
   string just_two_zeros;
   just_two_zeros.push_back('\x0');
   just_two_zeros.push_back('\x0');
-  ASSERT_TRUE(KeyBelongsToDocKey(rocksdb::Slice(just_two_zeros), ""));
-  ASSERT_FALSE(KeyBelongsToDocKey(rocksdb::Slice(just_two_zeros), just_two_zeros));
+  ASSERT_TRUE(KeyBelongsToDocKeyInTest(rocksdb::Slice(just_two_zeros), ""));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(just_two_zeros), just_two_zeros));
 }
 
 TEST(DocKVUtilTest, EncodeAndDecodeTimestampInKey) {
@@ -96,5 +96,5 @@ TEST(DocKVUtilTest, ZeroEncodingAndDecoding) {
   }
 }
 
-}
-}
+}  // namespace docdb
+}  // namespace yb

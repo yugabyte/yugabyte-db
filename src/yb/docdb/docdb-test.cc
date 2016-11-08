@@ -129,7 +129,7 @@ void DocDBTest::TestInsertion(DocPath doc_path,
                               string expected_write_batch_str) {
   DocWriteBatch dwb(rocksdb_.get());
   ASSERT_OK(dwb.SetPrimitive(doc_path, value, timestamp));
-  dwb.WriteToRocksDB(timestamp, write_options_);
+  dwb.WriteToRocksDBInTest(timestamp, write_options_);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected_write_batch_str),
                                 dwb.ToDebugString());
 }
@@ -145,7 +145,7 @@ void DocDBTest::TestDeletion(DocPath doc_path,
   string expected_write_batch_str) {
   DocWriteBatch dwb(rocksdb_.get());
   ASSERT_OK(dwb.DeleteSubDoc(doc_path, timestamp));
-  dwb.WriteToRocksDB(timestamp, write_options_);
+  dwb.WriteToRocksDBInTest(timestamp, write_options_);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected_write_batch_str),
       dwb.ToDebugString());
 }
@@ -153,7 +153,7 @@ void DocDBTest::TestDeletion(DocPath doc_path,
 rocksdb::Status DocDBTest::WriteToRocksDB(const DocWriteBatch& doc_write_batch) {
   // We specify Timestamp::kMax to disable timestamp substitution before we write to RocksDB, as
   // we typically already specify the timestamp while constructing DocWriteBatch.
-  rocksdb::Status status = doc_write_batch.WriteToRocksDB(Timestamp::kMax, write_options_);
+  rocksdb::Status status = doc_write_batch.WriteToRocksDBInTest(Timestamp::kMax, write_options_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed writing to RocksDB: " << status.ToString();
   }
@@ -179,12 +179,20 @@ TEST_F(DocDBTest, BasicTest) {
   //   where we get a lot of \xff bytes from.
 
   DocKey string_valued_doc_key(PrimitiveValues("my_key_where_value_is_a_string"));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      // Two zeros indicate the end of a string primitive field, and the '!' indicates the end
+      // of the "range" part of the DocKey. There is no "hash" part, because the first
+      // PrimitiveValue is not a hash value.
+      "\"$my_key_where_value_is_a_string\\x00\\x00!\"",
+      string_valued_doc_key.Encode().ToString());
+
   TestInsertion(
       DocPath(string_valued_doc_key.Encode()),
       PrimitiveValue("value1"),
       Timestamp(1000),
-      R"#(1. PutCF('\x04my_key_where_value_is_a_string\x00\x00\x00\
-                    \xff\xff\xff\xff\xff\xff\xfc\x17', '\x04value1'))#");
+      R"#(1. PutCF('$my_key_where_value_is_a_string\x00\x00\
+                    !\
+                    #\xff\xff\xff\xff\xff\xff\xfc\x17', '$value1'))#");
 
   DocKey doc_key(PrimitiveValues("mydockey", 123456));
   KeyBytes encoded_doc_key(doc_key.Encode());
@@ -194,12 +202,15 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_a"),
       Timestamp(2000),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/', '@')
-2. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_a\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/', '\x04value_a')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          #\xff\xff\xff\xff\xff\xff\xf8/', '{')
+2. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_a\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf8/', '$value_a')
       )#");
 
   TestInsertion(
@@ -207,16 +218,17 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_bc"),
       Timestamp(3000),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf4G', '@')
-2. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf4G\
-          \x04subkey_c\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf4G', '\x04value_bc')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf4G', '{')
+2. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          $subkey_c\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf4G', '$value_bc')
       )#");
 
   // This only has one insertion, because the object at subkey "subkey_b" already exists.
@@ -225,12 +237,12 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_bd"),
       Timestamp(3500),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf4G\
-          \x04subkey_d\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf2S', '\x04value_bd')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          $subkey_d\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf2S', '$value_bd')
       )#");
 
   // Delete a non-existent top-level document. We don't expect any tombstones to be created.
@@ -244,11 +256,12 @@ TEST_F(DocDBTest, BasicTest) {
       DocPath(encoded_doc_key, "subkey_b", "subkey_c"),
       Timestamp(5000),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xf4G\
-          \x04subkey_c\x00\x00\xff\xff\xff\xff\xff\xff\xecw', 'B')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          $subkey_c\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xecw', 'X')
       )#");
 
   // Now delete an entire object.
@@ -256,10 +269,11 @@ TEST_F(DocDBTest, BasicTest) {
       DocPath(encoded_doc_key, "subkey_b"),
       Timestamp(6000),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xe8\x8f', 'B')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xe8\x8f', 'X')
       )#");
 
   // Re-insert a value at subkey_b.subkey_c. This should see the tombstone from the previous
@@ -269,16 +283,17 @@ TEST_F(DocDBTest, BasicTest) {
       PrimitiveValue("value_bc_prime"),
       Timestamp(7000),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xe4\xa7', '@')
-2. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xf8/\
-          \x04subkey_b\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xe4\xa7\
-          \x04subkey_c\x00\x00\
-          \xff\xff\xff\xff\xff\xff\xe4\xa7', '\x04value_bc_prime')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xe4\xa7', '{')
+2. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          $subkey_b\x00\x00\
+          $subkey_c\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xe4\xa7', '$value_bc_prime')
       )#");
 
   // Check the final state of the database.
@@ -288,20 +303,14 @@ TEST_F(DocDBTest, BasicTest) {
       ApplyEagerLineContinuation(R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000)]) -> {}
-SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000), "subkey_a", TS(2000)]) -> "value_a"
-SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000), "subkey_b", TS(7000)]) -> {}
-SubDocKey(DocKey([], ["mydockey", 123456]), \
-          [TS(2000), "subkey_b", TS(7000), "subkey_c", TS(7000)]) -> \
-    "value_bc_prime"
-SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000), "subkey_b", TS(6000)]) -> DEL
-SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000), "subkey_b", TS(3000)]) -> {}
-SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000), "subkey_b", TS(3000), "subkey_c", TS(5000)]) -> DEL
-SubDocKey(DocKey([], ["mydockey", 123456]), \
-          [TS(2000), "subkey_b", TS(3000), "subkey_c", TS(3000)]) -> \
-    "value_bc"
-SubDocKey(DocKey([], ["mydockey", 123456]), \
-          [TS(2000), "subkey_b", TS(3000), "subkey_d", TS(3500)]) -> \
-    "value_bd"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_a"; TS(2000)]) -> "value_a"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(7000)]) -> {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(6000)]) -> DEL
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(3000)]) -> {}
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) -> "value_bc_prime"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(5000)]) -> DEL
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(3000)]) -> "value_bc"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) -> "value_bd"
       )#"),
       debug_dump.str());
 
@@ -341,9 +350,10 @@ SubDocKey(DocKey([], ["mydockey", 123456]), \
       PrimitiveValue(ValueType::kObject),
       Timestamp(8000),
       R"#(
-1. PutCF('\x04mydockey\x00\x00\x05\x80\x00\x00\x00\x00\
-          \x01\xe2@\x00\
-          \xff\xff\xff\xff\xff\xff\xe0\xbf', '@')
+1. PutCF('$mydockey\x00\x00\
+          I\x80\x00\x00\x00\x00\x01\xe2@\
+          !\
+          #\xff\xff\xff\xff\xff\xff\xe0\xbf', '{')
 )#");
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -371,34 +381,43 @@ TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(R"#(
 SubDocKey(DocKey([], ["a"]), [TS(1000)]) -> {}
-SubDocKey(DocKey([], ["a"]), [TS(1000), "b", TS(1000)]) -> "v1"
-SubDocKey(DocKey([], ["a"]), [TS(1000), "c", TS(2000)]) -> {}
-SubDocKey(DocKey([], ["a"]), [TS(1000), "c", TS(2000), "d", TS(2000)]) -> "v2"
-SubDocKey(DocKey([], ["a"]), [TS(1000), "c", TS(2000), "e", TS(3000)]) -> "v3"
+SubDocKey(DocKey([], ["a"]), ["b"; TS(1000)]) -> "v1"
+SubDocKey(DocKey([], ["a"]), ["c"; TS(2000)]) -> {}
+SubDocKey(DocKey([], ["a"]), ["c", "d"; TS(2000)]) -> "v2"
+SubDocKey(DocKey([], ["a"]), ["c", "e"; TS(3000)]) -> "v3"
       )#"),
       debug_dump.str());
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
           R"#(
-1. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17', '@')
-2. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
-          \x04b\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17', '\x04v1')
-3. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
-          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf8/', '@')
-4. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
-          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf8/\
-          \x04d\x00\x00\xff\xff\xff\xff\xff\xff\xf8/', '\x04v2')
-5. PutCF('\x04a\x00\x00\x00\xff\xff\xff\xff\xff\xff\xfc\x17\
-          \x04c\x00\x00\xff\xff\xff\xff\xff\xff\xf8/\
-          \x04e\x00\x00\xff\xff\xff\xff\xff\xff\xf4G', '\x04v3')
+1. PutCF('$a\x00\x00\
+          !\
+          #\xff\xff\xff\xff\xff\xff\xfc\x17', '{')
+2. PutCF('$a\x00\x00\
+          !\
+          $b\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xfc\x17', '$v1')
+3. PutCF('$a\x00\x00\
+          !\
+          $c\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf8/', '{')
+4. PutCF('$a\x00\x00\
+          !\
+          $c\x00\x00\
+          $d\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf8/', '$v2')
+5. PutCF('$a\x00\x00\
+          !\
+          $c\x00\x00\
+          $e\x00\x00\
+          #\xff\xff\xff\xff\xff\xff\xf4G', '$v3')
           )#"
       ), dwb.ToDebugString());
 }
 
 TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   DocWriteBatch dwb(rocksdb_.get());
-  WriteOptions write_options;
 
   const auto encoded_doc_key1 = DocKey(PrimitiveValues("row1", 11111)).Encode();
   const auto encoded_doc_key2 = DocKey(PrimitiveValues("row2", 22222)).Encode();
@@ -443,15 +462,15 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [TS(1000)]) -> {}
-SubDocKey(DocKey([], ["row1", 11111]), [TS(1000), 30, TS(1000)]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [TS(1000), 40, TS(1000)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [TS(1000), 50, TS(1000)]) -> "row1_e"
+SubDocKey(DocKey([], ["row1", 11111]), [30; TS(1000)]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [40; TS(1000)]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [50; TS(1000)]) -> "row1_e"
 SubDocKey(DocKey([], ["row2", 22222]), [TS(2000)]) -> {}
-SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 40, TS(3000)]) -> 30000
-SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 40, TS(2500)]) -> DEL
-SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 40, TS(2000)]) -> 20000
-SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(4000)]) -> "row2_e_prime"
-SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(2000)]) -> "row2_e"
+SubDocKey(DocKey([], ["row2", 22222]), [40; TS(3000)]) -> 30000
+SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2500)]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2000)]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [50; TS(4000)]) -> "row2_e_prime"
+SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
       )#"),
       debug_dump.str());
 
@@ -550,7 +569,6 @@ SubDocKey(DocKey([], ["row2", 22222]), [TS(2000), 50, TS(2000)]) -> "row2_e"
 TEST_F(DocDBTest, RandomizedDocDBTest) {
   RandomNumberGenerator rng;  // Using default seed.
   auto random_doc_keys(GenRandomDocKeys(&rng, /* use_hash = */ false, 50));
-
   auto random_subkeys(GenRandomPrimitiveValues(&rng, 500));
 
   uint64_t timestamp_counter = Timestamp::kMin.ToUint64() + 1;
@@ -603,7 +621,12 @@ TEST_F(DocDBTest, RandomizedDocDBTest) {
     } else {
       DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
                       i, doc_path.ToString(), value.ToString());
-      ASSERT_OK(dwb.SetPrimitive(doc_path, value, timestamp));
+      auto set_primitive_status = dwb.SetPrimitive(doc_path, value, timestamp);
+      if (!set_primitive_status.ok()) {
+        DocDBDebugDump(rocksdb_.get(), std::cerr);
+        LOG(INFO) << "doc_path=" << doc_path.ToString();
+      }
+      ASSERT_OK(set_primitive_status);
       ASSERT_OK(debug_db_state.SetPrimitive(doc_path, value));
     }
 

@@ -15,8 +15,7 @@ using std::string;
 using strings::Substitute;
 
 using yb::util::FormatBytesAsStr;
-
-using namespace rocksdb;
+using yb::util::QuotesType;
 
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
@@ -48,7 +47,7 @@ void InitRocksDBOptions(rocksdb::Options* options,
   // Compaction related options.
 
   // Enable universal style compactions.
-  options->compaction_style = CompactionStyle::kCompactionStyleUniversal;
+  options->compaction_style = rocksdb::CompactionStyle::kCompactionStyleUniversal;
   // Set the number of levels to 1.
   options->num_levels = 1;
 
@@ -58,13 +57,13 @@ void InitRocksDBOptions(rocksdb::Options* options,
   // This determines the algo used to compute which files will be included. The "total size" based
   // computation compares the size of every new file with the sum of all files included so far.
   options->compaction_options_universal.stop_style =
-    CompactionStopStyle::kCompactionStopStyleTotalSize;
+      rocksdb::CompactionStopStyle::kCompactionStopStyleTotalSize;
   options->compaction_options_universal.size_ratio = FLAGS_rocksdb_universal_compaction_size_ratio;
   options->compaction_options_universal.min_merge_width =
-    FLAGS_rocksdb_universal_compaction_min_merge_width;
+      FLAGS_rocksdb_universal_compaction_min_merge_width;
   if (FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec > 0) {
     options->rate_limiter.reset(
-      rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
+        rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
   }
 }
 
@@ -75,8 +74,12 @@ void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options) {
   write_options->sync = false;
 }
 
-std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice) {
-  return FormatBytesAsStr(rocksdb_slice.data(), rocksdb_slice.size());
+std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice,
+                                    const size_t max_length) {
+  return FormatBytesAsStr(rocksdb_slice.data(),
+                          rocksdb_slice.size(),
+                          QuotesType::kDoubleQuotes,
+                          max_length);
 }
 
-}
+}  // namespace yb

@@ -122,7 +122,8 @@ set(UTIL_SRCS
   malloc.cc
   math_util.cc
   memcmpable_varint.cc
-  memory/arena.cc memory/memory.cc
+  memory/arena.cc
+  memory/memory.cc
   memenv/memenv.cc
   mem_tracker.cc
   metrics.cc
@@ -169,7 +170,7 @@ set(UTIL_SRCS
   string_trim.cc
   trilean.cc
   pending_op_counter.cc
-)
+  )
 
 if(NOT APPLE)
   set(UTIL_SRCS
@@ -202,7 +203,8 @@ set(EXPORTED_UTIL_LIBS ${UTIL_LIBS})
 if(${YB_TCMALLOC_AVAILABLE})
   list(APPEND UTIL_LIBS tcmalloc)
 endif()
-list(APPEND UTIL_LIBS curl)
+# We need libdl for accessing library load addresses.
+list(APPEND UTIL_LIBS curl dl)
 
 ADD_EXPORTABLE_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}

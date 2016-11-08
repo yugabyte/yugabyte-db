@@ -45,7 +45,8 @@ string Timestamp::ToString() const {
 }
 
 string Timestamp::ToDebugString() const {
-  return Substitute("$0($1)", kTimestampDebugStrPrefix, ToString());
+  return Substitute("$0($1)", kTimestampDebugStrPrefix,
+                    v == kMax.v ? "Max" : ToString());
 }
 
 uint64_t Timestamp::ToUint64() const {

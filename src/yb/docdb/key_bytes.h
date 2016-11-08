@@ -10,6 +10,7 @@
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/value_type.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 namespace docdb {
@@ -74,7 +75,7 @@ class KeyBytes {
   }
 
   // Checks whether the given slice starts with this sequence of key bytes.
-  bool OnlyDiffersByLastTimestampFrom(const rocksdb::Slice& other_slice) {
+  bool OnlyDiffersByLastTimestampFrom(const rocksdb::Slice& other_slice) const {
     if (size() != other_slice.size() || size() < kBytesPerTimestamp) {
       return false;
     }
@@ -131,6 +132,10 @@ class KeyBytes {
   // string field in a protobuf, without copying the bytes.
   std::string* mutable_data() {
     return &data_;
+  }
+
+  std::string ToShortDebugStr() {
+    return yb::docdb::ToShortDebugStr(data_);
   }
 
  private:
