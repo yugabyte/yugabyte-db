@@ -32,6 +32,14 @@
 #undef GetCurrentTime
 #endif
 
+#define RLOG(...) LogWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+#define RHEADER(...) HeaderWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+#define RDEBUG(...) DebugWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+#define RINFO(...) InfoWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+#define RWARN(...) WarnWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+#define RERROR(...) ErrorWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+#define RFATAL(...) FatalWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+
 namespace rocksdb {
 
 class FileLock;
@@ -671,7 +679,10 @@ class Logger {
   // Write a header to the log file with the specified format
   // It is recommended that you log all header information at the start of the
   // application. But it is not enforced.
-  virtual void LogHeader(const char* format, va_list ap) {
+  // Note(akashnil): Currently we ignore the context (file, line number) because of the class
+  // hierarchy. Need to fix in future if Header is important.
+  virtual void LogHeaderWithContext(const char* file, const int line,
+      const char *format, va_list ap) {
     // Default implementation does a simple INFO level log write.
     // Please override as per the logger class requirement.
     Logv(format, ap);
@@ -684,7 +695,15 @@ class Logger {
   // and format.  Any log with level under the internal log level
   // of *this (see @SetInfoLogLevel and @GetInfoLogLevel) will not be
   // printed.
-  virtual void Logv(const InfoLogLevel log_level, const char* format, va_list ap);
+  virtual void Logv(const rocksdb::InfoLogLevel log_level, const char* format, va_list ap);
+
+  // A version of the Logv function that takes the file and line number of the caller.
+  // Accomplished by the RLOG() macro with the __FILE__ and __LINE__ attributes.
+  virtual void LogvWithContext(const char* file,
+                               const int line,
+                               const InfoLogLevel log_level,
+                               const char* format,
+                               va_list ap);
 
   virtual size_t GetLogFileSize() const { return kDoNotSupportGetLogFileSize; }
   // Flush to the OS buffers
@@ -715,44 +734,90 @@ class FileLock {
 
 extern void LogFlush(const shared_ptr<Logger>& info_log);
 
-extern void Log(const InfoLogLevel log_level,
-                const shared_ptr<Logger>& info_log, const char* format, ...);
+extern void LogWithContext(const char* file,
+                           const int line,
+                           const InfoLogLevel log_level,
+                           const shared_ptr<Logger>& info_log,
+                           const char* format,
+                           ...);
 
 // a set of log functions with different log levels.
-extern void Header(const shared_ptr<Logger>& info_log, const char* format, ...);
-extern void Debug(const shared_ptr<Logger>& info_log, const char* format, ...);
-extern void Info(const shared_ptr<Logger>& info_log, const char* format, ...);
-extern void Warn(const shared_ptr<Logger>& info_log, const char* format, ...);
-extern void Error(const shared_ptr<Logger>& info_log, const char* format, ...);
-extern void Fatal(const shared_ptr<Logger>& info_log, const char* format, ...);
+extern void HeaderWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...);
+extern void DebugWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...);
+extern void InfoWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...);
+extern void WarnWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...);
+extern void ErrorWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...);
+extern void FatalWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...);
 
 // Log the specified data to *info_log if info_log is non-nullptr.
 // The default info log level is InfoLogLevel::ERROR.
-extern void Log(const shared_ptr<Logger>& info_log, const char* format, ...)
+extern void LogWithContext(const char* file,
+                           const int line,
+                           const shared_ptr<Logger>& info_log,
+                           const char* format,
+                           ...)
 #   if defined(__GNUC__) || defined(__clang__)
-    __attribute__((__format__ (__printf__, 2, 3)))
+    __attribute__((__format__ (__printf__, 4, 5)))
 #   endif
     ;
 
 extern void LogFlush(Logger *info_log);
 
-extern void Log(const InfoLogLevel log_level, Logger* info_log,
-                const char* format, ...);
+extern void LogWithContext(const char* file,
+                           const int line,
+                           const InfoLogLevel log_level,
+                           Logger* info_log,
+                           const char* format,
+                           ...);
 
 // The default info log level is InfoLogLevel::ERROR.
-extern void Log(Logger* info_log, const char* format, ...)
+extern void LogWithContext(const char* file,
+                           const int line,
+                           Logger* info_log,
+                           const char* format,
+                           ...)
 #   if defined(__GNUC__) || defined(__clang__)
-    __attribute__((__format__ (__printf__, 2, 3)))
+    __attribute__((__format__ (__printf__, 4, 5)))
 #   endif
     ;
 
 // a set of log functions with different log levels.
-extern void Header(Logger* info_log, const char* format, ...);
-extern void Debug(Logger* info_log, const char* format, ...);
-extern void Info(Logger* info_log, const char* format, ...);
-extern void Warn(Logger* info_log, const char* format, ...);
-extern void Error(Logger* info_log, const char* format, ...);
-extern void Fatal(Logger* info_log, const char* format, ...);
+extern void HeaderWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...);
+extern void DebugWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...);
+extern void InfoWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...);
+extern void WarnWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...);
+extern void ErrorWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...);
+extern void FatalWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...);
 
 // A utility routine: write "data" to the named file.
 extern Status WriteStringToFile(Env* env, const Slice& data,

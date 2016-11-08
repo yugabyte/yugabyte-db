@@ -65,12 +65,12 @@ Env* AutoRollLoggerTest::env = Env::Default();
 // call Log(logger, log_message) directly.
 namespace {
 void LogMessage(Logger* logger, const char* message) {
-  Log(logger, "%s", message);
+  RLOG(logger, "%s", message);
 }
 
 void LogMessage(const InfoLogLevel log_level, Logger* logger,
                 const char* message) {
-  Log(log_level, logger, "%s", message);
+  RLOG(log_level, logger, "%s", message);
 }
 }  // namespace
 
@@ -357,12 +357,12 @@ TEST_F(AutoRollLoggerTest, InfoLogLevel) {
       logger.SetInfoLogLevel((InfoLogLevel)log_level);
 
       // again, messages with level smaller than log_level will not be logged.
-      Log(InfoLogLevel::HEADER_LEVEL, &logger, "%s", kSampleMessage.c_str());
-      Debug(&logger, "%s", kSampleMessage.c_str());
-      Info(&logger, "%s", kSampleMessage.c_str());
-      Warn(&logger, "%s", kSampleMessage.c_str());
-      Error(&logger, "%s", kSampleMessage.c_str());
-      Fatal(&logger, "%s", kSampleMessage.c_str());
+      RLOG(InfoLogLevel::HEADER_LEVEL, &logger, "%s", kSampleMessage.c_str());
+      RDEBUG(&logger, "%s", kSampleMessage.c_str());
+      RINFO(&logger, "%s", kSampleMessage.c_str());
+      RWARN(&logger, "%s", kSampleMessage.c_str());
+      RERROR(&logger, "%s", kSampleMessage.c_str());
+      RFATAL(&logger, "%s", kSampleMessage.c_str());
       log_lines += InfoLogLevel::HEADER_LEVEL - log_level + 1;
     }
   }
@@ -430,12 +430,12 @@ TEST_F(AutoRollLoggerTest, LogHeaderTest) {
     if (test_num == 0) {
       // Log some headers explicitly using Header()
       for (size_t i = 0; i < MAX_HEADERS; i++) {
-        Header(&logger, "%s %d", HEADER_STR.c_str(), i);
+        RHEADER(&logger, "%s %d", HEADER_STR.c_str(), i);
       }
     } else if (test_num == 1) {
       // HEADER_LEVEL should make this behave like calling Header()
       for (size_t i = 0; i < MAX_HEADERS; i++) {
-        Log(InfoLogLevel::HEADER_LEVEL, &logger, "%s %d",
+        RLOG(InfoLogLevel::HEADER_LEVEL, &logger, "%s %d",
             HEADER_STR.c_str(), i);
       }
     }
@@ -446,11 +446,11 @@ TEST_F(AutoRollLoggerTest, LogHeaderTest) {
     int i = 0;
     for (size_t iter = 0; iter < 2; iter++) {
       while (logger.GetLogFileSize() < LOG_MAX_SIZE) {
-        Info(&logger, (kSampleMessage + ":LogHeaderTest line %d").c_str(), i);
+        RINFO(&logger, (kSampleMessage + ":LogHeaderTest line %d").c_str(), i);
         ++i;
       }
 
-      Info(&logger, "Rollover");
+      RINFO(&logger, "Rollover");
     }
 
     // Flush the log for the latest file

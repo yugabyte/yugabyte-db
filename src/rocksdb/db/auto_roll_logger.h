@@ -48,7 +48,8 @@ class AutoRollLogger : public Logger {
 
   // Write a header entry to the log. All header information will be written
   // again every time the log rolls over.
-  virtual void LogHeader(const char* format, va_list ap) override;
+  virtual void LogHeaderWithContext(const char* file, const int line,
+      const char *format, va_list ap) override;
 
   // check if the logger has encountered any problem.
   Status GetStatus() {

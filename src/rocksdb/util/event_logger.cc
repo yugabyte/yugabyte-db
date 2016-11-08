@@ -49,7 +49,7 @@ void EventLogger::Log(Logger* logger, const JSONWriter& jwriter) {
 #ifdef ROCKSDB_PRINT_EVENTS_TO_STDOUT
   printf("%s\n", jwriter.Get().c_str());
 #else
-  rocksdb::Log(logger, "%s %s", Prefix(), jwriter.Get().c_str());
+  rocksdb::RLOG(logger, "%s %s", Prefix(), jwriter.Get().c_str());
 #endif
 }
 
@@ -59,7 +59,7 @@ void EventLogger::LogToBuffer(
   printf("%s\n", jwriter.Get().c_str());
 #else
   assert(log_buffer);
-  rocksdb::LogToBuffer(log_buffer, "%s %s", Prefix(), jwriter.Get().c_str());
+  rocksdb::LOG_TO_BUFFER(log_buffer, "%s %s", Prefix(), jwriter.Get().c_str());
 #endif
 }
 

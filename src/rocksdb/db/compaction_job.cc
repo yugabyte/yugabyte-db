@@ -537,7 +537,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
   const auto& stats = compaction_stats_;
-  LogToBuffer(
+  LOG_TO_BUFFER(
       log_buffer_,
       "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
       "files in(%d, %d) out(%d) "
@@ -848,7 +848,7 @@ Status CompactionJob::FinishCompactionOutputFile(
                         meta->fd.GetPathId());
       info.file_size = meta->fd.GetFileSize();
       info.job_id = job_id_;
-      Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
           " keys, %" PRIu64 " bytes%s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
@@ -894,7 +894,7 @@ Status CompactionJob::InstallCompactionResults(
   if (!versions_->VerifyCompactionFileConsistency(compaction)) {
     Compaction::InputLevelSummaryBuffer inputs_summary;
 
-    Log(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compaction %s aborted",
         compaction->column_family_data()->GetName().c_str(), job_id_,
         compaction->InputLevelSummary(&inputs_summary));
@@ -903,7 +903,7 @@ Status CompactionJob::InstallCompactionResults(
 
   {
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacted %s => %" PRIu64 " bytes",
         compaction->column_family_data()->GetName().c_str(), job_id_,
         compaction->InputLevelSummary(&inputs_summary), compact_->total_bytes);
@@ -945,7 +945,7 @@ Status CompactionJob::OpenCompactionOutputFile(
                                     sub_compact->compaction->output_path_id());
   Status s = NewWritableFile(env_, fname, &writable_file, env_options_);
   if (!s.ok()) {
-    Log(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] OpenCompactionOutputFiles for table #%" PRIu64
         " fails at NewWritableFile with status %s",
         sub_compact->compaction->column_family_data()->GetName().c_str(),
@@ -1115,13 +1115,13 @@ void CompactionJob::LogCompaction() {
   // we're not logging
   if (db_options_.info_log_level <= InfoLogLevel::INFO_LEVEL) {
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacting %s, score %.2f", cfd->GetName().c_str(),
         job_id_, compaction->InputLevelSummary(&inputs_summary),
         compaction->score());
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
-    Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[%s] Compaction start summary: %s\n", cfd->GetName().c_str(), scratch);
     // build event logger report
     auto stream = event_logger_->Log();

@@ -88,7 +88,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
   }
 
   size_t wal_size = live_wal_files.size();
-  Log(db_->GetOptions().info_log,
+  RLOG(db_->GetOptions().info_log,
       "Started the snapshot process -- creating snapshot in directory %s",
       checkpoint_dir.c_str());
 
@@ -117,7 +117,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
     // * if it's kDescriptorFile, limit the size to manifest_file_size
     // * always copy if cross-device link
     if ((type == kTableFile) && same_fs) {
-      Log(db_->GetOptions().info_log, "Hard Linking %s", src_fname.c_str());
+      RLOG(db_->GetOptions().info_log, "Hard Linking %s", src_fname.c_str());
       s = db_->GetEnv()->LinkFile(db_->GetName() + src_fname,
                                   full_private_path + src_fname);
       if (s.IsNotSupported()) {
@@ -126,13 +126,13 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
       }
     }
     if ((type != kTableFile) || (!same_fs)) {
-      Log(db_->GetOptions().info_log, "Copying %s", src_fname.c_str());
+      RLOG(db_->GetOptions().info_log, "Copying %s", src_fname.c_str());
       s = CopyFile(db_->GetEnv(), db_->GetName() + src_fname,
                    full_private_path + src_fname,
                    (type == kDescriptorFile) ? manifest_file_size : 0);
     }
   }
-  Log(db_->GetOptions().info_log, "Number of log files %" ROCKSDB_PRIszt,
+  RLOG(db_->GetOptions().info_log, "Number of log files %" ROCKSDB_PRIszt,
       live_wal_files.size());
 
   // Link WAL files. Copy exact size of last one because it is the only one
@@ -141,7 +141,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
     if ((live_wal_files[i]->Type() == kAliveLogFile) &&
         (live_wal_files[i]->StartSequence() >= sequence_number)) {
       if (i + 1 == wal_size) {
-        Log(db_->GetOptions().info_log, "Copying %s",
+        RLOG(db_->GetOptions().info_log, "Copying %s",
             live_wal_files[i]->PathName().c_str());
         s = CopyFile(db_->GetEnv(),
                      db_->GetOptions().wal_dir + live_wal_files[i]->PathName(),
@@ -151,7 +151,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
       }
       if (same_fs) {
         // we only care about live log files
-        Log(db_->GetOptions().info_log, "Hard Linking %s",
+        RLOG(db_->GetOptions().info_log, "Hard Linking %s",
             live_wal_files[i]->PathName().c_str());
         s = db_->GetEnv()->LinkFile(
             db_->GetOptions().wal_dir + live_wal_files[i]->PathName(),
@@ -162,7 +162,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
         }
       }
       if (!same_fs) {
-        Log(db_->GetOptions().info_log, "Copying %s",
+        RLOG(db_->GetOptions().info_log, "Copying %s",
             live_wal_files[i]->PathName().c_str());
         s = CopyFile(db_->GetEnv(),
                      db_->GetOptions().wal_dir + live_wal_files[i]->PathName(),
@@ -188,7 +188,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
 
   if (!s.ok()) {
     // clean all the files we might have created
-    Log(db_->GetOptions().info_log, "Snapshot failed -- %s",
+    RLOG(db_->GetOptions().info_log, "Snapshot failed -- %s",
         s.ToString().c_str());
     // we have to delete the dir and all its children
     std::vector<std::string> subchildren;
@@ -196,20 +196,20 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
     for (auto& subchild : subchildren) {
       Status s1 = db_->GetEnv()->DeleteFile(full_private_path + subchild);
       if (s1.ok()) {
-        Log(db_->GetOptions().info_log, "Deleted %s",
+        RLOG(db_->GetOptions().info_log, "Deleted %s",
             (full_private_path + subchild).c_str());
       }
     }
     // finally delete the private dir
     Status s1 = db_->GetEnv()->DeleteDir(full_private_path);
-    Log(db_->GetOptions().info_log, "Deleted dir %s -- %s",
+    RLOG(db_->GetOptions().info_log, "Deleted dir %s -- %s",
         full_private_path.c_str(), s1.ToString().c_str());
     return s;
   }
 
   // here we know that we succeeded and installed the new snapshot
-  Log(db_->GetOptions().info_log, "Snapshot DONE. All is good");
-  Log(db_->GetOptions().info_log, "Snapshot sequence number: %" PRIu64,
+  RLOG(db_->GetOptions().info_log, "Snapshot DONE. All is good");
+  RLOG(db_->GetOptions().info_log, "Snapshot sequence number: %" PRIu64,
       sequence_number);
 
   return s;

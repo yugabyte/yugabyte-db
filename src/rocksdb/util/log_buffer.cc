@@ -8,14 +8,20 @@
 #include "port/sys_time.h"
 #include "port/port.h"
 
+using std::string;
+
 namespace rocksdb {
 
 LogBuffer::LogBuffer(const InfoLogLevel log_level,
                      Logger*info_log)
     : log_level_(log_level), info_log_(info_log) {}
 
-void LogBuffer::AddLogToBuffer(size_t max_log_size, const char* format,
-                               va_list ap) {
+void LogBuffer::AddLogToBuffer(
+    const char* file,
+    const int line,
+    size_t max_log_size,
+    const char* format,
+    va_list ap) {
   if (!info_log_ || log_level_ < info_log_->GetInfoLogLevel()) {
     // Skip the level because of its level.
     return;
@@ -24,6 +30,8 @@ void LogBuffer::AddLogToBuffer(size_t max_log_size, const char* format,
   char* alloc_mem = arena_.AllocateAligned(max_log_size);
   BufferedLog* buffered_log = new (alloc_mem) BufferedLog();
   char* p = buffered_log->message;
+  buffered_log->file_ = file;
+  buffered_log->line_ = line;
   char* limit = alloc_mem + max_log_size - 1;
 
   // store the time
@@ -61,7 +69,7 @@ void LogBuffer::FlushBufferToLog() {
     const time_t seconds = log->now_tv.tv_sec;
     struct tm t;
     localtime_r(&seconds, &t);
-    Log(log_level_, info_log_,
+    LogWithContext(log->file_, log->line_, log_level_, info_log_,
         "(Original Log Time %04d/%02d/%02d-%02d:%02d:%02d.%06d) %s",
         t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
         t.tm_sec, static_cast<int>(log->now_tv.tv_usec), log->message);
@@ -69,22 +77,32 @@ void LogBuffer::FlushBufferToLog() {
   logs_.clear();
 }
 
-void LogToBuffer(LogBuffer* log_buffer, size_t max_log_size, const char* format,
-                 ...) {
+void LogToBufferWithContext(
+    const char* file,
+    const int line,
+    LogBuffer* log_buffer,
+    size_t max_log_size,
+    const char* format,
+    ...) {
   if (log_buffer != nullptr) {
     va_list ap;
     va_start(ap, format);
-    log_buffer->AddLogToBuffer(max_log_size, format, ap);
+    log_buffer->AddLogToBuffer(file, line, max_log_size, format, ap);
     va_end(ap);
   }
 }
 
-void LogToBuffer(LogBuffer* log_buffer, const char* format, ...) {
+void LogToBufferWithContext(
+    const char* file,
+    const int line,
+    LogBuffer* log_buffer,
+    const char* format,
+    ...) {
   const size_t kDefaultMaxLogSize = 512;
   if (log_buffer != nullptr) {
     va_list ap;
     va_start(ap, format);
-    log_buffer->AddLogToBuffer(kDefaultMaxLogSize, format, ap);
+    log_buffer->AddLogToBuffer(file, line, kDefaultMaxLogSize, format, ap);
     va_end(ap);
   }
 }

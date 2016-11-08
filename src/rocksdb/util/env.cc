@@ -85,18 +85,30 @@ void LogFlush(Logger *info_log) {
   }
 }
 
-void Log(Logger* info_log, const char* format, ...) {
+void LogWithContext(const char* file,
+                    const int line,
+                    Logger* info_log,
+                    const char* format,
+                    ...) {
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::INFO_LEVEL) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::INFO_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
 void Logger::Logv(const InfoLogLevel log_level, const char* format, va_list ap) {
+  LogvWithContext(__FILE__, __LINE__, log_level, format, ap);
+}
+
+void Logger::LogvWithContext(const char* file,
+    const int line,
+    const InfoLogLevel log_level,
+    const char* format,
+    va_list ap) {
   static const char* kInfoLogLevelNames[5] = { "DEBUG", "INFO", "WARN",
-    "ERROR", "FATAL" };
+      "ERROR", "FATAL" };
   if (log_level < log_level_) {
     return;
   }
@@ -111,76 +123,86 @@ void Logger::Logv(const InfoLogLevel log_level, const char* format, va_list ap) 
   } else {
     char new_format[500];
     snprintf(new_format, sizeof(new_format) - 1, "[%s] %s",
-      kInfoLogLevelNames[log_level], format);
+        kInfoLogLevelNames[log_level], format);
     Logv(new_format, ap);
   }
 }
 
 
-void Log(const InfoLogLevel log_level, Logger* info_log, const char* format,
-         ...) {
+void LogWithContext(const char* file,
+                    const int line,
+                    const InfoLogLevel log_level,
+                    Logger* info_log,
+                    const char* format,
+                    ...) {
   if (info_log && info_log->GetInfoLogLevel() <= log_level) {
     va_list ap;
     va_start(ap, format);
 
     if (log_level == InfoLogLevel::HEADER_LEVEL) {
-      info_log->LogHeader(format, ap);
+      info_log->LogHeaderWithContext(file, line, format, ap);
     } else {
-      info_log->Logv(log_level, format, ap);
+      info_log->LogvWithContext(file, line, log_level, format, ap);
     }
 
     va_end(ap);
   }
 }
 
-void Header(Logger* info_log, const char* format, ...) {
+void HeaderWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->LogHeader(format, ap);
+    info_log->LogHeaderWithContext(file, line, format, ap);
     va_end(ap);
   }
 }
 
-void Debug(Logger* info_log, const char* format, ...) {
+void DebugWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...) {
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::DEBUG_LEVEL) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::DEBUG_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::DEBUG_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Info(Logger* info_log, const char* format, ...) {
+void InfoWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...) {
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::INFO_LEVEL) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::INFO_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Warn(Logger* info_log, const char* format, ...) {
+void WarnWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...) {
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::WARN_LEVEL) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::WARN_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::WARN_LEVEL, format, ap);
     va_end(ap);
   }
 }
-void Error(Logger* info_log, const char* format, ...) {
+void ErrorWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...) {
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::ERROR_LEVEL) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::ERROR_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::ERROR_LEVEL, format, ap);
     va_end(ap);
   }
 }
-void Fatal(Logger* info_log, const char* format, ...) {
+void FatalWithContext(const char* file, const int line,
+    Logger *info_log, const char *format, ...) {
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::FATAL_LEVEL) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::FATAL_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::FATAL_LEVEL, format, ap);
     va_end(ap);
   }
 }
@@ -191,75 +213,107 @@ void LogFlush(const shared_ptr<Logger>& info_log) {
   }
 }
 
-void Log(const InfoLogLevel log_level, const shared_ptr<Logger>& info_log,
-         const char* format, ...) {
+void LogWithContext(const char* file,
+                    const int line,
+                    const InfoLogLevel log_level,
+                    const shared_ptr<Logger>& info_log,
+                    const char* format,
+                    ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(log_level, format, ap);
+    info_log->LogvWithContext(file, line, log_level, format, ap);
     va_end(ap);
   }
 }
 
-void Header(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void HeaderWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->LogHeader(format, ap);
+    info_log->LogHeaderWithContext(file, line, format, ap);
     va_end(ap);
   }
 }
 
-void Debug(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void DebugWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::DEBUG_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::DEBUG_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Info(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void InfoWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::INFO_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Warn(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void WarnWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::WARN_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::WARN_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Error(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void ErrorWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::ERROR_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::ERROR_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Fatal(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void FatalWithContext(
+    const char* file,
+    const int line,
+    const shared_ptr<Logger> &info_log,
+    const char *format, ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::FATAL_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::FATAL_LEVEL, format, ap);
     va_end(ap);
   }
 }
 
-void Log(const shared_ptr<Logger>& info_log, const char* format, ...) {
+void LogWithContext(const char* file,
+                    const int line,
+                    const shared_ptr<Logger>& info_log,
+                    const char* format,
+                    ...) {
   if (info_log) {
     va_list ap;
     va_start(ap, format);
-    info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
+    info_log->LogvWithContext(file, line, InfoLogLevel::INFO_LEVEL, format, ap);
     va_end(ap);
   }
 }

@@ -91,12 +91,12 @@ class TransactionLogIteratorImpl : public TransactionLogIterator {
     Env* env;
     Logger* info_log;
     virtual void Corruption(size_t bytes, const Status& s) override {
-      Log(InfoLogLevel::ERROR_LEVEL, info_log,
+      RLOG(InfoLogLevel::ERROR_LEVEL, info_log,
           "dropping %" ROCKSDB_PRIszt " bytes; %s", bytes,
           s.ToString().c_str());
     }
     virtual void Info(const char* s) {
-      Log(InfoLogLevel::INFO_LEVEL, info_log, "%s", s);
+      RLOG(InfoLogLevel::INFO_LEVEL, info_log, "%s", s);
     }
   } reporter_;
 

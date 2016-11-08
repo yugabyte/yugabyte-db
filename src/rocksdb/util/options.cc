@@ -351,265 +351,265 @@ static const char* const access_hints[] = {
 };
 
 void DBOptions::Dump(Logger* log) const {
-    Header(log, "         Options.error_if_exists: %d", error_if_exists);
-    Header(log, "       Options.create_if_missing: %d", create_if_missing);
-    Header(log, "         Options.paranoid_checks: %d", paranoid_checks);
-    Header(log, "                     Options.env: %p", env);
-    Header(log, "                Options.info_log: %p", info_log.get());
-    Header(log, "          Options.max_open_files: %d", max_open_files);
-    Header(log,
-        "Options.max_file_opening_threads: %d", max_file_opening_threads);
-    Header(log,
-        "      Options.max_total_wal_size: %" PRIu64, max_total_wal_size);
-    Header(log, "       Options.disableDataSync: %d", disableDataSync);
-    Header(log, "             Options.use_fsync: %d", use_fsync);
-    Header(log, "     Options.max_log_file_size: %" ROCKSDB_PRIszt,
+  RHEADER(log, "         Options.error_if_exists: %d", error_if_exists);
+  RHEADER(log, "       Options.create_if_missing: %d", create_if_missing);
+  RHEADER(log, "         Options.paranoid_checks: %d", paranoid_checks);
+  RHEADER(log, "                     Options.env: %p", env);
+  RHEADER(log, "                Options.info_log: %p", info_log.get());
+  RHEADER(log, "          Options.max_open_files: %d", max_open_files);
+  RHEADER(log,
+      "Options.max_file_opening_threads: %d", max_file_opening_threads);
+  RHEADER(log,
+      "      Options.max_total_wal_size: %" PRIu64, max_total_wal_size);
+  RHEADER(log, "       Options.disableDataSync: %d", disableDataSync);
+  RHEADER(log, "             Options.use_fsync: %d", use_fsync);
+  RHEADER(log, "     Options.max_log_file_size: %" ROCKSDB_PRIszt,
          max_log_file_size);
-    Header(log, "Options.max_manifest_file_size: %" PRIu64,
-         max_manifest_file_size);
-    Header(log, "     Options.log_file_time_to_roll: %" ROCKSDB_PRIszt,
+  RHEADER(log, "Options.max_manifest_file_size: %" PRIu64,
+      max_manifest_file_size);
+  RHEADER(log, "     Options.log_file_time_to_roll: %" ROCKSDB_PRIszt,
          log_file_time_to_roll);
-    Header(log, "     Options.keep_log_file_num: %" ROCKSDB_PRIszt,
+  RHEADER(log, "     Options.keep_log_file_num: %" ROCKSDB_PRIszt,
          keep_log_file_num);
-    Header(log, "  Options.recycle_log_file_num: %" ROCKSDB_PRIszt,
+  RHEADER(log, "  Options.recycle_log_file_num: %" ROCKSDB_PRIszt,
            recycle_log_file_num);
-    Header(log, "       Options.allow_os_buffer: %d", allow_os_buffer);
-    Header(log, "      Options.allow_mmap_reads: %d", allow_mmap_reads);
-    Header(log, "      Options.allow_fallocate: %d", allow_fallocate);
-    Header(log, "     Options.allow_mmap_writes: %d", allow_mmap_writes);
-    Header(log, "         Options.create_missing_column_families: %d",
-        create_missing_column_families);
-    Header(log, "                             Options.db_log_dir: %s",
-        db_log_dir.c_str());
-    Header(log, "                                Options.wal_dir: %s",
-        wal_dir.c_str());
-    Header(log, "               Options.table_cache_numshardbits: %d",
-        table_cache_numshardbits);
-    Header(log, "    Options.delete_obsolete_files_period_micros: %" PRIu64,
-        delete_obsolete_files_period_micros);
-    Header(log, "             Options.base_background_compactions: %d",
-           base_background_compactions);
-    Header(log, "             Options.max_background_compactions: %d",
-        max_background_compactions);
-    Header(log, "                     Options.max_subcompactions: %" PRIu32,
-        max_subcompactions);
-    Header(log, "                 Options.max_background_flushes: %d",
-        max_background_flushes);
-    Header(log, "                        Options.WAL_ttl_seconds: %" PRIu64,
-        WAL_ttl_seconds);
-    Header(log, "                      Options.WAL_size_limit_MB: %" PRIu64,
-        WAL_size_limit_MB);
-    Header(log,
-         "            Options.manifest_preallocation_size: %" ROCKSDB_PRIszt,
+  RHEADER(log, "       Options.allow_os_buffer: %d", allow_os_buffer);
+  RHEADER(log, "      Options.allow_mmap_reads: %d", allow_mmap_reads);
+  RHEADER(log, "      Options.allow_fallocate: %d", allow_fallocate);
+  RHEADER(log, "     Options.allow_mmap_writes: %d", allow_mmap_writes);
+  RHEADER(log, "         Options.create_missing_column_families: %d",
+      create_missing_column_families);
+  RHEADER(log, "                             Options.db_log_dir: %s",
+      db_log_dir.c_str());
+  RHEADER(log, "                                Options.wal_dir: %s",
+      wal_dir.c_str());
+  RHEADER(log, "               Options.table_cache_numshardbits: %d",
+      table_cache_numshardbits);
+  RHEADER(log, "    Options.delete_obsolete_files_period_micros: %" PRIu64,
+      delete_obsolete_files_period_micros);
+  RHEADER(log, "             Options.base_background_compactions: %d",
+      base_background_compactions);
+  RHEADER(log, "             Options.max_background_compactions: %d",
+      max_background_compactions);
+  RHEADER(log, "                     Options.max_subcompactions: %" PRIu32,
+      max_subcompactions);
+  RHEADER(log, "                 Options.max_background_flushes: %d",
+      max_background_flushes);
+  RHEADER(log, "                        Options.WAL_ttl_seconds: %" PRIu64,
+      WAL_ttl_seconds);
+  RHEADER(log, "                      Options.WAL_size_limit_MB: %" PRIu64,
+      WAL_size_limit_MB);
+  RHEADER(log,
+      "            Options.manifest_preallocation_size: %" ROCKSDB_PRIszt,
          manifest_preallocation_size);
-    Header(log, "                         Options.allow_os_buffer: %d",
-        allow_os_buffer);
-    Header(log, "                        Options.allow_mmap_reads: %d",
-        allow_mmap_reads);
-    Header(log, "                       Options.allow_mmap_writes: %d",
-        allow_mmap_writes);
-    Header(log, "                     Options.is_fd_close_on_exec: %d",
-        is_fd_close_on_exec);
-    Header(log, "                   Options.stats_dump_period_sec: %u",
-        stats_dump_period_sec);
-    Header(log, "                   Options.advise_random_on_open: %d",
-        advise_random_on_open);
-    Header(log,
-         "                    Options.db_write_buffer_size: %" ROCKSDB_PRIszt
+  RHEADER(log, "                         Options.allow_os_buffer: %d",
+      allow_os_buffer);
+  RHEADER(log, "                        Options.allow_mmap_reads: %d",
+      allow_mmap_reads);
+  RHEADER(log, "                       Options.allow_mmap_writes: %d",
+      allow_mmap_writes);
+  RHEADER(log, "                     Options.is_fd_close_on_exec: %d",
+      is_fd_close_on_exec);
+  RHEADER(log, "                   Options.stats_dump_period_sec: %u",
+      stats_dump_period_sec);
+  RHEADER(log, "                   Options.advise_random_on_open: %d",
+      advise_random_on_open);
+  RHEADER(log,
+      "                    Options.db_write_buffer_size: %" ROCKSDB_PRIszt
          "d",
          db_write_buffer_size);
-    Header(log, "         Options.access_hint_on_compaction_start: %s",
-        access_hints[access_hint_on_compaction_start]);
-    Header(log, "  Options.new_table_reader_for_compaction_inputs: %d",
-         new_table_reader_for_compaction_inputs);
-    Header(log,
-         "               Options.compaction_readahead_size: %" ROCKSDB_PRIszt
+  RHEADER(log, "         Options.access_hint_on_compaction_start: %s",
+      access_hints[access_hint_on_compaction_start]);
+  RHEADER(log, "  Options.new_table_reader_for_compaction_inputs: %d",
+      new_table_reader_for_compaction_inputs);
+  RHEADER(log,
+      "               Options.compaction_readahead_size: %" ROCKSDB_PRIszt
          "d",
          compaction_readahead_size);
-    Header(
-        log,
-        "               Options.random_access_max_buffer_size: %" ROCKSDB_PRIszt
+  RHEADER(
+      log,
+      "               Options.random_access_max_buffer_size: %" ROCKSDB_PRIszt
         "d",
         random_access_max_buffer_size);
-    Header(log,
-         "              Options.writable_file_max_buffer_size: %" ROCKSDB_PRIszt
+  RHEADER(log,
+      "              Options.writable_file_max_buffer_size: %" ROCKSDB_PRIszt
          "d",
          writable_file_max_buffer_size);
-    Header(log, "                      Options.use_adaptive_mutex: %d",
-        use_adaptive_mutex);
-    Header(log, "                            Options.rate_limiter: %p",
-        rate_limiter.get());
-    Header(
-        log, "     Options.sst_file_manager.rate_bytes_per_sec: %" PRIi64,
-        sst_file_manager ? sst_file_manager->GetDeleteRateBytesPerSecond() : 0);
-    Header(log, "                          Options.bytes_per_sync: %" PRIu64,
-        bytes_per_sync);
-    Header(log, "                      Options.wal_bytes_per_sync: %" PRIu64,
-        wal_bytes_per_sync);
-    Header(log, "                       Options.wal_recovery_mode: %d",
-        wal_recovery_mode);
-    Header(log, "                  Options.enable_thread_tracking: %d",
-        enable_thread_tracking);
-    Header(log, "         Options.allow_concurrent_memtable_write: %d",
-           allow_concurrent_memtable_write);
-    Header(log, "      Options.enable_write_thread_adaptive_yield: %d",
-           enable_write_thread_adaptive_yield);
-    Header(log, "             Options.write_thread_max_yield_usec: %" PRIu64,
-           write_thread_max_yield_usec);
-    Header(log, "            Options.write_thread_slow_yield_usec: %" PRIu64,
-           write_thread_slow_yield_usec);
+  RHEADER(log, "                      Options.use_adaptive_mutex: %d",
+      use_adaptive_mutex);
+  RHEADER(log, "                            Options.rate_limiter: %p",
+      rate_limiter.get());
+  RHEADER(
+      log, "     Options.sst_file_manager.rate_bytes_per_sec: %" PRIi64,
+      sst_file_manager ? sst_file_manager->GetDeleteRateBytesPerSecond() : 0);
+  RHEADER(log, "                          Options.bytes_per_sync: %" PRIu64,
+      bytes_per_sync);
+  RHEADER(log, "                      Options.wal_bytes_per_sync: %" PRIu64,
+      wal_bytes_per_sync);
+  RHEADER(log, "                       Options.wal_recovery_mode: %d",
+      wal_recovery_mode);
+  RHEADER(log, "                  Options.enable_thread_tracking: %d",
+      enable_thread_tracking);
+  RHEADER(log, "         Options.allow_concurrent_memtable_write: %d",
+      allow_concurrent_memtable_write);
+  RHEADER(log, "      Options.enable_write_thread_adaptive_yield: %d",
+      enable_write_thread_adaptive_yield);
+  RHEADER(log, "             Options.write_thread_max_yield_usec: %" PRIu64,
+      write_thread_max_yield_usec);
+  RHEADER(log, "            Options.write_thread_slow_yield_usec: %" PRIu64,
+      write_thread_slow_yield_usec);
     if (row_cache) {
-      Header(log, "                               Options.row_cache: %" PRIu64,
-           row_cache->GetCapacity());
+      RHEADER(log, "                               Options.row_cache: %" PRIu64,
+          row_cache->GetCapacity());
     } else {
-      Header(log, "                               Options.row_cache: None");
+      RHEADER(log, "                               Options.row_cache: None");
     }
-    Header(log, "  Options.set_last_seq_based_on_sstable_metadata: %d",
-           set_last_seq_based_on_sstable_metadata);
+  RHEADER(log, "  Options.set_last_seq_based_on_sstable_metadata: %d",
+      set_last_seq_based_on_sstable_metadata);
 #ifndef ROCKSDB_LITE
-    Header(log, "       Options.wal_filter: %s",
-           wal_filter ? wal_filter->Name() : "None");
+  RHEADER(log, "       Options.wal_filter: %s",
+      wal_filter ? wal_filter->Name() : "None");
 #endif  // ROCKDB_LITE
 }  // DBOptions::Dump
 
 void ColumnFamilyOptions::Dump(Logger* log) const {
-  Header(log, "              Options.comparator: %s", comparator->Name());
-  Header(log, "          Options.merge_operator: %s",
+  RHEADER(log, "              Options.comparator: %s", comparator->Name());
+  RHEADER(log, "          Options.merge_operator: %s",
       merge_operator ? merge_operator->Name() : "None");
-  Header(log, "       Options.compaction_filter: %s",
+  RHEADER(log, "       Options.compaction_filter: %s",
       compaction_filter ? compaction_filter->Name() : "None");
-  Header(log, "       Options.compaction_filter_factory: %s",
+  RHEADER(log, "       Options.compaction_filter_factory: %s",
       compaction_filter_factory ? compaction_filter_factory->Name() : "None");
-  Header(log, "        Options.memtable_factory: %s", memtable_factory->Name());
-  Header(log, "           Options.table_factory: %s", table_factory->Name());
-  Header(log, "           table_factory options: %s",
+  RHEADER(log, "        Options.memtable_factory: %s", memtable_factory->Name());
+  RHEADER(log, "           Options.table_factory: %s", table_factory->Name());
+  RHEADER(log, "           table_factory options: %s",
       table_factory->GetPrintableTableOptions().c_str());
-  Header(log, "       Options.write_buffer_size: %" ROCKSDB_PRIszt,
+  RHEADER(log, "       Options.write_buffer_size: %" ROCKSDB_PRIszt,
        write_buffer_size);
-  Header(log, " Options.max_write_buffer_number: %d", max_write_buffer_number);
+  RHEADER(log, " Options.max_write_buffer_number: %d", max_write_buffer_number);
     if (!compression_per_level.empty()) {
       for (unsigned int i = 0; i < compression_per_level.size(); i++) {
-        Header(log, "       Options.compression[%d]: %s", i,
+        RHEADER(log, "       Options.compression[%d]: %s", i,
             CompressionTypeToString(compression_per_level[i]).c_str());
       }
     } else {
-      Header(log, "         Options.compression: %s",
+      RHEADER(log, "         Options.compression: %s",
           CompressionTypeToString(compression).c_str());
     }
-    Header(log, "      Options.prefix_extractor: %s",
-        prefix_extractor == nullptr ? "nullptr" : prefix_extractor->Name());
-    Header(log, "            Options.num_levels: %d", num_levels);
-    Header(log, "       Options.min_write_buffer_number_to_merge: %d",
-        min_write_buffer_number_to_merge);
-    Header(log, "    Options.max_write_buffer_number_to_maintain: %d",
-         max_write_buffer_number_to_maintain);
-    Header(log, "           Options.compression_opts.window_bits: %d",
-        compression_opts.window_bits);
-    Header(log, "                 Options.compression_opts.level: %d",
-        compression_opts.level);
-    Header(log, "              Options.compression_opts.strategy: %d",
-        compression_opts.strategy);
-    Header(log, "     Options.level0_file_num_compaction_trigger: %d",
-        level0_file_num_compaction_trigger);
-    Header(log, "         Options.level0_slowdown_writes_trigger: %d",
-        level0_slowdown_writes_trigger);
-    Header(log, "             Options.level0_stop_writes_trigger: %d",
-        level0_stop_writes_trigger);
-    Header(log, "                  Options.target_file_size_base: %" PRIu64,
-        target_file_size_base);
-    Header(log, "            Options.target_file_size_multiplier: %d",
-        target_file_size_multiplier);
-    Header(log, "               Options.max_bytes_for_level_base: %" PRIu64,
-        max_bytes_for_level_base);
-    Header(log, "Options.level_compaction_dynamic_level_bytes: %d",
-        level_compaction_dynamic_level_bytes);
-    Header(log, "         Options.max_bytes_for_level_multiplier: %d",
-        max_bytes_for_level_multiplier);
+  RHEADER(log, "      Options.prefix_extractor: %s",
+      prefix_extractor == nullptr ? "nullptr" : prefix_extractor->Name());
+  RHEADER(log, "            Options.num_levels: %d", num_levels);
+  RHEADER(log, "       Options.min_write_buffer_number_to_merge: %d",
+      min_write_buffer_number_to_merge);
+  RHEADER(log, "    Options.max_write_buffer_number_to_maintain: %d",
+      max_write_buffer_number_to_maintain);
+  RHEADER(log, "           Options.compression_opts.window_bits: %d",
+      compression_opts.window_bits);
+  RHEADER(log, "                 Options.compression_opts.level: %d",
+      compression_opts.level);
+  RHEADER(log, "              Options.compression_opts.strategy: %d",
+      compression_opts.strategy);
+  RHEADER(log, "     Options.level0_file_num_compaction_trigger: %d",
+      level0_file_num_compaction_trigger);
+  RHEADER(log, "         Options.level0_slowdown_writes_trigger: %d",
+      level0_slowdown_writes_trigger);
+  RHEADER(log, "             Options.level0_stop_writes_trigger: %d",
+      level0_stop_writes_trigger);
+  RHEADER(log, "                  Options.target_file_size_base: %" PRIu64,
+      target_file_size_base);
+  RHEADER(log, "            Options.target_file_size_multiplier: %d",
+      target_file_size_multiplier);
+  RHEADER(log, "               Options.max_bytes_for_level_base: %" PRIu64,
+      max_bytes_for_level_base);
+  RHEADER(log, "Options.level_compaction_dynamic_level_bytes: %d",
+      level_compaction_dynamic_level_bytes);
+  RHEADER(log, "         Options.max_bytes_for_level_multiplier: %d",
+      max_bytes_for_level_multiplier);
     for (size_t i = 0; i < max_bytes_for_level_multiplier_additional.size();
          i++) {
-      Header(log,
+      RHEADER(log,
           "Options.max_bytes_for_level_multiplier_addtl[%" ROCKSDB_PRIszt
                 "]: %d",
            i, max_bytes_for_level_multiplier_additional[i]);
     }
-    Header(log, "      Options.max_sequential_skip_in_iterations: %" PRIu64,
-        max_sequential_skip_in_iterations);
-    Header(log, "             Options.expanded_compaction_factor: %d",
-        expanded_compaction_factor);
-    Header(log, "               Options.source_compaction_factor: %d",
-        source_compaction_factor);
-    Header(log, "         Options.max_grandparent_overlap_factor: %d",
-        max_grandparent_overlap_factor);
+  RHEADER(log, "      Options.max_sequential_skip_in_iterations: %" PRIu64,
+      max_sequential_skip_in_iterations);
+  RHEADER(log, "             Options.expanded_compaction_factor: %d",
+      expanded_compaction_factor);
+  RHEADER(log, "               Options.source_compaction_factor: %d",
+      source_compaction_factor);
+  RHEADER(log, "         Options.max_grandparent_overlap_factor: %d",
+      max_grandparent_overlap_factor);
 
-    Header(log,
-         "                       Options.arena_block_size: %" ROCKSDB_PRIszt,
+  RHEADER(log,
+      "                       Options.arena_block_size: %" ROCKSDB_PRIszt,
          arena_block_size);
-    Header(log, "  Options.soft_pending_compaction_bytes_limit: %" PRIu64,
-           soft_pending_compaction_bytes_limit);
-    Header(log, "  Options.hard_pending_compaction_bytes_limit: %" PRIu64,
-         hard_pending_compaction_bytes_limit);
-    Header(log, "      Options.rate_limit_delay_max_milliseconds: %u",
-        rate_limit_delay_max_milliseconds);
-    Header(log, "               Options.disable_auto_compactions: %d",
-        disable_auto_compactions);
-    Header(log, "                          Options.filter_deletes: %d",
-        filter_deletes);
-    Header(log, "          Options.verify_checksums_in_compaction: %d",
-        verify_checksums_in_compaction);
-    Header(log, "                        Options.compaction_style: %d",
-        compaction_style);
-    Header(log, "                          Options.compaction_pri: %d",
-           compaction_pri);
-    Header(log, " Options.compaction_options_universal.size_ratio: %u",
-        compaction_options_universal.size_ratio);
-    Header(log, "Options.compaction_options_universal.min_merge_width: %u",
-        compaction_options_universal.min_merge_width);
-    Header(log, "Options.compaction_options_universal.max_merge_width: %u",
-        compaction_options_universal.max_merge_width);
-    Header(log, "Options.compaction_options_universal."
-            "max_size_amplification_percent: %u",
-        compaction_options_universal.max_size_amplification_percent);
-    Header(log,
-        "Options.compaction_options_universal.compression_size_percent: %d",
-        compaction_options_universal.compression_size_percent);
-    Header(log,
-        "Options.compaction_options_fifo.max_table_files_size: %" PRIu64,
-        compaction_options_fifo.max_table_files_size);
+  RHEADER(log, "  Options.soft_pending_compaction_bytes_limit: %" PRIu64,
+      soft_pending_compaction_bytes_limit);
+  RHEADER(log, "  Options.hard_pending_compaction_bytes_limit: %" PRIu64,
+      hard_pending_compaction_bytes_limit);
+  RHEADER(log, "      Options.rate_limit_delay_max_milliseconds: %u",
+      rate_limit_delay_max_milliseconds);
+  RHEADER(log, "               Options.disable_auto_compactions: %d",
+      disable_auto_compactions);
+  RHEADER(log, "                          Options.filter_deletes: %d",
+      filter_deletes);
+  RHEADER(log, "          Options.verify_checksums_in_compaction: %d",
+      verify_checksums_in_compaction);
+  RHEADER(log, "                        Options.compaction_style: %d",
+      compaction_style);
+  RHEADER(log, "                          Options.compaction_pri: %d",
+      compaction_pri);
+  RHEADER(log, " Options.compaction_options_universal.size_ratio: %u",
+      compaction_options_universal.size_ratio);
+  RHEADER(log, "Options.compaction_options_universal.min_merge_width: %u",
+      compaction_options_universal.min_merge_width);
+  RHEADER(log, "Options.compaction_options_universal.max_merge_width: %u",
+      compaction_options_universal.max_merge_width);
+  RHEADER(log, "Options.compaction_options_universal."
+          "max_size_amplification_percent: %u",
+      compaction_options_universal.max_size_amplification_percent);
+  RHEADER(log,
+      "Options.compaction_options_universal.compression_size_percent: %d",
+      compaction_options_universal.compression_size_percent);
+  RHEADER(log,
+      "Options.compaction_options_fifo.max_table_files_size: %" PRIu64,
+      compaction_options_fifo.max_table_files_size);
     std::string collector_names;
     for (const auto& collector_factory : table_properties_collector_factories) {
       collector_names.append(collector_factory->Name());
       collector_names.append("; ");
     }
-    Header(log, "                  Options.table_properties_collectors: %s",
-        collector_names.c_str());
-    Header(log, "                  Options.inplace_update_support: %d",
-        inplace_update_support);
-    Header(log,
-         "                Options.inplace_update_num_locks: %" ROCKSDB_PRIszt,
+  RHEADER(log, "                  Options.table_properties_collectors: %s",
+      collector_names.c_str());
+  RHEADER(log, "                  Options.inplace_update_support: %d",
+      inplace_update_support);
+  RHEADER(log,
+      "                Options.inplace_update_num_locks: %" ROCKSDB_PRIszt,
          inplace_update_num_locks);
-    Header(log, "              Options.min_partial_merge_operands: %u",
-        min_partial_merge_operands);
+  RHEADER(log, "              Options.min_partial_merge_operands: %u",
+      min_partial_merge_operands);
     // TODO: easier config for bloom (maybe based on avg key/value size)
-    Header(log, "              Options.memtable_prefix_bloom_bits: %d",
-        memtable_prefix_bloom_bits);
-    Header(log, "            Options.memtable_prefix_bloom_probes: %d",
-        memtable_prefix_bloom_probes);
+  RHEADER(log, "              Options.memtable_prefix_bloom_bits: %d",
+      memtable_prefix_bloom_bits);
+  RHEADER(log, "            Options.memtable_prefix_bloom_probes: %d",
+      memtable_prefix_bloom_probes);
 
-    Header(log,
-         "  Options.memtable_prefix_bloom_huge_page_tlb_size: %" ROCKSDB_PRIszt,
+  RHEADER(log,
+      "  Options.memtable_prefix_bloom_huge_page_tlb_size: %" ROCKSDB_PRIszt,
          memtable_prefix_bloom_huge_page_tlb_size);
-    Header(log, "                          Options.bloom_locality: %d",
-        bloom_locality);
+  RHEADER(log, "                          Options.bloom_locality: %d",
+      bloom_locality);
 
-    Header(log,
-         "                   Options.max_successive_merges: %" ROCKSDB_PRIszt,
+  RHEADER(log,
+      "                   Options.max_successive_merges: %" ROCKSDB_PRIszt,
          max_successive_merges);
-    Header(log, "               Options.optimize_filters_for_hits: %d",
-        optimize_filters_for_hits);
-    Header(log, "               Options.paranoid_file_checks: %d",
-         paranoid_file_checks);
-    Header(log, "               Options.compaction_measure_io_stats: %d",
-         compaction_measure_io_stats);
+  RHEADER(log, "               Options.optimize_filters_for_hits: %d",
+      optimize_filters_for_hits);
+  RHEADER(log, "               Options.paranoid_file_checks: %d",
+      paranoid_file_checks);
+  RHEADER(log, "               Options.compaction_measure_io_stats: %d",
+      compaction_measure_io_stats);
 }  // ColumnFamilyOptions::Dump
 
 void Options::Dump(Logger* log) const {

@@ -64,47 +64,47 @@ uint64_t MutableCFOptions::ExpandedCompactionByteSizeLimit(int level) const {
 
 void MutableCFOptions::Dump(Logger* log) const {
   // Memtable related options
-  Log(log, "                        write_buffer_size: %" ROCKSDB_PRIszt,
+  RLOG(log, "                        write_buffer_size: %" ROCKSDB_PRIszt,
       write_buffer_size);
-  Log(log, "                  max_write_buffer_number: %d",
+  RLOG(log, "                  max_write_buffer_number: %d",
       max_write_buffer_number);
-  Log(log, "                         arena_block_size: %" ROCKSDB_PRIszt,
+  RLOG(log, "                         arena_block_size: %" ROCKSDB_PRIszt,
       arena_block_size);
-  Log(log, "               memtable_prefix_bloom_bits: %" PRIu32,
+  RLOG(log, "               memtable_prefix_bloom_bits: %" PRIu32,
       memtable_prefix_bloom_bits);
-  Log(log, "             memtable_prefix_bloom_probes: %" PRIu32,
+  RLOG(log, "             memtable_prefix_bloom_probes: %" PRIu32,
       memtable_prefix_bloom_probes);
-  Log(log, " memtable_prefix_bloom_huge_page_tlb_size: %" ROCKSDB_PRIszt,
+  RLOG(log, " memtable_prefix_bloom_huge_page_tlb_size: %" ROCKSDB_PRIszt,
       memtable_prefix_bloom_huge_page_tlb_size);
-  Log(log, "                    max_successive_merges: %" ROCKSDB_PRIszt,
+  RLOG(log, "                    max_successive_merges: %" ROCKSDB_PRIszt,
       max_successive_merges);
-  Log(log, "                           filter_deletes: %d",
+  RLOG(log, "                           filter_deletes: %d",
       filter_deletes);
-  Log(log, "                 disable_auto_compactions: %d",
+  RLOG(log, "                 disable_auto_compactions: %d",
       disable_auto_compactions);
-  Log(log, "      soft_pending_compaction_bytes_limit: %" PRIu64,
+  RLOG(log, "      soft_pending_compaction_bytes_limit: %" PRIu64,
       soft_pending_compaction_bytes_limit);
-  Log(log, "      hard_pending_compaction_bytes_limit: %" PRIu64,
+  RLOG(log, "      hard_pending_compaction_bytes_limit: %" PRIu64,
       hard_pending_compaction_bytes_limit);
-  Log(log, "       level0_file_num_compaction_trigger: %d",
+  RLOG(log, "       level0_file_num_compaction_trigger: %d",
       level0_file_num_compaction_trigger);
-  Log(log, "           level0_slowdown_writes_trigger: %d",
+  RLOG(log, "           level0_slowdown_writes_trigger: %d",
       level0_slowdown_writes_trigger);
-  Log(log, "               level0_stop_writes_trigger: %d",
+  RLOG(log, "               level0_stop_writes_trigger: %d",
       level0_stop_writes_trigger);
-  Log(log, "           max_grandparent_overlap_factor: %d",
+  RLOG(log, "           max_grandparent_overlap_factor: %d",
       max_grandparent_overlap_factor);
-  Log(log, "               expanded_compaction_factor: %d",
+  RLOG(log, "               expanded_compaction_factor: %d",
       expanded_compaction_factor);
-  Log(log, "                 source_compaction_factor: %d",
+  RLOG(log, "                 source_compaction_factor: %d",
       source_compaction_factor);
-  Log(log, "                    target_file_size_base: %" PRIu64,
+  RLOG(log, "                    target_file_size_base: %" PRIu64,
       target_file_size_base);
-  Log(log, "              target_file_size_multiplier: %d",
+  RLOG(log, "              target_file_size_multiplier: %d",
       target_file_size_multiplier);
-  Log(log, "                 max_bytes_for_level_base: %" PRIu64,
+  RLOG(log, "                 max_bytes_for_level_base: %" PRIu64,
       max_bytes_for_level_base);
-  Log(log, "           max_bytes_for_level_multiplier: %d",
+  RLOG(log, "           max_bytes_for_level_multiplier: %d",
       max_bytes_for_level_multiplier);
   std::string result;
   char buf[10];
@@ -113,10 +113,10 @@ void MutableCFOptions::Dump(Logger* log) const {
     result += buf;
   }
   result.resize(result.size() - 2);
-  Log(log, "max_bytes_for_level_multiplier_additional: %s", result.c_str());
-  Log(log, "           verify_checksums_in_compaction: %d",
+  RLOG(log, "max_bytes_for_level_multiplier_additional: %s", result.c_str());
+  RLOG(log, "           verify_checksums_in_compaction: %d",
       verify_checksums_in_compaction);
-  Log(log, "        max_sequential_skip_in_iterations: %" PRIu64,
+  RLOG(log, "        max_sequential_skip_in_iterations: %" PRIu64,
       max_sequential_skip_in_iterations);
 }
 

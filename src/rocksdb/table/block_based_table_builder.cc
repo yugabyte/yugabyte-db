@@ -526,7 +526,7 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
   BlockBasedTableOptions sanitized_table_options(table_options);
   if (sanitized_table_options.format_version == 0 &&
       sanitized_table_options.checksum != kCRC32c) {
-    Log(InfoLogLevel::WARN_LEVEL, ioptions.info_log,
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions.info_log,
         "Silently converting format_version to 1 because checksum is "
         "non-default");
     // silently convert format_version to 1 to keep consistent with current

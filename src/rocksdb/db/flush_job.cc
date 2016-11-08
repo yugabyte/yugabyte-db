@@ -126,7 +126,7 @@ Status FlushJob::Run(FileMetaData* file_meta) {
   autovector<MemTable*> mems;
   cfd_->imm()->PickMemtablesToFlush(&mems);
   if (mems.empty()) {
-    LogToBuffer(log_buffer_, "[%s] Nothing in memtable to flush",
+    LOG_TO_BUFFER(log_buffer_, "[%s] Nothing in memtable to flush",
                 cfd_->GetName().c_str());
     return Status::OK();
   }
@@ -207,7 +207,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
     uint64_t total_num_entries = 0, total_num_deletes = 0;
     size_t total_memory_usage = 0;
     for (MemTable* m : mems) {
-      Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Flushing memtable with next log file: %" PRIu64 "\n",
           cfd_->GetName().c_str(), job_context_->job_id, m->GetNextLogNumber());
       memtables.push_back(m->NewIterator(ro, &arena));
@@ -228,7 +228,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
       ScopedArenaIterator iter(
           NewMergingIterator(&cfd_->internal_comparator(), &memtables[0],
                              static_cast<int>(memtables.size()), &arena));
-      Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": started",
           cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber());
 
@@ -245,7 +245,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
       info.table_properties = table_properties_;
       LogFlush(db_options_.info_log);
     }
-    Log(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
         " bytes %s"
         "%s",

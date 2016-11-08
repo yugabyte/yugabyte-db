@@ -148,7 +148,7 @@ char* Arena::AllocateAligned(size_t bytes, size_t huge_page_size,
 
     char* addr = AllocateFromHugePage(reserved_size);
     if (addr == nullptr) {
-      Warn(logger, "AllocateAligned fail to allocate huge TLB pages: %s",
+      RWARN(logger, "AllocateAligned fail to allocate huge TLB pages: %s",
            strerror(errno));
       // fail back to malloc
     } else {

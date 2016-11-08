@@ -9,8 +9,16 @@ using namespace rocksdb;
 namespace yb {
 
 void YBRocksDBLogger::Logv(const rocksdb::InfoLogLevel log_level,
-                           const char *format,
-                           va_list ap) {
+                                      const char *format,
+                                      va_list ap) {
+  LogvWithContext(__FILE__, __LINE__, log_level, format, ap);
+}
+
+void YBRocksDBLogger::LogvWithContext(const char* file,
+    const int line,
+    const rocksdb::InfoLogLevel log_level,
+    const char* format,
+    va_list ap) {
   // Any log messages longer than 1024 will get truncated. The user is responsible for chopping
   // longer messages into multiple lines.
   static constexpr int kBufferSize = 1024;
@@ -21,7 +29,7 @@ void YBRocksDBLogger::Logv(const rocksdb::InfoLogLevel log_level,
   vsnprintf(buffer, kBufferSize, format, backup_ap);
   va_end(backup_ap);
 
-  google::LogMessage(__FILE__, __LINE__, YBRocksDBLogger::ConvertToGLogLevel(log_level)).stream()
+  google::LogMessage(file, line, YBRocksDBLogger::ConvertToGLogLevel(log_level)).stream()
       << prefix_ << buffer;
 }
 

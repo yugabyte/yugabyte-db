@@ -11,6 +11,8 @@
 #include "port/sys_time.h"
 #include <ctime>
 
+#define LOG_TO_BUFFER(...) LogToBufferWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
+
 namespace rocksdb {
 
 class Logger;
@@ -24,7 +26,12 @@ class LogBuffer {
 
   // Add a log entry to the buffer. Use default max_log_size.
   // max_log_size indicates maximize log size, including some metadata.
-  void AddLogToBuffer(size_t max_log_size, const char* format, va_list ap);
+  void AddLogToBuffer(
+      const char* file,
+      const int line,
+      size_t max_log_size,
+      const char* format,
+      va_list ap);
 
   size_t IsEmpty() const { return logs_.empty(); }
 
@@ -34,6 +41,8 @@ class LogBuffer {
  private:
   // One log entry with its timestamp
   struct BufferedLog {
+    const char* file_;
+    int line_;
     struct timeval now_tv;  // Timestamp of the log
     char message[1];        // Beginning of log message
   };
@@ -47,9 +56,19 @@ class LogBuffer {
 // Add log to the LogBuffer for a delayed info logging. It can be used when
 // we want to add some logs inside a mutex.
 // max_log_size indicates maximize log size, including some metadata.
-extern void LogToBuffer(LogBuffer* log_buffer, size_t max_log_size,
-                        const char* format, ...);
+extern void LogToBufferWithContext(
+    const char* file,
+    const int line,
+    LogBuffer* log_buffer,
+    size_t max_log_size,
+    const char* format,
+    ...);
 // Same as previous function, but with default max log size.
-extern void LogToBuffer(LogBuffer* log_buffer, const char* format, ...);
+extern void LogToBufferWithContext(
+    const char* file,
+    const int line,
+    LogBuffer* log_buffer,
+    const char* format,
+    ...);
 
 }  // namespace rocksdb

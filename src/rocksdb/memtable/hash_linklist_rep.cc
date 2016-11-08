@@ -594,7 +594,7 @@ void HashLinkListRep::Insert(KeyHandle handle) {
   if (bucket_entries_logging_threshold_ > 0 &&
       header->GetNumEntries() ==
           static_cast<uint32_t>(bucket_entries_logging_threshold_)) {
-    Info(logger_, "HashLinkedList bucket %" ROCKSDB_PRIszt
+    RINFO(logger_, "HashLinkedList bucket %" ROCKSDB_PRIszt
                   " has more than %d "
                   "entries. Key to insert: %s",
          GetHash(transformed), header->GetNumEntries(),
@@ -748,8 +748,8 @@ MemTableRep::Iterator* HashLinkListRep::GetIterator(Arena* alloc_arena) {
     }
   }
   if (if_log_bucket_dist_when_flash_ && logger_ != nullptr) {
-    Info(logger_, "hashLinkedList Entry distribution among buckets: %s",
-         keys_per_bucket_hist.ToString().c_str());
+    RINFO(logger_, "hashLinkedList Entry distribution among buckets: %s",
+        keys_per_bucket_hist.ToString().c_str());
   }
 
   if (alloc_arena == nullptr) {

@@ -106,7 +106,8 @@ void AutoRollLogger::WriteHeaderInfo() {
   }
 }
 
-void AutoRollLogger::LogHeader(const char* format, va_list args) {
+void AutoRollLogger::LogHeaderWithContext(const char* file, const int line,
+    const char *format, va_list args) {
   // header message are to be retained in memory. Since we cannot make any
   // assumptions about the data contained in va_list, we will retain them as
   // strings

@@ -19,10 +19,16 @@ class YBRocksDBLogger : public rocksdb::Logger {
     Logv(rocksdb::INFO_LEVEL, format, ap);
   }
 
+  void Logv(const rocksdb::InfoLogLevel log_level, const char* format, va_list ap) override;
+
   // Write an entry to the log file with the specified log level and format. Any log with level
   // under the internal log level of *this (see @SetInfoLogLevel and @GetInfoLogLevel) will not be
   // printed.
-  void Logv(const rocksdb::InfoLogLevel log_level, const char* format, va_list ap) override;
+  void LogvWithContext(const char* file,
+                       const int line,
+                       const rocksdb::InfoLogLevel log_level,
+                       const char* format,
+                       va_list ap) override;
 
   // Convert from glog level to rocksdb log level.
   static rocksdb::InfoLogLevel ConvertToRocksDBLogLevel(const int glog_level);

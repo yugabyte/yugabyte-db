@@ -62,7 +62,7 @@ Status DeleteScheduler::DeleteFile(const std::string& file_path) {
   std::string path_in_trash;
   s = MoveToTrash(file_path, &path_in_trash);
   if (!s.ok()) {
-    Log(InfoLogLevel::ERROR_LEVEL, info_log_,
+    RLOG(InfoLogLevel::ERROR_LEVEL, info_log_,
         "Failed to move %s to trash directory (%s)", file_path.c_str(),
         trash_dir_.c_str());
     s = env_->DeleteFile(file_path);
@@ -189,7 +189,7 @@ Status DeleteScheduler::DeleteTrashFile(const std::string& path_in_trash,
 
   if (!s.ok()) {
     // Error while getting file size or while deleting
-    Log(InfoLogLevel::ERROR_LEVEL, info_log_,
+    RLOG(InfoLogLevel::ERROR_LEVEL, info_log_,
         "Failed to delete %s from trash -- %s", path_in_trash.c_str(),
         s.ToString().c_str());
     *deleted_bytes = 0;

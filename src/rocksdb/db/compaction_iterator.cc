@@ -362,7 +362,7 @@ void CompactionIterator::NextFromInput() {
       input_->Next();
     } else if (ikey_.type == kTypeMerge) {
       if (!merge_helper_->HasOperator()) {
-        LogToBuffer(log_buffer_, "Options::merge_operator is null.");
+        LOG_TO_BUFFER(log_buffer_, "Options::merge_operator is null.");
         status_ = Status::InvalidArgument(
             "merge_operator is not properly initialized.");
         return;

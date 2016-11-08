@@ -470,7 +470,7 @@ bool IsFeatureSupported(const TableProperties& table_properties,
     if (pos->second == kPropFalse) {
       return false;
     } else if (pos->second != kPropTrue) {
-      Log(InfoLogLevel::WARN_LEVEL, info_log,
+      RLOG(InfoLogLevel::WARN_LEVEL, info_log,
           "Property %s has invalidate value %s", user_prop_name.c_str(),
           pos->second.c_str());
     }
@@ -541,7 +541,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
   s = SeekToPropertiesBlock(meta_iter.get(), &found_properties_block);
 
   if (!s.ok()) {
-    Log(InfoLogLevel::WARN_LEVEL, rep->ioptions.info_log,
+    RLOG(InfoLogLevel::WARN_LEVEL, rep->ioptions.info_log,
         "Cannot seek to properties block from file: %s",
         s.ToString().c_str());
   } else if (found_properties_block) {
@@ -554,14 +554,14 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
     }
 
     if (!s.ok()) {
-      Log(InfoLogLevel::WARN_LEVEL, rep->ioptions.info_log,
+      RLOG(InfoLogLevel::WARN_LEVEL, rep->ioptions.info_log,
         "Encountered error while reading data from properties "
         "block %s", s.ToString().c_str());
     } else {
       rep->table_properties.reset(table_properties);
     }
   } else {
-    Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log,
+    RLOG(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log,
         "Cannot find Properties block from file.");
   }
 
@@ -671,7 +671,7 @@ Status BlockBasedTable::ReadMetaBlock(Rep* rep,
       rep->ioptions.env);
 
   if (!s.ok()) {
-    Log(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log,
+    RLOG(InfoLogLevel::ERROR_LEVEL, rep->ioptions.info_log,
         "Encountered error while reading data from properties"
         " block %s", s.ToString().c_str());
     return s;
@@ -1419,7 +1419,7 @@ Status BlockBasedTable::CreateIndexReader(
 
   if (index_type_on_file == BlockBasedTableOptions::kHashSearch &&
       rep_->ioptions.prefix_extractor == nullptr) {
-    Log(InfoLogLevel::WARN_LEVEL, rep_->ioptions.info_log,
+    RLOG(InfoLogLevel::WARN_LEVEL, rep_->ioptions.info_log,
         "BlockBasedTableOptions::kHashSearch requires "
         "options.prefix_extractor to be set."
         " Fall back to binary search index.");
@@ -1440,7 +1440,7 @@ Status BlockBasedTable::CreateIndexReader(
         if (!s.ok()) {
           // we simply fall back to binary search in case there is any
           // problem with prefix hash index loading.
-          Log(InfoLogLevel::WARN_LEVEL, rep_->ioptions.info_log,
+          RLOG(InfoLogLevel::WARN_LEVEL, rep_->ioptions.info_log,
               "Unable to read the metaindex block."
               " Fall back to binary search index.");
           return BinarySearchIndexReader::Create(
