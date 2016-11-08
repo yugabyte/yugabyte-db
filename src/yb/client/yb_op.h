@@ -14,14 +14,13 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_WRITE_OP_H
-#define YB_CLIENT_WRITE_OP_H
+#ifndef YB_CLIENT_YB_OP_H
+#define YB_CLIENT_YB_OP_H
 
 #include <string>
 
 #include "yb/client/shared_ptr.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/util/yb_export.h"
 
 namespace yb {
@@ -110,7 +109,7 @@ class YB_EXPORT YBInsert : public YBOperation {
 };
 
 class YB_EXPORT YBRedisWriteOp : public YBOperation {
-public:
+ public:
   virtual ~YBRedisWriteOp();
 
   const RedisWriteRequestPB& request() { return *redis_write_request_; }
@@ -119,23 +118,18 @@ public:
 
   const RedisResponsePB& response() { return *redis_response_; }
 
-  RedisResponsePB* mutable_response() {
-    if (!redis_response_) {
-      redis_response_.reset(new RedisResponsePB());
-    }
-    return redis_response_.get();
-  }
+  RedisResponsePB* mutable_response();
 
   virtual std::string ToString() const OVERRIDE;
 
   bool read_only() OVERRIDE { return false; };
 
-protected:
+ protected:
   virtual Type type() const OVERRIDE {
     return REDIS_WRITE;
   }
 
-private:
+ private:
   friend class YBTable;
   explicit YBRedisWriteOp(const sp::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
@@ -143,7 +137,7 @@ private:
 };
 
 class YB_EXPORT YBRedisReadOp : public YBOperation {
-public:
+ public:
   virtual ~YBRedisReadOp();
 
   const RedisReadRequestPB& request() { return *redis_read_request_; }
@@ -152,21 +146,16 @@ public:
 
   const RedisResponsePB& response() { return *redis_response_; }
 
-  RedisResponsePB* mutable_response() {
-    if (!redis_response_) {
-      redis_response_.reset(new RedisResponsePB());
-    }
-    return redis_response_.get();
-  }
+  RedisResponsePB* mutable_response();
 
   virtual std::string ToString() const OVERRIDE;
 
   bool read_only() OVERRIDE { return true; };
 
-protected:
- virtual Type type() const OVERRIDE { return REDIS_READ; }
+ protected:
+  virtual Type type() const OVERRIDE { return REDIS_READ; }
 
-private:
+ private:
   friend class YBTable;
   explicit YBRedisReadOp(const sp::shared_ptr<YBTable>& table);
   std::unique_ptr<RedisReadRequestPB> redis_read_request_;
@@ -223,4 +212,4 @@ class YB_EXPORT YBDelete : public YBOperation {
 } // namespace client
 } // namespace yb
 
-#endif
+#endif  // YB_CLIENT_YB_OP_H

@@ -89,6 +89,13 @@ std::string YBRedisWriteOp::ToString() const {
   return "REDIS_WRITE " + redis_write_request_->set_request().key_value().key();
 }
 
+RedisResponsePB* YBRedisWriteOp::mutable_response() {
+  if (!redis_response_) {
+    redis_response_.reset(new RedisResponsePB());
+  }
+  return redis_response_.get();
+}
+
 // YBRedisReadOp -----------------------------------------------------------------
 
 YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
@@ -99,6 +106,13 @@ YBRedisReadOp::~YBRedisReadOp() {}
 
 std::string YBRedisReadOp::ToString() const {
   return "REDIS_READ " + redis_read_request_->get_request().key_value().key();
+}
+
+RedisResponsePB* YBRedisReadOp::mutable_response() {
+  if (!redis_response_) {
+    redis_response_.reset(new RedisResponsePB());
+  }
+  return redis_response_.get();
 }
 
 // Update -----------------------------------------------------------------------

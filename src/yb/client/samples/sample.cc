@@ -130,7 +130,7 @@ static Status InsertRows(const shared_ptr<YBTable>& table, int num_rows) {
   session->SetTimeoutMillis(5000);
 
   for (int i = 0; i < num_rows; i++) {
-    YBInsert* insert = table->NewInsert();
+    shared_ptr<YBInsert> insert(table->NewInsert());
     YBPartialRow* row = insert->mutable_row();
     YB_CHECK_OK(row->SetInt32("key", i));
     YB_CHECK_OK(row->SetInt32("integer_val", i * 2));
