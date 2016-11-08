@@ -69,7 +69,6 @@ public class PlacementInfoUtil {
         LOG.info("Universe with UUID {} not found, configuring new universe", taskParams.universeUUID);
       }
     }
-
     // In the case of a valid universe we are in the edit path
     if (universe != null) {
         UserIntent existingIntent = universe.getUniverseDetails().userIntent;
@@ -79,15 +78,18 @@ public class PlacementInfoUtil {
           existingIntent.regionList.equals(taskParams.userIntent.regionList);
         Collection<NodeDetails> existingNodes = universe.getNodes();
         startIndex = getStartIndex(universe.getNodes());
-        taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
-        if (!areNumNodesSame && areRegionListsSame) {
+       if (!areNumNodesSame && areRegionListsSame) {
           // Expand universe case with new tserver's addition only.
           numNewNodes = taskParams.userIntent.numNodes - existingIntent.numNodes;
           numNewMasters = 0;
           LOG.info("Num nodes changing from {} to {}.",
             existingIntent.numNodes, taskParams.userIntent.numNodes);
+          // Expand Universe case get placementInfo from universe.getUniverseDetails()
+          taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
           taskParams.nodeDetailsSet.addAll(existingNodes);
         } else {
+          // In the case of Full Move get placementInfo from UserIntent
+          taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
           // Here for full move based edit or full move + expand case.
           for (NodeDetails node : existingNodes) {
             node.state = NodeDetails.NodeState.ToBeDecommissioned;
@@ -95,6 +97,7 @@ public class PlacementInfoUtil {
           }
         }
     } else {
+      // In the case of Create, get placementInfo from UserIntent
       taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
     }
 
