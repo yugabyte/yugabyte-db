@@ -17,7 +17,7 @@ class UniverseCost extends Component {
   }
 
   render() {
-    const {value, type, multiplier} = this.props;
+    const {value, multiplier} = this.props;
     var finalCost = value;
     if (multiplier === "day") {
       finalCost = value * 24;
@@ -37,16 +37,19 @@ class UniverseCost extends Component {
 class UniverseConfigDetail extends Component {
   render() {
     const {universe: {universeResourceTemplate}} =  this.props;
-    var totalMemory = isValidObject(universeResourceTemplate.memSizeGB) ?
-                      `${universeResourceTemplate.memSizeGB} GB` : <span/>;
+    var totalMemory = <span/>;
     var costPerDay =  <span/>;
     var costPerMonth = <span/>;
+    var volumeSize = <span/>;
+    var numCores = <span/>;
+    var volumeCount = <span/>;
     if (isValidObject(universeResourceTemplate) && Object.keys(universeResourceTemplate).length > 0) {
       costPerDay = <UniverseCost value={universeResourceTemplate.pricePerHour} multiplier={"day"} />
       costPerMonth = <UniverseCost value={universeResourceTemplate.pricePerHour} multiplier={"month"} />
     }
-    var volumeSize = isValidObject(universeResourceTemplate.volumeSizeGB) ?
-      `${universeResourceTemplate.volumeSizeGB} GB` : '';
+    if (isValidObject(universeResourceTemplate.volumeSizeGB)) {
+      volumeSize = <span>{`${universeResourceTemplate.volumeSizeGB} GB`}</span>
+    }
     var previewAZList = <span/>;
     if (isValidObject(universeResourceTemplate.azList)) {
       previewAZList = universeResourceTemplate.azList.map(function(item, idx){
@@ -56,7 +59,15 @@ class UniverseConfigDetail extends Component {
         </span>
         )
       });
-
+    }
+    if (isValidObject(universeResourceTemplate.volumeCount)) {
+      volumeCount = <span>{universeResourceTemplate.volumeCount}</span>
+    }
+    if (isValidObject(universeResourceTemplate.numCores)) {
+      numCores = <span>{universeResourceTemplate.numCores}</span>
+    }
+    if (isValidObject(universeResourceTemplate.memSizeGB)) {
+      totalMemory = <span>{`${universeResourceTemplate.memSizeGB} GB`}</span>
     }
     return (
       <div className="universe-resource-preview">
@@ -76,7 +87,7 @@ class UniverseConfigDetail extends Component {
         <Row className="preview-row">
           <Col lg={6} className="preview-item-half-left">
             <DescriptionItem title="Cores">
-              {universeResourceTemplate.numCores}
+              {numCores}
             </DescriptionItem>
           </Col>
           <Col lg={6}>
@@ -93,7 +104,7 @@ class UniverseConfigDetail extends Component {
           </Col>
           <Col lg={6}>
             <DescriptionItem title="Volumes">
-              {universeResourceTemplate.volumeCount}
+              {volumeCount}
             </DescriptionItem>
           </Col>
         </Row>
