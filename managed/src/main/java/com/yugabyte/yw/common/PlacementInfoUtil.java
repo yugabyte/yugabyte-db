@@ -43,6 +43,13 @@ public class PlacementInfoUtil {
   // odd number for consensus to work.
   private static final int maxMasterSubnets = 3;
 
+  // Helper API to check if the list of regions is the same in both lists.
+  private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
+    Set<UUID> leftSet = new HashSet<UUID>(left);
+    Set<UUID> rightSet = new HashSet<UUID>(right);
+    return leftSet.equals(rightSet);
+  }
+
   /**
    * Helper API to set some of the non user supplied information in task params.
    * @param taskParams : Universe task params.
@@ -74,8 +81,8 @@ public class PlacementInfoUtil {
         UserIntent existingIntent = universe.getUniverseDetails().userIntent;
         verifyEditParams(taskParams.userIntent, existingIntent);
         boolean areNumNodesSame = existingIntent.numNodes == taskParams.userIntent.numNodes;
-        boolean areRegionListsSame =
-          existingIntent.regionList.equals(taskParams.userIntent.regionList);
+        boolean areRegionListsSame = compareRegionLists(existingIntent.regionList,
+                                                        taskParams.userIntent.regionList);
         Collection<NodeDetails> existingNodes = universe.getNodes();
         startIndex = getStartIndex(universe.getNodes());
        if (!areNumNodesSame && areRegionListsSame) {
@@ -103,9 +110,9 @@ public class PlacementInfoUtil {
 
     // Compute the nodes that should be configured for this operation.
     taskParams.nodeDetailsSet.addAll(configureNewNodes(taskParams,
-                                     startIndex,
-                                     numNewNodes,
-                                     numNewMasters));
+                                                       startIndex,
+                                                       numNewNodes,
+                                                       numNewMasters));
   }
 
   public static Set<NodeDetails> getMastersToBeRemoved(Set<NodeDetails> nodeDetailsSet) {
