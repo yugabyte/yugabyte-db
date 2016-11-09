@@ -15,27 +15,27 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], universeCurrentCostList: [],
                        currentTotalCost: 0, error: null, showModal: false, visibleModal: "",
-                       universeConfigTemplate: {}, universeResourceTemplate: {}};
+                       formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
   switch(action.type) {
     case CREATE_UNIVERSE:
-      return { ...state, loading: true};
+      return { ...state, loading: true, formSubmitSuccess: false};
     case CREATE_UNIVERSE_SUCCESS:
-      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
+      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
     case CREATE_UNIVERSE_FAILURE:
       error = action.payload.data || {message: action.payload.error};
-      return { ...state, loading: false, error: error};
+      return { ...state, loading: false, error: error, formSubmitSuccess: false};
     case EDIT_UNIVERSE:
-      return { ...state, loading: true};
+      return { ...state, loading: true, formSubmitSuccess: false};
     case EDIT_UNIVERSE_SUCCESS:
-      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
+      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
     case EDIT_UNIVERSE_FAILURE:
       error = action.payload.data || {message: action.payload.error};
-      return { ...state, loading: false, error: error};
+      return { ...state, loading: false, error: error, formSubmitSuccess: false};
     case OPEN_DIALOG:
-      return { ...state, showModal: true, visibleModal: action.payload};
+      return { ...state, showModal: true, visibleModal: action.payload, formSubmitSuccess: false};
     case CLOSE_DIALOG:
       return { ...state, showModal: false, visibleModal: "", universeConfigTemplate: {}, universeResourceTemplate: {}};
     case FETCH_UNIVERSE_INFO:

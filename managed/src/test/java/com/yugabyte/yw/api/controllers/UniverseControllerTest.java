@@ -534,4 +534,20 @@ public class UniverseControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").toString(), is(containsString("gflags param is required for taskType: GFlags")));
   }
+
+  @Test
+  public void testFindByNameWithUniverseNameExists() {
+    Universe universe = Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
+    Result result =
+      route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/find/TestUniverse").cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testFindByNameWithUniverseDoesNotExist() {
+    Universe universe = Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
+    Result result =
+      route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse").cookie(validCookie));
+    assertEquals(OK, result.status());
+  }
 }

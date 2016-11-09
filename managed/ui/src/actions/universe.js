@@ -59,6 +59,9 @@ export const CONFIGURE_UNIVERSE_RESOURCES = 'CONFIGURE_UNIVERSE_RESOURCES';
 export const CONFIGURE_UNIVERSE_RESOURCES_SUCCESS = 'CONFIGURE_UNIVERSE_RESOURCES_SUCCESS';
 export const CONFIGURE_UNIVERSE_RESOURCES_FAILURE = 'CONFIGURE_UNIVERSE_RESOURCES_FAILURE';
 
+//Validation Tasks
+export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
+
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -315,4 +318,14 @@ export function configureUniverseResourcesFailure(error) {
     type: CONFIGURE_UNIVERSE_RESOURCES_FAILURE,
     payload: error
   }
+}
+
+export function checkIfUniverseExists(universeName) {
+  var customerUUID = localStorage.getItem("customer_id");
+  var requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
+  const request = axios.get(requestUrl);
+  return {
+    type: CHECK_IF_UNIVERSE_EXISTS,
+    payload: request
+  };
 }

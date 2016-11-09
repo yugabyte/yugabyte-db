@@ -51,6 +51,14 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCheckIfUniverseExists() {
+    Universe newUniverse = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    assertNotNull(newUniverse);
+    assertThat(Universe.checkIfUniverseExists("Test Universe"), equalTo(true));
+    assertThat(Universe.checkIfUniverseExists("Fake Universe"), equalTo(false));
+  }
+
+  @Test
   public void testGetMultipleUniverse() {
     Universe u1 = Universe.create("Universe1", UUID.randomUUID(), defaultCustomer.getCustomerId());
     Universe u2 = Universe.create("Universe2", UUID.randomUUID(), defaultCustomer.getCustomerId());

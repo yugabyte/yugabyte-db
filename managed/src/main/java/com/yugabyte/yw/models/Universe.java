@@ -133,6 +133,15 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns true if Universe exists with given name
+   * @param universeName String which contains the name which is to be checked
+   * @return true if universe already exists, false otherwise
+   */
+  public static boolean checkIfUniverseExists(String universeName) {
+    return find.select("universeUUID").where().eq("name", universeName).findRowCount() > 0;
+  }
+
+  /**
    * Returns the Universe object given its uuid.
    *
    * @param universeUUID
