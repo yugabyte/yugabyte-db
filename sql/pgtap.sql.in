@@ -2925,27 +2925,16 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _is_indexed( NAME, NAME, TEXT[] )
 RETURNS BOOL AS $$
-    WITH icols AS (
-        SELECT _ikeys($1, $2, ci.relname) AS cols
+SELECT EXISTS( SELECT TRUE FROM (
+        SELECT _ikeys(coalesce($1, n.nspname), $2, ci.relname) AS cols
           FROM pg_catalog.pg_index x
           JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
           JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
           JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
-         WHERE n.nspname  = $1
+         WHERE ($1 IS NULL OR n.nspname  = $1)
            AND ct.relname = $2
-    ) SELECT EXISTS( SELECT TRUE from icols WHERE cols = $3 )
-$$ LANGUAGE sql;
-
-CREATE OR REPLACE FUNCTION _is_indexed( NAME, TEXT[] )
-RETURNS BOOL AS $$
-    WITH icols AS (
-        SELECT _ikeys($1, ci.relname) AS cols
-          FROM pg_catalog.pg_index x
-          JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
-          JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
-         WHERE ct.relname = $1
-           AND pg_catalog.pg_table_is_visible(ct.oid)
-    ) SELECT EXISTS( SELECT TRUE from icols WHERE cols = $2 )
+    ) icols
+    WHERE cols = $3 )
 $$ LANGUAGE sql;
 
 -- is_indexed( schema, table, columns[], description )
@@ -2966,14 +2955,14 @@ $$ LANGUAGE sql;
 -- is_indexed( table, columns[], description )
 CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-   SELECT ok( _is_indexed($1, $2), $3 );
+   SELECT ok( _is_indexed(NULL, $1, $2), $3 );
 $$ LANGUAGE sql;
 
 -- is_indexed( table, columns[] )
 CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME[] )
 RETURNS TEXT AS $$
    SELECT ok(
-       _is_indexed($1, $2),
+       _is_indexed(NULL, $1, $2),
        'Should have an index on ' ||  quote_ident($1) || '(' || array_to_string( $2, ', ' ) || ')'
    );
 $$ LANGUAGE sql;
@@ -3000,7 +2989,7 @@ $$ LANGUAGE sql;
 -- is_indexed( table, column )
 CREATE OR REPLACE FUNCTION is_indexed ( NAME, NAME )
 RETURNS TEXT AS $$
-   SELECT ok ( _is_indexed( $1, ARRAY[$2]::NAME[]) );
+   SELECT ok ( _is_indexed( NULL, $1, ARRAY[$2]::NAME[]) );
 $$ LANGUAGE sql;
 
 -- index_is_unique( schema, table, index, description )
