@@ -53,6 +53,24 @@ public class UniverseController extends AuthenticatedController {
   Commissioner commissioner;
 
   /**
+   * API that checks if a Universe with a given name already exists.
+   * @return true if universe already exists, false otherwise
+   */
+  public Result findByName(UUID customerUUID, String universeName) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    LOG.info("Finding Universe with name {}.", universeName);
+    if (Universe.checkIfUniverseExists(universeName)) {
+      return ApiResponse.error(BAD_REQUEST, "Universe already exists");
+    } else {
+      return ApiResponse.success("Universe does not Exist");
+    }
+  }
+
+  /**
    * API that binds the UniverseDefinitionTaskParams class by merging
    * the UserIntent with the generated taskParams.
    * @param customerUUID the ID of the customer configuring the Universe.

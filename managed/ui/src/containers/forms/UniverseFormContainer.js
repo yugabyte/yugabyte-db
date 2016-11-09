@@ -10,9 +10,9 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   editUniverse, editUniverseSuccess, editUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog, configureUniverseTemplate,
   configureUniverseTemplateSuccess, configureUniverseTemplateFailure, configureUniverseResources,
-  configureUniverseResourcesFailure, configureUniverseResourcesSuccess }
+  configureUniverseResourcesFailure, configureUniverseResourcesSuccess, checkIfUniverseExists }
   from '../../actions/universe';
-import {isValidObject} from '../../utils/ObjectUtils';
+import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -110,11 +110,12 @@ function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
     "ybServerPackage": "yb-server-0.0.1-SNAPSHOT.ac3893d5e619667fd46fcbfc35bc916476439e73.tar.gz",
-    "numNodes": 3, "isMultiAZ": true, "instanceType": "m3.medium"
+    "numNodes": 3, "isMultiAZ": true, "instanceType": "m3.medium", "formType": "create"
   };
 
   if (isValidObject(currentUniverse)) {
     data.universeName = currentUniverse.name;
+    data.formType = "edit";
     data.provider = currentUniverse.provider.uuid;
     data.numNodes = currentUniverse.universeDetails.userIntent.numNodes;
     data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
@@ -142,9 +143,41 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
+const asyncValidate = (values, dispatch ) => {
+  return new Promise((resolve, reject) => {
+    dispatch(checkIfUniverseExists(values.universeName)).then((response) => {
+      if (response.payload.status !== 200 && values.formType !== "edit") {
+        reject({universeName: 'Universe name already exists'});
+      } else {
+        resolve();
+      }
+    })
+  })
+}
+
+const validate = values => {
+  const errors = {}
+  if (!isValidObject(values.universeName)) {
+    errors.universeName = 'Universe Name is Required'
+  }
+  else if (!isValidObject(values.provider)) {
+    errors.provider = 'Provider Value is Required'
+  }
+  else if(!isValidArray(values.regionList) && !isValidObject(values.regionList)) {
+    errors.regionList = 'Region Value is Required'
+  }
+  else if(!isValidObject(values.instanceType)) {
+    errors.instanceType = 'Instance Type is Required'
+  }
+  return errors
+}
+
 
 var universeForm = reduxForm({
   form: 'UniverseForm',
+  validate,
+  asyncValidate,
+  asyncBlurFields: ['universeName'],
   fields: formFieldNames
 })
 

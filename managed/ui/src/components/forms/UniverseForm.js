@@ -132,7 +132,6 @@ class UniverseConfigDetail extends Component {
   }
 }
 export default class UniverseForm extends Component {
-
   static propTypes = {
     type: PropTypes.oneOf(['Edit', 'Create']).isRequired,
   }
@@ -152,7 +151,7 @@ export default class UniverseForm extends Component {
       azInitState = this.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ
     }
     this.state = { instanceTypeSelected: 'm3.medium',
-                    azCheckState: azInitState };
+                    azCheckState: azInitState, providerSelected: '' };
   }
 
   configureUniverseNodeList(fieldName, fieldVal) {
@@ -163,7 +162,9 @@ export default class UniverseForm extends Component {
       universeTaskParams.universeUUID = currentUniverse.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.version;
     }
-    universeTaskParams.userIntent = formValues;
+    var formSubmitVals = formValues;
+    delete formSubmitVals.formType;
+    universeTaskParams.userIntent = formSubmitVals;
     universeTaskParams.userIntent[fieldName] = fieldVal;
     if(isValidObject(formValues.instanceType) && isValidArray(universeTaskParams.userIntent.regionList)) {
       this.props.cloud.providers.forEach(function(providerItem, idx){
@@ -172,16 +173,15 @@ export default class UniverseForm extends Component {
         }
       });
       if (!isValidArray(universeTaskParams.userIntent.regionList)) {
-        universeTaskParams.userIntent.regionList = [formValues.regionList.value];
+        universeTaskParams.userIntent.regionList = [formSubmitVals.regionList.value];
       } else {
-        universeTaskParams.userIntent.regionList = formValues.regionList.map(function (item, idx) {
+        universeTaskParams.userIntent.regionList = formSubmitVals.regionList.map(function (item, idx) {
           return item.value;
         });
       }
       this.props.submitConfigureUniverse(universeTaskParams);
     }
   }
-
   createUniverse() {
     this.props.submitCreateUniverse(this.props.universe.universeConfigTemplate);
   }
@@ -227,9 +227,15 @@ export default class UniverseForm extends Component {
     this.configureUniverseNodeList("numNodes", value);
   }
 
+  componentDidUpdate(newProps) {
+    if (newProps.universe.formSubmitSuccess) {
+      this.props.reset();
+    }
+  }
   render() {
     var self = this;
     const { visible, onHide, handleSubmit, title, universe} = this.props;
+
     var azCheckStateChanged =function() {
       self.setState({azCheckState: !self.state.azCheckState});
     }
@@ -259,19 +265,29 @@ export default class UniverseForm extends Component {
     if (isValidObject(universe.universeResourceTemplate) && isValidObject(universe.universeConfigTemplate)) {
       configDetailItem = <UniverseConfigDetail universe={universe}/>
     }
+    // Hide modal when close is clicked, it also resets the form state and sets it to pristine
+    var hideModal = function() {
+      self.props.reset();
+      onHide();
+    }
+    var isInputReadOnly = false;
+    if (isValidObject(universe.currentUniverse)) {
+      isInputReadOnly = true;
+    }
     return (
            <YBModal visible={visible}
-                    onHide={onHide} title={title} onFormSubmit={submitAction} formName={"UniverseForm"} size="large">
+                    onHide={hideModal} title={title} onFormSubmit={submitAction} formName={"UniverseForm"} size="large">
              <Col lg={6}>
               <Field name="universeName" type="text" component={YBInput} label="Universe Name"
-                     onValueChanged={this.universeNameChanged}
+                     onValueChanged={this.universeNameChanged} isReadOnly={isInputReadOnly}
               />
               <Field name="provider" type="select" component={YBSelect} label="Provider"
                      options={universeProviderList} onSelectChange={this.providerChanged}
               />
                <Field name="regionList" component={YBMultiSelect}
                       label="Regions" options={universeRegionList}
-                      selectValChanged={this.regionListChanged} multi={this.state.azCheckState}/>
+                      selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
+                      providerSelected={this.state.providerSelected}/>
                <Field name="numNodes" type="text" component={YBNumericInput}
                      label="Number Of Nodes" onValueChanged={this.numNodesChanged}/>
               <div className="universeFormSplit">
