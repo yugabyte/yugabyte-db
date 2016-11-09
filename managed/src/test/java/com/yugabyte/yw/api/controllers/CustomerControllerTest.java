@@ -16,8 +16,6 @@ import play.mvc.Result;
 import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;

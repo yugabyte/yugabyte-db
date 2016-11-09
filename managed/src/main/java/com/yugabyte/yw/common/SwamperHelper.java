@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -82,6 +81,10 @@ public class SwamperHelper {
   }
 
   private String getSwamperFile(UUID universeUUID) {
+    if (appConfig.getString("yb.swamper.targetPath").isEmpty()) {
+      return null;
+    }
+
     File swamperTargetFolder = new File(appConfig.getString("yb.swamper.targetPath"));
 
     if (swamperTargetFolder.exists() && swamperTargetFolder.isDirectory()) {
@@ -115,6 +118,7 @@ public class SwamperHelper {
   public void removeUniverseTargetJson(UUID universeUUID) {
     String swamperFile = getSwamperFile(universeUUID);
     if (swamperFile != null) {
+      LOG.info("Going to delete the file... {}", swamperFile);
       File file = new File(swamperFile);
 
       if (file.exists()) {

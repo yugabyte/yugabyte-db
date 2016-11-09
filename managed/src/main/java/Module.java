@@ -2,6 +2,7 @@
 
 import com.google.inject.AbstractModule;
 import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.LocalYBMiniClusterService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -17,6 +18,7 @@ public class Module extends AbstractModule {
   public void configure() {
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
+    bind(SwamperHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);
     // Set LocalMiniClusterService as the implementation for YBClientService
