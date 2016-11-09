@@ -11,7 +11,7 @@ Pre-requisites - install sbt and postgres:
 $ brew install sbt
 # Note: do not set any password for postgres.
 $ brew install postgres
-# Make postgres a daemon (restart on machine restart).
+# Make postgres a daemon (restart on machine restart and do 'sudo chmod -R 0700 /usr/local/var/postgres').
 $ ln -sfv /usr/local/opt/postgresql/*.plist ~/Library/LaunchAgents
 $ launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist
 
