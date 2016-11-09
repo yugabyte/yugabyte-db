@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.forms.ITaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 
 import java.util.UUID;
 
@@ -19,6 +20,12 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
   public static class Params implements ITaskParams {
     public UUID universeUUID;
     public boolean removeFile = false;
+  }
+
+  @Override
+  public void initialize(ITaskParams params) {
+    this.swamperHelper = Play.current().injector().instanceOf(SwamperHelper.class);
+    super.initialize(params);
   }
 
   protected SwamperTargetsFileUpdate.Params taskParams() {
@@ -41,8 +48,8 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
       }
     } catch (RuntimeException e) {
       String msg = getName() + " failed with exception "  + e.getMessage();
-      LOG.warn(msg, e.getMessage());
-      throw new RuntimeException(msg, e);
+      LOG.warn(msg);
+      throw new RuntimeException(msg);
     }
   }
 }
