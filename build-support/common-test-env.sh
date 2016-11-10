@@ -63,15 +63,7 @@ sanitize_for_path() {
 
 set_common_test_paths() {
   expect_num_args 0 "$@"
-  if [[ -z $BUILD_ROOT ]]; then
-    fatal "The BUILD_ROOT environment variable is not set. This must point to the absolute path" \
-          "of the build root directory, e.g. '<yugabyte_src_dir>/build/debug'."
-  fi
-
-  if [[ ! -d $BUILD_ROOT ]]; then
-    fatal "The directory BUILD_ROOT ('$BUILD_ROOT') does not exist"
-  fi
-  YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
+  readonly YB_TEST_LOG_ROOT_DIR="$BUILD_ROOT/yb-test-logs"
   mkdir_safe "$YB_TEST_LOG_ROOT_DIR"
 }
 
@@ -374,8 +366,12 @@ prepare_for_running_test() {
   local test_name_sanitized=$( sanitize_for_path "$test_name" )
 
   # If there are ephermeral drives, pick a random one for this test and create a symlink from
-  # $BUILD_ROOT/yb-test-logs/<testname> to
-  # /mnt/<drive>/<some_unique_path>/test-workspace/<testname>.
+  #
+  # $BUILD_ROOT/yb-test-logs/$test_binary_sanitized
+  # ^^^^^^^^^^^^^^^^^^^^^^^^
+  # ($YB_TEST_LOG_ROOT_DIR)
+  #
+  # to /mnt/<drive>/<some_unique_path>/test-workspace/<testname>.
   # Otherwise, simply create the directory under $BUILD_ROOT/yb-test-logs.
   test_dir="$YB_TEST_LOG_ROOT_DIR/$test_binary_sanitized"
   if [[ ! -d $test_dir ]]; then

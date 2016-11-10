@@ -239,8 +239,42 @@ set_build_root() {
   determine_linking_type
   BUILD_ROOT=$YB_SRC_ROOT/build/$build_type-$YB_COMPILER_TYPE-$YB_LINK
 
+  normalize_build_root
+
   if "$make_build_root_readonly"; then
     readonly BUILD_ROOT
+  fi
+}
+
+# Resolve the BUILD_ROOT symlink and save the result to the real_build_root_path variable.
+set_real_build_root_path() {
+  if [[ -h $BUILD_ROOT ]]; then
+    real_build_root_path=$( readlink "$BUILD_ROOT" )
+  else
+    real_build_root_path="$BUILD_ROOT"
+  fi
+
+  readonly real_build_root_path=$( cd "$real_build_root_path" && pwd )
+}
+
+ensure_build_root_is_set() {
+  if [[ -z $BUILD_ROOT ]]; then
+    fatal "The BUILD_ROOT environment variable is not set. This must point to the absolute path" \
+          "of the build root directory, e.g. '<yugabyte_src_dir>/build/debug'."
+  fi
+}
+
+ensure_build_root_exists() {
+  ensure_build_root_is_set
+  if [[ ! -d $BUILD_ROOT ]]; then
+    fatal "The directory BUILD_ROOT ('$BUILD_ROOT') does not exist"
+  fi
+}
+
+normalize_build_root() {
+  ensure_build_root_is_set
+  if [[ -d $BUILD_ROOT ]]; then
+    BUILD_ROOT=$( cd "$BUILD_ROOT" && pwd )
   fi
 }
 
@@ -538,6 +572,17 @@ mkdir_safe() {
     unlink "$dir_path"
   fi
   mkdir -p "$dir_path"
+}
+
+# Skip the most part of the normal C++ build output. Still keep the "100%" lines so we can see
+# if the build runs to completion. This only filters stdin, so it is expected that stderr is
+# redirected to stdout when invoking the C++ build.
+filter_boring_cpp_build_output() {
+  egrep -v "^(\[ *[0-9]{1,2}%\] +)*(Building C(XX)? object |\
+Running C[+][+] protocol buffer compiler (with YRPC plugin )?on |\
+Linking CXX ((static|shared) library|executable) |\
+Scanning dependencies of target |\
+Built target |[[:space:]]+CC(LD)?[[:space:]]+)[[:graph:]]+$"
 }
 
 # -------------------------------------------------------------------------------------------------

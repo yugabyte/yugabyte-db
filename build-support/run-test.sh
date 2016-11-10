@@ -73,12 +73,6 @@ abs_test_binary_path=$TEST_DIR/$TEST_NAME_WITH_EXT
 # Remove path and extension, if any.
 TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 
-# We run each test in its own subdir to avoid core file related races.
-TEST_WORKDIR="$BUILD_ROOT/test-work/$TEST_NAME"
-
-mkdir_safe "$TEST_WORKDIR"
-pushd "$TEST_WORKDIR" >/dev/null || exit 1
-rm -f *
 
 TEST_DIR_BASENAME="$( basename "$TEST_DIR" )"
 if [ "$TEST_DIR_BASENAME" == "rocksdb-build" ]; then
@@ -103,7 +97,7 @@ if [[ $total_num_tests -gt 0 && $num_tests_skipped -eq $total_num_tests ]]; then
         "( YB_GTEST_REGEX=$YB_GTEST_REGEX )."
 fi
 
-set +u  # Don't fail on an empty list.
+set +u  # Do not fail on an empty list.
 if [[ ${#tests[@]} -eq 0 ]]; then
   fatal "No tests found in $rel_test_binary."
 fi
@@ -120,15 +114,6 @@ for test_descriptor in "${tests[@]}"; do
   run_test_and_process_results
 done
 
-popd >/dev/null
-if [ -d "$TEST_WORKDIR" ]; then
-  rm -Rf "$TEST_WORKDIR"
-fi
+cd /tmp
+rm -rf "$TEST_TMPDIR"
 
-if [ -d "$TEST_TMPDIR" ]; then
-  if [ -z "$( ls -A "$TEST_TMPDIR" )" ]; then
-    rmdir "$TEST_TMPDIR"
-  fi
-fi
-
-exit "$global_exit_code"

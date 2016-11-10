@@ -1,4 +1,5 @@
-#!/bin/bash -x
+#!/bin/bash
+
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -24,18 +25,54 @@
 # space in the Jenkins workspace disk. This can help prevent our EC2
 # slaves from filling up and causing spurious failures.
 
-ROOT=$(cd $(dirname "$BASH_SOURCE")/../..; pwd)
-cd $ROOT
-
 # Note that we use simple shell commands instead of "make clean"
 # or "mvn clean". This is more foolproof even if something ends
 # up partially compiling, etc.
 
-# Clean up intermediate object files in the src tree
-find build/latest/src -name \*.o -exec rm -f {} \;
+# Portions Copyright (c) YugaByte, Inc.
 
-# Clean up the actual build artifacts
-rm -Rf build/latest/bin build/latest/lib
+set -euo pipefail
 
-# Clean up any java build artifacts
-find java -name \*.jar -delete -o -name \*.class -delete
+. "${BASH_SOURCE%/*}"/../common-test-env.sh
+
+show_stats() {
+  expect_num_args 1 "$@"
+  local before_or_after=$1
+
+  log_empty_line
+  log "Disk usage in '$real_build_root_path' $before_or_after cleanup:"
+  du -sh "$real_build_root_path"
+  log "Number of XML files in '$real_build_root_path' $before_or_after cleanup:"
+  find -L "$real_build_root_path" -name "*.xml" | wc -l
+  log_empty_line
+}
+
+show_num_xml_files() {
+  find "$real_build_root_path" -name "*.xml" | wc -l
+}
+
+ensure_build_root_exists
+
+readonly BUILD_ROOT=$( cd "$BUILD_ROOT" && pwd )
+
+set_common_test_paths
+set_real_build_root_path
+
+cd "$real_build_root_path"
+
+show_stats "before"
+
+# Get rid of most of the build artifacts.
+( set -x; rm -rf bin lib src rocksdb-build )
+
+# Get rid of temporary directories such as
+#   yb-test-logs/bin__raft_consensus-itest/
+#   RaftConsensusITest_TestChangeConfigRejectedUnlessNoopReplicated.tmp
+# (the above path is split between multiple lines) relative to the build root.
+#
+# We are following symlinks here, because these tmp directories are behind one level of symlinks
+# E.g. in the above example yb-test-logs/bin__raft_consensus-itest may be a symlink to a directory
+# on an ephemeral drive.
+find -L "$YB_TEST_LOG_ROOT_DIR" -mindepth 2 -maxdepth 2 -name "*.tmp" -type d -exec rm -rf "{}" \;
+
+show_stats "after"

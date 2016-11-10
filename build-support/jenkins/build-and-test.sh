@@ -158,11 +158,10 @@ if [ -n "${BUILD_URL:-}" ]; then
 fi
 
 cleanup() {
-  if [ "${YB_KEEP_BUILD_ARTIFACTS:-}" == "true" ]; then
-    echo "Not removing build artifacts: YB_KEEP_BUILD_ARTIFACTS is set"
-  else
-    echo "Cleaning up all build artifacts... (YB_KEEP_BUILD_ARTIFACTS=$YB_KEEP_BUILD_ARTIFACTS)"
-    $YB_SRC_ROOT/build-support/jenkins/post-build-clean.sh
+  if [[ -n ${BUILD_ROOT:-} ]]; then
+    echo "Running the script to clean up build artifacts..."
+    export BUILD_ROOT
+    "$YB_SRC_ROOT/build-support/jenkins/post-build-clean.sh"
   fi
 }
 
@@ -253,11 +252,19 @@ else
   NUM_PARALLEL_TESTS=$NUM_PROCS
 fi
 
-if [ "$BUILD_CPP" == "1" ]; then
+declare -i EXIT_STATUS=0
+
+if [[ $BUILD_CPP == "1" ]]; then
   echo
   echo Building C++ code.
   echo ------------------------------------------------------------
-  time make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | tee build.log
+  time make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | filter_boring_cpp_build_output
+  if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    log "C++ build failed!"
+    # TODO: perhaps we shouldn't even try to run C++ tests in this case?
+    EXIT_STATUS=1
+  fi
+
   log "Finished building C++ code (see timing information above)"
 
   if [[ -h $LATEST_BUILD_LINK ]]; then
@@ -271,7 +278,6 @@ if [ "$BUILD_CPP" == "1" ]; then
   # Run tests
   export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
 
-  EXIT_STATUS=0
   FAILURES=""
 
   log "Starting ctest"

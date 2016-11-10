@@ -79,7 +79,6 @@ export YB_MINIMIZE_VERSION_DEFINES_CHANGES=1
 export YB_MINIMIZE_RECOMPILATION=1
 export BUILD_PYTHON=0
 export BUILD_JAVA=1
-export YB_KEEP_BUILD_ARTIFACTS=true
 
 echo
 echo ----------------------------------------------------------------------------------------------
