@@ -2175,16 +2175,17 @@ class RetryingTSRpcTask : public MonitoredTask {
       table_(table),
       start_ts_(MonoTime::Now(MonoTime::FINE)),
       attempt_(0),
-      state_(kStateRunning) {
+      state_(kStateWaiting) {
     deadline_ = start_ts_;
     deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms));
   }
 
   // Send the subclass RPC request.
   Status Run() {
+    VLOG(1) << "Start Running " << description() << " " << state();
     Status s = ResetTSProxy();
     if (!s.ok()) {
-      MarkFailed();
+      MarkWaitingFailed();
       UnregisterAsyncTask();  // May delete this.
       return s.CloneAndPrepend("Failed to reset TS proxy");
     }
@@ -2195,6 +2196,7 @@ class RetryingTSRpcTask : public MonitoredTask {
     const MonoTime& deadline = MonoTime::Earliest(timeout, deadline_);
     rpc_.set_deadline(deadline);
 
+    MarkRunning();
     if (!SendRequest(++attempt_)) {
       if (!RescheduleWithBackoffDelay()) {
         UnregisterAsyncTask();  // May call 'delete this'.
@@ -2205,7 +2207,11 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Abort this task.
   virtual void Abort() OVERRIDE {
-    MarkAborted();
+    if (state() == MonitoredTask::kStateWaiting) {
+      MarkWaitingAborted();
+    } else {
+      MarkAborted();
+    }
   }
 
   virtual State state() const OVERRIDE {
@@ -2235,9 +2241,24 @@ class RetryingTSRpcTask : public MonitoredTask {
     return Substitute("$0: ", description());
   }
 
+  // Transition from waiting -> running.
+  void MarkRunning() {
+    NoBarrier_CompareAndSwap(&state_, kStateWaiting, kStateRunning);
+  }
+
+  // Transition from running -> waiting.
+  void MarkWaiting() {
+    NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateWaiting);
+  }
+
   // Transition from running -> complete.
   void MarkComplete() {
     NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateComplete);
+  }
+
+  // Transition from waiting -> aborted.
+  void MarkWaitingAborted() {
+    NoBarrier_CompareAndSwap(&state_, kStateWaiting, kStateAborted);
   }
 
   // Transition from running -> aborted.
@@ -2248,6 +2269,11 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Transition from running -> failed.
   void MarkFailed() {
     NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateFailed);
+  }
+
+  // Transition from waiting -> failed.
+  void MarkWaitingFailed() {
+    NoBarrier_CompareAndSwap(&state_, kStateWaiting, kStateFailed);
   }
 
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
@@ -2290,7 +2316,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   int attempt_;
   rpc::RpcController rpc_;
-  TSDescriptor* target_ts_desc_;
+  TSDescriptor* target_ts_desc_ = nullptr;
   shared_ptr<tserver::TabletServerAdminServiceProxy> ts_proxy_;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
 
@@ -2300,7 +2326,12 @@ class RetryingTSRpcTask : public MonitoredTask {
   // timeout or because the task is no longer in a running state.
   // Returns true if rescheduling the task was successful.
   bool RescheduleWithBackoffDelay() {
-    if (state() != kStateRunning) return false;
+    if (state() != kStateRunning) {
+      LOG(INFO) << "No reschedule for " << description() << ", state="
+                << MonitoredTask::state(state());
+      return false;
+    }
+
     MonoTime now = MonoTime::Now(MonoTime::FINE);
     // We assume it might take 10ms to process the request in the best case,
     // fail if we have less than that amount of time remaining.
@@ -2323,8 +2354,10 @@ class RetryingTSRpcTask : public MonitoredTask {
     } else {
       MonoTime new_start_time = now;
       new_start_time.AddDelta(MonoDelta::FromMilliseconds(delay_millis));
-      LOG(INFO) << "Scheduling retry of " << description() << " with a delay"
-                << " of " << delay_millis << "ms (attempt = " << attempt_ << ")...";
+      LOG(INFO) << "Scheduling retry of " << description() << ", state="
+                << MonitoredTask::state(state()) << " with a delay of " << delay_millis
+                << "ms (attempt = " << attempt_ << ")...";
+      MarkWaiting();
       master_->messenger()->ScheduleOnReactor(
           std::bind(&RetryingTSRpcTask::RunDelayedTask, this, _1),
           MonoDelta::FromMilliseconds(delay_millis));
@@ -2593,7 +2626,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
  private:
   virtual string tablet_id() const OVERRIDE { return tablet_->tablet_id(); }
   string permanent_uuid() const {
-    return target_ts_desc_->permanent_uuid();
+    return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
   }
 
   virtual void HandleResponse(int attempt) OVERRIDE {
@@ -2670,7 +2703,9 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
   virtual bool PrepareRequest(int attempt) = 0;
 
   virtual string tablet_id() const OVERRIDE { return tablet_->tablet_id(); }
-  string permanent_uuid() const { return target_ts_desc_->permanent_uuid(); }
+  string permanent_uuid() const {
+    return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+  }
 
   const scoped_refptr<TabletInfo> tablet_;
   const ConsensusStatePB cstate_;
@@ -2730,8 +2765,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
 
   consensus_proxy_->ChangeConfigAsync(
       req_, &resp_, &rpc_, std::bind(&AsyncChangeConfigTask::RpcCallback, this));
-  VLOG(1) << "Sent " << type_name() << " request to " << permanent_uuid() << ":\n"
-          << req_.DebugString();
+  VLOG(1) << "Task " << description() << " sent request:\n" << req_.DebugString();
   return true;
 }
 
@@ -4380,10 +4414,22 @@ void TableInfo::RemoveTask(MonitoredTask* task) {
   task->Release();
 }
 
+// Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
+// from the pending list.
 void TableInfo::AbortTasks() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::unordered_set<MonitoredTask *> erase_tasks;
+  std::lock_guard <simple_spinlock> l(lock_);
   for (MonitoredTask* task : pending_tasks_) {
+    if (task->state() == MonitoredTask::kStateWaiting) {
+      erase_tasks.insert(task);
+    }
     task->Abort();
+  }
+
+  LOG(INFO) << "Aborted " << pending_tasks_.size() - erase_tasks.size()
+            << "tasks and erased " << erase_tasks.size() << " tasks.";
+  for (MonitoredTask* task : erase_tasks) {
+    pending_tasks_.erase(task);
   }
 }
 

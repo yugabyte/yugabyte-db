@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MONITORED_TASK_H
-#define YB_MONITORED_TASK_H
+#ifndef YB_SERVER_MONITORED_TASK_H
+#define YB_SERVER_MONITORED_TASK_H
 
 #include <string>
 
@@ -29,33 +29,49 @@ class MonitoredTask : public RefCountedThreadSafe<MonitoredTask> {
  public:
   virtual ~MonitoredTask() {}
 
-    enum State {
-      kStatePreparing,
-      kStateRunning,
-      kStateComplete,
-      kStateFailed,
-      kStateAborted,
-    };
+  enum State {
+    kStateWaiting,  // RPC not issued, or is waiting to be retried.
+    kStateRunning,  // RPC has been issued.
+    kStateComplete,
+    kStateFailed,
+    kStateAborted,
+  };
 
-    // Abort the ongoing task.
-    virtual void Abort() = 0;
+  static string state(State state) {
+    switch (state) {
+    case MonitoredTask::kStateWaiting:
+      return "Waiting";
+    case MonitoredTask::kStateRunning:
+      return "Running";
+    case MonitoredTask::kStateComplete:
+      return "Complete";
+    case MonitoredTask::kStateFailed:
+      return "Failed";
+    case MonitoredTask::kStateAborted:
+      return "Aborted";
+    }
+    return "UNKNOWN_STATE";
+  }
 
-    // Task State
-    virtual State state() const = 0;
+  // Abort the ongoing task.
+  virtual void Abort() = 0;
 
-    // Task Type Identifier
-    virtual std::string type_name() const = 0;
+  // Task State
+  virtual State state() const = 0;
 
-    // Task description
-    virtual std::string description() const = 0;
+  // Task Type Identifier
+  virtual std::string type_name() const = 0;
 
-    // Task start time, may be !Initialized()
-    virtual MonoTime start_timestamp() const = 0;
+  // Task description
+  virtual std::string description() const = 0;
 
-    // Task completion time, may be !Initialized()
-    virtual MonoTime completion_timestamp() const = 0;
+  // Task start time, may be !Initialized()
+  virtual MonoTime start_timestamp() const = 0;
+
+  // Task completion time, may be !Initialized()
+  virtual MonoTime completion_timestamp() const = 0;
 };
 
 } // namespace yb
 
-#endif
+#endif  // YB_SERVER_MONITORED_TASK_H

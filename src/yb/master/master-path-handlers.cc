@@ -204,6 +204,9 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     *output << "<table class='table table-striped'>\n";
     *output << "  <tr><td>Version:</td><td>" << l.data().pb.version() << "</td></tr>\n";
 
+    *output << "  <tr><td>Type:</td><td>" << TableType_Name(l.data().pb.table_type())
+            << "</td></tr>\n";
+
     string state = SysTablesEntryPB_State_Name(l.data().pb.state());
     Capitalize(&state);
     *output << "  <tr><td>State:</td><td>"

@@ -135,24 +135,7 @@ void HtmlOutputTaskList(const std::vector<scoped_refptr<MonitoredTask> >& tasks,
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
   for (const scoped_refptr<MonitoredTask>& task : tasks) {
-    string state;
-    switch (task->state()) {
-      case MonitoredTask::kStatePreparing:
-        state = "Preparing";
-        break;
-      case MonitoredTask::kStateRunning:
-        state = "Running";
-        break;
-      case MonitoredTask::kStateComplete:
-        state = "Complete";
-        break;
-      case MonitoredTask::kStateFailed:
-        state = "Failed";
-        break;
-      case MonitoredTask::kStateAborted:
-        state = "Aborted";
-        break;
-    }
+    string state = MonitoredTask::state(task->state());
 
     double running_secs = 0;
     if (task->completion_timestamp().Initialized()) {
