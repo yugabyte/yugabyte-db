@@ -19,7 +19,7 @@ namespace sql {
 // Constraints.
 
 enum class PTConstraintType {
-  kUndefined = 0,
+  kNone = 0,
   kPrimaryKey,
   kUnique,
   kNotNull,
@@ -193,7 +193,7 @@ class PTCreateTable : public TreeNode {
 
   // Table name.
   const char *yb_table_name() const {
-    return relation_->last_name()->c_str();
+    return relation_->last_name().c_str();
   }
 
   // Returns location of table name.

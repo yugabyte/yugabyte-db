@@ -28,8 +28,17 @@ class SessionContext {
                  std::shared_ptr<client::YBClient> client,
                  std::shared_ptr<client::YBSession> session);
 
-  client::YBTableCreator* NewTableCreator() {
+  client::YBTableCreator *NewTableCreator() {
     return client_->NewTableCreator();
+  }
+
+  std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name, bool refresh_metadata) {
+    // TODO(neil) Once we decide where to cache the descriptor, the refresh_metadata should be used
+    // to decide whether or not the cached version should be used.
+    // At the moment, we read the table descriptor every time we need it.
+    std::shared_ptr<client::YBTable> yb_table;
+    client_->OpenTable(table_name, &yb_table);
+    return yb_table;
   }
 
  private:

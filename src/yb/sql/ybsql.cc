@@ -3,6 +3,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/sql/ybsql.h"
+#include <gflags/gflags.h>
+
+DEFINE_int32(YB_SQL_EXEC_MAX_METADATA_REFRESH_COUNT, 1,
+             "The maximum number of times YbSql engine can refresh metadata cache due to schema "
+             "version mismatch error when executing a SQL statement");
 
 namespace yb {
 namespace sql {
@@ -28,30 +33,43 @@ ErrorCode YbSql::Process(SessionContext *session_context, const string& sql_stmt
   ParseTree::UniPtr parse_tree = parser_->Done();
   DCHECK(parse_tree.get() != nullptr) << "Parse tree is null";
 
-  // Semantic analysis.
-  // Traverse, error-check, and decorate the parse tree nodes with datatypes.
-  errcode = analyzer_->Analyze(sql_stmt, move(parse_tree));
-  if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return errcode;
-  }
-  parse_tree = analyzer_->Done();
-  CHECK(parse_tree.get() != nullptr) << "SEM tree is null";
+  int refresh_count = 0;
+  while (refresh_count <= FLAGS_YB_SQL_EXEC_MAX_METADATA_REFRESH_COUNT) {
+    // Semantic analysis.
+    // Traverse, error-check, and decorate the parse tree nodes with datatypes.
+    ErrorCode sem_errcode =
+      analyzer_->Analyze(sql_stmt, move(parse_tree), session_context, refresh_count);
+    parse_tree = analyzer_->Done();
+    CHECK(parse_tree.get() != nullptr) << "SEM tree is null";
+    if (sem_errcode == ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED) {
+      // If rerun failed, we report the previous errorcode to users.
+      break;
+    }
+    errcode = sem_errcode;
 
-  // Code generation.
-  // Code (expression tree or bytecode) pool. This pool is used to allocate expression tree or byte
-  // code to be executed. This pool should last as long as the code remains in our system.
-  // MemoryContext *code_mem;
+    // If failure occurs, it could be because the cached descriptors are stale. In that case, we
+    // reload the table descriptor and analyze the statement again.
+    if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
+      if (errcode != ErrorCode::FDW_TABLE_NOT_FOUND) {
+        refresh_count++;
+        continue;
+      }
+      break;
+    }
 
-  // Code execution.
-  // Temporary memory pool that is used during the execution. This pool is deleted as soon as the
-  // execution completes.
-  // MemoryContext *exec_mem;
-  errcode = executor_->Execute(sql_stmt, move(parse_tree), session_context);
-  if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return errcode;
+    // TODO(neil) Code generation. We bypass this step at this time.
+
+    // Code execution.
+    errcode = executor_->Execute(sql_stmt, move(parse_tree), session_context);
+    parse_tree = executor_->Done();
+    CHECK(parse_tree.get() != nullptr) << "Exec tree is null";
+
+    // If the failure occurs because of stale metadata cache, rerun with latest metadata.
+    if (errcode != ErrorCode::WRONG_METADATA_VERSION) {
+      break;
+    }
+    refresh_count++;
   }
-  parse_tree = executor_->Done();
-  CHECK(parse_tree.get() != nullptr) << "Exec tree is null";
 
   // Return status.
   return errcode;

@@ -9,8 +9,11 @@
 namespace yb {
 namespace sql {
 
+using std::shared_ptr;
+
 using client::YBClient;
 using client::YBSession;
+using client::YBTable;
 
 SessionContext::SessionContext(int session_id,
                                std::shared_ptr<YBClient> client,

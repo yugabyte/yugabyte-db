@@ -19,10 +19,19 @@ namespace sql {
 class SemContext;
 
 enum class TreeNodeOpcode {
-  kUndefined = 0,
+  kNoOp = 0,
   kTreeNode,
   kPTListNode,
   kPTCreateTable,
+  kPTSelectStmt,
+  kPTInsertStmt,
+  kPTDeleteStmt,
+  kPTUpdateStmt,
+
+  // Expressions.
+  kPTExpr,
+  kPTRef,
+  kPTAssign,
 };
 
 // TreeNode base class.

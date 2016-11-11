@@ -8,6 +8,7 @@
 #define YB_SQL_PTREE_PT_NAME_H_
 
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/list_node.h"
 
 namespace yb {
 namespace sql {
@@ -35,8 +36,8 @@ class PTName : public TreeNode {
   ErrorCode SetupPrimaryKey(SemContext *sem_context);
   ErrorCode SetupHashAndPrimaryKey(SemContext *sem_context);
 
-  MCString *name() {
-    return name_.get();
+  const MCString& name() const {
+    return *name_;
   }
 
  private:
@@ -94,13 +95,15 @@ class PTQualifiedName : public PTName {
   // Node semantics analysis.
   virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
 
-  MCString *last_name() {
+  const MCString& last_name() const {
     return ptnames_.back()->name();
   }
 
  private:
   MCList<PTName::SharedPtr> ptnames_;
 };
+
+using PTQualifiedNameListNode = TreeListNode<PTQualifiedName>;
 
 }  // namespace sql
 }  // namespace yb

@@ -30,8 +30,12 @@ PTCreateTable::~PTCreateTable() {
 }
 
 ErrorCode PTCreateTable::Analyze(SemContext *sem_context) {
-  ErrorCode err;
+  // DDL statement is not allowed to be retry.
+  if (sem_context->retry_count() > 0) {
+    return ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED;
+  }
 
+  ErrorCode err;
   err = relation_->Analyze(sem_context);
   if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
     return err;

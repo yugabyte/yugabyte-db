@@ -21,11 +21,17 @@ Analyzer::~Analyzer() {
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Analyzer::Analyze(const string& sql_stmt, ParseTree::UniPtr parse_tree) {
+ErrorCode Analyzer::Analyze(const string& sql_stmt,
+                            ParseTree::UniPtr parse_tree,
+                            SessionContext *session_context,
+                            int retry_count) {
   ParseTree *ptree = parse_tree.get();
+  DCHECK(ptree != nullptr) << "Parse tree is null";
   sem_context_ = SemContext::UniPtr(new SemContext(sql_stmt.c_str(),
                                                    sql_stmt.length(),
-                                                   move(parse_tree)));
+                                                   move(parse_tree),
+                                                   session_context,
+                                                   retry_count));
   if (ptree->Analyze(sem_context_.get()) == ErrorCode::SUCCESSFUL_COMPLETION) {
     VLOG(3) << "Successfully analyzed parse-tree <" << ptree << ">";
   } else {

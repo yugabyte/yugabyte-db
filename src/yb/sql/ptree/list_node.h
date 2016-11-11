@@ -14,52 +14,74 @@
 namespace yb {
 namespace sql {
 
-// List of tree nodes.
-using TreeNodeList = MCList<TreeNode::SharedPtr>;
-
 // Operations that apply to each treenode of this list.
 template<typename ContextType, typename NodeType = TreeNode>
 using TreeNodeOperator = std::function<ErrorCode(NodeType&, ContextType*)>;
 
 // TreeNode base class.
-class PTListNode : public TreeNode {
+template<typename NodeType = TreeNode, TreeNodeOpcode op = TreeNodeOpcode::kPTListNode>
+class TreeListNode : public TreeNode {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTListNode> SharedPtr;
-  typedef MCSharedPtr<const PTListNode> SharedPtrConst;
+  typedef MCSharedPtr<TreeListNode> SharedPtr;
+  typedef MCSharedPtr<const TreeListNode> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
-  explicit PTListNode(MemoryContext *memory_context, YBLocation::SharedPtr loc);
-  virtual ~PTListNode();
+  explicit TreeListNode(MemoryContext *memory_context,
+                        YBLocation::SharedPtr loc,
+                        const MCSharedPtr<NodeType>& tnode = nullptr)
+      : TreeNode(memory_context, loc),
+        node_list_(memory_context) {
+    Append(tnode);
+  }
+  virtual ~TreeListNode() {
+  }
 
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {
-    return TreeNodeOpcode::kPTListNode;
+    return op;
   }
 
   // Add a tree node at the end.
-  void Append(const TreeNode::SharedPtr& tnode);
+  void Append(const MCSharedPtr<NodeType>& tnode) {
+    if (tnode != nullptr) {
+      node_list_.push_back(tnode);
+    }
+  }
 
   // Add a tree node at the beginning.
-  void Prepend(const TreeNode::SharedPtr& tnode);
+  void Prepend(const MCSharedPtr<NodeType>& tnode) {
+    if (tnode != nullptr) {
+      node_list_.push_front(tnode);
+    }
+  }
 
   template<typename... TypeArgs>
-  inline static PTListNode::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTListNode>(memctx, std::forward<TypeArgs>(args)...);
+  inline static TreeListNode::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<TreeListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
   // Run semantics analysis on this node.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE {
+    ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+    for (auto tnode : node_list_) {
+      err = tnode->Analyze(sem_context);
+      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
+        return err;
+      }
+    }
+    return err;
+  }
 
   // Apply an operator on each node in the list.
-  template<typename ContextType, typename NodeType = TreeNode>
+  template<typename ContextType, typename DerivedType = NodeType>
   ErrorCode Apply(ContextType *context,
-                  TreeNodeOperator<ContextType, NodeType> node_op,
+                  TreeNodeOperator<ContextType, DerivedType> node_op,
                   int max_nested_level = 0,
                   int max_nested_count = 0,
-                  TreeNodeOperator<ContextType, NodeType> nested_node_op = nullptr) {
+                  TreeNodeOperator<ContextType, DerivedType> nested_node_op = nullptr) {
 
     ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
     int nested_level = 0;
@@ -68,7 +90,7 @@ class PTListNode : public TreeNode {
     for (auto tnode : node_list_) {
       if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
         // Cast the node from (TreeNode*) to the given template type.
-        NodeType *node = static_cast<NodeType*>(tnode.get());
+        DerivedType *node = static_cast<DerivedType*>(tnode.get());
         // Call the given node operation on the node.
         err = node_op(*node, context);
 
@@ -86,9 +108,9 @@ class PTListNode : public TreeNode {
         }
 
         // Cast the node from (TreeNode*) to the given template type.
-        PTListNode *node = static_cast<PTListNode*>(tnode.get());
+        TreeListNode *node = static_cast<TreeListNode*>(tnode.get());
         // Apply the operation to a nested list.
-        err = node->Apply<ContextType, NodeType>(context,
+        err = node->Apply<ContextType, DerivedType>(context,
                                                  nested_node_op,
                                                  max_nested_level - 1,
                                                  max_nested_count,
@@ -104,14 +126,33 @@ class PTListNode : public TreeNode {
     return err;
   }
 
+  // List count.
+  int size() const {
+    return node_list_.size();
+  }
+
   // Access function to node_list_.
-  const TreeNodeList& node_list() const {
+  const MCList<MCSharedPtr<NodeType>>& node_list() const {
     return node_list_;
   }
 
+  // Returns the nth element.
+  MCSharedPtr<NodeType> element(int n) const {
+    DCHECK_GE(n, 0);
+    for (const MCSharedPtr<NodeType>& tnode : node_list_) {
+      if (n == 0) {
+        return tnode;
+      }
+      n--;
+    }
+    return nullptr;
+  }
+
  private:
-  TreeNodeList node_list_;
+  MCList<MCSharedPtr<NodeType>> node_list_;
 };
+
+using PTListNode = TreeListNode<>;
 
 }  // namespace sql
 }  // namespace yb

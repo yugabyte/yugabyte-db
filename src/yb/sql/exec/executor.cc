@@ -14,6 +14,7 @@ using std::shared_ptr;
 
 using client::YBSchema;
 using client::YBSchemaBuilder;
+using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 
@@ -64,6 +65,9 @@ ErrorCode Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTCreateTable:
       return ExecPTNode(static_cast<const PTCreateTable*>(tnode));
 
+    case TreeNodeOpcode::kPTInsertStmt:
+      return ExecPTNode(static_cast<const PTInsertStmt*>(tnode));
+
     default:
       return ExecPTNode(tnode);
   }
@@ -81,8 +85,7 @@ ErrorCode Executor::ExecPTNode(const TreeNode *tnode) {
 ErrorCode Executor::ExecPTNode(const PTListNode *lnode) {
   ErrorCode errcode = ErrorCode::SUCCESSFUL_COMPLETION;
 
-  const TreeNodeList& node_list = lnode->node_list();
-  for (auto nodeptr : node_list) {
+  for (TreeNode::SharedPtr nodeptr : lnode->node_list()) {
     errcode = ExecTreeNode(nodeptr.get());
     if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
       break;
@@ -132,6 +135,13 @@ ErrorCode Executor::ExecPTNode(const PTCreateTable *tnode) {
     WARN_NOT_OK(exec_status, "SQL EXEC");
     return ErrorCode::INVALID_TABLE_DEFINITION;
   }
+  return ErrorCode::SUCCESSFUL_COMPLETION;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+ErrorCode Executor::ExecPTNode(const PTInsertStmt *tnode) {
+  // Generate protobuf and send it.
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
 

@@ -25,6 +25,8 @@ enum class PTTypeId {
   kCharBaseType,
   kChar,
   kVarchar,
+
+  kMaxTypeId,
 };
 
 class PTBaseType : public TreeNode {

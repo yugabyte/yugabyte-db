@@ -108,7 +108,9 @@ class YB_EXPORT YBColumnSchema {
     FLOAT = 6,
     DOUBLE = 7,
     BINARY = 8,
-    TIMESTAMP = 9
+    TIMESTAMP = 9,
+
+    MAX_TYPE_INDEX
   };
 
   static std::string DataTypeToString(DataType type);

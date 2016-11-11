@@ -28,7 +28,10 @@ class Analyzer {
 
   // Run semantics analysis on the given parse tree and decorate it with semantics information such
   // as datatype or object-type of a database object.
-  ErrorCode Analyze(const std::string& sql_stmt, ParseTree::UniPtr ptree);
+  ErrorCode Analyze(const std::string& sql_stmt,
+                    ParseTree::UniPtr ptree,
+                    SessionContext *session_context,
+                    int retry_count);
 
   // Returns decorated parse tree from the semantic analysis.
   ParseTree::UniPtr Done();

@@ -9,6 +9,10 @@
 
 #include "yb/sql/exec/exec_context.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/pt_select.h"
+#include "yb/sql/ptree/pt_insert.h"
+#include "yb/sql/ptree/pt_delete.h"
+#include "yb/sql/ptree/pt_update.h"
 
 namespace yb {
 namespace sql {
@@ -50,6 +54,9 @@ class Executor {
 
   // Creates table.
   ErrorCode ExecPTNode(const PTCreateTable *tnode);
+
+  // Insert statement.
+  ErrorCode ExecPTNode(const PTInsertStmt *tnode);
 
  private:
   // Execution context which are created and destroyed for each execution.

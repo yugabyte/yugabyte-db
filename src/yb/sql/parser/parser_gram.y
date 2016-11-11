@@ -68,6 +68,11 @@
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
+#include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_select.h"
+#include "yb/sql/ptree/pt_insert.h"
+#include "yb/sql/ptree/pt_delete.h"
+#include "yb/sql/ptree/pt_update.h"
 #include "yb/gutil/macros.h"
 
 namespace yb {
@@ -85,9 +90,19 @@ typedef MCString::SharedPtr            PString;
 
 typedef TreeNode::SharedPtr            PTreeNode;
 typedef PTListNode::SharedPtr          PListNode;
+typedef PTExpr::SharedPtr              PExpr;
+typedef PTExprListNode::SharedPtr      PExprListNode;
+typedef PTCollection::SharedPtr        PCollection;
+typedef PTValues::SharedPtr            PValues;
+typedef PTSelectStmt::SharedPtr        PSelectStmt;
+typedef PTTableRef::SharedPtr          PTableRef;
+typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
+typedef PTAssign::SharedPtr            PAssign;
+typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
 typedef PTName::SharedPtr              PName;
 typedef PTQualifiedName::SharedPtr     PQualifiedName;
+typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
 typedef PTBaseType::SharedPtr          PType;
 typedef PTCharBaseType::SharedPtr      PCharBaseType;
@@ -99,7 +114,6 @@ typedef JoinType                       jtype;
 typedef DropBehavior                   dbehavior;
 typedef ObjectType                     objtype;
 typedef FunctionParameterMode          fun_param_mode;
-// typedef OnCommitAction                 oncommit;
 
 } // namespace sql.
 } // namespace yb.
@@ -124,6 +138,7 @@ using namespace yb::sql;
 #define PARSER_ERROR(loc, code) parser_->Error(loc, ErrorCode:##:code)
 #define PARSER_ERROR_MSG(loc, code, msg) parser_->Error(loc, msg, ErrorCode:##:code)
 #define PARSER_UNSUPPORTED(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_SUPPORTED)
+#define PARSER_NOCODE(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED)
 
 #define PTREE_MEM parser_->PTreeMem()
 #define PTREE_LOC(loc) Location::MakeShared(PTREE_MEM, loc)
@@ -133,35 +148,96 @@ using namespace yb::sql;
 //--------------------------------------------------------------------------------------------------
 // Active tree node declarations (%type).
 // The rule names are currently used by YbSql.
-%type <KeywordType>       unreserved_keyword type_func_name_keyword
-%type <KeywordType>       col_name_keyword reserved_keyword
+%type <PListNode>         // Statement lists.
+                          stmtblock stmtmulti
 
-%type <PInt64>            opt_float
+%type <PTreeNode>         // Statement as tree node.
+                          stmt
 
-%type <PString>           ColId
-
-// Statement nodes.
-%type <PListNode>         stmtblock stmtmulti
-
-%type <PTreeNode>         stmt
+                          // Create table.
                           CreateStmt schema_stmt TableElement TableConstraint
                           columnDef ColConstraint ColConstraintElem
                           ConstraintElem ConstraintAttr
-                          SelectStmt InsertStmt DeleteStmt UpdateStmt
-// Datatype nodes.
-%type <PType>             Typename SimpleTypename Numeric
+
+                          // Select.
+                          distinct_clause opt_all_clause sortby
+                          group_by_item for_locking_clause opt_for_locking_clause
+                          with_clause opt_with_clause cte_list common_table_expr
+                          opt_window_clause
+
+                          // Insert.
+                          InsertStmt returning_clause
+                          opt_on_conflict opt_conf_expr
+
+                          // Delete.
+                          DeleteStmt using_clause
+
+                          // Update.
+                          UpdateStmt
+                          set_target_list
+
+%type <PCollection>       // Select can be either statement or expression of collection types.
+                          SelectStmt select_no_parens select_with_parens select_clause
+
+%type <PSelectStmt>       simple_select
+
+%type <PValues>           values_clause
+
+%type <PExpr>             // Expression clause. These expressions are used in a specific context.
+                          where_clause where_or_current_clause
+                          opt_select_limit select_limit limit_clause select_limit_value
+
+%type <PListNode>         // Clauses as list of tree nodes.
+                          target_list opt_target_list into_clause
+                          group_clause group_by_list having_clause
+                          opt_sort_clause sort_clause sortby_list
+
+                          // Create table clauses.
+                          OptTableElementList TableElementList
+                          ColQualList NestedColumnList columnList
+
+%type <PExpr>             // Expressions.
+                          a_expr b_expr ctext_expr c_expr AexprConst columnref
+                          target_el in_expr
+                          inactive_a_expr inactive_c_expr
+
+%type <PExprListNode>     // Expression list.
+                          ctext_row ctext_expr_list
+
+%type <PType>             // Datatype nodes.
+                          Typename SimpleTypename Numeric
+
+%type <PTableRef>         // Name node that represents table.
+                          table_ref relation_expr_opt_alias
+
+%type <PTableRefListNode> // List of names that represent tables.
+                          from_clause from_list
 
 %type <PCharBaseType>     character Character ConstCharacter
                           CharacterWithLength CharacterWithoutLength
 
+%type <PAssign>           set_clause single_set_clause
+%type <PAssignListNode>   set_clause_list
+
 // Name nodes.
 %type <PName>             indirection_el columnElem
 
-%type <PQualifiedName>    qualified_name indirection
+%type <PQualifiedNameListNode> insert_column_list
 
-// List of nodes.
-%type <PListNode>         OptTableElementList TableElementList
-                          ColQualList NestedColumnList columnList
+%type <PQualifiedName>    qualified_name indirection relation_expr
+                          insert_target insert_column_item opt_indirection
+                          set_target
+
+%type <PString>           // Identifier name.
+                          ColId
+                          alias_clause opt_alias_clause
+
+// Precision for datatype FLOAT in declarations for columns or any other entities.
+%type <PInt64>            opt_float
+
+%type <KeywordType>       unreserved_keyword type_func_name_keyword
+%type <KeywordType>       col_name_keyword reserved_keyword
+
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -245,8 +321,6 @@ using namespace yb::sql;
                           DropOwnedStmt ReassignOwnedStmt
                           AlterTSConfigurationStmt AlterTSDictionaryStmt
                           CreateMatViewStmt RefreshMatViewStmt
-                          select_no_parens select_with_parens select_clause simple_select
-                          values_clause
                           alter_column_default opclass_item opclass_drop alter_using
                           alter_table_cmd alter_type_cmd opt_collate_clause replica_identity
                           createdb_opt_item copy_opt_item transaction_mode_item
@@ -255,7 +329,7 @@ using namespace yb::sql;
                           TriggerFuncArg
                           TriggerWhen
                           event_trigger_when_item
-                          insert_target OptConstrFromTable
+                          OptConstrFromTable
                           RowSecurityOptionalWithCheck RowSecurityOptionalExpr
                           grantee
                           privilege
@@ -263,11 +337,11 @@ using namespace yb::sql;
                           function_with_argtypes
                           DefACLOption
                           import_qualification
-                          group_by_item empty_grouping_set rollup_clause cube_clause
+                          empty_grouping_set rollup_clause cube_clause
                           grouping_sets_clause
                           fdw_option
                           OptTempTableName
-                          into_clause create_as_target create_mv_target
+                          create_as_target create_mv_target
                           createfunc_opt_item common_func_opt_item dostmt_opt_item
                           func_arg func_arg_with_default table_func_column aggr_arg
                           func_return func_type
@@ -275,35 +349,23 @@ using namespace yb::sql;
                           join_outer join_qual
                           overlay_placing substr_from substr_for
                           opt_binary opt_oids copy_delimiter
-                          fetch_args limit_clause select_limit_value
-                          offset_clause select_offset_value
+                          fetch_args offset_clause select_offset_value
                           select_offset_value2 opt_select_fetch_first_value
                           SeqOptElem
-                          insert_rest
-                          opt_conf_expr
-                          opt_on_conflict
                           generic_set set_rest set_rest_more generic_reset reset_rest
                           SetResetClause FunctionSetResetClause
                           TypedTableElement TableFuncElement
                           columnOptions
                           def_elem reloption_elem old_aggr_elem
-                          def_arg where_clause where_or_current_clause
-                          a_expr b_expr c_expr AexprConst
-                          columnref in_expr having_clause func_table array_expr
+                          def_arg
+                          func_table array_expr
                           ExclusionWhereClause
                           func_arg_expr
                           case_expr case_arg when_clause case_default
-                          ctext_expr
                           NumericOnly
-                          alias_clause opt_alias_clause
-                          sortby
                           index_elem
-                          table_ref
                           joined_table
-                          relation_expr
-                          relation_expr_opt_alias
                           tablesample_clause opt_repeatable_clause
-                          target_el single_set_clause set_target insert_column_item
                           generic_option_arg
                           generic_option_elem alter_generic_option_elem
                           explain_option_arg
@@ -319,8 +381,6 @@ using namespace yb::sql;
                           xmlexists_argument
                           func_application func_expr_common_subexpr
                           func_expr func_expr_windowless
-                          common_table_expr
-                          with_clause opt_with_clause
                           filter_clause
                           window_definition over_clause window_specification
                           opt_frame_clause frame_extent frame_bound
@@ -335,25 +395,24 @@ using namespace yb::sql;
                           grantee_list privileges privilege_list function_with_argtypes_list
                           OptInherit definition
                           OptTypedTableElementList TypedTableElementList reloptions opt_reloptions
-                          OptWith distinct_clause opt_all_clause opt_definition func_args
+                          OptWith opt_definition func_args
                           func_args_list func_args_with_defaults func_args_with_defaults_list
                           aggr_args aggr_args_list func_as createfunc_opt_list alterfunc_opt_list
                           old_aggr_definition old_aggr_list oper_argtypes RuleActionList
-                          RuleActionMulti opt_column_list opt_name_list sort_clause
-                          opt_sort_clause sortby_list index_params name_list role_list from_clause
-                          from_list opt_array_bounds qualified_name_list any_name any_name_list
-                          type_name_list any_operator expr_list attrs target_list opt_target_list
-                          insert_column_list set_target_list set_clause_list set_clause
-                          multiple_set_clause ctext_expr_list ctext_row def_list
-                          opt_indirection reloption_list group_clause TriggerFuncArgs select_limit
-                          opt_select_limit opclass_item_list opclass_drop_list opclass_purpose
+                          RuleActionMulti opt_column_list opt_name_list
+                          index_params name_list role_list
+                          opt_array_bounds qualified_name_list any_name any_name_list
+                          type_name_list any_operator expr_list attrs
+                          multiple_set_clause def_list
+                          reloption_list TriggerFuncArgs
+                          opclass_item_list opclass_drop_list opclass_purpose
                           opt_opfamily transaction_mode_list_or_empty OptTableFuncElementList
                           TableFuncElementList opt_type_modifiers prep_type_clause
-                          execute_param_clause using_clause returning_clause opt_enum_val_list
+                          execute_param_clause opt_enum_val_list
                           enum_val_list table_func_column_list create_generic_options
                           alter_generic_options relation_expr_list dostmt_opt_list
-                          transform_element_list transform_type_list group_by_list opt_fdw_options
-                          fdw_options for_locking_clause opt_for_locking_clause for_locking_items
+                          transform_element_list transform_type_list opt_fdw_options
+                          fdw_options for_locking_items
                           locked_rels_list extract_list overlay_list position_list substr_list
                           trim_list opt_interval interval_second OptSeqOptList SeqOptList
                           rowsfrom_item rowsfrom_list opt_col_def_list ExclusionConstraintList
@@ -362,7 +421,7 @@ using namespace yb::sql;
                           func_alias_clause generic_option_list alter_generic_option_list
                           explain_option_list copy_generic_opt_list copy_generic_opt_arg_list
                           copy_options constraints_set_list xml_attribute_list
-                          xml_attributes cte_list within_group_clause window_clause
+                          xml_attributes within_group_clause
                           window_definition_list opt_partition_clause DefACLOptionList var_list
 
 //--------------------------------------------------------------------------------------------------
@@ -580,8 +639,7 @@ stmtblock:
 // The thrashing around here is to discard "empty" statements...
 stmtmulti:
   stmt {
-    $$ = MAKE_NODE(@1, PTListNode);
-    $$->Append($1);
+    $$ = MAKE_NODE(@1, PTListNode, $1);
   }
   | stmtmulti ';' stmt {
     $1->Append($3);
@@ -591,18 +649,18 @@ stmtmulti:
 
 stmt:
   /*EMPTY*/ {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | CreateStmt {
     $$ = $1;
   }
-  | DeleteStmt {
+  | SelectStmt {
     $$ = $1;
   }
   | InsertStmt {
     $$ = $1;
   }
-  | SelectStmt {
+  | DeleteStmt {
     $$ = $1;
   }
   | UpdateStmt {
@@ -625,7 +683,7 @@ schema_stmt:
 ;
 
 //--------------------------------------------------------------------------------------------------
-// Create table statement.
+// CREATE TABLE statement.
 // Syntax:
 //   CREATE [ TEMPORARY ] TABLE [ IF NOT EXISTS ] qualified_name
 //     ( column_definition [, column_definition ] )
@@ -665,13 +723,9 @@ OptTableElementList:
 
 TableElementList:
   TableElement {
-    $$ = MAKE_NODE(@1, PTListNode);
-    $$->Append($1);
+    $$ = MAKE_NODE(@1, PTListNode, $1);
   }
   | TableElementList ',' TableElement {
-    if ($1 == nullptr) {
-      $1 = MAKE_NODE(@1, PTListNode);
-    }
     $1->Append($3);
     $$ = $1;
   }
@@ -701,10 +755,11 @@ ColQualList:
   }
   | ColQualList ColConstraint {
     if ($1 == nullptr) {
-      $1 = MAKE_NODE(@1, PTListNode);
+      $$ = MAKE_NODE(@1, PTListNode, $2);
+    } else {
+      $1->Append($2);
+      $$ = $1;
     }
-    $1->Append($2);
-    $$ = $1;
   }
 ;
 
@@ -836,37 +891,26 @@ opt_column_list:
 
 NestedColumnList:
   columnElem {
-    // $$ = PTListNode::MakeShared(PTREE_MEM);
-    $$ = MAKE_NODE(@1, PTListNode);
-    $$->Append($1);
+    $$ = MAKE_NODE(@1, PTListNode, $1);
   }
   | NestedColumnList ',' columnElem {
-    if ($1 == nullptr) {
-      $1 = MAKE_NODE(@1, PTListNode);
-    }
     $1->Append($3);
     $$ = $1;
   }
   | '(' NestedColumnList ')' {
-    $$ = MAKE_NODE(@1, PTListNode);
-    $$->Append($2);
+    $$ = MAKE_NODE(@1, PTListNode, $2);
   }
   | '(' NestedColumnList ')' ',' columnElem {
-    $$ = MAKE_NODE(@1, PTListNode);
-    $$->Append($2);
+    $$ = MAKE_NODE(@1, PTListNode, $2);
     $$->Append($5);
   }
 ;
 
 columnList:
   columnElem {
-    $$ = MAKE_NODE(@1, PTListNode);
-    $$->Append($1);
+    $$ = MAKE_NODE(@1, PTListNode, $1);
   }
   | columnList ',' columnElem {
-    if ($1 == nullptr) {
-      $1 = MAKE_NODE(@1, PTListNode);
-    }
     $1->Append($3);
     $$ = $1;
   }
@@ -904,16 +948,15 @@ ExclusionConstraintList:
 
 ExclusionConstraintElem:
   index_elem WITH any_operator {
-    // $$ = list_make2($1, $3);
   }
-  /* allow OPERATOR() decoration for the benefit of ruleutils.c */
+  // allow OPERATOR() decoration for the benefit of ruleutils.c.
   | index_elem WITH OPERATOR '(' any_operator ')' {
   }
 ;
 
 ExclusionWhereClause:
-  WHERE '(' a_expr ')'          { $$ = $3; }
-  | /*EMPTY*/                   { $$ = NULL; }
+  WHERE '(' a_expr ')'          { $$ = nullptr; }
+  | /*EMPTY*/                   { $$ = nullptr; }
 ;
 
 // We combine the update and delete actions into one value temporarily
@@ -1029,7 +1072,7 @@ reloptions:
 
 opt_reloptions:
   /* EMPTY */ {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | WITH reloptions {
     PARSER_UNSUPPORTED(@2);
@@ -1077,7 +1120,7 @@ OnCommitOption:
 
 OptTableSpace:
   /*EMPTY*/ {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | TABLESPACE name {
     PARSER_UNSUPPORTED(@1);
@@ -1086,7 +1129,7 @@ OptTableSpace:
 
 OptConsTableSpace:
   /*EMPTY*/ {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | USING INDEX TABLESPACE name {
     PARSER_UNSUPPORTED(@1);
@@ -1128,6 +1171,1065 @@ columnOptions:
 ;
 
 //--------------------------------------------------------------------------------------------------
+// SELECT statements.
+//--------------------------------------------------------------------------------------------------
+
+// A complete SELECT statement looks like this.
+//
+// The rule returns either a single SelectStmt node or a tree of them,
+// representing a set-operation tree.
+//
+// There is an ambiguity when a sub-SELECT is within an a_expr and there
+// are excess parentheses: do the parentheses belong to the sub-SELECT or
+// to the surrounding a_expr?  We don't really care, but bison wants to know.
+// To resolve the ambiguity, we are careful to define the grammar so that
+// the decision is staved off as long as possible: as long as we can keep
+// absorbing parentheses into the sub-SELECT, we will do so, and only when
+// it's no longer possible to do that will we decide that parens belong to
+// the expression.  For example, in "SELECT (((SELECT 2)) + 3)" the extra
+// parentheses are treated as part of the sub-select.  The necessity of doing
+// it that way is shown by "SELECT (((SELECT 2)) UNION SELECT 2)".  Had we
+// parsed "((SELECT 2))" as an a_expr, it'd be too late to go back to the
+// SELECT viewpoint when we see the UNION.
+//
+// This approach is implemented by defining a nonterminal select_with_parens,
+// which represents a SELECT with at least one outer layer of parentheses,
+// and being careful to use select_with_parens, never '(' SelectStmt ')',
+// in the expression grammar.  We will then have shift-reduce conflicts
+// which we can resolve in favor of always treating '(' <select> ')' as
+// a select_with_parens.  To resolve the conflicts, the productions that
+// conflict with the select_with_parens productions are manually given
+// precedences lower than the precedence of ')', thereby ensuring that we
+// shift ')' (and then reduce to select_with_parens) rather than trying to
+// reduce the inner <select> nonterminal to something else.  We use UMINUS
+// precedence for this, which is a fairly arbitrary choice.
+//
+// To be able to define select_with_parens itself without ambiguity, we need
+// a nonterminal select_no_parens that represents a SELECT structure with no
+// outermost parentheses.  This is a little bit tedious, but it works.
+//
+// In non-expression contexts, we use SelectStmt which can represent a SELECT
+// with or without outer parentheses.
+SelectStmt:
+  select_no_parens        %prec UMINUS {
+    $$ = $1;
+  }
+  | select_with_parens    %prec UMINUS {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+select_with_parens:
+  '(' select_no_parens ')' {
+    $$ = $2;
+  }
+  | '(' select_with_parens ')' {
+    $$ = $2;
+  }
+;
+
+// This rule parses the equivalent of the standard's <query expression>.
+// The duplicative productions are annoying, but hard to get rid of without
+// creating shift/reduce conflicts.
+//
+//  The locking clause (FOR UPDATE etc) may be before or after LIMIT/OFFSET.
+//  In <=7.2.X, LIMIT/OFFSET had to be after FOR UPDATE
+//  We now support both orderings, but prefer LIMIT/OFFSET before the locking
+// clause.
+//  2002-08-28 bjm
+select_no_parens:
+  values_clause {
+    $$ = $1;
+  }
+  | simple_select {
+    $$ = $1;
+  }
+  | simple_select sort_clause {
+    $1->SetOrderByClause($2);
+    $$ = $1;
+  }
+  | simple_select opt_sort_clause select_limit opt_for_locking_clause {
+    $1->SetOrderByClause($2);
+    $1->SetLimitClause($3);
+    $$ = $1;
+  }
+  | simple_select opt_sort_clause for_locking_clause opt_select_limit {
+    PARSER_UNSUPPORTED(@3);
+  }
+  | with_clause simple_select {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | with_clause simple_select sort_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | with_clause simple_select opt_sort_clause for_locking_clause opt_select_limit {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | with_clause simple_select opt_sort_clause select_limit opt_for_locking_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+select_clause:
+  simple_select {
+    $$ = $1;
+  }
+  | select_with_parens {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+// This rule parses SELECT statements that can appear within set operations,
+// including UNION, INTERSECT and EXCEPT.  '(' and ')' can be used to specify
+// the ordering of the set operations.  Without '(' and ')' we want the
+// operations to be ordered per the precedence specs at the head of this file.
+//
+// As with select_no_parens, simple_select cannot have outer parentheses,
+// but can have parenthesized subclauses.
+//
+// Note that sort clauses cannot be included at this level --- SQL requires
+//    SELECT foo UNION SELECT bar ORDER BY baz
+// to be parsed as
+//    (SELECT foo UNION SELECT bar) ORDER BY baz
+// not
+//    SELECT foo UNION (SELECT bar ORDER BY baz)
+// Likewise for WITH, FOR UPDATE and LIMIT.  Therefore, those clauses are
+// described as part of the select_no_parens production, not simple_select.
+// This does not limit functionality, because you can reintroduce these
+// clauses inside parentheses.
+//
+// NOTE: only the leftmost component SelectStmt should have INTO.
+// However, this is not checked by the grammar; parse analysis must check it.
+simple_select:
+  SELECT opt_all_clause opt_target_list into_clause from_clause where_clause
+  group_clause having_clause opt_window_clause {
+    $$ = MAKE_NODE(@1, PTSelectStmt, $3, $5, $6, $7, $8, nullptr, nullptr);
+  }
+  | SELECT distinct_clause target_list into_clause from_clause where_clause
+  group_clause having_clause opt_window_clause {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | TABLE relation_expr {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | select_clause UNION all_or_distinct select_clause {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | select_clause INTERSECT all_or_distinct select_clause {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | select_clause EXCEPT all_or_distinct select_clause {
+    PARSER_UNSUPPORTED(@2);
+  }
+;
+
+values_clause:
+  VALUES ctext_row {
+    $$ = MAKE_NODE(@1, PTValues, $2);
+  }
+  | values_clause ',' ctext_row {
+    PARSER_NOCODE(@2);
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+into_clause:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | INTO OptTempTableName {
+    PARSER_UNSUPPORTED(@1);
+    $$ = nullptr;
+  }
+;
+
+// Redundancy here is needed to avoid shift/reduce conflicts,
+// since TEMP is not a reserved word.  See also OptTemp.
+OptTempTableName:
+  TEMPORARY opt_table qualified_name {
+  }
+  | TEMP opt_table qualified_name {
+  }
+  | LOCAL TEMPORARY opt_table qualified_name {
+  }
+  | LOCAL TEMP opt_table qualified_name {
+  }
+  | GLOBAL TEMPORARY opt_table qualified_name {
+  }
+  | GLOBAL TEMP opt_table qualified_name {
+  }
+  | UNLOGGED opt_table qualified_name {
+  }
+  | TABLE qualified_name {
+  }
+  | qualified_name {
+  }
+;
+
+opt_table:
+  /* EMPTY */ {
+  }
+  | TABLE {
+  }
+;
+
+all_or_distinct:
+  /* EMPTY */ {
+    $$ = false;
+  }
+  | ALL {
+    $$ = true;
+  }
+  | DISTINCT {
+    $$ = false;
+  }
+;
+
+// We use (NIL) as a placeholder to indicate that all target expressions
+// should be placed in the DISTINCT list during parsetree analysis.
+distinct_clause:
+  DISTINCT {
+  }
+  | DISTINCT ON '(' expr_list ')' {
+  }
+;
+
+opt_all_clause:
+  /* EMPTY */ {
+  }
+  | ALL {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+opt_sort_clause:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | sort_clause {
+    $$ = $1;
+  }
+;
+
+sort_clause:
+  ORDER BY sortby_list {
+    $$ = $3;
+  }
+;
+
+sortby_list:
+  sortby {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | sortby_list ',' sortby {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+sortby:
+  a_expr opt_asc_desc opt_nulls_order {
+    $$ = MAKE_NODE(@1, PTOrderBy, $1, PTOrderBy::Direction($2), PTOrderBy::NullPlacement($3));
+  }
+  | a_expr USING qual_all_Op opt_nulls_order {
+    PARSER_UNSUPPORTED(@2);
+    $$ = nullptr;
+  }
+;
+
+// SELECT target list.
+opt_target_list:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | target_list {
+    $$ = $1;
+  }
+;
+
+target_list:
+  target_el {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | target_list ',' target_el {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+target_el:
+  a_expr AS ColLabel {
+    $$ = MAKE_NODE(@1, PTExprAlias, $1, $3);
+  }
+  | a_expr {
+    $$ = $1;
+  }
+  | '*' {
+    $$ = MAKE_NODE(@1, PTRef, nullptr);
+  }
+  // We support omitting AS only for column labels that aren't
+  // any known keyword.  There is an ambiguity against postfix
+  // operators: is "a ! b" an infix expression, or a postfix
+  // expression and a column label?  We prefer to resolve this
+  // as an infix expression, which we accomplish by assigning
+  // IDENT a precedence higher than POSTFIXOP.
+  | a_expr IDENT {
+    PARSER_UNSUPPORTED(@2);
+  }
+;
+
+// SELECT LIMIT.
+select_limit:
+  limit_clause {
+    $$ = $1;
+  }
+  | limit_clause offset_clause {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | offset_clause limit_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | offset_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+opt_select_limit:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | select_limit {
+    $$ = $1;
+  }
+;
+
+limit_clause:
+  LIMIT select_limit_value {
+    $$ = $2;
+  }
+  | LIMIT select_limit_value ',' select_offset_value {
+    PARSER_UNSUPPORTED(@3);
+    $$ = nullptr;
+  }
+  // SQL:2008 syntax
+  | FETCH first_or_next opt_select_fetch_first_value row_or_rows ONLY {
+    $$ = nullptr;
+  }
+;
+
+offset_clause:
+  OFFSET select_offset_value {
+    $$ = nullptr;
+  }
+  // SQL:2008 syntax.
+  | OFFSET select_offset_value2 row_or_rows {
+    $$ = nullptr;
+  }
+;
+
+select_limit_value:
+  a_expr {
+    $$ = $1;
+  }
+  | ALL {
+    PARSER_UNSUPPORTED(@1);
+    $$ = nullptr;
+  }
+;
+
+select_offset_value:
+  a_expr {
+    $$ = nullptr;
+  }
+;
+
+// Allowing full expressions without parentheses causes various parsing
+// problems with the trailing ROW/ROWS key words.  SQL only calls for
+// constants, so we allow the rest only with parentheses.  If omitted,
+// default to 1.
+opt_select_fetch_first_value:
+  /* EMPTY */ {
+  }
+  | SignedIconst {
+  }
+  | '(' a_expr ')' {
+  }
+;
+
+// Again, the trailing ROW/ROWS in this case prevent the full expression
+// syntax.  c_expr is the best we can do.
+select_offset_value2:
+  c_expr {
+  }
+;
+
+// noise words.
+row_or_rows:
+  ROW {
+  }
+  | ROWS {
+  }
+;
+
+first_or_next:
+  FIRST_P {
+    $$ = 0;
+  }
+  | NEXT {
+    $$ = 1;
+  }
+;
+
+// This syntax for group_clause tries to follow the spec quite closely.
+// However, the spec allows only column references, not expressions,
+// which introduces an ambiguity between implicit row constructors
+// (a,b) and lists of column references.
+//
+// We handle this by using the a_expr production for what the spec calls
+// <ordinary grouping set>, which in the spec represents either one column
+// reference or a parenthesized list of column references. Then, we check the
+// top node of the a_expr to see if it's an implicit RowExpr, and if so, just
+// grab and use the list, discarding the node. (this is done in parse analysis,
+// not here)
+//
+// (we abuse the row_format field of RowExpr to distinguish implicit and
+// explicit row constructors; it's debatable if anyone sanely wants to use them
+// in a group clause, but if they have a reason to, we make it possible.)
+//
+// Each item in the group_clause list is either an expression tree or a
+// GroupingSet node of some type.
+group_clause:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | GROUP_P BY group_by_list {
+    $$ = $3;
+  }
+;
+
+group_by_list:
+  group_by_item {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | group_by_list ',' group_by_item {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+group_by_item:
+  a_expr {
+    $$ = $1;
+  }
+  | empty_grouping_set {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | cube_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | rollup_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | grouping_sets_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+empty_grouping_set:
+  '(' ')' {
+  }
+;
+
+// These hacks rely on setting precedence of CUBE and ROLLUP below that of '(',
+// so that they shift in these rules rather than reducing the conflicting
+// unreserved_keyword rule.
+rollup_clause:
+  ROLLUP '(' expr_list ')' {
+  }
+;
+
+cube_clause:
+  CUBE '(' expr_list ')' {
+  }
+;
+
+grouping_sets_clause:
+  GROUPING SETS '(' group_by_list ')' {
+  }
+;
+
+// HAVING.
+having_clause:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | HAVING a_expr {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+// LOCKING.
+opt_for_locking_clause:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | for_locking_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+for_locking_clause:
+  for_locking_items {
+  }
+  | FOR READ ONLY {
+  }
+;
+
+for_locking_items:
+  for_locking_item {
+  }
+  | for_locking_items for_locking_item  {
+  }
+;
+
+for_locking_item:
+  for_locking_strength locked_rels_list opt_nowait_or_skip {
+  }
+;
+
+for_locking_strength:
+  FOR UPDATE                  { }
+  | FOR NO KEY UPDATE         { }
+  | FOR SHARE                 { }
+  | FOR KEY SHARE             { }
+;
+
+locked_rels_list:
+  /* EMPTY */ {
+  }
+  | OF qualified_name_list {
+  }
+;
+
+// WITH clause: Not supported.
+opt_with_clause:
+  /*EMPTY*/ {
+  }
+  | with_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+// SQL standard WITH clause looks like:
+//
+// WITH [ RECURSIVE ] <query name> [ (<column>,...) ]
+//    AS (query) [ SEARCH or CYCLE clause ]
+//
+// We don't currently support the SEARCH or CYCLE clause.
+//
+// Recognizing WITH_LA here allows a CTE to be named TIME or ORDINALITY.
+with_clause:
+  WITH cte_list {
+  }
+  | WITH_LA cte_list {
+  }
+  | WITH RECURSIVE cte_list {
+  }
+;
+
+cte_list:
+  common_table_expr {
+  }
+  | cte_list ',' common_table_expr {
+  }
+;
+
+common_table_expr:
+  name opt_name_list AS '(' PreparableStmt ')' {
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// INSERT statement.
+//--------------------------------------------------------------------------------------------------
+
+InsertStmt:
+  opt_with_clause INSERT INTO insert_target SelectStmt
+  opt_on_conflict returning_clause {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, nullptr, $5);
+  }
+  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' SelectStmt
+  opt_on_conflict returning_clause {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8);
+  }
+  | opt_with_clause INSERT INTO insert_target DEFAULT VALUES
+  opt_on_conflict returning_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+// Can't easily make AS optional here, because VALUES in insert_rest would
+// have a shift/reduce conflict with VALUES as an optional alias.  We could
+// easily allow unreserved_keywords as optional aliases, but that'd be an odd
+// divergence from other places.  So just require AS for now.
+insert_target:
+  qualified_name {
+    $$ = $1;
+  }
+  | qualified_name AS ColId {
+    PARSER_UNSUPPORTED(@2);
+  }
+;
+
+insert_column_list:
+  insert_column_item {
+    $$ = MAKE_NODE(@1, PTQualifiedNameListNode, $1);
+  }
+  | insert_column_list ',' insert_column_item {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+insert_column_item:
+  ColId opt_indirection {
+    if ($2 == nullptr) {
+      $$ = MAKE_NODE(@1, PTQualifiedName, $1);
+    } else {
+      PTName::SharedPtr name_node = MAKE_NODE(@1, PTName, $1);
+      $2->Prepend(name_node);
+      $$ = $2;
+    }
+  }
+;
+
+opt_indirection:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | opt_indirection indirection_el {
+    if ($1 == nullptr) {
+      $$ = MAKE_NODE(@1, PTQualifiedName, $2);
+    } else {
+      $1->Append($2);
+      $$ = $1;
+    }
+  }
+;
+
+opt_on_conflict:
+  /*EMPTY*/ {
+  }
+  | ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list where_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | ON CONFLICT opt_conf_expr DO NOTHING {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+opt_conf_expr:
+  /*EMPTY*/ {
+  }
+  | '(' index_params ')' where_clause {
+  }
+  | ON CONSTRAINT name {
+  }
+;
+
+returning_clause:
+  /* EMPTY */ {
+  }
+  | RETURNING target_list {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// DELETE STATEMENTS
+//--------------------------------------------------------------------------------------------------
+
+DeleteStmt:
+  opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  using_clause where_or_current_clause returning_clause {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6);
+    $$ = nullptr;
+  }
+;
+
+using_clause:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | USING from_list {
+    PARSER_NOCODE(@1);
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// UPDATE statement.
+//--------------------------------------------------------------------------------------------------
+
+UpdateStmt:
+  opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
+  from_clause where_or_current_clause returning_clause {
+    if ($6 != nullptr) {
+      PARSER_UNSUPPORTED(@6);
+    }
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $7);
+  }
+;
+
+set_clause_list:
+  set_clause {
+    $$ = MAKE_NODE(@1, PTAssignListNode, $1);
+  }
+  | set_clause_list ',' set_clause {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+set_clause:
+  single_set_clause {
+    $$ = $1;
+  }
+  | multiple_set_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+single_set_clause:
+  set_target '=' ctext_expr {
+    $$ = MAKE_NODE(@1, PTAssign, $1, $3);
+  }
+;
+
+// Ideally, we'd accept any row-valued a_expr as RHS of a multiple_set_clause.
+// However, per SQL spec the row-constructor case must allow DEFAULT as a row
+// member, and it's pretty unclear how to do that (unless perhaps we allow
+// DEFAULT in any a_expr and let parse analysis sort it out later?).  For the
+// moment, the planner/executor only support a subquery as a multiassignment
+// source anyhow, so we need only accept ctext_row and subqueries here.
+multiple_set_clause:
+  '(' set_target_list ')' '=' ctext_row {
+  }
+  | '(' set_target_list ')' '=' select_with_parens {
+  }
+;
+
+set_target:
+  ColId opt_indirection {
+    if ($2 == nullptr) {
+      $$ = MAKE_NODE(@1, PTQualifiedName, $1);
+    } else {
+      PTName::SharedPtr name_node = MAKE_NODE(@1, PTName, $1);
+      $2->Prepend(name_node);
+      $$ = $2;
+    }
+  }
+;
+
+set_target_list:
+  set_target {
+  }
+  | set_target_list ',' set_target {
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+//  clauses common to all Optimizable Stmts:
+//    from_clause   - allow list of both JOIN expressions and table names
+//    where_clause  - qualifications for joins or restrictions
+//--------------------------------------------------------------------------------------------------
+
+from_clause:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | FROM from_list {
+    $$ = $2;
+  }
+;
+
+from_list:
+  table_ref {
+    $$ = MAKE_NODE(@1, PTTableRefListNode, $1);
+  }
+  | from_list ',' table_ref {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+// table_ref is where an alias clause can be attached.
+table_ref:
+  relation_expr opt_alias_clause {
+    $$ = MAKE_NODE(@1, PTTableRef, $1, $2);
+  }
+  | relation_expr opt_alias_clause tablesample_clause {
+    PARSER_UNSUPPORTED(@3);
+  }
+  | func_table func_alias_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | LATERAL_P func_table func_alias_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | select_with_parens opt_alias_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | LATERAL_P select_with_parens opt_alias_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | joined_table {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | '(' joined_table ')' alias_clause {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+
+// It may seem silly to separate joined_table from table_ref, but there is
+// method in SQL's madness: if you don't do it this way you get reduce-
+// reduce conflicts, because it's not clear to the parser generator whether
+// to expect alias_clause after ')' or not.  For the same reason we must
+// treat 'JOIN' and 'join_type JOIN' separately, rather than allowing
+// join_type to expand to empty; if we try it, the parser generator can't
+// figure out when to reduce an empty join_type right after table_ref.
+//
+// Note that a CROSS JOIN is the same as an unqualified
+// INNER JOIN, and an INNER JOIN/ON has the same shape
+// but a qualification expression to limit membership.
+// A NATURAL JOIN implicitly matches column names between
+// tables and the shape is determined by which columns are
+// in common. We'll collect columns during the later transformations.
+
+joined_table:
+  '(' joined_table ')' {
+  }
+  | table_ref CROSS JOIN table_ref {
+  }
+  | table_ref join_type JOIN table_ref join_qual {
+  }
+  | table_ref JOIN table_ref join_qual {
+  }
+  | table_ref NATURAL join_type JOIN table_ref {
+  }
+  | table_ref NATURAL JOIN table_ref {
+  }
+;
+
+alias_clause:
+  AS ColId {
+    $$ = $2;
+  }
+  | AS ColId '(' name_list ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | ColId '(' name_list ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | ColId {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+opt_alias_clause:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | alias_clause {
+    $$ = $1;
+  }
+;
+
+// func_alias_clause can include both an Alias and a coldeflist, so we make it
+// return a 2-element list that gets disassembled by calling production.
+func_alias_clause:
+  /* EMPTY */ {
+  }
+  | alias_clause {
+  }
+  | AS '(' TableFuncElementList ')' {
+  }
+  | AS ColId '(' TableFuncElementList ')' {
+  }
+  | ColId '(' TableFuncElementList ')' {
+  }
+;
+
+join_type:
+  FULL join_outer             { $$ = JOIN_FULL; }
+  | LEFT join_outer           { $$ = JOIN_LEFT; }
+  | RIGHT join_outer          { $$ = JOIN_RIGHT; }
+  | INNER_P                   { $$ = JOIN_INNER; }
+;
+
+/* OUTER is just noise... */
+join_outer:
+  /* EMPTY */ {
+    $$ = nullptr;
+  }
+  | OUTER_P {
+    $$ = nullptr;
+  }
+;
+
+// JOIN qualification clauses
+// Possibilities are:
+//  USING ( column list ) allows only unqualified column names,
+//              which must match between tables.
+//  ON expr allows more general qualifications.
+//
+// We return USING as a List node, while an ON-expr will not be a List.
+
+join_qual:
+  USING '(' name_list ')' {
+  }
+  | ON a_expr {
+  }
+;
+
+
+relation_expr:
+  qualified_name {
+    $$ = $1;
+  }
+  | qualified_name '*' {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | ONLY qualified_name {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | ONLY '(' qualified_name ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+relation_expr_list:
+  relation_expr {
+  }
+  | relation_expr_list ',' relation_expr {
+  }
+;
+
+// Given "UPDATE foo set set ...", we have to decide without looking any
+// further ahead whether the first "set" is an alias or the UPDATE's SET
+// keyword.  Since "set" is allowed as a column name both interpretations
+// are feasible.  We resolve the shift/reduce conflict by giving the first
+// relation_expr_opt_alias production a higher precedence than the SET token
+// has, causing the parser to prefer to reduce, in effect assuming that the
+// SET is not an alias.
+relation_expr_opt_alias:
+  relation_expr %prec UMINUS  {
+    $$ = MAKE_NODE(@1, PTTableRef, $1, nullptr);
+  }
+  | relation_expr AS ColId {
+    $$ = MAKE_NODE(@1, PTTableRef, $1, $3);
+  }
+  | relation_expr ColId {
+    PARSER_UNSUPPORTED(@2);
+  }
+;
+
+// TABLESAMPLE decoration in a FROM item
+tablesample_clause:
+  TABLESAMPLE func_name '(' expr_list ')' opt_repeatable_clause {
+  }
+;
+
+opt_repeatable_clause:
+  REPEATABLE '(' a_expr ')' {
+  }
+  | /*EMPTY*/ {
+    $$ = nullptr;
+  }
+;
+
+// func_table represents a function invocation in a FROM list. It can be
+// a plain function call, like "foo(...)", or a ROWS FROM expression with
+// one or more function calls, "ROWS FROM (foo(...), bar(...))",
+// optionally with WITH ORDINALITY attached.
+// In the ROWS FROM syntax, a column definition list can be given for each
+// function, for example:
+//     ROWS FROM (foo() AS (foo_res_a text, foo_res_b text),
+//                bar() AS (bar_res_a text, bar_res_b text))
+// It's also possible to attach a column definition list to the RangeFunction
+// as a whole, but that's handled by the table_ref production.
+func_table:
+  func_expr_windowless opt_ordinality {
+  }
+  | ROWS FROM '(' rowsfrom_list ')' opt_ordinality {
+  }
+;
+
+rowsfrom_item:
+  func_expr_windowless opt_col_def_list {
+  }
+;
+
+rowsfrom_list:
+  rowsfrom_item {
+  }
+  | rowsfrom_list ',' rowsfrom_item {
+  }
+;
+
+opt_col_def_list:
+  AS '(' TableFuncElementList ')' {
+  }
+  | /*EMPTY*/ {
+  }
+;
+
+opt_ordinality:
+  WITH_LA ORDINALITY            { $$ = true; }
+  | /*EMPTY*/                   { $$ = false; }
+;
+
+
+where_clause:
+  /*EMPTY*/                     { $$ = nullptr; }
+  | WHERE a_expr                { $$ = $2; }
+;
+
+/* variant for UPDATE and DELETE */
+where_or_current_clause:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | WHERE a_expr {
+    $$ = $2;
+  }
+  | WHERE CURRENT_P OF cursor_name {
+    PARSER_UNSUPPORTED(@2);
+  }
+;
+
+OptTableFuncElementList:
+  TableFuncElementList {
+    $$ = $1;
+  }
+  | /*EMPTY*/ {
+  }
+;
+
+TableFuncElementList:
+  TableFuncElement {
+  }
+  | TableFuncElementList ',' TableFuncElement {
+  }
+;
+
+TableFuncElement:
+  ColId Typename opt_collate_clause {
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
 //  expression grammar
 //--------------------------------------------------------------------------------------------------
 
@@ -1153,12 +2255,98 @@ columnOptions:
 // you expect!  So we use %prec annotations freely to set precedences.
 a_expr:
   c_expr {
+    $$ = $1;
   }
-  | a_expr TYPECAST Typename {
+
+  // Predicates that have one operand.
+  | NOT a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kNot, $2);
+  }
+  | NOT_LA a_expr                                              %prec NOT {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kNot, $2);
+  }
+  | a_expr IS NULL_P                                           %prec IS {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNull, $1);
+  }
+  | a_expr ISNULL {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNull, $1);
+  }
+  | a_expr IS NOT NULL_P                                       %prec IS {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNotNull, $1);
+  }
+  | a_expr NOTNULL {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNotNull, $1);
+  }
+  | a_expr IS TRUE_P                                           %prec IS {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsTrue, $1);
+  }
+  | a_expr IS NOT TRUE_P                                       %prec IS {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsFalse, $1);
+  }
+  | a_expr IS FALSE_P                                          %prec IS {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsFalse, $1);
+  }
+  | a_expr IS NOT FALSE_P                                      %prec IS {
+    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsTrue, $1);
+  }
+
+  // Predicates that have two operands.
+  | a_expr '=' a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kEQ, $1, $3);
+  }
+  | a_expr '<' a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kLT, $1, $3);
+  }
+  | a_expr '>' a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kGT, $1, $3);
+  }
+  | a_expr LESS_EQUALS a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kLE, $1, $3);
+  }
+  | a_expr GREATER_EQUALS a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kGE, $1, $3);
+  }
+  | a_expr NOT_EQUALS a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kNE, $1, $3);
+  }
+  | a_expr AND a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kAND, $1, $3);
+  }
+  | a_expr OR a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kOR, $1, $3);
+  }
+  | a_expr LIKE a_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kLike, $1, $3);
+  }
+  | a_expr NOT_LA LIKE a_expr                                  %prec NOT_LA {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kNotLike, $1, $4);
+  }
+  | a_expr IN_P in_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kIn, $1, $3);
+  }
+  | a_expr NOT_LA IN_P in_expr                                 %prec NOT_LA {
+    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kNotIn, $1, $4);
+  }
+
+  // Predicates that have 3 operands.
+  | a_expr BETWEEN opt_asymmetric b_expr AND a_expr            %prec BETWEEN {
+    $$ = MAKE_NODE(@1, PTPredicate3, BuiltinOperator::kBetween, $1, $4, $6);
+  }
+  | a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr     %prec NOT_LA {
+    $$ = MAKE_NODE(@1, PTPredicate3, BuiltinOperator::kNotBetween, $1, $5, $7);
+  }
+
+  | inactive_a_expr {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+inactive_a_expr:
+  a_expr TYPECAST Typename {
   }
   | a_expr COLLATE any_name {
   }
-  | a_expr AT TIME ZONE a_expr      %prec AT {
+  | a_expr AT TIME ZONE a_expr                                 %prec AT {
   }
   // These operators must be called out explicitly in order to make use
   // of bison's automatic operator-precedence handling.  All other
@@ -1167,9 +2355,9 @@ a_expr:
   //
   // If you add more explicitly-known operators, be sure to add them
   // also to b_expr and to the MathOp list below.
-  | '+' a_expr          %prec UMINUS {
+  | '+' a_expr                                                 %prec UMINUS {
   }
-  | '-' a_expr          %prec UMINUS {
+  | '-' a_expr                                                 %prec UMINUS {
   }
   | a_expr '+' a_expr {
   }
@@ -1183,133 +2371,75 @@ a_expr:
   }
   | a_expr '^' a_expr {
   }
-  | a_expr '<' a_expr {
+  | a_expr qual_Op a_expr                                      %prec Op {
   }
-  | a_expr '>' a_expr {
+  | qual_Op a_expr                                             %prec Op {
   }
-  | a_expr '=' a_expr {
+  | a_expr qual_Op                                             %prec POSTFIXOP {
   }
-  | a_expr LESS_EQUALS a_expr {
+  | a_expr LIKE a_expr ESCAPE a_expr                           %prec LIKE {
   }
-  | a_expr GREATER_EQUALS a_expr {
-  }
-  | a_expr NOT_EQUALS a_expr {
-  }
-  | a_expr qual_Op a_expr       %prec Op {
-  }
-  | qual_Op a_expr          %prec Op {
-  }
-  | a_expr qual_Op          %prec POSTFIXOP {
-  }
-  | a_expr AND a_expr {
-  }
-  | a_expr OR a_expr {
-  }
-  | NOT a_expr {
-  }
-  | NOT_LA a_expr           %prec NOT {
-  }
-  | a_expr LIKE a_expr {
-  }
-  | a_expr LIKE a_expr ESCAPE a_expr          %prec LIKE {
-  }
-  | a_expr NOT_LA LIKE a_expr             %prec NOT_LA {
-  }
-  | a_expr NOT_LA LIKE a_expr ESCAPE a_expr     %prec NOT_LA {
+  | a_expr NOT_LA LIKE a_expr ESCAPE a_expr                    %prec NOT_LA {
   }
   | a_expr ILIKE a_expr {
   }
-  | a_expr ILIKE a_expr ESCAPE a_expr         %prec ILIKE {
+  | a_expr ILIKE a_expr ESCAPE a_expr                          %prec ILIKE {
   }
-  | a_expr NOT_LA ILIKE a_expr            %prec NOT_LA {
+  | a_expr NOT_LA ILIKE a_expr                                 %prec NOT_LA {
   }
-  | a_expr NOT_LA ILIKE a_expr ESCAPE a_expr      %prec NOT_LA {
+  | a_expr NOT_LA ILIKE a_expr ESCAPE a_expr                   %prec NOT_LA {
   }
-  | a_expr SIMILAR TO a_expr              %prec SIMILAR {
+  | a_expr SIMILAR TO a_expr                                   %prec SIMILAR {
   }
-  | a_expr SIMILAR TO a_expr ESCAPE a_expr      %prec SIMILAR {
+  | a_expr SIMILAR TO a_expr ESCAPE a_expr                     %prec SIMILAR {
   }
-  | a_expr NOT_LA SIMILAR TO a_expr         %prec NOT_LA {
+  | a_expr NOT_LA SIMILAR TO a_expr                            %prec NOT_LA {
   }
-  | a_expr NOT_LA SIMILAR TO a_expr ESCAPE a_expr   %prec NOT_LA {
-  }
-  // NullTest clause
-  // Define SQL-style Null test clause.
-  // Allow two forms described in the standard:
-  //  a IS NULL
-  //  a IS NOT NULL
-  // Allow two SQL extensions
-  //  a ISNULL
-  //  a NOTNULL
-  | a_expr IS NULL_P              %prec IS {
-  }
-  | a_expr ISNULL {
-  }
-  | a_expr IS NOT NULL_P            %prec IS {
-  }
-  | a_expr NOTNULL {
+  | a_expr NOT_LA SIMILAR TO a_expr ESCAPE a_expr              %prec NOT_LA {
   }
   | row OVERLAPS row {
   }
-  | a_expr IS TRUE_P              %prec IS {
+  | a_expr IS UNKNOWN                                          %prec IS {
   }
-  | a_expr IS NOT TRUE_P            %prec IS {
+  | a_expr IS DISTINCT FROM a_expr                             %prec IS {
   }
-  | a_expr IS FALSE_P             %prec IS {
+  | a_expr IS NOT DISTINCT FROM a_expr                         %prec IS {
   }
-  | a_expr IS NOT FALSE_P           %prec IS {
+  | a_expr IS OF '(' type_list ')'                             %prec IS {
   }
-  | a_expr IS UNKNOWN             %prec IS {
+  | a_expr IS NOT OF '(' type_list ')'                         %prec IS {
   }
-  | a_expr IS DISTINCT FROM a_expr      %prec IS {
+  | a_expr BETWEEN SYMMETRIC b_expr AND a_expr                 %prec BETWEEN {
   }
-  | a_expr IS NOT DISTINCT FROM a_expr    %prec IS {
+  | a_expr NOT_LA BETWEEN SYMMETRIC b_expr AND a_expr          %prec NOT_LA {
   }
-  | a_expr IS OF '(' type_list ')'      %prec IS {
+  | a_expr subquery_Op sub_type select_with_parens             %prec Op {
   }
-  | a_expr IS NOT OF '(' type_list ')'    %prec IS {
-  }
-  | a_expr BETWEEN opt_asymmetric b_expr AND a_expr   %prec BETWEEN {
-  }
-  | a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr %prec NOT_LA {
-  }
-  | a_expr BETWEEN SYMMETRIC b_expr AND a_expr      %prec BETWEEN {
-  }
-  | a_expr NOT_LA BETWEEN SYMMETRIC b_expr AND a_expr   %prec NOT_LA {
-  }
-  | a_expr IN_P in_expr {
-  }
-  | a_expr NOT_LA IN_P in_expr            %prec NOT_LA {
-  }
-  | a_expr subquery_Op sub_type select_with_parens  %prec Op {
-  }
-  | a_expr subquery_Op sub_type '(' a_expr ')'    %prec Op {
+  | a_expr subquery_Op sub_type '(' a_expr ')'                 %prec Op {
   }
   | UNIQUE select_with_parens {
   }
-  | a_expr IS DOCUMENT_P          %prec IS {
+  | a_expr IS DOCUMENT_P                                       %prec IS {
   }
-  | a_expr IS NOT DOCUMENT_P        %prec IS {
+  | a_expr IS NOT DOCUMENT_P                                   %prec IS {
   }
 ;
 
-/*
- * Restricted expressions
- *
- * b_expr is a subset of the complete expression syntax defined by a_expr.
- *
- * Presently, AND, NOT, IS, and IN are the a_expr keywords that would
- * cause trouble in the places where b_expr is used.  For simplicity, we
- * just eliminate all the boolean-keyword-operator productions from b_expr.
- */
+// Restricted expressions
+//
+// b_expr is a subset of the complete expression syntax defined by a_expr.
+//
+// Presently, AND, NOT, IS, and IN are the a_expr keywords that would
+// cause trouble in the places where b_expr is used.  For simplicity, we
+// just eliminate all the boolean-keyword-operator productions from b_expr.
 b_expr:
   c_expr {
   }
   | b_expr TYPECAST Typename {
   }
-  | '+' b_expr          %prec UMINUS {
+  | '+' b_expr                                                 %prec UMINUS {
   }
-  | '-' b_expr          %prec UMINUS {
+  | '-' b_expr                                                 %prec UMINUS {
   }
   | b_expr '+' b_expr {
   }
@@ -1335,40 +2465,46 @@ b_expr:
   }
   | b_expr NOT_EQUALS b_expr {
   }
-  | b_expr qual_Op b_expr       %prec Op {
+  | b_expr qual_Op b_expr                                      %prec Op {
   }
-  | qual_Op b_expr          %prec Op {
+  | qual_Op b_expr                                             %prec Op {
   }
-  | b_expr qual_Op          %prec POSTFIXOP {
+  | b_expr qual_Op                                             %prec POSTFIXOP {
   }
-  | b_expr IS DISTINCT FROM b_expr    %prec IS {
+  | b_expr IS DISTINCT FROM b_expr                             %prec IS {
   }
-  | b_expr IS NOT DISTINCT FROM b_expr  %prec IS {
+  | b_expr IS NOT DISTINCT FROM b_expr                         %prec IS {
   }
-  | b_expr IS OF '(' type_list ')'    %prec IS {
+  | b_expr IS OF '(' type_list ')'                             %prec IS {
   }
-  | b_expr IS NOT OF '(' type_list ')'  %prec IS {
+  | b_expr IS NOT OF '(' type_list ')'                         %prec IS {
   }
-  | b_expr IS DOCUMENT_P          %prec IS {
+  | b_expr IS DOCUMENT_P                                       %prec IS {
   }
-  | b_expr IS NOT DOCUMENT_P        %prec IS {
+  | b_expr IS NOT DOCUMENT_P                                   %prec IS {
   }
 ;
 
-/*
- * Productions that can be used in both a_expr and b_expr.
- *
- * Note: productions that refer recursively to a_expr or b_expr mostly
- * cannot appear here.  However, it's OK to refer to a_exprs that occur
- * inside parentheses, such as function arguments; that cannot introduce
- * ambiguity to the b_expr syntax.
- */
+// Productions that can be used in both a_expr and b_expr.
+//
+// Note: productions that refer recursively to a_expr or b_expr mostly
+// cannot appear here.  However, it's OK to refer to a_exprs that occur
+// inside parentheses, such as function arguments; that cannot introduce
+// ambiguity to the b_expr syntax.
 c_expr:
   columnref {
+    $$ = $1;
   }
   | AexprConst {
+    $$ = $1;
   }
-  | PARAM opt_indirection {
+  | inactive_c_expr {
+    PARSER_UNSUPPORTED(@1);
+  }
+;
+
+inactive_c_expr:
+  PARAM opt_indirection {
   }
   | '(' a_expr ')' opt_indirection {
   }
@@ -1411,16 +2547,13 @@ func_application:
   }
 ;
 
-
-/*
- * func_expr and its cousin func_expr_windowless are split out from c_expr just
- * so that we have classifications for "everything that is a function call or
- * looks like one".  This isn't very important, but it saves us having to
- * document which variants are legal in places like "FROM function()" or the
- * backwards-compatible functional-index syntax for CREATE INDEX.
- * (Note that many of the special SQL functions wouldn't actually make any
- * sense as functional index entries, but we ignore that consideration here.)
- */
+// func_expr and its cousin func_expr_windowless are split out from c_expr just
+// so that we have classifications for "everything that is a function call or
+// looks like one".  This isn't very important, but it saves us having to
+// document which variants are legal in places like "FROM function()" or the
+// backwards-compatible functional-index syntax for CREATE INDEX.
+// (Note that many of the special SQL functions wouldn't actually make any
+// sense as functional index entries, but we ignore that consideration here.)
 func_expr:
   func_application within_group_clause filter_clause over_clause {
   }
@@ -1428,12 +2561,10 @@ func_expr:
   }
 ;
 
-/*
- * As func_expr but does not accept WINDOW functions directly
- * (but they can still be contained in arguments for functions etc).
- * Use this when window expressions are not allowed, where needed to
- * disambiguate the grammar (e.g. in CREATE INDEX).
- */
+// As func_expr but does not accept WINDOW functions directly
+// (but they can still be contained in arguments for functions etc).
+// Use this when window expressions are not allowed, where needed to
+// disambiguate the grammar (e.g. in CREATE INDEX).
 func_expr_windowless:
   func_application {
     $$ = $1;
@@ -1443,9 +2574,7 @@ func_expr_windowless:
   }
 ;
 
-/*
- * Special expressions that are considered to be functions.
- */
+// Special expressions that are considered to be functions.
 func_expr_common_subexpr:
   COLLATION FOR '(' a_expr ')' {
   }
@@ -1533,14 +2662,13 @@ func_expr_common_subexpr:
   }
 ;
 
-/*
- * SQL/XML support
- */
+// SQL/XML support
 xml_root_version:
   VERSION_P a_expr {
-    $$ = $2;
+    $$ = nullptr;
   }
   | VERSION_P NO VALUE_P {
+    $$ = nullptr;
   }
 ;
 
@@ -1585,29 +2713,27 @@ xml_whitespace_option:
   | /*EMPTY*/               { $$ = false; }
     ;
 
-/* We allow several variants for SQL and other compatibility. */
+// We allow several variants for SQL and other compatibility.
 xmlexists_argument:
   PASSING c_expr {
-    $$ = $2;
+    $$ = nullptr;
   }
   | PASSING c_expr BY REF {
-    $$ = $2;
+    $$ = nullptr;
   }
   | PASSING BY REF c_expr {
-    $$ = $4;
+    $$ = nullptr;
   }
   | PASSING BY REF c_expr BY REF {
-    $$ = $4;
+    $$ = nullptr;
   }
 ;
 
 
-/*
- * Aggregate decoration clauses
- */
+// Aggregate decoration clauses
 within_group_clause:
   WITHIN GROUP_P '(' sort_clause ')' {
-    $$ = $4;
+    $$ = nullptr;
   }
   | /*EMPTY*/ {
   }
@@ -1615,22 +2741,20 @@ within_group_clause:
 
 filter_clause:
   FILTER '(' WHERE a_expr ')' {
-    $$ = $4;
+    $$ = nullptr;
   }
   | /*EMPTY*/ {
-    $$ = NULL;
+    $$ = nullptr;
   }
 ;
 
 
-/*
- * Window Definitions
- */
-window_clause:
-  WINDOW window_definition_list {
-    $$ = $2;
+// Window Definitions
+opt_window_clause:
+  /*EMPTY*/ {
   }
-  | /*EMPTY*/ {
+  | WINDOW window_definition_list {
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
@@ -1647,38 +2771,37 @@ window_definition:
 ;
 
 over_clause:
-  OVER window_specification {
-    $$ = $2;
+  /*EMPTY*/ {
+  }
+  | OVER window_specification {
+    PARSER_UNSUPPORTED(@1);
   }
   | OVER ColId {
-  }
-  | /*EMPTY*/ {
-    $$ = NULL;
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
 window_specification:
   '(' opt_existing_window_name opt_partition_clause
   opt_sort_clause opt_frame_clause ')' {
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
-/*
- * If we see PARTITION, RANGE, or ROWS as the first token after the '('
- * of a window_specification, we want the assumption to be that there is
- * no existing_window_name; but those keywords are unreserved and so could
- * be ColIds.  We fix this by making them have the same precedence as IDENT
- * and giving the empty production here a slightly higher precedence, so
- * that the shift/reduce conflict is resolved in favor of reducing the rule.
- * These keywords are thus precluded from being an existing_window_name but
- * are not reserved for any other purpose.
- */
+// If we see PARTITION, RANGE, or ROWS as the first token after the '('
+// of a window_specification, we want the assumption to be that there is
+// no existing_window_name; but those keywords are unreserved and so could
+// be ColIds.  We fix this by making them have the same precedence as IDENT
+// and giving the empty production here a slightly higher precedence, so
+// that the shift/reduce conflict is resolved in favor of reducing the rule.
+// These keywords are thus precluded from being an existing_window_name but
+// are not reserved for any other purpose.
 opt_existing_window_name:
   ColId {
     $$ = $1;
   }
   | /*EMPTY*/       %prec Op {
-    $$ = NULL;
+    $$ = nullptr;
   }
 ;
 
@@ -1690,13 +2813,11 @@ opt_partition_clause:
   }
 ;
 
-/*
- * For frame clauses, we return a WindowDef, but only some fields are used:
- * frameOptions, startOffset, and endOffset.
- *
- * This is only a subset of the full SQL:2008 frame_clause grammar.
- * We don't support <window frame exclusion> yet.
- */
+// For frame clauses, we return a WindowDef, but only some fields are used:
+// frameOptions, startOffset, and endOffset.
+//
+// This is only a subset of the full SQL:2008 frame_clause grammar.
+// We don't support <window frame exclusion> yet.
 opt_frame_clause:
   RANGE frame_extent {
   }
@@ -1713,11 +2834,9 @@ frame_extent:
   }
 ;
 
-/*
- * This is used for both frame start and frame end, with output set up on
- * the assumption it's frame start; the frame_extent productions must reject
- * invalid cases.
- */
+// This is used for both frame start and frame end, with output set up on
+// the assumption it's frame start; the frame_extent productions must reject
+// invalid cases.
 frame_bound:
   UNBOUNDED PRECEDING {
   }
@@ -1731,17 +2850,12 @@ frame_bound:
   }
 ;
 
+// Supporting nonterminals for expressions.
 
-/*
- * Supporting nonterminals for expressions.
- */
-
-/* Explicit row production.
- *
- * SQL99 allows an optional ROW keyword, so we can now do single-element rows
- * without conflicting with the parenthesized a_expr production.  Without the
- * ROW keyword, there must be more than one a_expr inside the parens.
- */
+// Explicit row production.
+// SQL99 allows an optional ROW keyword, so we can now do single-element rows
+// without conflicting with the parenthesized a_expr production.  Without the
+// ROW keyword, there must be more than one a_expr inside the parens.
 row:
   ROW '(' expr_list ')' {
     $$ = $3;
@@ -1819,14 +2933,13 @@ subquery_Op:
   | NOT_LA ILIKE {
   }
 
-  /* cannot put SIMILAR TO here, because SIMILAR TO is a hack.
-   * the regular expression is preprocessed by a function (similar_escape),
-   * and the ~ operator for posix regular expressions is used.
-   *        x SIMILAR TO y     ->    x ~ similar_escape(y)
-   * this transformation is made on the fly by the parser upwards.
-   * however the SubLink structure which handles any/some/all stuff
-   * is not ready for such a thing.
-   */
+  // cannot put SIMILAR TO here, because SIMILAR TO is a hack.
+  // the regular expression is preprocessed by a function (similar_escape),
+  // and the ~ operator for posix regular expressions is used.
+  //        x SIMILAR TO y     ->    x ~ similar_escape(y)
+  // this transformation is made on the fly by the parser upwards.
+  // however the SubLink structure which handles any/some/all stuff
+  // is not ready for such a thing.
 ;
 
 expr_list:
@@ -1836,7 +2949,7 @@ expr_list:
   }
 ;
 
-/* function arguments can have names */
+// function arguments can have names.
 func_arg_list:
   func_arg_expr {
   }
@@ -1887,9 +3000,8 @@ extract_list:
   }
 ;
 
-/* Allow delimited string Sconst in extract_arg as an SQL extension.
- * - thomas 2001-04-12
- */
+// Allow delimited string Sconst in extract_arg as an SQL extension.
+// - thomas 2001-04-12
 extract_arg:
   IDENT                   { $$ = $1->c_str(); }
   | YEAR_P                { $$ = "year"; }
@@ -1901,28 +3013,24 @@ extract_arg:
   | Sconst                { $$ = $1->c_str(); }
 ;
 
-/* OVERLAY() arguments
- * SQL99 defines the OVERLAY() function:
- * o overlay(text placing text from int for int)
- * o overlay(text placing text from int)
- * and similarly for binary strings
- */
+// OVERLAY() arguments
+// SQL99 defines the OVERLAY() function:
+// o overlay(text placing text from int for int)
+// o overlay(text placing text from int)
+// and similarly for binary strings
 overlay_list:
   a_expr overlay_placing substr_from substr_for {
-    // $$ = list_make4($1, $2, $3, $4);
   }
   | a_expr overlay_placing substr_from {
-    // $$ = list_make3($1, $2, $3);
   }
 ;
 
 overlay_placing:
   PLACING a_expr {
-    $$ = $2;
   }
 ;
 
-/* position_list uses b_expr not a_expr to avoid conflict with general IN */
+// position_list uses b_expr not a_expr to avoid conflict with general IN.
 
 position_list:
   b_expr IN_P b_expr {
@@ -1931,84 +3039,75 @@ position_list:
   }
 ;
 
-/* SUBSTRING() arguments
- * SQL9x defines a specific syntax for arguments to SUBSTRING():
- * o substring(text from int for int)
- * o substring(text from int) get entire string from starting point "int"
- * o substring(text for int) get first "int" characters of string
- * o substring(text from pattern) get entire string matching pattern
- * o substring(text from pattern for escape) same with specified escape char
- * We also want to support generic substring functions which accept
- * the usual generic list of arguments. So we will accept both styles
- * here, and convert the SQL9x style to the generic list for further
- * processing. - thomas 2000-11-28
- */
+// SUBSTRING() arguments
+// SQL9x defines a specific syntax for arguments to SUBSTRING():
+// o substring(text from int for int)
+// o substring(text from int) get entire string from starting point "int"
+// o substring(text for int) get first "int" characters of string
+// o substring(text from pattern) get entire string matching pattern
+// o substring(text from pattern for escape) same with specified escape char
+// We also want to support generic substring functions which accept
+// the usual generic list of arguments. So we will accept both styles
+// here, and convert the SQL9x style to the generic list for further
+// processing. - thomas 2000-11-28
 substr_list:
   a_expr substr_from substr_for {
-    // $$ = list_make3($1, $2, $3);
   }
   | a_expr substr_for substr_from {
-    /* not legal per SQL99, but might as well allow it */
-    // $$ = list_make3($1, $3, $2);
   }
   | a_expr substr_from {
-    // $$ = list_make2($1, $2);
   }
   | a_expr substr_for {
   }
   | expr_list {
-    $$ = $1;
   }
   | /*EMPTY*/ {
   }
 ;
 
 substr_from:
-  FROM a_expr { $$ = $2; }
+  FROM a_expr {
+  }
 ;
 
 substr_for:
-  FOR a_expr { $$ = $2; }
+  FOR a_expr {
+  }
 ;
 
 trim_list:
   a_expr FROM expr_list {
-    // $$ = lappend($3, $1);
   }
   | FROM expr_list {
-    $$ = $2;
   }
   | expr_list {
-    $$ = $1;
   }
 ;
 
 in_expr:
   select_with_parens {
+    $$ = nullptr;
   }
   | '(' expr_list ')' {
+    $$ = nullptr;
   }
 ;
 
-/*
- * Define SQL-style CASE clause.
- * - Full specification
- *  CASE WHEN a = b THEN c ... ELSE d END
- * - Implicit argument
- *  CASE a WHEN b THEN c ... ELSE d END
- */
+// Define SQL-style CASE clause.
+// - Full specification
+//  CASE WHEN a = b THEN c ... ELSE d END
+// - Implicit argument
+//  CASE a WHEN b THEN c ... ELSE d END
 case_expr:
    CASE case_arg when_clause_list case_default END_P {
    }
 ;
 
 when_clause_list:
-  /* There must be at least one */
+  // There must be at least one.
   when_clause {
-    // $$ = list_make1($1);
   }
   | when_clause_list when_clause {
-    // $$ = lappend($1, $2);
   }
 ;
 
@@ -2018,19 +3117,24 @@ when_clause:
 ;
 
 case_default:
-  ELSE a_expr                   { $$ = $2; }
-  | /*EMPTY*/                   { $$ = NULL; }
+  ELSE a_expr                   { $$ = nullptr; }
+  | /*EMPTY*/                   { $$ = nullptr; }
 ;
 
 case_arg:
-  a_expr                        { $$ = $1; }
-  | /*EMPTY*/                   { $$ = NULL; }
+  a_expr                        { $$ = nullptr; }
+  | /*EMPTY*/                   { $$ = nullptr; }
 ;
 
 columnref:
   ColId {
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
+    $$ = MAKE_NODE(@1, PTRef, name_node);
   }
   | ColId indirection {
+    PTName::SharedPtr name_node = MAKE_NODE(@1, PTName, $1);
+    $2->Prepend(name_node);
+    $$ = MAKE_NODE(@1, PTRef, $2);
   }
 ;
 
@@ -2054,54 +3158,49 @@ indirection:
     $$ = MAKE_NODE(@1, PTQualifiedName, $1);
   }
   | indirection indirection_el {
-    $1->Append($2);
-    $$ = $1;
-  }
-;
-
-opt_indirection:
-  /*EMPTY*/ {
-  }
-  | opt_indirection indirection_el {
+    if ($1 == nullptr) {
+      $$ = MAKE_NODE(@1, PTQualifiedName, $2);
+    } else {
+      $1->Append($2);
+      $$ = $1;
+    }
   }
 ;
 
 opt_asymmetric:
-  /*EMPTY*/
+  /* EMPTY */
   | ASYMMETRIC
 ;
 
-/*
- * The SQL spec defines "contextually typed value expressions" and
- * "contextually typed row value constructors", which for our purposes
- * are the same as "a_expr" and "row" except that DEFAULT can appear at
- * the top level.
- */
-
-ctext_expr:
-  a_expr {
-  }
-  | DEFAULT {
-  }
-;
-
-ctext_expr_list:
-  ctext_expr {
-    // $$ = list_make1($1);
-  }
-  | ctext_expr_list ',' ctext_expr {
-    // $$ = lappend($1, $3);
-  }
-;
-
-/*
- * We should allow ROW '(' ctext_expr_list ')' too, but that seems to require
- * making VALUES a fully reserved word, which will probably break more apps
- * than allowing the noise-word is worth.
- */
+// We should allow ROW '(' ctext_expr_list ')' too, but that seems to require
+// making VALUES a fully reserved word, which will probably break more apps
+// than allowing the noise-word is worth.
 ctext_row:
   '(' ctext_expr_list ')' {
     $$ = $2;
+  }
+;
+
+// The SQL spec defines "contextually typed value expressions" and
+// "contextually typed row value constructors", which for our purposes
+// are the same as "a_expr" and "row" except that DEFAULT can appear at
+// the top level.
+ctext_expr_list:
+  ctext_expr {
+    $$ = MAKE_NODE(@1, PTExprListNode, $1);
+  }
+  | ctext_expr_list ',' ctext_expr {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+ctext_expr:
+  a_expr {
+    $$ = $1;
+  }
+  | DEFAULT {
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
@@ -2170,14 +3269,28 @@ func_name:
 // Constants.
 AexprConst:
   Iconst {
+    $$ = MAKE_NODE(@1, PTConstInt, $1);
   }
   | FCONST {
+    $$ = MAKE_NODE(@1, PTConstDouble, stold($1->c_str()));
   }
   | Sconst {
+    $$ = MAKE_NODE(@1, PTConstText, $1);
   }
-  | BCONST {
+  | TRUE_P {
+    $$ = MAKE_NODE(@1, PTConstBool, true);
   }
-  | XCONST {
+  | FALSE_P {
+    $$ = MAKE_NODE(@1, PTConstBool, false);
+  }
+  | BCONST {                                                           // Binary string (BLOB type)
+    PARSER_NOCODE(@1);
+  }
+  | XCONST {                                                                        // Hexadecimal.
+    PARSER_NOCODE(@1);
+  }
+  | NULL_P {
+    PARSER_NOCODE(@1);
   }
   | func_name Sconst {
   }
@@ -2188,12 +3301,6 @@ AexprConst:
   | ConstInterval Sconst opt_interval {
   }
   | ConstInterval '(' Iconst ')' Sconst {
-  }
-  | TRUE_P {
-  }
-  | FALSE_P {
-  }
-  | NULL_P {
   }
 ;
 
@@ -2333,17 +3440,16 @@ opt_array_bounds:
   }
 ;
 
-/* We have a separate ConstTypename to allow defaulting fixed-length
- * types such as CHAR() and BIT() to an unspecified length.
- * SQL9x requires that these default to a length of one, but this
- * makes no sense for constructs like CHAR 'hi' and BIT '0101',
- * where there is an obvious better choice to make.
- * Note that ConstInterval is not included here since it must
- * be pushed up higher in the rules to accommodate the postfix
- * options (e.g. INTERVAL '1' YEAR). Likewise, we have to handle
- * the generic-type-name case in AExprConst to avoid premature
- * reduce/reduce conflicts against function names.
- */
+// We have a separate ConstTypename to allow defaulting fixed-length
+// types such as CHAR() and BIT() to an unspecified length.
+// SQL9x requires that these default to a length of one, but this
+// makes no sense for constructs like CHAR 'hi' and BIT '0101',
+// where there is an obvious better choice to make.
+// Note that ConstInterval is not included here since it must
+// be pushed up higher in the rules to accommodate the postfix
+// options (e.g. INTERVAL '1' YEAR). Likewise, we have to handle
+// the generic-type-name case in AExprConst to avoid premature
+// reduce/reduce conflicts against function names.
 ConstTypename:
   Numeric {
     $$ = $1;
@@ -2359,13 +3465,11 @@ ConstTypename:
   }
 ;
 
-/*
- * GenericType covers all type names that don't have special syntax mandated
- * by the standard, including qualified names.  We also allow type modifiers.
- * To avoid parsing conflicts against function invocations, the modifiers
- * have to be shown as expr_list here, but parse analysis will only accept
- * constants for them.
- */
+// GenericType covers all type names that don't have special syntax mandated
+// by the standard, including qualified names.  We also allow type modifiers.
+// To avoid parsing conflicts against function invocations, the modifiers
+// have to be shown as expr_list here, but parse analysis will only accept
+// constants for them.
 GenericType:
   type_function_name opt_type_modifiers {
   }
@@ -2381,9 +3485,7 @@ opt_type_modifiers:
   }
 ;
 
-/*
- * SQL numeric data types
- */
+// SQL numeric data types.
 Numeric:
   BOOLEAN_P {
     $$ = MAKE_NODE(@1, PTBoolean);
@@ -2433,10 +3535,8 @@ opt_float:
   }
 ;
 
-/*
- * SQL bit-field data types
- * The following implements BIT() and BIT VARYING().
- */
+// SQL bit-field data types
+// The following implements BIT() and BIT VARYING().
 Bit:
   BitWithLength {
     $$ = $1;
@@ -2446,8 +3546,8 @@ Bit:
   }
 ;
 
-/* ConstBit is like Bit except "BIT" defaults to unspecified length */
-/* See notes for ConstCharacter, which addresses same issue for "CHAR" */
+// ConstBit is like Bit except "BIT" defaults to unspecified length.
+// See notes for ConstCharacter, which addresses same issue for "CHAR".
 ConstBit:
   BitWithLength {
     $$ = $1;
@@ -2467,10 +3567,8 @@ BitWithoutLength:
   }
 ;
 
-/*
- * SQL character data types
- * The following implements CHAR() and VARCHAR().
- */
+// SQL character data types.
+// The following implements CHAR() and VARCHAR().
 Character:
   CharacterWithLength {
     $$ = $1;
@@ -2544,9 +3642,7 @@ opt_charset:
   }
 ;
 
-/*
- * SQL date/time types
- */
+// SQL date/time types.
 ConstDatetime:
   TIMESTAMP '(' Iconst ')' opt_timezone {
   }
@@ -3079,9 +4175,6 @@ reserved_keyword:
 
 
 
-
-
-
 //--------------------------------------------------------------------------------------------------
 // INACTIVE PARSING RULES. INACTIVE PARSING RULES. INACTIVE PARSING RULES. INACTIVE PARSING RULES.
 //
@@ -3228,13 +4321,13 @@ opt_with: WITH {}
  * is "WITH ADMIN name".
  */
 OptRoleList: OptRoleList CreateOptRoleElem
-  { $$ = NULL; }
-  | /* EMPTY */ { $$ = NULL; }
+  { $$ = nullptr; }
+  | /* EMPTY */ { $$ = nullptr; }
 ;
 
 AlterOptRoleList:
   AlterOptRoleList AlterOptRoleElem {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | /* EMPTY */ {
   }
@@ -3242,31 +4335,31 @@ AlterOptRoleList:
 
 AlterOptRoleElem:
   PASSWORD Sconst {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | PASSWORD NULL_P {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | ENCRYPTED PASSWORD Sconst {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | UNENCRYPTED PASSWORD Sconst {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | INHERIT {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | CONNECTION LIMIT SignedIconst {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | VALID UNTIL Sconst {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | USER role_list {
-    $$ = NULL;
+    $$ = nullptr;
   }
   | IDENT {
-    $$ = NULL;
+    $$ = nullptr;
   }
 ;
 
@@ -3841,8 +4934,8 @@ alter_table_cmd:
 ;
 
 alter_column_default:
-  SET DEFAULT a_expr { $$ = $3; }
-  | DROP DEFAULT     { $$ = NULL; }
+  SET DEFAULT a_expr { $$ = nullptr; }
+  | DROP DEFAULT     { $$ = nullptr; }
 ;
 
 opt_drop_behavior:
@@ -3854,12 +4947,12 @@ opt_drop_behavior:
 opt_collate_clause:
   COLLATE any_name {
   }
-  | /* EMPTY */       { $$ = NULL; }
+  | /* EMPTY */       { $$ = nullptr; }
 ;
 
 alter_using:
-  USING a_expr        { $$ = $2; }
-  | /* EMPTY */       { $$ = NULL; }
+  USING a_expr        { $$ = nullptr; }
+  | /* EMPTY */       { $$ = nullptr; }
 ;
 
 replica_identity:
@@ -3963,8 +5056,8 @@ opt_program:
  */
 copy_file_name:
   Sconst                  { $$ = $1; }
-  | STDIN                 { $$ = NULL; }
-  | STDOUT                { $$ = NULL; }
+  | STDIN                 { $$ = nullptr; }
+  | STDOUT                { $$ = nullptr; }
 ;
 
 copy_options:
@@ -3975,7 +5068,7 @@ copy_options:
 /* old COPY option syntax */
 copy_opt_list:
   copy_opt_list copy_opt_item { }
-  | /* EMPTY */               { $$ = NULL; }
+  | /* EMPTY */               { $$ = nullptr; }
 ;
 
 copy_opt_item:
@@ -3999,17 +5092,17 @@ copy_opt_item:
 
 opt_binary:
   BINARY {}
-  | /*EMPTY*/ { $$ = NULL; }
+  | /*EMPTY*/ { $$ = nullptr; }
 ;
 
 opt_oids:
   WITH OIDS {}
-  | /*EMPTY*/  { $$ = NULL; }
+  | /*EMPTY*/  { $$ = nullptr; }
     ;
 
 copy_delimiter:
   opt_using DELIMITERS Sconst { }
-  | /*EMPTY*/                 { $$ = NULL; }
+  | /*EMPTY*/                 { $$ = nullptr; }
     ;
 
 opt_using:
@@ -4283,7 +5376,7 @@ CreateTableSpaceStmt:
 
 OptTableSpaceOwner:
   OWNER RoleSpec      { $$ = $2; }
-  | /*EMPTY */        { $$ = NULL; }
+  | /*EMPTY */        { $$ = nullptr; }
 ;
 
 /*****************************************************************************
@@ -4559,17 +5652,17 @@ CreateForeignServerStmt:
 
 opt_type:
   TYPE_P Sconst           { $$ = $2; }
-  | /*EMPTY*/             { $$ = NULL; }
+  | /*EMPTY*/             { $$ = nullptr; }
 ;
 
 foreign_server_version:
   VERSION_P Sconst        { $$ = $2; }
-  | VERSION_P NULL_P      { $$ = NULL; }
+  | VERSION_P NULL_P      { $$ = nullptr; }
 ;
 
 opt_foreign_server_version:
   foreign_server_version  { $$ = $1; }
-  | /*EMPTY*/             { $$ = NULL; }
+  | /*EMPTY*/             { $$ = nullptr; }
 ;
 
 /*****************************************************************************
@@ -4738,13 +5831,13 @@ DropPolicyStmt:
 ;
 
 RowSecurityOptionalExpr:
-  USING '(' a_expr ')'        { $$ = $3; }
-  | /* EMPTY */               { $$ = NULL; }
+  USING '(' a_expr ')'        { $$ = nullptr; }
+  | /* EMPTY */               { $$ = nullptr; }
 ;
 
 RowSecurityOptionalWithCheck:
-  WITH CHECK '(' a_expr ')'   { $$ = $4; }
-  | /* EMPTY */               { $$ = NULL; }
+  WITH CHECK '(' a_expr ')'   { $$ = nullptr; }
+  | /* EMPTY */               { $$ = nullptr; }
 ;
 
 RowSecurityDefaultToRole:
@@ -4754,7 +5847,7 @@ RowSecurityDefaultToRole:
 
 RowSecurityOptionalToRole:
   TO role_list                { $$ = $2; }
-  | /* EMPTY */               { $$ = NULL; }
+  | /* EMPTY */               { $$ = nullptr; }
 ;
 
 RowSecurityDefaultForCmd:
@@ -4838,8 +5931,8 @@ TriggerForType:
 ;
 
 TriggerWhen:
-  WHEN '(' a_expr ')'   { $$ = $3; }
-  | /*EMPTY*/           { $$ = NULL; }
+  WHEN '(' a_expr ')'   { $$ = nullptr; }
+  | /*EMPTY*/           { $$ = nullptr; }
 ;
 
 TriggerFuncArgs:
@@ -5399,7 +6492,7 @@ comment_type:
 
 comment_text:
   Sconst                { $$ = $1; }
-  | NULL_P              { $$ = NULL; }
+  | NULL_P              { $$ = nullptr; }
 ;
 
 
@@ -5431,7 +6524,7 @@ SecLabelStmt:
 
 opt_provider:
   FOR NonReservedWord_or_Sconst { $$ = $2; }
-  | /* empty */                 { $$ = NULL; }
+  | /* empty */                 { $$ = nullptr; }
 ;
 
 security_label_type:
@@ -5450,7 +6543,7 @@ security_label_type:
 
 security_label:
   Sconst        { $$ = $1; }
-  | NULL_P      { $$ = NULL; }
+  | NULL_P      { $$ = nullptr; }
 ;
 
 /*****************************************************************************
@@ -5672,7 +6765,7 @@ opt_granted_by:
   GRANTED BY RoleSpec {
     $$ = $3;
   }
-  | /*EMPTY*/ { $$ = NULL; }
+  | /*EMPTY*/ { $$ = nullptr; }
 ;
 
 /*****************************************************************************
@@ -5753,7 +6846,7 @@ opt_concurrently:
 
 opt_index_name:
   index_name                        { $$ = $1; }
-  | /*EMPTY*/                       { $$ = NULL; }
+  | /*EMPTY*/                       { $$ = nullptr; }
 ;
 
 access_method_clause:
@@ -5800,15 +6893,15 @@ opt_class:
 ;
 
 opt_asc_desc:
-  ASC             { $$ = SORTBY_ASC; }
-  | DESC          { $$ = SORTBY_DESC; }
-  | /*EMPTY*/     { $$ = SORTBY_DEFAULT; }
+  ASC             { $$ = PTOrderBy::Direction::kASC; }
+  | DESC          { $$ = PTOrderBy::Direction::kDESC; }
+  | /*EMPTY*/     { $$ = PTOrderBy::Direction::kASC; }
 ;
 
 opt_nulls_order:
-  NULLS_LA FIRST_P     { $$ = SORTBY_NULLS_FIRST; }
-  | NULLS_LA LAST_P    { $$ = SORTBY_NULLS_LAST; }
-  | /*EMPTY*/          { $$ = SORTBY_NULLS_DEFAULT; }
+  NULLS_LA FIRST_P     { $$ = PTOrderBy::NullPlacement::kFIRST; }
+  | NULLS_LA LAST_P    { $$ = PTOrderBy::NullPlacement::kLAST; }
+  | /*EMPTY*/          { $$ = PTOrderBy::NullPlacement::kFIRST; }
 ;
 
 
@@ -6609,7 +7702,7 @@ NotifyStmt:
 
 notify_payload:
   ',' Sconst              { $$ = $2; }
-  | /*EMPTY*/             { $$ = NULL; }
+  | /*EMPTY*/             { $$ = nullptr; }
 ;
 
 ListenStmt:
@@ -6966,7 +8059,7 @@ ClusterStmt:
 
 cluster_index_specification:
   USING index_name    { $$ = $2; }
-  | /*EMPTY*/         { $$ = NULL; }
+  | /*EMPTY*/         { $$ = nullptr; }
 ;
 
 
@@ -7169,97 +8262,6 @@ DeallocateStmt:
 /*****************************************************************************
  *
  *    QUERY:
- *        INSERT STATEMENTS
- *
- *****************************************************************************/
-
-InsertStmt:
-  opt_with_clause INSERT INTO insert_target insert_rest opt_on_conflict returning_clause {
-  }
-;
-
-/*
- * Can't easily make AS optional here, because VALUES in insert_rest would
- * have a shift/reduce conflict with VALUES as an optional alias.  We could
- * easily allow unreserved_keywords as optional aliases, but that'd be an odd
- * divergence from other places.  So just require AS for now.
- */
-insert_target:
-  qualified_name {
-  }
-  | qualified_name AS ColId {
-  }
-;
-
-insert_rest:
-  SelectStmt {
-  }
-  | '(' insert_column_list ')' SelectStmt {
-  }
-  | DEFAULT VALUES {
-  }
-;
-
-insert_column_list:
-  insert_column_item {
-  }
-  | insert_column_list ',' insert_column_item {
-  }
-;
-
-insert_column_item:
-  ColId opt_indirection {
-  }
-;
-
-opt_on_conflict:
-  ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list where_clause {
-  }
-  | ON CONFLICT opt_conf_expr DO NOTHING {
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-opt_conf_expr:
-  '(' index_params ')' where_clause {
-  }
-  | ON CONSTRAINT name {
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-returning_clause:
-  RETURNING target_list   { $$ = $2; }
-  | /* EMPTY */ {
-  }
-;
-
-
-/*****************************************************************************
- *
- *    QUERY:
- *        DELETE STATEMENTS
- *
- *****************************************************************************/
-
-DeleteStmt:
-  opt_with_clause DELETE_P FROM relation_expr_opt_alias
-  using_clause where_or_current_clause returning_clause {
-}
-;
-
-using_clause:
-  USING from_list           { $$ = $2; }
-  | /*EMPTY*/ {
-  }
-;
-
-
-/*****************************************************************************
- *
- *    QUERY:
  *        LOCK TABLE
  *
  *****************************************************************************/
@@ -7310,66 +8312,6 @@ opt_nowait_or_skip:
 /*****************************************************************************
  *
  *    QUERY:
- *        UpdateStmt (UPDATE)
- *
- *****************************************************************************/
-
-UpdateStmt:
-  opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
-  from_clause where_or_current_clause returning_clause {
-  }
-;
-
-set_clause_list:
-  set_clause {
-  }
-  | set_clause_list ',' set_clause {
-  }
-;
-
-set_clause:
-  single_set_clause {
-  }
-  | multiple_set_clause {
-  }
-;
-
-single_set_clause:
-  set_target '=' ctext_expr {
-  }
-;
-
-/*
- * Ideally, we'd accept any row-valued a_expr as RHS of a multiple_set_clause.
- * However, per SQL spec the row-constructor case must allow DEFAULT as a row
- * member, and it's pretty unclear how to do that (unless perhaps we allow
- * DEFAULT in any a_expr and let parse analysis sort it out later?).  For the
- * moment, the planner/executor only support a subquery as a multiassignment
- * source anyhow, so we need only accept ctext_row and subqueries here.
- */
-multiple_set_clause:
-  '(' set_target_list ')' '=' ctext_row {
-  }
-  | '(' set_target_list ')' '=' select_with_parens {
-  }
-;
-
-set_target:
-  ColId opt_indirection {
-  }
-;
-
-set_target_list:
-  set_target {
-  }
-  | set_target_list ',' set_target {
-  }
-;
-
-
-/*****************************************************************************
- *
- *    QUERY:
  *        CURSOR STATEMENTS
  *
  *****************************************************************************/
@@ -7397,777 +8339,6 @@ opt_hold:
   | WITH HOLD                   { $$ = CURSOR_OPT_HOLD; }
   | WITHOUT HOLD                { $$ = 0; }
 ;
-
-/*****************************************************************************
- *
- *    QUERY:
- *        SELECT STATEMENTS
- *
- *****************************************************************************/
-
-/* A complete SELECT statement looks like this.
- *
- * The rule returns either a single SelectStmt node or a tree of them,
- * representing a set-operation tree.
- *
- * There is an ambiguity when a sub-SELECT is within an a_expr and there
- * are excess parentheses: do the parentheses belong to the sub-SELECT or
- * to the surrounding a_expr?  We don't really care, but bison wants to know.
- * To resolve the ambiguity, we are careful to define the grammar so that
- * the decision is staved off as long as possible: as long as we can keep
- * absorbing parentheses into the sub-SELECT, we will do so, and only when
- * it's no longer possible to do that will we decide that parens belong to
- * the expression.  For example, in "SELECT (((SELECT 2)) + 3)" the extra
- * parentheses are treated as part of the sub-select.  The necessity of doing
- * it that way is shown by "SELECT (((SELECT 2)) UNION SELECT 2)".  Had we
- * parsed "((SELECT 2))" as an a_expr, it'd be too late to go back to the
- * SELECT viewpoint when we see the UNION.
- *
- * This approach is implemented by defining a nonterminal select_with_parens,
- * which represents a SELECT with at least one outer layer of parentheses,
- * and being careful to use select_with_parens, never '(' SelectStmt ')',
- * in the expression grammar.  We will then have shift-reduce conflicts
- * which we can resolve in favor of always treating '(' <select> ')' as
- * a select_with_parens.  To resolve the conflicts, the productions that
- * conflict with the select_with_parens productions are manually given
- * precedences lower than the precedence of ')', thereby ensuring that we
- * shift ')' (and then reduce to select_with_parens) rather than trying to
- * reduce the inner <select> nonterminal to something else.  We use UMINUS
- * precedence for this, which is a fairly arbitrary choice.
- *
- * To be able to define select_with_parens itself without ambiguity, we need
- * a nonterminal select_no_parens that represents a SELECT structure with no
- * outermost parentheses.  This is a little bit tedious, but it works.
- *
- * In non-expression contexts, we use SelectStmt which can represent a SELECT
- * with or without outer parentheses.
- */
-SelectStmt:
-  select_no_parens        %prec UMINUS {
-    $$ = nullptr;
-  }
-  | select_with_parens    %prec UMINUS {
-    $$ = nullptr;
-  }
-;
-
-select_with_parens:
-  '(' select_no_parens ')'          { $$ = $2; }
-  | '(' select_with_parens ')'      { $$ = $2; }
-;
-
-/*
- * This rule parses the equivalent of the standard's <query expression>.
- * The duplicative productions are annoying, but hard to get rid of without
- * creating shift/reduce conflicts.
- *
- *  The locking clause (FOR UPDATE etc) may be before or after LIMIT/OFFSET.
- *  In <=7.2.X, LIMIT/OFFSET had to be after FOR UPDATE
- *  We now support both orderings, but prefer LIMIT/OFFSET before the locking
- * clause.
- *  2002-08-28 bjm
- */
-select_no_parens:
-  simple_select {
-  }
-  | select_clause sort_clause {
-  }
-  | select_clause opt_sort_clause for_locking_clause opt_select_limit {
-  }
-  | select_clause opt_sort_clause select_limit opt_for_locking_clause {
-  }
-  | with_clause select_clause {
-  }
-  | with_clause select_clause sort_clause {
-  }
-  | with_clause select_clause opt_sort_clause for_locking_clause opt_select_limit {
-  }
-  | with_clause select_clause opt_sort_clause select_limit opt_for_locking_clause {
-  }
-;
-
-select_clause:
-  simple_select                 { $$ = $1; }
-  | select_with_parens          { $$ = $1; }
-;
-
-/*
- * This rule parses SELECT statements that can appear within set operations,
- * including UNION, INTERSECT and EXCEPT.  '(' and ')' can be used to specify
- * the ordering of the set operations.  Without '(' and ')' we want the
- * operations to be ordered per the precedence specs at the head of this file.
- *
- * As with select_no_parens, simple_select cannot have outer parentheses,
- * but can have parenthesized subclauses.
- *
- * Note that sort clauses cannot be included at this level --- SQL requires
- *    SELECT foo UNION SELECT bar ORDER BY baz
- * to be parsed as
- *    (SELECT foo UNION SELECT bar) ORDER BY baz
- * not
- *    SELECT foo UNION (SELECT bar ORDER BY baz)
- * Likewise for WITH, FOR UPDATE and LIMIT.  Therefore, those clauses are
- * described as part of the select_no_parens production, not simple_select.
- * This does not limit functionality, because you can reintroduce these
- * clauses inside parentheses.
- *
- * NOTE: only the leftmost component SelectStmt should have INTO.
- * However, this is not checked by the grammar; parse analysis must check it.
- */
-simple_select:
-  SELECT opt_all_clause opt_target_list into_clause from_clause where_clause
-  group_clause having_clause window_clause {
-  }
-  | SELECT distinct_clause target_list into_clause from_clause where_clause
-  group_clause having_clause window_clause {
-  }
-  | values_clause {
-  }
-  | TABLE relation_expr {
-  }
-  | select_clause UNION all_or_distinct select_clause {
-  }
-  | select_clause INTERSECT all_or_distinct select_clause {
-  }
-  | select_clause EXCEPT all_or_distinct select_clause {
-  }
-;
-
-/*
- * SQL standard WITH clause looks like:
- *
- * WITH [ RECURSIVE ] <query name> [ (<column>,...) ]
- *    AS (query) [ SEARCH or CYCLE clause ]
- *
- * We don't currently support the SEARCH or CYCLE clause.
- *
- * Recognizing WITH_LA here allows a CTE to be named TIME or ORDINALITY.
- */
-with_clause:
-  WITH cte_list {
-  }
-  | WITH_LA cte_list {
-  }
-  | WITH RECURSIVE cte_list {
-  }
-;
-
-cte_list:
-  common_table_expr {
-  }
-  | cte_list ',' common_table_expr {
-  }
-;
-
-common_table_expr:
-  name opt_name_list AS '(' PreparableStmt ')' {
-  }
-;
-
-opt_with_clause:
-  with_clause               { $$ = $1; }
-  | /*EMPTY*/               { $$ = NULL; }
-;
-
-into_clause:
-  INTO OptTempTableName {
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-/*
- * Redundancy here is needed to avoid shift/reduce conflicts,
- * since TEMP is not a reserved word.  See also OptTemp.
- */
-OptTempTableName:
-  TEMPORARY opt_table qualified_name {
-  }
-  | TEMP opt_table qualified_name {
-  }
-  | LOCAL TEMPORARY opt_table qualified_name {
-  }
-  | LOCAL TEMP opt_table qualified_name {
-  }
-  | GLOBAL TEMPORARY opt_table qualified_name {
-  }
-  | GLOBAL TEMP opt_table qualified_name {
-  }
-  | UNLOGGED opt_table qualified_name {
-  }
-  | TABLE qualified_name {
-  }
-  | qualified_name {
-  }
-;
-
-opt_table:
-  TABLE                     {}
-  | /*EMPTY*/               {}
-;
-
-all_or_distinct:
-  ALL                       { $$ = true; }
-  | DISTINCT                { $$ = false; }
-  | /*EMPTY*/               { $$ = false; }
-;
-
-/* We use (NIL) as a placeholder to indicate that all target expressions
- * should be placed in the DISTINCT list during parsetree analysis.
- */
-distinct_clause:
-  DISTINCT {
-  }
-  | DISTINCT ON '(' expr_list ')' {
-  }
-;
-
-opt_all_clause:
-  ALL                       { }
-  | /*EMPTY*/               { }
-;
-
-opt_sort_clause:
-  sort_clause               { $$ = $1;}
-  | /*EMPTY*/               { }
-;
-
-sort_clause:
-  ORDER BY sortby_list      { $$ = $3; }
-;
-
-sortby_list:
-  sortby {
-  }
-  | sortby_list ',' sortby {
-  }
-;
-
-sortby:
-  a_expr USING qual_all_Op opt_nulls_order {
-  }
-  | a_expr opt_asc_desc opt_nulls_order {
-  }
-;
-
-select_limit:
-  limit_clause offset_clause {
-  }
-  | offset_clause limit_clause {
-  }
-  | limit_clause {
-  }
-  | offset_clause {
-  }
-;
-
-opt_select_limit:
-  select_limit            { $$ = $1; }
-  | /* EMPTY */ {
-  }
-;
-
-limit_clause:
-  LIMIT select_limit_value {
-    $$ = $2;
-  }
-  | LIMIT select_limit_value ',' select_offset_value {
-  }
-  /* SQL:2008 syntax */
-  | FETCH first_or_next opt_select_fetch_first_value row_or_rows ONLY {
-  }
-;
-
-offset_clause:
-  OFFSET select_offset_value {
-  }
-  /* SQL:2008 syntax */
-  | OFFSET select_offset_value2 row_or_rows {
-  }
-;
-
-select_limit_value:
-  a_expr {
-  }
-  | ALL {
-  }
-;
-
-select_offset_value:
-  a_expr { $$ = $1; }
-;
-
-/*
- * Allowing full expressions without parentheses causes various parsing
- * problems with the trailing ROW/ROWS key words.  SQL only calls for
- * constants, so we allow the rest only with parentheses.  If omitted,
- * default to 1.
- */
-opt_select_fetch_first_value:
-  SignedIconst {
-  }
-  | '(' a_expr ')' {
-    $$ = $2;
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-/*
- * Again, the trailing ROW/ROWS in this case prevent the full expression
- * syntax.  c_expr is the best we can do.
- */
-select_offset_value2:
-  c_expr {
-    $$ = $1;
-  }
-;
-
-/* noise words */
-row_or_rows:
-  ROW {
-    $$ = 0;
-  }
-  | ROWS {
-    $$ = 0;
-  }
-;
-
-first_or_next:
-  FIRST_P                 { $$ = 0; }
-  | NEXT                  { $$ = 0; }
-;
-
-
-/*
- * This syntax for group_clause tries to follow the spec quite closely.
- * However, the spec allows only column references, not expressions,
- * which introduces an ambiguity between implicit row constructors
- * (a,b) and lists of column references.
- *
- * We handle this by using the a_expr production for what the spec calls
- * <ordinary grouping set>, which in the spec represents either one column
- * reference or a parenthesized list of column references. Then, we check the
- * top node of the a_expr to see if it's an implicit RowExpr, and if so, just
- * grab and use the list, discarding the node. (this is done in parse analysis,
- * not here)
- *
- * (we abuse the row_format field of RowExpr to distinguish implicit and
- * explicit row constructors; it's debatable if anyone sanely wants to use them
- * in a group clause, but if they have a reason to, we make it possible.)
- *
- * Each item in the group_clause list is either an expression tree or a
- * GroupingSet node of some type.
- */
-group_clause:
-  GROUP_P BY group_by_list        { $$ = $3; }
-  | /*EMPTY*/                     { }
-    ;
-
-group_by_list:
-  group_by_item {
-  }
-  | group_by_list ',' group_by_item {
-  }
-;
-
-group_by_item:
-  a_expr                        { $$ = $1; }
-  | empty_grouping_set          { $$ = $1; }
-  | cube_clause                 { $$ = $1; }
-  | rollup_clause               { $$ = $1; }
-  | grouping_sets_clause        { $$ = $1; }
-;
-
-empty_grouping_set:
-  '(' ')' {
-  }
-;
-
-/*
- * These hacks rely on setting precedence of CUBE and ROLLUP below that of '(',
- * so that they shift in these rules rather than reducing the conflicting
- * unreserved_keyword rule.
- */
-
-rollup_clause:
-  ROLLUP '(' expr_list ')' {
-  }
-;
-
-cube_clause:
-  CUBE '(' expr_list ')' {
-  }
-;
-
-grouping_sets_clause:
-  GROUPING SETS '(' group_by_list ')' {
-  }
-;
-
-having_clause:
-  HAVING a_expr               { $$ = $2; }
-  | /*EMPTY*/                 { $$ = NULL; }
-;
-
-for_locking_clause:
-  for_locking_items           { $$ = $1; }
-  | FOR READ ONLY             { }
-;
-
-opt_for_locking_clause:
-  for_locking_clause          { $$ = $1; }
-  | /* EMPTY */               { }
-;
-
-for_locking_items:
-  for_locking_item {
-  }
-  | for_locking_items for_locking_item  {
-  }
-;
-
-for_locking_item:
-  for_locking_strength locked_rels_list opt_nowait_or_skip {
-  }
-;
-
-for_locking_strength:
-  FOR UPDATE                  { }
-  | FOR NO KEY UPDATE         { }
-  | FOR SHARE                 { }
-  | FOR KEY SHARE             { }
-;
-
-locked_rels_list:
-  OF qualified_name_list      { $$ = $2; }
-  | /* EMPTY */               { }
-;
-
-
-values_clause:
-  VALUES ctext_row {
-  }
-  | values_clause ',' ctext_row {
-  }
-;
-
-/*****************************************************************************
- *
- *  clauses common to all Optimizable Stmts:
- *    from_clause   - allow list of both JOIN expressions and table names
- *    where_clause  - qualifications for joins or restrictions
- *
- *****************************************************************************/
-
-from_clause:
-  FROM from_list            { $$ = $2; }
-  | /*EMPTY*/               { }
-;
-
-from_list:
-  table_ref {
-  }
-  | from_list ',' table_ref {
-  }
-;
-
-/*
- * table_ref is where an alias clause can be attached.
- */
-table_ref:
-  relation_expr opt_alias_clause {
-  }
-  | relation_expr opt_alias_clause tablesample_clause {
-  }
-  | func_table func_alias_clause {
-  }
-  | LATERAL_P func_table func_alias_clause {
-  }
-  | select_with_parens opt_alias_clause {
-  }
-  | LATERAL_P select_with_parens opt_alias_clause {
-  }
-  | joined_table {
-  }
-  | '(' joined_table ')' alias_clause {
-  }
-;
-
-
-/*
- * It may seem silly to separate joined_table from table_ref, but there is
- * method in SQL's madness: if you don't do it this way you get reduce-
- * reduce conflicts, because it's not clear to the parser generator whether
- * to expect alias_clause after ')' or not.  For the same reason we must
- * treat 'JOIN' and 'join_type JOIN' separately, rather than allowing
- * join_type to expand to empty; if we try it, the parser generator can't
- * figure out when to reduce an empty join_type right after table_ref.
- *
- * Note that a CROSS JOIN is the same as an unqualified
- * INNER JOIN, and an INNER JOIN/ON has the same shape
- * but a qualification expression to limit membership.
- * A NATURAL JOIN implicitly matches column names between
- * tables and the shape is determined by which columns are
- * in common. We'll collect columns during the later transformations.
- */
-
-joined_table:
-  '(' joined_table ')' {
-  }
-  | table_ref CROSS JOIN table_ref {
-  }
-  | table_ref join_type JOIN table_ref join_qual {
-  }
-  | table_ref JOIN table_ref join_qual {
-  }
-  | table_ref NATURAL join_type JOIN table_ref {
-  }
-  | table_ref NATURAL JOIN table_ref {
-  }
-;
-
-alias_clause:
-  AS ColId '(' name_list ')' {
-  }
-  | AS ColId {
-  }
-  | ColId '(' name_list ')' {
-  }
-  | ColId {
-  }
-;
-
-opt_alias_clause:
-  alias_clause            { $$ = $1; }
-  | /*EMPTY*/             { $$ = NULL; }
-    ;
-
-/*
- * func_alias_clause can include both an Alias and a coldeflist, so we make it
- * return a 2-element list that gets disassembled by calling production.
- */
-func_alias_clause:
-  alias_clause {
-  }
-  | AS '(' TableFuncElementList ')' {
-  }
-  | AS ColId '(' TableFuncElementList ')' {
-  }
-  | ColId '(' TableFuncElementList ')' {
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-join_type:
-  FULL join_outer             { $$ = JOIN_FULL; }
-  | LEFT join_outer           { $$ = JOIN_LEFT; }
-  | RIGHT join_outer          { $$ = JOIN_RIGHT; }
-  | INNER_P                   { $$ = JOIN_INNER; }
-;
-
-/* OUTER is just noise... */
-join_outer:
-  OUTER_P                     { $$ = NULL; }
-  | /*EMPTY*/                 { $$ = NULL; }
-;
-
-/* JOIN qualification clauses
- * Possibilities are:
- *  USING ( column list ) allows only unqualified column names,
- *              which must match between tables.
- *  ON expr allows more general qualifications.
- *
- * We return USING as a List node, while an ON-expr will not be a List.
- */
-
-join_qual:
-  USING '(' name_list ')' {
-  }
-  | ON a_expr {
-    $$ = $2;
-  }
-;
-
-
-relation_expr:
-  qualified_name {
-  }
-  | qualified_name '*' {
-  }
-  | ONLY qualified_name {
-  }
-  | ONLY '(' qualified_name ')' {
-  }
-;
-
-
-relation_expr_list:
-  relation_expr {
-  }
-  | relation_expr_list ',' relation_expr {
-  }
-;
-
-
-/*
- * Given "UPDATE foo set set ...", we have to decide without looking any
- * further ahead whether the first "set" is an alias or the UPDATE's SET
- * keyword.  Since "set" is allowed as a column name both interpretations
- * are feasible.  We resolve the shift/reduce conflict by giving the first
- * relation_expr_opt_alias production a higher precedence than the SET token
- * has, causing the parser to prefer to reduce, in effect assuming that the
- * SET is not an alias.
- */
-relation_expr_opt_alias:
-  relation_expr %prec UMINUS  {
-    $$ = $1;
-  }
-  | relation_expr ColId {
-  }
-  | relation_expr AS ColId {
-  }
-;
-
-/*
- * TABLESAMPLE decoration in a FROM item
- */
-tablesample_clause:
-  TABLESAMPLE func_name '(' expr_list ')' opt_repeatable_clause {
-  }
-;
-
-opt_repeatable_clause:
-  REPEATABLE '(' a_expr ')' {
-  }
-  | /*EMPTY*/ {
-    $$ = NULL;
-  }
-;
-
-/*
- * func_table represents a function invocation in a FROM list. It can be
- * a plain function call, like "foo(...)", or a ROWS FROM expression with
- * one or more function calls, "ROWS FROM (foo(...), bar(...))",
- * optionally with WITH ORDINALITY attached.
- * In the ROWS FROM syntax, a column definition list can be given for each
- * function, for example:
- *     ROWS FROM (foo() AS (foo_res_a text, foo_res_b text),
- *                bar() AS (bar_res_a text, bar_res_b text))
- * It's also possible to attach a column definition list to the RangeFunction
- * as a whole, but that's handled by the table_ref production.
- */
-func_table:
-  func_expr_windowless opt_ordinality {
-  }
-  | ROWS FROM '(' rowsfrom_list ')' opt_ordinality {
-  }
-;
-
-rowsfrom_item:
-  func_expr_windowless opt_col_def_list {
-  }
-;
-
-rowsfrom_list:
-  rowsfrom_item {
-  }
-  | rowsfrom_list ',' rowsfrom_item {
-  }
-;
-
-opt_col_def_list:
-  AS '(' TableFuncElementList ')' {
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-opt_ordinality:
-  WITH_LA ORDINALITY            { $$ = true; }
-  | /*EMPTY*/                   { $$ = false; }
-;
-
-
-where_clause:
-  WHERE a_expr                  { $$ = $2; }
-  | /*EMPTY*/                   { $$ = NULL; }
-;
-
-/* variant for UPDATE and DELETE */
-where_or_current_clause:
-  WHERE a_expr {
-    $$ = $2;
-  }
-  | WHERE CURRENT_P OF cursor_name {
-  }
-  | /*EMPTY*/ {
-    $$ = NULL;
-  }
-;
-
-
-OptTableFuncElementList:
-  TableFuncElementList {
-    $$ = $1;
-  }
-  | /*EMPTY*/ {
-  }
-;
-
-TableFuncElementList:
-  TableFuncElement {
-  }
-  | TableFuncElementList ',' TableFuncElement {
-  }
-;
-
-TableFuncElement:
-  ColId Typename opt_collate_clause {
-  }
-;
-
-/*****************************************************************************
- *
- *  target list for SELECT
- *
- *****************************************************************************/
-
-opt_target_list:
-  target_list {
-    $$ = $1; }
-  | /* EMPTY */ { }
-;
-
-target_list:
-  target_el {
-    // $$ = list_make1($1);
-  }
-  | target_list ',' target_el {
-    // $$ = lappend($1, $3);
-  }
-;
-
-target_el:
-  a_expr AS ColLabel {
-  }
-  /*
-   * We support omitting AS only for column labels that aren't
-   * any known keyword.  There is an ambiguity against postfix
-   * operators: is "a ! b" an infix expression, or a postfix
-   * expression and a column label?  We prefer to resolve this
-   * as an infix expression, which we accomplish by assigning
-   * IDENT a precedence higher than POSTFIXOP.
-   */
-  | a_expr IDENT {
-  }
-  | a_expr {
-  }
-  | '*' {
-  }
-;
-
 
 %%
 
