@@ -144,7 +144,7 @@ Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
   struct addrinfo* res = nullptr;
-  int rc;
+  int rc = 0;
   LOG_SLOW_EXECUTION(WARNING, 200,
                      Substitute("resolving address for $0", host_)) {
     rc = getaddrinfo(host_.c_str(), nullptr, &hints, &res);

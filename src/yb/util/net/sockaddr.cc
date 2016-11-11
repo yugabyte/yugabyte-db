@@ -114,7 +114,7 @@ Status Sockaddr::LookupHostname(string* hostname) const {
   char host[NI_MAXHOST];
   int flags = 0;
 
-  int rc;
+  int rc = 0;
   LOG_SLOW_EXECUTION(WARNING, 200,
                      Substitute("DNS reverse-lookup for $0", ToString())) {
     rc = getnameinfo((struct sockaddr *) &addr_, sizeof(sockaddr_in),
