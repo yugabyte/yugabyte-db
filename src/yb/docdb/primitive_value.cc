@@ -24,6 +24,7 @@ using yb::util::FormatBytesAsStr;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED; \
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED; \
     case ValueType::kObject: FALLTHROUGH_INTENDED; \
+    case ValueType::kTtl: FALLTHROUGH_INTENDED; \
     case ValueType::kTombstone: \
       break
 
@@ -72,7 +73,8 @@ string PrimitiveValue::ToString() const {
       return "[]";
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalidValueType:
+    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kTtl:
       break;
   }
   LOG(FATAL) << __FUNCTION__ << " not implemented for value type " << ValueTypeToStr(type_);
@@ -154,6 +156,7 @@ string PrimitiveValue::ToValue() const {
 
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
+    case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType:
       break;
   }
@@ -238,16 +241,17 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
           ToShortDebugStr(input_slice)));
 }
 
-Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {
-  rocksdb::Slice slice(rocksdb_value);
-  if (slice.empty()) {
+Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
+  if (rocksdb_slice.empty()) {
     return STATUS(Corruption, "Cannot decode a value from an empty slice");
   }
-  auto value_type = ConsumeValueType(&slice);
+  rocksdb::Slice slice(rocksdb_slice);
   this->~PrimitiveValue();
   // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
   // due to inability to allocate memory.
   type_ = ValueType::kNull;
+
+  const auto value_type = ConsumeValueType(&slice);
 
   // TODO: ensure we consume all data from the given slice.
   switch (value_type) {
@@ -283,9 +287,10 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_value) {
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
+    case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       return STATUS(Corruption,
-          Substitute("$0 is not allowed in a RocksDB value", ValueTypeToStr(value_type)));
+          Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
   }
   LOG(FATAL) << "Invalid value type: " << ValueTypeToStr(value_type);
   return Status::OK();

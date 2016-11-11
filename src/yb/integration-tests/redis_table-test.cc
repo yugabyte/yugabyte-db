@@ -1,5 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <chrono>
+#include <thread>
+
 #include "yb/integration-tests/redis_table_test_base.h"
 
 #include <glog/logging.h>
@@ -37,6 +40,19 @@ TEST_F(RedisTableTest, SimpleRedisSetTest) {
 TEST_F(RedisTableTest, SimpleRedisGetTest) {
   NO_FATALS(RedisSimpleSetCommands());
   NO_FATALS(RedisSimpleGetCommands());
+}
+
+TEST_F(RedisTableTest, RedisTtlTest) {
+  NO_FATALS(RedisTtlSetCommands());
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  NO_FATALS(RedisTtlGetCommands());
+}
+
+TEST_F(RedisTableTest, RedisOverWriteTest) {
+  // What happens when values are deleted, overwritten, rewritten with a timestamp, etc.
+  // All writes operate in the default upsert mode
+  // TODO: to be implemented, planning to do this on followup diff, because I want to also implement
+  // delete command.
 }
 
 }  // namespace integration_tests

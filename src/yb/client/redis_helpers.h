@@ -12,11 +12,11 @@ class YBRedisReadOp;
 namespace yb {
 namespace client {
 
-using std::unique_ptr;
-using std::string;
+constexpr int64_t kNoneTtl = -1;
 
-std::shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(YBTable* table, string key, string value);
-std::shared_ptr<YBRedisReadOp> RedisReadOpForGetKey(YBTable* table, string key);
+std::shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(
+    YBTable* table, const std::string& key, const std::string& value, int64_t ttl = kNoneTtl);
+std::shared_ptr<YBRedisReadOp> RedisReadOpForGetKey(YBTable* table, const std::string& key);
 
 class RedisConstants {
  public:

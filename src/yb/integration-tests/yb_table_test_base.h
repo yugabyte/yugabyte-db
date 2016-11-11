@@ -3,13 +3,13 @@
 #ifndef YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
 #define YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <future>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
@@ -61,7 +61,7 @@ class YBTableTestBase : public YBTest {
   void OpenTable();
   void DeleteTable();
   virtual void PutKeyValue(yb::client::YBSession* session, string key, string value);
-  void PutKeyValue(string key, string value);
+  virtual void PutKeyValue(string key, string value);
   void ConfigureScanner(yb::client::YBScanner* scanner);
   void RestartCluster();
   void GetScanResults(yb::client::YBScanner* scanner,

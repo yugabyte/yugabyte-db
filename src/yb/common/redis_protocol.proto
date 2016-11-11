@@ -111,7 +111,7 @@ message RedisKeyValuePB {
 // SET, SETNX, SETXX, HSET, HSETNX, LSET, MSET, HMSET, MSETNX
 message RedisSetRequestPB {
   optional RedisKeyValuePB key_value = 1;
-  optional uint64 px = 2;                   // Expiry time in milliseconds.
+  optional int64 ttl = 2;                  // Expiry time in microseconds.
   optional RedisWriteMode mode = 3 [ default = REDIS_WRITEMODE_UPSERT ];
 }
 
@@ -182,7 +182,7 @@ message RedisInsertRequestPB {
 message RedisPopRequestPB {
   optional RedisKeyValuePB key_value = 1;
   optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
-  optional uint32 count = 3;                // Count is allowed only when popping from a set.
+  optional int32 count = 3;                // Count is allowed only when popping from a set.
 }
 
 // SADD, ZADD

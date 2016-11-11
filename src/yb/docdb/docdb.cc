@@ -14,11 +14,13 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/internal_doc_iterator.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
@@ -109,8 +111,11 @@ Status RedisWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
   const auto kv = request_.set_request().key_value();
   CHECK_EQ(kv.value().size(), 1)
       << "Set operations are expected have exactly one value, found " << kv.value().size();
+  const MonoDelta ttl = request_.set_request().has_ttl() ?
+      MonoDelta::FromMicroseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()), PrimitiveValue(kv.value(0)), Timestamp::kMax);
+      DocPath::DocPathFromRedisKey(kv.key()),
+      Value(PrimitiveValue(kv.value(0)), ttl), Timestamp::kMax);
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
@@ -133,18 +138,34 @@ Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, Timestamp timestamp) {
     return Status::OK();
   }
   const rocksdb::Slice key = iter->key();
-  const rocksdb::Slice value = iter->value();
+  rocksdb::Slice value = iter->value();
   if (!timestamped_key.OnlyDiffersByLastTimestampFrom(key)) {
     response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
     return Status::OK();
   }
-  PrimitiveValue pv;
-  RETURN_NOT_OK(pv.DecodeFromValue(value));
-  if (pv.value_type() != ValueType::kString) {
+  MonoDelta ttl;
+  RETURN_NOT_OK(Value::DecodeTtl(&value, &ttl));
+  if (!ttl.Equals(Value::kMaxTtl)) {
+    SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.DecodeFrom(key));
+    const Timestamp expiry =
+        server::HybridClock::AddPhysicalTimeToTimestamp(sub_doc_key.timestamp(), ttl);
+    if (timestamp.CompareTo(expiry) > 0) {
+      response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+      return Status::OK();
+    }
+  }
+  Value val;
+  RETURN_NOT_OK(val.Decode(value));
+  if (val.primitive_value().value_type() == ValueType::kTombstone) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    return Status::OK();
+  }
+  if (val.primitive_value().value_type() != ValueType::kString) {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
     return Status::OK();
   }
-  pv.SwapStringValue(response_.mutable_string_response());
+  val.mutable_primitive_value()->SwapStringValue(response_.mutable_string_response());
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
@@ -165,13 +186,13 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
 
 // This codepath is used to handle both primitive upserts and deletions.
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
-                                   const PrimitiveValue& value,
+                                   const Value& value,
                                    Timestamp timestamp) {
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, timestamp=$2",
                   doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
   const int num_subkeys = doc_path.num_subkeys();
-  const bool is_deletion = value.value_type() == ValueType::kTombstone;
+  const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
 
   InternalDocIterator doc_iter(rocksdb_, &cache_, &num_rocksdb_seeks_);
 
@@ -251,13 +272,13 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 
   // The key we use in the DocWriteBatchCache does not have a final timestamp, because that's the
   // key we expect to look up.
-  cache_.Put(doc_iter.key_prefix(), timestamp, value.value_type());
+  cache_.Put(doc_iter.key_prefix(), timestamp, value.primitive_value().value_type());
 
   // Close the group of subkeys of the SubDocKey, and append the timestamp as the final component.
   doc_iter.mutable_key_prefix()->AppendValueType(ValueType::kTimestamp);
   doc_iter.AppendTimestampToPrefix(timestamp);
 
-  put_batch_.emplace_back(doc_iter.key_prefix().AsStringRef(), value.ToValue());
+  put_batch_.emplace_back(doc_iter.key_prefix().AsStringRef(), value.Encode());
 
   return Status::OK();
 }
@@ -352,10 +373,10 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
   DCHECK_LE(higher_level_key.timestamp(), scan_ts);
   DCHECK_GE(higher_level_key.timestamp(), lowest_ts);
 
-  PrimitiveValue top_level_value;
-  RETURN_NOT_OK(top_level_value.DecodeFromValue(rocksdb_iter->value()));
+  Value top_level_value;
+  RETURN_NOT_OK(top_level_value.Decode(rocksdb_iter->value()));
 
-  if (top_level_value.value_type() == ValueType::kTombstone) {
+  if (top_level_value.primitive_value().value_type() == ValueType::kTombstone) {
     // TODO(mbautin): If we allow optional init markers here, we still need to scan deeper levels
     // and interpret values with timestamps >= lowest_ts as values in a map that exists. As of
     // 11/11/2016 initialization markers (i.e. ValueType::kObject) are still required at the top of
@@ -363,12 +384,12 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
     return Status::OK();  // the document does not exist
   }
 
-  if (top_level_value.IsPrimitive()) {
-    RETURN_NOT_OK(visitor->VisitValue(top_level_value));
+  if (top_level_value.primitive_value().IsPrimitive()) {
+    RETURN_NOT_OK(visitor->VisitValue(top_level_value.primitive_value()));
     return Status::OK();
   }
 
-  if (top_level_value.value_type() == ValueType::kObject) {
+  if (top_level_value.primitive_value().value_type() == ValueType::kObject) {
     rocksdb_iter->Next();
     RETURN_NOT_OK(visitor->StartObject());
 
@@ -383,7 +404,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
   }
 
   return STATUS(Corruption, Substitute("Invalid value type at the top level of a document: $0",
-                                       ValueTypeToStr(top_level_value.value_type())));
+      ValueTypeToStr(top_level_value.primitive_value().value_type())));
 }
 
 // @param higher_level_key
@@ -682,8 +703,8 @@ Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out) {
       continue;
     }
 
-    PrimitiveValue value;
-    Status value_decode_status = value.DecodeFromValue(iter->value());
+    Value value;
+    Status value_decode_status = value.Decode(iter->value());
     if (!value_decode_status.ok()) {
       out << "Error: failed to decode value for key " << subdoc_key.ToString() << endl;
       if (result_status.ok()) {

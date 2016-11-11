@@ -23,6 +23,7 @@ set(DOCDB_SRCS
     in_mem_docdb.cc
     internal_doc_iterator.cc
     primitive_value.cc
+    value.cc
     subdocument.cc
     value_type.cc)
 
@@ -31,7 +32,8 @@ set(DOCDB_DEPS
     yb_util
     yb_rocksutil
     yb_common
-    docdb_proto)
+    docdb_proto
+    server_common)
 
 ADD_EXPORTABLE_LIBRARY(yb_docdb
                        SRCS ${DOCDB_SRCS}

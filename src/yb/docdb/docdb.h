@@ -18,6 +18,7 @@
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value.h"
 #include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
 #include "yb/common/redis_protocol.pb.h"
@@ -69,7 +70,7 @@ class DocWriteBatch {
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
-  Status SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value, Timestamp timestamp);
+  Status SetPrimitive(const DocPath& doc_path, const Value& value, Timestamp timestamp);
   Status DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp);
 
   std::string ToDebugString();

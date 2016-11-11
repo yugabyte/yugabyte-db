@@ -6,6 +6,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/value.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 
@@ -132,13 +133,13 @@ bool DocRowwiseIterator::HasNext() const {
       continue;
     }
 
-    PrimitiveValue top_level_value;
-    status_ = top_level_value.DecodeFromValue(db_iter_->value());
+    Value top_level_value;
+    status_ = top_level_value.Decode(db_iter_->value());
     if (!status_.ok()) {
       // Defer error reporting to NextBlock.
       return true;
     }
-    auto value_type = top_level_value.value_type();
+    auto value_type = top_level_value.primitive_value().value_type();
     if (value_type == ValueType::kObject) {
       // Success: found a valid document at the given timestamp.
       return true;
@@ -258,12 +259,17 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     bool is_null = true;
     const bool is_nullable = dst->column_block(i).is_nullable();
     if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
-      PrimitiveValue value;
-      RETURN_NOT_OK(value.DecodeFromValue(db_iter_->value()));
-      if (value.value_type() != ValueType::kNull &&
-          value.value_type() != ValueType::kTombstone) {
+      Value value;
+      RETURN_NOT_OK(value.Decode(db_iter_->value()));
+      if (value.has_ttl()) {
+        return STATUS(IllegalState,
+            Substitute("TTL in YSQL tables currently not supported, found $0",
+                value.ttl().ToString()));
+      }
+      if (value.primitive_value().value_type() != ValueType::kNull &&
+          value.primitive_value().value_type() != ValueType::kTombstone) {
         DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
-        RETURN_NOT_OK(PrimitiveValueToKudu(i, value, &dst_row));
+        RETURN_NOT_OK(PrimitiveValueToKudu(i, value.primitive_value(), &dst_row));
         is_null = false;
       } else {
         DOCDB_DEBUG_LOG("Found a null value for column #$0: $1", i, value.ToString());

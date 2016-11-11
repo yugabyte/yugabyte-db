@@ -900,7 +900,13 @@ Status Tablet::HandleRedisReadRequest(const RedisReadRequestPB redis_read_reques
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   docdb::RedisReadOperation doc_op(redis_read_request);
-  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), Timestamp::kMax));
+  // Now is a safe time to use.
+  // Case 1: No leader change between write and read: Now is more than the write TS (decided when
+  // appending to raft log)
+  // Case 2: Leader has changed: Given that the operation has committed, the Replicate messages
+  // were transferred to majority replicas, updating their clock to >= write TS. Even if leader
+  // changes, the new leader's Now() is guaranteed to be >= write TS.
+  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), clock_->Now()));
   *response = std::move(doc_op.response());
   return Status::OK();
 }

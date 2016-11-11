@@ -69,15 +69,13 @@ class PrimitiveValue {
     new(&str_val_) std::string(s);
   }
 
-  explicit PrimitiveValue(int64_t v)
-      : type_(ValueType::kInt64) {
+  explicit PrimitiveValue(int64_t v) : type_(ValueType::kInt64) {
     // Avoid using an initializer for a union field (got surprising and unexpected results with
     // that approach). Use a direct assignment instead.
     int64_val_ = v;
   }
 
-  explicit PrimitiveValue(const Timestamp& timestamp)
-      : type_(ValueType::kTimestamp) {
+  explicit PrimitiveValue(const Timestamp& timestamp) : type_(ValueType::kTimestamp) {
     timestamp_val_ = timestamp;
   }
 
@@ -107,7 +105,7 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
-  Status DecodeFromValue(const rocksdb::Slice& rocksdb_value);
+  Status DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double d);
   static PrimitiveValue ArrayIndex(int64_t index);

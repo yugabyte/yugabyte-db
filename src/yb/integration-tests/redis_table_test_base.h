@@ -17,14 +17,18 @@ class RedisTableTestBase : public YBTableTestBase {
   std::string table_name() override;
 
   void CreateTable() override;
-  void PutKeyValue(client::YBSession* session, std::string key, std::string value) override;
-  void GetKeyValue(std::string key, std::string value);
+  void PutKeyValue(std::string key, std::string value) override;
+  void PutKeyValue(std::string key, std::string value, int64_t ttl);
+  void GetKeyValue(const std::string& key, const std::string& value, bool expect_not_found = false);
 
   void RedisSimpleSetCommands();
   void RedisSimpleGetCommands();
+
+  void RedisTtlSetCommands();
+  void RedisTtlGetCommands();
 };
 
 }  // namespace integration_tests
 }  // namespace yb
 
-#endif  // YB_INTEGRATION_TESTS_REDIS_TABLE_TEST_BASE_H
+#endif  // YB_INTEGRATION_TESTS_REDIS_TABLE_TEST_BASE_H_
