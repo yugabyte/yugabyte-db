@@ -63,7 +63,7 @@ add_library(${PROJECT} SHARED ${SOURCES})
 target_link_libraries(${PROJECT} pthread)
 set_target_properties(${PROJECT}
                       PROPERTIES
-                      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/target")
+                      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 IF (CPP_REDIS_READ_SIZE)
 set_target_properties(${PROJECT}
