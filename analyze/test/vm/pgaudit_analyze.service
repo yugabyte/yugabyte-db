@@ -1,6 +1,0 @@
-[Unit]
-Description=Daemon to process pgaudit log entries
-
-[Service]
-ExecStart=/pgaudit/analyze/bin/pgaudit_analyze /home/vagrant/test/pg_log
-Type=forking
