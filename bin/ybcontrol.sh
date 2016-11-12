@@ -13,6 +13,14 @@ set_cmd() {
   command="$1"
 }
 
+check_if_tar_specified() {
+  if [ -z "$tar_prefix" ]; then
+    echo "Please specify --tar_prefix option";
+    exit 1
+  fi
+}
+
+
 print_help() {
   cat <<EOT
 Usage: ${0##*/} <options> <command>
@@ -77,7 +85,7 @@ while [ $# -gt 0 ]; do
       repo="2"
       shift
     ;;
-    masters_create|masters_stop|masters_clean|masters_rolling_restart|masters_rolling_upgrade)
+    masters_create|masters_start|masters_stop|masters_clean|masters_rolling_restart|masters_rolling_upgrade)
       set_cmd "$1"
       shift
     ;;
@@ -168,6 +176,7 @@ case "$command" in
       ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
       sleep 1
       if [[ $command == "masters_rolling_upgrade" ]]; then
+        check_if_tar_specified
         ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte rm /opt/yugabyte/master"
         ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte ln -s /opt/yugabyte/$tar_prefix /opt/yugabyte/master"
       fi
@@ -210,6 +219,7 @@ case "$command" in
       ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh stop
       sleep 1
       if [[ $command == "tservers_rolling_upgrade" ]]; then
+        check_if_tar_specified
         ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte rm /opt/yugabyte/tserver"
         ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte ln -s /opt/yugabyte/$tar_prefix /opt/yugabyte/tserver"
       fi
@@ -220,6 +230,7 @@ case "$command" in
     done
   ;;
   copy_tar)
+    check_if_tar_specified
     echo "Copying $tar_prefix to all nodes, and untaring..."
     for ip in $all_servers; do
       echo $ip
