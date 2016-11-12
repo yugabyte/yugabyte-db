@@ -10,7 +10,8 @@ namespace rpc {
 
 enum class ConnectionType : int16_t {
   YB,
-  REDIS
+  REDIS,
+  CQL
 };
 }  // rpc
 }  // yb

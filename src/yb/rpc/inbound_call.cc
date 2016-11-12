@@ -373,5 +373,83 @@ void RedisInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
   slices->push_back(Slice(response_msg_buf_));
 }
 
+CQLInboundCall::CQLInboundCall(CQLConnection* conn) : conn_(conn) {}
+
+Status CQLInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
+  TRACE_EVENT_FLOW_BEGIN0("rpc", "CQLInboundCall", this);
+  TRACE_EVENT0("rpc", "CQLInboundCall::ParseFrom");
+
+  // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
+  serialized_request_ = transfer->data();
+
+  // Fill the service name method name to transfer the call to. The method name is for debug
+  // tracing only. Inside CQLServiceImpl::Handle, we rely on the opcode to dispatch the execution.
+  RemoteMethodPB remote_method_pb;
+  remote_method_pb.set_service_name("yb.cqlserver.CQLServerService");
+  remote_method_pb.set_method_name("ExecuteRequest");
+  remote_method_.FromPB(remote_method_pb);
+
+  // Retain the buffer that we have a view into.
+  transfer_.swap(transfer);
+  return Status::OK();
+}
+
+void CQLInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
+  TRACE_EVENT0("rpc", "CQLInboundCall::SerializeResponseTo");
+  CHECK_GT(response_msg_buf_.size(), 0);
+  slices->push_back(Slice(response_msg_buf_));
+}
+
+Status CQLInboundCall::SerializeResponseBuffer(const MessageLite& response,
+                                               bool is_success) {
+  if (!is_success) {
+    const ErrorStatusPB& error_status = static_cast<const ErrorStatusPB&>(response);
+    response_msg_buf_.append(EncodeAsError(error_status.message()));
+    return Status::OK();
+  }
+
+  CHECK(!response_msg_buf_.empty()) << "CQL response is absent.";
+  return Status::OK();
+}
+
+void CQLInboundCall::QueueResponseToConnection() {
+  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+}
+
+void CQLInboundCall::LogTrace() const {
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
+    trace_->Dump(&LOG(INFO), true);
+  }
+}
+
+string CQLInboundCall::ToString() const {
+  return Substitute("CQL Call $0 from $1", remote_method_.ToString(), conn_->remote().ToString());
+}
+
+void CQLInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) {
+  if (req.include_traces() && trace_) {
+    resp->set_trace_buffer(trace_->DumpToString(true));
+  }
+  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
+                               .ToMicroseconds());
+}
+
+MonoTime CQLInboundCall::GetClientDeadline() const {
+  // TODO(Robert) - fill in CQL timeout
+  return MonoTime::Max();
+}
+
+scoped_refptr<Connection> CQLInboundCall::get_connection() {
+  return conn_;
+}
+
+const scoped_refptr<Connection> CQLInboundCall::get_connection() const {
+  return conn_;
+}
+
 }  // namespace rpc
 }  // namespace yb

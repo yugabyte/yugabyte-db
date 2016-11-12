@@ -17,9 +17,9 @@
 #ifndef YB_RPC_INBOUND_CALL_H_
 #define YB_RPC_INBOUND_CALL_H_
 
-#include <glog/logging.h>
 #include <string>
 #include <vector>
+#include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
@@ -51,6 +51,7 @@ namespace rpc {
 class Connection;
 class YBConnection;
 class RedisConnection;
+class CQLConnection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 class RpcSidecar;
@@ -296,6 +297,44 @@ class RedisInboundCall : public InboundCall {
  private:
   // The connection on which this inbound call arrived.
   scoped_refptr<RedisConnection> conn_;
+  faststring response_msg_buf_;
+};
+
+class CQLInboundCall : public InboundCall {
+ public:
+  explicit CQLInboundCall(CQLConnection* conn);
+
+  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+
+  // Serialize the response packet for the finished call.
+  // The resulting slices refer to memory in this object.
+  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
+
+  // Serialize a response message for either success or failure. If it is a success,
+  // 'response' should be the user-defined response type for the call. If it is a
+  // failure, 'response' should be an ErrorStatusPB instance.
+  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                 bool is_success) override;
+
+  virtual void QueueResponseToConnection() override;
+  virtual void LogTrace() const override;
+  virtual std::string ToString() const override;
+  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+
+  virtual MonoTime GetClientDeadline() const override;
+
+  // Return the response message buffer.
+  faststring& response_msg_buf() {
+    return response_msg_buf_;
+  }
+
+ protected:
+  scoped_refptr<Connection> get_connection() override;
+  const scoped_refptr<Connection> get_connection() const override;
+
+ private:
+  // The connection on which this inbound call arrived.
+  scoped_refptr<CQLConnection> conn_;
   faststring response_msg_buf_;
 };
 

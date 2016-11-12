@@ -23,12 +23,12 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <ev++.h>
 
 #include <functional>
 #include <mutex>
 #include <string>
 
-#include <ev++.h>
 #include <glog/logging.h>
 
 #include <boost/intrusive/list.hpp>
@@ -93,13 +93,19 @@ Connection* MakeNewConnection(ConnectionType connection_type,
                               remote,
                               socket,
                               direction);
-      break;
+
     case ConnectionType::REDIS:
       return new RedisConnection(reactor_thread,
                                  remote,
                                  socket,
                                  direction);
-      break;
+
+    case ConnectionType::CQL:
+      return new CQLConnection(reactor_thread,
+                               remote,
+                               socket,
+                               direction);
+
     default:
       LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
   }

@@ -343,6 +343,25 @@ class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
   RedisConnection* conn_;
 };
 
+class CQLResponseTransferCallbacks : public ResponseTransferCallbacks {
+ public:
+  CQLResponseTransferCallbacks(gscoped_ptr<CQLInboundCall> call, CQLConnection* conn)
+      : call_(call.Pass()), conn_(conn) {}
+
+  ~CQLResponseTransferCallbacks() {
+    conn_->FinishedHandlingACall();
+  }
+
+ protected:
+  InboundCall* call() override {
+    return call_.get();
+  }
+
+ private:
+  gscoped_ptr<CQLInboundCall> call_;
+  CQLConnection* conn_;
+};
+
 // Reactor task which puts a transfer on the outbound transfer queue.
 class QueueTransferTask : public ReactorTask {
  public:
@@ -713,6 +732,58 @@ void RedisConnection::FinishedHandlingACall() {
   // If the next client call has already been received by the server. Check if it is
   // ready to be handled.
   processing_call_ = false;
+  if (inbound_ && inbound_->TransferFinished()) {
+    HandleFinishedTransfer();
+  }
+}
+
+CQLConnection::CQLConnection(ReactorThread* reactor_thread,
+                             Sockaddr remote,
+                             int socket,
+                             Direction direction)
+    : Connection(reactor_thread, remote, socket, direction) {}
+
+void CQLConnection::RunNegotiation(const MonoTime& deadline) {
+  Negotiation::CQLNegotiation(this, deadline);
+}
+
+void CQLConnection::CreateInboundTransfer() {
+  return inbound_.reset(new CQLInboundTransfer());
+}
+
+AbstractInboundTransfer *CQLConnection::inbound() const {
+  return inbound_.get();
+}
+
+TransferCallbacks* CQLConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
+  gscoped_ptr<CQLInboundCall> cql_call(down_cast<CQLInboundCall *>(call.release()));
+  return new CQLResponseTransferCallbacks(cql_call.Pass(), this);
+}
+
+void CQLConnection::HandleFinishedTransfer() {
+  CHECK(direction_ == SERVER) << "Invalid direction for CQL: " << direction_;
+  HandleIncomingCall(inbound_.PassAs<AbstractInboundTransfer>());
+}
+
+void CQLConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
+  DCHECK(reactor_thread_->IsCurrentThread());
+
+  gscoped_ptr<CQLInboundCall> call(new CQLInboundCall(this));
+
+  Status s = call->ParseFrom(transfer.Pass());
+  if (!s.ok()) {
+    LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
+    // TODO: shutdown? probably, since any future stuff on this socket will be
+    // "unsynchronized"
+    return;
+  }
+
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
+}
+
+void CQLConnection::FinishedHandlingACall() {
+  // If the next client call has already been received by the server. Check if it is
+  // ready to be handled.
   if (inbound_ && inbound_->TransferFinished()) {
     HandleFinishedTransfer();
   }

@@ -121,6 +121,12 @@ message ResponseHeader {
 
 }
 
+// An emtpy message. Since CQL RPC server bypasses protobuf to handle requests and responses but
+// RPC context expects the request and response messages to be present, we set up an empty message
+// inside RPC context to satisfy it.
+message EmptyMessagePB {
+}
+
 // Sent as response when is_error == true.
 message ErrorStatusPB {
 

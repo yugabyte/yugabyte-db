@@ -63,7 +63,9 @@ class RpcContext {
   // and is not a public API.
   RpcContext(InboundCall *call,
              const google::protobuf::Message *request_pb,
-             google::protobuf::Message *response_pb,
+             const google::protobuf::Message *response_pb,
+             RpcMethodMetrics metrics);
+  RpcContext(InboundCall *call,
              RpcMethodMetrics metrics);
 
   ~RpcContext();
@@ -160,7 +162,7 @@ class RpcContext {
   std::string requestor_string() const;
 
   const google::protobuf::Message *request_pb() const { return request_pb_.get(); }
-  google::protobuf::Message *response_pb() const { return response_pb_.get(); }
+  const google::protobuf::Message *response_pb() const { return response_pb_.get(); }
 
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
@@ -177,11 +179,11 @@ class RpcContext {
 
  private:
   InboundCall* const call_;
-  const gscoped_ptr<const google::protobuf::Message> request_pb_;
-  const gscoped_ptr<google::protobuf::Message> response_pb_;
+  const std::shared_ptr<const google::protobuf::Message> request_pb_;
+  const std::shared_ptr<const google::protobuf::Message> response_pb_;
   RpcMethodMetrics metrics_;
 };
 
 } // namespace rpc
 } // namespace yb
-#endif
+#endif // YB_RPC_RPC_CONTEXT_H

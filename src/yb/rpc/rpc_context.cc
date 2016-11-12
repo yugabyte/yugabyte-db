@@ -36,6 +36,8 @@ using google::protobuf::Message;
 namespace yb {
 namespace rpc {
 
+using std::shared_ptr;
+
 namespace {
 
 // Wrapper for a protobuf message which lazily converts to JSON when
@@ -69,11 +71,34 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 
 RpcContext::RpcContext(InboundCall *call,
                        const google::protobuf::Message *request_pb,
-                       google::protobuf::Message *response_pb,
+                       const google::protobuf::Message *response_pb,
                        RpcMethodMetrics metrics)
   : call_(CHECK_NOTNULL(call)),
     request_pb_(request_pb),
     response_pb_(response_pb),
+    metrics_(metrics) {
+  VLOG(4) << call_->remote_method().service_name()
+          << ": Received RPC request for " << call_->ToString()
+          << std::endl
+          << " request_pb_ : "
+          << (request_pb_.get() != nullptr ? request_pb_->DebugString() : "nullptr")
+          << std::endl
+          << " response_pb_ : "
+          << (response_pb_.get() != nullptr ? response_pb_->DebugString() : "nullptr")
+          << std::endl;
+  TRACE_EVENT_ASYNC_BEGIN2("rpc_call", "RPC", this,
+                           "call", call_->ToString(),
+                           "request", TracePb(*request_pb_));
+}
+
+static const shared_ptr<const Message> EMPTY_MESSAGE =
+    shared_ptr<const Message>(new EmptyMessagePB());
+
+RpcContext::RpcContext(InboundCall *call,
+                       RpcMethodMetrics metrics)
+  : call_(CHECK_NOTNULL(call)),
+    request_pb_(EMPTY_MESSAGE),
+    response_pb_(EMPTY_MESSAGE),
     metrics_(metrics) {
   VLOG(4) << call_->remote_method().service_name()
           << ": Received RPC request for " << call_->ToString()
@@ -185,7 +210,6 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 #undef MY_ERROR
 #undef MY_FATAL
 }
-
 
 }  // namespace rpc
 }  // namespace yb

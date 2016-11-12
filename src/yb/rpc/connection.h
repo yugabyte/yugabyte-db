@@ -19,7 +19,6 @@
 #define YB_RPC_CONNECTION_H_
 
 #include <stdint.h>
-#include <boost/intrusive/list.hpp>
 #include <ev++.h>
 #include <atomic>
 #include <memory>
@@ -28,6 +27,8 @@
 #include <limits>
 #include <string>
 #include <vector>
+
+#include <boost/intrusive/list.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -168,6 +169,8 @@ class Connection : public RefCountedThreadSafe<Connection> {
   friend class YBResponseTransferCallbacks;
 
   friend class RedisResponseTransferCallbacks;
+
+  friend class CQLResponseTransferCallbacks;
 
   // A call which has been fully sent to the server, which we're waiting for
   // the server to process. This is used on the client side only.
@@ -320,6 +323,34 @@ class RedisConnection : public Connection {
   // instead of atomic. But, we are just being safe here. There is no reason
   // why the ReadHandler and WriteHandler should be on the same thread always.
   std::atomic<bool> processing_call_;
+
+  void FinishedHandlingACall();
+};
+
+class CQLConnection : public Connection {
+ public:
+  CQLConnection(ReactorThread* reactor_thread,
+                Sockaddr remote,
+                int socket,
+                Direction direction);
+
+  virtual void RunNegotiation(const MonoTime& deadline) override;
+
+ protected:
+  virtual void CreateInboundTransfer() override;
+
+  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
+
+  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+
+  virtual void HandleFinishedTransfer() override;
+
+  AbstractInboundTransfer* inbound() const override;
+
+ private:
+  friend class CQLResponseTransferCallbacks;
+
+  gscoped_ptr<CQLInboundTransfer> inbound_;
 
   void FinishedHandlingACall();
 };

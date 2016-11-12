@@ -18,17 +18,19 @@
 #ifndef YB_RPC_TRANSFER_H_
 #define YB_RPC_TRANSFER_H_
 
-#include <boost/intrusive/list.hpp>
-#include <boost/function.hpp>
-#include <boost/utility.hpp>
-#include <gflags/gflags.h>
 #include <stdint.h>
 #include <string>
 #include <vector>
 
+#include <boost/intrusive/list.hpp>
+#include <boost/function.hpp>
+#include <boost/utility.hpp>
+#include <gflags/gflags.h>
+
 #include "redis/src/sds.h"
 
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/cqlserver/cql_message.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/rpc/constants.h"
@@ -188,6 +190,33 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   DISALLOW_COPY_AND_ASSIGN(RedisInboundTransfer);
 };
 
+
+class CQLInboundTransfer : public AbstractInboundTransfer {
+ public:
+  CQLInboundTransfer();
+
+  // Read from the socket into our buffer.
+  Status ReceiveBuffer(Socket& socket) override;  // NOLINT.
+
+  // Return true if any bytes have yet been received.
+  bool TransferStarted() const override {
+    return cur_offset_ != 0;
+  }
+
+  // Return true if the entire transfer has been received.
+  bool TransferFinished() const override {
+    return cur_offset_ == total_length_;
+  }
+
+  // Return a string indicating the status of this transfer (number of bytes received, etc)
+  // suitable for logging.
+  std::string StatusAsString() const override;
+
+ private:
+  int32_t total_length_ = cqlserver::CQLMessage::kMessageHeaderLength;
+
+  DISALLOW_COPY_AND_ASSIGN(CQLInboundTransfer);
+};
 
 // When the connection wants to send data, it creates an OutboundTransfer object
 // to encompass it. This sits on a queue within the Connection, so that each time

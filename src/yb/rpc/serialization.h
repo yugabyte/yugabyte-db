@@ -73,8 +73,8 @@ Status SerializeHeader(const google::protobuf::MessageLite& header,
 Status ParseYBMessage(const Slice& buf,
                       google::protobuf::MessageLite* parsed_header,
                       Slice* parsed_main_message);
-Status ParseRedisMessage(const Slice& buf,
-                         Slice* parsed_main_message);
+Status ParseRedisMessage(const Slice& buf, Slice* parsed_main_message);
+Status ParseCQLMessage(const Slice& buf, Slice* parsed_main_message);
 
 // Serialize the RPC connection header (magic number + flags).
 // buf must have 7 bytes available (kMagicNumberLength + kHeaderFlagsLength).

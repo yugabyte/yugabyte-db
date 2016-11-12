@@ -17,9 +17,9 @@
 
 #include "yb/rpc/serialization.h"
 
-#include <glog/logging.h>
 #include <google/protobuf/message_lite.h>
 #include <google/protobuf/io/coded_stream.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/stringprintf.h"
@@ -160,9 +160,14 @@ Status ParseYBMessage(const Slice& buf,
   return Status::OK();
 }
 
-Status ParseRedisMessage(const Slice& buf,
-                         Slice* parsed_main_message) {
-  *parsed_main_message =  buf;
+Status ParseRedisMessage(const Slice& buf, Slice* parsed_main_message) {
+  *parsed_main_message = buf;
+  return Status::OK();
+}
+
+Status ParseCQLMessage(const Slice& buf, Slice* parsed_main_message) {
+  // Parsing of CQL message is deferred to CQLServiceImpl::Handle
+  *parsed_main_message = buf;
   return Status::OK();
 }
 

@@ -36,6 +36,7 @@ namespace rpc {
 
 using std::ostringstream;
 using std::string;
+using cqlserver::CQLMessage;
 
 #define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \
   if (PREDICT_FALSE(!status.ok())) {                            \
@@ -267,6 +268,66 @@ Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
   // Check if we have read the whole command.
   CheckReadCompletely();
   return Status::OK();
+}
+
+CQLInboundTransfer::CQLInboundTransfer() {
+  buf_.resize(total_length_);
+}
+
+Status CQLInboundTransfer::ReceiveBuffer(Socket& socket) {
+
+  if (cur_offset_ < CQLMessage::kMessageHeaderLength) {
+    // receive the fixed header
+    const int32_t rem = CQLMessage::kMessageHeaderLength - cur_offset_;
+    int32_t nread = 0;
+    const Status status = socket.Recv(&buf_[cur_offset_], rem, &nread);
+    RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status);
+    if (nread == 0) {
+      return Status::OK();
+    }
+    DCHECK_GE(nread, 0);
+    cur_offset_ += nread;
+    if (cur_offset_ < CQLMessage::kMessageHeaderLength) {
+      // If we still don't have the full header, we can't continue reading yet.
+      return Status::OK();
+    }
+    // Since we only read 'rem' bytes above, we should now have exactly the header in our buffer
+    // and no more.
+    DCHECK_EQ(cur_offset_, CQLMessage::kMessageHeaderLength);
+
+    // Extract the body length field in buf_[5..8] and update the total length of the frame.
+    total_length_ = CQLMessage::kMessageHeaderLength +
+        NetworkByteOrder::Load32(&buf_[CQLMessage::kHeaderPosLength]);
+    if (total_length_ > CQLMessage::kMaxMessageLength) {
+      return STATUS(NetworkError, StringPrintf("the frame had a length of %d, but we only support "
+          "messages up to %d bytes long.", total_length_, CQLMessage::kMaxMessageLength));
+    }
+    if (total_length_ < CQLMessage::kMessageHeaderLength) {
+      // total_length_ can become less than kMessageHeaderLength if arithmetic overflow occurs.
+      return STATUS(NetworkError, StringPrintf("the frame had a length of %d, which is invalid",
+                                               total_length_));
+    }
+    buf_.resize(total_length_);
+
+    // Fall through to receive the message body, which is likely to be already available on the
+    // socket.
+  }
+
+  // receive message body
+  int32_t nread = 0;
+  const int32_t rem = total_length_ - cur_offset_;
+  if (rem > 0) {
+    Status status = socket.Recv(&buf_[cur_offset_], rem, &nread);
+    RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status);
+    cur_offset_ += nread;
+  }
+  LOG(INFO) << "CQLInboundTransfer::ReceiveBuffer: " << cur_offset_ << " bytes read";
+
+  return Status::OK();
+}
+
+string CQLInboundTransfer::StatusAsString() const {
+  return strings::Substitute("$0: $1 bytes received", this, cur_offset_);
 }
 
 OutboundTransfer::OutboundTransfer(const std::vector<Slice>& payload,

@@ -125,8 +125,8 @@ static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline)
     if (have_timeout) {
       now = MonoTime::Now(MonoTime::FINE);
       remaining = deadline.GetDeltaSince(now);
-      DVLOG(4) << "Client waiting to connect for negotiation, time remaining until timeout deadline: "
-               << remaining.ToString();
+      DVLOG(4) << "Client waiting to connect for negotiation, "
+               << "time remaining until timeout deadline: " << remaining.ToString();
       if (PREDICT_FALSE(remaining.ToNanoseconds() <= 0)) {
         return STATUS(TimedOut, "Timeout exceeded waiting to connect");
       }
@@ -225,6 +225,14 @@ static Status DoRedisServerNegotiation(Connection* conn,
   return Status::OK();
 }
 
+static Status DoCQLNegotiation(Connection* conn,
+                               const MonoTime& deadline) {
+  // TODO(robert) - check if options are meaningful
+  RETURN_NOT_OK(conn->SetNonBlocking(false));
+  RETURN_NOT_OK(DisableSocketTimeouts(conn));
+  return Status::OK();
+}
+
 void Negotiation::RunNegotiation(const scoped_refptr<Connection>& conn,
                                  const MonoTime& deadline) {
   conn->RunNegotiation(deadline);
@@ -232,8 +240,14 @@ void Negotiation::RunNegotiation(const scoped_refptr<Connection>& conn,
 
 void Negotiation::RedisNegotiation(const scoped_refptr<RedisConnection>& conn,
                                    const MonoTime& deadline) {
-  CHECK(conn->direction() == Connection::SERVER);
+  CHECK_EQ(conn->direction(), Connection::SERVER);
   conn->CompleteNegotiation(DoRedisServerNegotiation(conn.get(), deadline));
+}
+
+void Negotiation::CQLNegotiation(const scoped_refptr<CQLConnection>& conn,
+                                 const MonoTime& deadline) {
+  CHECK_EQ(conn->direction(), Connection::SERVER);
+  conn->CompleteNegotiation(DoCQLNegotiation(conn.get(), deadline));
 }
 
 void Negotiation::YBNegotiation(const scoped_refptr<YBConnection>& conn,

@@ -26,6 +26,7 @@ namespace rpc {
 class Connection;
 class YBConnection;
 class RedisConnection;
+class CQLConnection;
 
 class Negotiation {
  public:
@@ -35,6 +36,8 @@ class Negotiation {
                             const MonoTime& deadline);
   static void RedisNegotiation(const scoped_refptr<RedisConnection>& conn,
                                const MonoTime& deadline);
+  static void CQLNegotiation(const scoped_refptr<CQLConnection>& conn,
+                             const MonoTime& deadline);
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(Negotiation);
 };
