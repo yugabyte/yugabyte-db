@@ -3,12 +3,9 @@
  *
  * An audit logging extension for PostgreSQL. Provides detailed logging classes,
  * object level logging, and fully-qualified object names for all DML and DDL
- * statements where possible (See pgaudit.sgml for details).
+ * statements where possible (See README.md for details).
  *
  * Copyright (c) 2014-2015, PostgreSQL Global Development Group
- *
- * IDENTIFICATION
- *          contrib/pgaudit/pgaudit.c
  *------------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -204,7 +201,6 @@ char *auditRole = NULL;
 #define COMMAND_DROP_ROLE           "DROP ROLE"
 #define COMMAND_GRANT               "GRANT"
 #define COMMAND_REVOKE              "REVOKE"
-
 
 /*
  * String constants used for redacting text after the password token in
@@ -482,7 +478,7 @@ log_audit_event(AuditEventStackItem *stackItem)
     /* Classify the statement using log stmt level and the command tag */
     switch (stackItem->auditEvent.logStmtLevel)
     {
-            /* All mods go in WRITE class, except EXECUTE */
+        /* All mods go in WRITE class, except EXECUTE */
         case LOGSTMT_MOD:
             className = CLASS_WRITE;
             class = LOG_WRITE;
@@ -499,7 +495,7 @@ log_audit_event(AuditEventStackItem *stackItem)
             }
             break;
 
-            /* These are DDL, unless they are ROLE */
+        /* These are DDL, unless they are ROLE */
         case LOGSTMT_DDL:
             className = CLASS_DDL;
             class = LOG_DDL;
@@ -565,11 +561,11 @@ log_audit_event(AuditEventStackItem *stackItem)
                     class = LOG_ROLE;
                     break;
 
-                    /*
-                     * Rename and Drop are general and therefore we have to do
-                     * an additional check against the command string to see
-                     * if they are role or regular DDL.
-                     */
+                /*
+                 * Rename and Drop are general and therefore we have to do
+                 * an additional check against the command string to see
+                 * if they are role or regular DDL.
+                 */
                 case T_RenameStmt:
                 case T_DropStmt:
                     if (pg_strcasecmp(stackItem->auditEvent.command,
@@ -587,7 +583,7 @@ log_audit_event(AuditEventStackItem *stackItem)
             }
             break;
 
-            /* Classify the rest */
+        /* Classify the rest */
         case LOGSTMT_ALL:
             switch (stackItem->auditEvent.commandTag)
             {
@@ -615,14 +611,13 @@ log_audit_event(AuditEventStackItem *stackItem)
             break;
     }
 
-    /*----------
+    /*
      * Only log the statement if:
      *
-     * 1. If object was selected for audit logging (granted), or
+     * 1. The object was selected for audit logging (granted), or
      * 2. The statement belongs to a class that is being logged
      *
      * If neither of these is true, return.
-     *----------
      */
     if (!stackItem->auditEvent.granted && !(auditLogBitmap & class))
         return;
@@ -814,7 +809,7 @@ audit_on_acl(Datum aclDatum,
         }
     }
 
-    /* if we have a detoasted copy, free it */
+    /* If we have a detoasted copy, free it */
     if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
         pfree(acl);
 
@@ -1920,21 +1915,21 @@ _PG_init(void)
         GUC_NOT_IN_SAMPLE,
         NULL, NULL, NULL);
 
-        /* Define pgaudit.role */
-        DefineCustomStringVariable(
-            "pgaudit.role",
+    /* Define pgaudit.role */
+    DefineCustomStringVariable(
+        "pgaudit.role",
 
-            "Specifies the master role to use for object audit logging.  Muliple "
-            "audit roles can be defined by granting them to the master role. This "
-            "allows multiple groups to be in charge of different aspects of audit "
-            "logging.",
+        "Specifies the master role to use for object audit logging.  Muliple "
+        "audit roles can be defined by granting them to the master role. This "
+        "allows multiple groups to be in charge of different aspects of audit "
+        "logging.",
 
-            NULL,
-            &auditRole,
-            "",
-            PGC_SUSET,
-            GUC_NOT_IN_SAMPLE,
-            NULL, NULL, NULL);
+        NULL,
+        &auditRole,
+        "",
+        PGC_SUSET,
+        GUC_NOT_IN_SAMPLE,
+        NULL, NULL, NULL);
 
     /*
      * Install our hook functions after saving the existing pointers to
