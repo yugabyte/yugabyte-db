@@ -118,6 +118,12 @@ TAG_FLAG(after_stepdown_delay_election_multiplier, hidden);
 
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
+DEFINE_int32(inject_delay_leader_change_role_append_secs, 0,
+              "Amount of time to delay leader from sending replicate of change role. To be used "
+              "for unit testing purposes only.");
+TAG_FLAG(inject_delay_leader_change_role_append_secs, unsafe);
+TAG_FLAG(inject_delay_leader_change_role_append_secs, hidden);
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -482,16 +488,24 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     return Status::OK();
   }
 
-  // The leader needs to be ready to perform a step down.
+  // The leader needs to be ready to perform a step down. There should be no PRE_VOTER in both
+  // active and committed configs - ENG-557.
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+  const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
   int servers_in_transition = CountServersInTransition(active_config);
-  if (servers_in_transition != 0) {
-    LOG(INFO) << "Step down found " << servers_in_transition << " peers in transition";
+  int committed_servers_in_transition = CountServersInTransition(committed_config);
+  LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
+                          servers_in_transition, committed_servers_in_transition);
+  if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
+    string err_msg = Substitute("Leader not ready to step down as there are $0 active config peers"
+                                " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+                                servers_in_transition,
+                                committed_servers_in_transition,
+                                active_config.ShortDebugString(),
+                                committed_config.ShortDebugString());
+    LOG(INFO) << err_msg;
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
-    StatusToPB(STATUS(IllegalState,
-                      Substitute("Leader not ready as there are $0 peers in transition",
-                                 servers_in_transition)),
-               resp->mutable_error()->mutable_status());
+    StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
     // We return OK so that the tablet service won't overwrite the error code.
     return Status::OK();
   }
@@ -1683,7 +1697,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         }
         VLOG(3) << "config before CHANGE_ROLE: " << new_config.DebugString();
 
-        if(!GetMutableRaftConfigMember(new_config, server_uuid, &new_peer).ok()) {
+        if (!GetMutableRaftConfigMember(new_config, server_uuid, &new_peer).ok()) {
           return STATUS(NotFound,
             Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                        server_uuid, new_config.ShortDebugString()));
@@ -1725,15 +1739,18 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                                            *cc_req,
                                            (type == REMOVE_SERVER) ? server_uuid : "");
 
-    RETURN_NOT_OK(ReplicateConfigChangeUnlocked(
-      make_scoped_refptr(new RefCountedReplicate(cc_replicate)),
-      new_config,
-      Bind(&RaftConsensus::MarkDirtyOnSuccess,
-        Unretained(this),
-        context,
-        client_cb)));
+    RETURN_NOT_OK(
+        ReplicateConfigChangeUnlocked(make_scoped_refptr(new RefCountedReplicate(cc_replicate)),
+                                      new_config,
+                                      type,
+                                      Bind(&RaftConsensus::MarkDirtyOnSuccess,
+                                           Unretained(this),
+                                           context,
+                                           client_cb)));
   }
+
   peer_manager_->SignalRequest();
+
   return Status::OK();
 }
 
@@ -1969,15 +1986,25 @@ void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
 
 Status RaftConsensus::ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
                                                     const RaftConfigPB& new_config,
+                                                    ChangeConfigType type,
                                                     const StatusCallback& client_cb) {
   scoped_refptr<ConsensusRound> round(new ConsensusRound(this, replicate_ref));
   round->SetConsensusReplicatedCallback(Bind(&RaftConsensus::NonTxRoundReplicationFinished,
                                              Unretained(this),
                                              Unretained(round.get()),
                                              client_cb));
+  LOG(INFO) << "Setting replicate pending config " << new_config.ShortDebugString()
+            << ", type = " << ChangeConfigType_Name(type);
+
+  RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config));
+
+  if (type == CHANGE_ROLE && PREDICT_FALSE(FLAGS_inject_delay_leader_change_role_append_secs)) {
+    LOG(INFO) << "Adding change role sleep for "
+              << FLAGS_inject_delay_leader_change_role_append_secs << " secs.";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_inject_delay_leader_change_role_append_secs));
+  }
 
   // Set as pending.
-  RETURN_NOT_OK(state_->SetPendingConfigUnlocked(new_config));
   RETURN_NOT_OK(RefreshConsensusQueueAndPeersUnlocked());
   CHECK_OK(AppendNewRoundToQueueUnlocked(round));
   return Status::OK();

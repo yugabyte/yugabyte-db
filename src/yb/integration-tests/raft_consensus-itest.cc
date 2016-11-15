@@ -1916,8 +1916,8 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Now add server 4 back as a learner to the peers.
   LOG(INFO) << "Adding back Peer " << final_leader->uuid() << " and expecting timeout...";
-  Status s = AddServer(initial_leader, tablet_id_, final_leader, RaftPeerPB::PRE_VOTER, boost::none,
-                       MonoDelta::FromSeconds(10));
+  ASSERT_OK(AddServer(initial_leader, tablet_id_, final_leader, RaftPeerPB::PRE_VOTER, boost::none,
+                       MonoDelta::FromSeconds(10)));
 
   // Pause tablet servers 1 through 3, so they won't see the operation to change server 4 from
   // learner to voter which will happen automatically once remote bootstrap for server 4 is
@@ -1945,8 +1945,13 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 
   // Now that TS 4 is electable (and pending), have TS 0 step down.
   LOG(INFO) << "Forcing Peer " << initial_leader->uuid() << " to step down...";
-  ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
-
+  Status status = LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10));
+  // We allow illegal state for now as the leader step down does not succeed in this case when it
+  // has a pending config. Peer 4 will get elected though as it has new term and others
+  // in quorum to vote.
+  if (!status.IsIllegalState()) {
+    ASSERT_OK(status);
+  }
   // Resume TS 1 so we have a majority of 3 to elect a new leader.
   LOG(INFO) << "Resuming Peer " << tservers[1]->uuid() << " ...";
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Resume());

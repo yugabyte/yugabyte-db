@@ -607,8 +607,7 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
       const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
       if (new_config.opid_index() > committed_config.opid_index()) {
         LOG_WITH_PREFIX_UNLOCKED(INFO) << "Committing config change with OpId "
-            << current_id << ". "
-            << "Old config: { " << old_config.ShortDebugString() << " }. "
+            << current_id << ". Old config: { " << old_config.ShortDebugString() << " }. "
             << "New config: { " << new_config.ShortDebugString() << " }";
         CHECK_OK(SetCommittedConfigUnlocked(new_config));
       } else {

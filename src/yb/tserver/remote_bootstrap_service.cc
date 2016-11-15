@@ -367,13 +367,14 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
     }
   } else {
     LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()
-      << " with peer " << session->requestor_uuid() << " failed";
+               << " with peer " << session->requestor_uuid() << " failed. session_succeeded = "
+               << session_succeeded;
   }
 
   // Remove the session from the map.
   // It will get destroyed once there are no outstanding refs.
   LOG(INFO) << "Ending remote bootstrap session " << session_id << " on tablet "
-    << session->tablet_id() << " with peer " << session->requestor_uuid();
+            << session->tablet_id() << " with peer " << session->requestor_uuid();
   CHECK_EQ(1, sessions_.erase(session_id));
   CHECK_EQ(1, session_expirations_.erase(session_id));
 

@@ -232,7 +232,8 @@ void ConsensusMetadata::UpdateActiveRole() {
   active_role_ = GetConsensusRole(peer_uuid_, cstate);
   LOG_WITH_PREFIX(INFO) << "Updating active role from " << RaftPeerPB::Role_Name(old_role)
                         << " to " << RaftPeerPB::Role_Name(active_role_)
-                        << ". Consensus state: " << cstate.ShortDebugString();
+                        << ". Consensus state: " << cstate.ShortDebugString()
+                        << ", has_pending_config = " << has_pending_config_;
 }
 
 } // namespace consensus

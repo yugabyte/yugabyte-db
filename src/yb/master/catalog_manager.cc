@@ -3515,6 +3515,13 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
     }
   }
 
+  std::ostringstream out;
+  out << Substitute("Initial tserver uuids for tablet $0: ", tablet->tablet_id());
+  for (const RaftPeerPB& peer : config->peers()) {
+    out << peer.permanent_uuid() << " ";
+  }
+  LOG(INFO) << out.str();
+
   return Status::OK();
 }
 
@@ -4418,7 +4425,7 @@ void TableInfo::RemoveTask(MonitoredTask* task) {
 // from the pending list.
 void TableInfo::AbortTasks() {
   std::unordered_set<MonitoredTask *> erase_tasks;
-  std::lock_guard <simple_spinlock> l(lock_);
+  std::lock_guard<simple_spinlock> l(lock_);
   for (MonitoredTask* task : pending_tasks_) {
     if (task->state() == MonitoredTask::kStateWaiting) {
       erase_tasks.insert(task);

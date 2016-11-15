@@ -221,9 +221,9 @@ class RaftConsensus : public Consensus,
 
   // Replicate (as leader) a pre-validated config change. This includes
   // updating the peers and setting the new_configuration as pending.
-  // The old_configuration must be the currently-committed configuration.
   Status ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
                                        const RaftConfigPB& new_config,
+                                       ChangeConfigType type,
                                        const StatusCallback& client_cb);
 
   // Update the peers and queue to be consistent with a new active configuration.

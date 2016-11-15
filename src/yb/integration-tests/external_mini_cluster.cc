@@ -421,7 +421,7 @@ Status ExternalMiniCluster::StepDownMasterLeader(TabletServerErrorPB::Code* erro
   std::unique_ptr<ConsensusServiceProxy> proxy(new ConsensusServiceProxy(messenger_, host_port));
   RETURN_NOT_OK(proxy->LeaderStepDown(lsd_req, &lsd_resp, &lsd_rpc));
   if (lsd_resp.has_error()) {
-    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << "received error "
+    LOG(ERROR) << "LeaderStepDown for " << leader_uuid << " received error "
                << lsd_resp.error().ShortDebugString();
     *error_code = lsd_resp.error().code();
     return StatusFromPB(lsd_resp.error().status());

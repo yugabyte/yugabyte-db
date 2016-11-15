@@ -343,10 +343,8 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
 }
 
 TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
-
   ExternalMaster* new_master = nullptr;
   cluster_->StartNewMaster(&new_master);
-
 
   ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER,
                                            consensus::RaftPeerPB::PRE_OBSERVER),
@@ -354,6 +352,35 @@ TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
   ++num_masters_;
 
   // Followers might not be up to speed as we did not wait, so just check leader.
+  VerifyLeaderMasterPeerCount();
+}
+
+TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
+  ExternalMaster* new_master = nullptr;
+  cluster_->StartNewMaster(&new_master);
+  ExternalMaster* leader = cluster_->GetLeaderMaster();
+
+  // Ensure leader does not change.
+  for (int idx = 0; idx <= 2; idx++) {
+    ExternalMaster* master = cluster_->master(idx);
+    if (master->bound_rpc_hostport().port() != leader->bound_rpc_hostport().port()) {
+      ASSERT_OK(cluster_->SetFlag(master, "do_not_start_election_test_only", "false"));
+    }
+  }
+
+  ASSERT_OK(cluster_->SetFlag(leader,
+            "inject_delay_leader_change_role_append_secs", "8"));
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER),
+                    "Add Change Config returned error");
+
+  // Wait a bit for PRE_VOTER to be committed. This should be less than the value of 8 seconds
+  // set in the injected delay above.
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  LOG(INFO) << "Remove Leader " << leader->bound_rpc_hostport().ToString();
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(leader, consensus::REMOVE_SERVER),
+                    "Remove Change Config returned error");
+
   VerifyLeaderMasterPeerCount();
 }
 
