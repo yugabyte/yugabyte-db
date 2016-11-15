@@ -3,17 +3,20 @@
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 -- Make sure events don't get logged twice when session logging
 SET pgaudit.log = 'all';
+SET pgaudit.log_client = ON;
 SET pgaudit.log_level = 'notice';
-NOTICE:  AUDIT: SESSION,2,1,MISC,SET,,,SET pgaudit.log_level = 'notice';,<not logged>
+NOTICE:  AUDIT: SESSION,3,1,MISC,SET,,,SET pgaudit.log_level = 'notice';,<not logged>
 CREATE TABLE tmp (id int, data text);
-NOTICE:  AUDIT: SESSION,3,1,DDL,CREATE TABLE,TABLE,public.tmp,"CREATE TABLE tmp (id int, data text);",<not logged>
+NOTICE:  AUDIT: SESSION,4,1,DDL,CREATE TABLE,TABLE,public.tmp,"CREATE TABLE tmp (id int, data text);",<not logged>
 CREATE TABLE tmp2 AS (SELECT * FROM tmp);
-NOTICE:  AUDIT: SESSION,4,1,READ,SELECT,,,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<not logged>
-NOTICE:  AUDIT: SESSION,4,2,DDL,CREATE TABLE AS,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<not logged>
-RESET pgaudit.log;
-RESET pgaudit.log_level;
+NOTICE:  AUDIT: SESSION,5,1,READ,SELECT,,,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<not logged>
+NOTICE:  AUDIT: SESSION,5,2,DDL,CREATE TABLE AS,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<not logged>
+-- Reset log_client first to show that audits logs are not set to client
+RESET pgaudit.log_client;
 DROP TABLE tmp;
 DROP TABLE tmp2;
+RESET pgaudit.log;
+RESET pgaudit.log_level;
 --
 -- Audit log fields are:
 --     AUDIT_TYPE - SESSION or OBJECT
@@ -31,10 +34,7 @@ SELECT current_user \gset
 -- Set pgaudit parameters for the current (super)user.
 ALTER ROLE :current_user SET pgaudit.log = 'Role';
 ALTER ROLE :current_user SET pgaudit.log_level = 'notice';
--- After each connect, we need to load pgaudit, as if it was
--- being loaded from shared_preload_libraries.  Otherwise, the hooks
--- won't be set up and called correctly, leading to lots of ugly
--- errors.
+ALTER ROLE :current_user SET pgaudit.log_client = ON;
 \connect - :current_user;
 --
 -- Create auditor role
@@ -54,6 +54,8 @@ ALTER USER user1 encrypted /* random comment */PASSWORD
 	/* random comment */
     'md565cb1da342495ea6bb0418a6e5718c38' LOGIN;
 NOTICE:  AUDIT: SESSION,6,1,ROLE,ALTER ROLE,,,ALTER USER user1 encrypted /* random comment */PASSWORD <REDACTED>,<not logged>
+ALTER ROLE user1 SET pgaudit.log_client = ON;
+NOTICE:  AUDIT: SESSION,7,1,ROLE,ALTER ROLE,,,ALTER ROLE user1 SET pgaudit.log_client = ON;,<not logged>
 --
 -- Create, select, drop (select will not be audited)
 \connect - user1
@@ -82,12 +84,14 @@ ALTER ROLE user2 SET pgaudit.log = 'Read, writE';
 NOTICE:  AUDIT: SESSION,2,1,ROLE,ALTER ROLE,,,"ALTER ROLE user2 SET pgaudit.log = 'Read, writE';",<not logged>
 ALTER ROLE user2 SET pgaudit.log_catalog = OFF;
 NOTICE:  AUDIT: SESSION,3,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.log_catalog = OFF;,<not logged>
+ALTER ROLE user2 SET pgaudit.log_client = ON;
+NOTICE:  AUDIT: SESSION,4,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.log_client = ON;,<not logged>
 ALTER ROLE user2 SET pgaudit.log_level = 'warning';
-NOTICE:  AUDIT: SESSION,4,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.log_level = 'warning';,<not logged>
+NOTICE:  AUDIT: SESSION,5,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.log_level = 'warning';,<not logged>
 ALTER ROLE user2 SET pgaudit.role = auditor;
-NOTICE:  AUDIT: SESSION,5,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.role = auditor;,<not logged>
+NOTICE:  AUDIT: SESSION,6,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.role = auditor;,<not logged>
 ALTER ROLE user2 SET pgaudit.log_statement_once = ON;
-NOTICE:  AUDIT: SESSION,6,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.log_statement_once = ON;,<not logged>
+NOTICE:  AUDIT: SESSION,7,1,ROLE,ALTER ROLE,,,ALTER ROLE user2 SET pgaudit.log_statement_once = ON;,<not logged>
 --
 -- Setup role-based tests
 CREATE TABLE test2
@@ -97,13 +101,13 @@ CREATE TABLE test2
 GRANT SELECT, INSERT, UPDATE, DELETE
    ON test2
    TO user2, user1;
-NOTICE:  AUDIT: SESSION,7,1,ROLE,GRANT,TABLE,,"GRANT SELECT, INSERT, UPDATE, DELETE
+NOTICE:  AUDIT: SESSION,8,1,ROLE,GRANT,TABLE,,"GRANT SELECT, INSERT, UPDATE, DELETE
    ON test2
    TO user2, user1;",<not logged>
 GRANT SELECT, UPDATE
    ON TABLE public.test2
    TO auditor;
-NOTICE:  AUDIT: SESSION,8,1,ROLE,GRANT,TABLE,,"GRANT SELECT, UPDATE
+NOTICE:  AUDIT: SESSION,9,1,ROLE,GRANT,TABLE,,"GRANT SELECT, UPDATE
    ON TABLE public.test2
    TO auditor;",<not logged>
 CREATE TABLE test3
@@ -113,13 +117,13 @@ CREATE TABLE test3
 GRANT SELECT, INSERT, UPDATE, DELETE
    ON test3
    TO user2;
-NOTICE:  AUDIT: SESSION,9,1,ROLE,GRANT,TABLE,,"GRANT SELECT, INSERT, UPDATE, DELETE
+NOTICE:  AUDIT: SESSION,10,1,ROLE,GRANT,TABLE,,"GRANT SELECT, INSERT, UPDATE, DELETE
    ON test3
    TO user2;",<not logged>
 GRANT INSERT
    ON TABLE public.test3
    TO auditor;
-NOTICE:  AUDIT: SESSION,10,1,ROLE,GRANT,TABLE,,"GRANT INSERT
+NOTICE:  AUDIT: SESSION,11,1,ROLE,GRANT,TABLE,,"GRANT INSERT
    ON TABLE public.test3
    TO auditor;",<not logged>
 CREATE FUNCTION test2_insert() RETURNS TRIGGER AS $$
@@ -147,13 +151,13 @@ SELECT *
 GRANT SELECT
    ON vw_test3
    TO user2;
-NOTICE:  AUDIT: SESSION,11,1,ROLE,GRANT,TABLE,,"GRANT SELECT
+NOTICE:  AUDIT: SESSION,12,1,ROLE,GRANT,TABLE,,"GRANT SELECT
    ON vw_test3
    TO user2;",<not logged>
 GRANT SELECT
    ON vw_test3
    TO auditor;
-NOTICE:  AUDIT: SESSION,12,1,ROLE,GRANT,TABLE,,"GRANT SELECT
+NOTICE:  AUDIT: SESSION,13,1,ROLE,GRANT,TABLE,,"GRANT SELECT
    ON vw_test3
    TO auditor;",<not logged>
 \connect - user2
@@ -571,17 +575,19 @@ SET pgaudit.log = 'ALL';
 NOTICE:  AUDIT: SESSION,1,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<not logged>
 SET pgaudit.log_level = 'notice';
 NOTICE:  AUDIT: SESSION,2,1,MISC,SET,,,SET pgaudit.log_level = 'notice';,<not logged>
+SET pgaudit.log_client = ON;
+NOTICE:  AUDIT: SESSION,3,1,MISC,SET,,,SET pgaudit.log_client = ON;,<not logged>
 SET pgaudit.log_relation = ON;
-NOTICE:  AUDIT: SESSION,3,1,MISC,SET,,,SET pgaudit.log_relation = ON;,<not logged>
+NOTICE:  AUDIT: SESSION,4,1,MISC,SET,,,SET pgaudit.log_relation = ON;,<not logged>
 SET pgaudit.log_parameter = ON;
-NOTICE:  AUDIT: SESSION,4,1,MISC,SET,,,SET pgaudit.log_parameter = ON;,<none>
+NOTICE:  AUDIT: SESSION,5,1,MISC,SET,,,SET pgaudit.log_parameter = ON;,<none>
 --
 -- Simple DO block
 DO $$
 BEGIN
 	raise notice 'test';
 END $$;
-NOTICE:  AUDIT: SESSION,5,1,FUNCTION,DO,,,"DO $$
+NOTICE:  AUDIT: SESSION,6,1,FUNCTION,DO,,,"DO $$
 BEGIN
 	raise notice 'test';
 END $$;",<none>
@@ -589,57 +595,57 @@ NOTICE:  test
 --
 -- Create test schema
 CREATE SCHEMA test;
-NOTICE:  AUDIT: SESSION,6,1,DDL,CREATE SCHEMA,SCHEMA,test,CREATE SCHEMA test;,<none>
+NOTICE:  AUDIT: SESSION,7,1,DDL,CREATE SCHEMA,SCHEMA,test,CREATE SCHEMA test;,<none>
 --
 -- Copy account to stdout
 COPY account TO stdout;
-NOTICE:  AUDIT: SESSION,7,1,READ,SELECT,TABLE,public.account,COPY account TO stdout;,<none>
+NOTICE:  AUDIT: SESSION,8,1,READ,SELECT,TABLE,public.account,COPY account TO stdout;,<none>
 1	user1	HASH2	yada, yada
 --
 -- Create a table from a query
 CREATE TABLE test.account_copy AS
 SELECT *
   FROM account;
-NOTICE:  AUDIT: SESSION,8,1,READ,SELECT,TABLE,public.account,"CREATE TABLE test.account_copy AS
+NOTICE:  AUDIT: SESSION,9,1,READ,SELECT,TABLE,public.account,"CREATE TABLE test.account_copy AS
 SELECT *
   FROM account;",<none>
-NOTICE:  AUDIT: SESSION,8,1,WRITE,INSERT,TABLE,test.account_copy,"CREATE TABLE test.account_copy AS
+NOTICE:  AUDIT: SESSION,9,1,WRITE,INSERT,TABLE,test.account_copy,"CREATE TABLE test.account_copy AS
 SELECT *
   FROM account;",<none>
-NOTICE:  AUDIT: SESSION,8,2,DDL,CREATE TABLE AS,TABLE,test.account_copy,"CREATE TABLE test.account_copy AS
+NOTICE:  AUDIT: SESSION,9,2,DDL,CREATE TABLE AS,TABLE,test.account_copy,"CREATE TABLE test.account_copy AS
 SELECT *
   FROM account;",<none>
 --
 -- Copy from stdin to account copy
 COPY test.account_copy from stdin;
-NOTICE:  AUDIT: SESSION,9,1,WRITE,INSERT,TABLE,test.account_copy,COPY test.account_copy from stdin;,<none>
+NOTICE:  AUDIT: SESSION,10,1,WRITE,INSERT,TABLE,test.account_copy,COPY test.account_copy from stdin;,<none>
 --
 -- Test prepared statement
 PREPARE pgclassstmt (oid) AS
 SELECT *
   FROM account
  WHERE id = $1;
-NOTICE:  AUDIT: SESSION,10,1,READ,PREPARE,,,"PREPARE pgclassstmt (oid) AS
+NOTICE:  AUDIT: SESSION,11,1,READ,PREPARE,,,"PREPARE pgclassstmt (oid) AS
 SELECT *
   FROM account
  WHERE id = $1;",<none>
 EXECUTE pgclassstmt (1);
-NOTICE:  AUDIT: SESSION,11,1,READ,SELECT,TABLE,public.account,"PREPARE pgclassstmt (oid) AS
+NOTICE:  AUDIT: SESSION,12,1,READ,SELECT,TABLE,public.account,"PREPARE pgclassstmt (oid) AS
 SELECT *
   FROM account
  WHERE id = $1;",1
-NOTICE:  AUDIT: SESSION,11,2,MISC,EXECUTE,,,EXECUTE pgclassstmt (1);,<none>
+NOTICE:  AUDIT: SESSION,12,2,MISC,EXECUTE,,,EXECUTE pgclassstmt (1);,<none>
  id | name  | password | description 
 ----+-------+----------+-------------
   1 | user1 | HASH2    | yada, yada
 (1 row)
 
 DEALLOCATE pgclassstmt;
-NOTICE:  AUDIT: SESSION,12,1,MISC,DEALLOCATE,,,DEALLOCATE pgclassstmt;,<none>
+NOTICE:  AUDIT: SESSION,13,1,MISC,DEALLOCATE,,,DEALLOCATE pgclassstmt;,<none>
 --
 -- Test cursor
 BEGIN;
-NOTICE:  AUDIT: SESSION,13,1,MISC,BEGIN,,,BEGIN;,<none>
+NOTICE:  AUDIT: SESSION,14,1,MISC,BEGIN,,,BEGIN;,<none>
 DECLARE ctest SCROLL CURSOR FOR
 SELECT count(*)
   FROM
@@ -648,7 +654,7 @@ SELECT count(*)
 	  FROM pg_class
 	 LIMIT 1
  ) subquery;
-NOTICE:  AUDIT: SESSION,14,1,READ,SELECT,TABLE,pg_catalog.pg_class,"DECLARE ctest SCROLL CURSOR FOR
+NOTICE:  AUDIT: SESSION,15,1,READ,SELECT,TABLE,pg_catalog.pg_class,"DECLARE ctest SCROLL CURSOR FOR
 SELECT count(*)
   FROM
 (
@@ -656,7 +662,7 @@ SELECT count(*)
 	  FROM pg_class
 	 LIMIT 1
  ) subquery;",<none>
-NOTICE:  AUDIT: SESSION,14,2,READ,DECLARE CURSOR,,,"DECLARE ctest SCROLL CURSOR FOR
+NOTICE:  AUDIT: SESSION,15,2,READ,DECLARE CURSOR,,,"DECLARE ctest SCROLL CURSOR FOR
 SELECT count(*)
   FROM
 (
@@ -665,20 +671,20 @@ SELECT count(*)
 	 LIMIT 1
  ) subquery;",<none>
 FETCH NEXT FROM ctest;
-NOTICE:  AUDIT: SESSION,15,1,MISC,FETCH,,,FETCH NEXT FROM ctest;,<none>
+NOTICE:  AUDIT: SESSION,16,1,MISC,FETCH,,,FETCH NEXT FROM ctest;,<none>
  count 
 -------
      1
 (1 row)
 
 CLOSE ctest;
-NOTICE:  AUDIT: SESSION,16,1,MISC,CLOSE CURSOR,,,CLOSE ctest;,<none>
+NOTICE:  AUDIT: SESSION,17,1,MISC,CLOSE CURSOR,,,CLOSE ctest;,<none>
 COMMIT;
-NOTICE:  AUDIT: SESSION,17,1,MISC,COMMIT,,,COMMIT;,<none>
+NOTICE:  AUDIT: SESSION,18,1,MISC,COMMIT,,,COMMIT;,<none>
 --
 -- Turn off log_catalog and pg_class will not be logged
 SET pgaudit.log_catalog = OFF;
-NOTICE:  AUDIT: SESSION,18,1,MISC,SET,,,SET pgaudit.log_catalog = OFF;,<none>
+NOTICE:  AUDIT: SESSION,19,1,MISC,SET,,,SET pgaudit.log_catalog = OFF;,<none>
 SELECT count(*)
   FROM
 (
@@ -697,21 +703,21 @@ CREATE TABLE test.test_insert
 (
 	id INT
 );
-NOTICE:  AUDIT: SESSION,19,1,DDL,CREATE TABLE,TABLE,test.test_insert,"CREATE TABLE test.test_insert
+NOTICE:  AUDIT: SESSION,20,1,DDL,CREATE TABLE,TABLE,test.test_insert,"CREATE TABLE test.test_insert
 (
 	id INT
 );",<none>
 PREPARE pgclassstmt (oid) AS
 INSERT INTO test.test_insert (id)
 					  VALUES ($1);
-NOTICE:  AUDIT: SESSION,20,1,WRITE,PREPARE,,,"PREPARE pgclassstmt (oid) AS
+NOTICE:  AUDIT: SESSION,21,1,WRITE,PREPARE,,,"PREPARE pgclassstmt (oid) AS
 INSERT INTO test.test_insert (id)
 					  VALUES ($1);",<none>
 EXECUTE pgclassstmt (1);
-NOTICE:  AUDIT: SESSION,21,1,WRITE,INSERT,TABLE,test.test_insert,"PREPARE pgclassstmt (oid) AS
+NOTICE:  AUDIT: SESSION,22,1,WRITE,INSERT,TABLE,test.test_insert,"PREPARE pgclassstmt (oid) AS
 INSERT INTO test.test_insert (id)
 					  VALUES ($1);",1
-NOTICE:  AUDIT: SESSION,21,2,MISC,EXECUTE,,,EXECUTE pgclassstmt (1);,<none>
+NOTICE:  AUDIT: SESSION,22,2,MISC,EXECUTE,,,EXECUTE pgclassstmt (1);,<none>
 --
 -- Check that primary key creation is logged
 CREATE TABLE public.test
@@ -721,14 +727,14 @@ CREATE TABLE public.test
 	description TEXT,
 	CONSTRAINT test_pkey PRIMARY KEY (id)
 );
-NOTICE:  AUDIT: SESSION,22,1,DDL,CREATE TABLE,TABLE,public.test,"CREATE TABLE public.test
+NOTICE:  AUDIT: SESSION,23,1,DDL,CREATE TABLE,TABLE,public.test,"CREATE TABLE public.test
 (
 	id INT,
 	name TEXT,
 	description TEXT,
 	CONSTRAINT test_pkey PRIMARY KEY (id)
 );",<none>
-NOTICE:  AUDIT: SESSION,22,1,DDL,CREATE INDEX,INDEX,public.test_pkey,"CREATE TABLE public.test
+NOTICE:  AUDIT: SESSION,23,1,DDL,CREATE INDEX,INDEX,public.test_pkey,"CREATE TABLE public.test
 (
 	id INT,
 	name TEXT,
@@ -738,19 +744,19 @@ NOTICE:  AUDIT: SESSION,22,1,DDL,CREATE INDEX,INDEX,public.test_pkey,"CREATE TAB
 --
 -- Check that analyze is logged
 ANALYZE test;
-NOTICE:  AUDIT: SESSION,23,1,MISC,ANALYZE,,,ANALYZE test;,<none>
+NOTICE:  AUDIT: SESSION,24,1,MISC,ANALYZE,,,ANALYZE test;,<none>
 --
 -- Grants to public should not cause object logging (session logging will
 -- still happen)
 GRANT SELECT
   ON TABLE public.test
   TO PUBLIC;
-NOTICE:  AUDIT: SESSION,24,1,ROLE,GRANT,TABLE,,"GRANT SELECT
+NOTICE:  AUDIT: SESSION,25,1,ROLE,GRANT,TABLE,,"GRANT SELECT
   ON TABLE public.test
   TO PUBLIC;",<none>
 SELECT *
   FROM test;
-NOTICE:  AUDIT: SESSION,25,1,READ,SELECT,TABLE,public.test,"SELECT *
+NOTICE:  AUDIT: SESSION,26,1,READ,SELECT,TABLE,public.test,"SELECT *
   FROM test;",<none>
  id | name | description 
 ----+------+-------------
@@ -759,14 +765,14 @@ NOTICE:  AUDIT: SESSION,25,1,READ,SELECT,TABLE,public.test,"SELECT *
 -- Check that statements without columns log
 SELECT
   FROM test;
-NOTICE:  AUDIT: SESSION,26,1,READ,SELECT,TABLE,public.test,"SELECT
+NOTICE:  AUDIT: SESSION,27,1,READ,SELECT,TABLE,public.test,"SELECT
   FROM test;",<none>
 --
 (0 rows)
 
 SELECT 1,
 	   substring('Thomas' from 2 for 3);
-NOTICE:  AUDIT: SESSION,27,1,READ,SELECT,,,"SELECT 1,
+NOTICE:  AUDIT: SESSION,28,1,READ,SELECT,,,"SELECT 1,
 	   substring('Thomas' from 2 for 3);",<none>
  ?column? | substring 
 ----------+-----------
@@ -780,17 +786,17 @@ BEGIN
 	SELECT 1
 	  INTO test;
 END $$;
-NOTICE:  AUDIT: SESSION,28,1,FUNCTION,DO,,,"DO $$
+NOTICE:  AUDIT: SESSION,29,1,FUNCTION,DO,,,"DO $$
 DECLARE
 	test INT;
 BEGIN
 	SELECT 1
 	  INTO test;
 END $$;",<none>
-NOTICE:  AUDIT: SESSION,28,2,READ,SELECT,,,SELECT 1,<none>
+NOTICE:  AUDIT: SESSION,29,2,READ,SELECT,,,SELECT 1,<none>
 explain select 1;
-NOTICE:  AUDIT: SESSION,29,1,READ,SELECT,,,explain select 1;,<none>
-NOTICE:  AUDIT: SESSION,29,2,MISC,EXPLAIN,,,explain select 1;,<none>
+NOTICE:  AUDIT: SESSION,30,1,READ,SELECT,,,explain select 1;,<none>
+NOTICE:  AUDIT: SESSION,30,2,MISC,EXPLAIN,,,explain select 1;,<none>
                 QUERY PLAN                
 ------------------------------------------
  Result  (cost=0.00..0.01 rows=1 width=0)
@@ -800,15 +806,15 @@ NOTICE:  AUDIT: SESSION,29,2,MISC,EXPLAIN,,,explain select 1;,<none>
 -- Test that looks inside of do blocks log
 INSERT INTO TEST (id)
 		  VALUES (1);
-NOTICE:  AUDIT: SESSION,30,1,WRITE,INSERT,TABLE,public.test,"INSERT INTO TEST (id)
+NOTICE:  AUDIT: SESSION,31,1,WRITE,INSERT,TABLE,public.test,"INSERT INTO TEST (id)
 		  VALUES (1);",<none>
 INSERT INTO TEST (id)
 		  VALUES (2);
-NOTICE:  AUDIT: SESSION,31,1,WRITE,INSERT,TABLE,public.test,"INSERT INTO TEST (id)
+NOTICE:  AUDIT: SESSION,32,1,WRITE,INSERT,TABLE,public.test,"INSERT INTO TEST (id)
 		  VALUES (2);",<none>
 INSERT INTO TEST (id)
 		  VALUES (3);
-NOTICE:  AUDIT: SESSION,32,1,WRITE,INSERT,TABLE,public.test,"INSERT INTO TEST (id)
+NOTICE:  AUDIT: SESSION,33,1,WRITE,INSERT,TABLE,public.test,"INSERT INTO TEST (id)
 		  VALUES (3);",<none>
 DO $$
 DECLARE
@@ -822,7 +828,7 @@ BEGIN
 			 VALUES (result.id + 100);
 	END LOOP;
 END $$;
-NOTICE:  AUDIT: SESSION,33,1,FUNCTION,DO,,,"DO $$
+NOTICE:  AUDIT: SESSION,34,1,FUNCTION,DO,,,"DO $$
 DECLARE
 	result RECORD;
 BEGIN
@@ -834,13 +840,13 @@ BEGIN
 			 VALUES (result.id + 100);
 	END LOOP;
 END $$;",<none>
-NOTICE:  AUDIT: SESSION,33,2,READ,SELECT,TABLE,public.test,"SELECT id
+NOTICE:  AUDIT: SESSION,34,2,READ,SELECT,TABLE,public.test,"SELECT id
 		  FROM test",<none>
-NOTICE:  AUDIT: SESSION,33,3,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
+NOTICE:  AUDIT: SESSION,34,3,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
 			 VALUES (result.id + 100)",",,"
-NOTICE:  AUDIT: SESSION,33,4,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
+NOTICE:  AUDIT: SESSION,34,4,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
 			 VALUES (result.id + 100)",",,"
-NOTICE:  AUDIT: SESSION,33,5,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
+NOTICE:  AUDIT: SESSION,34,5,WRITE,INSERT,TABLE,public.test,"INSERT INTO test (id)
 			 VALUES (result.id + 100)",",,"
 --
 -- Test obfuscated dynamic sql for clean logging
@@ -851,15 +857,15 @@ BEGIN
 	EXECUTE 'CREATE TABLE ' || table_name || ' ("weird name" INT)';
 	EXECUTE 'DROP table ' || table_name;
 END $$;
-NOTICE:  AUDIT: SESSION,34,1,FUNCTION,DO,,,"DO $$
+NOTICE:  AUDIT: SESSION,35,1,FUNCTION,DO,,,"DO $$
 DECLARE
 	table_name TEXT = 'do_table';
 BEGIN
 	EXECUTE 'CREATE TABLE ' || table_name || ' (""weird name"" INT)';
 	EXECUTE 'DROP table ' || table_name;
 END $$;",<none>
-NOTICE:  AUDIT: SESSION,34,2,DDL,CREATE TABLE,TABLE,public.do_table,"CREATE TABLE do_table (""weird name"" INT)",<none>
-NOTICE:  AUDIT: SESSION,34,3,DDL,DROP TABLE,TABLE,public.do_table,DROP table do_table,<none>
+NOTICE:  AUDIT: SESSION,35,2,DDL,CREATE TABLE,TABLE,public.do_table,"CREATE TABLE do_table (""weird name"" INT)",<none>
+NOTICE:  AUDIT: SESSION,35,3,DDL,DROP TABLE,TABLE,public.do_table,DROP table do_table,<none>
 --
 -- Generate an error and make sure the stack gets cleared
 DO $$
@@ -869,7 +875,7 @@ BEGIN
 		id INT
 	);
 END $$;
-NOTICE:  AUDIT: SESSION,35,1,FUNCTION,DO,,,"DO $$
+NOTICE:  AUDIT: SESSION,36,1,FUNCTION,DO,,,"DO $$
 BEGIN
 	CREATE TABLE bogus.test_block
 	(
@@ -881,44 +887,44 @@ ERROR:  schema "bogus" does not exist at character 14
 -- Test alter table statements
 ALTER TABLE public.test
 	DROP COLUMN description ;
-NOTICE:  AUDIT: SESSION,36,1,DDL,ALTER TABLE,TABLE COLUMN,public.test.description,"ALTER TABLE public.test
+NOTICE:  AUDIT: SESSION,37,1,DDL,ALTER TABLE,TABLE COLUMN,public.test.description,"ALTER TABLE public.test
 	DROP COLUMN description ;",<none>
-NOTICE:  AUDIT: SESSION,36,1,DDL,ALTER TABLE,TABLE,public.test,"ALTER TABLE public.test
+NOTICE:  AUDIT: SESSION,37,1,DDL,ALTER TABLE,TABLE,public.test,"ALTER TABLE public.test
 	DROP COLUMN description ;",<none>
 ALTER TABLE public.test
 	RENAME TO test2;
-NOTICE:  AUDIT: SESSION,37,1,DDL,ALTER TABLE,TABLE,public.test2,"ALTER TABLE public.test
+NOTICE:  AUDIT: SESSION,38,1,DDL,ALTER TABLE,TABLE,public.test2,"ALTER TABLE public.test
 	RENAME TO test2;",<none>
 ALTER TABLE public.test2
 	SET SCHEMA test;
-NOTICE:  AUDIT: SESSION,38,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE public.test2
+NOTICE:  AUDIT: SESSION,39,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE public.test2
 	SET SCHEMA test;",<none>
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
-NOTICE:  AUDIT: SESSION,39,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
+NOTICE:  AUDIT: SESSION,40,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
 	ADD COLUMN description TEXT;",<none>
 ALTER TABLE test.test2
 	DROP COLUMN description;
-NOTICE:  AUDIT: SESSION,40,1,DDL,ALTER TABLE,TABLE COLUMN,test.test2.description,"ALTER TABLE test.test2
+NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE COLUMN,test.test2.description,"ALTER TABLE test.test2
 	DROP COLUMN description;",<none>
-NOTICE:  AUDIT: SESSION,40,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
+NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
 	DROP COLUMN description;",<none>
 DROP TABLE test.test2;
-NOTICE:  AUDIT: SESSION,41,1,DDL,DROP TABLE,TABLE,test.test2,DROP TABLE test.test2;,<none>
-NOTICE:  AUDIT: SESSION,41,1,DDL,DROP TABLE,TABLE CONSTRAINT,test_pkey on test.test2,DROP TABLE test.test2;,<none>
-NOTICE:  AUDIT: SESSION,41,1,DDL,DROP TABLE,INDEX,test.test_pkey,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE,test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE CONSTRAINT,test_pkey on test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,INDEX,test.test_pkey,DROP TABLE test.test2;,<none>
 --
 -- Test multiple statements with one semi-colon
 CREATE SCHEMA foo
 	CREATE TABLE foo.bar (id int)
 	CREATE TABLE foo.baz (id int);
-NOTICE:  AUDIT: SESSION,42,1,DDL,CREATE SCHEMA,SCHEMA,foo,"CREATE SCHEMA foo
+NOTICE:  AUDIT: SESSION,43,1,DDL,CREATE SCHEMA,SCHEMA,foo,"CREATE SCHEMA foo
 	CREATE TABLE foo.bar (id int)
 	CREATE TABLE foo.baz (id int);",<none>
-NOTICE:  AUDIT: SESSION,42,1,DDL,CREATE TABLE,TABLE,foo.bar,"CREATE SCHEMA foo
+NOTICE:  AUDIT: SESSION,43,1,DDL,CREATE TABLE,TABLE,foo.bar,"CREATE SCHEMA foo
 	CREATE TABLE foo.bar (id int)
 	CREATE TABLE foo.baz (id int);",<none>
-NOTICE:  AUDIT: SESSION,42,1,DDL,CREATE TABLE,TABLE,foo.baz,"CREATE SCHEMA foo
+NOTICE:  AUDIT: SESSION,43,1,DDL,CREATE TABLE,TABLE,foo.baz,"CREATE SCHEMA foo
 	CREATE TABLE foo.bar (id int)
 	CREATE TABLE foo.baz (id int);",<none>
 --
@@ -932,7 +938,7 @@ CREATE FUNCTION public.int_add
 BEGIN
 	return a + b;
 END $$;
-NOTICE:  AUDIT: SESSION,43,1,DDL,CREATE FUNCTION,FUNCTION,"public.int_add(integer,integer)","CREATE FUNCTION public.int_add
+NOTICE:  AUDIT: SESSION,44,1,DDL,CREATE FUNCTION,FUNCTION,"public.int_add(integer,integer)","CREATE FUNCTION public.int_add
 (
 	a INT,
 	b INT
@@ -942,56 +948,56 @@ BEGIN
 	return a + b;
 END $$;",<none>
 SELECT int_add(1, 1);
-NOTICE:  AUDIT: SESSION,44,1,READ,SELECT,,,"SELECT int_add(1, 1);",<none>
-NOTICE:  AUDIT: SESSION,44,2,FUNCTION,EXECUTE,FUNCTION,public.int_add,"SELECT int_add(1, 1);",<none>
+NOTICE:  AUDIT: SESSION,45,1,READ,SELECT,,,"SELECT int_add(1, 1);",<none>
+NOTICE:  AUDIT: SESSION,45,2,FUNCTION,EXECUTE,FUNCTION,public.int_add,"SELECT int_add(1, 1);",<none>
  int_add 
 ---------
        2
 (1 row)
 
 CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');
-NOTICE:  AUDIT: SESSION,45,1,DDL,CREATE AGGREGATE,AGGREGATE,public.sum_test(integer),"CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');",<none>
+NOTICE:  AUDIT: SESSION,46,1,DDL,CREATE AGGREGATE,AGGREGATE,public.sum_test(integer),"CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');",<none>
 ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;
-NOTICE:  AUDIT: SESSION,46,1,DDL,ALTER AGGREGATE,AGGREGATE,public.sum_test2(integer),ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;,<none>
+NOTICE:  AUDIT: SESSION,47,1,DDL,ALTER AGGREGATE,AGGREGATE,public.sum_test2(integer),ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;,<none>
 --
 -- Test conversion
 CREATE CONVERSION public.conversion_test FOR 'SQL_ASCII' TO 'MULE_INTERNAL' FROM pg_catalog.ascii_to_mic;
-NOTICE:  AUDIT: SESSION,47,1,DDL,CREATE CONVERSION,CONVERSION,public.conversion_test,CREATE CONVERSION public.conversion_test FOR 'SQL_ASCII' TO 'MULE_INTERNAL' FROM pg_catalog.ascii_to_mic;,<none>
+NOTICE:  AUDIT: SESSION,48,1,DDL,CREATE CONVERSION,CONVERSION,public.conversion_test,CREATE CONVERSION public.conversion_test FOR 'SQL_ASCII' TO 'MULE_INTERNAL' FROM pg_catalog.ascii_to_mic;,<none>
 ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;
-NOTICE:  AUDIT: SESSION,48,1,DDL,ALTER CONVERSION,CONVERSION,public.conversion_test2,ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;,<none>
+NOTICE:  AUDIT: SESSION,49,1,DDL,ALTER CONVERSION,CONVERSION,public.conversion_test2,ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;,<none>
 --
 -- Test create/alter/drop database
 CREATE DATABASE contrib_regression_pgaudit;
-NOTICE:  AUDIT: SESSION,49,1,DDL,CREATE DATABASE,,,CREATE DATABASE contrib_regression_pgaudit;,<none>
+NOTICE:  AUDIT: SESSION,50,1,DDL,CREATE DATABASE,,,CREATE DATABASE contrib_regression_pgaudit;,<none>
 ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;
-NOTICE:  AUDIT: SESSION,50,1,DDL,ALTER DATABASE,,,ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;,<none>
+NOTICE:  AUDIT: SESSION,51,1,DDL,ALTER DATABASE,,,ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;,<none>
 DROP DATABASE contrib_regression_pgaudit2;
-NOTICE:  AUDIT: SESSION,51,1,DDL,DROP DATABASE,,,DROP DATABASE contrib_regression_pgaudit2;,<none>
+NOTICE:  AUDIT: SESSION,52,1,DDL,DROP DATABASE,,,DROP DATABASE contrib_regression_pgaudit2;,<none>
 -- Test role as a substmt
 SET pgaudit.log = 'ROLE';
 CREATE TABLE t ();
 CREATE ROLE alice;
-NOTICE:  AUDIT: SESSION,52,1,ROLE,CREATE ROLE,,,CREATE ROLE alice;,<none>
+NOTICE:  AUDIT: SESSION,53,1,ROLE,CREATE ROLE,,,CREATE ROLE alice;,<none>
 CREATE SCHEMA foo2
 	GRANT SELECT
 	   ON public.t
 	   TO alice;
-NOTICE:  AUDIT: SESSION,53,1,ROLE,GRANT,TABLE,,"CREATE SCHEMA foo2
+NOTICE:  AUDIT: SESSION,54,1,ROLE,GRANT,TABLE,,"CREATE SCHEMA foo2
 	GRANT SELECT
 	   ON public.t
 	   TO alice;",<none>
 drop table public.t;
 drop role alice;
-NOTICE:  AUDIT: SESSION,54,1,ROLE,DROP ROLE,,,drop role alice;,<none>
+NOTICE:  AUDIT: SESSION,55,1,ROLE,DROP ROLE,,,drop role alice;,<none>
 --
 -- Test that frees a memory context earlier than expected
 SET pgaudit.log = 'ALL';
-NOTICE:  AUDIT: SESSION,55,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
+NOTICE:  AUDIT: SESSION,56,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
 CREATE TABLE hoge
 (
 	id int
 );
-NOTICE:  AUDIT: SESSION,56,1,DDL,CREATE TABLE,TABLE,public.hoge,"CREATE TABLE hoge
+NOTICE:  AUDIT: SESSION,57,1,DDL,CREATE TABLE,TABLE,public.hoge,"CREATE TABLE hoge
 (
 	id int
 );",<none>
@@ -1006,7 +1012,7 @@ BEGIN
 	RETURN tmp;
 END $$
 LANGUAGE plpgsql ;
-NOTICE:  AUDIT: SESSION,57,1,DDL,CREATE FUNCTION,FUNCTION,public.test(),"CREATE FUNCTION test()
+NOTICE:  AUDIT: SESSION,58,1,DDL,CREATE FUNCTION,FUNCTION,public.test(),"CREATE FUNCTION test()
 	RETURNS INT AS $$
 DECLARE
 	cur1 cursor for select * from hoge;
@@ -1018,9 +1024,9 @@ BEGIN
 END $$
 LANGUAGE plpgsql ;",<none>
 SELECT test();
-NOTICE:  AUDIT: SESSION,58,1,READ,SELECT,,,SELECT test();,<none>
-NOTICE:  AUDIT: SESSION,58,2,FUNCTION,EXECUTE,FUNCTION,public.test,SELECT test();,<none>
-NOTICE:  AUDIT: SESSION,58,3,READ,SELECT,TABLE,public.hoge,select * from hoge,<none>
+NOTICE:  AUDIT: SESSION,59,1,READ,SELECT,,,SELECT test();,<none>
+NOTICE:  AUDIT: SESSION,59,2,FUNCTION,EXECUTE,FUNCTION,public.test,SELECT test();,<none>
+NOTICE:  AUDIT: SESSION,59,3,READ,SELECT,TABLE,public.hoge,select * from hoge,<none>
  test 
 ------
      
@@ -1039,29 +1045,29 @@ grant delete
    to auditor;
 insert into bar (col)
 		 values (1);
-NOTICE:  AUDIT: SESSION,59,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
+NOTICE:  AUDIT: SESSION,60,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
 		 values (1);",<none>
 delete from bar;
-NOTICE:  AUDIT: OBJECT,60,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
-NOTICE:  AUDIT: SESSION,60,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
+NOTICE:  AUDIT: OBJECT,61,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
+NOTICE:  AUDIT: SESSION,61,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
 insert into bar (col)
 		 values (1);
-NOTICE:  AUDIT: SESSION,61,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
+NOTICE:  AUDIT: SESSION,62,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
 		 values (1);",<none>
 delete from bar
  where col = 1;
-NOTICE:  AUDIT: OBJECT,62,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
+NOTICE:  AUDIT: OBJECT,63,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
  where col = 1;",<none>
-NOTICE:  AUDIT: SESSION,62,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
+NOTICE:  AUDIT: SESSION,63,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
  where col = 1;",<none>
 drop table bar;
 --
 -- Grant roles to each other
 SET pgaudit.log = 'role';
 GRANT user1 TO user2;
-NOTICE:  AUDIT: SESSION,63,1,ROLE,GRANT ROLE,,,GRANT user1 TO user2;,<none>
+NOTICE:  AUDIT: SESSION,64,1,ROLE,GRANT ROLE,,,GRANT user1 TO user2;,<none>
 REVOKE user1 FROM user2;
-NOTICE:  AUDIT: SESSION,64,1,ROLE,REVOKE ROLE,,,REVOKE user1 FROM user2;,<none>
+NOTICE:  AUDIT: SESSION,65,1,ROLE,REVOKE ROLE,,,REVOKE user1 FROM user2;,<none>
 --
 -- Test that FK references do not log but triggers still do
 SET pgaudit.log = 'READ,WRITE';
@@ -1091,23 +1097,23 @@ GRANT UPDATE
    ON bbb
    TO auditor;
 INSERT INTO aaa VALUES (generate_series(1,100));
-NOTICE:  AUDIT: SESSION,65,1,WRITE,INSERT,TABLE,public.aaa,"INSERT INTO aaa VALUES (generate_series(1,100));",<none>
+NOTICE:  AUDIT: SESSION,66,1,WRITE,INSERT,TABLE,public.aaa,"INSERT INTO aaa VALUES (generate_series(1,100));",<none>
 INSERT INTO bbb VALUES (1);
-NOTICE:  AUDIT: SESSION,66,1,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<none>
-NOTICE:  AUDIT: OBJECT,66,2,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",1
-NOTICE:  AUDIT: SESSION,66,2,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",1
-NOTICE:  AUDIT: OBJECT,66,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,",,,,,,,,,,,,,"
-NOTICE:  AUDIT: SESSION,66,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,",,,,,,,,,,,,,"
-NOTICE:  AUDIT: OBJECT,66,4,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",2
-NOTICE:  AUDIT: SESSION,66,4,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",2
+NOTICE:  AUDIT: SESSION,67,1,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<none>
+NOTICE:  AUDIT: OBJECT,67,2,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",1
+NOTICE:  AUDIT: SESSION,67,2,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",1
+NOTICE:  AUDIT: OBJECT,67,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,",,,,,,,,,,,,,"
+NOTICE:  AUDIT: SESSION,67,3,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,",,,,,,,,,,,,,"
+NOTICE:  AUDIT: OBJECT,67,4,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",2
+NOTICE:  AUDIT: SESSION,67,4,WRITE,UPDATE,TABLE,public.aaa,"SELECT 1 FROM ONLY ""public"".""aaa"" x WHERE ""id"" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x",2
 DROP TABLE bbb;
 DROP TABLE aaa;
 -- Test create table as after extension as been dropped
 DROP EXTENSION pgaudit;
 CREATE TABLE tmp (id int, data text);
 CREATE TABLE tmp2 AS (SELECT * FROM tmp);
-NOTICE:  AUDIT: SESSION,67,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
-NOTICE:  AUDIT: SESSION,67,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
+NOTICE:  AUDIT: SESSION,68,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
+NOTICE:  AUDIT: SESSION,68,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
 DROP TABLE tmp;
 DROP TABLE tmp2;
 -- Cleanup

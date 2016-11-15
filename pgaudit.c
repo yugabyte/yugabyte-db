@@ -94,6 +94,15 @@ static int auditLogBitmap = LOG_NONE;
 bool auditLogCatalog = true;
 
 /*
+ * GUC variable for pgaudit.log_client
+ *
+ * Specifies whether audit messages should be visible to the client.  This
+ * setting should generally be left disabled but may be useful for debugging or
+ * other purposes.
+ */
+bool auditLogClient = false;
+
+/*
  * GUC variable for pgaudit.log_level
  *
  * Administrators can choose which log level the audit log is to be logged
@@ -726,7 +735,7 @@ log_audit_event(AuditEventStackItem *stackItem)
      * translatability, but we currently haven't got translation support in
      * pgaudit anyway.
      */
-    ereport(auditLogLevel,
+    ereport(auditLogClient ? auditLogLevel : COMMERROR,
             (errmsg("AUDIT: %s," INT64_FORMAT "," INT64_FORMAT ",%s,%s",
                     stackItem->auditEvent.granted ?
                     AUDIT_TYPE_OBJECT : AUDIT_TYPE_SESSION,
@@ -1842,6 +1851,21 @@ _PG_init(void)
         NULL,
         &auditLogCatalog,
         true,
+        PGC_SUSET,
+        GUC_NOT_IN_SAMPLE,
+        NULL, NULL, NULL);
+
+    /* Define pgaudit.log_client */
+    DefineCustomBoolVariable(
+        "pgaudit.log_client",
+
+        "Specifies whether audit messages should be visible to the client. "
+        "This setting should generally be left disabled but may be useful for "
+        "debugging or other purposes.",
+
+        NULL,
+        &auditLogClient,
+        false,
         PGC_SUSET,
         GUC_NOT_IN_SAMPLE,
         NULL, NULL, NULL);

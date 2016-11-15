@@ -5,16 +5,20 @@ CREATE EXTENSION IF NOT EXISTS pgaudit;
 
 -- Make sure events don't get logged twice when session logging
 SET pgaudit.log = 'all';
+SET pgaudit.log_client = ON;
 SET pgaudit.log_level = 'notice';
 
 CREATE TABLE tmp (id int, data text);
 CREATE TABLE tmp2 AS (SELECT * FROM tmp);
 
-RESET pgaudit.log;
-RESET pgaudit.log_level;
+-- Reset log_client first to show that audits logs are not set to client
+RESET pgaudit.log_client;
 
 DROP TABLE tmp;
 DROP TABLE tmp2;
+
+RESET pgaudit.log;
+RESET pgaudit.log_level;
 
 --
 -- Audit log fields are:
@@ -35,11 +39,8 @@ SELECT current_user \gset
 -- Set pgaudit parameters for the current (super)user.
 ALTER ROLE :current_user SET pgaudit.log = 'Role';
 ALTER ROLE :current_user SET pgaudit.log_level = 'notice';
+ALTER ROLE :current_user SET pgaudit.log_client = ON;
 
--- After each connect, we need to load pgaudit, as if it was
--- being loaded from shared_preload_libraries.  Otherwise, the hooks
--- won't be set up and called correctly, leading to lots of ugly
--- errors.
 \connect - :current_user;
 
 --
@@ -56,6 +57,7 @@ ALTER ROLE user1 PassWord 'password2' NOLOGIN;
 ALTER USER user1 encrypted /* random comment */PASSWORD
 	/* random comment */
     'md565cb1da342495ea6bb0418a6e5718c38' LOGIN;
+ALTER ROLE user1 SET pgaudit.log_client = ON;
 
 --
 -- Create, select, drop (select will not be audited)
@@ -78,6 +80,7 @@ DROP TABLE test;
 CREATE ROLE user2 LOGIN password 'password';
 ALTER ROLE user2 SET pgaudit.log = 'Read, writE';
 ALTER ROLE user2 SET pgaudit.log_catalog = OFF;
+ALTER ROLE user2 SET pgaudit.log_client = ON;
 ALTER ROLE user2 SET pgaudit.log_level = 'warning';
 ALTER ROLE user2 SET pgaudit.role = auditor;
 ALTER ROLE user2 SET pgaudit.log_statement_once = ON;
@@ -431,6 +434,7 @@ UPDATE account
 \connect - :current_user
 SET pgaudit.log = 'ALL';
 SET pgaudit.log_level = 'notice';
+SET pgaudit.log_client = ON;
 SET pgaudit.log_relation = ON;
 SET pgaudit.log_parameter = ON;
 
