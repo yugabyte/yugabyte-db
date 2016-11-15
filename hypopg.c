@@ -502,7 +502,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	StringInfoData indexRelationName;
 	int			ncolumns;
 	ListCell   *lc;
-	int			j;
+	int			attn;
 
 
 	relid =
@@ -564,10 +564,10 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 		/*
 		 * process attributeList
 		 */
-		j = 0;
+		attn = 0;
 		foreach(lc, node->indexParams)
 		{
-			IndexElem  *indexelem = (IndexElem *) lfirst(lc);
+			IndexElem  *attribute = (IndexElem *) lfirst(lc);
 			Oid			atttype = InvalidOid;
 			Oid			opclass;
 
@@ -576,25 +576,25 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			/*
 			 * Process the column-or-expression to be indexed.
 			 */
-			if (indexelem->name != NULL)
+			if (attribute->name != NULL)
 			{
 				/* Simple index attribute */
-				appendStringInfo(&indexRelationName, "%s", indexelem->name);
+				appendStringInfo(&indexRelationName, "%s", attribute->name);
 				/* get the attribute catalog info */
-				tuple = SearchSysCacheAttName(relid, indexelem->name);
+				tuple = SearchSysCacheAttName(relid, attribute->name);
 
 				if (!HeapTupleIsValid(tuple))
 				{
 					elog(ERROR, "hypopg: column \"%s\" does not exist",
-						 indexelem->name);
+						 attribute->name);
 				}
 				attform = (Form_pg_attribute) GETSTRUCT(tuple);
 
 				/* setup the attnum */
-				entry->indexkeys[j] = attform->attnum;
+				entry->indexkeys[attn] = attform->attnum;
 
 				/* setup the collation */
-				entry->indexcollations[j] = attform->attcollation;
+				entry->indexcollations[attn] = attform->attcollation;
 
 				/* get the atttype */
 				atttype = attform->atttypid;
@@ -613,11 +613,11 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 				 * and average width).
 				 */
 				MemoryContext	oldcontext;
-				Node		   *expr = indexelem->expr;
+				Node		   *expr = attribute->expr;
 
 				Assert(expr != NULL);
-				entry->indexcollations[j] = exprCollation(indexelem->expr);
-				atttype = exprType(indexelem->expr);
+				entry->indexcollations[attn] = exprCollation(attribute->expr);
+				atttype = exprType(attribute->expr);
 
 				appendStringInfo(&indexRelationName, "expr");
 
@@ -635,7 +635,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 					 * User wrote "(column)" or "(column COLLATE something)".
 					 * Treat it like simple attribute anyway.
 					 */
-					entry->indexkeys[j] = ((Var *) expr)->varattno;
+					entry->indexkeys[attn] = ((Var *) expr)->varattno;
 					/* Generated index name will have _expr instead of attname
 					 * in generated index name, and error message will also be
 					 * slighty different in case on unexisting column from a
@@ -664,23 +664,23 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 								 errmsg("hypopg: functions in index expression must be marked IMMUTABLE")));
 
 
-					entry->indexkeys[j] = 0; /* marks expression */
+					entry->indexkeys[attn] = 0; /* marks expression */
 
 					oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 					entry->indexprs = lappend(entry->indexprs,
-										(Node *) copyObject(indexelem->expr));
+										(Node *) copyObject(attribute->expr));
 					MemoryContextSwitchTo(oldcontext);
 				}
 			}
 
-			ind_avg_width += hypo_estimate_index_colsize(entry, j);
+			ind_avg_width += hypo_estimate_index_colsize(entry, attn);
 
 			/*
 			 * Apply collation override if any
 			 */
-			if (indexelem->collation)
-				entry->indexcollations[j] = get_collation_oid(indexelem->collation,
-															  false);
+			if (attribute->collation)
+				entry->indexcollations[attn] =
+					get_collation_oid(attribute->collation, false);
 
 			/*
 			 * Check we have a collation iff it's a collatable type.  The only
@@ -691,7 +691,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			 */
 			if (type_is_collatable(atttype))
 			{
-				if (!OidIsValid(entry->indexcollations[j]))
+				if (!OidIsValid(entry->indexcollations[attn]))
 					ereport(ERROR,
 							(errcode(ERRCODE_INDETERMINATE_COLLATION),
 							 errmsg("hypopg: could not determine which collation to use for index expression"),
@@ -699,7 +699,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			}
 			else
 			{
-				if (OidIsValid(entry->indexcollations[j]))
+				if (OidIsValid(entry->indexcollations[attn]))
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
 							 errmsg("hypopg: collations are not supported by type %s",
@@ -707,21 +707,21 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			}
 
 			/* get the opclass */
-			opclass = GetIndexOpClass(indexelem->opclass,
+			opclass = GetIndexOpClass(attribute->opclass,
 									  atttype,
 									  node->accessMethod,
 									  entry->relam);
-			entry->opclass[j] = opclass;
+			entry->opclass[attn] = opclass;
 			/* setup the opfamily */
-			entry->opfamily[j] = get_opclass_family(opclass);
+			entry->opfamily[attn] = get_opclass_family(opclass);
 
-			entry->opcintype[j] = get_opclass_input_type(opclass);
+			entry->opcintype[attn] = get_opclass_input_type(opclass);
 
 			/* setup the sort info if am handles it */
 			if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
 			{
-				entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC);
-				entry->nulls_first[j] = (indexelem->nulls_ordering ==
+				entry->reverse_sort[attn] = (attribute->ordering == SORTBY_DESC);
+				entry->nulls_first[attn] = (attribute->nulls_ordering ==
 										 SORTBY_NULLS_FIRST);
 			}
 
@@ -732,7 +732,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			 * OIS info is global for the index before 9.5, so look for the
 			 * information only once in that case.
 			 */
-			if (j == 0)
+			if (attn == 0)
 			{
 				/*
 				 * specify first column, but it doesn't matter as this will
@@ -743,13 +743,13 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			}
 #else
 			/* per-column IOS information */
-			entry->canreturn[j] = hypo_can_return(entry, atttype, j,
+			entry->canreturn[attn] = hypo_can_return(entry, atttype, attn,
 												  node->accessMethod);
 #endif
 
-			j++;
+			attn++;
 		}
-		Assert(j == ncolumns);
+		Assert(attn == ncolumns);
 
 		/* Check if the average size fits in a btree index */
 		if (entry->relam == BTREE_AM_OID)
@@ -808,27 +808,27 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 		 * type.  But given the lack of current or foreseeable amcanorder
 		 * index types, it's not worth expending more effort on now.
 		 */
-		for (j = 0; j < ncolumns; j++)
+		for (attn = 0; attn < ncolumns; attn++)
 		{
 			Oid			ltopr;
 			Oid			btopfamily;
 			Oid			btopcintype;
 			int16		btstrategy;
 
-			ltopr = get_opfamily_member(entry->opfamily[j],
-										entry->opcintype[j],
-										entry->opcintype[j],
+			ltopr = get_opfamily_member(entry->opfamily[attn],
+										entry->opcintype[attn],
+										entry->opcintype[attn],
 										BTLessStrategyNumber);
 			if (OidIsValid(ltopr) &&
 				get_ordering_op_properties(ltopr,
 										   &btopfamily,
 										   &btopcintype,
 										   &btstrategy) &&
-				btopcintype == entry->opcintype[j] &&
+				btopcintype == entry->opcintype[attn] &&
 				btstrategy == BTLessStrategyNumber)
 			{
 				/* Successful mapping */
-				entry->sortopfamily[j] = btopfamily;
+				entry->sortopfamily[attn] = btopfamily;
 			}
 			else
 			{
@@ -1278,21 +1278,21 @@ hypopg(PG_FUNCTION_ARGS)
 		bool		nulls[HYPO_NB_COLS];
 		ListCell   *lc2;
 		StringInfoData	exprsString;
-		int			j = 0;
+		int			i = 0;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
 
-		values[j++] = CStringGetTextDatum(entry->indexname);
-		values[j++] = ObjectIdGetDatum(entry->oid);
-		values[j++] = ObjectIdGetDatum(entry->relid);
-		values[j++] = Int8GetDatum(entry->ncolumns);
-		values[j++] = BoolGetDatum(entry->unique);
-		values[j++] = PointerGetDatum(buildint2vector(entry->indexkeys, entry->ncolumns));
-		values[j++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
-		values[j++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
-		nulls[j++] = true;		/* no indoption for now, TODO */
+		values[i++] = CStringGetTextDatum(entry->indexname);
+		values[i++] = ObjectIdGetDatum(entry->oid);
+		values[i++] = ObjectIdGetDatum(entry->relid);
+		values[i++] = Int8GetDatum(entry->ncolumns);
+		values[i++] = BoolGetDatum(entry->unique);
+		values[i++] = PointerGetDatum(buildint2vector(entry->indexkeys, entry->ncolumns));
+		values[i++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
+		values[i++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
+		nulls[i++] = true;		/* no indoption for now, TODO */
 
 		/* get each of indexprs, if any */
 		initStringInfo(&exprsString);
@@ -1303,9 +1303,9 @@ hypopg(PG_FUNCTION_ARGS)
 			appendStringInfo(&exprsString, "%s", nodeToString(expr));
 		}
 		if (exprsString.len == 0)
-			nulls[j++] = true;
+			nulls[i++] = true;
 		else
-			values[j++] = CStringGetTextDatum(exprsString.data);
+			values[i++] = CStringGetTextDatum(exprsString.data);
 		pfree(exprsString.data);
 
 		/*
@@ -1319,13 +1319,13 @@ hypopg(PG_FUNCTION_ARGS)
 			predString = nodeToString(make_ands_explicit(entry->indpred));
 			predDatum = CStringGetTextDatum(predString);
 			pfree(predString);
-			values[j++] = predDatum;
+			values[i++] = predDatum;
 		}
 		else
-			nulls[j++] = true;
+			nulls[i++] = true;
 
-		values[j++] = ObjectIdGetDatum(entry->relam);
-		Assert(j == HYPO_NB_COLS);
+		values[i++] = ObjectIdGetDatum(entry->relam);
+		Assert(i == HYPO_NB_COLS);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
