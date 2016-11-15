@@ -26,6 +26,6 @@ Less important
 - [ ] Compatibility PG 9.2-
 - [ ] handle unique index, still need to see if there is an impact somewhere...
 - [X] handle reverse and nulls first
-- [ ] handle index on expression
+- [X] handle index on expression
 - [X] handle index on predicate
 - [ ] specify a bloat factor

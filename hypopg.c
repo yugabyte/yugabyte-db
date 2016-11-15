@@ -120,6 +120,7 @@ typedef struct hypoEntry
 	RegProcedure amcanreturn;	/* OID of the access method's canreturn fcn */
 #endif
 
+	List	   *indexprs;		/* expressions for non-simple index columns */
 	List	   *indpred;		/* predicate if a partial index, else NIL */
 
 	bool		predOK;			/* true if predicate matches query */
@@ -215,6 +216,7 @@ static void hypo_set_indexname(hypoEntry *entry, char *indexname);
 static void hypo_estimate_index_simple(hypoEntry *entry,
 						   BlockNumber *pages, double *tuples);
 static void hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel);
+static int hypo_estimate_index_colsize(hypoEntry *entry, int col);
 static bool hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname);
 static void hypo_discover_am(char *amname, Oid oid);
 
@@ -351,6 +353,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 #if PG_VERSION_NUM >= 90500
 	entry->canreturn = palloc0(sizeof(bool) * ncolumns);
 #endif
+	entry->indexprs = NIL;
 	entry->indpred = NIL;
 	entry->options = (List *) copyObject(options);
 
@@ -500,31 +503,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	int			ncolumns;
 	ListCell   *lc;
 	int			j;
-	bool		ok = true;
 
-
-	/* -------------------------------------
-	 * check first if there's an expression.
-	 * the column list will probably be checked twice, but it avoids the need
-	 * to worry about freeing memory later.
-	 */
-	foreach(lc, node->indexParams)
-	{
-		IndexElem  *indexelem = (IndexElem *) lfirst(lc);
-
-		if (indexelem->expr != NULL)
-		{
-			ok = false;
-			break;
-		}
-	}
-
-	if (!ok)
-	{
-		elog(WARNING, "hypopg: hypothetical indexes on expression are"
-			 " not supported yet");
-		return NULL;
-	}
 
 	relid =
 		RangeVarGetRelid(node->relation, AccessShareLock, false);
@@ -582,33 +561,151 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			entry->indpred = NIL;
 		}
 
-		/* iterate through columns */
+		/*
+		 * process attributeList
+		 */
 		j = 0;
 		foreach(lc, node->indexParams)
 		{
 			IndexElem  *indexelem = (IndexElem *) lfirst(lc);
-			Oid			atttype;
+			Oid			atttype = InvalidOid;
 			Oid			opclass;
 
 			appendStringInfo(&indexRelationName, "_");
-			appendStringInfo(&indexRelationName, "%s", indexelem->name);
-			/* get the attribute catalog info */
-			tuple = SearchSysCacheAttName(relid, indexelem->name);
 
-			if (!HeapTupleIsValid(tuple))
+			/*
+			 * Process the column-or-expression to be indexed.
+			 */
+			if (indexelem->name != NULL)
 			{
-				elog(ERROR, "hypopg: column \"%s\" does not exist",
-					 indexelem->name);
+				/* Simple index attribute */
+				appendStringInfo(&indexRelationName, "%s", indexelem->name);
+				/* get the attribute catalog info */
+				tuple = SearchSysCacheAttName(relid, indexelem->name);
+
+				if (!HeapTupleIsValid(tuple))
+				{
+					elog(ERROR, "hypopg: column \"%s\" does not exist",
+						 indexelem->name);
+				}
+				attform = (Form_pg_attribute) GETSTRUCT(tuple);
+
+				/* setup the attnum */
+				entry->indexkeys[j] = attform->attnum;
+
+				/* setup the collation */
+				entry->indexcollations[j] = attform->attcollation;
+
+				/* get the atttype */
+				atttype = attform->atttypid;
+
+				ReleaseSysCache(tuple);
 			}
-			attform = (Form_pg_attribute) GETSTRUCT(tuple);
+			else
+			{
+				/*---------------------------
+				 * handle index on expression
+				 *
+				 * Adapted from DefineIndex() and ComputeIndexAttrs()
+				 *
+				 * Statistics on expression index will be really wrong, since
+				 * they're only computed when a real index exists (selectivity
+				 * and average width).
+				 */
+				MemoryContext	oldcontext;
+				Node		   *expr = indexelem->expr;
 
-			/* setup the attnum */
-			entry->indexkeys[j] = attform->attnum;
+				Assert(expr != NULL);
+				entry->indexcollations[j] = exprCollation(indexelem->expr);
+				atttype = exprType(indexelem->expr);
 
-			ind_avg_width += get_attavgwidth(relid, entry->indexkeys[j]);
+				appendStringInfo(&indexRelationName, "expr");
 
-			/* get the atttype */
-			atttype = attform->atttypid;
+				/*
+				 * Strip any top-level COLLATE clause.  This ensures that we
+				 * treat "x COLLATE y" and "(x COLLATE y)" alike.
+				 */
+				while (IsA(expr, CollateExpr))
+					expr = (Node *) ((CollateExpr *) expr)->arg;
+
+				if (IsA(expr, Var) &&
+					((Var *) expr)->varattno != InvalidAttrNumber)
+				{
+					/*
+					 * User wrote "(column)" or "(column COLLATE something)".
+					 * Treat it like simple attribute anyway.
+					 */
+					entry->indexkeys[j] = ((Var *) expr)->varattno;
+					/* Generated index name will have _expr instead of attname
+					 * in generated index name, and error message will also be
+					 * slighty different in case on unexisting column from a
+					 * simple attribute, but that's how ComputeIndexAttrs()
+					 * proceed.
+					 */
+
+				}
+				else
+				{
+					/*
+					 * transformExpr() should have already rejected
+					 * subqueries, aggregates, and window functions, based on
+					 * the EXPR_KIND_ for an index expression.
+					 */
+
+					/*
+					 * An expression using mutable functions is probably
+					 * wrong, since if you aren't going to get the same result
+					 * for the same data every time, it's not clear what the
+					 * index entries mean at all.
+					 */
+					if (CheckMutability((Expr *) expr))
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								 errmsg("hypopg: functions in index expression must be marked IMMUTABLE")));
+
+
+					entry->indexkeys[j] = 0; /* marks expression */
+
+					oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+					entry->indexprs = lappend(entry->indexprs,
+										(Node *) copyObject(indexelem->expr));
+					MemoryContextSwitchTo(oldcontext);
+				}
+			}
+
+			ind_avg_width += hypo_estimate_index_colsize(entry, j);
+
+			/*
+			 * Apply collation override if any
+			 */
+			if (indexelem->collation)
+				entry->indexcollations[j] = get_collation_oid(indexelem->collation,
+															  false);
+
+			/*
+			 * Check we have a collation iff it's a collatable type.  The only
+			 * expected failures here are (1) COLLATE applied to a
+			 * noncollatable type, or (2) index expression had an unresolved
+			 * collation.  But we might as well code this to be a complete
+			 * consistency check.
+			 */
+			if (type_is_collatable(atttype))
+			{
+				if (!OidIsValid(entry->indexcollations[j]))
+					ereport(ERROR,
+							(errcode(ERRCODE_INDETERMINATE_COLLATION),
+							 errmsg("hypopg: could not determine which collation to use for index expression"),
+							 errhint("Use the COLLATE clause to set the collation explicitly.")));
+			}
+			else
+			{
+				if (OidIsValid(entry->indexcollations[j]))
+					ereport(ERROR,
+							(errcode(ERRCODE_DATATYPE_MISMATCH),
+							 errmsg("hypopg: collations are not supported by type %s",
+									format_type_be(atttype))));
+			}
+
 			/* get the opclass */
 			opclass = GetIndexOpClass(indexelem->opclass,
 									  atttype,
@@ -617,10 +714,6 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			entry->opclass[j] = opclass;
 			/* setup the opfamily */
 			entry->opfamily[j] = get_opclass_family(opclass);
-			/* setup the collation */
-			entry->indexcollations[j] = attform->attcollation;
-
-			ReleaseSysCache(tuple);
 
 			entry->opcintype[j] = get_opclass_input_type(opclass);
 
@@ -804,6 +897,8 @@ hypo_entry_pfree(hypoEntry *entry)
 		if (entry->nulls_first)
 			pfree(entry->nulls_first);
 	}
+	if (entry->indexprs)
+		list_free_deep(entry->indexprs);
 	if (entry->indpred)
 		pfree(entry->indpred);
 #if PG_VERSION_NUM >= 90500
@@ -1019,8 +1114,8 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	index->amhasgettuple = entry->amhasgettuple;
 	index->amhasgetbitmap = entry->amhasgetbitmap;
 
-	index->indexprs = NIL;		/* not handled for now, WIP */
-	/* this has already been handled in hypo_entry_store_parsetree() if any */
+	/* these has already been handled in hypo_entry_store_parsetree() if any */
+	index->indexprs = list_copy(entry->indexprs);
 	index->indpred = list_copy(entry->indpred);
 	index->predOK = false;		/* will be set later in indxpath.c */
 
@@ -1181,6 +1276,8 @@ hypopg(PG_FUNCTION_ARGS)
 		hypoEntry  *entry = (hypoEntry *) lfirst(lc);
 		Datum		values[HYPO_NB_COLS];
 		bool		nulls[HYPO_NB_COLS];
+		ListCell   *lc2;
+		StringInfoData	exprsString;
 		int			j = 0;
 
 		memset(values, 0, sizeof(values));
@@ -1196,7 +1293,20 @@ hypopg(PG_FUNCTION_ARGS)
 		values[j++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
 		values[j++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
 		nulls[j++] = true;		/* no indoption for now, TODO */
-		nulls[j++] = true;		/* no hypothetical index on expr for now */
+
+		/* get each of indexprs, if any */
+		initStringInfo(&exprsString);
+		foreach(lc2, entry->indexprs)
+		{
+			Node *expr = lfirst(lc2);
+
+			appendStringInfo(&exprsString, "%s", nodeToString(expr));
+		}
+		if (exprsString.len == 0)
+			nulls[j++] = true;
+		else
+			values[j++] = CStringGetTextDatum(exprsString.data);
+		pfree(exprsString.data);
 
 		/*
 		 * Convert the index predicate (if any) to a text datum.  Note we
@@ -1436,14 +1546,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	ListCell   *lc;
 
 	for (i = 0; i < entry->ncolumns; i++)
-	{
-		ind_avg_width += get_attavgwidth(entry->relid, entry->indexkeys[i]);
-	}
-
-	/*
-	 * TODO: handle here when indpred and indexpres will be added, and other
-	 * access methods
-	 */
+		ind_avg_width += hypo_estimate_index_colsize(entry, i);
 
 	if (entry->indpred == NIL)
 	{
@@ -1643,6 +1746,68 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	/* make sure the index size is at least one block */
 	if (entry->pages <= 0)
 		entry->pages = 1;
+}
+
+/*
+ * Estimate a single index's column of an hypothetical index.
+ */
+static int
+hypo_estimate_index_colsize(hypoEntry *entry, int col)
+{
+	int i, pos;
+	Node *expr;
+
+	/* If simple attribute, return avg width */
+	if (entry->indexkeys[col] != 0)
+		return get_attavgwidth(entry->relid, entry->indexkeys[col]);
+
+	/* It's an expression */
+	pos = 0;
+
+	for (i=0; i<col; i++)
+	{
+		/* get the position in the expression list */
+		if (entry->indexkeys[i] == 0)
+			pos++;
+	}
+
+	expr = (Node *) list_nth(entry->indexprs, pos);
+
+	if (IsA(expr, Var) && ((Var *) expr)->varattno != InvalidAttrNumber)
+		return get_attavgwidth(entry->relid, ((Var *) expr)->varattno);
+
+	if (IsA(expr, FuncExpr))
+	{
+		FuncExpr *funcexpr = (FuncExpr *) expr;
+
+		switch (funcexpr->funcid)
+		{
+			case 2311:
+				/* md5 */
+				return 32;
+			break;
+			case 870:
+			case 871:
+			{
+				/* lower and upper, detect if simple attr */
+				Var *var;
+
+				if (IsA(linitial(funcexpr->args), Var))
+				{
+					var = (Var *) linitial(funcexpr->args);
+
+					if (var->varattno > 0)
+						return get_attavgwidth(entry->relid, var->varattno);
+				}
+				break;
+			}
+			default:
+				/* default fallback estimate will be used */
+			break;
+		}
+	}
+
+	return 50; /* default fallback estimate */
 }
 
 /*

@@ -139,10 +139,19 @@ SELECT hypopg_reset();
  
 (1 row)
 
--- indexes on expression are not handle
-SELECT hypopg_create_index('CREATE INDEX ON hypo (md5(val))');
-WARNING:  hypopg: hypothetical indexes on expression are not supported yet
- hypopg_create_index 
----------------------
-(0 rows)
+-- index on expression
+SELECT COUNT(*) AS NB
+FROM public.hypopg_create_index('CREATE INDEX ON hypo (md5(val))');
+ nb 
+----
+  1
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE md5(val) = md5(''line 1'')') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
 
