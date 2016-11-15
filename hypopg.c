@@ -138,6 +138,8 @@ typedef struct hypoEntry
 	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
 	bool		amhasgettuple;	/* does AM have amgettuple interface? */
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
+	bool		amcanunique; /* does AM support UNIQUE indexes? */
+	bool		amcanmulticol; /* does AM support multi-column indexes? */
 
 	/* store some informations usually saved in catalogs */
 	List	   *options;		/* WITH clause options: a list of DefElem */
@@ -312,6 +314,8 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->amsearchnulls = amroutine->amsearchnulls;
 	entry->amhasgettuple = OidIsValid(amroutine->amgettuple);
 	entry->amhasgetbitmap = OidIsValid(amroutine->amgetbitmap);
+	entry->amcanunique = amroutine->amcanunique;
+	entry->amcanmulticol = amroutine->amcanmulticol;
 	amoptions = amroutine->amoptions;
 	entry->amcanorder = amroutine->amcanorder;
 #else
@@ -324,6 +328,8 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->amsearchnulls = ((Form_pg_am) GETSTRUCT(tuple))->amsearchnulls;
 	entry->amhasgettuple = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgettuple);
 	entry->amhasgetbitmap = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgetbitmap);
+	entry->amcanunique = ((Form_pg_am) GETSTRUCT(tuple))->amcanunique;
+	entry->amcanmulticol = ((Form_pg_am) GETSTRUCT(tuple))->amcanmulticol;
 	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
 	entry->amcanorder = ((Form_pg_am) GETSTRUCT(tuple))->amcanorder;
 #endif
@@ -538,6 +544,17 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	{
 		HeapTuple	tuple;
 		int			ind_avg_width = 0;
+
+		if (node->unique && !entry->amcanunique)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				   errmsg("hypopg: access method \"%s\" does not support unique indexes",
+						  node->accessMethod)));
+		if (ncolumns > 1 && !entry->amcanmulticol)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			  errmsg("hypopg: access method \"%s\" does not support multicolumn indexes",
+					 node->accessMethod)));
 
 		entry->unique = node->unique;
 		entry->ncolumns = ncolumns;

@@ -24,7 +24,7 @@ Less important
 
 - [ ] specify tablespace
 - [ ] Compatibility PG 9.2-
-- [ ] handle unique index, still need to see if there is an impact somewhere...
+- [X] handle unique index
 - [X] handle reverse and nulls first
 - [X] handle index on expression
 - [X] handle index on predicate
