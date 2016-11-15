@@ -50,6 +50,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
+#include "optimizer/var.h"
 #include "parser/parser.h"
 #include "parser/parse_utilcmd.h"
 #include "storage/bufmgr.h"
@@ -767,6 +768,43 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			attn++;
 		}
 		Assert(attn == ncolumns);
+
+		/*
+		 * We disallow indexes on system columns other than OID.  They would
+		 * not necessarily get updated correctly, and they don't seem useful
+		 * anyway.
+		 */
+		for (attn = 0; attn < ncolumns; attn++)
+		{
+			AttrNumber	attno = entry->indexkeys[attn];
+
+			if (attno < 0 && attno != ObjectIdAttributeNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				   errmsg("hypopg: index creation on system columns is not supported")));
+		}
+
+		/*
+		 * Also check for system columns used in expressions or predicates.
+		 */
+		if (entry->indexprs || entry->indpred)
+		{
+			Bitmapset  *indexattrs = NULL;
+			int i;
+
+			pull_varattnos((Node *) entry->indexprs, 1, &indexattrs);
+			pull_varattnos((Node *) entry->indpred, 1, &indexattrs);
+
+			for (i = FirstLowInvalidHeapAttributeNumber + 1; i < 0; i++)
+			{
+				if (i != ObjectIdAttributeNumber &&
+					bms_is_member(i - FirstLowInvalidHeapAttributeNumber,
+								  indexattrs))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("hypopg: index creation on system columns is not supported")));
+			}
+		}
 
 		/* Check if the average size fits in a btree index */
 		if (entry->relam == BTREE_AM_OID)
