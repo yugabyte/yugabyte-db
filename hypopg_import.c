@@ -23,6 +23,7 @@
 #include "optimizer/planner.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
@@ -262,4 +263,47 @@ CheckMutability(Expr *expr)
 
 	/* Now we can search for non-immutable functions */
 	return contain_mutable_functions((Node *) expr);
+}
+
+/*
+ * Copied from /git/postgresql/src/backend/utils/adt/ruleutils.c, not exported.
+ *
+ * get_opclass_name			- fetch name of an index operator class
+ *
+ * The opclass name is appended (after a space) to buf.
+ *
+ * Output is suppressed if the opclass is the default for the given
+ * actual_datatype.  (If you don't want this behavior, just pass
+ * InvalidOid for actual_datatype.)
+ */
+void
+get_opclass_name(Oid opclass, Oid actual_datatype,
+				 StringInfo buf)
+{
+	HeapTuple	ht_opc;
+	Form_pg_opclass opcrec;
+	char	   *opcname;
+	char	   *nspname;
+
+	ht_opc = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclass));
+	if (!HeapTupleIsValid(ht_opc))
+		elog(ERROR, "cache lookup failed for opclass %u", opclass);
+	opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
+
+	if (!OidIsValid(actual_datatype) ||
+		GetDefaultOpClass(actual_datatype, opcrec->opcmethod) != opclass)
+	{
+		/* Okay, we need the opclass name.  Do we need to qualify it? */
+		opcname = NameStr(opcrec->opcname);
+		if (OpclassIsVisible(opclass))
+			appendStringInfo(buf, " %s", quote_identifier(opcname));
+		else
+		{
+			nspname = get_namespace_name(opcrec->opcnamespace);
+			appendStringInfo(buf, " %s.%s",
+							 quote_identifier(nspname),
+							 quote_identifier(opcname));
+		}
+	}
+	ReleaseSysCache(ht_opc);
 }

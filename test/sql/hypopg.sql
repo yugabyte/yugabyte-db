@@ -97,3 +97,6 @@ FROM public.hypopg_create_index('CREATE INDEX ON hypo (md5(val))');
 -- Should use hypothetical index
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE md5(val) = md5(''line 1'')') e
 WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+
+-- Deparse an index DDL, with almost every possible pathcode
+SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc nulls first, cast(md5(val) as bpchar)  bpchar_pattern_ops) with (fillfactor = 10) WHERE id < 1000 AND id +1 %2 = 3');

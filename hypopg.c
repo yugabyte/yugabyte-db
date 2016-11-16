@@ -59,6 +59,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/ruleutils.h"
 #include "utils/syscache.h"
 
 #include "hypopg_import.h"
@@ -162,12 +163,14 @@ Datum		hypopg(PG_FUNCTION_ARGS);
 Datum		hypopg_create_index(PG_FUNCTION_ARGS);
 Datum		hypopg_drop_index(PG_FUNCTION_ARGS);
 Datum		hypopg_relation_size(PG_FUNCTION_ARGS);
+Datum		hypopg_get_indexdef(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
+PG_FUNCTION_INFO_V1(hypopg_get_indexdef);
 
 static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int ncolumns,
 			  List *options);
@@ -1505,6 +1508,154 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_INT64(pages * BLCKSZ);
+}
+
+/*
+ * Deparse an hypoEntry, indentified by its indexid to the actual CREATE INDEX
+ * command.
+ *
+ * Heavilty inspired on pg_get_indexdef_worker()
+ */
+
+Datum
+hypopg_get_indexdef(PG_FUNCTION_ARGS)
+{
+	Oid				indexid = PG_GETARG_OID(0);
+	ListCell	   *indexpr_item;
+	StringInfoData	buf;
+	hypoEntry	   *entry;
+	ListCell	   *lc;
+	List		   *context;
+	int				keyno, cpt;
+
+	foreach(lc, entries)
+	{
+		entry = (hypoEntry *) lfirst(lc);
+
+		if (entry->oid == indexid)
+			break;
+	}
+
+	if (!entry || entry->oid != indexid)
+		PG_RETURN_NULL();
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "CREATE %s ON %s.%s USING %s (",
+			(entry->unique ? "UNIQUE INDEX" : "INDEX"),
+			quote_identifier(get_namespace_name(get_rel_namespace(entry->relid))),
+			quote_identifier(get_rel_name(entry->relid)),
+			get_am_name(entry->relam));
+
+	indexpr_item = list_head(entry->indexprs);
+
+	context = deparse_context_for(get_rel_name(entry->relid), entry->relid);
+
+	for (keyno=0; keyno<entry->ncolumns; keyno++)
+	{
+		Oid			indcoll;
+		Oid			keycoltype;
+		Oid			keycolcollation;
+		char	   *str;
+
+		if (keyno != 0)
+			appendStringInfo(&buf, ", ");
+
+		if (entry->indexkeys[keyno] != 0)
+		{
+			int32		keycoltypmod;
+			appendStringInfo(&buf, "%s", get_attname(entry->relid,
+						entry->indexkeys[keyno]));
+
+			get_atttypetypmodcoll(entry->relid, entry->indexkeys[keyno],
+								  &keycoltype, &keycoltypmod,
+								  &keycolcollation);
+		}
+		else
+		{
+			/* expressional index */
+			Node	   *indexkey;
+
+			if (indexpr_item == NULL)
+				elog(ERROR, "too few entries in indexprs list");
+			indexkey = (Node *) lfirst(indexpr_item);
+			indexpr_item = lnext(indexpr_item);
+
+			/* Deparse */
+			str = deparse_expression(indexkey, context, false, false);
+
+			/* Need parens if it's not a bare function call */
+			if (indexkey && IsA(indexkey, FuncExpr) &&
+			 ((FuncExpr *) indexkey)->funcformat == COERCE_EXPLICIT_CALL)
+				appendStringInfoString(&buf, str);
+			else
+				appendStringInfo(&buf, "(%s)", str);
+
+			keycoltype = exprType(indexkey);
+			keycolcollation = exprCollation(indexkey);
+
+			cpt++;
+		}
+
+		/* Add collation, if not default for column */
+		indcoll = entry->indexcollations[keyno];
+		if (OidIsValid(indcoll) && indcoll != keycolcollation)
+			appendStringInfo(&buf, " COLLATE %s",
+							 generate_collation_name((indcoll)));
+
+		/* Add the operator class name, if not default */
+		get_opclass_name(entry->opclass[keyno], entry->opcintype[keyno], &buf);
+
+		/* Add options if relevant */
+		if (entry->amcanorder)
+		{
+			/* if it supports sort ordering, report DESC and NULLS opts */
+			if (entry->reverse_sort[keyno])
+			{
+				appendStringInfoString(&buf, " DESC");
+				/* NULLS FIRST is the default in this case */
+				if (!(entry->nulls_first[keyno]))
+					appendStringInfoString(&buf, " NULLS LAST");
+			}
+			else
+			{
+				if (entry->nulls_first[keyno])
+					appendStringInfoString(&buf, " NULLS FIRST");
+			}
+		}
+	}
+
+	appendStringInfo(&buf, ")");
+
+	if (entry->options)
+	{
+		appendStringInfo(&buf, " WITH (");
+
+		foreach(lc, entry->options)
+		{
+			DefElem *elem = (DefElem *) lfirst(lc);
+
+			appendStringInfo(&buf, "%s = ", elem->defname);
+
+			if (strcmp(elem->defname, "fillfactor") == 0)
+				appendStringInfo(&buf, "%d", (int32) intVal(elem->arg));
+			else if (strcmp(elem->defname, "pages_per_range") == 0)
+				appendStringInfo(&buf, "%d", (int32) intVal(elem->arg));
+			else if (strcmp(elem->defname, "length") == 0)
+				appendStringInfo(&buf, "%d", (int32) intVal(elem->arg));
+			else
+				elog(WARNING," hypopg: option %s unhandled, please report the bug",
+						elem->defname);
+		}
+		appendStringInfo(&buf, ")");
+	}
+
+	if (entry->indpred)
+	{
+		appendStringInfo(&buf, " WHERE %s", deparse_expression((Node *)
+					make_ands_explicit(entry->indpred), context, false, false));
+	}
+
+	PG_RETURN_TEXT_P(cstring_to_text(buf.data));
 }
 
 

@@ -22,3 +22,4 @@ extern Oid GetIndexOpClass(List *opclass, Oid attrType,
 
 extern void CheckPredicate(Expr *predicate);
 extern bool CheckMutability(Expr *expr);
+extern void get_opclass_name(Oid opclass, Oid actual_datatype, StringInfo buf);

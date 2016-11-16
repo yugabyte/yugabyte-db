@@ -52,3 +52,9 @@ hypopg_relation_size(IN indexid oid)
     RETURNS bigint
 LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_relation_size';
+
+CREATE FUNCTION
+hypopg_get_indexdef(IN indexid oid)
+    RETURNS text
+LANGUAGE C STRICT VOLATILE COST 100
+AS '$libdir/hypopg', 'hypopg_get_indexdef';

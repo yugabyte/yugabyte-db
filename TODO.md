@@ -17,7 +17,7 @@ Important
 - Add some more (or enhance) function. Following are interesting:
 - [X] estimated index size
 - [ ] estimated number of lines
-- [ ] add hypopg_get_indexdef(oid) (based on src/backend/utils/adt/ruleutils.c/pg_get_indexdef_worker())
+- [X] add hypopg_get_indexdef(oid)
 
 Less important
 --------------
