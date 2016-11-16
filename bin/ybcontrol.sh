@@ -20,6 +20,58 @@ check_if_tar_specified() {
   fi
 }
 
+# Execute a command on $ip. $port & $pem_file must be specified as well.
+ssh_cmd() {
+  ssh -i $pem_file -p $port centos@$ip "$@"
+}
+
+# Function expects two arguments.
+#
+# $1 : Server type (e.g., master, tserver)
+# $2 : Roll Type (e.g., upgrade, restart).
+roll_servers() {
+  local server_type=$1
+  local roll_type=$2
+  local server_ips=""
+  local sleep_time_secs=0
+
+  if [[ $server_type == "master" ]]; then
+      sleep_time_secs=5
+      server_ips=$master_ips
+  elif [[ $server_type = "tserver" ]]; then
+      sleep_time_secs=45
+      server_ips=$tserver_ips
+  else
+    echo "Invalid server_type: $server_type" >& 2
+    exit 1
+  fi
+
+  if [[ $roll_type == "upgrade" ]]; then
+    echo "Upgrading yb-${server_type} software on servers one at a time..."
+  else
+    echo "Restarting yb-${server_type} on servers one at a time..."
+  fi
+
+  for ip in $server_ips; do
+    echo "Host=$ip"
+    ssh_cmd yb-${server_type}-ctl.sh stop
+    sleep 1
+    ssh_cmd yb-${server_type}-ctl.sh stop
+    sleep 1
+    ssh_cmd yb-${server_type}-ctl.sh stop
+    sleep 1
+    if [[ $roll_type == "upgrade" ]]; then
+      check_if_tar_specified
+      ssh_cmd "sudo -u yugabyte rm /opt/yugabyte/${server_type}"
+      ssh_cmd "sudo -u yugabyte ln -s /opt/yugabyte/$tar_prefix /opt/yugabyte/${server_type}"
+    fi
+    ssh_cmd yb-${server_type}-ctl.sh start &
+    sleep 1
+    echo "Sleeping $sleep_time_secs seconds before going to next $server_type...";
+    sleep $sleep_time_secs
+  done
+}
+
 
 print_help() {
   cat <<EOT
@@ -44,7 +96,8 @@ Commands:
   tservers_rolling_restart - Restarts the tservers in a rolling manner.
   tservers_rolling_upgrade - Upgrades the tservers to the newly copied TAR in a rolling manner.
   copy_tar                 - Copy the tar file to all the nodes.
-  status                   - Status of masters and servers
+  status                   - Status of masters and servers.
+  execute "..."            - Execute a command on all hosts.
 EOT
 }
 
@@ -82,19 +135,21 @@ while [ $# -gt 0 ]; do
       shift
     ;;
     --repo)
-      repo="2"
+      repo="$2"
       shift
     ;;
     masters_create|masters_start|masters_stop|masters_clean|masters_rolling_restart|masters_rolling_upgrade)
       set_cmd "$1"
-      shift
     ;;
     tservers_start|tservers_stop|tservers_clean|tservers_rolling_restart|tservers_rolling_upgrade)
       set_cmd "$1"
-      shift
     ;;
     copy_tar|status)
       set_cmd "$1"
+    ;;
+    execute)
+      set_cmd "$1"
+      execute_command="$2"
       shift
     ;;
     *)
@@ -138,96 +193,68 @@ case "$command" in
   masters_create)
     echo "Creating masters in cluster create mode..."
     for ip in $master_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh create &
+      ssh_cmd yb-master-ctl.sh create &
     done
   ;;
   masters_start)
     echo "Starting masters..."
     for ip in $master_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh start &
+      ssh_cmd yb-master-ctl.sh start &
     done
   ;;
   masters_stop)
     echo "Stopping masters..."
     for ip in $master_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
+      echo $ip
+      ssh_cmd yb-master-ctl.sh stop
       sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
+      ssh_cmd yb-master-ctl.sh stop
       sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
+      ssh_cmd yb-master-ctl.sh stop
       sleep 1
     done
   ;;
   masters_clean)
     echo "Cleaning masters..."
     for ip in $master_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh clean
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh clean-logs
+      ssh_cmd yb-master-ctl.sh clean
+      ssh_cmd yb-master-ctl.sh clean-logs
     done
   ;;
-  masters_rolling_upgrade|masters_rolling_restart)
-    echo "Upgrading masters..."
-    for ip in $master_ips; do
-      echo $ip
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
-      sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
-      sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh stop
-      sleep 1
-      if [[ $command == "masters_rolling_upgrade" ]]; then
-        check_if_tar_specified
-        ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte rm /opt/yugabyte/master"
-        ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte ln -s /opt/yugabyte/$tar_prefix /opt/yugabyte/master"
-      fi
-      ssh -i $pem_file -p $port centos@$ip yb-master-ctl.sh start &
-      sleep 1
-      echo "Sleeping 5 seconds before going to next master...";
-      sleep 5
-    done
+  masters_rolling_restart)
+    roll_servers master restart
+  ;;
+  masters_rolling_upgrade)
+    roll_servers master upgrade
   ;;
   tservers_start)
     echo "Starting tservers..."
     for ip in $tserver_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh start &
+      ssh_cmd yb-tserver-ctl.sh start &
     done
   ;;
   tservers_stop)
     echo "Stopping tservers..."
     for ip in $tserver_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh stop
+      echo $ip
+      ssh_cmd yb-tserver-ctl.sh stop
       sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh stop
+      ssh_cmd yb-tserver-ctl.sh stop
       sleep 1
     done
   ;;
   tservers_clean)
     echo "Cleaning tservers..."
     for ip in $tserver_ips; do
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh clean
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh clean-logs
+      ssh_cmd yb-tserver-ctl.sh clean
+      ssh_cmd yb-tserver-ctl.sh clean-logs
     done
   ;;
-  tservers_rolling_upgrade|tservers_rolling_restart)
-    echo "Upgrading tservers..."
-    for ip in $tserver_ips; do
-      echo $ip
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh stop
-      sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh stop
-      sleep 1
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh stop
-      sleep 1
-      if [[ $command == "tservers_rolling_upgrade" ]]; then
-        check_if_tar_specified
-        ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte rm /opt/yugabyte/tserver"
-        ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte ln -s /opt/yugabyte/$tar_prefix /opt/yugabyte/tserver"
-      fi
-      ssh -i $pem_file -p $port centos@$ip yb-tserver-ctl.sh start &
-      sleep 1
-      echo "Sleeping 45 seconds before going to next tserver...";
-      sleep 45
-    done
+  tservers_rolling_restart)
+    roll_servers tserver restart
+  ;;
+  tservers_rolling_upgrade)
+    roll_servers tserver upgrade
   ;;
   copy_tar)
     check_if_tar_specified
@@ -235,21 +262,27 @@ case "$command" in
     for ip in $all_servers; do
       echo $ip
       scp -i $pem_file -P $port $repo/build/$tar_prefix.tar.gz centos@$ip:/tmp/.
-      ssh -i $pem_file -p $port centos@$ip "sudo -u yugabyte mkdir -p /opt/yugabyte/$tar_prefix"
-      ssh -i $pem_file -p $port centos@$ip "(cd /opt/yugabyte/$tar_prefix ; sudo -u yugabyte tar xvf /tmp/$tar_prefix.tar.gz )"
+      ssh_cmd "sudo -u yugabyte mkdir -p /opt/yugabyte/$tar_prefix"
+      ssh_cmd "(cd /opt/yugabyte/$tar_prefix ; sudo -u yugabyte tar xvf /tmp/$tar_prefix.tar.gz )"
     done
   ;;
   status)
     for ip in $master_ips; do
       echo "Master related processes on $ip"
-      ssh -i $pem_file -p $port centos@$ip "ps auxww | grep yb-master | grep -v bash | grep -v grep"
+      ssh_cmd "ps auxww | grep [y]b-master | grep -v bash"
     done
     echo "---"
     for ip in $tserver_ips; do
       echo "TServer related processes on $ip"
-      ssh -i $pem_file -p $port centos@$ip "ps auxww | grep yb-tserver | grep -v bash | grep -v grep"
+      ssh_cmd "ps auxww | grep [y]b-tserver | grep -v bash"
     done
     echo "---"
+  ;;
+  execute)
+    for ip in $all_servers; do
+      echo "Host=$ip"
+      ssh_cmd $execute_command
+    done
   ;;
   *)
     echo "Invalid command" >&2
