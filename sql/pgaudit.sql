@@ -756,7 +756,10 @@ GRANT UPDATE
    TO auditor;
 
 INSERT INTO aaa VALUES (generate_series(1,100));
+
+SET pgaudit.log_parameter TO OFF;
 INSERT INTO bbb VALUES (1);
+SET pgaudit.log_parameter TO ON;
 
 DROP TABLE bbb;
 DROP TABLE aaa;

@@ -735,7 +735,7 @@ log_audit_event(AuditEventStackItem *stackItem)
      * translatability, but we currently haven't got translation support in
      * pgaudit anyway.
      */
-    ereport(auditLogClient ? auditLogLevel : COMMERROR,
+    ereport(auditLogClient ? auditLogLevel : LOG_SERVER_ONLY,
             (errmsg("AUDIT: %s," INT64_FORMAT "," INT64_FORMAT ",%s,%s",
                     stackItem->auditEvent.granted ?
                     AUDIT_TYPE_OBJECT : AUDIT_TYPE_SESSION,
