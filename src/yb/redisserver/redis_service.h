@@ -5,7 +5,9 @@
 
 #include "yb/redisserver/redis_service.service.h"
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "yb/rpc/transfer.h"
@@ -90,6 +92,9 @@ class RedisServiceImpl : public RedisServerServiceIf {
   std::map<string, yb::rpc::RpcMethodMetrics> metrics_;
   std::map<string, const RedisCommandInfo*> command_name_to_info_map_;
 
+  string yb_tier_master_addresses_;
+  std::mutex yb_mutex_;  // Mutex that protects the creation of client_ and table_.
+  std::atomic<bool> yb_client_initialized_;
   shared_ptr<client::YBClient> client_;
   shared_ptr<client::YBTable> table_;
 

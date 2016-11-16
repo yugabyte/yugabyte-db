@@ -162,7 +162,8 @@ public class MiniYBCluster implements AutoCloseable {
     int port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
-      port = TestUtils.findFreePort(port);
+      int redis_port = TestUtils.findFreePort(port);
+      port = TestUtils.findFreePort(redis_port);
       String dataDirPath = baseDirPath + "/ts-" + i + "-" + now;
       String flagsPath = TestUtils.getFlagsPath();
       String[] tsCmdLine = {
@@ -173,7 +174,8 @@ public class MiniYBCluster implements AutoCloseable {
           "--tserver_master_addrs=" + masterAddresses,
           "--webserver_interface=" + localhost,
           "--local_ip_for_outbound_sockets=" + localhost,
-          "--rpc_bind_addresses=" + localhost + ":" + port};
+          "--rpc_bind_addresses=" + localhost + ":" + port,
+          "--redis_proxy_bind_address=" + localhost + ":" + redis_port};
       tserverProcesses.put(port, configureAndStartProcess(tsCmdLine));
       port++;
 

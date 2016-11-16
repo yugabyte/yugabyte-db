@@ -29,8 +29,9 @@ using yb::tserver::TabletServer;
 using yb::redisserver::RedisServer;
 using yb::redisserver::RedisServerOptions;
 
-DEFINE_bool(start_redis_proxy, false, "Starts a redis proxy along with the tablet server");
-DEFINE_string(redis_proxy_bind_address, "", "address to bind the redis proxy to");
+DEFINE_bool(start_redis_proxy, true, "Starts a redis proxy along with the tablet server");
+DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
+DEFINE_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
 DECLARE_string(rpc_bind_addresses);
 DECLARE_string(tserver_master_addrs);
 DECLARE_int32(webserver_port);
@@ -44,8 +45,9 @@ static int TabletServerMain(int argc, char** argv) {
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  TabletServer::kDefaultPort);
-  FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
   FLAGS_webserver_port = TabletServer::kDefaultWebPort;
+  FLAGS_redis_proxy_bind_address = strings::Substitute("0.0.0.0:$0", RedisServer::kDefaultPort);
+  FLAGS_redis_proxy_webserver_port = RedisServer::kDefaultWebPort;
 
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
@@ -66,8 +68,13 @@ static int TabletServerMain(int argc, char** argv) {
   if (FLAGS_start_redis_proxy) {
     RedisServerOptions redis_server_options;
     redis_server_options.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
+    redis_server_options.webserver_opts.port = FLAGS_redis_proxy_webserver_port;
     redis_server_options.master_addresses_flag =
         yb::HostPort::ToCommaSeparatedString(*tablet_server_options.GetMasterAddresses());
+    redis_server_options.dump_info_path =
+        (tablet_server_options.dump_info_path.empty()
+             ? ""
+             : tablet_server_options.dump_info_path + "-redis");
     redis_server.reset(new RedisServer(redis_server_options));
     LOG(INFO) << "Starting redis server...";
     CHECK_OK(redis_server->Start());

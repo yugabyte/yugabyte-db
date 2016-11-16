@@ -522,15 +522,10 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-    int tablet_server_index,
-    const std::shared_ptr<rpc::Messenger>& messenger,
-    const std::string& exe,
-    const std::string& data_dir,
-    std::string bind_host,
-    uint16_t rpc_port,
-    uint16_t http_port,
-    const std::vector<HostPort>& master_addrs,
-    const std::vector<std::string>& extra_flags);
+      int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
+      const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
+      uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
+      const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags);
 
   Status Start();
 
@@ -544,6 +539,8 @@ class ExternalTabletServer : public ExternalDaemon {
   const std::string bind_host_;
   const uint16_t rpc_port_;
   const uint16_t http_port_;
+  const uint16_t redis_rpc_port_;
+  const uint16_t redis_http_port_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;
   virtual ~ExternalTabletServer();

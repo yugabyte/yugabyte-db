@@ -47,6 +47,7 @@ class TestRedisService : public RedisTableTestBase {
   unique_ptr<RedisServer> server_;
   int redis_server_port_ = 0;
   unique_ptr<FileLock> redis_port_lock_;
+  unique_ptr<FileLock> redis_webserver_lock_;
   static constexpr size_t kBufLen = 1024;
   uint8_t resp_[kBufLen];
 };
@@ -54,9 +55,14 @@ class TestRedisService : public RedisTableTestBase {
 void TestRedisService::SetUp() {
   RedisTableTestBase::SetUp();
 
-  redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
-  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", server_port());
+  redis_server_port_ = GetFreePort(&redis_port_lock_);
+  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", redis_server_port_);
+  // No need to save the webserver port, as we don't plan on using it. Just use a unique free port.
+  opts.webserver_opts.port = GetFreePort(&redis_webserver_lock_);
+  string fs_root = GetTestPath("RedisServerTest-fsroot");
+  opts.fs_opts.wal_paths = {fs_root};
+  opts.fs_opts.data_paths = {fs_root};
 
   auto master_rpc_addrs = master_rpc_addresses_as_strings();
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");

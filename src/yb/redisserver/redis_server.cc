@@ -24,7 +24,7 @@ RedisServer::RedisServer(const RedisServerOptions& opts)
     : RpcAndWebServerBase("RedisServer", opts, "yb.redisserver"), opts_(opts) {}
 
 Status RedisServer::Start() {
-  server::RpcAndWebServerBase::Init();
+  RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   gscoped_ptr<ServiceIf> redis_service(new RedisServiceImpl(this, opts_.master_addresses_flag));
   RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(redis_svc, redissvc), redis_service.Pass()));

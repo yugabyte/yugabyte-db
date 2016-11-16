@@ -118,35 +118,41 @@ RedisServiceImpl::RedisCommandFunctionPtr RedisServiceImpl::FetchHandler(
 }
 
 RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_addresses)
-    : RedisServerServiceIf(server->metric_entity()), server_(server) {
+    : RedisServerServiceIf(server->metric_entity()),
+      yb_tier_master_addresses_(yb_tier_master_addresses),
+      yb_client_initialized_(false),
+      server_(server) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   PopulateHandlers();
-  SetUpYBClient(yb_tier_master_addresses);
 }
 
 void RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
-  YBClientBuilder client_builder;
-  client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
-  client_builder.add_master_server_addr(yb_tier_master_addresses);
-  CHECK_OK(client_builder.Build(&client_));
+  std::lock_guard<std::mutex> guard(yb_mutex_);
+  if (!yb_client_initialized_.load()) {
+    YBClientBuilder client_builder;
+    client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
+    client_builder.add_master_server_addr(yb_tier_master_addresses);
+    CHECK_OK(client_builder.Build(&client_));
 
-  const string table_name(RedisConstants::kRedisTableName);
-  // Ensure that the table has already been created.
-  {
-    YBSchema existing_schema;
-    CHECK(client_->GetTableSchema(table_name, &existing_schema).ok()) << "Table '" << table_name
-                                                                      << "' does not exist yet";
+    const string table_name(RedisConstants::kRedisTableName);
+    // Ensure that the table has already been created.
+    {
+      YBSchema existing_schema;
+      CHECK(client_->GetTableSchema(table_name, &existing_schema).ok()) << "Table '" << table_name
+                                                                        << "' does not exist yet";
+    }
+    CHECK_OK(client_->OpenTable(table_name, &table_));
+    yb_client_initialized_.store(true);
   }
-  CHECK_OK(client_->OpenTable(table_name, &table_));
 }
 
 void RedisServiceImpl::Handle(InboundCall* inbound_call) {
   auto* call = down_cast<RedisInboundCall*>(CHECK_NOTNULL(inbound_call));
 
   DVLOG(4) << "Asked to handle a call " << call->ToString();
+  if (!yb_client_initialized_.load()) SetUpYBClient(yb_tier_master_addresses_);
 
   rpc::RedisClientCommand& c = call->GetClientCommand();
-
   auto handler = FetchHandler(c.cmd_args);
   (this->*handler)(call, &c);
 }

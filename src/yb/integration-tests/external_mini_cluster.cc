@@ -779,12 +779,13 @@ Status ExternalMiniCluster::AddTabletServer() {
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
   }
 
-  uint16_t ts_rpc_port = AllocateFreePort();
-  uint16_t ts_http_port = AllocateFreePort();
-  scoped_refptr<ExternalTabletServer> ts =
-    new ExternalTabletServer(
+  const uint16_t ts_rpc_port = AllocateFreePort();
+  const uint16_t ts_http_port = AllocateFreePort();
+  const uint16_t redis_rpc_port = AllocateFreePort();
+  const uint16_t redis_http_port = AllocateFreePort();
+  scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
       idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
-      ts_rpc_port, ts_http_port, master_hostports,
+      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port, master_hostports,
       SubstituteInFlags(opts_.extra_tserver_flags, idx));
   RETURN_NOT_OK(ts->Start());
   tablet_servers_.push_back(ts);
@@ -1409,14 +1410,7 @@ Status ExternalMaster::Restart() {
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Master cannot be restarted. Must call Shutdown() first.");
   }
-  vector<string> flags;
-  flags.push_back("--fs_wal_dirs=" + data_dir_);
-  flags.push_back("--fs_data_dirs=" + data_dir_);
-  flags.push_back("--rpc_bind_addresses=" + bound_rpc_.ToString());
-  flags.push_back("--webserver_interface=localhost");
-  flags.push_back(Substitute("--webserver_port=$0", bound_http_.port()));
-  RETURN_NOT_OK(StartProcess(flags));
-  return Status::OK();
+  return Start(true);
 }
 
 //------------------------------------------------------------
@@ -1424,14 +1418,18 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger, const string& exe,
-    const string& data_dir, string bind_host, uint16_t rpc_port, uint16_t http_port,
-    const vector<HostPort>& master_addrs, const vector<string>& extra_flags)
-  : ExternalDaemon(Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, extra_flags),
-    master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
-    bind_host_(std::move(bind_host)),
-    rpc_port_(rpc_port),
-    http_port_(http_port) {}
+    int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
+    const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
+    uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
+    const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
+    : ExternalDaemon(
+          Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, extra_flags),
+      master_addrs_(HostPort::ToCommaSeparatedString(master_addrs)),
+      bind_host_(std::move(bind_host)),
+      rpc_port_(rpc_port),
+      http_port_(http_port),
+      redis_rpc_port_(redis_rpc_port),
+      redis_http_port_(redis_http_port) {}
 
 ExternalTabletServer::~ExternalTabletServer() {
 }
@@ -1447,6 +1445,8 @@ Status ExternalTabletServer::Start() {
   flags.push_back(Substitute("--webserver_interface=$0",
                              bind_host_));
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
+  flags.push_back(Substitute("--redis_proxy_bind_address=$0:$1", bind_host_, redis_rpc_port_));
+  flags.push_back(Substitute("--redis_proxy_webserver_port=$0", redis_http_port_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env
@@ -1463,18 +1463,7 @@ Status ExternalTabletServer::Restart() {
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  vector<string> flags;
-  flags.push_back("--fs_wal_dirs=" + data_dir_);
-  flags.push_back("--fs_data_dirs=" + data_dir_);
-  flags.push_back("--rpc_bind_addresses=" + bound_rpc_.ToString());
-  flags.push_back(Substitute("--local_ip_for_outbound_sockets=$0",
-                             bind_host_));
-  flags.push_back(Substitute("--webserver_port=$0", bound_http_.port()));
-  flags.push_back(Substitute("--webserver_interface=$0",
-                             bind_host_));
-  flags.push_back("--tserver_master_addrs=" + master_addrs_);
-  RETURN_NOT_OK(StartProcess(flags));
-  return Status::OK();
+  return Start();
 }
 
 }  // namespace yb
