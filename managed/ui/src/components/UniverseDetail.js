@@ -19,8 +19,6 @@ import YBLabelWithIcon from './fields/YBLabelWithIcon';
 import YBPanelItem from './YBPanelItem';
 import YBMapLegendItem from './YBMapLegendItem';
 
-
-
 class YBMapLegend extends Component {
   render() {
     const {regions} = this.props;
