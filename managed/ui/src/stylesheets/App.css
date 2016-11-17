@@ -401,6 +401,23 @@ ul.progress-list li i {
     height: 30px;
 }
 
+#upgrade-filter-dropdown {
+    margin-left: 10%;
+
+}
+#upgrade-filter-dropdown .btn {
+    min-width: 120px;
+}
+
+#upgrade-filter-dropdown .dropdown-menu {
+    min-width: 120px;
+}
+
+input[type="radio"] {
+    -webkit-appearance: checkbox; /* Chrome, Safari, Opera */
+    -moz-appearance: checkbox; /* Firefox */
+    -ms-appearance: checkbox; /* not currently supported */
+}
 .hljs {
     height: 520px;
     width: 100%;
@@ -420,6 +437,12 @@ ul.progress-list li i {
 
 #dc-config-val {
     width: 100% !important;
+}
+
+.form-section-title {
+    font-size: 1.2em;
+    margin-top: 8px;
+    padding: 4px;
 }
 
 .text-bold {
