@@ -48,7 +48,9 @@ export const OPEN_DIALOG = 'OPEN_DIALOG';
 export const CLOSE_DIALOG = 'CLOSE_DIALOG';
 
 // Submit G-Flag Tasks
-export const SUBMIT_GFLAGS = 'SUBMIT_GFLAGS';
+export const ROLLING_UPGRADE = 'ROLLING_UPGRADE';
+export const ROLLING_UPGRADE_SUCCESS = 'ROLLING_UPGRADE_SUCCESS';
+export const ROLLING_UPGRADE_FAILURE = 'ROLLING_UPGRADE_FAILURE';
 
 // Universe Template Tasks
 export const CONFIGURE_UNIVERSE_TEMPLATE = 'CONFIGURE_UNIVERSE_TEMPLATE';
@@ -268,9 +270,26 @@ export function closeDialog() {
   }
 }
 
-export function submitGFlags() {
+export function rollingUpgrade(values, universeUUID) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade`, values);
   return {
-    type: SUBMIT_GFLAGS
+    type: ROLLING_UPGRADE,
+    payload: request
+  };
+}
+
+export function rollingUpgradeSuccess(result) {
+  return {
+    type: ROLLING_UPGRADE_SUCCESS,
+    payload: result
+  };
+}
+
+export function rollingUpgradeFailure(error) {
+  return {
+    type: ROLLING_UPGRADE_FAILURE,
+    payload: error
   }
 }
 

@@ -4,8 +4,9 @@ import React, { Component, PropTypes } from 'react';
 import { Modal } from 'react-bootstrap';
 import YBButton from './YBButton';
 export default class YBModal extends Component {
+
   render() {
-    const {visible, onHide, size, formName, onFormSubmit, title} = this.props;
+    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel} = this.props;
     return (
       <Modal show={visible} onHide={onHide} bsSize={size}>
         <form name={formName} onSubmit={onFormSubmit}>
@@ -16,7 +17,7 @@ export default class YBModal extends Component {
             {this.props.children}
           </Modal.Body>
           <Modal.Footer>
-            <YBButton btnClass="btn-block bg-orange" btnText={title} btnType="submit"/>
+            <YBButton btnClass="btn-block bg-orange" btnText={submitLabel} btnType="submit"/>
           </Modal.Footer>
         </form>
       </Modal>
@@ -32,4 +33,4 @@ YBModal.propTypes = {
   onFormSubmit: PropTypes.func.isRequired
 };
 
-YBModal.defaultProps = { visible: false };
+YBModal.defaultProps = { visible: false, submitLabel: 'submit' };

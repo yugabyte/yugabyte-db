@@ -1,23 +1,24 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import { Grid, Row, Col, ButtonGroup, Image,
           DropdownButton, MenuItem } from 'react-bootstrap';
 import RegionMap from './RegionMap';
-import NodeDetails from './NodeDetails';
 import UniverseInfoPanel from './UniverseInfoPanel';
 import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
 import TaskProgressContainer from '../containers/TaskProgressContainer';
+import RollingUpgradeFormContainer from '../containers/forms/RollingUpgradeFormContainer';
 import DeleteUniverseContainer from '../containers/DeleteUniverseContainer';
 import YBButton from './fields/YBButton';
 import UniverseFormContainer from '../containers/forms/UniverseFormContainer';
-import GFlagsFormContainer from '../containers/forms/GFlagsFormContainer';
 import {Link} from 'react-router';
 import universelogo from '../images/universe_icon.png';
 import YBLabelWithIcon from './fields/YBLabelWithIcon';
 import YBPanelItem from './YBPanelItem';
 import YBMapLegendItem from './YBMapLegendItem';
+import NodeDetails from './NodeDetails';
+
 
 class YBMapLegend extends Component {
   render() {
@@ -36,10 +37,6 @@ class YBMapLegend extends Component {
 }
 
 export default class UniverseDetail extends Component {
-
-  static contextTypes = {
-    router: PropTypes.object
-  }
 
   componentWillUnmount() {
     this.props.resetUniverseInfo();
@@ -64,13 +61,14 @@ export default class UniverseDetail extends Component {
     } else if (!currentUniverse) {
       return <span />;
     }
-    const { universeDetails } = currentUniverse;
+
     var universeTaskUUIDs = [];
     if (universeTasks && universeTasks[currentUniverse.universeUUID] !== undefined) {
       universeTaskUUIDs = universeTasks[currentUniverse.universeUUID].map(function(task) {
         return (task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }
+
 
     return (
       <Grid id="page-wrapper" fluid={true}>
@@ -94,15 +92,17 @@ export default class UniverseDetail extends Component {
             <ButtonGroup className="universe-detail-btn-group">
               <YBButton btnClass=" btn btn-default btn-sm bg-orange"
                         btnText="Edit" btnIcon="fa fa-database" onClick={this.props.showUniverseModal} />
-              <DropdownButton className="btn btn-default btn-sm " title="More" id="bg-nested-dropdown" >
-                <MenuItem eventKey="1">
+
+              <DropdownButton className="btn btn-default btn-sm" title="More" id="bg-nested-dropdown" >
+                <MenuItem eventKey="1" onClick={this.props.showSoftwareUpgradesModal}>
+
                   <YBLabelWithIcon icon="fa fa-refresh fa-fw">
                     s/w Upgrades
                   </YBLabelWithIcon>
                 </MenuItem>
                 <MenuItem eventKey="2" onClick={this.props.showGFlagsModal} >
                   <YBLabelWithIcon icon="fa fa-flag fa-fw">
-                    Flags
+                    GFlags
                   </YBLabelWithIcon>
                 </MenuItem>
               </DropdownButton>
@@ -112,10 +112,15 @@ export default class UniverseDetail extends Component {
           <UniverseFormContainer type="Edit"
                                  visible={showModal===true && visibleModal==="universeModal"}
                                  onHide={this.props.closeModal} title="Edit Universe" />
-          <GFlagsFormContainer modalVisible={showModal === true && visibleModal === "gFlagsModal"}
-                               onHide={this.props.closeModal} title="Set GFlags"/>
+
+          <RollingUpgradeFormContainer modalVisible={showModal === true &&
+          (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
+                               onHide={this.props.closeModal} />
+
+
           <DeleteUniverseContainer visible={showModal===true && visibleModal==="deleteUniverseModal"}
                                        onHide={this.props.closeModal} title="Delete Universe"/>
+
         </Row>
         <Row>
           <Col lg={12}>
@@ -141,12 +146,12 @@ export default class UniverseDetail extends Component {
         </Row>
         <Row>
           <Col lg={12}>
-            <NodeDetails nodeDetails={universeDetails.nodeDetailsSet}/>
+            <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
           </Col>
         </Row>
         <Row>
           <Col lg={12}>
-            <GraphPanelContainer nodePrefix={universeDetails.nodePrefix} />
+            <GraphPanelContainer nodePrefix={currentUniverse.universeDetails.nodePrefix} />
           </Col>
         </Row>
       </Grid>
