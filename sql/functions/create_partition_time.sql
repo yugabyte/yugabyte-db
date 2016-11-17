@@ -33,6 +33,7 @@ v_partition_created             boolean := false;
 v_partition_name                text;
 v_partition_suffix              text;
 v_parent_tablespace             text;
+v_partition_expression          text;
 v_partition_interval            interval;
 v_partition_timestamp_end       timestamptz;
 v_partition_timestamp_start     timestamptz;
@@ -94,6 +95,14 @@ AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
+END IF;
+
+v_partition_expression := case
+    when v_epoch = true then format('to_timestamp(%I)', v_control)
+    else format('%I', v_control)
+end;
+IF p_debug THEN
+    RAISE NOTICE 'create_partition_time: v_partition_expression: %', v_partition_expression;
 END IF;
 
 FOREACH v_time IN ARRAY p_partition_times LOOP    
@@ -160,24 +169,14 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
     END IF;
-    IF v_epoch = false THEN
-        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
-                        , v_parent_schema
-                        , v_partition_name
-                        , v_partition_name||'_partition_check'
-                        , v_control
-                        , v_partition_timestamp_start
-                        , v_control
-                        , v_partition_timestamp_end);
-    ELSE
-        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (to_timestamp(%I) >= %L AND to_timestamp(%I) < %L)'
-                        , v_parent_schema
-                        , v_partition_name
-                        , v_partition_name||'_partition_time_check'
-                        , v_control
-                        , v_partition_timestamp_start
-                        , v_control
-                        , v_partition_timestamp_end);
+    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
+        , v_parent_schema
+        , v_partition_name
+        , v_partition_name||'_partition_check'
+        , v_partition_expression
+        , v_partition_timestamp_start
+        , v_partition_timestamp_end);
+    IF v_epoch = true THEN
         EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
                         , v_parent_schema
                         , v_partition_name

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, datetime, psycopg2, sys
+import argparse, psycopg2, sys
 
 partman_version = "2.3.2"
 
@@ -163,7 +163,7 @@ def get_partman_schema(conn):
 def get_vacuum_freeze_min_age(conn):
     cur = conn.cursor()
     if args.vacuum_freeze_min_age == None:
-        sql = "SELECT setting FROM pg_settings WHERE name = 'vacuum_freeze_min_age'" 
+        sql = "SELECT setting FROM pg_settings WHERE name = 'vacuum_freeze_min_age'"
         cur.execute(sql)
         vacuum_freeze_min_age = cur.fetchone()[0]
     else:
@@ -185,7 +185,7 @@ def vacuum_table(conn, schemaname, tablename):
         sql += " FREEZE "
     sql += " \"" + schemaname + "\".\"" +  tablename + "\" "
     if not args.quiet:
-        print(sql) 
+        print(sql)
     if not args.dryrun:
         cur.execute(sql)
     cur.close()
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     vacuum_freeze_min_age = get_vacuum_freeze_min_age(main_conn)
     if args.debug:
         print("vacuum_freeze_min_age: " + str(vacuum_freeze_min_age))
-    
+
     if args.all:
         parent_table_list = get_parent_table_list(main_conn)
     else:

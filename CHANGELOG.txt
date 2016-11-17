@@ -1,3 +1,8 @@
+2.6.2
+-- Refactor of time functions in relation to epoch partitioning to improve maintainability of the code. Much thanks to Michael Rasmussen (Trekoid)! (Github Pull Request #143)
+-- Some code cleanup for python scripts. Much thanks to Rodolphe Quiédeville (rodo)! (Github Pull Request #148)
+
+
 2.6.1
 -- WARNING: The pg_partman background worker is currently incompatible with PostgreSQL 9.6. It runs fine in 9.4 and 9.5. I'm still working on trying to figure out what the issue is. If you must upgrade to 9.6 before this issue is fixed, you can disable the background worker by removing the entry for it in shared_preload_libraries and restarting postgres. Instead schedule the run_maintenance() plpgsql function to run via another scheduler method (cron).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, collections, psycopg2, os, subprocess, sys, tempfile
+import argparse, collections, psycopg2, sys, tempfile
 
 partman_version = "2.0.0"
 
@@ -94,4 +94,3 @@ if args.simple:
 else:
     if total_count == 0 and not args.quiet:
         print("No constraint violations found")
-

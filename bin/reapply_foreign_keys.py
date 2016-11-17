@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, psycopg2, sys, time
+import argparse, psycopg2, sys
 
 partman_version = "2.0.0"
 
@@ -12,7 +12,7 @@ parser.add_argument('--dryrun', action="store_true", help="Show what the script 
 parser.add_argument('--nonpartman', action="store_true", help="If the partition set you are running this on is not managed by pg_partman, set this flag. Otherwise internal pg_partman functions are used and this script may not work. When this is set the order that the tables are rekeyed is alphabetical instead of logical.")
 parser.add_argument('--debug', action="store_true", help="Show additional debugging output")
 parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
-args = parser.parse_args() 
+args = parser.parse_args()
 
 
 def apply_foreign_keys(conn, child_tables):
@@ -20,7 +20,7 @@ def apply_foreign_keys(conn, child_tables):
         print("Applying foreign keys to child tables...")
     cur = conn.cursor()
     for c in child_tables:
-        sql = """SELECT pg_get_constraintdef(con.oid) AS constraint_def 
+        sql = """SELECT pg_get_constraintdef(con.oid) AS constraint_def
                     FROM pg_catalog.pg_constraint con
                     JOIN pg_catalog.pg_class c ON con.conrelid = c.oid
                     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -56,7 +56,7 @@ def drop_foreign_keys(conn, child_tables):
     cur = conn.cursor()
     for c in child_tables:
         sql = """SELECT constraint_name
-            FROM information_schema.table_constraints 
+            FROM information_schema.table_constraints
             WHERE table_schema = %s AND table_name = %s AND constraint_type = 'FOREIGN KEY'"""
         if args.debug:
             print(cur.mogrify(sql, [ c[0], c[1] ]))

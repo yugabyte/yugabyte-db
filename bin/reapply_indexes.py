@@ -104,7 +104,7 @@ def create_index(conn, partman_schema, child_schemaname, child_tablename, child_
             statement = statement.replace(i[3], index_name)  # replace parent index name with child index name
             if args.concurrent:
                 statement = statement.replace("CREATE INDEX ", "CREATE INDEX CONCURRENTLY ")
-            statement = parent_match_regex.sub(" ON \"" + child_schemaname + "\".\"" + child_tablename + "\" ", statement)  
+            statement = parent_match_regex.sub(" ON \"" + child_schemaname + "\".\"" + child_tablename + "\" ", statement)
         cur = conn.cursor()
         if statement != None:
             if not args.quiet:
@@ -119,14 +119,13 @@ def close_conn(conn):
 
 
 def drop_index(conn, child_schemaname, child_tablename, child_index_list, parent_index_list):
-    cur = conn.cursor() 
-    drop_list = []
+    cur = conn.cursor()
     for d in child_index_list:
         if d[1] == True and args.primary:
             statement = "ALTER TABLE \"" + child_schemaname + "\".\"" + child_tablename + "\" DROP CONSTRAINT \"" + d[4] + "\""
             if not args.quiet:
                 print(cur.mogrify(statement))
-            if not args.dryrun: 
+            if not args.dryrun:
                 cur.execute(statement)
         elif d[1] == False:
             if args.drop_concurrent:
@@ -149,12 +148,12 @@ def drop_index(conn, child_schemaname, child_tablename, child_index_list, parent
                 if not parent_found:
                     if not args.quiet:
                         print(cur.mogrify(statement))
-                    if not args.dryrun: 
+                    if not args.dryrun:
                         cur.execute(statement)
             else:
                 if not args.quiet:
                     print(cur.mogrify(statement))
-                if not args.dryrun: 
+                if not args.dryrun:
                     cur.execute(statement)
 
 
@@ -182,7 +181,7 @@ def get_children(conn, partman_schema):
 
 
 def get_child_index_list(conn, child_schemaname, child_tablename):
-    cur = conn.cursor() 
+    cur = conn.cursor()
     sql = """
             WITH child_info AS (
                 SELECT c1.oid FROM pg_catalog.pg_class c1
@@ -195,7 +194,7 @@ def get_child_index_list(conn, child_schemaname, child_tablename):
             , n.nspname AS index_schemaname
             , c.relname AS index_name
             , t.conname
-            FROM pg_catalog.pg_index i 
+            FROM pg_catalog.pg_index i
             JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
             JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
             LEFT JOIN pg_catalog.pg_constraint t ON c.oid = t.conindid
@@ -214,13 +213,13 @@ def get_parent_index_list(conn):
                 JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
                 WHERE n1.nspname||'.'||c1.relname = %s
             )
-            SELECT 
+            SELECT
             pg_get_indexdef(indexrelid) AS statement
             , i.indisprimary
-            , ( SELECT array_to_string(array_agg( a.attname ORDER by x.r ), ',') 
-                FROM pg_catalog.pg_attribute a 
-                JOIN ( SELECT k, row_number() over () as r 
-                        FROM unnest(i.indkey) k ) as x 
+            , ( SELECT array_to_string(array_agg( a.attname ORDER by x.r ), ',')
+                FROM pg_catalog.pg_attribute a
+                JOIN ( SELECT k, row_number() over () as r
+                        FROM unnest(i.indkey) k ) as x
                 ON a.attnum = x.k AND a.attrelid = i.indrelid
             ) AS indkey_names
             , c.relname AS index_name
@@ -323,4 +322,3 @@ if __name__ == "__main__":
                 j.join()
             if args.wait > 0:
                 time.sleep(args.wait)
-
