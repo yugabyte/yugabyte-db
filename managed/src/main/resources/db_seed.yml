@@ -20,36 +20,36 @@
     code: asia-east1
     name: Gcp Asia East 1
     provider: *provider_gcp
-    latitude: 37.478397
-    longitude: -76.453077
+    latitude: 23.9919519
+    longitude: 120.3300829
     ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 - &gcp-europe-west1 !!com.yugabyte.yw.models.Region
     code: europe-west1
     name: Gcp Europe West  1
     provider: *provider_gcp
-    latitude: 36.778261
-    longitude: -119.417932
+    latitude: 50.489824
+    longitude: 3.7378805
     ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 - &gcp-us-central1 !!com.yugabyte.yw.models.Region
     code: us-central1
     name: Gcp US Central 1
     provider: *provider_gcp
-    latitude: 43.804133
-    longitude: -120.554201
+    latitude: 41.2326957
+    longitude: -95.9167207
     ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 - &gcp-us-west1 !!com.yugabyte.yw.models.Region
     code: us-west1
     name: Gcp US West 1
     provider: *provider_gcp
-    latitude: 36.778261
-    longitude: -119.417932
+    latitude: 45.6094756
+    longitude: -121.2088799
     ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 - &gcp-us-east1 !!com.yugabyte.yw.models.Region
     code: us-east1
     name: Gcp US East 1
     provider: *provider_gcp
-    latitude: 37.478397
-    longitude: -76.453077
+    latitude: 33.1637261
+    longitude: -80.1845003
     ybImage: projects/centos-cloud/global/images/centos-7-v20161025
 - &docker-local-region-1 !!com.yugabyte.yw.models.Region
     code: docker-localhost-region-1
