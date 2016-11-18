@@ -109,6 +109,13 @@ DEFINE_bool(follower_fail_all_prepare, false,
             "Warning! This is only intended for testing.");
 TAG_FLAG(follower_fail_all_prepare, unsafe);
 
+DEFINE_int32(after_stepdown_delay_election_multiplier, 5,
+             "After a peer steps down as a leader, the factor with which to multiply "
+             "leader_failure_max_missed_heartbeat_periods to get the delay time before starting a "
+             "new election.");
+TAG_FLAG(after_stepdown_delay_election_multiplier, advanced);
+TAG_FLAG(after_stepdown_delay_election_multiplier, hidden);
+
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
@@ -237,6 +244,7 @@ RaftConsensus::RaftConsensus(
           FLAGS_raft_heartbeat_interval_ms *
           FLAGS_leader_failure_max_missed_heartbeat_periods))),
       withhold_votes_until_(MonoTime::Min()),
+      withhold_election_start_until_(MonoTime::Min()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
       follower_memory_pressure_rejections_(metric_entity->FindOrCreateCounter(
@@ -246,6 +254,7 @@ RaftConsensus::RaftConsensus(
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type) {
   DCHECK_NOTNULL(log_.get());
+
   state_.reset(new ReplicaState(options,
                                 peer_uuid,
                                 cmeta.Pass(),
@@ -547,6 +556,19 @@ void RaftConsensus::RunLeaderElectionResponseRpcCallback(
 
 void RaftConsensus::ReportFailureDetected(const std::string& name, const Status& msg) {
   DCHECK_EQ(name, kTimerId);
+
+  // Do not start election for an extended period of time if we were recently stepped down.
+  if (just_stepped_down_) {
+    if (MonoTime::Now(MonoTime::FINE).ComesBefore(withhold_election_start_until_)) {
+      LOG(INFO) << "Skipping election due to delayed timeout.";
+      return;
+    }
+  }
+
+  // If we ever stepped down and then delayed election start did get scheduled, reset that we
+  // are out of that extra delay mode.
+  just_stepped_down_ = false;
+
   // Start an election.
   LOG_WITH_PREFIX(INFO) << "ReportFailureDetected: Starting NORMAL_ELECTION...";
   Status s = StartElection(NORMAL_ELECTION);
@@ -604,6 +626,14 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
 
   // FD should be running while we are a follower.
   RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
+
+  // Track that we were just stepped down.
+  just_stepped_down_ = true;
+  withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
+  withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
+      FLAGS_after_stepdown_delay_election_multiplier *
+      FLAGS_leader_failure_max_missed_heartbeat_periods *
+      FLAGS_raft_heartbeat_interval_ms));
 
   // Now that we're a replica, we can allow voting for other nodes.
   withhold_votes_until_ = MonoTime::Min();
@@ -2207,6 +2237,7 @@ Status RaftConsensus::SnoozeFailureDetectorUnlocked(const MonoDelta& additional_
 MonoDelta RaftConsensus::MinimumElectionTimeout() const {
   int32_t failure_timeout = FLAGS_leader_failure_max_missed_heartbeat_periods *
       FLAGS_raft_heartbeat_interval_ms;
+
   return MonoDelta::FromMilliseconds(failure_timeout);
 }
 

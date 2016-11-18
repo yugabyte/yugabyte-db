@@ -459,6 +459,14 @@ class RaftConsensus : public Consensus,
   // nodes from disturbing the healthy leader.
   MonoTime withhold_votes_until_;
 
+  // Tracks if the peer was a leader and had stepped down. Used to make it not stand for election
+  // again too soon. Once it waits for the extended delay before starting an election, it will
+  // go back to the same delay as before.
+  bool just_stepped_down_ = false;
+
+  // This is the time for which election should not start on this peer.
+  MonoTime withhold_election_start_until_;
+
   const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 
   // TODO hack to serialize updates due to repeated/out-of-order messages

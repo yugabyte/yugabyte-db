@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugaByte, Inc.
 
 #include <gtest/gtest.h>
 
@@ -355,6 +355,19 @@ TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
 
   // Followers might not be up to speed as we did not wait, so just check leader.
   VerifyLeaderMasterPeerCount();
+}
+
+
+TEST_F(MasterChangeConfigTest, TestLeaderSteppedDownNotElected) {
+  ExternalMaster* old_leader = cluster_->GetLeaderMaster();
+  LOG(INFO) << "Current leader bound to " << old_leader->bound_rpc_hostport().ToString();
+  TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
+  ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(&dummy_err),
+                    "Leader step down failed.");
+  // Ensure that the new leader is not the old leader.
+  ExternalMaster* new_leader = cluster_->GetLeaderMaster();
+  LOG(INFO) << "New leader bound to " << new_leader->bound_rpc_hostport().ToString();
+  ASSERT_NE(old_leader->bound_rpc_addr().port(), new_leader->bound_rpc_addr().port());
 }
 
 
