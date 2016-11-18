@@ -3,7 +3,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
-import { Router, browserHistory } from 'react-router';
+import { Router, hashHistory } from 'react-router';
 import { IntlProvider } from 'react-intl';
 import fetchRoutes from './routes';
 import configureStore from './store/configureStore.js';
@@ -13,7 +13,7 @@ import '../src/stylesheets/custom.css';
 ReactDOM.render(
   <Provider store={store}>
     <IntlProvider locale="en">
-      <Router history={browserHistory}>
+      <Router history={hashHistory}>
         {fetchRoutes(store)}
       </Router>
     </IntlProvider>
