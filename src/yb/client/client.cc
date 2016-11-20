@@ -118,20 +118,6 @@ using internal::RemoteTabletServer;
 using std::shared_ptr;
 
 static const int kHtTimestampBitsToShift = 12;
-static const char* kProgName = "yb_client";
-
-// We need to reroute all logging to stderr when the client library is
-// loaded. GoogleOnceInit() can do that, but there are multiple entry
-// points into the client code, and it'd need to be called in each one.
-// So instead, let's use a constructor function.
-//
-// Should this be restricted to just the exported client build? Probably
-// not, as any application using the library probably wants stderr logging
-// more than file logging.
-__attribute__((constructor))
-static void InitializeBasicLogging() {
-  InitGoogleLoggingSafeBasic(kProgName);
-}
 
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
