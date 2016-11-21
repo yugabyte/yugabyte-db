@@ -3,6 +3,7 @@
 import com.google.inject.AbstractModule;
 import com.yugabyte.yw.common.DevOpsHelper;
 import com.yugabyte.yw.common.SwamperHelper;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.LocalYBMiniClusterService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -25,5 +26,6 @@ public class Module extends AbstractModule {
     bind(YBMiniClusterService.class).to(LocalYBMiniClusterService.class);
 
     bind(DevOpsHelper.class).asEagerSingleton();
+    bind(MetricQueryHelper.class).asEagerSingleton();
   }
 }

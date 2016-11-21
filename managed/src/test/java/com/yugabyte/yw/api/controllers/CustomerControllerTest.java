@@ -4,25 +4,54 @@ package com.yugabyte.yw.api.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 
+import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
+import play.test.Helpers;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.*;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.fakeRequest;
 
 public class CustomerControllerTest extends FakeDBApplication {
+  MetricQueryHelper mockMetricQueryHelper;
+
+  @Override
+  protected Application provideApplication() {
+    mockMetricQueryHelper = mock(MetricQueryHelper.class);
+    Commissioner mockCommissioner = mock(Commissioner.class);
+
+    return new GuiceApplicationBuilder()
+      .configure((Map) Helpers.inMemoryDatabase())
+      .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
+      .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+      .build();
+  }
+
   private Customer customer;
+
   @Before
   public void setUp() {
     customer = Customer.create("Valid Customer", "foo@bar.com", "password");
@@ -116,4 +145,99 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID:" + invalidUUID)));
   }
+
+  @Test
+  public void testCustomerMetricsWithInvalidParams() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), is(containsString("\"start\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"metricKey\":[\"This field is required\"]")));
+  }
+
+  @Test
+  public void testCustomerMetricsWithValidMetricsParams() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric");
+    params.put("start", "1479281737000");
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+
+    when(mockMetricQueryHelper.query(anyMap())).thenReturn(response);
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+  }
+
+  @Test
+  public void testCustomerMetricsWithInValidMetricsParam() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric1");
+    params.put("start", "1479281737");
+
+    ObjectNode response = Json.newObject();
+    response.put("error", "something went wrong");
+
+    when(mockMetricQueryHelper.query(anyMap())).thenReturn(response);
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"error\":\"something went wrong\"}")));
+  }
+
+  @Test
+  public void testCustomerMetricsExceptionThrown() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric");
+    params.put("start", "1479281737");
+
+    ObjectNode response = Json.newObject();
+    response.put("error", "something went wrong");
+
+    when(mockMetricQueryHelper.query(anyMap())).thenThrow(new RuntimeException("Weird Data provided"));
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"error\":\"Weird Data provided\"}")));
+  }
+
+  @Test
+  public void testCustomerMetricsWithMultipleUniverses() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
+    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.addUniverseUUID(u2.universeUUID);
+    customer.save();
+
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric");
+    params.put("start", "1479281737");
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+    ArgumentCaptor<Map> queryArgs = ArgumentCaptor.forClass(Map.class);
+    route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    verify(mockMetricQueryHelper).query((Map<String, String>) queryArgs.capture());
+
+    assertThat(queryArgs.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryArgs.getValue().get("filters").toString());
+    String nodePrefix = filters.get("node_prefix").asText();
+    assertThat(nodePrefix, allOf(notNullValue(), containsString("host")));
+    assertEquals(nodePrefix.split("\\|").length, 2);
+  }
+
+
 }

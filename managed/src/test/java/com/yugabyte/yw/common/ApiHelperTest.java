@@ -18,6 +18,7 @@ import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
 
+import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -62,6 +63,40 @@ public class ApiHelperTest {
     JsonNode result = apiHelper.getRequest("http://foo.com/test");
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     assertThat(result.get("error").asText(), CoreMatchers.equalTo("java.lang.RuntimeException: Incorrect JSON"));
+  }
+
+  @Test
+  public void testGetRequestWithHeaders() {
+    CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
+    ObjectNode jsonResponse = Json.newObject();
+    jsonResponse.put("Foo", "Bar");
+    when(mockClient.url(anyString())).thenReturn(mockRequest);
+    when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockResponse.asJson()).thenReturn(jsonResponse);
+
+    HashMap<String, String> headers = new HashMap<>();
+    headers.put("header", "sample");
+    JsonNode result = apiHelper.getRequest("http://foo.com/test", headers);
+    Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
+    Mockito.verify(mockRequest).setHeader("header", "sample");
+    assertEquals(result.get("Foo").asText(), "Bar");
+  }
+
+  @Test
+  public void testGetRequestWithParams() {
+    CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
+    ObjectNode jsonResponse = Json.newObject();
+    jsonResponse.put("Foo", "Bar");
+    when(mockClient.url(anyString())).thenReturn(mockRequest);
+    when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockResponse.asJson()).thenReturn(jsonResponse);
+
+    HashMap<String, String> params = new HashMap<>();
+    params.put("param", "foo");
+    JsonNode result = apiHelper.getRequest("http://foo.com/test", new HashMap<String, String>(), params);
+    Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
+    Mockito.verify(mockRequest).setQueryParameter("param", "foo");
+    assertEquals(result.get("Foo").asText(), "Bar");
   }
 
   @Test

@@ -1,0 +1,31 @@
+# Copyright (c) YugaByte, Inc.
+# Prometheus metrics query, and related params
+---
+cpu_usage_user:
+  metric: "collectd_cpu_percent"
+  function: "avg"
+  filters:
+    cpu: "user"
+  layout:
+    title: "CPU Usage (User)"
+    xaxis:
+      type: "date"
+cpu_usage_system:
+  metric: "collectd_cpu_percent"
+  function: "avg"
+  filters:
+    cpu: "system"
+  layout:
+    title: "CPU Usage (System)"
+    xaxis:
+      type: "date"
+memory_usage:
+  metric: "collectd_memory"
+  function: "avg"
+  filters:
+    memory: "used|buffered|cached|free"
+  group_by: "memory"
+  layout:
+    title: "Memory Usage"
+    xaxis:
+      type: "date"

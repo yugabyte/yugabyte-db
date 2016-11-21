@@ -33,10 +33,12 @@ POST    /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controller
 GET     /api/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.list(pUUID: java.util.UUID)
 POST    /api/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.create(pUUID: java.util.UUID)
 
+
 # Customer profile API
 GET     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
 PUT     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.update(cUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
+POST    /api/customers/:cUUID/metrics                 com.yugabyte.yw.controllers.CustomerController.metrics(cUUID: java.util.UUID)
 
 # Universe, table, etc management API
 POST    /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
@@ -50,6 +52,7 @@ GET     /api/customers/:cUUID/universes/:uniUUID/cost     com.yugabyte.yw.contro
 GET     /api/customers/:cUUID/universes/:uniUUID/masters  com.yugabyte.yw.controllers.MetaMasterController.getMasterAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /api/customers/:cUUID/universes/:uniUUID/upgrade  com.yugabyte.yw.controllers.UniverseController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/universes/find/:universeName  com.yugabyte.yw.controllers.UniverseController.findByName(cUUID: java.util.UUID, universeName: String)
+POST    /api/customers/:cUUID/universes/:uniUUID/metrics  com.yugabyte.yw.controllers.UniverseController.metrics(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 
 # Table Management API
