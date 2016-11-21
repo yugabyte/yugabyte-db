@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -29,8 +30,10 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -63,13 +66,16 @@ public class UniverseControllerTest extends FakeDBApplication {
   private Customer customer;
   private Commissioner mockCommissioner;
   private Http.Cookie validCookie;
+  private MetricQueryHelper mockMetricQueryHelper;
 
   @Override
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
+    mockMetricQueryHelper = mock(MetricQueryHelper.class);
     return new GuiceApplicationBuilder()
       .configure((Map) Helpers.inMemoryDatabase())
       .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+      .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
       .build();
   }
 
@@ -495,8 +501,6 @@ public class UniverseControllerTest extends FakeDBApplication {
     bodyJson.set("nodeNames", nodes);
     bodyJson.set("gflags", Json.parse("[{ \"name\": \"gflag1\", \"value\": \"123\"}]"));
 
-    System.out.println(bodyJson);
-
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
                             .cookie(validCookie).bodyJson(bodyJson));
@@ -536,8 +540,103 @@ public class UniverseControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUniverseMetricsWithInvalidCustomerUUID() {
+    UUID fakeUniverseUUID = UUID.randomUUID();
+    ObjectNode bodyJson = Json.newObject();
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + fakeUniverseUUID + "/metrics").cookie(validCookie).bodyJson(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").asText(), is(containsString("Invalid Universe UUID: " + fakeUniverseUUID)));
+  }
+
+  @Test
+  public void testUniverseMetricsWithInvalidUniverseUUID() {
+    UUID fakeUniverseUUID = UUID.randomUUID();
+    UUID fakeCustomerUUID = UUID.randomUUID();
+    ObjectNode bodyJson = Json.newObject();
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + fakeCustomerUUID +
+      "/universes/" + fakeUniverseUUID + "/metrics").cookie(validCookie).bodyJson(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID: " + fakeCustomerUUID)));
+  }
+
+  @Test
+  public void testUniverseMetricsWithInvalidParams() {
+    Universe universe = Universe.create("TestU", UUID.randomUUID(), customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    ObjectNode bodyJson = Json.newObject();
+
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), is(containsString("\"start\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"metricKey\":[\"This field is required\"]")));
+  }
+
+  @Test
+  public void testUniverseMetricsWithValidMetricsParams() {
+    Universe universe = Universe.create("TestU", UUID.randomUUID(), customer.getCustomerId());
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric");
+    params.put("start", "1479281737");
+
+    ObjectNode response = Json.newObject();
+    response.put("foo", "bar");
+
+    ArgumentCaptor<Map> queryArgs = ArgumentCaptor.forClass(Map.class);
+    when(mockMetricQueryHelper.query(anyMap())).thenReturn(response);
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(params));
+    verify(mockMetricQueryHelper).query((Map<String, String>) queryArgs.capture());
+    assertThat(queryArgs.getValue().get("filters"), allOf(notNullValue(), equalTo("{\"node_prefix\":\"host\"}")));
+
+    assertEquals(OK, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
+  }
+
+  @Test
+  public void testUniverseMetricsWithInValidMetricsParam() {
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric1");
+    params.put("start", "1479281737");
+
+    ObjectNode response = Json.newObject();
+    response.put("error", "something went wrong");
+
+    when(mockMetricQueryHelper.query(anyMap())).thenReturn(response);
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(params));
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"error\":\"something went wrong\"}")));
+  }
+
+  @Test
+  public void testUniverseMetricsExceptionThrown() {
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric");
+    params.put("start", "1479281737000");
+
+    ObjectNode response = Json.newObject();
+    response.put("error", "something went wrong");
+
+    when(mockMetricQueryHelper.query(anyMap())).thenThrow(new RuntimeException("Weird Data provided"));
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
+      "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(params));
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"error\":\"Weird Data provided\"}")));
+  }
+
+  @Test
   public void testFindByNameWithUniverseNameExists() {
-    Universe universe = Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
+    Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
     Result result =
       route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/find/TestUniverse").cookie(validCookie));
     assertEquals(BAD_REQUEST, result.status());
@@ -545,7 +644,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testFindByNameWithUniverseDoesNotExist() {
-    Universe universe = Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
+    Universe.create("TestUniverse", UUID.randomUUID(), customer.getCustomerId());
     Result result =
       route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse").cookie(validCookie));
     assertEquals(OK, result.status());

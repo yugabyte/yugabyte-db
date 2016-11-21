@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.cloud.AWSConstants;
 import com.yugabyte.yw.cloud.AWSResourceUtil;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.forms.MetricQueryParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +39,7 @@ import play.mvc.Results;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -51,6 +54,9 @@ public class UniverseController extends AuthenticatedController {
 
   @Inject
   Commissioner commissioner;
+
+  @Inject
+  MetricQueryHelper metricQueryHelper;
 
   /**
    * API that checks if a Universe with a given name already exists.
@@ -421,6 +427,44 @@ public class UniverseController extends AuthenticatedController {
     } catch (Throwable t) {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
+    }
+  }
+
+  public Result metrics(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    Universe universe;
+    try {
+      universe = Universe.get(universeUUID);
+    }
+    catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
+    }
+
+    Form<MetricQueryParams> formData = formFactory.form(MetricQueryParams.class).bindFromRequest();
+
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    Map<String, String> params = formData.data();
+    if (universe.getUniverseDetails().nodePrefix != null) {
+      ObjectNode filterJson = Json.newObject();
+      filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
+      params.put("filters", Json.stringify(filterJson));
+    }
+
+    try {
+      JsonNode response = metricQueryHelper.query(params);
+      if (response.has("error")) {
+        return ApiResponse.error(BAD_REQUEST, response.get("error"));
+      }
+      return ApiResponse.success(response);
+    } catch (RuntimeException e) {
+      return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
   }
 
