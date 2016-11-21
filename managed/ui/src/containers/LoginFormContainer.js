@@ -33,7 +33,7 @@ const validateAndLogInCustomer = (values, dispatch) => {
         if (typeof data.error === 'string') {
           reject({_error: data.error});
         }
-        reject(data.error); 
+        reject(data.error);
       } else {
         localStorage.setItem('customer_token', response.payload.data.authToken);
         localStorage.setItem('customer_id',response.payload.data.customerUUID);
