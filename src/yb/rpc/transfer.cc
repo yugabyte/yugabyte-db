@@ -31,6 +31,11 @@ DEFINE_int32(rpc_max_message_size, (8 * 1024 * 1024),
 TAG_FLAG(rpc_max_message_size, advanced);
 TAG_FLAG(rpc_max_message_size, runtime);
 
+METRIC_DEFINE_histogram(
+    server, handler_latency_OutboundTransfer, "Time taken to transfer the response ",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the response to the wire",
+    60000000LU, 2);
+
 namespace yb {
 namespace rpc {
 
@@ -351,12 +356,14 @@ string CQLInboundTransfer::StatusAsString() const {
   return strings::Substitute("$0: $1 bytes received", this, cur_offset_);
 }
 
-OutboundTransfer::OutboundTransfer(const std::vector<Slice>& payload,
-                                   TransferCallbacks* callbacks)
+scoped_refptr<Histogram> OutboundTransfer::rpc_metric_ = nullptr;
+
+OutboundTransfer::OutboundTransfer(const std::vector<Slice>& payload, TransferCallbacks* callbacks)
     : cur_slice_idx_(0),
       cur_offset_in_slice_(0),
       callbacks_(callbacks),
-      aborted_(false) {
+      aborted_(false),
+      start_(MonoTime::Now(MonoTime::FINE)) {
   CHECK(!payload.empty());
 
   n_payload_slices_ = payload.size();
@@ -366,7 +373,16 @@ OutboundTransfer::OutboundTransfer(const std::vector<Slice>& payload,
   }
 }
 
+void OutboundTransfer::InitializeMetric(const scoped_refptr<MetricEntity>& entity) {
+  rpc_metric_ = METRIC_handler_latency_OutboundTransfer.Instantiate(entity);
+}
+
 OutboundTransfer::~OutboundTransfer() {
+  if (rpc_metric_) {
+    auto end_time = MonoTime::Now(MonoTime::FINE);
+    rpc_metric_->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  }
+
   if (!TransferFinished() && !aborted_) {
     callbacks_->NotifyTransferAborted(
         STATUS(RuntimeError, "RPC transfer destroyed before it finished sending"));

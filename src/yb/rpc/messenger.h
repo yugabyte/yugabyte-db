@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_MESSENGER_H
-#define YB_RPC_MESSENGER_H
+#ifndef YB_RPC_MESSENGER_H_
+#define YB_RPC_MESSENGER_H_
 
 #include <memory>
 #include <stdint.h>
@@ -191,6 +191,8 @@ class Messenger {
 
   const scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
 
+  scoped_refptr<Histogram> outgoing_queue_time() { return outgoing_queue_time_; }
+
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
 
@@ -228,6 +230,7 @@ class Messenger {
   gscoped_ptr<ThreadPool> negotiation_pool_;
 
   scoped_refptr<MetricEntity> metric_entity_;
+  scoped_refptr<Histogram> outgoing_queue_time_;
 
   // The ownership of the Messenger object is somewhat subtle. The pointer graph
   // looks like this:
@@ -275,7 +278,7 @@ class Messenger {
   DISALLOW_COPY_AND_ASSIGN(Messenger);
 };
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
 
 #endif

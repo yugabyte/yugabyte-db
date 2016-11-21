@@ -22,18 +22,20 @@
 #include <string>
 #include <vector>
 
-#include <boost/intrusive/list.hpp>
-#include <boost/function.hpp>
-#include <boost/utility.hpp>
 #include <gflags/gflags.h>
+#include <boost/function.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/utility.hpp>
 
 #include "redis/src/sds.h"
 
-#include "yb/rpc/rpc_header.pb.h"
 #include "yb/cqlserver/cql_message.h"
+#include "yb/rpc/constants.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-#include "yb/rpc/constants.h"
 
 DECLARE_int32(rpc_max_message_size);
 
@@ -283,7 +285,11 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
 
   std::string HexDump() const;
 
+  static void InitializeMetric(const scoped_refptr<MetricEntity>& entity);
+
  private:
+  static scoped_refptr<Histogram> rpc_metric_;
+
   // Slices to send. Uses an array here instead of a vector to avoid an expensive
   // vector construction (improved performance a couple percent).
   Slice payload_slices_[kMaxPayloadSlices];
@@ -298,6 +304,7 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
 
   bool aborted_;
 
+  MonoTime start_;
   DISALLOW_COPY_AND_ASSIGN(OutboundTransfer);
 };
 

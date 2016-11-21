@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_CLIENT_CALL_H
-#define YB_RPC_CLIENT_CALL_H
+#ifndef YB_RPC_CLIENT_CALL_H_
+#define YB_RPC_CLIENT_CALL_H_
 
 #include <string>
 #include <vector>
@@ -25,21 +25,23 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/service_if.h"
 #include "yb/rpc/transfer.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/trace.h"
 
 namespace google {
 namespace protobuf {
 class Message;
-} // namespace protobuf
-} // namespace google
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace rpc {
@@ -229,8 +231,15 @@ class OutboundCall {
     return header_.call_id();
   }
 
+  static void InitializeMetric(const scoped_refptr<MetricEntity>& entity);
+
  private:
+  static scoped_refptr<Histogram> metric_queued_;
+  static scoped_refptr<Histogram> metric_sent_;
+  static scoped_refptr<Histogram> time_to_response_;
+
   friend class RpcController;
+  RpcMethodMetrics metric_;
 
   // Various states the call propagates through.
   // NB: if adding another state, be sure to update OutboundCall::IsFinished()
@@ -255,9 +264,6 @@ class OutboundCall {
 
   // return current status
   Status status() const;
-
-  // Time when the call was first initiatied.
-  MonoTime start_time_;
 
   // Return the error protobuf, if a remote error occurred.
   // This will only be non-NULL if status().IsRemoteError().
@@ -296,6 +302,10 @@ class OutboundCall {
   // Once a response has been received for this call, contains that response.
   // Otherwise NULL.
   gscoped_ptr<CallResponse> call_response_;
+
+  // The trace buffer.
+  scoped_refptr<Trace> trace_;
+  MonoTime start_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };
@@ -359,7 +369,7 @@ class CallResponse {
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
 
 #endif

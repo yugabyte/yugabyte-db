@@ -705,5 +705,5 @@ bool Reactor::DrainTaskQueue(boost::intrusive::list<ReactorTask> *tasks) { // NO
   return true;
 }
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb

@@ -36,6 +36,7 @@ class AsyncRpc : public rpc::Rpc {
            const std::shared_ptr<rpc::Messenger> &messenger);
 
   virtual ~AsyncRpc();
+
   virtual void SendRpc() OVERRIDE;
   virtual string ToString() const OVERRIDE;
 
@@ -44,6 +45,8 @@ class AsyncRpc : public rpc::Rpc {
   const vector<InFlightOp*>& ops() const { return ops_; }
 
  protected:
+  static scoped_refptr<Histogram> metric_rpc_send_;
+
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
   void LookupTabletCb(const Status& status);
@@ -68,9 +71,14 @@ class AsyncRpc : public rpc::Rpc {
 
   virtual void MarkOpsAsFailed() = 0;
 
+  virtual scoped_refptr<Histogram> metrics_entry_to_update() = 0;
+
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
   scoped_refptr<Batcher> batcher_;
+
+  // The trace buffer.
+  scoped_refptr<Trace> trace_;
 
   // The tablet that should receive this write.
   RemoteTablet* const tablet_;
@@ -86,6 +94,7 @@ class AsyncRpc : public rpc::Rpc {
   // These operations are in kRequestSent state.
   vector<InFlightOp*> ops_;
 
+  MonoTime start_;
 };
 
 class WriteRpc : public AsyncRpc {
@@ -95,9 +104,12 @@ class WriteRpc : public AsyncRpc {
            vector<InFlightOp*> ops,
            const MonoTime& deadline,
            const std::shared_ptr<rpc::Messenger>& messenger);
-  virtual ~WriteRpc() {}
+
+  virtual ~WriteRpc();
 
   const tserver::WriteResponsePB& resp() const { return resp_; }
+
+  static void InitializeMetric(const scoped_refptr<MetricEntity>& entity);
 
  protected:
   void SendRpcToTserver() OVERRIDE;
@@ -109,6 +121,10 @@ class WriteRpc : public AsyncRpc {
   void MarkOpsAsFailed() OVERRIDE;
 
  private:
+  scoped_refptr<Histogram> metrics_entry_to_update() override { return rpc_metric_; }
+
+  static scoped_refptr<Histogram> rpc_metric_;
+
   // Request body.
   tserver::WriteRequestPB req_;
 
@@ -121,9 +137,11 @@ class ReadRpc : public AsyncRpc {
   ReadRpc(
       const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
       const MonoTime& deadline, const std::shared_ptr<rpc::Messenger>& messenger);
-  virtual ~ReadRpc() {}
+  virtual ~ReadRpc();
 
   const tserver::ReadResponsePB& resp() const { return resp_; }
+
+  static void InitializeMetric(const scoped_refptr<MetricEntity>& entity);
 
  protected:
   void SendRpcToTserver() OVERRIDE;
@@ -135,6 +153,10 @@ class ReadRpc : public AsyncRpc {
   void MarkOpsAsFailed() OVERRIDE;
 
  private:
+  scoped_refptr<Histogram> metrics_entry_to_update() override { return rpc_metric_; }
+
+  static scoped_refptr<Histogram> rpc_metric_;
+
   // Request body.
   tserver::ReadRequestPB req_;
 

@@ -12,6 +12,18 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/row_operations.h"
 
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_client_Redis_Write, "yb.redisserver.RedisServerService.Set RPC Time",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the WriteRpc ", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_client_Redis_Read, "yb.redisserver.RedisServerService.Set RPC Time",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the ReadRpc ", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_client_TimeToSend,
+    "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent before sending the request to the server", 60000000LU, 2);
+DECLARE_bool(rpc_dump_all_traces);
+
 namespace yb {
 
 using std::shared_ptr;
@@ -28,22 +40,31 @@ namespace client {
 
 namespace internal {
 
-AsyncRpc::AsyncRpc(const scoped_refptr<Batcher>& batcher,
-                   RemoteTablet* const tablet,
-                   vector<InFlightOp*> ops,
-                   const MonoTime& deadline,
-                   const shared_ptr<Messenger>& messenger)
+scoped_refptr<Histogram> AsyncRpc::metric_rpc_send_ = nullptr;
+
+AsyncRpc::AsyncRpc(
+    const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
+    const MonoTime& deadline, const shared_ptr<Messenger>& messenger)
     : Rpc(deadline, messenger),
       batcher_(batcher),
+      trace_(new Trace),
       tablet_(tablet),
       current_ts_(NULL),
-      ops_(std::move(ops)) {}
+      ops_(std::move(ops)),
+      start_(MonoTime::Now(MonoTime::FINE)) {}
 
 AsyncRpc::~AsyncRpc() {
   STLDeleteElements(&ops_);
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+    LOG(INFO) << ToString() << " took "
+              << MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds()
+              << "us. Trace:";
+    trace_->Dump(&LOG(INFO), true);
+  }
 }
 
 void AsyncRpc::SendRpc() {
+  TRACE_TO(trace_, "SendRpc() called.");
   // Choose a destination TS according to the following algorithm:
   // 1. Select the leader, provided:
   //    a. One exists, and
@@ -135,6 +156,7 @@ const YBTable* AsyncRpc::table() const {
 }
 
 void AsyncRpc::LookupTabletCb(const Status& status) {
+  TRACE_TO(trace_, "LookupTabletCb(%s)", status.ToString(false));
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
   //
@@ -157,6 +179,7 @@ void AsyncRpc::FailToNewReplica(const Status& reason) {
 }
 
 void AsyncRpc::SendRpcCb(const Status& status) {
+  TRACE_TO(trace_, "SendRpcCb(%s)", status.ToString(false));
   // Prefer early failures over controller failures.
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
@@ -212,6 +235,7 @@ void AsyncRpc::SendRpcCb(const Status& status) {
 }
 
 void AsyncRpc::InitTSProxyCb(const Status& status) {
+  TRACE_TO(trace_, "InitTSProxyCb(%s)", status.ToString(false));
   // Fail to a replica in the event of a DNS resolution failure.
   if (!status.ok()) {
     FailToNewReplica(status);
@@ -220,8 +244,14 @@ void AsyncRpc::InitTSProxyCb(const Status& status) {
 
   VLOG(2) << "Tablet " << tablet_->tablet_id() << ": Writing batch to replica "
           << current_ts_->ToString();
+
+  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  if (metric_rpc_send_)
+    metric_rpc_send_->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   SendRpcToTserver();
 }
+
+scoped_refptr<Histogram> WriteRpc::rpc_metric_ = nullptr;
 
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    RemoteTablet* const tablet,
@@ -229,6 +259,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    const MonoTime& deadline,
                    const shared_ptr<Messenger>& messenger)
     : AsyncRpc(batcher, tablet, ops, deadline, messenger) {
+  TRACE_TO(trace_, "WriteRpc initiated to %s", tablet->tablet_id());
   const Schema* schema = table()->schema().schema_;
 
   req_.set_tablet_id(tablet->tablet_id());
@@ -288,7 +319,14 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   }
 }
 
+WriteRpc::~WriteRpc() {
+  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  auto metric = metrics_entry_to_update();
+  if (metric) metric->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+}
+
 void WriteRpc::SendRpcToTserver() {
+  TRACE_TO(trace_, "SendRpcToTserver");
   current_ts_->proxy()->WriteAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
@@ -300,6 +338,7 @@ Status WriteRpc::response_error_status() {
 }
 
 void WriteRpc::ProcessResponseFromTserver(Status status) {
+  TRACE_TO(trace_, "ProcessKuduWriteResponse(%s)", status.ToString(false));
   batcher_->ProcessKuduWriteResponse(*this, status);
   if (resp_.has_error()) {
     LOG(WARNING) << "Write Rpc to tablet server has error:"
@@ -341,10 +380,18 @@ void WriteRpc::MarkOpsAsFailed() {
   }
 }
 
+void WriteRpc::InitializeMetric(const scoped_refptr<MetricEntity>& entity) {
+  rpc_metric_ = METRIC_handler_latency_yb_client_Redis_Write.Instantiate(entity);
+  metric_rpc_send_ = METRIC_handler_latency_yb_client_TimeToSend.Instantiate(entity);
+}
+
+scoped_refptr<Histogram> ReadRpc::rpc_metric_ = nullptr;
+
 ReadRpc::ReadRpc(
     const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet, vector<InFlightOp*> ops,
     const MonoTime& deadline, const shared_ptr<Messenger>& messenger)
     : AsyncRpc(batcher, tablet, ops, deadline, messenger) {
+  TRACE_TO(trace_, "ReadRpc initiated to %s", tablet->tablet_id());
   req_.set_tablet_id(tablet->tablet_id());
   int ctr = 0;
   for (InFlightOp* op : ops_) {
@@ -361,7 +408,14 @@ ReadRpc::ReadRpc(
   }
 }
 
+ReadRpc::~ReadRpc() {
+  MonoTime end_time = MonoTime::Now(MonoTime::FINE);
+  auto metric = metrics_entry_to_update();
+  if (metric) metric->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+}
+
 void ReadRpc::SendRpcToTserver() {
+  TRACE_TO(trace_, "SendRpcToTserver");
   current_ts_->proxy()->ReadAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
@@ -370,6 +424,7 @@ void ReadRpc::SendRpcToTserver() {
 Status ReadRpc::response_error_status() { return Status::OK(); }
 
 void ReadRpc::ProcessResponseFromTserver(Status status) {
+  TRACE_TO(trace_, "ProcessResponseFromTserver(%s)", status.ToString(false));
   if (resp_.has_error()) {
     LOG(WARNING) << "Read Rpc to tablet server has error:"
                  << resp_.error().DebugString()
@@ -380,6 +435,7 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
     MarkOpsAsFailed();
     return;
   }
+  // Read response handling
   size_t n = ops_.size();
   if (resp_.redis_batch().size() != n) {
     batcher_->AddOpCountMismatchError();
@@ -398,6 +454,10 @@ void ReadRpc::MarkOpsAsFailed() {
     r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
     *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
   }
+}
+
+void ReadRpc::InitializeMetric(const scoped_refptr<MetricEntity>& entity) {
+  rpc_metric_ = METRIC_handler_latency_yb_client_Redis_Read.Instantiate(entity);
 }
 
 }  // namespace internal

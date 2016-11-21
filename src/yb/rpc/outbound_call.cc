@@ -24,14 +24,40 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/constants.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/transfer.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
+#include "yb/util/trace.h"
+
+METRIC_DEFINE_histogram(
+    server, handler_latency_OutboundCall_queue_time, "Time taken to queue the request ",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_OutboundCall_send_time, "Time taken to send the request ",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_OutboundCall_time_to_response, "Time taken to get the response ",
+    yb::MetricUnit::kMicroseconds,
+    "Microseconds spent to send the request and get a response on the wire", 60000000LU, 2);
+
+// 100M cycles should be about 50ms on a 2Ghz box. This should be high
+// enough that involuntary context switches don't trigger it, but low enough
+// that any serious blocking behavior on the reactor would.
+DEFINE_int64(
+    rpc_callback_max_cycles, 100 * 1000 * 1000,
+    "The maximum number of cycles for which an RPC callback "
+    "should be allowed to run without emitting a warning."
+    " (Advanced debugging option)");
+TAG_FLAG(rpc_callback_max_cycles, advanced);
+TAG_FLAG(rpc_callback_max_cycles, runtime);
+DECLARE_bool(rpc_dump_all_traces);
 
 namespace yb {
 namespace rpc {
@@ -42,41 +68,40 @@ using google::protobuf::io::CodedOutputStream;
 
 static const double kMicrosPerSecond = 1000000.0;
 
-// 100M cycles should be about 50ms on a 2Ghz box. This should be high
-// enough that involuntary context switches don't trigger it, but low enough
-// that any serious blocking behavior on the reactor would.
-DEFINE_int64(rpc_callback_max_cycles, 100 * 1000 * 1000,
-             "The maximum number of cycles for which an RPC callback "
-             "should be allowed to run without emitting a warning."
-             " (Advanced debugging option)");
-TAG_FLAG(rpc_callback_max_cycles, advanced);
-TAG_FLAG(rpc_callback_max_cycles, runtime);
-
 ///
 /// OutboundCall
 ///
 
-OutboundCall::OutboundCall(const ConnectionId& conn_id,
-                           const RemoteMethod& remote_method,
-                           google::protobuf::Message* response_storage,
-                           RpcController* controller, ResponseCallback callback)
+OutboundCall::OutboundCall(
+    const ConnectionId& conn_id, const RemoteMethod& remote_method,
+    google::protobuf::Message* response_storage, RpcController* controller,
+    ResponseCallback callback)
     : state_(READY),
       remote_method_(remote_method),
       conn_id_(conn_id),
       callback_(std::move(callback)),
       controller_(DCHECK_NOTNULL(controller)),
-      response_(DCHECK_NOTNULL(response_storage)) {
+      response_(DCHECK_NOTNULL(response_storage)),
+      trace_(new Trace),
+      start_(MonoTime::Now(MonoTime::FINE)) {
+  TRACE_TO(trace_, "Outbound Call initiated to %s", conn_id.ToString());
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
            << (controller->timeout().Initialized() ? controller->timeout().ToString() : "none");
   header_.set_call_id(kInvalidCallId);
   remote_method.ToPB(header_.mutable_remote_method());
-  start_time_ = MonoTime::Now(MonoTime::FINE);
+  start_ = MonoTime::Now(MonoTime::FINE);
 }
 
 OutboundCall::~OutboundCall() {
   DCHECK(IsFinished());
   DVLOG(4) << "OutboundCall " << this << " destroyed with state_: " << StateName(state_);
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+    LOG(INFO) << ToString() << " took "
+              << MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds()
+              << "us. Trace:";
+    trace_->Dump(&LOG(INFO), true);
+  }
 }
 
 Status OutboundCall::SerializeTo(vector<Slice>* slices) {
@@ -95,6 +120,7 @@ Status OutboundCall::SerializeTo(vector<Slice>* slices) {
   // Return the concatenated packet.
   slices->push_back(Slice(header_buf_));
   slices->push_back(Slice(request_buf_));
+  TRACE_TO(trace_, "Serialized");
   return Status::OK();
 }
 
@@ -191,6 +217,12 @@ void OutboundCall::CallCallback() {
 }
 
 void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
+  TRACE_TO(trace_, "Response received.");
+  // Track time taken to be queued.
+  if (time_to_response_) {
+    time_to_response_->Increment(
+        MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
+  }
   call_response_ = resp.Pass();
   Slice r(call_response_->serialized_response());
 
@@ -205,6 +237,7 @@ void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
     }
     set_state(FINISHED_SUCCESS);
     CallCallback();
+    TRACE_TO(trace_, "Callback called.");
   } else {
     // Error
     gscoped_ptr<ErrorStatusPB> err(new ErrorStatusPB());
@@ -218,12 +251,34 @@ void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
   }
 }
 
+scoped_refptr<Histogram> OutboundCall::metric_queued_ = nullptr;
+scoped_refptr<Histogram> OutboundCall::metric_sent_ = nullptr;
+scoped_refptr<Histogram> OutboundCall::time_to_response_ = nullptr;
+
+void OutboundCall::InitializeMetric(const scoped_refptr<MetricEntity>& entity) {
+  metric_queued_ = METRIC_handler_latency_OutboundCall_queue_time.Instantiate(entity);
+  metric_sent_ = METRIC_handler_latency_OutboundCall_send_time.Instantiate(entity);
+  time_to_response_ = METRIC_handler_latency_OutboundCall_time_to_response.Instantiate(entity);
+}
+
 void OutboundCall::SetQueued() {
+  // Track time taken to be queued.
+  if (metric_queued_) {
+    auto end_time = MonoTime::Now(MonoTime::FINE);
+    metric_queued_->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  }
   set_state(ON_OUTBOUND_QUEUE);
+  TRACE_TO(trace_, "Queued.");
 }
 
 void OutboundCall::SetSent() {
+  // Track time taken to be sent
+  if (metric_sent_) {
+    auto end_time = MonoTime::Now(MonoTime::FINE);
+    metric_sent_->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+  }
   set_state(SENT);
+  TRACE_TO(trace_, "Call Sent.");
 
   // This method is called in the reactor thread, so free the header buf,
   // which was also allocated from this thread. tcmalloc's thread caching
@@ -239,6 +294,7 @@ void OutboundCall::SetSent() {
 
 void OutboundCall::SetFailed(const Status &status,
                              ErrorStatusPB* err_pb) {
+  TRACE_TO(trace_, "Call Failed.");
   {
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = status;
@@ -254,6 +310,7 @@ void OutboundCall::SetFailed(const Status &status,
 }
 
 void OutboundCall::SetTimedOut() {
+  TRACE_TO(trace_, "Call TimedOut.");
   {
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = STATUS(TimedOut, Substitute(
@@ -297,8 +354,10 @@ void OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcCallInProgressPB* resp) {
   std::lock_guard<simple_spinlock> l(lock_);
   resp->mutable_header()->CopyFrom(header_);
-  resp->set_micros_elapsed(
-    MonoTime::Now(MonoTime::FINE) .GetDeltaSince(start_time_).ToMicroseconds());
+  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
+  if (req.include_traces() && trace_) {
+    resp->set_trace_buffer(trace_->DumpToString(true));
+  }
 }
 
 ///
@@ -486,5 +545,5 @@ Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
   return Status::OK();
 }
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb

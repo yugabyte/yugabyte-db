@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_REACTOR_H
-#define YB_RPC_REACTOR_H
+#ifndef YB_RPC_REACTOR_H_
+#define YB_RPC_REACTOR_H_
 
 #include <stdint.h>
 
@@ -355,7 +355,7 @@ class Reactor {
   DISALLOW_COPY_AND_ASSIGN(Reactor);
 };
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
 
 #endif
