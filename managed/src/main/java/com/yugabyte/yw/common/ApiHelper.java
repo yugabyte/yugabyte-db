@@ -37,8 +37,16 @@ public class ApiHelper {
   }
 
   public JsonNode getRequest(String url, Map<String, String> headers) {
-    WSRequest request = requestWithHeaders(url, headers);
+    return getRequest(url, headers, new HashMap<>());
+  }
 
+  public JsonNode getRequest(String url, Map<String, String> headers, Map<String, String> params) {
+    WSRequest request = requestWithHeaders(url, headers);
+    if (!params.isEmpty()) {
+      for(Map.Entry<String, String> entry : params.entrySet()) {
+        request.setQueryParameter(entry.getKey(), entry.getValue());
+      }
+    }
     CompletionStage<JsonNode> jsonPromise = request
       .get()
       .thenApply(WSResponse::asJson);
@@ -57,7 +65,6 @@ public class ApiHelper {
 
   private WSRequest requestWithHeaders(String url, Map<String, String> headers) {
     WSRequest request = wsClient.url(url);
-
     if (!headers.isEmpty()) {
       for(Map.Entry<String, String> entry : headers.entrySet()) {
         request.setHeader(entry.getKey(), entry.getValue());
