@@ -1,16 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
 import GraphPanelHeader from '../components/GraphPanelHeader.js';
-import { changeGraphFilter, resetGraphFilter } from '../actions/graph';
+import { changeGraphQueryPeriod, resetGraphQueryPeriod } from '../actions/graph';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    updateGraphFilter: (filterParams) => {
-      dispatch(changeGraphFilter(filterParams));
+    changeGraphQueryPeriod: (filterParams) => {
+      dispatch(changeGraphQueryPeriod(filterParams));
     },
-    resetGraphFilter: () => {
-      dispatch(resetGraphFilter());
+    resetGraphQueryPeriod: () => {
+      dispatch(resetGraphQueryPeriod());
     }
   }
 }

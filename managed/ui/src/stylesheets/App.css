@@ -515,3 +515,22 @@ input[type="radio"] {
     font-size: 16px;
     font-weight: 100;
 }
+
+.graph-filter-custom {
+  display: inline-block;
+}
+
+.graph-filter-custom .hidden {
+  display: none;
+}
+.graph-filter-custom div.rw-datetimepicker {
+    display: inline-block;
+}
+
+.graph-filter-custom .btn {
+    margin-bottom: 0px;
+}
+
+.graph-panel .js-plotly-plot {
+  display: inline-block;
+}

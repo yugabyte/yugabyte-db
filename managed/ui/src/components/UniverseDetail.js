@@ -151,7 +151,7 @@ export default class UniverseDetail extends Component {
         </Row>
         <Row>
           <Col lg={12}>
-            <GraphPanelContainer nodePrefix={currentUniverse.universeDetails.nodePrefix} />
+            <GraphPanelContainer nodePrefix={currentUniverse.universeDetails.nodePrefix} origin={"universe"} universeUUID={currentUniverse.universeUUID} />
           </Col>
         </Row>
       </Grid>
