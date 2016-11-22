@@ -26,6 +26,7 @@
     border-left: 1px solid #e7e7e7;
     background-color: transparent;
     min-height: 100%;
+    padding: 0 15px;
 }
 
 #page-wrapper .header-row {
@@ -489,6 +490,10 @@ input[type="radio"] {
     text-align: left;
 }
 
+.universe-display-item-container .config-price-subscript {
+    font-size: 12px;
+}
+
 .config-az-item {
     padding-left: 1px;
 }
@@ -516,6 +521,81 @@ input[type="radio"] {
     font-weight: 100;
 }
 
+.dashboard-title-text {
+    font-weight: 600;
+    font-size: 25px;
+    line-height: 44px;
+    text-align: center;
+    padding-left: 20px;
+}
+
+.universe-display-item-container {
+    float: left;
+    height: 200px;
+    background-color: white;
+    margin: 0 20px 20px 0;
+    padding: 4px 10px;
+    border: rgba(84, 84, 84, 0.2) solid 1px;
+}
+
+.universe-display-panel-container h3 {
+    margin-bottom: 10px;
+}
+
+.universe-display-panel-container .create-universe-button {
+    float: left;
+    height: 200px;
+    margin: 0 20px 20px 0;
+    padding: 60px 0 4px 0;
+    border: rgba(84, 84, 84, 0.1) solid 1px;
+    background-color: rgba(84, 84, 84, 0.05);
+    text-align: center;
+}
+
+.universe-display-item-container div {
+    padding-top: 4px;
+}
+
+.universe-display-item-container, .checkbox-inline input[type="checkbox"] {
+    position: relative !important;
+}
+.universe-display-item-container .checkbox-inline {
+    float: right;
+    margin-left: 0;
+}
+
+.universe-display-item-container .display-name {
+    font-weight: 600;
+    font-size: 1.2em;
+}
+
+.universe-display-item-container .description-item-text {
+    display: inline;
+    float: right;
+    color: #545454;
+    padding-top: 0;
+}
+
+.btn-icon {
+    position: relative;
+    display: inline-block;
+    background-color: #CD6500;
+    height: 60px;
+    width: 60px;
+    font-size: 40px;
+    font-weight: 200;
+    text-align: center;
+    color: white;
+    border-radius: 6px;
+}
+
+.create-universe-button .display-name {
+    font-weight: 500;
+    font-size: 1.2em;
+    color: #CD6500;
+    padding-top: 6px;
+}
+
 .graph-filter-custom {
   display: inline-block;
 }
@@ -534,3 +614,4 @@ input[type="radio"] {
 .graph-panel .js-plotly-plot {
   display: inline-block;
 }
+

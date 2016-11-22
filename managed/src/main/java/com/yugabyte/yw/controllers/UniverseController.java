@@ -243,7 +243,13 @@ public class UniverseController extends AuthenticatedController {
     ArrayNode universes = Json.newArray();
     // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
     for (Universe universe: customer.getUniverses()) {
-      universes.add(universe.toJson());
+      ObjectNode universePayload = (ObjectNode) universe.toJson();
+      try {
+        universePayload.put("pricePerHour", getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent.providerType).pricePerHour);
+      } catch (Exception e) {
+        LOG.error("Unable to fetch cost for universe {}.", universe.universeUUID);
+      }
+      universes.add(universePayload);
     }
     return ApiResponse.success(universes);
   }

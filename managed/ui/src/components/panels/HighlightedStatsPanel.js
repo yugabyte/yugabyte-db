@@ -3,41 +3,49 @@
 import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
 import DescriptionItem from '../DescriptionItem';
+import {isValidArray} from '../../utils/ObjectUtils';
+import {FormattedNumber} from 'react-intl';
+import moment from 'moment';
 
-export default class HighlightedStatsPanel extends Component {
+class StatsPanelComponent extends Component {
   render() {
-    const { universe: { universeList, currentTotalCost, loading } } = this.props;
-    
+    const {value, label} = this.props;
+    return (
+      <Col md={4} className="tile_stats_count text-center">
+        <DescriptionItem>
+          <div className="count">
+            {value}
+          </div>
+        </DescriptionItem>
+        <span className="count_top">
+          {label}
+        </span>
+      </Col>
+    )
+  }
+}
+export default class HighlightedStatsPanel extends Component {
+
+  render() {
+    const { universe: { universeList, loading } } = this.props;
     if (loading) {
       return <div className="container">Loading...</div>;
     }
-    
+    var numNodes = 0;
+    var totalCost = 0;
+    if (isValidArray(universeList)) {
+      universeList.forEach(function (universeItem) {
+        numNodes += universeItem.universeDetails.userIntent.numNodes;
+        totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
+      });
+    }
     return (
       <div className="row tile_count universe-cost-panel-container">
-        <Col md={3} mdOffset={2} className="tile_stats_count">
-          <DescriptionItem title={<span className="count_top">
-                                   <i className="fa fa-globe"></i>
-                                   Total Universes</span>}>
-            <div className="count">{universeList.length}</div>
-          </DescriptionItem>
-        </Col>
-        <Col md={3} className="tile_stats_count">
-         <DescriptionItem title={<span className="count_top">
-                                  <i className="fa fa-user"></i>
-                                  Cost Per Month</span>}>
-           <div className="total-cost-cell">
-             <div className="count">${currentTotalCost.toFixed(2)}</div>
-             <span className="count_bottom"><i className="red">
-               <i className="fa fa-sort-desc"></i>0% </i>
-               From last Week</span>
-           </div>
-         </DescriptionItem>
-        </Col>
-        <Col md={3} className="tile_stats_count">
-          <DescriptionItem title={<span className="count_top"><i className="fa fa-user"></i>
-                                  Cost This Month</span>}>
-            <div className="count">$__,__</div>
-          </DescriptionItem>
+        <Col md={6} mdOffset={3}>
+          <StatsPanelComponent value={universeList.length} label={"Universes"}/>
+          <StatsPanelComponent value={numNodes} label={"Nodes"}/>
+          <StatsPanelComponent value={<FormattedNumber value={totalCost} maximumFractionDigits={2}
+                                                       style="currency" currency="USD"/>} label={"Cost"}/>
         </Col>
       </div>
     )
