@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -3697,7 +3697,7 @@
+@@ -3686,7 +3686,7 @@
                 AND n.nspname = $1
                 AND t.typname = $2
                 AND t.typtype = 'e'
@@ -9,7 +9,7 @@
          ),
          $3,
          $4
-@@ -3725,7 +3725,7 @@
+@@ -3714,7 +3714,7 @@
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typname = $1
                 AND t.typtype = 'e'
@@ -18,7 +18,7 @@
          ),
          $2,
          $3
-@@ -6031,7 +6031,7 @@
+@@ -6138,7 +6138,7 @@
  CREATE OR REPLACE FUNCTION findfuncs( NAME, TEXT, TEXT )
  RETURNS TEXT[] AS $$
      SELECT ARRAY(
@@ -27,7 +27,7 @@
            FROM pg_catalog.pg_proc p
            JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
           WHERE n.nspname = $1
-@@ -6048,7 +6048,7 @@
+@@ -6155,7 +6155,7 @@
  CREATE OR REPLACE FUNCTION findfuncs( TEXT, TEXT )
  RETURNS TEXT[] AS $$
      SELECT ARRAY(
@@ -36,7 +36,7 @@
            FROM pg_catalog.pg_proc p
            JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
           WHERE pg_catalog.pg_function_is_visible(p.oid)
-@@ -9459,134 +9459,3 @@
+@@ -9646,134 +9646,3 @@
  
  GRANT SELECT ON tap_funky           TO PUBLIC;
  GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;

@@ -1,6 +1,6 @@
 --- sql/pgtap--0.96.0--0.97.0.sql
 +++ sql/pgtap--0.96.0--0.97.0.sql
-@@ -225,85 +225,3 @@
+@@ -212,85 +212,3 @@
      SELECT ok( NOT _opc_exists( $1 ), 'Operator class ' || quote_ident($1) || ' should not exist' );
  $$ LANGUAGE SQL;
  

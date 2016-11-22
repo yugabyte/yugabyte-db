@@ -11,8 +11,8 @@
 +
  CREATE OR REPLACE FUNCTION pg_version_num()
  RETURNS integer AS $$
-     SELECT s.a[1]::int * 10000
-@@ -6600,7 +6605,7 @@
+     SELECT substring(s.a[1] FROM '[[:digit:]]+')::int * 10000
+@@ -6787,7 +6792,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -21,7 +21,7 @@
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
                  '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-@@ -6757,7 +6762,7 @@
+@@ -6944,7 +6949,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -30,7 +30,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6966,13 +6971,7 @@
+@@ -7153,13 +7158,7 @@
  $$ LANGUAGE sql;
  
  -- collect_tap( tap, tap, tap )
@@ -45,7 +45,7 @@
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
  $$ LANGUAGE sql;
-@@ -7448,7 +7447,7 @@
+@@ -7635,7 +7634,7 @@
      rec    RECORD;
  BEGIN
      EXECUTE _query($1) INTO rec;

@@ -36,7 +36,7 @@
      END LOOP;
      IF array_upper(keys, 0) = 1 THEN
          have := 'No ' || $5 || ' constraints';
-@@ -5971,7 +5971,7 @@
+@@ -6158,7 +6158,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -45,7 +45,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -5979,8 +5979,8 @@
+@@ -6166,8 +6166,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -56,7 +56,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -6049,7 +6049,7 @@
+@@ -6236,7 +6236,7 @@
      setup    ALIAS FOR $3;
      teardown ALIAS FOR $4;
      tests    ALIAS FOR $5;
@@ -65,7 +65,7 @@
      tfaild   INTEGER := 0;
      ffaild   INTEGER := 0;
      tnumb    INTEGER := 0;
-@@ -6059,7 +6059,7 @@
+@@ -6246,7 +6246,7 @@
      BEGIN
          -- No plan support.
          PERFORM * FROM no_plan();
@@ -74,7 +74,7 @@
      EXCEPTION
          -- Catch all exceptions and simply rethrow custom exceptions. This
          -- will roll back everything in the above block.
-@@ -6098,18 +6098,18 @@
+@@ -6285,18 +6285,18 @@
          BEGIN
              BEGIN
                  -- Run the setup functions.
@@ -99,7 +99,7 @@
                  END LOOP;
  
                  -- Emit the plan.
-@@ -6165,11 +6165,11 @@
+@@ -6352,11 +6352,11 @@
      END LOOP;
  
      -- Run the shutdown functions.
@@ -114,7 +114,7 @@
      END LOOP;
  
      -- Clean up and return.
-@@ -7427,7 +7427,7 @@
+@@ -7614,7 +7614,7 @@
  DECLARE
      rec    RECORD;
  BEGIN

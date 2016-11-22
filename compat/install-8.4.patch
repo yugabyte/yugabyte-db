@@ -1,6 +1,6 @@
 --- sql/pgtap.sql
 +++ sql/pgtap.sql
-@@ -7474,7 +7474,6 @@
+@@ -7661,7 +7661,6 @@
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE n.nspname = $1
                 AND c.relname = $2
@@ -8,7 +8,7 @@
              EXCEPT
              SELECT $3[i]
                FROM generate_series(1, array_upper($3, 1)) s(i)
-@@ -7489,7 +7488,6 @@
+@@ -7676,7 +7675,6 @@
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE n.nspname = $1
                 AND c.relname = $2
@@ -16,7 +16,7 @@
          ),
          $4
      );
-@@ -7513,7 +7511,6 @@
+@@ -7700,7 +7698,6 @@
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE c.relname = $1
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -24,7 +24,7 @@
              EXCEPT
              SELECT $2[i]
                FROM generate_series(1, array_upper($2, 1)) s(i)
-@@ -7527,7 +7524,6 @@
+@@ -7714,7 +7711,6 @@
                JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
