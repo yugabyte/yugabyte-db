@@ -6,33 +6,11 @@ import YBMultiSelect from './../fields/YBMultiSelect';
 import YBNumericInput from './../fields/YBNumericInput';
 import { Field } from 'redux-form';
 import YBModal from './../fields/YBModal';
-import {isValidObject, isValidArray, daysInCurrentMonth} from '../../utils/ObjectUtils';
+import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
-import {FormattedNumber} from 'react-intl';
 import DescriptionItem from '../DescriptionItem';
+import YBCost from '../fields/YBCost';
 
-class UniverseCost extends Component {
-  static propTypes = {
-    multiplier: PropTypes.oneOf(['hour', 'day', 'month']).isRequired
-  }
-
-  render() {
-    const {value, multiplier} = this.props;
-    var finalCost = value;
-    if (multiplier === "day") {
-      finalCost = value * 24;
-    }
-    else if(multiplier === "month") {
-      finalCost = value * 24 * daysInCurrentMonth();
-    }
-    return (
-      <div>
-        <FormattedNumber value={finalCost} maximumFractionDigits={2} style="currency" currency="USD" multiplier={multiplier}/>
-        <span className="config-price-subscript">{`/${multiplier}`}</span>
-      </div>
-    )
-  }
-}
 
 class UniverseConfigDetail extends Component {
   render() {
@@ -44,8 +22,8 @@ class UniverseConfigDetail extends Component {
     var numCores = <span/>;
     var volumeCount = <span/>;
     if (isValidObject(universeResourceTemplate) && Object.keys(universeResourceTemplate).length > 0) {
-      costPerDay = <UniverseCost value={universeResourceTemplate.pricePerHour} multiplier={"day"} />
-      costPerMonth = <UniverseCost value={universeResourceTemplate.pricePerHour} multiplier={"month"} />
+      costPerDay = <YBCost value={universeResourceTemplate.pricePerHour} multiplier={"day"} />
+      costPerMonth = <YBCost value={universeResourceTemplate.pricePerHour} multiplier={"month"} />
     }
     if (isValidObject(universeResourceTemplate.volumeSizeGB)) {
       volumeSize = <span>{`${universeResourceTemplate.volumeSizeGB} GB`}</span>
