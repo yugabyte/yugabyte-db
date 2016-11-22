@@ -22,10 +22,10 @@
                     </execution>
                 </executions>
                 <configuration>
-                  <jmeterExtensions>
-                    <artifact>kg.apc:jmeter-plugins-json:jar:2.3</artifact>
-                    <artifact>kg.apc:jmeter-plugins-manager:jar:0.10</artifact>
-                  </jmeterExtensions>
+                    <jmeterExtensions>
+                        <artifact>kg.apc:jmeter-plugins-json:jar:2.3</artifact>
+                        <artifact>kg.apc:jmeter-plugins-manager:jar:0.10</artifact>
+                    </jmeterExtensions>
                 </configuration>
             </plugin>
         </plugins>

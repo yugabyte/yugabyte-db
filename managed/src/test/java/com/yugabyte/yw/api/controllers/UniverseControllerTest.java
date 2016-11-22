@@ -106,6 +106,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isArray());
     assertEquals(1, json.size());
+    assertEquals(null, json.get("pricePerHour"));
     assertThat(json.get(0).get("universeUUID").asText(), allOf(notNullValue(), equalTo(u1.universeUUID.toString())));
   }
 

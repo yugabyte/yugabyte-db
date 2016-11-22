@@ -1542,13 +1542,10 @@ span.right {
 }
 
 /** top tiles  */
-.tile_count {
-  margin-bottom: 20px;
-  margin-top: 20px;
-}
+
 .tile_count .tile_stats_count {
   border-bottom: 1px solid #D9DEE4;
-  padding: 0 10px 0 20px;
+  padding: 0 20px 0 20px;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -1563,18 +1560,16 @@ span.right {
 
 @media (min-width: 992px) {
   .tile_count .tile_stats_count {
-    margin-bottom: 10px;
+    margin-bottom: 4px;
     border-bottom: 0;
-    padding-bottom: 10px;
+    padding-bottom: 4px;
   }
 }
-.tile_count .tile_stats_count:before {
-  content:"";
-  position: absolute;
-  left: 0;
-  height: 65px;
-  border-left: 2px solid #ADB2B5;
-  margin-top: 10px;
+.tile_count .tile_stats_count {
+  border-left: 1px solid #ADB2B5;
+}
+.tile_count .tile_stats_count:first-child {
+  border-left: none;
 }
 @media (min-width:992px) {
   .tile_count .tile_stats_count:first-child:before {
@@ -1583,12 +1578,12 @@ span.right {
 }
 .tile_count .tile_stats_count .count {
   font-size: 30px;
-  line-height: 47px;
+  line-height: 25px;
   font-weight: 600;
 }
 @media (min-width:768px) {
   .tile_count .tile_stats_count .count {
-    font-size: 40px;
+    font-size: 25px;
   }
 }
 @media (min-width: 992px) and (max-width: 1100px) {
