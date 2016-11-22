@@ -1,41 +1,26 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import InlineFrame from './InlineFrame';
-import YBPanelItem from './YBPanelItem';
+import GraphPanelHeaderContainer from '../containers/GraphPanelHeaderContainer';
+import MetricsPanelContainer from '../containers/MetricsPanelContainer'
 
 export default class GraphPanel extends Component {
   static propTypes = {
-    nodePrefix: PropTypes.string.isRequired,
-    panelIds: PropTypes.array
+    origin: PropTypes.oneOf(['customer', 'universe']).isRequired,
+    universeUUID: PropTypes.string
   };
 
   static defaultProps = {
-    grafanaUrl: "http://no-such-url:3000/dashboard-solo/db/yugabyte-cluster",
-    panelIds: [17, 18]
+    universeUUID: null
   }
 
   render() {
-    const { nodePrefix, panelIds, grafanaUrl, graph: {graphFilter} } = this.props;
-    var toTimestampMs = new Date().getTime();
-    // By default we have a filter range of 1 hour ago.
-    var fromTimestampMs = toTimestampMs - 60 * 60 * 1000;
-    if (graphFilter !== null) {
-      if (graphFilter.filterType === "hour") {
-        fromTimestampMs = toTimestampMs - (60 * 60 * graphFilter.filterValue * 1000);
-      }
-    }
-
-    const panelFrames = panelIds.map(function(panelId) {
-      var panelUrl = grafanaUrl + "?panelId=" + panelId +
-        "&from=" + fromTimestampMs + "&to=" + toTimestampMs +
-        "&var-cluster=" + encodeURI(nodePrefix) + "&fullscreen&var-host=All";
-      return (<InlineFrame key={panelId} src={panelUrl} className="graph-panel" />);
-    });
     return (
-      <YBPanelItem name="Graph Panels">
-        {panelFrames}
-      </YBPanelItem>
+      <GraphPanelHeaderContainer>
+        <MetricsPanelContainer metricKey="memory_usage" {...this.props} />
+        <MetricsPanelContainer metricKey="cpu_usage_system" {...this.props} />
+        <MetricsPanelContainer metricKey="cpu_usage_user" {...this.props} />
+      </GraphPanelHeaderContainer>
     );
   }
 }

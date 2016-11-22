@@ -496,13 +496,6 @@ a, a:visited, a:focus, a:active, :visited, :focus, :active, .btn:focus, .btn:act
     position: relative;
   }
 }
-.top_nav .dropdown-menu li {
-  width: 100%;
-}
-.top_nav .dropdown-menu li a {
-  width: 100%;
-  padding: 12px 20px;
-}
 .top_nav li a i {
   font-size: 15px
 }
@@ -3722,9 +3715,6 @@ div[data-role="editor-toolbar"] {
   user-select: none;
 }
 
-.dropdown-menu a {
-  cursor: pointer;
-}
 /** /bootstrap-wysiwyg **/
 
 /** Select2 **/
@@ -4329,16 +4319,7 @@ ul.notifications {
 /** /PNotify **/
 
 /** bootstrap-daterangepicker **/
-.daterangepicker.dropdown-menu {
-  font-size: 13px;
-  padding: 0;
-  overflow: hidden;
-}
 
-.daterangepicker.picker_1 {
-  background: #34495E;
-  color: #ECF0F1;
-}
 
 .daterangepicker.picker_1 table.table-condensed thead tr:first-child {
   background: #1ABB9C;
