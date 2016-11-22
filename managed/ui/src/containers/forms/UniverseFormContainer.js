@@ -13,6 +13,7 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   configureUniverseResourcesFailure, configureUniverseResourcesSuccess, checkIfUniverseExists }
   from '../../actions/universe';
 import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
+import {SOFTWARE_PACKAGE} from '../../config';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -109,7 +110,7 @@ const formFieldNames = ['formType', 'universeName', 'provider',  'providerType',
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
-    "ybServerPackage": "yb-server-0.0.1-SNAPSHOT.ac3893d5e619667fd46fcbfc35bc916476439e73.tar.gz",
+    "ybServerPackage": SOFTWARE_PACKAGE,
     "numNodes": 3, "isMultiAZ": true, "instanceType": "m3.medium", "formType": "create"
   };
 
