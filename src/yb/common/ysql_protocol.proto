@@ -1,0 +1,155 @@
+// Copyright (c) YugaByte, Inc.
+
+package yb;
+
+option java_package = "org.yb";
+
+// This is an internal protocol for communicating YSQL operations from a YB client to a tserver.
+//
+// Reference:
+// Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
+
+// YSQL data types
+enum YSQLDataType {
+  YSQL_DT_NULL = 0;
+  YSQL_DT_INT64 = 1;
+  YSQL_DT_DOUBLE = 2;
+  YSQL_DT_STRING = 3;
+  YSQL_DT_BOOLEAN = 4;
+  YSQL_DT_TIMESTAMP = 5;
+}
+
+// A YSQL value
+message YSQLValue {
+  optional YSQLDataType datatype = 1;
+  oneof value {
+    int64 int64_value = 2;
+    double double_value = 3;
+    string string_value = 4;
+    bool boolean_value = 5;
+    int64 timestamp_value = 6;
+  }
+}
+
+// Relation operators
+enum YSQLOperator {
+  YSQL_OP_EQUAL = 1;
+  YSQL_OP_LESS_THAN = 2;
+  YSQL_OP_LESS_THAN_EQUAL = 3;
+  YSQL_OP_GREATER_THAN = 4;
+  YSQL_OP_GREATER_THAN_EQUAL = 5;
+  YSQL_OP_NOT_EQUAL = 6;
+}
+
+// Client type: only CQL client is supported currently
+enum YSQLClient {
+  YSQL_CLIENT_CQL = 1;
+}
+
+//-------------------------------------- Write request ---------------------------------------
+
+message YSQLWriteRequestPB {
+
+  // Statement types
+  enum YSQLStmtType {
+    YSQL_STMT_INSERT = 1;
+    YSQL_STMT_UPDATE = 2;
+    YSQL_STMT_DELETE = 3;
+  }
+
+  // If conditions
+  enum YSQLIf {
+    YSQL_IF_EXISTS = 1;
+    YSQL_IF_NOT_EXISTS = 2;
+  }
+
+  // Statement type
+  optional YSQLStmtType type = 1; // required
+
+  // Client info
+  optional YSQLClient client = 2; // required
+  optional int32 request_id = 3; // client request id - for debug tracing purpose only
+
+  // Table schema version
+  optional int32 schema_version = 4; // required
+
+  // Primary key of the row to insert/update/delete - all fields required
+  //
+  // Note: the hash_code is the hash of the hashed_column_values. Technically, this can be
+  // recomputed by tserver also, but since the client already calculates this to look up the
+  // correct tablet server, it is passed in.
+  optional int32 hash_code = 5;
+  repeated YSQLValue hashed_column_values = 6;
+  repeated YSQLValue range_column_values = 7;
+
+  // Column ids and values to insert/update/delete - all fields required except for no value
+  // for DELETE
+  repeated int32 column_ids = 8;
+  repeated YSQLValue column_values = 9;
+
+  // IF conditions:
+  // - insert: NOT_EXISTS
+  // - update: EXISTS or NOT_EXISTS
+  // - delete: EXISTS
+  optional YSQLIf if = 10;
+
+  // TTL: a 32-bit int (max value = 20 years in secs per org/apache/cassandra/cql3/Attributes.java)
+  optional int32 ttl = 11;
+}
+
+//-------------------------------------- Read request ----------------------------------------
+
+message YSQLReadRequestPB {
+
+  // A where-relation on a range column - all fields required
+  message YSQLRelation {
+    optional int32 range_column_id = 1;
+    optional YSQLOperator op = 2;
+    optional YSQLValue value = 3;
+  }
+
+  // Client info
+  optional YSQLClient client = 1; // required
+  optional int32 request_id = 2; // client request id - for debug tracing purpose only
+
+  // Table schema version
+  optional int32 schema_version = 3; // required
+
+  // Hashed key of row(s) to read - all fields required
+  optional int32 hash_code = 4;
+  repeated int32 hashed_column_ids = 5;
+  repeated YSQLValue hashed_column_values = 6;
+
+  // Range relations
+  repeated YSQLRelation relations = 7; // CQL allows only WHERE relation AND relation AND ...
+
+  // Column ids to read
+  repeated int32 column_ids = 8; // required
+
+  // Order-by column id
+  optional int32 order_by_column_id = 9;
+
+  // Limit number of rows to return
+  optional int32 limit = 10;
+}
+
+//------------------------------ Response (for both read and write) -----------------------------
+
+message YSQLResponsePB {
+
+  // Response status
+  enum YSQLStatus {
+    YSQL_STATUS_OK = 0;
+    YSQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
+  }
+
+  // Status and error message
+  optional YSQLStatus status = 1 [ default = YSQL_STATUS_OK ]; // required
+  optional string error_message = 2;
+
+  // For write requests with an if-clause, whether the write has been applied successfully.
+  optional bool applied = 3;
+
+  // Length of the response body to follow (0 means a void result)
+  optional int32 body_length = 4 [ default = 0 ]; // required
+}

@@ -21,6 +21,7 @@ option java_package = "org.yb.tserver";
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/common/redis_protocol.proto";
+import "yb/common/ysql_protocol.proto";
 import "yb/tablet/tablet.proto";
 import "yb/docdb/docdb.proto";
 
@@ -123,6 +124,9 @@ message WriteRequestPB {
   // A batch of redis operations.
   repeated RedisWriteRequestPB redis_write_batch = 8;
 
+  // A batch of SQL operations.
+  repeated YSQLWriteRequestPB sql_write_batch = 10;
+
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 9 [default = true];
@@ -159,6 +163,9 @@ message WriteResponsePB {
 
   // A batch of redis responses.
   repeated RedisResponsePB redis_response_batch = 8;
+
+  // A batch of SQL responses.
+  repeated YSQLResponsePB sql_response_batch = 9;
 
   // The timestamp chosen by the server for this write.
   // TODO KUDU-611 propagate timestamps with server signature.
@@ -220,6 +227,8 @@ message ReadRequestPB {
 
   repeated RedisReadRequestPB redis_batch = 2;
 
+  repeated YSQLReadRequestPB sql_batch = 4;
+
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 3 [default = true];
@@ -229,6 +238,8 @@ message ReadRequestPB {
 
 message ReadResponsePB {
   repeated RedisResponsePB redis_batch = 1;
+
+  repeated YSQLResponsePB sql_batch = 4;
 
   // The timestamp chosen by the server for this read.
   optional fixed64 timestamp = 2;

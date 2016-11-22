@@ -49,6 +49,16 @@ ADD_EXPORTABLE_LIBRARY(redis_protocol_proto
   DEPS protobuf
   NONLINK_DEPS ${REDIS_PROTOCOL_PROTO_TGTS})
 
+PROTOBUF_GENERATE_CPP(
+  YSQL_PROTOCOL_PROTO_SRCS YSQL_PROTOCOL_PROTO_HDRS YSQL_PROTOCOL_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES ysql_protocol.proto)
+ADD_EXPORTABLE_LIBRARY(ysql_protocol_proto
+  SRCS ${YSQL_PROTOCOL_PROTO_SRCS}
+  DEPS protobuf
+  NONLINK_DEPS ${YSQL_PROTOCOL_PROTO_TGTS})
+
 set(COMMON_SRCS
   encoded_key.cc
   generic_iterators.cc
@@ -80,6 +90,7 @@ set(COMMON_LIBS
   consensus_metadata_proto
   wire_protocol_proto
   redis_protocol_proto
+  ysql_protocol_proto
   yb_util
   gutil)
 
