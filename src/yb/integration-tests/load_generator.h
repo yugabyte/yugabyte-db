@@ -86,7 +86,7 @@ class RedisSessionFactory : public SessionFactory {
   SingleThreadedReader* GetReader(MultiThreadedReader* reader, int idx) override;
 
  protected:
-  string redis_server_address_;
+  string redis_server_addresses_;
 };
 
 class RedisNoopSessionFactory : public RedisSessionFactory {
@@ -231,8 +231,9 @@ class NoopSingleThreadedWriter : public YBSingleThreadedWriter {
 
 class RedisSingleThreadedWriter : public SingleThreadedWriter {
  public:
-  RedisSingleThreadedWriter(MultiThreadedWriter* writer, string redis_server_addr, int writer_index)
-      : SingleThreadedWriter(writer, writer_index), redis_server_address_(redis_server_addr) {}
+  RedisSingleThreadedWriter(
+      MultiThreadedWriter* writer, string redis_server_addrs, int writer_index)
+      : SingleThreadedWriter(writer, writer_index), redis_server_addresses_(redis_server_addrs) {}
 
  protected:
   virtual bool Write(int64_t key_index, const string& key_str, const string& value_str) override;
@@ -240,8 +241,8 @@ class RedisSingleThreadedWriter : public SingleThreadedWriter {
   virtual void CloseSession() override;
   virtual void HandleInsertionFailure(int64_t key_index, const string& key_str) override;
 
-  std::unique_ptr<RedisClient> client_;
-  const string redis_server_address_;
+  vector<shared_ptr<RedisClient>> clients_;
+  const string redis_server_addresses_;
 };
 
 class RedisNoopSingleThreadedWriter : public RedisSingleThreadedWriter {
@@ -352,7 +353,7 @@ class YBSingleThreadedReader : public SingleThreadedReader {
 class RedisSingleThreadedReader : public SingleThreadedReader {
  public:
   RedisSingleThreadedReader(MultiThreadedReader* reader, string redis_server_addr, int reader_index)
-      : SingleThreadedReader(reader, reader_index), redis_server_address_(redis_server_addr) {}
+      : SingleThreadedReader(reader, reader_index), redis_server_addresses_(redis_server_addr) {}
 
  private:
   virtual ReadStatus PerformRead(
@@ -360,8 +361,8 @@ class RedisSingleThreadedReader : public SingleThreadedReader {
   virtual void ConfigureSession() override;
   virtual void CloseSession() override;
 
-  std::unique_ptr<RedisClient> client_;
-  const string redis_server_address_;
+  vector<shared_ptr<RedisClient>> clients_;
+  const string redis_server_addresses_;
 };
 
 }  // namespace load_generator

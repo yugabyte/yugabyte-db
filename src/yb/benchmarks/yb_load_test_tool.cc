@@ -11,6 +11,7 @@
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/client/client.h"
+#include "yb/client/redis_helpers.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -70,7 +71,8 @@ DEFINE_bool(noop_only, false, "Only perform noop requests");
 DEFINE_bool(reads_only, false, "Only read the existing rows from the table.");
 
 DEFINE_string(
-    target_redis_server_address, "", "<host:port> Address of the redis server to contact.");
+    target_redis_server_addresses, "",
+    "comma separated list of <host:port> addresses of the redis proxy server(s)");
 
 DEFINE_bool(writes_only, false, "Writes a new set of rows into an existing table.");
 
@@ -128,6 +130,8 @@ using yb::load_generator::FormatHexForLoadTestKey;
 
 // ------------------------------------------------------------------------------------------------
 
+void CreateTable(const string &table_name, const shared_ptr<YBClient> &client);
+void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &client);
 void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client);
 
 void LaunchYBLoadTest(SessionFactory *session_factory);
@@ -144,8 +148,8 @@ int main(int argc, char *argv[]) {
   gflags::SetUsageMessage(
       "Usage:\n"
       "    load_test_tool --load_test_master_endpoint http://<metamaster rest endpoint>\n"
-      "    load_test_tool --load_test_master_addresses master1:port1,...,masterN:portN"
-      "    load_test_tool --target_redis_server_address server_host_name:port");
+      "    load_test_tool --load_test_master_addresses master1:port1,...,masterN:portN\n"
+      "    load_test_tool --target_redis_server_addresses proxy1:port1,...,proxyN:portN");
   yb::ParseCommandLineFlags(&argc, &argv, true);
   yb::InitGoogleLoggingSafe(argv[0]);
 
@@ -157,7 +161,7 @@ int main(int argc, char *argv[]) {
     LOG(FATAL) << "If reads only or writes only option is set, then we cannot drop the table";
   }
 
-  bool use_redis_table = !FLAGS_target_redis_server_address.empty();
+  bool use_redis_table = !FLAGS_target_redis_server_addresses.empty();
 
   if (!FLAGS_reads_only)
     LOG(INFO) << "num_keys = " << FLAGS_num_rows;
@@ -190,10 +194,10 @@ int main(int argc, char *argv[]) {
         SetupYBTable(CreateYBClient());
       }
       if (FLAGS_noop_only) {
-        RedisNoopSessionFactory session_factory(FLAGS_target_redis_server_address);
+        RedisNoopSessionFactory session_factory(FLAGS_target_redis_server_addresses);
         LaunchYBLoadTest(&session_factory);
       } else {
-        RedisSessionFactory session_factory(FLAGS_target_redis_server_address);
+        RedisSessionFactory session_factory(FLAGS_target_redis_server_addresses);
         LaunchYBLoadTest(&session_factory);
       }
     }
@@ -225,7 +229,56 @@ shared_ptr<YBClient> CreateYBClient() {
 void SetupYBTable(const shared_ptr<YBClient> &client) {
   const string table_name(FLAGS_table_name);
   if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
+    CreateTable(table_name, client);
+  }
+}
+
+vector<const YBPartialRow *> GetSplitsForTable(const YBSchema *schema) {
+  // Create the number of partitions based on the split keys.
+  vector<const YBPartialRow *> splits;
+  for (uint64_t j = 1; j < FLAGS_num_tablets; j++) {
+    YBPartialRow *row = schema->NewRow();
+    // We divide the interval between 0 and 2**64 into the requested number of intervals.
+    string split_key = FormatHexForLoadTestKey(((uint64_t)1 << 62) * 4.0 * j / (FLAGS_num_tablets));
+    LOG(INFO) << "split_key #" << j << "=" << split_key;
+    CHECK_OK(row->SetBinaryCopy(0, split_key));
+    splits.push_back(row);
+  }
+  return splits;
+}
+
+void CreateTable(const string &table_name, const shared_ptr<YBClient> &client) {
+  if (!FLAGS_target_redis_server_addresses.empty()) {
+    CreateRedisTable(table_name, client);
+  } else {
     CreateYBTable(table_name, client);
+  }
+}
+
+void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &client) {
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn(yb::client::RedisConstants::kRedisKeyColumnName)
+      ->Type(YBColumnSchema::BINARY)
+      ->NotNull()
+      ->PrimaryKey();
+
+  YBSchema schema;
+  CHECK_OK(schemaBuilder.Build(&schema));
+  vector<const YBPartialRow *> splits = GetSplitsForTable(&schema);
+
+  LOG(INFO) << "Creating table";
+  gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
+  Status table_creation_status = table_creator->table_name(table_name)
+                                     .split_rows(splits)
+                                     .num_replicas(FLAGS_num_replicas)
+                                     .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+                                     .Create();
+  if (!table_creation_status.ok()) {
+    LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
+  }
+  if (table_creation_status.message().ToString().find("Table already exists") ==
+      std::string::npos) {
+    CHECK_OK(table_creation_status);
   }
 }
 
@@ -237,19 +290,9 @@ void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client)
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
 
-  // Create the number of partitions based on the split keys.
-  vector<const YBPartialRow *> splits;
-  for (uint64_t j = 1; j < FLAGS_num_tablets; j++) {
-    YBPartialRow *row = schema.NewRow();
-    // We divide the interval between 0 and 2**64 into the requested number of intervals.
-    string split_key = FormatHexForLoadTestKey(((uint64_t)1 << 62) * 4.0 * j / (FLAGS_num_tablets));
-    LOG(INFO) << "split_key #" << j << "=" << split_key;
-    CHECK_OK(row->SetBinaryCopy(0, split_key));
-    splits.push_back(row);
-  }
+  vector<const YBPartialRow *> splits = GetSplitsForTable(&schema);
 
   LOG(INFO) << "Creating table";
-
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status =
       table_creator->table_name(table_name)

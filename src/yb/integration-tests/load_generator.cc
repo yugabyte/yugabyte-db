@@ -12,6 +12,7 @@
 #include "cpp_redis/reply.hpp"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
@@ -171,21 +172,21 @@ SingleThreadedWriter* NoopSessionFactory::GetWriter(MultiThreadedWriter* writer,
   return new NoopSingleThreadedWriter(writer, client_, table_, idx);
 }
 
-RedisSessionFactory::RedisSessionFactory(const string& redis_server_addr)
-    : redis_server_address_(redis_server_addr) {}
+RedisSessionFactory::RedisSessionFactory(const string& redis_server_addresses)
+    : redis_server_addresses_(redis_server_addresses) {}
 
 string RedisSessionFactory::ClientId() { return "redis_client"; }
 
 SingleThreadedWriter* RedisSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
-  return new RedisSingleThreadedWriter(writer, redis_server_address_, idx);
+  return new RedisSingleThreadedWriter(writer, redis_server_addresses_, idx);
 }
 
 SingleThreadedReader* RedisSessionFactory::GetReader(MultiThreadedReader* reader, int idx) {
-  return new RedisSingleThreadedReader(reader, redis_server_address_, idx);
+  return new RedisSingleThreadedReader(reader, redis_server_addresses_, idx);
 }
 
 SingleThreadedWriter* RedisNoopSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
-  return new RedisNoopSingleThreadedWriter(writer, redis_server_address_, idx);
+  return new RedisNoopSingleThreadedWriter(writer, redis_server_addresses_, idx);
 }
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedAction
@@ -304,13 +305,23 @@ void SingleThreadedWriter::Run() {
   CloseSession();
 }
 
+void ConfigureRedisSessions(const string& redis_server_addresses,
+                            vector<shared_ptr<RedisClient> >* clients) {
+  std::vector<string> addresses;
+  SplitStringUsing(redis_server_addresses, ",", &addresses);
+  for (auto& addr : addresses) {
+    shared_ptr<RedisClient> client(new RedisClient());
+    Sockaddr remote;
+    remote.ParseString(addr, 6379);
+    client->connect(remote.host(), remote.port(), [&remote](RedisClient&) {
+      LOG(ERROR) << "client disconnected (disconnection handler) from " << remote.ToString();
+    });
+    clients->push_back(client);
+  }
+}
+
 void RedisSingleThreadedWriter::ConfigureSession() {
-  client_.reset(new RedisClient);
-  Sockaddr remote;
-  remote.ParseString(redis_server_address_, 6379);
-  client_->connect(remote.host(), remote.port(), [](RedisClient&) {
-    LOG(ERROR) << "client disconnected (disconnection handler)" << std::endl;
-  });
+  ConfigureRedisSessions(redis_server_addresses_, &clients_);
 }
 
 bool RedisSingleThreadedWriter::Write(
@@ -318,7 +329,8 @@ bool RedisSingleThreadedWriter::Write(
   bool success = false;
   auto* multi_writer = multi_threaded_writer_;
   auto writer_index = writer_index_;
-  client_->set(
+  int64_t idx = key_index % clients_.size();
+  clients_[idx]->set(
       key_str, value_str, [&success, multi_writer, key_index, writer_index](RedisReply& reply) {
         if ("OK" == reply.as_string()) {
           VLOG(2) << "Writer " << writer_index << " Successfully inserted key #" << key_index
@@ -329,7 +341,7 @@ bool RedisSingleThreadedWriter::Write(
           success = false;
         }
       });
-  client_->sync_commit();
+  clients_[idx]->sync_commit();
 
   return success;
 }
@@ -338,13 +350,18 @@ void RedisSingleThreadedWriter::HandleInsertionFailure(int64_t key_index, const 
   // Nothing special to do for Redis failures.
 }
 
-void RedisSingleThreadedWriter::CloseSession() { client_->disconnect(); }
+void RedisSingleThreadedWriter::CloseSession() {
+  for (auto client : clients_) {
+    client->disconnect();
+  }
+}
 
 bool RedisNoopSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
   bool success = false;
   auto writer_index = writer_index_;
-  client_->echo("OK", [&success, key_index, writer_index](RedisReply& reply) {
+  int64_t idx = key_index % clients_.size();
+  clients_[idx]->echo("OK", [&success, key_index, writer_index](RedisReply& reply) {
     if ("OK" == reply.as_string()) {
       VLOG(2) << "Writer " << writer_index << " Successfully inserted key #" << key_index
               << " into redis ";
@@ -354,7 +371,7 @@ bool RedisNoopSingleThreadedWriter::Write(
       success = false;
     }
   });
-  client_->sync_commit();
+  clients_[idx]->sync_commit();
 
   return success;
 }
@@ -514,15 +531,14 @@ void MultiThreadedReader::IncrementReadErrorCount() {
 }
 
 void RedisSingleThreadedReader::ConfigureSession() {
-  client_.reset(new RedisClient);
-  Sockaddr remote;
-  remote.ParseString(redis_server_address_, 6379);
-  client_->connect(remote.host(), remote.port(), [](RedisClient&) {
-    LOG(ERROR) << "client disconnected (disconnection handler)" << std::endl;
-  });
+  ConfigureRedisSessions(redis_server_addresses_, &clients_);
 }
 
-void RedisSingleThreadedReader::CloseSession() { client_->disconnect(); }
+void RedisSingleThreadedReader::CloseSession() {
+  for (auto client : clients_) {
+    client->disconnect();
+  }
+}
 
 void YBSingleThreadedReader::ConfigureSession() {
   session_ = client_->NewSession();
@@ -604,10 +620,11 @@ void YBSingleThreadedReader::CloseSession() { CHECK_OK(session_->Close()); }
 ReadStatus RedisSingleThreadedReader::PerformRead(
     int64_t key_index, const string& key_str, const string& expected_value_str) {
   string value_str;
-  client_->get(key_str, [&value_str](RedisReply& reply) { value_str = reply.as_string(); });
+  int64_t idx = key_index % clients_.size();
+  clients_[idx]->get(key_str, [&value_str](RedisReply& reply) { value_str = reply.as_string(); });
   VLOG(3) << "Trying to read key #" << key_index << " from redis "
           << " key : " << key_str;
-  client_->sync_commit();
+  clients_[idx]->sync_commit();
 
   if (expected_value_str != value_str) {
     VLOG(1) << "Read the wrong value for #" << key_index << " from redis "

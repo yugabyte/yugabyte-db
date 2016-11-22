@@ -5,12 +5,12 @@
 #include <memory>
 #include <string>
 
+namespace yb {
+namespace client {
+
 class YBTable;
 class YBRedisWriteOp;
 class YBRedisReadOp;
-
-namespace yb {
-namespace client {
 
 constexpr int64_t kNoneTtl = -1;
 
