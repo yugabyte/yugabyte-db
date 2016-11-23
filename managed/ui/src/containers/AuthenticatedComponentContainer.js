@@ -7,7 +7,8 @@ import { fetchUniverseList, fetchUniverseListSuccess,
 } from '../actions/universe';
 import { getRegionList, getRegionListSuccess,
   getRegionListFailure, getProviderList,
-  getProviderListSuccess, getProviderListFailure }
+  getProviderListSuccess, getProviderListFailure, getSupportedRegionData,
+  getSupportedRegionDataFailure, getSupportedRegionDataSuccess}
   from '../actions/cloud';
 
 const mapDispatchToProps = (dispatch) => {
@@ -40,6 +41,16 @@ const mapDispatchToProps = (dispatch) => {
               });
           })}
       });
+    },
+
+    getSupportedRegionList: () => {
+      dispatch(getSupportedRegionData()).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(getSupportedRegionDataFailure(response.payload));
+        } else {
+          dispatch(getSupportedRegionDataSuccess(response.payload));
+        }
+      })
     },
 
     resetUniverseList: () => {

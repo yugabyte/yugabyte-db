@@ -6,6 +6,7 @@ export default class AuthenticatedComponent extends Component {
   componentWillMount() {
     this.props.fetchUniverseList();
     this.props.getProviderListItems();
+    this.props.getSupportedRegionList();
   }
 
   componentWillUnmount() {

@@ -521,6 +521,30 @@ input[type="radio"] {
     font-weight: 100;
 }
 
+.supportedRegionMap .region-map-container {
+    height: 400px;
+}
+
+.supported-map-legend-container .checkbox-inline{
+    float: right;
+}
+
+.supported-map-legend-container span {
+    margin-bottom: 4px;
+    padding: 4px;
+}
+
+.supported-map-legend-container small {
+    color: #CD6500;
+}
+
+.supported-map-legend-container .list-group-item {
+    padding: 5px 5px;
+    background-color: transparent;
+    margin-bottom: 2px;
+    border: none;
+}
+
 .dashboard-title-text {
     font-weight: 600;
     font-size: 25px;
@@ -615,6 +639,17 @@ input[type="radio"] {
   display: inline-block;
 }
 
+.marker-cluster-small {
+    border-radius: 50%;
+    width: 26px !important;
+    height: 26px !important;
+    background-color: #CD6500;
+    color: white;
+    text-align: center;
+    padding-top: 4px;
+}
+
 .create-universe-button {
     cursor: pointer;
 }
+

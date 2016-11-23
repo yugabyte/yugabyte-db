@@ -2,10 +2,10 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Col, Image, ListGroup, ListGroupItem} from 'react-bootstrap';
-import YBButton from './fields/YBButton';
-import rootDataIcon from '../stylesheets/images/rootmarker.png';
-import asyncDataIcon from '../stylesheets/images/asyncmarker.png';
-import cacheDataIcon from '../stylesheets/images/cachemarker.png';
+import YBButton from '../fields/YBButton';
+import rootDataIcon from '../../stylesheets/images/rootmarker.png';
+import asyncDataIcon from '../../stylesheets/images/asyncmarker.png';
+import cacheDataIcon from '../../stylesheets/images/cachemarker.png';
 
 export default class YBMapLegendItem extends Component {
   render() {
