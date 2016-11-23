@@ -550,6 +550,13 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   RETURN_NOT_OK(BecomeReplicaUnlocked());
 
+  just_stepped_down_ = true;
+  withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
+  withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
+      FLAGS_after_stepdown_delay_election_multiplier *
+      FLAGS_leader_failure_max_missed_heartbeat_periods *
+      FLAGS_raft_heartbeat_interval_ms));
+
   return Status::OK();
 }
 
@@ -640,14 +647,6 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
 
   // FD should be running while we are a follower.
   RETURN_NOT_OK(EnsureFailureDetectorEnabledUnlocked());
-
-  // Track that we were just stepped down.
-  just_stepped_down_ = true;
-  withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
-  withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
-      FLAGS_after_stepdown_delay_election_multiplier *
-      FLAGS_leader_failure_max_missed_heartbeat_periods *
-      FLAGS_raft_heartbeat_interval_ms));
 
   // Now that we're a replica, we can allow voting for other nodes.
   withhold_votes_until_ = MonoTime::Min();
