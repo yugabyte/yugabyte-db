@@ -615,3 +615,6 @@ input[type="radio"] {
   display: inline-block;
 }
 
+.create-universe-button {
+    cursor: pointer;
+}
