@@ -5,6 +5,7 @@ import { Row, Col, Checkbox } from 'react-bootstrap';
 import {isValidObject} from '../../utils/ObjectUtils';
 import DescriptionItem from '../DescriptionItem';
 import YBCost from '../fields/YBCost';
+import {Link} from 'react-router';
 import UniverseFormContainer from '../../containers/forms/UniverseFormContainer';
 
 class CreateUniverseButtonComponent extends Component {
@@ -37,7 +38,9 @@ class UniverseDisplayItem extends Component {
     return (
       <Col lg={2} className="universe-display-item-container">
         <div className="display-name">
-          {universeDetailItem.name}
+          <Link to={"/universes/" + universeDetailItem.universeUUID}>
+            {universeDetailItem.name}
+          </Link>
           <Checkbox inline/>
         </div>
         <DescriptionItem title="Replication Factor">
