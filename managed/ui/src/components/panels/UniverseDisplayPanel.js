@@ -5,10 +5,12 @@ import { Row, Col, Checkbox } from 'react-bootstrap';
 import {isValidObject} from '../../utils/ObjectUtils';
 import DescriptionItem from '../DescriptionItem';
 import YBCost from '../fields/YBCost';
+import UniverseFormContainer from '../../containers/forms/UniverseFormContainer';
+
 class CreateUniverseButtonComponent extends Component {
   render() {
     return (
-      <Col lg={2} className="create-universe-button">
+      <Col lg={2} className="create-universe-button" {...this.props}>
         <div className="btn-icon">
           <i className="fa fa-plus"/>
         </div>
@@ -62,7 +64,8 @@ class UniverseDisplayItem extends Component {
 
 export default class UniverseDisplayPanel extends Component {
   render() {
-    const { universe: {universeList, loading}} = this.props;
+    var self = this;
+    const { universe: {universeList, loading, showModal, visibleModal}} = this.props;
     if (loading) {
       return <div className="container">Loading...</div>;
     }
@@ -71,13 +74,16 @@ export default class UniverseDisplayPanel extends Component {
     }
     var universeDisplayList = universeList.map(function(universeItem, idx){
         return <UniverseDisplayItem  key={universeItem.name+idx} universeDetailItem={universeItem}/>
-      });
-     var createUniverseButton = <CreateUniverseButtonComponent/>;
+    });
+     var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
     return (
       <div className="universe-display-panel-container">
         <h3>Universes</h3>
         {universeDisplayList}
         {createUniverseButton}
+        <UniverseFormContainer type="Create"
+                               visible={showModal===true && visibleModal==="universeModal"}
+                               onHide={this.props.closeUniverseModal} title="Create Universe" />
       </div>
     )
   }
