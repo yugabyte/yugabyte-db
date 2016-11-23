@@ -5,9 +5,8 @@ import HighlightedStatsPanelContainer from '../containers/panels/HighlightedStat
 import UniverseRegionLocationPanelContainer from '../containers/panels/UniverseRegionLocationPanelContainer';
 import UniverseDisplayPanelContainer from '../containers/panels/UniverseDisplayPanelContainer';
 import { Col } from 'react-bootstrap';
-
+import SupportedRegionsMapLegend from './maps/RegionsMapLegend';
 export default class Dashboard extends Component {
-
   componentDidMount() {
     this.props.fetchUniverseList();
   }
@@ -21,8 +20,11 @@ export default class Dashboard extends Component {
         <Col lg={12}>
           <UniverseDisplayPanelContainer {...this.props}/>
         </Col>
-        <Col lg={6}>
+        <Col lg={9} className="supportedRegionMap">
           <UniverseRegionLocationPanelContainer {...this.props}/>
+        </Col>
+        <Col lg={3}>
+          <SupportedRegionsMapLegend />
         </Col>
       </div>
     );

@@ -20,6 +20,10 @@ export const GET_INSTANCE_TYPE_LIST_FAILURE = 'GET_INSTANCE_TYPE_LIST_FAILURE';
 
 export const RESET_PROVIDER_LIST = 'RESET_PROVIDER_LIST';
 
+export const GET_SUPPORTED_REGION_DATA = 'GET_SUPPORTED_REGION_DATA';
+export const GET_SUPPORTED_REGION_DATA_SUCCESS = 'GET_SUPPORTED_REGION_DATA_SUCCESS';
+export const GET_SUPPORTED_REGION_DATA_FAILURE = 'GET_SUPPORTED_REGION_DATA_FAILURE';
+
 export function getProviderList() {
   var auth_token = localStorage.getItem("customer_token").toString();
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
@@ -87,6 +91,28 @@ export function getInstanceTypeListFailure(error) {
     type: GET_INSTANCE_TYPE_LIST_FAILURE,
     payload: error
   };
+}
+
+export function getSupportedRegionData() {
+  const request = axios.get(`${ROOT_URL}/regions`);
+  return {
+    type: GET_SUPPORTED_REGION_DATA,
+    payload: request
+  }
+}
+
+export function getSupportedRegionDataSuccess(regionData) {
+  return {
+    type: GET_SUPPORTED_REGION_DATA_SUCCESS,
+    payload: regionData
+  }
+}
+
+export function getSupportedRegionDataFailure(error) {
+  return {
+    type: GET_SUPPORTED_REGION_DATA_FAILURE,
+    payload: error
+  }
 }
 
 export function resetProviderList() {

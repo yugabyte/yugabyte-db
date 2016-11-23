@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Grid, Row, Col, ButtonGroup, Image,
           DropdownButton, MenuItem } from 'react-bootstrap';
-import RegionMap from './RegionMap';
+import RegionMap from './maps/RegionMap';
 import UniverseInfoPanel from './UniverseInfoPanel';
 import ConnectStringPanel from './ConnectStringPanel';
 import GraphPanelContainer from '../containers/GraphPanelContainer';
@@ -16,7 +16,7 @@ import {Link} from 'react-router';
 import universelogo from '../images/universe_icon.png';
 import YBLabelWithIcon from './fields/YBLabelWithIcon';
 import YBPanelItem from './YBPanelItem';
-import YBMapLegendItem from './YBMapLegendItem';
+import YBMapLegendItem from './maps/YBMapLegendItem';
 import NodeDetails from './NodeDetails';
 
 

@@ -26,6 +26,7 @@ POST    /api/register                                 com.yugabyte.yw.controller
 # Cloud provider API
 GET     /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.list()
 POST    /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.create()
+GET     /api/regions                                  com.yugabyte.yw.controllers.RegionController.listAllRegions()
 GET     /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(pUUID: java.util.UUID)
 POST    /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(pUUID: java.util.UUID)
 GET     /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.list(pUUID: java.util.UUID, rUUID: java.util.UUID)
