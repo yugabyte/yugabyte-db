@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +48,24 @@ public class RegionController extends AuthenticatedController {
       return internalServerError(responseJson);
     }
     return ok(Json.toJson(regionList));
+  }
+
+  /**
+   * GET endpoint for listing all regions across all providers
+   * @return JSON response with RegionList joined with provider Name, uuid, code
+   */
+  public Result listAllRegions() {
+    List<Provider> providerList = Provider.find.all();
+    ArrayNode resultArray = Json.newArray();
+    for (Provider provider : providerList) {
+      List<Region> regionList = Region.fetchValidRegions(provider.uuid, 1);
+      for (Region region : regionList) {
+        ObjectNode regionNode = (ObjectNode) Json.toJson(region);
+        regionNode.set("provider", Json.toJson(provider));
+        resultArray.add(regionNode);
+      }
+    }
+    return ok(resultArray);
   }
 
   /**

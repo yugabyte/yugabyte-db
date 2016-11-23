@@ -3,21 +3,17 @@
 import React, { Component, PropTypes } from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import { Icon }  from 'leaflet';
-import DefaultMarker from '../stylesheets/images/marker.png';
-import ShadowMarker from '../stylesheets/images/marker-shadow.png';
-import RootMarker from '../stylesheets/images/rootmarker.png';
+import DefaultMarker from '../../stylesheets/images/marker.png';
+import ShadowMarker from '../../stylesheets/images/marker-shadow.png';
+import RootMarker from '../../stylesheets/images/rootmarker.png';
 
 export default class MapMarker extends Component {
   static propTypes = {
     latitude: PropTypes.number.isRequired,
     longitude: PropTypes.number.isRequired,
     label: PropTypes.string,
-    type: PropTypes.oneOf(['Default', 'Root', 'Async', 'Cache'])
+    type: PropTypes.string.isRequired
   };
-
-  static defaultProps = {
-    type: "Default"
-  }
 
   render() {
     const { latitude, longitude, label, type } = this.props;

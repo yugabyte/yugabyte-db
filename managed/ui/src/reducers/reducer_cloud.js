@@ -3,9 +3,11 @@
 import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
  GET_PROVIDER_LIST, GET_PROVIDER_LIST_SUCCESS, GET_PROVIDER_LIST_FAILURE,
   GET_INSTANCE_TYPE_LIST, GET_INSTANCE_TYPE_LIST_SUCCESS, GET_INSTANCE_TYPE_LIST_FAILURE,
-  RESET_PROVIDER_LIST} from '../actions/cloud';
+  RESET_PROVIDER_LIST, GET_SUPPORTED_REGION_DATA, GET_SUPPORTED_REGION_DATA_SUCCESS,
+  GET_SUPPORTED_REGION_DATA_FAILURE} from '../actions/cloud';
 
-const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [], selectedProvider: null, error: null};
+const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [],
+  selectedProvider: null, error: null, supportedRegionList: []};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -33,6 +35,12 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, instanceTypes: null, status: 'instance_type_fetch_failure', error: error, loading: false};
     case RESET_PROVIDER_LIST:
       return { ...state, providers: [], regions: [], instanceTypes:[]}
+    case GET_SUPPORTED_REGION_DATA:
+      return { ...state, supportedRegionList: [], status: 'supported_region_fetch'};
+    case GET_SUPPORTED_REGION_DATA_SUCCESS:
+      return {...state, supportedRegionList: action.payload.data, status: 'supported_region_fetch_success'}
+    case GET_SUPPORTED_REGION_DATA_FAILURE:
+      return {...state, supportedRegionList: [], status: 'supported_region_fetch_failure'}
     default:
       return state;
   }

@@ -71,6 +71,31 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListAllRegionsWithValidRegion() {
+    String authToken = customer.createAuthToken();
+    Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
+    AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    Http.RequestBuilder fr = fakeRequest("GET", "/api/regions").header("X-AUTH-TOKEN", authToken);
+    Result result = route(fr);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get(0).path("uuid").asText(), r.uuid.toString());
+    assertEquals(json.get(0).path("provider").get("uuid").asText(), provider.uuid.toString());
+    assertEquals(OK, result.status());
+    assertEquals(1, json.size());
+  }
+
+  @Test
+  public void testListAllRegionsWithNoRegion() {
+    String authToken = customer.createAuthToken();
+    Http.RequestBuilder fr = fakeRequest("GET", "/api/regions").header("X-AUTH-TOKEN", authToken);
+    Result result = route(fr);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertEquals("[]", json.toString());
+    assertEquals(0, json.size());
+  }
+
+  @Test
   public void testListRegionWithoutZonesAndValidProviderUUID() {
     String authToken = customer.createAuthToken();
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
