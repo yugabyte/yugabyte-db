@@ -17,9 +17,10 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 
+#include <sys/types.h>
+
 #include <memory>
 #include <string>
-#include <sys/types.h>
 #include <vector>
 
 #include "yb/client/client.h"
@@ -467,10 +468,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   HostPort bound_rpc_;
   HostPort bound_http_;
 
-  DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
-
  private:
-   void StartTailerThread(std::string line_prefix, int child_fd, ostream* out);
+  void StartTailerThread(std::string line_prefix, int child_fd, ostream* out);
+
+  DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon
@@ -525,6 +526,7 @@ class ExternalTabletServer : public ExternalDaemon {
       int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
       const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
       uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
+      uint16_t cql_rpc_port, uint16_t cql_http_port,
       const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags);
 
   Status Start();
@@ -541,6 +543,8 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t http_port_;
   const uint16_t redis_rpc_port_;
   const uint16_t redis_http_port_;
+  const uint16_t cql_rpc_port_;
+  const uint16_t cql_http_port_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;
   virtual ~ExternalTabletServer();
@@ -548,7 +552,7 @@ class ExternalTabletServer : public ExternalDaemon {
 
 // Custom functor for predicate based comparison with the master list.
 struct MasterComparator {
-  MasterComparator(ExternalMaster* master) : master_(master) { }
+  explicit MasterComparator(ExternalMaster* master) : master_(master) { }
 
   // We look for the exact master match. Since it is possible to stop/restart master on
   // a given host/port, we do not want a stale master pointer input to match a newer master.
@@ -561,4 +565,4 @@ struct MasterComparator {
 };
 
 }  // namespace yb
-#endif /* YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H */
+#endif  // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_

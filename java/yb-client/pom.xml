@@ -108,6 +108,11 @@
             <version>${commons-io.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>${jsr305.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

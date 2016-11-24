@@ -14,12 +14,12 @@
 
 using yb::cqlserver::CQLServer;
 
+DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to.");
 DEFINE_string(cqlserver_master_addrs, "127.0.0.1:7051",
               "Comma-separated addresses of the masters the CQL server to connect to.");
 TAG_FLAG(cqlserver_master_addrs, stable);
 
 DECLARE_string(rpc_bind_addresses);
-DECLARE_int32(rpc_num_service_threads);
 
 namespace yb {
 namespace cqlserver {
@@ -27,6 +27,8 @@ namespace cqlserver {
 static int CQLServerMain(int argc, char** argv) {
   InitYBOrDie();
 
+  // Reset some default values before parsing gflags.
+  FLAGS_cql_proxy_bind_address = strings::Substitute("0.0.0.0:$0", CQLServer::kDefaultPort);
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;
@@ -35,11 +37,9 @@ static int CQLServerMain(int argc, char** argv) {
   InitGoogleLoggingSafe(argv[0]);
 
   CQLServerOptions opts;
+  opts.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
   opts.master_addresses_flag = FLAGS_cqlserver_master_addrs;
   CQLServer server(opts);
-  LOG(INFO) << "Initializing CQL server...";
-  CHECK_OK(server.Init());
-
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server.Start());
 

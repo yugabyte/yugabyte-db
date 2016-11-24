@@ -18,7 +18,6 @@ package org.yb.client;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Range;
-import com.google.common.collect.Ranges;
 import com.google.common.collect.Sets;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
@@ -83,7 +82,7 @@ import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
 public class AsyncYBSession implements SessionConfiguration {
 
   public static final Logger LOG = LoggerFactory.getLogger(AsyncYBSession.class);
-  private static final Range<Float> PERCENTAGE_RANGE = Ranges.closed(0.0f, 1.0f);
+  private static final Range<Float> PERCENTAGE_RANGE = Range.closed(0.0f, 1.0f);
 
   private final AsyncYBClient client;
   private final Random randomizer = new Random();

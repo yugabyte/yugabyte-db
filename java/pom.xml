@@ -50,8 +50,8 @@
 
         <!-- Library dependencies -->
         <async.version>1.4.1</async.version>
-        <guava.version>12.0.1</guava.version>
-        <hadoop.version>2.6.0-cdh5.4.7</hadoop.version>
+        <guava.version>16.0.1</guava.version>
+        <hadoop.version>2.7.3</hadoop.version>
         <junit.version>4.11</junit.version>
         <log4j.version>1.2.17</log4j.version>
         <mockito-all.version>1.9.0</mockito-all.version>
@@ -60,6 +60,8 @@
         <slf4j.version>1.7.12</slf4j.version>
         <commons-io.version>2.4</commons-io.version>
         <murmur.version>1.0.0</murmur.version>
+        <jsr305.version>3.0.1</jsr305.version>
+        <cassandra-driver-core.version>3.1.2</cassandra-driver-core.version>
 
         <!-- Misc variables -->
         <testdata.dir>target/testdata</testdata.dir>
@@ -75,6 +77,7 @@
         <module>yb-client-tools</module>
         <module>yb-mapreduce</module>
         <module>yb-spark</module>
+        <module>yb-cql</module>
     </modules>
 
     <build>
@@ -124,6 +127,13 @@
                         <reuseForks>false</reuseForks>
                         <redirectTestOutputToFile>true</redirectTestOutputToFile>
                         <argLine>${testArgLine}</argLine>
+                        <systemPropertyVariables>
+                          <!-- Explicitly specify the binary directory since yb-cql tests use
+                               TestUtils in yb-client in a JAR so it cannot derive the dir
+                               from the class's location.
+                          -->
+                          <binDir>${project.basedir}/../../build/latest/bin</binDir>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
                 <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->

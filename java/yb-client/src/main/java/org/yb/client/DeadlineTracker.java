@@ -17,6 +17,7 @@
 package org.yb.client;
 
 import com.google.common.base.Stopwatch;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * This is a wrapper class around {@link com.google.common.base.Stopwatch} used to track a relative
@@ -60,7 +61,7 @@ public class DeadlineTracker {
     if (!hasDeadline()) {
       return false;
     }
-    return deadline - stopwatch.elapsedMillis() <= 0;
+    return deadline - stopwatch.elapsed(MILLISECONDS) <= 0;
   }
 
   /**
@@ -68,8 +69,8 @@ public class DeadlineTracker {
    * <p>
    * This method is used to pass down the remaining deadline to the RPCs, so has special semantics.
    * A deadline of 0 is used to indicate an infinite deadline, and negative deadlines are invalid.
-   * Thus, if the deadline has passed (i.e. <tt>deadline - stopwatch.elapsedMillis() &lt;= 0</tt>),
-   * the returned value is floored at <tt>1</tt>.
+   * Thus, if the deadline has passed (i.e. <tt>deadline - stopwatch.elapsed(MILLISECONDS)
+   * &lt;= 0</tt>), the returned value is floored at <tt>1</tt>.
    * <p>
    * Callers who care about this behavior should first check {@link #timedOut()}.
    *
@@ -83,13 +84,13 @@ public class DeadlineTracker {
       throw new IllegalStateException("This tracker doesn't have a deadline set so it cannot " +
           "answer getMillisBeforeDeadline()");
     }
-    long millisBeforeDeadline = deadline - stopwatch.elapsedMillis();
+    long millisBeforeDeadline = deadline - stopwatch.elapsed(MILLISECONDS);
     millisBeforeDeadline = millisBeforeDeadline <= 0 ? 1 : millisBeforeDeadline;
     return millisBeforeDeadline;
   }
 
   public long getElapsedMillis() {
-    return this.stopwatch.elapsedMillis();
+    return this.stopwatch.elapsed(MILLISECONDS);
   }
 
   /**
@@ -148,7 +149,7 @@ public class DeadlineTracker {
   public String toString() {
     StringBuffer buf = new StringBuffer("DeadlineTracker(timeout=");
     buf.append(deadline);
-    buf.append(", elapsed=").append(stopwatch.elapsedMillis());
+    buf.append(", elapsed=").append(stopwatch.elapsed(MILLISECONDS));
     buf.append(")");
     return buf.toString();
   }

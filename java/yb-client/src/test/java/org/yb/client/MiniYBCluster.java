@@ -30,11 +30,13 @@ import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import sun.management.VMManagement;
 
@@ -61,6 +63,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   private final List<String> pathsToDelete = new ArrayList<>();
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
+  private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private final YBClient syncClient;
@@ -88,7 +91,7 @@ public class MiniYBCluster implements AutoCloseable {
   public boolean waitForTabletServers(int expected) throws Exception {
     int count = 0;
     Stopwatch stopwatch = new Stopwatch().start();
-    while (count < expected && stopwatch.elapsedMillis() < defaultTimeoutMs) {
+    while (count < expected && stopwatch.elapsed(MILLISECONDS) < defaultTimeoutMs) {
       Thread.sleep(200);
       count = syncClient.listTabletServers().getTabletServersCount();
     }
@@ -159,11 +162,15 @@ public class MiniYBCluster implements AutoCloseable {
 
     long now = System.currentTimeMillis();
     LOG.info("Starting {} masters...", numMasters);
-    int port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath);
+    int free_port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
-      int redis_port = TestUtils.findFreePort(port);
-      port = TestUtils.findFreePort(redis_port);
+      int rpc_port = TestUtils.findFreePort(free_port);
+      int web_port = TestUtils.findFreePort(rpc_port + 1);
+      int redis_port = TestUtils.findFreePort(web_port + 1);
+      int redis_web_port = TestUtils.findFreePort(redis_port + 1);
+      int cql_port = TestUtils.findFreePort(redis_web_port + 1);
+      int cql_web_port = TestUtils.findFreePort(cql_port + 1);
       String dataDirPath = baseDirPath + "/ts-" + i + "-" + now;
       String flagsPath = TestUtils.getFlagsPath();
       String[] tsCmdLine = {
@@ -174,10 +181,15 @@ public class MiniYBCluster implements AutoCloseable {
           "--tserver_master_addrs=" + masterAddresses,
           "--webserver_interface=" + localhost,
           "--local_ip_for_outbound_sockets=" + localhost,
-          "--rpc_bind_addresses=" + localhost + ":" + port,
-          "--redis_proxy_bind_address=" + localhost + ":" + redis_port};
-      tserverProcesses.put(port, configureAndStartProcess(tsCmdLine));
-      port++;
+          "--rpc_bind_addresses=" + localhost + ":" + rpc_port,
+          "--webserver_port=" + web_port,
+          "--redis_proxy_bind_address=" + localhost + ":" + redis_port,
+          "--redis_proxy_webserver_port=" + redis_web_port,
+          "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
+          "--cql_proxy_webserver_port=" + cql_web_port};
+      tserverProcesses.put(rpc_port, configureAndStartProcess(tsCmdLine));
+      cqlContactPoints.add(new InetSocketAddress(localhost, cql_port));
+      free_port = cql_web_port + 1;
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -430,6 +442,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public int getNumMasters() {
     return masterHostPorts.size();
+  }
+
+  /**
+   * Returns a list of CQL contact points.
+   * @return CQL contact points
+   */
+  public List<InetSocketAddress> getCQLContactPoints() {
+    return cqlContactPoints;
   }
 
   /**

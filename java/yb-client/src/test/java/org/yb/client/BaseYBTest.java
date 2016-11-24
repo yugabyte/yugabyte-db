@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
@@ -363,7 +364,7 @@ public class BaseYBTest {
   protected static int findLeaderMasterPort() throws Exception {
     Stopwatch sw = new Stopwatch().start();
     int leaderPort = -1;
-    while (leaderPort == -1 && sw.elapsedMillis() < DEFAULT_SLEEP) {
+    while (leaderPort == -1 && sw.elapsed(MILLISECONDS) < DEFAULT_SLEEP) {
       Deferred<Master.GetTableLocationsResponsePB> masterLocD = client.getMasterTableLocationsPB();
       Master.GetTableLocationsResponsePB r = masterLocD.join(DEFAULT_SLEEP);
       leaderPort = r.getTabletLocations(0)

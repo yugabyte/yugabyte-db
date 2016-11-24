@@ -18,11 +18,12 @@ namespace yb {
 
 namespace cqlserver {
 
-class CQLServer : public server::RpcServerBase {
+class CQLServer : public server::RpcAndWebServerBase {
  public:
-  explicit CQLServer(const CQLServerOptions& opts);
+  static const uint16_t kDefaultPort = 9042;
+  static const uint16_t kDefaultWebPort = 12000;
 
-  Status Init();
+  explicit CQLServer(const CQLServerOptions& opts);
 
   Status Start();
 

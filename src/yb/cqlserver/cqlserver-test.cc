@@ -43,6 +43,7 @@ class TestCQLService : public YBTableTestBase {
   unique_ptr<CQLServer> server_;
   int cql_server_port_ = 0;
   unique_ptr<FileLock> cql_port_lock_;
+  unique_ptr<FileLock> cql_webserver_lock_;
   static constexpr size_t kBufLen = 1024;
   uint8_t resp_[kBufLen];
 };
@@ -51,18 +52,20 @@ void TestCQLService::SetUp() {
   // TODO(Robert) - start YB cluster and test SQL execution using Cassandra cpp driver
   // YBTableTestBase::SetUp();
 
-  cql_server_port_ = GetFreePort(&cql_port_lock_);
   CQLServerOptions opts;
-  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", server_port());
+  cql_server_port_ = GetFreePort(&cql_port_lock_);
+  opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", cql_server_port_);
+  // No need to save the webserver port, as we don't plan on using it. Just use a unique free port.
+  opts.webserver_opts.port = GetFreePort(&cql_webserver_lock_);
+  string fs_root = GetTestPath("CQLServerTest-fsroot");
+  opts.fs_opts.wal_paths = {fs_root};
+  opts.fs_opts.data_paths = {fs_root};
 
   // TODO(Robert) - Get YB master's addresses to connect to
   // auto master_rpc_addrs = master_rpc_addresses_as_strings();
   // opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
 
   server_.reset(new CQLServer(opts));
-  LOG(INFO) << "Initializing CQL server...";
-  CHECK_OK(server_->Init());
-
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";

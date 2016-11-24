@@ -307,6 +307,8 @@ start_tserver() {
        --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $tserver_index )) \
        --redis_proxy_webserver_port $(( $redis_http_port_base + $tserver_index )) \
        --redis_proxy_bind_address 0.0.0.0:$(( $redis_rpc_port_base + $tserver_index )) \
+       --cql_proxy_webserver_port $(( $cql_http_port_base + $tserver_index )) \
+       --cql_proxy_bind_address 0.0.0.0:$(( $cql_rpc_port_base + $tserver_index )) \
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
@@ -520,9 +522,11 @@ master_addresses=""
 master_http_port_base=7000
 tserver_http_port_base=9000
 redis_http_port_base=11000
+cql_http_port_base=12000
 master_rpc_port_base=7100
 tserver_rpc_port_base=8100
 redis_rpc_port_base=10100
+cql_rpc_port_base=11100
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"

@@ -21,22 +21,16 @@ namespace yb {
 namespace cqlserver {
 
 CQLServer::CQLServer(const CQLServerOptions& opts)
-    : RpcServerBase("CQLServer", opts, "yb.cqlserver"), opts_(opts) {
-}
-
-Status CQLServer::Init() {
-  RETURN_NOT_OK(server::RpcServerBase::Init());
-
-  return Status::OK();
+    : RpcAndWebServerBase("CQLServer", opts, "yb.cqlserver"), opts_(opts) {
 }
 
 Status CQLServer::Start() {
-  CHECK(initialized_);
+  RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   gscoped_ptr<ServiceIf> cql_service(new CQLServiceImpl(this, opts_.master_addresses_flag));
   RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(cql_service, cqlsvc), cql_service.Pass()));
 
-  RETURN_NOT_OK(server::RpcServerBase::StartRpcServer());
+  RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 
   return Status::OK();
 }

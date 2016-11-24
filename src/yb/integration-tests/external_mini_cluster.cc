@@ -783,10 +783,12 @@ Status ExternalMiniCluster::AddTabletServer() {
   const uint16_t ts_http_port = AllocateFreePort();
   const uint16_t redis_rpc_port = AllocateFreePort();
   const uint16_t redis_http_port = AllocateFreePort();
+  const uint16_t cql_rpc_port = AllocateFreePort();
+  const uint16_t cql_http_port = AllocateFreePort();
   scoped_refptr<ExternalTabletServer> ts = new ExternalTabletServer(
       idx, messenger_, exe, GetDataPath(Substitute("ts-$0", idx)), GetBindIpForTabletServer(idx),
-      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port, master_hostports,
-      SubstituteInFlags(opts_.extra_tserver_flags, idx));
+      ts_rpc_port, ts_http_port, redis_rpc_port, redis_http_port, cql_rpc_port, cql_http_port,
+      master_hostports, SubstituteInFlags(opts_.extra_tserver_flags, idx));
   RETURN_NOT_OK(ts->Start());
   tablet_servers_.push_back(ts);
   return Status::OK();
@@ -1421,6 +1423,7 @@ ExternalTabletServer::ExternalTabletServer(
     int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
     const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
     uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
+    uint16_t cql_rpc_port, uint16_t cql_http_port,
     const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags)
     : ExternalDaemon(
           Substitute("ts-$0", tablet_server_index), messenger, exe, data_dir, extra_flags),
@@ -1429,7 +1432,9 @@ ExternalTabletServer::ExternalTabletServer(
       rpc_port_(rpc_port),
       http_port_(http_port),
       redis_rpc_port_(redis_rpc_port),
-      redis_http_port_(redis_http_port) {}
+      redis_http_port_(redis_http_port),
+      cql_rpc_port_(cql_rpc_port),
+      cql_http_port_(cql_http_port) {}
 
 ExternalTabletServer::~ExternalTabletServer() {
 }
@@ -1447,6 +1452,8 @@ Status ExternalTabletServer::Start() {
   flags.push_back(Substitute("--webserver_port=$0", http_port_));
   flags.push_back(Substitute("--redis_proxy_bind_address=$0:$1", bind_host_, redis_rpc_port_));
   flags.push_back(Substitute("--redis_proxy_webserver_port=$0", redis_http_port_));
+  flags.push_back(Substitute("--cql_proxy_bind_address=$0:$1", bind_host_, cql_rpc_port_));
+  flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env

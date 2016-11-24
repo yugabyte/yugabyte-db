@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <regex>
+
 #include "yb/cqlserver/cql_message.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
@@ -465,8 +467,21 @@ Status QueryRequest::ParseBody() {
 }
 
 CQLResponse* QueryRequest::Execute() {
-  // TODO(Robert): return actual results
-  return new VoidResultResponse(this);
+  // TODO(Robert): parse the query with YSQL parser and return actual results. For now, just
+  // verify the first token for recognized statements and return a VOID result.
+  std::regex token_regex("(\\w+).*");
+  std::smatch token_match;
+  if (std::regex_match(query_, token_match, token_regex)) {
+    string token = token_match[1];
+    std::transform(token.begin(), token.end(), token.begin(), ::toupper);
+    if (token == "CREATE" || token == "DROP" || token == "ALTER" || token == "TRUNCATE" ||
+        token == "INSERT" || token == "UPDATE" || token == "DELETE" || token == "SELECT" ||
+        token == "BATCH" || token == "USE") {
+      return new VoidResultResponse(this);
+    }
+  }
+
+  return new ErrorResponse(this, ErrorResponse::Code::SYNTAX_ERROR, "unknown statement");
 }
 
 //----------------------------------------------------------------------------------------
