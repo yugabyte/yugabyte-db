@@ -1,6 +1,9 @@
 Revision history for pgTAP
 ==========================
 
+0.98.0
+---------------------------
+
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
 * Fixed the default description for `hasnt_opclass()` to say "should not
