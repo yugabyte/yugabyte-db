@@ -1,6 +1,6 @@
 --- sql/pgtap--0.96.0--0.97.0.sql
 +++ sql/pgtap--0.96.0--0.97.0.sql
-@@ -294,78 +294,3 @@
+@@ -298,78 +298,3 @@
          'Extension ' || quote_ident($1) || ' should not exist' );
  $$ LANGUAGE SQL;
  
