@@ -424,8 +424,19 @@ public class YBClient implements AutoCloseable {
         Thread.sleep(asyncClient.SLEEP_TIME);
       } while (true);
     } catch (Exception e) {
-      LOG.error("Error trying to step down {}. Error: .", leaderUuid, e);
-      throw new RuntimeException("Could not step down leader master " + leaderUuid, e);
+     // TODO: Ideally we need an error code here, but this is come another layer which
+     // eats up the NOT_THE_LEADER code.
+     if (e.getMessage().contains("Wrong destination UUID requested")) {
+        LOG.info("Got wrong destination for {} stepdown.", leaderUuid);
+        newLeader = waitAndGetLeaderMasterUUID(getDefaultAdminOperationTimeoutMs());
+        if (newLeader == null || newLeader.equals(leaderUuid)) {
+          errorMsg = "Could not find a valid new leader. Old leader is " + leaderUuid +
+                     ", new leader is " + newLeader;
+        }
+      } else {
+        LOG.error("Error trying to step down {}. Error: .", leaderUuid, e);
+        throw new RuntimeException("Could not step down leader master " + leaderUuid, e);
+      }
     }
 
     if (errorMsg != null) {

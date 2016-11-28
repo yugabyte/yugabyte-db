@@ -20,10 +20,10 @@ using std::vector;
 using strings::Substitute;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
-using yb::consensus::ConsensusServiceProxy;
-using yb::consensus::RaftPeerPB;
 using yb::consensus::ChangeConfigRequestPB;
 using yb::consensus::ChangeConfigResponsePB;
+using yb::consensus::ConsensusServiceProxy;
+using yb::consensus::RaftPeerPB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::tserver::TabletServerErrorPB;
@@ -300,10 +300,20 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
   TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
   // Leader step down.
-  ASSERT_OK_PREPEND(cluster_->StepDownMasterLeader(&dummy_err), "Leader step down failed.");
+  s = cluster_->StepDownMasterLeader(&dummy_err);
 
   // Now the new master should start the election process.
   ASSERT_OK(cluster_->SetFlag(new_master, "do_not_start_election_test_only", "false"));
+
+  // Leader stepdowm ight not succeed as PRE_VOTER could still be uncommitted. Let it go through
+  // as new master should get the other votes anyway once it starts the election.
+  if (!s.IsIllegalState()) {
+    ASSERT_OK_PREPEND(s,  "Leader step down failed.");
+  } else {
+    LOG(INFO) << "Triggering election as step down failed.";
+    ASSERT_OK_PREPEND(cluster_->StartElection(new_master), "Start Election failed");
+    SleepFor(MonoDelta::FromSeconds(2));
+  }
 
   // Ensure that the new leader is the new master we spun up above.
   ExternalMaster* new_leader = cluster_->GetLeaderMaster();

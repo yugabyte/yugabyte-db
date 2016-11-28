@@ -324,6 +324,9 @@ class ExternalMiniCluster {
     return opts_.timeout_;
   }
 
+  // Start a leader election on this master.
+  Status StartElection(ExternalMaster* master);
+
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 

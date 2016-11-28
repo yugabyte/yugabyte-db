@@ -205,7 +205,7 @@ final class GetMasterRegistrationReceived {
 
     @Override
     public Void call(Exception e) throws Exception {
-      LOG.warn("Error receiving a response from: " + hostAndPort, e);
+      LOG.warn("Error receiving a response from: " + hostAndPort);
       exceptionsReceived.add(e);
       incrementCountAndCheckExhausted();
       return null;

@@ -432,6 +432,10 @@ class RaftConsensus : public Consensus,
                              const RaftConfigPB& committed_config,
                              const std::string& reason);
 
+  // Helper API to check if the pending/committed configuration has a PRE_VOTER. Non-null return
+  // string implies there are servers in transit.
+  string ServersInTransitionMessage();
+
   // Threadpool for constructing requests to peers, handling RPC callbacks,
   // etc.
   gscoped_ptr<ThreadPool> thread_pool_;

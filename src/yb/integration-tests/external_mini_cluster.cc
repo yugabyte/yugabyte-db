@@ -73,6 +73,8 @@ using yb::consensus::GetLastOpIdRequestPB;
 using yb::consensus::GetLastOpIdResponsePB;
 using yb::consensus::LeaderStepDownRequestPB;
 using yb::consensus::LeaderStepDownResponsePB;
+using yb::consensus::RunLeaderElectionRequestPB;
+using yb::consensus::RunLeaderElectionResponsePB;
 using yb::master::IsMasterLeaderReadyRequestPB;
 using yb::master::IsMasterLeaderReadyResponsePB;
 using yb::master::ListMastersRequestPB;
@@ -1048,6 +1050,26 @@ uint16_t ExternalMiniCluster::AllocateFreePort() {
   // and add it to our vector of such locks that will be freed on minicluster shutdown.
   free_port_file_locks_.emplace_back();
   return GetFreePort(&free_port_file_locks_.back());
+}
+
+Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
+  Sockaddr master_sock = master->bound_rpc_addr();
+  std::shared_ptr<ConsensusServiceProxy> master_proxy =
+    std::make_shared<ConsensusServiceProxy>(messenger_, master_sock);
+
+  RunLeaderElectionRequestPB req;
+  req.set_dest_uuid(master->uuid());
+  req.set_tablet_id(yb::master::kSysCatalogTabletId);
+  RunLeaderElectionResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(opts_.timeout_);
+  RETURN_NOT_OK(master_proxy->RunLeaderElection(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status())
+               .CloneAndPrepend(Substitute("Code $0",
+                                           TabletServerErrorPB::Code_Name(resp.error().code())));
+  }
+  return Status::OK();
 }
 
 //------------------------------------------------------------

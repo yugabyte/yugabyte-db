@@ -476,6 +476,24 @@ Status RaftConsensus::StartElection(
   return Status::OK();
 }
 
+string RaftConsensus::ServersInTransitionMessage() {
+  string err_msg;
+  const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+  const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
+  int servers_in_transition = CountServersInTransition(active_config);
+  int committed_servers_in_transition = CountServersInTransition(committed_config);
+  LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
+                          servers_in_transition, committed_servers_in_transition);
+  if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
+    err_msg = Substitute("Leader not ready to step down as there are $0 active config peers"
+                         " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
+                         servers_in_transition, committed_servers_in_transition,
+                         active_config.ShortDebugString(), committed_config.ShortDebugString());
+    LOG(INFO) << err_msg;
+  }
+  return err_msg;
+}
+
 Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
   TRACE_EVENT0("consensus", "RaftConsensus::StepDown");
   ReplicaState::UniqueLock lock;
@@ -490,20 +508,8 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   // The leader needs to be ready to perform a step down. There should be no PRE_VOTER in both
   // active and committed configs - ENG-557.
-  const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  const RaftConfigPB& committed_config = state_->GetCommittedConfigUnlocked();
-  int servers_in_transition = CountServersInTransition(active_config);
-  int committed_servers_in_transition = CountServersInTransition(committed_config);
-  LOG(INFO) << Substitute("Active config has $0 and committed has $1 servers in transition.",
-                          servers_in_transition, committed_servers_in_transition);
-  if (servers_in_transition != 0 || committed_servers_in_transition != 0) {
-    string err_msg = Substitute("Leader not ready to step down as there are $0 active config peers"
-                                " in transition, $1 in committed. Configs:\nactive=$2\ncommit=$3",
-                                servers_in_transition,
-                                committed_servers_in_transition,
-                                active_config.ShortDebugString(),
-                                committed_config.ShortDebugString());
-    LOG(INFO) << err_msg;
+  string err_msg = ServersInTransitionMessage();
+  if (!err_msg.empty()) {
     resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
     StatusToPB(STATUS(IllegalState, err_msg), resp->mutable_error()->mutable_status());
     // We return OK so that the tablet service won't overwrite the error code.
@@ -642,6 +648,15 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 Status RaftConsensus::BecomeReplicaUnlocked() {
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Becoming Follower/Learner. State: "
                                  << state_->ToStringUnlocked();
+
+  if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+    just_stepped_down_ = true;
+    withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
+    withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
+        FLAGS_after_stepdown_delay_election_multiplier *
+        FLAGS_leader_failure_max_missed_heartbeat_periods *
+        FLAGS_raft_heartbeat_interval_ms));
+  }
 
   state_->ClearLeaderUnlocked();
 
@@ -2301,10 +2316,17 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
     return STATUS(IllegalState, Substitute("Can't advance term to: $0 current term: $1 is higher.",
                                            new_term, state_->GetCurrentTermUnlocked()));
   }
+
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
+    string err_msg = ServersInTransitionMessage();
+    if (!err_msg.empty()) {
+      return STATUS(IllegalState, err_msg);
+    }
+
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Stepping down as leader of term "
                                    << state_->GetCurrentTermUnlocked()
                                    << " since new term is " << new_term;
+
     RETURN_NOT_OK(BecomeReplicaUnlocked());
   }
 
