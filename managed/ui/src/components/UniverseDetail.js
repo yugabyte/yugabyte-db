@@ -70,6 +70,41 @@ export default class UniverseDetail extends Component {
       }).filter(Boolean);
     }
 
+    var tabElements = [
+      <Tab eventKey={"overview"} title="Overview" key="overview-tab">
+        <ConnectStringPanel universeId={currentUniverse.universeUUID}
+                            customerId={localStorage.getItem("customer_id")} />
+                        </Tab>,
+      <Tab eventKey={"config"} title="Config" key="config-tab">
+        <UniverseInfoPanel universeInfo={currentUniverse} />
+      </Tab>,
+      <Tab eventKey={"placement"} title="Placement" key="placement-tab">
+        <YBPanelItem name={"Region Placement"}>
+        <Col lg={4}>
+          <YBMapLegend regions={currentUniverse.regions}/>
+        </Col>
+        <Col lg={8}>
+        <RegionMap regions={currentUniverse.regions} type={"Root"} />
+        </Col>
+        </YBPanelItem>
+      </Tab>,
+      <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
+        <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
+      </Tab>,
+      <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
+        <GraphPanelContainer
+          nodePrefix={currentUniverse.universeDetails.nodePrefix}
+          origin={"universe"}
+          universeUUID={currentUniverse.universeUUID} />
+      </Tab>]
+
+    if (universeTaskUUIDs.length > 0) {
+      tabElements.push(
+         <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
+          <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
+        </Tab>)
+    }
+
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">
@@ -123,30 +158,7 @@ export default class UniverseDetail extends Component {
 
         </Row>
         <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
-          <Tab eventKey={"overview"} title="Overview">
-            <ConnectStringPanel universeId={currentUniverse.universeUUID}
-                                customerId={localStorage.getItem("customer_id")} />
-          </Tab>
-          <Tab eventKey={"config"} title="Config">
-            <UniverseInfoPanel universeInfo={currentUniverse} />
-            <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
-          </Tab>
-          <Tab eventKey={"placement"} title="Placement">
-            <YBPanelItem name={"Region Placement"}>
-            <Col lg={4}>
-              <YBMapLegend regions={currentUniverse.regions}/>
-            </Col>
-            <Col lg={8}>
-            <RegionMap regions={currentUniverse.regions} type={"Root"} />
-            </Col>
-            </YBPanelItem>
-          </Tab>
-          <Tab eventKey={"nodes"} title="Nodes">
-            <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
-          </Tab>
-          <Tab eventKey={"metrics"} title="Metrics">
-            <GraphPanelContainer nodePrefix={currentUniverse.universeDetails.nodePrefix} origin={"universe"} universeUUID={currentUniverse.universeUUID} />
-          </Tab>
+          { tabElements }
         </YBTabsPanel>
       </Grid>
     );
