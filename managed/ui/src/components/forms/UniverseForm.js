@@ -123,6 +123,7 @@ export default class UniverseForm extends Component {
     this.createUniverse = this.createUniverse.bind(this);
     this.editUniverse = this.editUniverse.bind(this);
     this.universeNameChanged = this.universeNameChanged.bind(this);
+    this.azChanged = this.azChanged.bind(this);
     var azInitState = true;
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     if (isValidObject(this.props.universe.currentUniverse)) {
@@ -205,6 +206,10 @@ export default class UniverseForm extends Component {
     this.configureUniverseNodeList("numNodes", value);
   }
 
+  azChanged(event) {
+    this.setState({azCheckState: !this.state.azCheckState});
+    this.configureUniverseNodeList("isMultiAZ", !JSON.parse(event.target.value));
+  }
   componentDidUpdate(newProps) {
     if (newProps.universe.formSubmitSuccess) {
       this.props.reset();
@@ -214,9 +219,6 @@ export default class UniverseForm extends Component {
     var self = this;
     const { visible, onHide, handleSubmit, title, universe} = this.props;
 
-    var azCheckStateChanged =function() {
-      self.setState({azCheckState: !self.state.azCheckState});
-    }
     var universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
       return <option key={providerItem.uuid} value={providerItem.uuid}>
         {providerItem.name}
@@ -272,7 +274,7 @@ export default class UniverseForm extends Component {
                 Advanced
               </div>
               <Field name="isMultiAZ" type="checkbox" component={YBCheckBox}
-                     label="Multi AZ" onClick={azCheckStateChanged}/>
+                     label="Multi AZ" onClick={this.azChanged}/>
               <Field name="instanceType" type="select" component={YBSelect} label="Instance Type"
                      options={universeInstanceTypeList}
                      defaultValue={this.state.instanceTypeSelected} onSelectChange={this.instanceTypeChanged}
