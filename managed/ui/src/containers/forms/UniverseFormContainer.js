@@ -127,9 +127,9 @@ function mapStateToProps(state, ownProps) {
         return {'value': item.uuid, 'name': item.name, "label": item.name};
       })
     } else {
-      data.regionList = {'value': currentUniverse.regions[0].uuid,
+      data.regionList = [{'value': currentUniverse.regions[0].uuid,
                          'name': currentUniverse.regions[0].name,
-                         "label": currentUniverse.regions[0].name};
+                         "label": currentUniverse.regions[0].name}];
     }
   }
 
