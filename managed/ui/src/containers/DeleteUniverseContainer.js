@@ -4,7 +4,7 @@ import DeleteUniverse from '../components/DeleteUniverse.js';
 import { connect } from 'react-redux';
 import { deleteUniverse, deleteUniverseSuccess, deleteUniverseFailure, resetUniverseInfo,
          fetchUniverseList,fetchUniverseListSuccess, fetchUniverseListFailure } from '../actions/universe';
-import { browserHistory } from 'react-router';
+import { hashHistory } from 'react-router';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -19,7 +19,7 @@ const mapDispatchToProps = (dispatch) => {
                   dispatch(fetchUniverseListFailure(response.payload));
                 } else {
                   dispatch(fetchUniverseListSuccess(response.payload));
-                  browserHistory.push('/universes');
+                  hashHistory.push('/universes');
                 }
               });
           } else {
