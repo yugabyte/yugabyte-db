@@ -6,9 +6,12 @@ import { Link, IndexLink, withRouter } from 'react-router'
 class NavLink extends Component {
   render () {
     const { router, index, to, children, ...props, icon } = this.props
-    let isActive;
-    
-    isActive = router.isActive(to, index);
+
+    // Added by withRouter in React Router 3.0.
+    delete props.params;
+    delete props.location;
+    delete props.routes;
+    let isActive = router.isActive(to, index);
     const LinkComponent = index ?  IndexLink : Link;
 
     return (

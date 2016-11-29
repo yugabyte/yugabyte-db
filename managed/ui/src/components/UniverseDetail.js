@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Grid, Row, Col, ButtonGroup, Image,
-          DropdownButton, MenuItem } from 'react-bootstrap';
+          DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import RegionMap from './maps/RegionMap';
 import UniverseInfoPanel from './UniverseInfoPanel';
 import ConnectStringPanel from './ConnectStringPanel';
@@ -18,6 +18,7 @@ import YBLabelWithIcon from './fields/YBLabelWithIcon';
 import YBPanelItem from './YBPanelItem';
 import YBMapLegendItem from './maps/YBMapLegendItem';
 import NodeDetails from './NodeDetails';
+import YBTabsPanel from './panels/YBTabsPanel';
 
 
 class YBMapLegend extends Component {
@@ -68,7 +69,6 @@ export default class UniverseDetail extends Component {
         return (task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }
-
 
     return (
       <Grid id="page-wrapper" fluid={true}>
@@ -122,14 +122,16 @@ export default class UniverseDetail extends Component {
                                        onHide={this.props.closeModal} title="Delete Universe"/>
 
         </Row>
-        <Row>
-          <Col lg={12}>
+        <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
+          <Tab eventKey={"overview"} title="Overview">
             <ConnectStringPanel universeId={currentUniverse.universeUUID}
                                 customerId={localStorage.getItem("customer_id")} />
-          </Col>
-        </Row>
-        <Row>
-          <Col md={12}>
+          </Tab>
+          <Tab eventKey={"config"} title="Config">
+            <UniverseInfoPanel universeInfo={currentUniverse} />
+            <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
+          </Tab>
+          <Tab eventKey={"placement"} title="Placement">
             <YBPanelItem name={"Region Placement"}>
             <Col lg={4}>
               <YBMapLegend regions={currentUniverse.regions}/>
@@ -138,22 +140,14 @@ export default class UniverseDetail extends Component {
             <RegionMap regions={currentUniverse.regions} type={"Root"} />
             </Col>
             </YBPanelItem>
-          </Col>
-          <Col md={12} lg={12}>
-            <UniverseInfoPanel universeInfo={currentUniverse} />
-            <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
-          </Col>
-        </Row>
-        <Row>
-          <Col lg={12}>
+          </Tab>
+          <Tab eventKey={"nodes"} title="Nodes">
             <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
-          </Col>
-        </Row>
-        <Row>
-          <Col lg={12}>
+          </Tab>
+          <Tab eventKey={"metrics"} title="Metrics">
             <GraphPanelContainer nodePrefix={currentUniverse.universeDetails.nodePrefix} origin={"universe"} universeUUID={currentUniverse.universeUUID} />
-          </Col>
-        </Row>
+          </Tab>
+        </YBTabsPanel>
       </Grid>
     );
   }
