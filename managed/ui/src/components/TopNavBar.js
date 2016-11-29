@@ -22,7 +22,7 @@ export default class TopNavBar extends Component {
 		return (
 			<Navbar fixedTop>
 				<Navbar.Header>
-					<Link to="/dashboard" className="col-md-3 left_col">
+					<Link to="/" className="col-md-3 left_col">
 						<Image src={img} className="yb-logo-img" />
 					</Link>
 				</Navbar.Header>
