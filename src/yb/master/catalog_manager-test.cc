@@ -75,8 +75,7 @@ void NewReplica(
 
 class TestLoadBalancer : public ClusterLoadBalancer {
  public:
-  typedef unordered_map<string, scoped_refptr<TabletInfo>> TabletInfoMap;
-  explicit TestLoadBalancer(string table_id) : ClusterLoadBalancer(nullptr) {
+  explicit TestLoadBalancer(const string& table_id) : ClusterLoadBalancer(nullptr) {
     // Create the table.
     scoped_refptr<TableInfo> table(new TableInfo(table_id));
     vector<scoped_refptr<TabletInfo>> tablets;
@@ -89,6 +88,9 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     CreateTable(splits, num_replicas, false, table.get(), &tablets);
 
     tablets_ = std::move(tablets);
+
+    table_map_[table_id] = table;
+    cur_table_uuid_ = table_id;
 
     const int kHighNumber = 100;
     options_.kMaxConcurrentAdds = kHighNumber;
@@ -138,6 +140,10 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
  protected:
+  bool AnalyzeTablets() {
+    return ClusterLoadBalancer::AnalyzeTablets(cur_table_uuid_);
+  }
+
   void TestWithBlacklist() {
     LOG(INFO) << "Testing with tablet servers with blacklist";
     // Setup cluster config.
@@ -632,7 +638,6 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
   // Methods to prepare the state of the current test.
- protected:
   void PrepareTestState(const TSDescriptorVector& ts_descs) {
     // Clear old state.
     ResetState();
@@ -708,7 +713,6 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
   // Tester methods that actually do the calls and asserts.
- protected:
   void TestRemoveLoad(const string& expected_tablet_id, const string& expected_from_ts) {
     string tablet_id, from_ts;
     ASSERT_TRUE(HandleRemoveReplicas(&tablet_id, &from_ts));
@@ -749,10 +753,15 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
   // Overrides for base class functionality to bypass calling CatalogManager.
- protected:
   void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const OVERRIDE { *ts_descs = ts_descs_; }
 
   const TabletInfoMap& GetTabletMap() const OVERRIDE { return tablet_map_; }
+
+  const TableInfoMap& GetTableMap() const OVERRIDE { return table_map_; }
+
+  const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const OVERRIDE {
+    return FindPtrOrNull(table_map_, table_uuid);
+  }
 
   const PlacementInfoPB& GetClusterPlacementInfo() const OVERRIDE { return cluster_placement_; }
 
@@ -802,9 +811,10 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   int total_num_tablets_;
   vector<scoped_refptr<TabletInfo>> tablets_;
   BlacklistPB blacklist_;
-
+  TableId cur_table_uuid_;
   TSDescriptorVector ts_descs_;
   TabletInfoMap tablet_map_;
+  TableInfoMap table_map_;
   PlacementInfoPB cluster_placement_;
 };
 
@@ -881,7 +891,7 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
 }
 
 TEST(TestLoadBalancer, TestLoadBalancerAlgorithm) {
-  const string table_id = CURRENT_TEST_NAME();
+  const TableId table_id = CURRENT_TEST_NAME();
   shared_ptr<TestLoadBalancer> lb = make_shared<TestLoadBalancer>(table_id);
   lb->TestAlgorithm();
 }

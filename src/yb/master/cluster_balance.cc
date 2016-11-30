@@ -22,10 +22,6 @@ using std::make_shared;
 using std::shared_ptr;
 using strings::Substitute;
 
-using TabletId = string;
-using TabletServerId = string;
-using PlacementId = string;
-
 DEFINE_bool(enable_load_balancing,
             true,
             "Choose whether to enable the load balancing algorithm, to move tablets around.");
@@ -166,7 +162,6 @@ class ClusterLoadBalancer::ClusterLoadState {
     // Get replicas for this tablet.
     TabletInfo::ReplicaMap replica_map;
     tablet->GetReplicaLocations(&replica_map);
-
     // Set state information for both the tablet and the tablet server replicas.
     for (const auto& replica : replica_map) {
       const auto& ts_uuid = replica.first;
@@ -598,47 +593,50 @@ ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
 
 // Needed as we have a unique_ptr to the forward declared ClusterLoadState class.
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
-
 void ClusterLoadBalancer::RunLoadBalancer() {
   if (!is_enabled_) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
   }
 
-  ResetState();
-
   // Lock the CatalogManager maps for the duration of the load balancer run.
   boost::shared_lock<CatalogManager::LockType> l(catalog_manager_->lock_);
 
-  // Prepare the in-memory structures.
-  if (!AnalyzeTablets()) {
-    LOG(WARNING) << "Skipping load balancing due to internal state error";
-    return;
-  }
+  // Loop over all tables.
+  for (const auto& table : GetTableMap()) {
+    LOG(INFO) << "Balancing load for table " << table.first;
+    ResetState();
 
-  // Output parameters are unused in the load balancer, but useful in testing.
-  TabletId out_tablet_id;
-  TabletServerId out_from_ts;
-  TabletServerId out_to_ts;
-
-  // Handle adding and moving replicas.
-  for (int i = 0; i < options_.kMaxConcurrentAdds; ++i) {
-    if (!HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts)) {
-      break;
+    // Prepare the in-memory structures.
+    if (!AnalyzeTablets(table.first)) {
+      LOG(WARNING) << "Skipping load balancing " <<  table.first << " due to internal state error";
+      continue;
     }
-  }
 
-  // Handle cleanup after over-replication.
-  for (int i = 0; i < options_.kMaxConcurrentRemovals; ++i) {
-    if (!HandleRemoveReplicas(&out_tablet_id, &out_from_ts)) {
-      break;
+    // Output parameters are unused in the load balancer, but useful in testing.
+    TabletId out_tablet_id;
+    TabletServerId out_from_ts;
+    TabletServerId out_to_ts;
+
+    // Handle adding and moving replicas.
+    for (int i = 0; i < options_.kMaxConcurrentAdds; ++i) {
+      if (!HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts)) {
+        break;
+      }
     }
-  }
 
-  // Handle tablet servers with too many leaders.
-  for (int i = 0; i < options_.kMaxConcurrentLeaderMoves; ++i) {
-    if (!HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts)) {
-      break;
+    // Handle cleanup after over-replication.
+    for (int i = 0; i < options_.kMaxConcurrentRemovals; ++i) {
+      if (!HandleRemoveReplicas(&out_tablet_id, &out_from_ts)) {
+        break;
+      }
+    }
+
+    // Handle tablet servers with too many leaders.
+    for (int i = 0; i < options_.kMaxConcurrentLeaderMoves; ++i) {
+      if (!HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts)) {
+        break;
+      }
     }
   }
 }
@@ -647,21 +645,29 @@ void ClusterLoadBalancer::ResetState() {
   state_ = unique_ptr<ClusterLoadState>(new ClusterLoadState());
 }
 
-bool ClusterLoadBalancer::AnalyzeTablets() {
-  // Loop over alive tablet servers to set empty defaults, so we can also have info on those
+bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
+  // Set the blacklist so we can also mark the tablet servers as we add them up.
+  state_->SetBlacklist(GetServerBlacklist());
+
+  // Loop over live tablet servers to set empty defaults, so we can also have info on those
   // servers that have yet to receive load (have heartbeated to the master, but have not been
   // assigned any tablets yet).
   TSDescriptorVector ts_descs;
   GetAllLiveDescriptors(&ts_descs);
-  // Set the blacklist so we can also mark the tablet servers as we add them up.
-  state_->SetBlacklist(GetServerBlacklist());
   for (const auto ts_desc : ts_descs) {
     state_->UpdateTabletServer(ts_desc);
   }
 
+  vector<scoped_refptr<TabletInfo>> tablets;
+  Status s = GetTabletsForTable(table_uuid, &tablets);
+
+  if (PREDICT_FALSE(!s.ok())) {
+    LOG(INFO) << "Skipping table " << table_uuid << " load balance due to error : " << s.ToString();
+    return false;;
+  }
+
   // Loop over tablet map to register the load that is already live in the cluster.
-  for (const auto& entry : GetTabletMap()) {
-    scoped_refptr<TabletInfo> tablet = entry.second;
+  for (const auto& tablet : tablets) {
     bool tablet_running = false;
     {
       TabletMetadataLock tablet_lock(tablet.get(), TabletMetadataLock::READ);
@@ -698,7 +704,7 @@ bool ClusterLoadBalancer::AnalyzeTablets() {
   // load and are ready to apply the load balancing rules.
   state_->SortLoad();
 
-  // Since leader load are only needed to rebalance leaders, we keep the sorting separate.
+  // Since leader load is only needed to rebalance leaders, we keep the sorting separate.
   state_->SortLeaderLoad();
 
   VLOG(1) << Substitute(
@@ -1122,8 +1128,31 @@ void ClusterLoadBalancer::GetAllLiveDescriptors(TSDescriptorVector* ts_descs) co
   catalog_manager_->master_->ts_manager()->GetAllLiveDescriptors(ts_descs);
 }
 
-const unordered_map<string, scoped_refptr<TabletInfo>>& ClusterLoadBalancer::GetTabletMap() const {
+const TabletInfoMap& ClusterLoadBalancer::GetTabletMap() const {
   return catalog_manager_->tablet_map_;
+}
+
+const scoped_refptr<TableInfo> ClusterLoadBalancer::GetTableInfo(const TableId& table_uuid) const {
+  return catalog_manager_->GetTableInfo(table_uuid);
+}
+
+const Status ClusterLoadBalancer::GetTabletsForTable(
+    const TableId& table_uuid, vector<scoped_refptr<TabletInfo>>* tablets) const {
+  scoped_refptr<TableInfo> table_info = GetTableInfo(table_uuid);
+
+  if (table_info == nullptr) {
+    return STATUS(InvalidArgument,
+                  Substitute("Invalid UUID '$0' - no entry found in catalog manager table map.",
+                             table_uuid));
+  }
+
+  table_info->GetAllTablets(tablets);
+
+  return Status::OK();
+}
+
+const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {
+  return catalog_manager_->table_ids_map_;
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetClusterPlacementInfo() const {

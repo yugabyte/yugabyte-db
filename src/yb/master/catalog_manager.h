@@ -70,6 +70,11 @@ struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
 
+using TableId = std::string;
+using TabletId = std::string;
+using TabletServerId = std::string;
+using PlacementId = std::string;
+
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
@@ -361,6 +366,8 @@ typedef MetadataLock<TabletInfo> TabletMetadataLock;
 typedef MetadataLock<TableInfo> TableMetadataLock;
 typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
 
+typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
+typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 
 // Info per black listed tablet server.
 struct BlackListInfo {
@@ -537,10 +544,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   void SetLoadBalancerEnabled(bool is_enabled);
 
-  // Return true if the table with the specified ID exists,
-  // and set the table pointer to the TableInfo object
-  // NOTE: This should only be used by tests or web-ui
-  bool GetTableInfo(const std::string& table_id, scoped_refptr<TableInfo> *table);
+  // Return the table info for the table with the specified UUID, if it exists.
+  scoped_refptr<TableInfo> GetTableInfo(const std::string& table_id);
 
   // Return all the available TableInfo, which also may include not running tables
   // NOTE: This should only be used by tests or web-ui
@@ -859,12 +864,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   mutable LockType lock_;
 
   // Table maps: table-id -> TableInfo and table-name -> TableInfo
-  typedef std::unordered_map<std::string, scoped_refptr<TableInfo> > TableInfoMap;
   TableInfoMap table_ids_map_;
   TableInfoMap table_names_map_;
 
   // Tablet maps: tablet-id -> TabletInfo
-  typedef std::unordered_map<std::string, scoped_refptr<TabletInfo> > TabletInfoMap;
   TabletInfoMap tablet_map_;
 
   // Config information

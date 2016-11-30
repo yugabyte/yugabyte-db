@@ -1536,10 +1536,9 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
-bool CatalogManager::GetTableInfo(const string& table_id, scoped_refptr<TableInfo> *table) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const string& table_id) {
   boost::shared_lock<LockType> l(lock_);
-  *table = FindPtrOrNull(table_ids_map_, table_id);
-  return *table != nullptr;
+  return FindPtrOrNull(table_ids_map_, table_id);
 }
 
 void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables) {

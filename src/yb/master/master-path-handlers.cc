@@ -185,8 +185,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     return;
   }
 
-  scoped_refptr<TableInfo> table;
-  if (!master_->catalog_manager()->GetTableInfo(table_id, &table)) {
+  scoped_refptr<TableInfo> table = master_->catalog_manager()->GetTableInfo(table_id);
+  if (table == nullptr) {
     *output << "Table not found";
     return;
   }

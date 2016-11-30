@@ -111,10 +111,6 @@ class ClusterLoadBalancer {
   // The knobs we use for tweaking the flow of the algorithm.
   Options options_;
 
-  using TableId = std::string;
-  using TabletId = std::string;
-  using TabletServerId = std::string;
-
   //
   // Indirection methods to CatalogManager that we override in the subclasses (or testing).
   //
@@ -122,8 +118,14 @@ class ClusterLoadBalancer {
   // Get the list of live TSDescriptors.
   virtual void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const;
 
-  // Get access to the tablet map.
-  virtual const std::unordered_map<TabletServerId, scoped_refptr<TabletInfo>>& GetTabletMap() const;
+  // Get access to the tablet map across the cluster.
+  virtual const TabletInfoMap& GetTabletMap() const;
+
+  // Get access to the table map.
+  virtual const TableInfoMap& GetTableMap() const;
+
+  // Get the table info object for given table uuid.
+  virtual const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const;
 
   // Get the placement information from the cluster configuration.
   virtual const PlacementInfoPB& GetClusterPlacementInfo() const;
@@ -148,9 +150,9 @@ class ClusterLoadBalancer {
   void ResetState();
 
   // Goes over the tablet_map_ and the set of live TSDescriptors to compute the load distribution
-  // across the cluster. Returns false if we encounter transient errors that should stop the load
-  // balancing.
-  bool AnalyzeTablets();
+  // across the tablets for the given table. Returns false if we encounter transient errors that
+  // should stop the load balancing.
+  bool AnalyzeTablets(const TableId& table_uuid);
 
   // Processes any required replica additions, as part of moving load from a highly loaded TS to
   // one that is less loaded.
@@ -239,6 +241,10 @@ class ClusterLoadBalancer {
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
 
   const PlacementInfoPB& GetPlacementByTablet(const TabletId& tablet_id) const;
+
+  // Get access to all the tablets for the given table.
+  const Status GetTabletsForTable(const TableId& table_uuid,
+                                  vector<scoped_refptr<TabletInfo>>* tablets) const;
 
   //
   // Generic load information methods.
