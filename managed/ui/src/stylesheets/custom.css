@@ -1576,18 +1576,18 @@ span.right {
     border-left: 0;
   }
 }
-.tile_count .tile_stats_count .count {
+.tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
   font-size: 30px;
   line-height: 25px;
   font-weight: 600;
 }
 @media (min-width:768px) {
-  .tile_count .tile_stats_count .count {
+  .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
     font-size: 25px;
   }
 }
 @media (min-width: 992px) and (max-width: 1100px) {
-  .tile_count .tile_stats_count .count {
+  .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
     font-size: 30px;
   }
 }
@@ -1774,13 +1774,13 @@ h4.graph_title {
   padding: 0;
 }
 
-.tile-stats .count {
+.tile-stats .count, .tile-stats .count span{
   font-size: 38px;
   font-weight: bold;
   line-height: 1.65857143
 }
 
-.tile-stats .count, .tile-stats h3, .tile-stats p {
+.tile-stats .count, .tile-stats .count span, .tile-stats h3, .tile-stats p {
   position: relative;
   margin: 0;
   margin-left: 10px;
