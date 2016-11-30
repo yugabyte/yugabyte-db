@@ -17,17 +17,21 @@
 
 #include "yb/client/client_builder-internal.h"
 
+DEFINE_int32(
+    yb_client_num_reactors, 4,
+    "Number of reactor threads for the yb client to communicate with different tservers.");
+
 namespace yb {
 
 namespace client {
 
 YBClientBuilder::Data::Data()
-  : default_admin_operation_timeout_(MonoDelta::FromSeconds(60)),
-    default_rpc_timeout_(MonoDelta::FromSeconds(60)) {
-}
+    : num_reactors_(FLAGS_yb_client_num_reactors),
+      default_admin_operation_timeout_(MonoDelta::FromSeconds(60)),
+      default_rpc_timeout_(MonoDelta::FromSeconds(60)) {}
 
 YBClientBuilder::Data::~Data() {
 }
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb

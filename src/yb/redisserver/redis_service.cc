@@ -42,6 +42,7 @@ METRIC_DEFINE_histogram(
     "yb.redisserver.RedisServerService.ErrorUnsupportedMethod() "
     "RPC requests",
     60000000LU, 2);
+
 namespace yb {
 namespace redisserver {
 

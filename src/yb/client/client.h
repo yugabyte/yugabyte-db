@@ -154,6 +154,10 @@ class YB_EXPORT YBClientBuilder {
   // If not provided, defaults to 5s.
   YBClientBuilder& default_rpc_timeout(const MonoDelta& timeout);
 
+  // Set the number of reactor threads that are used to send out the requests.
+  // (defaults to the flag value yb_client_num_reactors : 4).
+  YBClientBuilder& set_num_reactors(int32 num_reactors);
+
   // Creates the client.
   //
   // The return value may indicate an error in the create operation, or a

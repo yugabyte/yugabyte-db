@@ -305,8 +305,8 @@ void SingleThreadedWriter::Run() {
   CloseSession();
 }
 
-void ConfigureRedisSessions(const string& redis_server_addresses,
-                            vector<shared_ptr<RedisClient> >* clients) {
+void ConfigureRedisSessions(
+    const string& redis_server_addresses, vector<shared_ptr<RedisClient> >* clients) {
   std::vector<string> addresses;
   SplitStringUsing(redis_server_addresses, ",", &addresses);
   for (auto& addr : addresses) {

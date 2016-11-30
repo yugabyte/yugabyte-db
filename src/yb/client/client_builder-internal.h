@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_CLIENT_BUILDER_INTERNAL_H
-#define YB_CLIENT_CLIENT_BUILDER_INTERNAL_H
+#ifndef YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
+#define YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 
 #include <string>
 #include <vector>
@@ -43,13 +43,16 @@ class YBClientBuilder::Data {
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
   std::vector<std::string> master_server_addrs_;
 
+  int32 num_reactors_;
+
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
 #endif
