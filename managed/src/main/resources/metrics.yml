@@ -19,6 +19,14 @@ cpu_usage_system:
     title: "CPU Usage (System)"
     xaxis:
       type: "date"
+cpu_usage:
+  metric: "collectd_cpu_percent"
+  function: "avg"
+  filters:
+    cpu: "user|system"
+  group_by: "cpu"
+  layout:
+    title: "CPU Usage"
 memory_usage:
   metric: "collectd_memory"
   function: "avg"
@@ -39,3 +47,24 @@ redis_ops_latency:
     title: "Redis Op Latency"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "rpc_RedisServerService_get.avg": "Get"
+        "rpc_RedisServerService_set.avg": "Set"
+        "rpc_RedisServerService_echo.avg": "Echo"
+redis_rpcs_per_sec:
+  metric: "collectd_yb_redis_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rpc_RedisServerService_get.num|rpc_RedisServerService_set.num|rpc_RedisServerService_echo.num"
+  group_by: "type"
+  layout:
+    title: "Redis RPCs / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_RedisServerService_get.num": "Get"
+        "rpc_RedisServerService_set.num": "Set"
+        "rpc_RedisServerService_echo.num": "Echo"
