@@ -72,20 +72,20 @@ export default class UniverseDetail extends Component {
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
-        <ConnectStringPanel universeId={currentUniverse.universeUUID}
-                            customerId={localStorage.getItem("customer_id")} />
-                        </Tab>,
-      <Tab eventKey={"config"} title="Config" key="config-tab">
-        <UniverseInfoPanel universeInfo={currentUniverse} />
-      </Tab>,
-      <Tab eventKey={"placement"} title="Placement" key="placement-tab">
-        <YBPanelItem name={"Region Placement"}>
+        <Col lg={8} style={{padding: 0}}>
+          <ConnectStringPanel universeId={currentUniverse.universeUUID}
+                              customerId={localStorage.getItem("customer_id")} />
+        </Col>
         <Col lg={4}>
-          <YBMapLegend regions={currentUniverse.regions}/>
+          <UniverseInfoPanel universeInfo={currentUniverse} />
         </Col>
-        <Col lg={8}>
-        <RegionMap regions={currentUniverse.regions} type={"Root"} />
-        </Col>
+        <YBPanelItem name={"Region Placement"}>
+          <Col lg={4}>
+            <YBMapLegend regions={currentUniverse.regions}/>
+          </Col>
+          <Col lg={8}>
+          <RegionMap regions={currentUniverse.regions} type={"Root"} />
+          </Col>
         </YBPanelItem>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
