@@ -13,7 +13,8 @@ export default class MetricsPanel extends Component {
   }
 
   static propTypes = {
-    metricKey: PropTypes.oneOf(['cpu_usage_user', 'cpu_usage_system', 'memory_usage', 'cpu_usage_system_avg']),
+    metricKey: PropTypes.oneOf(['cpu_usage_user', 'cpu_usage_system', 'memory_usage',
+    'cpu_usage_system_avg', 'redis_ops_latency']),
     origin: PropTypes.oneOf(['customer', 'universe']).isRequired,
     universeUUID: PropTypes.string
   }

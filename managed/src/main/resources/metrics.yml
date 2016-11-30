@@ -29,3 +29,13 @@ memory_usage:
     title: "Memory Usage"
     xaxis:
       type: "date"
+redis_ops_latency:
+  metric: "collectd_yb_redis_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_RedisServerService_get.avg|rpc_RedisServerService_set.avg|rpc_RedisServerService_echo.avg"
+  group_by: "type"
+  layout:
+    title: "Redis Op Latency"
+    xaxis:
+      type: "date"
