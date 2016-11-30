@@ -98,6 +98,10 @@ static int TabletServerMain(int argc, char** argv) {
     cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
     cql_server_options.master_addresses_flag =
         yb::HostPort::ToCommaSeparatedString(*tablet_server_options.GetMasterAddresses());
+    cql_server_options.dump_info_path =
+        (tablet_server_options.dump_info_path.empty()
+             ? ""
+             : tablet_server_options.dump_info_path + "-cql");
     cql_server.reset(new CQLServer(cql_server_options));
     LOG(INFO) << "Starting CQL server...";
     CHECK_OK(cql_server->Start());
