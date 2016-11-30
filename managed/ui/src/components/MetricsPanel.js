@@ -2,6 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 var Plotly = require('plotly.js/lib/core');
+import { removeNullProperties } from '../utils/ObjectUtils';
 
 export default class MetricsPanel extends Component {
   constructor(props) {
@@ -13,8 +14,8 @@ export default class MetricsPanel extends Component {
   }
 
   static propTypes = {
-    metricKey: PropTypes.oneOf(['cpu_usage_user', 'cpu_usage_system', 'memory_usage',
-    'cpu_usage_system_avg', 'redis_ops_latency']),
+    metricKey: PropTypes.oneOf(['cpu_usage', 'cpu_usage_user', 'cpu_usage_system',
+    'memory_usage', 'cpu_usage_system_avg', 'redis_ops_latency', 'redis_rpcs_per_sec']),
     origin: PropTypes.oneOf(['customer', 'universe']).isRequired,
     universeUUID: PropTypes.string
   }
@@ -64,6 +65,8 @@ export default class MetricsPanel extends Component {
         <div id={metricKey} />
       )
     }
+    // Remove Null Properties from the layout 
+    removeNullProperties(metrics.layout);
     if (typeof metrics !== "undefined" && metrics.metricKey === metricKey) {
       Plotly.newPlot(metricKey, metrics.data, metrics.layout, {displayModeBar: false});
     }

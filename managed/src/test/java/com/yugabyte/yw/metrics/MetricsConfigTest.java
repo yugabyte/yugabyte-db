@@ -117,4 +117,16 @@ public class MetricsConfigTest {
     String query = metricConfig.getQuery(new HashMap<>());
     assertThat(query, allOf(notNullValue(), equalTo("rate(metric{memory=~\"used|buffered|free\"}[30m])")));
   }
+
+  @Test
+  public void testQueryWithMultipleFunctions() {
+    MetricConfig metricConfig = new MetricConfig();
+    metricConfig.metric = "metric";
+    metricConfig.range = "30m";
+    metricConfig.function = "rate|avg";
+    metricConfig.filters.put("memory", "used");
+
+    String query = metricConfig.getQuery(new HashMap<>());
+    assertThat(query, allOf(notNullValue(), equalTo("avg(rate(metric{memory=\"used\"}[30m]))")));
+  }
 }

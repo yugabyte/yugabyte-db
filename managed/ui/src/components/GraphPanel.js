@@ -17,10 +17,10 @@ export default class GraphPanel extends Component {
   render() {
     return (
       <GraphPanelHeaderContainer>
+        <MetricsPanelContainer metricKey="cpu_usage" {...this.props} />
         <MetricsPanelContainer metricKey="memory_usage" {...this.props} />
-        <MetricsPanelContainer metricKey="cpu_usage_system" {...this.props} />
-        <MetricsPanelContainer metricKey="cpu_usage_user" {...this.props} />
         <MetricsPanelContainer metricKey="redis_ops_latency" {...this.props} />
+        <MetricsPanelContainer metricKey="redis_rpcs_per_sec" {...this.props} />
       </GraphPanelHeaderContainer>
     );
   }
