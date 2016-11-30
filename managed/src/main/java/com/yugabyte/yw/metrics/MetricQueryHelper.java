@@ -87,7 +87,7 @@ public class MetricQueryHelper {
 
     ObjectNode responseJson = Json.newObject();
     responseJson.put("metricKey", metricKey);
-    responseJson.set("data", getMetricsGraphData(metricQueryResponse));
+    responseJson.set("data", getMetricsGraphData(metricQueryResponse, metricConfig.layout));
     responseJson.set("layout", Json.toJson(metricConfig.layout));
     return responseJson;
   }
@@ -126,7 +126,7 @@ public class MetricQueryHelper {
    * @param response, MetricQueryResponse object
    * @return JsonNode, Json data that plot.ly can understand
    */
-  private JsonNode getMetricsGraphData(MetricQueryResponse response) {
+  private JsonNode getMetricsGraphData(MetricQueryResponse response, MetricConfig.Layout layout) {
     ArrayList<MetricGraphData> metricGraphDataList = new ArrayList<>();
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
@@ -143,6 +143,9 @@ public class MetricQueryHelper {
         // key in the metrics data, fetch that and use that as the name
         String key = metricInfo.fieldNames().next();
         metricGraphData.name = metricInfo.get(key).asText();
+        if (layout.yaxis != null && layout.yaxis.alias.containsKey(metricGraphData.name)) {
+          metricGraphData.name = layout.yaxis.alias.get(metricGraphData.name);
+        }
       }
 
       if (objNode.has("values")) {

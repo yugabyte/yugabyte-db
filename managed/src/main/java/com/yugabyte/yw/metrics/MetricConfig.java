@@ -9,10 +9,12 @@ public class MetricConfig {
   public class Layout {
     public class Axis {
       public String type;
+      public Map<String, String> alias = new HashMap<>();
     }
 
     public String title;
     public Axis xaxis;
+    public Axis yaxis;
   }
 
   public String metric;
@@ -53,8 +55,17 @@ public class MetricConfig {
     }
 
     queryStr = query.toString();
+
     if (function != null) {
-      queryStr = String.format("%s(%s)", function, queryStr);
+      if (function.contains("|")) {
+        // We need to split the multiple functions and form the query string
+        String[] functions = function.split("\\|");
+        for (String functionName : functions) {
+          queryStr = String.format("%s(%s)", functionName, queryStr);
+        }
+      } else {
+        queryStr = String.format("%s(%s)", function, queryStr);
+      }
     }
 
     if (group_by != null) {

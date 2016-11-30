@@ -222,4 +222,32 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     JsonNode result = metricQueryHelper.query(params);
     assertThat(result.get("error").asText(), allOf(notNullValue(), equalTo("cannot parse \"\" to a valid duration")));
   }
+
+
+  @Test
+  public void testQueryMetricsWithAlias() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("metricKey", "redis_rpcs_per_sec");
+    params.put("start", "1479281737");
+    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[\n" +
+      "{\"metric\":{\"type\":\"rpc_RedisServerService_get.num\"},\"values\":[[1480527366,\"0\"],[1480527387,\"0\"]]},\n" +
+      "{\"metric\":{\"type\":\"rpc_RedisServerService_set.num\"},\"values\":[[1480527366,\"0\"],[1480527387,\"0\"]]},\n" +
+      "{\"metric\":{\"type\":\"rpc_RedisServerService_echo.num\"},\"values\":[[1480527366,\"0\"],[1480527387,\"0\"]]}]}}");
+
+    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
+
+    JsonNode result = metricQueryHelper.query(params);
+
+    assertThat(result.get("metricKey").asText(), allOf(notNullValue(), equalTo("redis_rpcs_per_sec")));
+
+    JsonNode data = result.get("data");
+    assertThat(data, allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    assertEquals(data.size(), 3);
+    assertThat(data.get(0).get("type").asText(), allOf(notNullValue(), equalTo("scatter")));
+    assertThat(data.get(0).get("x"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    assertThat(data.get(0).get("y"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    assertThat(data.get(0).get("name").asText(), allOf(notNullValue(), equalTo("Get")));
+    assertThat(data.get(1).get("name").asText(), allOf(notNullValue(), equalTo("Set")));
+    assertThat(data.get(2).get("name").asText(), allOf(notNullValue(), equalTo("Echo")));
+  }
 }
