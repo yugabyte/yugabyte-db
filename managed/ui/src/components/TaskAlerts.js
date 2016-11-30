@@ -2,36 +2,48 @@
 
 import React, { Component, PropTypes } from 'react';
 import {isValidObject, isValidArray} from '../utils/ObjectUtils';
-import {MenuItem} from 'react-bootstrap';
-import {FormattedNumber} from 'react-intl';
+import { ListGroup, ListGroupItem} from 'react-bootstrap';
+import moment from 'moment';
+
+class ShowMoreString extends Component {
+  render() {
+    const {count} = this.props;
+    if (isNaN(count) || count <= 0) {
+      return <span/>;
+    }
+    return (<p>Show { count } more <i className="fa fa-chevron-right"></i></p>);
+  }
+}
 
 class AlertItem extends Component {
   render() {
-    const {taskHeading, status, percentComplete, eventKey} = this.props;
-    const percentFinished =  status === true ?
-                             <span><FormattedNumber value={percentComplete/100} style={"percent"}/>
-                               Finished<i className='fa fa-check-square-o fa-fw'></i></span>
+    const {taskInfo} = this.props;
+    const currentStatus =  taskInfo.success === true ?
+                             <i className='fa fa-check-square-o fa-fw'></i>
                                :
-                             <span><FormattedNumber value={percentComplete/100} style={"percent"}/>
-                               Finished<i className='fa fa-times fa-fw'></i></span>;
-
+                             <i className='fa fa-times fa-fw'></i>;
+    var timeStampDifference = moment(taskInfo.createTime).fromNow();
+    var [universeName, currentTask] = taskInfo.title.split(":")
     return (
-      <MenuItem eventKey={eventKey} className='task-alerts-cell-container'>
-        <div className='task-alerts-cell-head'>
-            {taskHeading}
+      <ListGroup>
+        <ListGroupItem className='task-alerts-cell-container'>
+          <div className='task-alerts-cell-head'>
+            {currentStatus}
+            {currentTask}
+            <div className="task-alerts-universe-name">
+              {universeName}
+            </div>
           </div>
           <div className='task-alerts-cell-body'>
-            {percentFinished}
+            {timeStampDifference}
           </div>
-      </MenuItem>
+        </ListGroupItem>
+      </ListGroup>
     )
   }
 }
 AlertItem.propTypes = {
-  taskHeading: PropTypes.string.isRequired,
-  status: PropTypes.bool.isRequired,
-  percentComplete: PropTypes.number.isRequired,
-  eventKey: PropTypes.string.isRequired
+  taskInfo: PropTypes.object.isRequired
 }
 
 export default class TaskAlerts extends Component {
@@ -41,9 +53,8 @@ export default class TaskAlerts extends Component {
   componentWillUnMount() {
     this.props.resetUniverseTasks();
   }
-
   render() {
-    const {universe:{universeTasks}, eventKey} = this.props;
+    const {universe: {universeTasks}} = this.props;
     const numOfElementsToDisplay = 4;
     if(isValidObject(universeTasks)) {
       var tasksList = [];
@@ -55,18 +66,15 @@ export default class TaskAlerts extends Component {
       var tasksDisplayList = [];
       if(isValidArray(tasksList)) {
         tasksDisplayList = displayItems.map(function(listItem, idx){
-          var childEventKey = `${eventKey}.${idx}`;
-          return (<AlertItem key={`alertItem${idx}`}
-                  taskHeading={listItem.title}
-                  percentComplete={listItem.percentComplete}
-                  status={listItem.success} eventKey={childEventKey}/>)
+          return (<AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>)
         });
       }
     }
-    var showMoreString = taskListLength > numOfElementsToDisplay ? "show " +
-                         ( taskListLength - numOfElementsToDisplay ) + " more" : "";
+
+    var showMoreString = <ShowMoreString count={taskListLength - numOfElementsToDisplay}/>;
     return (
       <div className="task-alerts-list-container">
+        <div className="task-list-heading"><i className="fa fa-bars"></i> Tasks</div>
         {tasksDisplayList}
         <div className="task-alerts-show-more">{showMoreString}</div>
       </div>
