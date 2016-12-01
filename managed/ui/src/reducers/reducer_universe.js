@@ -22,15 +22,13 @@ export default function(state = INITIAL_STATE, action) {
     case CREATE_UNIVERSE_SUCCESS:
       return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
     case CREATE_UNIVERSE_FAILURE:
-      error = action.payload.data || {message: action.payload.error};
-      return { ...state, loading: false, error: error, formSubmitSuccess: false};
+      return { ...state, loading: false, error: action.payload.data.error, formSubmitSuccess: false};
     case EDIT_UNIVERSE:
       return { ...state, loading: true, formSubmitSuccess: false};
     case EDIT_UNIVERSE_SUCCESS:
       return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
     case EDIT_UNIVERSE_FAILURE:
-      error = action.payload.data || {message: action.payload.error};
-      return { ...state, loading: false, error: error, formSubmitSuccess: false};
+      return { ...state, loading: false, error: action.payload.data.error, formSubmitSuccess: false};
     case OPEN_DIALOG:
       return { ...state, showModal: true, visibleModal: action.payload, formSubmitSuccess: false};
     case CLOSE_DIALOG:
