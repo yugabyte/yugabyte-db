@@ -29,6 +29,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
+#include "yb/util/metrics.h"
 
 DECLARE_bool(enable_data_block_fsync);
 

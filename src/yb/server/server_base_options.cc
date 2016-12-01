@@ -37,7 +37,6 @@ namespace yb {
 namespace server {
 
 using std::vector;
-using std::shared_ptr;
 
 DEFINE_string(server_dump_info_path, "",
               "Path into which the server information will be "
@@ -67,9 +66,26 @@ ServerBaseOptions::ServerBaseOptions()
       placement_zone(FLAGS_placement_zone),
       connection_type(yb::rpc::ConnectionType::YB) {}
 
+ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
+    : env(options.env),
+      fs_opts(options.fs_opts),
+      rpc_opts(options.rpc_opts),
+      webserver_opts(options.webserver_opts),
+      dump_info_path(options.dump_info_path),
+      dump_info_format(options.dump_info_format),
+      metrics_log_interval_ms(options.metrics_log_interval_ms),
+      placement_cloud(options.placement_cloud),
+      placement_region(options.placement_region),
+      placement_zone(options.placement_zone),
+      master_addresses_flag(options.master_addresses_flag),
+      connection_type(options.connection_type) {
+  SetMasterAddressesNoValidation(options.GetMasterAddresses());
+}
+
 void ServerBaseOptions::ValidateMasterAddresses() const {
-  if (!master_addresses_->empty()) {
-    if (master_addresses_->size() == 2) {
+  addresses_shared_ptr master_addresses = GetMasterAddresses();
+  if (!master_addresses->empty()) {
+    if (master_addresses->size() == 2) {
       LOG(WARNING) << "Only 2 masters are specified by master addresses flag '"
                    << master_addresses_flag << "' , but minimum of 3 "
                    << "are required to tolerate failures of any one master. "
@@ -78,9 +94,35 @@ void ServerBaseOptions::ValidateMasterAddresses() const {
   }
 }
 
-void ServerBaseOptions::SetMasterAddresses(shared_ptr<vector<HostPort>> master_addresses) {
-  master_addresses_ = std::move(master_addresses);
-  ValidateMasterAddresses();
+// This implementation is better but it needs support of
+//    atomic_load( shared_ptr<> ), atomic_store( shared_ptr<> )
+//
+// #include <atomic>
+//
+// void ServerBaseOptions::SetMasterAddressesNoValidation(
+//     ServerBaseOptions::addresses_shared_ptr master_addresses) {
+//   std::atomic_store(&master_addresses_, master_addresses);
+// }
+
+// ServerBaseOptions::addresses_shared_ptr ServerBaseOptions::GetMasterAddresses() const {
+//   addresses_shared_ptr local = std::atomic_load(&master_addresses_);
+//   return local;
+// }
+
+void ServerBaseOptions::SetMasterAddressesNoValidation(
+    ServerBaseOptions::addresses_shared_ptr master_addresses) {
+  std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  master_addresses_ = master_addresses;
+}
+
+ServerBaseOptions::addresses_shared_ptr ServerBaseOptions::GetMasterAddresses() const {
+  addresses_shared_ptr local;
+  {
+    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+    local = master_addresses_;
+  }
+
+  return local;
 }
 
 } // namespace server

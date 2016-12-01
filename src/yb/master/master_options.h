@@ -33,12 +33,12 @@ class MasterOptions : public server::ServerBaseOptions {
   MasterOptions();
 
   // To be used for testing
-  MasterOptions(std::shared_ptr<std::vector<HostPort>> master_addresses, bool is_creating);
+  MasterOptions(server::ServerBaseOptions::addresses_shared_ptr master_addresses, bool is_creating);
 
   // Need copy constructor as AtomicBool doesnt allow default copy.
   MasterOptions(const MasterOptions& other);
 
-  bool IsDistributed() const { return !master_addresses_->empty(); }
+  bool IsDistributed() const { return !GetMasterAddresses()->empty(); }
 
   bool IsClusterCreationMode() const { return is_creating_; }
 

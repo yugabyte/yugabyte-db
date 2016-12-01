@@ -48,14 +48,13 @@ DEFINE_bool(create_cluster, false,
     "starting peer group.");
 
 MasterOptions::MasterOptions(
-    std::shared_ptr<std::vector<HostPort>> master_addresses,
+    server::ServerBaseOptions::addresses_shared_ptr master_addresses,
     bool is_creating)
     : is_creating_(is_creating),
       is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
 
-  master_addresses_ = std::move(master_addresses);
-
+  SetMasterAddresses(master_addresses);
   ValidateMasterAddresses();
 }
 
@@ -65,7 +64,7 @@ MasterOptions::MasterOptions()
   rpc_opts.default_port = Master::kDefaultPort;
   master_addresses_flag = FLAGS_master_addresses;
   if (FLAGS_master_addresses.empty()) {
-    master_addresses_ = make_shared<vector<HostPort>>();
+    SetMasterAddresses(make_shared<vector<HostPort>>());
   } else {
     vector<HostPort> master_addresses;
     Status s = HostPort::ParseStrings(FLAGS_master_addresses, Master::kDefaultPort,
@@ -74,7 +73,7 @@ MasterOptions::MasterOptions()
       LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
                  << FLAGS_master_addresses << "'): " << s.ToString();
     }
-    master_addresses_ = make_shared<vector<HostPort>>(std::move(master_addresses));
+    SetMasterAddresses(make_shared<vector<HostPort>>(std::move(master_addresses)));
   }
 
   ValidateMasterAddresses();
@@ -82,7 +81,7 @@ MasterOptions::MasterOptions()
 
 MasterOptions::MasterOptions(const MasterOptions& other)
     : is_shell_mode_(false)  {
-  master_addresses_= other.master_addresses_;
+  SetMasterAddresses(other.GetMasterAddresses());
   is_creating_ = other.is_creating_;
   is_shell_mode_.Store(other.IsShellMode());
   rpc_opts.default_port = other.rpc_opts.default_port;
@@ -91,11 +90,12 @@ MasterOptions::MasterOptions(const MasterOptions& other)
 }
 
 void MasterOptions::ValidateMasterAddresses() const {
-  if (!master_addresses_->empty()) {
-    if (master_addresses_->size() < 2) {
+  server::ServerBaseOptions::addresses_shared_ptr master_addresses = GetMasterAddresses();
+  if (!master_addresses->empty()) {
+    if (master_addresses->size() < 2) {
       LOG(FATAL) << "At least 2 masters are required for a distributed config, but "
                  << "master addresses flag " <<  FLAGS_master_addresses
-                 << " only specifies " << master_addresses_->size() << " masters.";
+                 << " only specifies " << master_addresses->size() << " masters.";
     }
   }
 

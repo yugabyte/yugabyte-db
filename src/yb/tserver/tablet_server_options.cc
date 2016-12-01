@@ -45,7 +45,7 @@ TabletServerOptions::TabletServerOptions() {
   Status s = HostPort::ParseStrings(FLAGS_tserver_master_addrs,
                                     master::Master::kDefaultPort,
                                     &master_addresses);
-  master_addresses_ = std::make_shared<std::vector<HostPort>>(std::move(master_addresses));
+  SetMasterAddresses(std::make_shared<std::vector<HostPort>>(std::move(master_addresses)));
   if (!s.ok()) {
     LOG(FATAL) << "Couldn't parse " << FLAGS_tserver_master_addrs << " flag: " << s.ToString();
   }
