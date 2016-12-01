@@ -1,12 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col, Checkbox } from 'react-bootstrap';
-import {isValidObject} from '../../utils/ObjectUtils';
-import DescriptionItem from '../DescriptionItem';
-import YBCost from '../fields/YBCost';
 import {Link} from 'react-router';
-import UniverseFormContainer from '../../containers/forms/UniverseFormContainer';
+import { Row, Col, Checkbox } from 'react-bootstrap';
+
+import { isValidObject } from '../../utils/ObjectUtils';
+import { YBCost, DescriptionItem } from '../common/descriptors';
+import { UniverseFormContainer } from '../../containers/common/forms';
 
 class CreateUniverseButtonComponent extends Component {
   render() {

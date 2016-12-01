@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import {isValidArray} from '../../utils/ObjectUtils';
-import RegionMap from '../maps/RegionMap';
+import { RegionMap } from '../maps';
 
 export default class UniverseRegionLocationPanel extends Component {
 
