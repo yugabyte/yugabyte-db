@@ -24,13 +24,13 @@ cmake_minimum_required(VERSION 3.2.0)
 
 function(CHECK_YB_COMPILER_PATH COMPILER_PATH)
   if(NOT "${COMPILER_PATH}" MATCHES "/compiler-wrappers/(cc|c[+][+])$" AND
-     NOT "${CMAKE_CURRENT_BINARY_DIR}" MATCHES "/[.]?CLion" )
+     NOT "${CMAKE_COMMAND}" MATCHES "/(CLion|clion)")
     message(
       SEND_ERROR
       "Invalid compiler path: '${COMPILER_PATH}'. Expected to end with one of: "
       "/compiler-wrappers/{cc,c++}. The only exception is for builds invoked from CLion, but "
-      "CMAKE_CURRENT_BINARY_DIR ('${CMAKE_CURRENT_BINARY_DIR}') does not contain a substring "
-      "'/CLion' or '/.CLion' (feel free to tweak the pattern in the top-level CMakeLists.txt if "
+      "CMAKE_COMMAND ('${CMAKE_COMMAND}') does not contain a substring "
+      "'/CLion' or '/clion' (feel free to tweak the pattern in the top-level CMakeLists.txt if "
       "it has to be updated for the most recent version of CLion).")
   endif()
 endfunction()
