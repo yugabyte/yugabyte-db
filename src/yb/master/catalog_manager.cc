@@ -304,6 +304,41 @@ class TabletLoader : public TabletVisitor {
 };
 
 ////////////////////////////////////////////////////////////
+// Namespace Loader
+////////////////////////////////////////////////////////////
+
+class NamespaceLoader : public NamespaceVisitor {
+ public:
+  explicit NamespaceLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+
+  virtual Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) OVERRIDE {
+    CHECK(!ContainsKey(catalog_manager_->namespace_ids_map_, ns_id))
+      << "Namespace already exists: " << ns_id;
+
+    // Setup the namespace info
+    NamespaceInfo *const ns = new NamespaceInfo(ns_id);
+    NamespaceMetadataLock l(ns, NamespaceMetadataLock::WRITE);
+    l.mutable_data()->pb.CopyFrom(metadata);
+
+    // Add the namespace to the IDs map and to the name map (if the namespace is not deleted)
+    catalog_manager_->namespace_ids_map_[ns_id] = ns;
+    if (!l.data().pb.name().empty()) {
+      catalog_manager_->namespace_names_map_[l.data().pb.name()] = ns;
+    }
+
+    LOG(INFO) << "Loaded metadata for namespace " << l.data().pb.name() << " (id=" << ns_id << "): "
+              << ns->ToString() << ": " << metadata.ShortDebugString();
+    l.Commit();
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager *catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(NamespaceLoader);
+};
+
+////////////////////////////////////////////////////////////
 // Config Loader
 ////////////////////////////////////////////////////////////
 
@@ -629,6 +664,9 @@ Status CatalogManager::VisitSysCatalog() {
   table_ids_map_.clear();
   tablet_map_.clear();
 
+  namespace_ids_map_.clear();
+  namespace_names_map_.clear();
+
   // Visit tables and tablets, load them into memory.
   unique_ptr<TableLoader> table_loader(new TableLoader(this));
   RETURN_NOT_OK_PREPEND(
@@ -636,6 +674,15 @@ Status CatalogManager::VisitSysCatalog() {
   unique_ptr<TabletLoader> tablet_loader(new TabletLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(tablet_loader.get()), "Failed while visiting tablets in sys catalog");
+
+  unique_ptr<NamespaceLoader> namespace_loader(new NamespaceLoader(this));
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(namespace_loader.get()),
+      "Failed while visiting namespaces in sys catalog");
+
+  if (namespace_ids_map_.empty()) {
+    RETURN_NOT_OK(PrepareDefaultNamespace());
+  }
 
   // Clear current config.
   cluster_config_.reset();
@@ -669,6 +716,30 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
   RETURN_NOT_OK(sys_catalog_->AddClusterConfigInfo(cluster_config_.get()));
   l.Commit();
 
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareDefaultNamespace() {
+  // Create default
+  SysNamespaceEntryPB ns_entry;
+  ns_entry.set_name(kDefaultNamespaceName);
+
+  // Create in memory object
+  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(kDefaultNamespaceId);
+
+  // Prepare write
+  NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
+  l.mutable_data()->pb = std::move(ns_entry);
+
+  namespace_ids_map_[kDefaultNamespaceId] = ns;
+  namespace_names_map_[ns_entry.name()] = ns;
+
+  // Write to sys_catalog and in memory
+  RETURN_NOT_OK(sys_catalog_->AddNamespace(ns.get()));
+
+  LOG(INFO) << "Created default namespace: " << ns_entry.name() << " (id=" << kDefaultNamespaceId
+            << "): " << ns->ToString();
+  l.Commit();
   return Status::OK();
 }
 
@@ -1862,6 +1933,158 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
     HandleTabletSchemaVersionReport(tablet.get(), report.schema_version());
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
+                                       CreateNamespaceResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
+  RETURN_NOT_OK(CheckOnline());
+  Status s;
+
+  // Copy the request, so we can fill in some defaults.
+  LOG(INFO) << "CreateNamespace from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+  scoped_refptr<NamespaceInfo> ns;
+  {
+    std::lock_guard<LockType> l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    // a. Validate the user request.
+
+    // Verify that the namespace does not exist
+    ns = FindPtrOrNull(namespace_names_map_, req->name());
+    if (ns != nullptr) {
+      s = STATUS(AlreadyPresent, Substitute("Namespace $0 already exists", req->name()), ns->id());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT, s);
+      return s;
+    }
+
+    // b. Add the new namespace.
+
+    // Create unique id for this new namespace.
+    std::string new_id;
+    do {
+      new_id = GenerateId();
+    } while (nullptr != FindPtrOrNull(namespace_ids_map_, new_id));
+
+    ns = new NamespaceInfo(new_id);
+    ns->mutable_metadata()->StartMutation();
+    SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
+    metadata->set_name(req->name());
+
+    // Add the namespace to the in-memory map for the assignment.
+    namespace_ids_map_[ns->id()] = ns;
+    namespace_names_map_[req->name()] = ns;
+
+    resp->set_id(ns->id());
+  }
+  TRACE("Inserted new namespace info into CatalogManager maps");
+
+  // c. Update the on-disk system catalog.
+  s = sys_catalog_->AddNamespace(ns.get());
+  if (!s.ok()) {
+    s = s.CloneAndPrepend(Substitute(
+        "An error occurred while inserting namespace to sys-catalog: $0", s.ToString()));
+    LOG(WARNING) << s.ToString();
+    CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return s;
+  }
+  TRACE("Wrote namespace to sys-catalog");
+
+  // d. Commit the in-memory state.
+  ns->mutable_metadata()->CommitMutation();
+
+  LOG(INFO) << "Created namespace " << ns->ToString();
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
+                                       DeleteNamespaceResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteNamespace request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+  scoped_refptr<NamespaceInfo> ns;
+
+  // Prevent 'default' namespace deletion
+  if ((req->namespace_id().has_id() && req->namespace_id().id() == kDefaultNamespaceId) ||
+      (req->namespace_id().has_name() && req->namespace_id().name() == kDefaultNamespaceName)) {
+    Status s = STATUS(InvalidArgument,
+        "Cannot delete default namespace", req->DebugString());
+    SetupError(resp->mutable_error(), MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE, s);
+    return s;
+  }
+
+  // 1. Lookup the namespace and verify if it exists.
+  TRACE("Looking up namespace");
+  {
+    boost::shared_lock<LockType> l(lock_);
+
+    if (req->namespace_id().has_id()) {
+      ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id().id());
+    } else if (req->namespace_id().has_name()) {
+      ns = FindPtrOrNull(namespace_names_map_, req->namespace_id().name());
+    } else {
+      Status s = STATUS(InvalidArgument,
+        "Missing Namespace ID or Namespace Name", req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
+  }
+
+  TRACE("Locking namespace");
+  NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
+
+  TRACE("Updating metadata on disk");
+  // 2. Update sys-catalog.
+  Status s = sys_catalog_->DeleteNamespace(ns.get());
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
+                                     s.ToString()));
+    LOG(WARNING) << s.ToString();
+    CheckIfNoLongerLeaderAndSetupError(s, resp);
+    return s;
+  }
+
+  // 3. Remove it from the maps.
+  {
+    TRACE("Removing from maps");
+    std::lock_guard<LockType> l_map(lock_);
+    if (namespace_names_map_.erase(ns->name()) < 1) {
+      PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l.data().name());
+    }
+    if (namespace_ids_map_.erase(ns->id()) < 1) {
+      PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l.data().name());
+    }
+  }
+
+  // 4. Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l.Commit();
+
+  LOG(INFO) << "Successfully deleted namespace " << ns->ToString()
+            << " per request from " << RequestorString(rpc);
+  return Status::OK();
+}
+
+Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
+                                      ListNamespacesResponsePB* resp) {
+
+  RETURN_NOT_OK(CheckOnline());
+
+  boost::shared_lock<LockType> l(lock_);
+
+  for (const NamespaceInfoMap::value_type& entry : namespace_names_map_) {
+    NamespaceMetadataLock ltm(entry.second.get(), NamespaceMetadataLock::READ);
+
+    ListNamespacesResponsePB::NamespaceInfo *ns = resp->add_namespaces();
+    ns->set_id(entry.second->id());
+    ns->set_name(entry.second->name());
+  }
   return Status::OK();
 }
 
@@ -4233,6 +4456,9 @@ INITTED_AND_LEADER_OR_RESPOND(IsAlterTableDoneResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsCreateTableDoneResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(ListTablesResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(ListTabletServersResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(CreateNamespaceResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(DeleteNamespaceResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(ListNamespacesResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetTableLocationsResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetTableSchemaResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetTabletLocationsResponsePB);
@@ -4483,6 +4709,21 @@ void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo> > *ret) const {
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   pb.set_state(state);
   pb.set_state_msg(msg);
+}
+
+////////////////////////////////////////////////////////////
+// NamespaceInfo
+////////////////////////////////////////////////////////////
+
+NamespaceInfo::NamespaceInfo(std::string ns_id) : namespace_id_(std::move(ns_id)) {}
+
+const std::string& NamespaceInfo::name() const {
+  NamespaceMetadataLock l(this, NamespaceMetadataLock::READ);
+  return l.data().pb.name();
+}
+
+std::string NamespaceInfo::ToString() const {
+  return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
 }  // namespace master

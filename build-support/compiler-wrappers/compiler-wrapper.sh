@@ -213,7 +213,8 @@ if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/
      >/dev/null || \
    egrep "definition of macro '.*' differs between the precompiled header .* and the command line" \
          "$stderr_path" >/dev/null || \
-   grep " has been modified since the precompiled header " "$stderr_path" >/dev/null
+   grep " has been modified since the precompiled header " "$stderr_path" >/dev/null || \
+   grep "PCH file built from a different branch " "$stderr_path" >/dev/null
 then
   PCH_PATH=$PWD/$PCH_NAME
   echo -e "${RED_COLOR}Removing '$PCH_PATH' so that further builds have a chance to" \

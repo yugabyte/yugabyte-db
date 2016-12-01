@@ -69,6 +69,8 @@ class TSDescriptor;
 struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
+static const char* const kDefaultNamespaceName = "default";
+static const char* const kDefaultNamespaceId = "11111111111111111111111111111111";
 
 using TableId = std::string;
 using TabletId = std::string;
@@ -336,6 +338,46 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
 
+// The data related to a namespace which is persisted on disk.
+// This portion of NamespaceInfo is managed via CowObject.
+// It wraps the underlying protobuf to add useful accessors.
+struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
+  static int type() { return SysRowEntry::NAMESPACE; }
+
+  // Get the namespace name
+  const std::string& name() const {
+    return pb.name();
+  }
+};
+
+// The information about a namespace.
+//
+// This object uses copy-on-write techniques similarly to TabletInfo.
+// Please see the TabletInfo class doc above for more information.
+//
+// The non-persistent information about the namespace is protected by an internal
+// spin-lock.
+class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
+                      public MemoryState<PersistentNamespaceInfo> {
+ public:
+  explicit NamespaceInfo(std::string ns_id);
+
+  virtual const std::string& id() const OVERRIDE { return namespace_id_; };
+
+  const std::string& name() const;
+
+  std::string ToString() const;
+
+ private:
+  friend class RefCountedThreadSafe<NamespaceInfo>;
+  ~NamespaceInfo() = default;
+
+  // The ID field is used in the sys_catalog table.
+  const std::string namespace_id_;
+
+  DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
+};
+
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {
@@ -364,6 +406,7 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
 // Convenience typedefs for the locks.
 typedef MetadataLock<TabletInfo> TabletMetadataLock;
 typedef MetadataLock<TableInfo> TableMetadataLock;
+typedef MetadataLock<NamespaceInfo> NamespaceMetadataLock;
 typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
 
 typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
@@ -536,6 +579,26 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                              TabletReportUpdatesPB *report_update,
                              rpc::RpcContext* rpc);
 
+  // Create a new Namespace with the specified attributes.
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  Status CreateNamespace(const CreateNamespaceRequestPB* req,
+                         CreateNamespaceResponsePB* resp,
+                         rpc::RpcContext* rpc);
+
+  // Delete the specified Namespace.
+  //
+  // The RPC context is provided for logging/tracing purposes,
+  // but this function does not itself respond to the RPC.
+  Status DeleteNamespace(const DeleteNamespaceRequestPB* req,
+                         DeleteNamespaceResponsePB* resp,
+                         rpc::RpcContext* rpc);
+
+  // List all the current namespaces.
+  Status ListNamespaces(const ListNamespacesRequestPB* req,
+                        ListNamespacesResponsePB* resp);
+
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
   // Dump all of the current state about tables and tablets to the
@@ -621,6 +684,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
  private:
   friend class TableLoader;
   friend class TabletLoader;
+  friend class NamespaceLoader;
   friend class ClusterConfigLoader;
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
@@ -654,6 +718,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
   Status PrepareDefaultClusterConfig();
+
+  Status PrepareDefaultNamespace();
 
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_
@@ -870,6 +936,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Tablet maps: tablet-id -> TabletInfo
   TabletInfoMap tablet_map_;
+
+  // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
+  typedef std::unordered_map<std::string, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+  NamespaceInfoMap namespace_ids_map_;
+  NamespaceInfoMap namespace_names_map_;
 
   // Config information
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;

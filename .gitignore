@@ -47,3 +47,7 @@ core*
 
 # screen sometimes makes these, I think
 /hardcopy.*
+
+# Temporary files
+.DS_Store
+.\#*.proto

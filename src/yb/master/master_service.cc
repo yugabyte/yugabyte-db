@@ -310,6 +310,45 @@ void MasterServiceImpl::GetTableSchema(const GetTableSchemaRequestPB* req,
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::CreateNamespace(const CreateNamespaceRequestPB* req,
+                                        CreateNamespaceResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+    return;
+  }
+
+  Status s = server_->catalog_manager()->CreateNamespace(req, resp, rpc);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
+void MasterServiceImpl::DeleteNamespace(const DeleteNamespaceRequestPB* req,
+                                        DeleteNamespaceResponsePB* resp,
+                                        rpc::RpcContext* rpc) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+    return;
+  }
+
+  Status s = server_->catalog_manager()->DeleteNamespace(req, resp, rpc);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
+void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
+                                       ListNamespacesResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+    return;
+  }
+
+  Status s = server_->catalog_manager()->ListNamespaces(req, resp);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
                                           rpc::RpcContext* rpc) {

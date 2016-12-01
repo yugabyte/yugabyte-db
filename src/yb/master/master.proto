@@ -69,6 +69,11 @@ message MasterErrorPB {
     // If there is an operation in progress causing the current rpc to be in an indeterminate state,
     // we return this error code. Client can retry on a case by case basis as needed.
     IN_TRANSITION_CAN_RETRY = 10;
+
+    // Invalid namespace name or id for the namespace operation.
+    NAMESPACE_NOT_FOUND = 11;
+    NAMESPACE_ALREADY_PRESENT = 12;
+    CANNOT_DELETE_DEFAULT_NAMESPACE = 13;
   }
 
   // The error code.
@@ -147,6 +152,7 @@ message SysRowEntry {
     TABLE = 1;
     TABLET = 2;
     CLUSTER_CONFIG = 3;
+    NAMESPACE = 4;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -237,6 +243,15 @@ message SysTablesEntryPB {
   // Debug state for the table.
   optional State state = 6 [ default = UNKNOWN ];
   optional bytes state_msg = 7;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a namespace.
+message SysNamespaceEntryPB {
+  // Note: The id of the namespace is not stored here as it is already part of
+  // SysRowEntry's id component.
+
+  // Namespace name
+  optional bytes name = 1;
 }
 
 // The on-disk entry in the sys.catalog table for configuration information
@@ -730,6 +745,54 @@ message IsLoadBalancedResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// ============================================================================
+//  Namespace  (default namespace = ANY placement)
+// ============================================================================
+message CreateNamespaceRequestPB {
+  // Namespace name
+  optional string name = 1;
+}
+
+message CreateNamespaceResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  optional bytes id = 2;
+}
+
+message NamespaceIdentifierPB {
+  // The namespace ID to fetch info.
+  optional bytes id = 1;
+
+  // The namespace name to fetch info.
+  optional string name = 2;
+}
+
+message DeleteNamespaceRequestPB {
+  optional NamespaceIdentifierPB namespace_id = 1;
+}
+// Fails if the namespace is NOT empty
+
+message DeleteNamespaceResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message ListNamespacesRequestPB {
+}
+
+message ListNamespacesResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  message NamespaceInfo {
+    optional bytes id = 1;
+    optional string name = 2;
+  }
+
+  repeated NamespaceInfo namespaces = 2;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -748,6 +811,10 @@ service MasterService {
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableLocations(GetTableLocationsRequestPB) returns (GetTableLocationsResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
+
+  rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
+  rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
+  rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
 
   // Administrative/monitoring RPCs
   rpc ListTabletServers(ListTabletServersRequestPB) returns (ListTabletServersResponsePB);

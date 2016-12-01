@@ -90,6 +90,11 @@ class TabletVisitor : public Visitor<PersistentTabletInfo> {
   TabletVisitor() : Visitor() {}
 };
 
+class NamespaceVisitor : public Visitor<PersistentNamespaceInfo> {
+ public:
+  NamespaceVisitor() : Visitor() {}
+};
+
 class ClusterConfigVisitor : public Visitor<PersistentClusterConfigInfo> {
  public:
   ClusterConfigVisitor() : Visitor() {}
@@ -145,6 +150,12 @@ class SysCatalogTable {
   Status AddAndUpdateTablets(const vector<TabletInfo*>& tablets_to_add,
                              const vector<TabletInfo*>& tablets_to_update);
   Status DeleteTablets(const vector<TabletInfo*>& tablets);
+  // ==================================================================
+  // Namespace related methods
+  // ==================================================================
+  Status AddNamespace(const NamespaceInfo *ns);
+  Status UpdateNamespace(const NamespaceInfo *ns);
+  Status DeleteNamespace(const NamespaceInfo *ns);
   // ==================================================================
   // ClusterConfig related methods
   // ==================================================================

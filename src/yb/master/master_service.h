@@ -72,6 +72,16 @@ class MasterServiceImpl : public MasterServiceIf {
                                  ListTabletServersResponsePB* resp,
                                  rpc::RpcContext* rpc) OVERRIDE;
 
+  virtual void CreateNamespace(const CreateNamespaceRequestPB* req,
+                               CreateNamespaceResponsePB* resp,
+                               rpc::RpcContext* rpc) OVERRIDE;
+  virtual void DeleteNamespace(const DeleteNamespaceRequestPB* req,
+                               DeleteNamespaceResponsePB* resp,
+                               rpc::RpcContext* rpc) OVERRIDE;
+  virtual void ListNamespaces(const ListNamespacesRequestPB* req,
+                              ListNamespacesResponsePB* resp,
+                              rpc::RpcContext* rpc) OVERRIDE;
+
   virtual void ListMasters(const ListMastersRequestPB* req,
                            ListMastersResponsePB* resp,
                            rpc::RpcContext* rpc) OVERRIDE;

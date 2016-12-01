@@ -506,5 +506,123 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   }
 }
 
+class TestNamespaceLoader : public NamespaceVisitor {
+ public:
+  TestNamespaceLoader() {}
+  ~TestNamespaceLoader() { Reset(); }
+
+  void Reset() {
+    for (NamespaceInfo* ni : namespaces) {
+      ni->Release();
+    }
+    namespaces.clear();
+  }
+
+  virtual Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) OVERRIDE {
+    // Setup the namespace info
+    NamespaceInfo* const ns = new NamespaceInfo(ns_id);
+    NamespaceMetadataLock l(ns, NamespaceMetadataLock::WRITE);
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
+    ns->AddRef();
+    namespaces.push_back(ns);
+    return Status::OK();
+  }
+
+  vector<NamespaceInfo*> namespaces;
+};
+
+// Test the sys-catalog namespaces basic operations (add, update, delete, visit)
+TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  // 1. CHECK DEFAULT NAMESPACE
+  unique_ptr<TestNamespaceLoader> loader(new TestNamespaceLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  // Default namespace must be already created
+  ASSERT_EQ(1, loader->namespaces.size());
+
+  scoped_refptr<NamespaceInfo> universe_ns(new NamespaceInfo(kDefaultNamespaceId));
+  {
+    NamespaceMetadataLock l(universe_ns.get(), NamespaceMetadataLock::WRITE);
+    l.mutable_data()->pb.set_name(kDefaultNamespaceName);
+    l.Commit();
+  }
+
+  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+
+  // 2. CHECK ADD_NAMESPACE
+  // Create new namespace.
+  scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  {
+    NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
+    l.mutable_data()->pb.set_name("test_ns");
+    // Add the namespace
+    ASSERT_OK(sys_catalog->AddNamespace(ns.get()));
+
+    l.Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(2, loader->namespaces.size());
+  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+  ASSERT_TRUE(MetadatasEqual(ns.get(), loader->namespaces[1]));
+
+  // 3. CHECK UPDATE_NAMESPACE
+  // Update the namespace
+  {
+    NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
+    l.mutable_data()->pb.set_name("test_ns_new_name");
+    ASSERT_OK(sys_catalog->UpdateNamespace(ns.get()));
+    l.Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(2, loader->namespaces.size());
+  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+  ASSERT_TRUE(MetadatasEqual(ns.get(), loader->namespaces[1]));
+
+  // 4. CHECK DELETE_NAMESPACE
+  // Delete the namespace
+  ASSERT_OK(sys_catalog->DeleteNamespace(ns.get()));
+
+  // Verify the result.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->namespaces.size());
+  ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
+}
+
+// Verify that data mutations are not available from metadata() until commit.
+TEST_F(SysCatalogTest, TestNamespaceInfoCommit) {
+  scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+
+  // Mutate the namespace, under the write lock.
+  NamespaceMetadataLock writer_lock(ns.get(), NamespaceMetadataLock::WRITE);
+  writer_lock.mutable_data()->pb.set_name("foo");
+
+  // Changes should not be visible to a reader.
+  // The reader can still lock for read, since readers don't block
+  // writers in the RWC lock.
+  {
+    NamespaceMetadataLock reader_lock(ns.get(), NamespaceMetadataLock::READ);
+    ASSERT_NE("foo", reader_lock.data().name());
+  }
+
+  // Commit the changes
+  writer_lock.Commit();
+
+  // Verify that the data is visible
+  {
+    NamespaceMetadataLock reader_lock(ns.get(), NamespaceMetadataLock::READ);
+    ASSERT_EQ("foo", reader_lock.data().name());
+  }
+}
+
 } // namespace master
 } // namespace yb

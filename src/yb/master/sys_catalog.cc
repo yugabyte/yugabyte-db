@@ -285,7 +285,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     tablet::TABLET_DATA_READY,
     &metadata));
 
-  RaftConfigPB config;
+    RaftConfigPB config;
   if (master_->opts().IsDistributed()) {
     RETURN_NOT_OK_PREPEND(SetupDistributedConfig(master_->opts(), &config),
                           "Failed to initialize distributed config");
@@ -667,6 +667,33 @@ Status SysCatalogTable::DeleteTablets(const vector<TabletInfo*>& tablets) {
   for (const auto tablet : tablets) {
     RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::DELETE));
   }
+  return w->Write();
+}
+
+// ==================================================================
+// Namespace related methods
+// ==================================================================
+Status SysCatalogTable::AddNamespace(const NamespaceInfo *ns) {
+  TRACE_EVENT1("master", "SysCatalogTable::AddNamespace",
+               "namespace", ns->ToString());
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(ns, RowOperationsPB::INSERT));
+  return w->Write();
+}
+
+Status SysCatalogTable::UpdateNamespace(const NamespaceInfo *ns) {
+  TRACE_EVENT1("master", "SysCatalogTable::UpdateNamespace",
+               "namespace", ns->ToString());
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(ns, RowOperationsPB::UPDATE));
+  return w->Write();
+}
+
+Status SysCatalogTable::DeleteNamespace(const NamespaceInfo *ns) {
+  TRACE_EVENT1("master", "SysCatalogNamespace::DeleteNamespace",
+               "namespace", ns->ToString());
+  auto w = NewWriter();
+  RETURN_NOT_OK(w->MutateItem(ns, RowOperationsPB::DELETE));
   return w->Write();
 }
 

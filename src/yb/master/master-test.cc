@@ -24,6 +24,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/row_operations.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
@@ -48,6 +49,8 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
 namespace yb {
 namespace master {
+
+using strings::Substitute;
 
 class MasterTest : public YBTest {
  protected:
@@ -87,6 +90,9 @@ class MasterTest : public YBTest {
                      const Schema& schema,
                      const vector<YBPartialRow>& split_rows);
   Status CreateTable(const string& table_name, const Schema& schema, CreateTableRequestPB* request);
+
+  void DoListAllNamespaces(ListNamespacesResponsePB* resp);
+  Status CreateNamespace(const string& ns_name, CreateNamespaceResponsePB* resp);
 
   RpcController* ResetAndGetController() {
     controller_->Reset();
@@ -507,6 +513,189 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
     --num_retries;
   }
 }
+
+void MasterTest::DoListAllNamespaces(ListNamespacesResponsePB* resp) {
+  ListNamespacesRequestPB req;
+
+  ASSERT_OK(proxy_->ListNamespaces(req, resp, ResetAndGetController()));
+  SCOPED_TRACE(resp->DebugString());
+  ASSERT_FALSE(resp->has_error());
+}
+
+Status MasterTest::CreateNamespace(const string& ns_name, CreateNamespaceResponsePB* resp)
+{
+  CreateNamespaceRequestPB req;
+  req.set_name(ns_name);
+
+  RETURN_NOT_OK(proxy_->CreateNamespace(req, resp, ResetAndGetController()));
+  if (resp->has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
+  }
+  return Status::OK();
+}
+
+TEST_F(MasterTest, TestNamespaces) {
+  ListNamespacesResponsePB namespaces;
+
+  // Check default namespace.
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+
+  // Create a new namespace.
+  const std::string other_ns_name = "testns";
+  std::string other_ns_id;
+  {
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(other_ns_name, &resp));
+    other_ns_id = resp.id();
+  }
+  {
+    // Order is not important. It's defined by the internal implementation.
+    // So, the default namespace can be first (index == 0) or last (index=1).
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(2, namespaces.namespaces_size());
+
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
+
+    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
+    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+  }
+
+  // Try to create the existing namespace twice.
+  {
+    CreateNamespaceResponsePB resp;
+    const Status s = CreateNamespace(other_ns_name, &resp);
+    ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
+    ASSERT_STR_CONTAINS(s.ToString(),
+        Substitute("Namespace $0 already exists", other_ns_name));
+  }
+  {
+    // Order is not important. It's defined by the internal implementation.
+    // So, the default namespace can be first (index == 0) or last (index=1).
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(2, namespaces.namespaces_size());
+
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
+
+    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
+    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+  }
+
+  // Delete the namespace (by ID).
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_id()->set_id(other_ns_id);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+  }
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+
+  // Re-create the namespace once again.
+  {
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(other_ns_name, &resp));
+    other_ns_id = resp.id();
+  }
+  {
+    // Order is not important. It's defined by the internal implementation.
+    // So, the default namespace can be first (index == 0) or last (index=1).
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(2, namespaces.namespaces_size());
+
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
+
+    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
+    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+  }
+
+  // Delete the namespace (by NAME).
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_id()->set_name(other_ns_name);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+  }
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+
+  // Try to create the 'default' namespace.
+  {
+    CreateNamespaceResponsePB resp;
+    const Status s = CreateNamespace(kDefaultNamespaceName, &resp);
+    ASSERT_TRUE(s.IsAlreadyPresent()) << s.ToString();
+    ASSERT_STR_CONTAINS(s.ToString(),
+        Substitute("Namespace $0 already exists", kDefaultNamespaceName));
+  }
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+
+  // Try to delete the 'default' namespace - by ID.
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+
+    req.mutable_namespace_id()->set_id(kDefaultNamespaceId);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_TRUE(resp.error().code() == MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE);
+    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
+        "Cannot delete default namespace");
+  }
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+
+  // Try to delete the 'default' namespace - by NAME.
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+
+    req.mutable_namespace_id()->set_name(kDefaultNamespaceName);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_TRUE(resp.error().code() == MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE);
+    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
+        "Cannot delete default namespace");
+  }
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+}
+
 
 } // namespace master
 } // namespace yb
