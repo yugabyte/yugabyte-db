@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import LoginFormContainer from '../containers/LoginFormContainer.js';
+import LoginFormContainer from '../containers/common/forms/LoginFormContainer';
 
 class Login extends Component {
   render() {

@@ -1,0 +1,30 @@
+// Copyright (c) YugaByte, Inc.
+
+import React, { Component } from 'react';
+import {FormControl} from 'react-bootstrap';
+import {isValidObject} from '../../../../utils/ObjectUtils';
+import {YBLabel} from '../../descriptors';
+
+export default class YBInputField extends Component {
+  static defaultProps = {
+    isReadOnly: false
+  }
+
+  render() {
+    var self = this;
+    const { input, label, type, meta, className, placeHolder, onValueChanged, isReadOnly } = this.props;
+    var onChange = function(event) {
+      if(isValidObject(onValueChanged) && typeof onValueChanged === "function") {
+        onValueChanged(event.target.value);
+      }
+      self.props.input.onChange(event.target.value);
+    }
+
+    return (
+      <YBLabel label={label} meta={meta}>
+          <FormControl {...input} placeholder={placeHolder} type={type}
+                            className={className} onChange={onChange} readOnly={isReadOnly}/>
+      </YBLabel>
+    )
+  }
+}
