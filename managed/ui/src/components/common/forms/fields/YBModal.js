@@ -6,12 +6,16 @@ import YBButton from './YBButton';
 export default class YBModal extends Component {
 
   render() {
-    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel} = this.props;
+    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel, error} = this.props;
     return (
       <Modal show={visible} onHide={onHide} bsSize={size}>
         <form name={formName} onSubmit={onFormSubmit}>
           <Modal.Header closeButton>
             <Modal.Title>{title}</Modal.Title>
+            <div className={`yb-alert-item
+                ${error ? '': 'hide'}`}>
+              {error}
+            </div>
           </Modal.Header>
           <Modal.Body>
             {this.props.children}
