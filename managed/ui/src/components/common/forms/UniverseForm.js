@@ -251,7 +251,8 @@ export default class UniverseForm extends Component {
     }
     return (
            <YBModal visible={visible}
-                    onHide={hideModal} title={title} onFormSubmit={submitAction} formName={"UniverseForm"} size="large">
+                    onHide={hideModal} title={title} error={universe.error}
+                    onFormSubmit={submitAction} formName={"UniverseForm"} size="large">
              <Col lg={6}>
               <Field name="universeName" type="text" component={YBInputField} label="Universe Name"
                      onValueChanged={this.universeNameChanged} isReadOnly={isInputReadOnly}
