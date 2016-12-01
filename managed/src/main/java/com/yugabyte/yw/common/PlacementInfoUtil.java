@@ -270,11 +270,14 @@ public class PlacementInfoUtil {
 
   // Return the set of indices for cloud/region/zone in the given placementInfo based on
   // the current distribution of nodes in the zones.
-  private static LinkedHashSet<PlacementIndexes> getPlacementIndices(Collection<NodeDetails> nodeDetailsSet,
-                                                                     int numNodes,
-                                                                     PlacementInfo placementInfo) {
-    // For universe creation case, create a simple round robin list of placements.
-    if (nodeDetailsSet == null || nodeDetailsSet.isEmpty() || nodeDetailsSet.size() == numNodes) {
+  private static LinkedHashSet<PlacementIndexes> getPlacementIndices(
+      Collection<NodeDetails> nodeDetailsSet,
+      int numNodes,
+      PlacementInfo placementInfo,
+      boolean isPureExpand) {
+    // For universe creation case, edit (full copy) or edit with expand, do a simple
+    // round robin list of placements.
+    if (!isPureExpand) {
       return getBasePlacement(numNodes, placementInfo);
     }
 
@@ -313,7 +316,8 @@ public class PlacementInfoUtil {
 
     // Create the names and known properties of all the cluster nodes.
     LinkedHashSet<PlacementIndexes> indexes =
-      getPlacementIndices(taskParams.nodeDetailsSet, numNodes, placementInfo);
+      getPlacementIndices(taskParams.nodeDetailsSet, numNodes, placementInfo,
+                          numMastersToChoose == 0);
     Iterator<PlacementIndexes> iter = indexes.iterator();
     for (int nodeIdx = startIndex; nodeIdx < startIndex + numNodes; nodeIdx++) {
       PlacementIndexes index = null;
