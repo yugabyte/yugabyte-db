@@ -3,9 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 import { Marker, Popup } from 'react-leaflet';
 import { Icon }  from 'leaflet';
-import DefaultMarker from '../../stylesheets/images/marker.png';
-import ShadowMarker from '../../stylesheets/images/marker-shadow.png';
-import RootMarker from '../../stylesheets/images/rootmarker.png';
+import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIcon } from './images'
 
 export default class MapMarker extends Component {
   static propTypes = {
@@ -25,8 +23,8 @@ export default class MapMarker extends Component {
     var opts = {};
     if( type === "Default" ) {
       opts['icon'] = new Icon({
-        iconUrl: DefaultMarker,
-        shadowUrl: ShadowMarker,
+        iconUrl: DefaultMarkerIcon,
+        shadowUrl: DefaultMarkerShadowIcon,
         iconSize: [20, 27],
         popupAnchor: [10, 10],
         iconAnchor: [10, 30],
@@ -36,7 +34,7 @@ export default class MapMarker extends Component {
     else {
       var markerData = "";
       if (type === "Root") {
-        markerData = RootMarker;
+        markerData = RootMarkerIcon;
       }
       opts['icon'] = new Icon({
         iconUrl: markerData,

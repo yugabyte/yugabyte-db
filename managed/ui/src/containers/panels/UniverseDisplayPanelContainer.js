@@ -1,7 +1,8 @@
 // Copyright YugaByte Inc.
 
-import UniverseDisplayPanel from '../../components/panels/UniverseDisplayPanel.js';
 import { connect } from 'react-redux';
+
+import { UniverseDisplayPanel } from '../../components/panels';
 import {openDialog, closeDialog} from '../../actions/universe';
 
 function mapStateToProps(state) {

@@ -2,10 +2,9 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Col, Image, ListGroup, ListGroupItem} from 'react-bootstrap';
-import YBButton from '../fields/YBButton';
-import rootDataIcon from '../../stylesheets/images/rootmarker.png';
-import asyncDataIcon from '../../stylesheets/images/asyncmarker.png';
-import cacheDataIcon from '../../stylesheets/images/cachemarker.png';
+
+import { YBButton } from '../common/forms/fields';
+import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
 
 export default class YBMapLegendItem extends Component {
   render() {
@@ -13,12 +12,12 @@ export default class YBMapLegendItem extends Component {
     var btnItem = <span/>;
     var legendItemImg = "";
     if (type === "Root") {
-      legendItemImg = rootDataIcon;
+      legendItemImg = RootMarkerIcon;
       btnItem = <YBButton btnClass="btn-block bg-orange" btnText="Add"/>;
     } else if( type === "Cache") {
-      legendItemImg = asyncDataIcon;
+      legendItemImg = AsyncMarkerIcon;
     } else if (type === "Async") {
-      legendItemImg = cacheDataIcon;
+      legendItemImg = CacheMarkerIcon;
     }
     return (
       <div>

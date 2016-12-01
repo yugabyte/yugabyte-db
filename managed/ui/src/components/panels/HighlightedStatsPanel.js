@@ -2,10 +2,11 @@
 
 import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
-import DescriptionItem from '../DescriptionItem';
-import {isValidArray} from '../../utils/ObjectUtils';
 import {FormattedNumber} from 'react-intl';
 import moment from 'moment';
+
+import { DescriptionItem } from '../common/descriptors';
+import { isValidArray } from '../../utils/ObjectUtils';
 
 class StatsPanelComponent extends Component {
   render() {

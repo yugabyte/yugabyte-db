@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import UniverseDetailContainer from '../containers/UniverseDetailContainer';
+
+import { UniverseDetailContainer } from '../containers/universes';
 import Universes from './Universes';
 
 class UniverseDetail extends Component {
