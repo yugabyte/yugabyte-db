@@ -1,0 +1,57 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.universe-name-cell {
+    font-size: 2em;
+    color: #CD6500 !important;
+}
+
+.universe-item-cell {
+    font-size: 1.3em;
+}
+
+.universe-button {
+    margin-top: 18px;
+    width:60px;
+}
+
+.universe-table-status-cell .yb-progress-bar-container {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.universe-table-status-cell .yb-progress-bar-container  .yb-left .progress {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.universe-table-status-cell .progress-list  {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.universe-table-status-cell .progress-list .progress-list-item {
+    margin-top: 1px;
+    margin-bottom: 1px;
+    padding: 0px;
+}
+
+.detail-column {
+    width:700px ;
+}
+
+.status-column {
+    width: 300px;
+}
+
+.show-data {
+    margin-left: 0 !important;
+    margin-right: 0;
+}
+
+.detail-item-cell {
+    border-right:1px solid grey;
+    height: 70px ;
+}

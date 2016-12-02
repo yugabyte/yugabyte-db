@@ -1,0 +1,34 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.graph-filter-custom {
+  display: inline-block;
+}
+
+.graph-filter-custom .hidden {
+  display: none;
+}
+.graph-filter-custom div.rw-datetimepicker {
+    display: inline-block;
+}
+
+.graph-filter-custom .btn {
+    margin-bottom: 0px;
+}
+
+.graph-panel-container {
+    margin-top: 4px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+}
+
+.graph-panel {
+    margin: 0 20px;
+}
+
+.graph-panel .js-plotly-plot {
+  display: inline-block;
+}
+
+.graph-panel .x_title {
+  margin: 10px 20px;
+}

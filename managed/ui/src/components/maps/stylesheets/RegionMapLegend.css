@@ -1,0 +1,28 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.region-map-legend-container .checkbox-inline{
+    float: right;
+}
+
+.region-map-legend-container span {
+    margin-bottom: 4px;
+    padding: 4px;
+}
+
+.region-map-legend-container small {
+    color: #CD6500;
+}
+
+.region-map-legend-container .list-group-item {
+    padding: 5px 5px;
+    background-color: transparent;
+    margin-bottom: 2px;
+    border: none;
+}
+
+.map-legend-container .list-group-item{
+    padding: 5px 5px;
+    background-color: #545454;
+    margin-bottom: 2px;
+    color: white;
+}

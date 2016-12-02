@@ -7,6 +7,7 @@ import { Row, Col, Checkbox } from 'react-bootstrap';
 import { isValidObject } from '../../utils/ObjectUtils';
 import { YBCost, DescriptionItem } from '../common/descriptors';
 import { UniverseFormContainer } from '../../containers/common/forms';
+import './stylesheets/UniverseDisplayPanel.css'
 
 class CreateUniverseButtonComponent extends Component {
   render() {
@@ -32,8 +33,7 @@ class UniverseDisplayItem extends Component {
     var replicationFactor = <span>{`${universeDetailItem.universeDetails.userIntent.replicationFactor}x`}</span>
     var numNodes = <span>{universeDetailItem.universeDetails.userIntent.replicationFactor}</span>
     if (isValidObject(universeDetailItem.pricePerHour)) {
-      costPerMonth = <YBCost value={universeDetailItem.pricePerHour}
-                                      multiplier={"month"}/>
+      costPerMonth = <YBCost value={universeDetailItem.pricePerHour} multiplier={"month"}/>
     }
     return (
       <Col lg={2} className="universe-display-item-container">

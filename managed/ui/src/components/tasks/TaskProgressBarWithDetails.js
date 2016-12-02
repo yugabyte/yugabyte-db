@@ -5,6 +5,8 @@ import { ProgressBar } from 'react-bootstrap';
 import { ProgressList } from '../common/indicators';
 import { Row, Col } from 'react-bootstrap';
 
+import './stylesheets/TaskProgressBarWithDetails.css'
+
 export default class TaskProgressBarWithDetails extends Component {
   static propTypes = {
     progressData: PropTypes.object.isRequired

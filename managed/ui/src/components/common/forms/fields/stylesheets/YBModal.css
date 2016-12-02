@@ -1,0 +1,6 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.yb-alert-item {
+    color: red;
+    font-size: 12px;
+}

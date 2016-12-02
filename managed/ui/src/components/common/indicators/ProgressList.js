@@ -4,6 +4,8 @@ import React, { Component, PropTypes } from 'react'
 import { ListGroup, ListGroupItem } from 'react-bootstrap'
 import 'react-fa'
 
+import './stylesheets/ProgressList.css'
+
 export default class ProgressList extends Component {
   static propTypes = {
     items: PropTypes.array.isRequired
@@ -32,7 +34,7 @@ export default class ProgressList extends Component {
           <i className={iconType}></i>{item.name}
         </ListGroupItem>);
     }, this);
-    
+
     return (
       <ListGroup bsClass="progress-list">
         { listItems }

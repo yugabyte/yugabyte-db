@@ -6,7 +6,8 @@ import { MenuItem , NavDropdown, Navbar, Nav, Image } from 'react-bootstrap';
 import { Link } from 'react-router';
 
 import { TaskAlertsContainer } from '../../containers/tasks';
-import img from './images/small-logo.png';
+import logo from './images/small-logo.png';
+import './stylesheets/TopNavBar.css'
 
 export default class TopNavBar extends Component {
 	constructor(props) {
@@ -24,7 +25,7 @@ export default class TopNavBar extends Component {
 			<Navbar fixedTop>
 				<Navbar.Header>
 					<Link to="/" className="col-md-3 left_col">
-						<Image src={img} className="yb-logo-img" />
+						<Image src={logo} className="yb-logo-img" />
 					</Link>
 				</Navbar.Header>
 				<Nav pullRight>

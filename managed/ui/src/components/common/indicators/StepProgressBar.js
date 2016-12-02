@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import './stylesheets/StepProgressBar.css'
 
 export default class StepProgressBar extends Component {
   render() {
