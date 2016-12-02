@@ -26,8 +26,8 @@ class YBMapLegend extends Component {
     return (
       <div className="map-legend-container">
         <YBMapLegendItem regions={rootRegions} title={"Root Data"} type="Root"/>
-        <YBMapLegendItem regions={asyncRegions} title="Async Data Replication" type="Async"/>
-        <YBMapLegendItem regions={cacheRegions} title="Cache Data" type="Cache"/>
+        <YBMapLegendItem regions={asyncRegions} title={"Async Replica"} type="Async"/>
+        <YBMapLegendItem regions={cacheRegions} title={"Remote Cache"} type="Cache"/>
       </div>
     )
   }
@@ -68,14 +68,15 @@ export default class UniverseDetail extends Component {
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
-        <Col lg={8} style={{padding: 0}}>
-          <ConnectStringPanel universeId={currentUniverse.universeUUID}
-                              customerId={localStorage.getItem("customer_id")} />
-        </Col>
-        <Col lg={4}>
+        <Col lg={4} style={{padding: 0}}>
           <UniverseInfoPanel universeInfo={currentUniverse} />
         </Col>
-        <YBPanelItem name={"Region Placement"}>
+        <Col lg={8}>
+          <ConnectStringPanel universeId={currentUniverse.universeUUID}
+                              customerId={localStorage.getItem("customer_id")}
+                              universeInfo={currentUniverse} />
+        </Col>
+        <YBPanelItem name={"Placement Policy"}>
           <Col lg={4}>
             <YBMapLegend regions={currentUniverse.regions}/>
           </Col>
