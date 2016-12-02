@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <thread>
 
 #include "cpp_redis/redis_client.hpp"
 #include "cpp_redis/reply.hpp"
@@ -218,6 +220,59 @@ TEST_F(TestRedisService, TestUsingOpenSourceClient) {
   // sync_commit() waits until all responses are received.
   client.sync_commit();
   ASSERT_EQ(4, callbacks_called);
+}
+
+// This test also uses the open source client
+TEST_F(TestRedisService, TestTtl) {
+  RedisClient client;
+  std::atomic_int callbacks_called(0);
+
+  client.connect("127.0.0.1", server_port(), [] (RedisClient&) {
+    LOG(ERROR) << "client disconnected (disconnection handler)" << std::endl;
+  });
+
+  client.send({"SET", "k1", "v1"}, [&callbacks_called] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
+    callbacks_called++;
+    ASSERT_EQ("OK", reply.as_string());
+  });
+
+  client.send({"SET", "k2", "v2", "EX", "1"}, [&callbacks_called] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
+    callbacks_called++;
+    ASSERT_EQ("OK", reply.as_string());
+  });
+  client.send({"SET", "k3", "v3", "EX", "1000"}, [&callbacks_called] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
+    callbacks_called++;
+    ASSERT_EQ("OK", reply.as_string());
+  });
+
+  // Commands are pipelined and only sent when client.commit() is called.
+  // sync_commit() waits until all responses are received.
+  client.sync_commit();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  client.send({"GET", "k1"}, [&callbacks_called] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
+    callbacks_called++;
+    ASSERT_EQ("v1", reply.as_string());
+  });
+  client.send({"GET", "k2"}, [&callbacks_called] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
+    callbacks_called++;
+    ASSERT_TRUE(reply.is_null());
+  });
+  client.send({"GET", "k3"}, [&callbacks_called] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
+    callbacks_called++;
+    ASSERT_EQ("v3", reply.as_string());
+  });
+
+  // Commands are pipelined and only sent when client.commit() is called.
+  // sync_commit() waits until all responses are received.
+  client.sync_commit();
+  ASSERT_EQ(6, callbacks_called);
 }
 
 }  // namespace redisserver

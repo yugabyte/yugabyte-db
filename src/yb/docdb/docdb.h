@@ -12,6 +12,7 @@
 #include "rocksdb/db.h"
 
 #include "yb/common/timestamp.h"
+#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
@@ -21,7 +22,6 @@
 #include "yb/docdb/value.h"
 #include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
-#include "yb/common/redis_protocol.pb.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
 // <document_key> <timestamp> -> <doc_type>
@@ -105,56 +105,6 @@ class DocWriteBatch {
 
 // Currently DocWriteOperation is just one upsert (or delete) of a value at some DocPath.
 // In future we will make more complicated DocWriteOperations for redis.
-
-class DocOperation {
- public:
-  virtual ~DocOperation() {}
-
-  virtual DocPath DocPathToLock() const = 0;
-  virtual Status Apply(DocWriteBatch* doc_write_batch) = 0;
-};
-
-class YSQLWriteOperation : public DocOperation {
- public:
-  YSQLWriteOperation(DocPath doc_path, PrimitiveValue value) : doc_path_(doc_path), value_(value) {
-  }
-
-  DocPath DocPathToLock() const override;
-
-  Status Apply(DocWriteBatch* doc_write_batch) override;
-
- private:
-  DocPath doc_path_;
-  PrimitiveValue value_;
-};
-
-class RedisWriteOperation : public DocOperation {
- public:
-  explicit RedisWriteOperation(yb::RedisWriteRequestPB request) : request_(request), response_() {}
-
-  Status Apply(DocWriteBatch* doc_write_batch) override;
-
-  DocPath DocPathToLock() const override;
-
-  const RedisResponsePB& response();
-
- private:
-  RedisWriteRequestPB request_;
-  RedisResponsePB response_;
-};
-
-class RedisReadOperation {
- public:
-  explicit RedisReadOperation(yb::RedisReadRequestPB request) : request_(request) {}
-
-  Status Execute(rocksdb::DB *rocksdb, Timestamp timestamp);
-
-  const RedisResponsePB& response();
-
- private:
-  RedisReadRequestPB request_;
-  RedisResponsePB response_;
-};
 
 
 // This function starts the transaction by taking locks, reading from rocksdb,

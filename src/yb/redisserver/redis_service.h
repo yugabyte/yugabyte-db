@@ -73,6 +73,8 @@ class RedisServiceImpl : public RedisServerServiceIf {
   void PopulateHandlers();
   RedisCommandFunctionPtr FetchHandler(const std::vector<Slice>& cmd_args);
   void SetUpYBClient(string yb_master_address);
+  void RespondWithFailure(
+      const string& error, yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
 
   // Redis command table, for commands that we currently support.
   //

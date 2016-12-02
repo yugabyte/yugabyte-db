@@ -9,6 +9,8 @@
 namespace yb {
 namespace rpc {
 
+const char kNilResponse[] = "$-1\r\n";
+
 // Encode the given input string as a integer string (eg "123"). Integer(s) are formatted as
 // :<Integer>\r\n
 // For more info: http://redis.io/topics/protocol

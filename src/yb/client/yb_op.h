@@ -144,7 +144,12 @@ class YB_EXPORT YBRedisReadOp : public YBOperation {
 
   RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
 
-  const RedisResponsePB& response() { return *redis_response_; }
+  bool has_response() { return redis_response_ ? true : false; }
+
+  const RedisResponsePB& response() {
+    DCHECK(redis_response_) << "Trying to access response, which has not been set";
+    return *redis_response_;
+  }
 
   RedisResponsePB* mutable_response();
 

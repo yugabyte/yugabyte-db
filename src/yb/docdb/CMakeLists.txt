@@ -15,6 +15,7 @@ ADD_EXPORTABLE_LIBRARY(docdb_proto
 set(DOCDB_SRCS
     doc_key.cc
     doc_kv_util.cc
+    doc_operation.cc
     doc_rowwise_iterator.cc
     doc_write_batch_cache.cc
     docdb.cc

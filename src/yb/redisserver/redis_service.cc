@@ -246,11 +246,41 @@ void SetCommandCb::Run(const Status& status) {
   delete this;
 }
 
+constexpr int64_t kMaxTTlSec = std::numeric_limits<int64_t >::max() / 1000000;
+
 void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
   auto tmp_session = client_->NewSession();
+
+  // If args don't match, then we assume there's one EX field set.
+  // TODO: Cover more cases for various options when supported.
+  if (c->cmd_args.size() != 3 && c->cmd_args.size() != 5) {
+    LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has wrong number of arguments.";
+    RespondWithFailure("Wrong number of arguments.", call, c);
+  }
+  if (c->cmd_args.size() == 5) {
+    if (c->cmd_args[3].ToString() != "EX") {
+      LOG(ERROR) << "Requested command is expected to have 'EX' as 4th argument, found: "
+                 << c->cmd_args[3].ToString() << ".";
+      RespondWithFailure("Invalid arguments.", call, c);
+    }
+    const string ttl = c->cmd_args[4].ToString();
+    try {
+      const int64_t val = std::stoll(ttl);
+      if (val <= 0 || val > kMaxTTlSec) {
+        throw new std::out_of_range("TTL value should be positive and less than " + kMaxTTlSec);
+      }
+    } catch (std::invalid_argument e) {
+      LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has non-numeric TTL: " << ttl;
+      RespondWithFailure("Unable to parse TTL as a valid number: " + ttl, call, c);
+    } catch (std::out_of_range e) {
+      LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has out of range TTL: " << ttl;
+      RespondWithFailure("TTL is out of bounds: " + ttl, call, c);
+    }
+  }
+
   CHECK_OK(tmp_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   CHECK_OK(tmp_session->Apply(
-      RedisWriteOpForSetKV(table_.get(), c->cmd_args[1].ToString(), c->cmd_args[2].ToString())));
+      RedisWriteOpForSetKV(table_.get(), c->cmd_args)));
   // Callback will delete itself, after processing the callback.
   tmp_session->FlushAsync(new SetCommandCb(tmp_session, call, metrics_["set"]));
 }
@@ -270,6 +300,22 @@ void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {
   RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_["dummy"]);
   context->RespondSuccess();
   DVLOG(4) << "Done Responding.";
+}
+
+void RedisServiceImpl::RespondWithFailure(
+    const string& error, InboundCall* call, RedisClientCommand* c) {
+  // process the request
+  DVLOG(4) << " Processing request from client ";
+  int size = c->cmd_args.size();
+  for (int i = 0; i < size; i++) {
+    DVLOG(4) << i + 1 << " / " << size << " : " << c->cmd_args[i].ToDebugString(8);
+  }
+
+  // Send the result.
+  DVLOG(4) << "Responding to call " << call->ToString() << " with failure " << error;
+  RpcContext* context = new RpcContext(call, nullptr, nullptr, metrics_[0]);
+  context->RespondFailure(STATUS(
+      RuntimeError, StringPrintf("%s : %s", error.c_str(), c->cmd_args[0].ToString().c_str())));
 }
 
 }  // namespace redisserver

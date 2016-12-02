@@ -203,6 +203,7 @@ void AsyncRpc::SendRpcCb(const Status& status) {
                    ops_.size(), tablet_->tablet_id(),
                    current_ts_string, num_attempts()));
     LOG(WARNING) << new_status.ToString();
+    MarkOpsAsFailed();
   }
   ProcessResponseFromTserver(new_status);
   batcher_->RemoveInFlightOps(ops_);
@@ -220,6 +221,14 @@ void AsyncRpc::InitTSProxyCb(const Status& status) {
   VLOG(2) << "Tablet " << tablet_->tablet_id() << ": Writing batch to replica "
           << current_ts_->ToString();
   SendRpcToTserver();
+}
+
+void AsyncRpc::MarkOpsAsFailed() {
+  for (int i = 0; i < ops_.size(); i++) {
+    RedisResponsePB r = RedisResponsePB();
+    r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
+  }
 }
 
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
@@ -352,6 +361,7 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
   size_t n = ops_.size();
   if (resp_.redis_batch().size() != n) {
     batcher_->AddOpCountMismatchError();
+    MarkOpsAsFailed();
     return;
   }
   for (int i = 0; i < n; i++) {

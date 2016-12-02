@@ -66,6 +66,8 @@ class AsyncRpc : public rpc::Rpc {
   // stored in batcher. If there's a callback from the user, it is done in this step.
   virtual void ProcessResponseFromTserver(Status status) = 0;
 
+  void MarkOpsAsFailed();
+
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
   scoped_refptr<Batcher> batcher_;
@@ -140,4 +142,4 @@ class ReadRpc : public AsyncRpc {
 }  // namespace client
 }  // namespace yb
 
-#endif  // YB_CLIENT_ASYNC_RPC_H
+#endif  // YB_CLIENT_ASYNC_RPC_H_

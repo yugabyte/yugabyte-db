@@ -211,6 +211,11 @@ message RedisResponsePB {
     UNKNOWN_COMMAND = 3;
     WRONG_TYPE = 4;
     NOT_FOUND = 5;
+    // This code is set in the client to mark commands for which no response was received.
+    // This happens when the batch RPC fails somewhere and the individual requests don't
+    // get processed.
+    SERVER_ERROR = 6;
+    // TODO: have different error types and/or message strings.
   }
 
   optional RedisStatusCode code = 1;

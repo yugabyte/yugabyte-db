@@ -318,11 +318,23 @@ Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
     return Status::OK();
   }
 
+  const RedisResponsePB& redis_response = static_cast<const RedisResponsePB&>(response);
+
+  if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
+    const ErrorStatusPB& error_status = ErrorStatusPB();
+    response_msg_buf_.append(EncodeAsError("Request was unable to be processed from server."));
+    return Status::OK();
+  }
+
   // TODO(Amit): As and when we implement get/set and its h* equivalents, we would have to
   // handle arrays, hashes etc. For now, we only support the string response.
-  const RedisResponsePB& redis_response = static_cast<const RedisResponsePB&>(response);
-  CHECK(redis_response.has_string_response()) << "We only support string_response as of now.";
-  response_msg_buf_.append(EncodeAsSimpleString(redis_response.string_response()));
+
+  if (redis_response.code() == RedisResponsePB_RedisStatusCode_NOT_FOUND) {
+    response_msg_buf_.append(kNilResponse);
+  } else {
+    CHECK(redis_response.has_string_response()) << "We only support string_response as of now.";
+    response_msg_buf_.append(EncodeAsSimpleString(redis_response.string_response()));
+  }
   return Status::OK();
 }
 
