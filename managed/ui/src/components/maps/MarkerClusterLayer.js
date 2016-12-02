@@ -5,6 +5,8 @@ import { MapLayer } from 'react-leaflet';
 require('leaflet.markercluster');
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 
+import './stylesheets/MarkerClusterLayer.css'
+
 export default class MarkerClusterLayer extends MapLayer {
   componentWillMount() {
     super.componentWillMount();

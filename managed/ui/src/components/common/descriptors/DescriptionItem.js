@@ -2,6 +2,8 @@
 
 import React, { Component, PropTypes } from 'react';
 
+import './stylesheets/DescriptionList.css'
+
 export default class DescriptionItem extends Component {
 
   static propTypes = {

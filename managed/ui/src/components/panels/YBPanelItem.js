@@ -2,6 +2,8 @@
 
 import React, { Component } from 'react';
 
+import './stylesheets/YBPanelItem.css'
+
 export default class YBPanelItem extends Component {
 
   render() {

@@ -11,6 +11,7 @@ import { isValidArray, isValidObject } from '../../utils/ObjectUtils';
 import universelogo from './images/universe_icon.png';
 import { DescriptionItem, DescriptionList } from '../common/descriptors';
 import { TaskProgressContainer } from '../../containers/tasks';
+import './stylesheets/UniverseTable.css'
 
 class StatusStringCell extends Component {
  render() {

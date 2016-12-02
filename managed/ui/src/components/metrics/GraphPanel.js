@@ -3,6 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 
 import { MetricsPanelContainer, GraphPanelHeaderContainer } from '../../containers/metrics'
+import './stylesheets/GraphPanel.css'
 
 export default class GraphPanel extends Component {
   static propTypes = {

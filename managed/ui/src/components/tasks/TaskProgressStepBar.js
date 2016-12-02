@@ -3,6 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 import { StepProgressBar } from '../common/indicators';
 import { YBPanelItem } from '../panels';
+import './stylesheets/TaskProgressStepBar.css'
 
 export default class TaskProgressStepBar extends Component {
   static propTypes = {

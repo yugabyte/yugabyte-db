@@ -5,6 +5,8 @@ import { ListGroup, ListGroupItem} from 'react-bootstrap';
 import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
 import moment from 'moment';
 
+import './stylesheets/TaskAlerts.css'
+
 class ShowMoreString extends Component {
   render() {
     const {count} = this.props;

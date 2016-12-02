@@ -1,0 +1,12 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.universe-table-header {
+    margin-top: 1%;
+    margin-left: 1%;
+}
+
+.universe-table-header-action .universe-button {
+    width: auto;
+    font-size: 14px;
+    padding: 6px 12px;
+}

@@ -1,10 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { FormattedDate, FormattedNumber } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+
 import { isValidObject } from '../../utils/ObjectUtils';
 import { YBPanelItem } from '../panels';
-import { FormattedDate, FormattedNumber } from 'react-intl';
+import './stylesheets/AlertsList.css'
 
 export default class AlertsList extends Component {
 
@@ -50,7 +52,6 @@ export default class AlertsList extends Component {
       });
     }
 
-    const tableBodyStyle = "alerts-table-body-container";
     const selectRowProp = {
       bgColor: "rgb(211,211,211)"
     };
@@ -58,7 +59,7 @@ export default class AlertsList extends Component {
         <div id="page-wrapper" className="dashboard-widget-container">
         <YBPanelItem name="Task Alerts">
           <BootstrapTable data={alertsDisplay} selectRow={selectRowProp}
-                          trClassName="data-table-row" bodyStyle={tableBodyStyle}
+                          trClassName="data-table-row" bodyStyle="alerts-table-body-container"
                           pagination={true}>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
             <TableHeaderColumn dataField="title"

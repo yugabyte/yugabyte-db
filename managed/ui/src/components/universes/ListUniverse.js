@@ -7,6 +7,7 @@ import { YBPanelItem } from '../panels';
 import { YBButton } from '../common/forms/fields';
 import { UniverseFormContainer } from '../../containers/common/forms';
 import { UniverseTableContainer } from '../../containers/universes';
+import './stylesheets/ListUniverse.css'
 
 export default class ListUniverse extends Component {
 
@@ -24,7 +25,7 @@ export default class ListUniverse extends Component {
                            btnText="Create Universe" btnIcon="fa fa-pencil"
                            onClick={this.props.showUniverseModal} />
             <UniverseFormContainer type="Create"
-                                   visible={showModal===true && visibleModal==="universeModal"}
+                                   visible={showModal === true && visibleModal === "universeModal"}
                                    onHide={this.props.closeUniverseModal} title="Create Universe" />
           </Col>
         </Row>

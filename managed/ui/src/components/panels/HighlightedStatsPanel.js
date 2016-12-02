@@ -7,6 +7,7 @@ import moment from 'moment';
 
 import { DescriptionItem } from '../common/descriptors';
 import { isValidArray } from '../../utils/ObjectUtils';
+import './stylesheets/HighlightedStatsPanel.css'
 
 class StatsPanelComponent extends Component {
   render() {

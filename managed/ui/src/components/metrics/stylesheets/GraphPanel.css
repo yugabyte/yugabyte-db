@@ -1,0 +1,20 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.graph-panel-container {
+    margin-top: 4px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+}
+
+.graph-panel {
+    margin: 0 20px;
+}
+
+.graph-panel .js-plotly-plot {
+  display: inline-block;
+}
+
+.graph-panel-grid div.dropdown {
+    float: right;
+    margin-top: -7px;
+}
