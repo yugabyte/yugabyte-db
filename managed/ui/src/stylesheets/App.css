@@ -655,6 +655,10 @@ input[type="radio"] {
     cursor: pointer;
 }
 
+.progress-bar-container {
+    min-height: 200px;
+}
+
 .task-alerts-list-container {
     margin-top: 8px;
 }
