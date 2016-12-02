@@ -97,7 +97,7 @@ export default class UniverseDetail extends Component {
     if (universeTaskUUIDs.length > 0) {
       tabElements.push(
          <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
-          <TaskProgressContainer taskUUIDs={universeTaskUUIDs} />
+          <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>
         </Tab>)
     }
     return (
@@ -146,11 +146,8 @@ export default class UniverseDetail extends Component {
           <RollingUpgradeFormContainer modalVisible={showModal === true &&
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
                                onHide={this.props.closeModal} />
-
-
           <DeleteUniverseContainer visible={showModal===true && visibleModal==="deleteUniverseModal"}
                                        onHide={this.props.closeModal} title="Delete Universe"/>
-
         </Row>
         <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
           { tabElements }

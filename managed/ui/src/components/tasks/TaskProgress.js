@@ -1,9 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import TaskProgressWidget from './TaskProgressWidget';
-import TaskProgressBar from './TaskProgressBar';
-import TaskProgressBarWithDetails from './TaskProgressBarWithDetails';
+import { TaskProgressBar, TaskProgressWidget, TaskProgressBarWithDetails, TaskProgressStepBar  } from '.';
 
 export default class TaskProgress extends Component {
   static contextTypes = {
@@ -12,7 +10,7 @@ export default class TaskProgress extends Component {
 
   static propTypes = {
     taskUUIDs: PropTypes.array,
-    type: PropTypes.oneOf(['Bar', 'Widget', 'BarWithDetails'])
+    type: PropTypes.oneOf(['Bar', 'Widget', 'BarWithDetails', 'StepBar'])
   }
 
   static defaultProps = {
@@ -43,12 +41,15 @@ export default class TaskProgress extends Component {
       // TODO: Better handle/display the success/failure case
       return <span />;
     }
-    
+
     if ( type === "Widget" ) {
       return <TaskProgressWidget progressData={taskProgressData} />;
     } else if( type === "BarWithDetails" ) {
       return <TaskProgressBarWithDetails progressData={taskProgressData} currentOperation={currentOperation}/>
-    } else {
+    } else if (type === "StepBar") {
+      return <TaskProgressStepBar progressData={taskProgressData}/>
+    }
+    else {
       return <TaskProgressBar progressData={taskProgressData} />;
     }
   }
