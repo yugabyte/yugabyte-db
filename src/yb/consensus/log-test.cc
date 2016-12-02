@@ -189,7 +189,7 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
 // This also tests SyncDir() (see KUDU-261), which is called whenever
 // a new log segment is initialized.
 TEST_F(LogTest, TestFsync) {
-  options_.force_fsync_all = true;
+  options_.durable_wal_write = true;
   BuildLog();
 
   OpId opid;

@@ -26,14 +26,21 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/util/alignment.h"
+#include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/malloc.h"
 #include "yb/util/memenv/memenv.h"
+#include "yb/util/random.h"
+#include "yb/util/random_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+
+
+DECLARE_int32(o_direct_block_size_bytes);
 
 #if !defined(__APPLE__)
 #include <linux/falloc.h>
@@ -55,7 +62,7 @@ using std::vector;
 
 static const uint64_t kOneMb = 1024 * 1024;
 
-class TestEnv : public YBTest {
+class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
  public:
   virtual void SetUp() OVERRIDE {
     YBTest::SetUp();
@@ -102,6 +109,19 @@ class TestEnv : public YBTest {
       size_t file_offset = offset + i;
       ASSERT_EQ((file_offset * 31) & 0xff, read_data[i]) << "failed at " << i;
     }
+  }
+
+  void VerifyChecksumsMatch(const string file_path, size_t file_size, uint64_t expected_checksum,
+                            const crc::Crc* crc32c) {
+    shared_ptr<RandomAccessFile> raf;
+    ASSERT_OK(env_util::OpenFileForRandom(env_.get(), file_path, &raf));
+    Slice slice;
+    gscoped_ptr<uint8_t[]> scratch(new uint8_t[file_size]);
+    ASSERT_OK(env_util::ReadFully(raf.get(), 0, file_size, &slice, scratch.get()));
+    ASSERT_EQ(file_size, slice.size());
+    uint64_t file_checksum = 0;
+    crc32c->Compute(slice.data(), slice.size(), &file_checksum);
+    ASSERT_EQ(file_checksum, expected_checksum) << "File checksum didn't match expected checksum";
   }
 
   void MakeVectors(int num_slices, int slice_size, int num_iterations,
@@ -192,6 +212,69 @@ class TestEnv : public YBTest {
     }
   }
 
+  void TestAppendRandomData(bool pre_allocate, const WritableFileOptions& opts) {
+    const string kTestPath = GetTestPath("test_env_append_random_read_append");
+    const uint64_t kMaxFileSize = 64 * 1024 * 1024;
+    shared_ptr<WritableFile> file;
+    ASSERT_OK(env_util::OpenFileForWrite(opts, env_.get(), kTestPath, &file));
+
+    if (pre_allocate) {
+      ASSERT_OK(file->PreAllocate(kMaxFileSize));
+      ASSERT_OK(file->Sync());
+    }
+
+    Random rnd(SeedRandom());
+
+    size_t total_size = 0;
+    const int kBufSize = (IOV_MAX + 10) * FLAGS_o_direct_block_size_bytes;
+    char buf[kBufSize];
+    crc::Crc* crc32c = crc::GetCrc32cInstance();
+    uint64_t actual_checksum = 0;
+
+    while (true) {
+      auto i = rnd.Uniform(10);
+      size_t slice_size;
+      if (i < 4) {
+        // 40% of the time pick a size between 1 and FLAGS_o_direct_block_size_bytes.
+        slice_size = rnd.Uniform(FLAGS_o_direct_block_size_bytes) + 1;
+      } else if (i >= 4 && i < 8) {
+        // 40% of the time pick a size between block_size and 10*FLAGS_o_direct_block_size_bytes
+        // that is a multiple of FLAGS_o_direct_block_size_bytes.
+        slice_size = (rnd.Uniform(10) + 1) * FLAGS_o_direct_block_size_bytes;
+      } else if (i == 8) {
+        // 10% of the time pick a size greater than the IOV_MAX * FLAGS_o_direct_block_size_bytes.
+        slice_size = IOV_MAX * FLAGS_o_direct_block_size_bytes +
+            rnd.Uniform(10 * FLAGS_o_direct_block_size_bytes);
+      } else {
+        // 10% of the time pick a size such that the file size after writing this slice is a
+        // multiple of FLAGS_o_direct_block_size_bytes.
+        auto bytes_needed = YB_ALIGN_UP(total_size, FLAGS_o_direct_block_size_bytes) - total_size;
+        slice_size = FLAGS_o_direct_block_size_bytes + bytes_needed;
+      }
+      if (total_size + slice_size > kMaxFileSize) {
+        break;
+      }
+      total_size += slice_size;
+
+      RandomString(buf, slice_size, &rnd);
+      auto slice = Slice(buf, slice_size);
+      ASSERT_OK(file->Append(slice));
+      ASSERT_EQ(total_size, file->Size());
+
+      // Compute a rolling checksum over the two byte arrays (size, body).
+      crc32c->Compute(slice.data(), slice.size(), &actual_checksum);
+
+      if (rnd.Uniform(5) == 0) {
+        ASSERT_OK(file->Sync());
+        ASSERT_EQ(total_size, file->Size());
+      }
+    }
+
+    // Verify the entire file
+    ASSERT_OK(file->Close());
+    ASSERT_NO_FATAL_FAILURE(VerifyChecksumsMatch(kTestPath, total_size, actual_checksum, crc32c));
+  }
+
   static bool fallocate_supported_;
   static bool fallocate_punch_hole_supported_;
 };
@@ -199,7 +282,7 @@ class TestEnv : public YBTest {
 bool TestEnv::fallocate_supported_ = false;
 bool TestEnv::fallocate_punch_hole_supported_ = false;
 
-TEST_F(TestEnv, TestPreallocate) {
+TEST_P(TestEnv, TestPreallocate) {
   if (!fallocate_supported_) {
     LOG(INFO) << "fallocate not supported, skipping test";
     return;
@@ -207,7 +290,9 @@ TEST_F(TestEnv, TestPreallocate) {
   LOG(INFO) << "Testing PreAllocate()";
   string test_path = GetTestPath("test_env_wf");
   shared_ptr<WritableFile> file;
-  ASSERT_OK(env_util::OpenFileForWrite(WritableFileOptions(),
+  WritableFileOptions opts;
+  opts.o_direct = GetParam();
+  ASSERT_OK(env_util::OpenFileForWrite(opts,
                                        env_.get(), test_path, &file));
 
   // pre-allocate 1 MB
@@ -381,8 +466,6 @@ static void WriteTestFile(Env* env, const string& path, size_t size) {
   ASSERT_OK(wf->Close());
 }
 
-
-
 TEST_F(TestEnv, TestReadFully) {
   SeedRandom();
   const string kTestPath = "test";
@@ -417,8 +500,9 @@ TEST_F(TestEnv, TestReadFully) {
   ASSERT_STR_CONTAINS(status.ToString(), "EOF");
 }
 
-TEST_F(TestEnv, TestAppendVector) {
+TEST_P(TestEnv, TestAppendVector) {
   WritableFileOptions opts;
+  opts.o_direct = GetParam();
   LOG(INFO) << "Testing AppendVector() only, NO pre-allocation";
   ASSERT_NO_FATAL_FAILURE(TestAppendVector(2000, 1024, 5, true, false, opts));
 
@@ -430,6 +514,13 @@ TEST_F(TestEnv, TestAppendVector) {
     LOG(INFO) << "Testing AppendVector() together with Append() and Read(), WITH pre-allocation";
     ASSERT_NO_FATAL_FAILURE(TestAppendVector(128, 4096, 5, false, true, opts));
   }
+}
+
+TEST_F(TestEnv, TestRandomData) {
+  WritableFileOptions opts;
+  opts.o_direct = true;
+  LOG(INFO) << "Testing Append() with random data and requests of random sizes";
+  ASSERT_NO_FATAL_FAILURE(TestAppendRandomData(true, opts));
 }
 
 TEST_F(TestEnv, TestGetExecutablePath) {
@@ -701,5 +792,8 @@ TEST_F(TestEnv, TestCopyFile) {
   ASSERT_OK(env->NewRandomAccessFile(copy_path, &copy));
   NO_FATALS(ReadAndVerifyTestData(copy.get(), 0, kFileSize));
 }
+
+INSTANTIATE_TEST_CASE_P(BufferedIO, TestEnv, ::testing::Values(false));
+INSTANTIATE_TEST_CASE_P(DirectIO, TestEnv, ::testing::Values(true));
 
 }  // namespace yb

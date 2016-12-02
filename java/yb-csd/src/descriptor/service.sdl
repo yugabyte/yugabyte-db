@@ -133,9 +133,9 @@
           "pathType" : "localDataDir"
         },
         {
-          "name" : "log_force_fsync_all",
-          "label" : "Kudu Master WAL Fsyncs All Entries",
-          "description" : "If true, the Master will use the fsync system call to ensure that all modifications to the catalog table are durably written to disk. WARNING: In this release, enabling this option can cause serious issues.",
+          "name" : "durable_wal_write",
+          "label" : "Make writes to yb-master WAL durable",
+          "description" : "If true, the Master will open the log file in O_DIRECT mode to ensure that all modifications to the catalog table are durably written to disk.",
           "required" : "true",
           "default" : "false",
           "type" : "boolean"
@@ -252,9 +252,9 @@
           "default" : 512
         },
         {
-          "name" : "log_force_fsync_all",
-          "label" : "Kudu Tablet Server WAL Fsyncs All Entries",
-          "description" : "If true, the Tablet Server will use the fsync system call to ensure that all writes are durably written to to the write-ahead log (WAL) before responding. If false, edits will be written to the Linux buffer cache on a majority of replicas before responding.",
+          "name" : "durable_wal_write",
+          "label" : "Make writes to yb-tserver WAL durable",
+          "description" : "If true, the Tablet Server will open a file in O_DIRECT mode to ensure that all writes are durably written to to the write-ahead log (WAL) before responding. If false, a file will be open in buffered mode (non O_DIRECT mode) and edits will be written to the Linux buffer cache on a majority of replicas before responding.",
           "required" : "true",
           "type" : "boolean",
           "default" : "false"

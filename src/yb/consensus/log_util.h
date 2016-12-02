@@ -34,7 +34,7 @@
 #include "yb/util/env.h"
 
 // Used by other classes, now part of the API.
-DECLARE_bool(log_force_fsync_all);
+DECLARE_bool(durable_wal_write);
 
 namespace yb {
 
@@ -64,7 +64,7 @@ struct LogOptions {
   size_t segment_size_mb;
 
   // Whether to call fsync on every call to Append().
-  bool force_fsync_all;
+  bool durable_wal_write;
 
   // Whether to fallocate segments before writing to them.
   bool preallocate_segments;

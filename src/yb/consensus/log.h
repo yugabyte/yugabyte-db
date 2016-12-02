@@ -384,9 +384,9 @@ class Log : public RefCountedThreadSafe<Log> {
   gscoped_ptr<ThreadPool> allocation_pool_;
 
   // If true, sync on all appends.
-  bool force_sync_all_;
+  bool durable_wal_write_;
 
-  // If true, ignore the 'force_sync_all_' flag above.
+  // If true, ignore the 'durable_wal_write_' flag above.
   // This is used to disable fsync during bootstrap.
   bool sync_disabled_;
 

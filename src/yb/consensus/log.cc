@@ -178,11 +178,11 @@ void Log::AppendThread::RunThread() {
 
     SCOPED_LATENCY_METRIC(log_->metrics_, group_commit_latency);
 
-    bool is_all_commits = true;
     for (LogEntryBatch* entry_batch : entry_batches) {
       entry_batch->WaitForReady();
       TRACE_EVENT_FLOW_END0("log", "Batch", entry_batch);
       Status s = log_->DoAppend(entry_batch);
+
       if (PREDICT_FALSE(!s.ok())) {
         LOG(ERROR) << "Error appending to the log: " << s.ToString();
         DLOG(FATAL) << "Aborting: " << s.ToString();
@@ -195,15 +195,9 @@ void Log::AppendThread::RunThread() {
           entry_batch->callback().Run(s);
         }
       }
-      if (is_all_commits && entry_batch->type_ != COMMIT) {
-        is_all_commits = false;
-      }
     }
 
-    Status s;
-    if (!is_all_commits) {
-      s = log_->Sync();
-    }
+    Status s = log_->Sync();
     if (PREDICT_FALSE(!s.ok())) {
       LOG(ERROR) << "Error syncing log" << s.ToString();
       DLOG(FATAL) << "Aborting: " << s.ToString();
@@ -291,7 +285,7 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       max_segment_size_(options_.segment_size_mb * 1024 * 1024),
       entry_batch_queue_(FLAGS_group_commit_queue_size_bytes),
       append_thread_(new AppendThread(this)),
-      force_sync_all_(options_.force_fsync_all),
+      durable_wal_write_(options_.durable_wal_write),
       sync_disabled_(false),
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity) {
@@ -326,10 +320,10 @@ Status Log::Init() {
     active_segment_sequence_number_ = segments.back()->header().sequence_number();
   }
 
-  if (force_sync_all_) {
-    YB_LOG_FIRST_N(INFO, 1) << "Log is configured to fsync() on all Append() calls";
+  if (durable_wal_write_) {
+    YB_LOG_FIRST_N(INFO, 1) << "durable_wal_write is turned on.";
   } else {
-    YB_LOG_FIRST_N(INFO, 1) << "Log is configured to *not* fsync() on all Append() calls";
+    YB_LOG_FIRST_N(INFO, 1) << "durable_wal_write is turned off. Buffered IO will be used for WAL.";
   }
 
   // We always create a new segment when the log starts.
@@ -516,8 +510,8 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
 
     RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
 
-    // Update the reader on how far it can read the active segment.
-    reader_->UpdateLastSegmentOffset(active_segment_->written_offset());
+    // We don't update the last segment offset here anymore. This is done on the Sync() method to
+    // guarantee that we only try to read what we have persisted in disk.
 
     if (log_hooks_) {
       RETURN_NOT_OK_PREPEND(log_hooks_->PostAppend(), "PostAppend hook failed");
@@ -608,7 +602,7 @@ Status Log::Sync() {
     }
   }
 
-  if (force_sync_all_ && !sync_disabled_) {
+  if (durable_wal_write_ && !sync_disabled_) {
     LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
       RETURN_NOT_OK(active_segment_->Sync());
 
@@ -622,6 +616,9 @@ Status Log::Sync() {
   if (log_hooks_) {
     RETURN_NOT_OK_PREPEND(log_hooks_->PostSync(), "PostSync hook failed");
   }
+  // Update the reader on how far it can read the active segment.
+  reader_->UpdateLastSegmentOffset(active_segment_->written_offset());
+
   return Status::OK();
 }
 
@@ -847,7 +844,8 @@ Status Log::PreAllocateNewSegment() {
   CHECK_EQ(allocation_state(), kAllocationInProgress);
 
   WritableFileOptions opts;
-  opts.sync_on_close = force_sync_all_;
+  opts.sync_on_close = durable_wal_write_;
+  opts.o_direct = durable_wal_write_;
   RETURN_NOT_OK(CreatePlaceholderSegment(opts, &next_segment_path_, &next_segment_file_));
 
   if (options_.preallocate_segments) {
@@ -874,7 +872,7 @@ Status Log::SwitchToAllocatedSegment() {
       fs_manager_->GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
 
   RETURN_NOT_OK(fs_manager_->env()->RenameFile(next_segment_path_, new_segment_path));
-  if (force_sync_all_) {
+  if (durable_wal_write_) {
     RETURN_NOT_OK(fs_manager_->env()->SyncDir(log_dir_));
   }
 

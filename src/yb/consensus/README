@@ -35,7 +35,7 @@ The WAL provides strict ordering and durability guarantees:
 which entries had been reserved will be the order in which they will
 be committed to disk.
 
-2) If fsync is enabled (via the 'log_force_fsync_all' flag -- see
+2) If fsync is enabled (via the 'durable_wal_write' flag -- see
 log_util.cc; note: this is _DISABLED_ by default), then every single
 transaction is guaranteed to be synchronized to disk before its
 execution is deemed successful.

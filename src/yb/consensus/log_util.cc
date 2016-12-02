@@ -45,9 +45,9 @@ DEFINE_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
 TAG_FLAG(log_segment_size_mb, advanced);
 
-DEFINE_bool(log_force_fsync_all, true,
+DEFINE_bool(durable_wal_write, true,
             "Whether the Log/WAL should explicitly call fsync() after each write.");
-TAG_FLAG(log_force_fsync_all, stable);
+TAG_FLAG(durable_wal_write, stable);
 
 DEFINE_bool(log_preallocate_segments, true,
             "Whether the WAL should preallocate the entire segment before writing to it");
@@ -92,7 +92,7 @@ const uint32_t kLogSegmentMaxHeaderOrFooterSize = 8 * 1024 * 1024;
 
 LogOptions::LogOptions()
 : segment_size_mb(FLAGS_log_segment_size_mb),
-  force_fsync_all(FLAGS_log_force_fsync_all),
+  durable_wal_write(FLAGS_durable_wal_write),
   preallocate_segments(FLAGS_log_preallocate_segments),
   async_preallocate_segments(FLAGS_log_async_preallocate_segments) {
 }
