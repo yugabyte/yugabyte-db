@@ -658,8 +658,7 @@ void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> trans
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
     LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
-    // TODO: shutdown? probably, since any future stuff on this socket will be
-    // "unsynchronized"
+    reactor_thread_->DestroyConnection(this, s);
     return;
   }
 
@@ -705,7 +704,7 @@ void RedisConnection::HandleFinishedTransfer() {
     return;
   }
 
-  CHECK(direction_ == SERVER) << "Invalid direction for Redis: " << direction_;
+  DCHECK_EQ(direction_, SERVER) << "Invalid direction for Redis: " << direction_;
   RedisInboundTransfer* next_transfer = inbound_->ExcessData();
   HandleIncomingCall(inbound_.PassAs<AbstractInboundTransfer>());
   inbound_.reset(next_transfer);
@@ -719,8 +718,7 @@ void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> tr
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
     LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
-    // TODO: shutdown? probably, since any future stuff on this socket will be
-    // "unsynchronized"
+    reactor_thread_->DestroyConnection(this, s);
     return;
   }
 

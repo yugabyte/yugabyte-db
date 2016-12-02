@@ -148,20 +148,28 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
  private:
   static constexpr int kProtoIOBufLen = 1024 * 16;  // I/O buffer size for reading client commands.
 
-  void CheckReadCompletely();
+  // Sets done_ to true if a whole command has been read and parsed from the network.
+  //
+  // returns Status::OK if there are no error(s) in parsing, regardless of the whole command
+  // having been read. returns an appropriate non-OK status upon error.
+  Status CheckReadCompletely();
 
   // To be called only for client commands in the multi format.
   // e.g:
   //     "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
-  // returns true if the whole command has been read, and is ready for processing.
-  // returns false if more data needs to be read.
-  bool CheckMultiBulkBuffer();
+  // sets done_ to true if the whole command has been read, and is ready for processing.
+  //      done_ remains false if the command has not been read completely.
+  // returns Status::OK if there are no error(s) in parsing, regardless of the whole command
+  // having been read. returns an appropriate non-OK status upon error.
+  Status CheckMultiBulkBuffer();
 
   // To be called only for client commands in the inline format.
   // e.g:
   //     "set foo TEST\r\n"
-  // returns true if the whole command has been read, and is ready for processing.
-  // returns false if more data needs to be read.
+  // sets done_ to true if the whole command has been read, and is ready for processing.
+  //      done_ remains false if the command has not been read completely.
+  // returns Status::OK if there are no error(s) in parsing, regardless of the whole command
+  // having been read. returns an appropriate non-OK status upon error.
   //
   // Deviation from Redis's implementation in networking.c
   // 1) This does not translate escaped characters, and
@@ -170,12 +178,14 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   // We haven't seen a place where this is used by the redis clients. All known places seem to use
   // CheckMultiBulkBuffer(). If we find places where this is used, we can come back and make this
   // compliant. If we are sure this doesn't get used, perhaps, we can get rid of this altogether.
-  bool CheckInlineBuffer();
+  Status CheckInlineBuffer();
 
   // Returns true if the buffer has the \r\n required at the end of the token.
   bool FindEndOfLine();
 
-  int64_t ParseNumber();
+  // Parses the number pointed to by parsing_pos_ up to the \r\n. Returns OK if successful, or
+  // error.
+  Status ParseNumber(int64_t* out_number);
 
   int64_t cur_offset_ = 0;  // index into buf_ where the next byte read from the client is stored.
   RedisClientCommand client_command_;

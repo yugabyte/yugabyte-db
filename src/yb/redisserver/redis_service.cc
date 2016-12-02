@@ -36,10 +36,10 @@ METRIC_DEFINE_histogram(
     "RPC requests",
     60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_dummy,
+    server, handler_latency_yb_redisserver_RedisServerService_error,
     "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
     "Microseconds spent handling "
-    "yb.redisserver.RedisServerService.DummyCommand() "
+    "yb.redisserver.RedisServerService.ErrorUnsupportedMethod() "
     "RPC requests",
     60000000LU, 2);
 namespace yb {
@@ -85,36 +85,44 @@ void RedisServiceImpl::PopulateHandlers() {
   idx++;
   SETUP_METRICS_FOR_METHOD(echo, idx);
   idx++;
-  SETUP_METRICS_FOR_METHOD(dummy, idx);
-  idx++;
   CHECK_EQ(kMethodCount, idx);
+
+  // Set up metrics for erroneous calls.
+  metrics_["error"] = yb::rpc::RpcMethodMetrics();
+  metrics_["error"].handler_latency =
+      METRIC_handler_latency_yb_redisserver_RedisServerService_error.Instantiate(
+          server_->metric_entity());
 }
 
-RedisServiceImpl::RedisCommandFunctionPtr RedisServiceImpl::FetchHandler(
+const RedisServiceImpl::RedisCommandInfo* RedisServiceImpl::FetchHandler(
     const std::vector<Slice>& cmd_args) {
   CHECK_GE(cmd_args.size(), 1) << "Need to have at least the command name in the argument vector.";
   string cmd_name = cmd_args[0].ToString();
   ToLowerCase(cmd_name, &cmd_name);
   auto iter = command_name_to_info_map_.find(cmd_name);
   if (iter == command_name_to_info_map_.end()) {
-    // TODO(Amit): Convert this to a more aggressive error, once we have implemented the desired
-    // subset of commands.
     LOG(ERROR) << "Command " << cmd_name << " not yet supported.";
-    return &RedisServiceImpl::DummyCommand;
+    return nullptr;
   }
-  // Verify that the command has the required number of arguments.
-  //
-  // TODO(Amit): Fail gracefully, i.e. close the connection or send a error message without
-  // killing the server itself.
-  const RedisCommandInfo cmd_info = *iter->second;
-  if (cmd_info.arity < 0) {  // -X means that the command needs >= X arguments.
-    CHECK_GE(cmd_args.size(), -1 * cmd_info.arity) << "Requested command " << cmd_name
-                                                   << " does not have enough arguments.";
+  return iter->second;
+}
+
+void RedisServiceImpl::ValidateAndHandle(
+    const RedisServiceImpl::RedisCommandInfo* cmd_info, InboundCall* call, RedisClientCommand* c) {
+  if (cmd_info == nullptr) {
+    RespondWithFailure("Unsupported call.", call, c);
+  } else if (cmd_info->arity < 0 && c->cmd_args.size() < -1 * cmd_info->arity) {
+    // -X means that the command needs >= X arguments.
+    LOG(ERROR) << "Requested command " << c->cmd_args[0] << " does not have enough arguments.";
+    RespondWithFailure("Too few arguments.", call, c);
+  } else if (cmd_info->arity > 0 && c->cmd_args.size() != cmd_info->arity) {
+    // X (> 0) means that the command needs exactly X arguments.
+    LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has wrong number of arguments.";
+    RespondWithFailure("Wrong number of arguments.", call, c);
   } else {
-    CHECK_EQ(cmd_args.size(), cmd_info.arity) << "Requested command " << cmd_name
-                                              << " has wrong number of arguments.";
+    // Handle the call.
+    (this->*cmd_info->function_ptr)(call, c);
   }
-  return cmd_info.function_ptr;
 }
 
 RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_addresses)
@@ -153,8 +161,9 @@ void RedisServiceImpl::Handle(InboundCall* inbound_call) {
   if (!yb_client_initialized_.load()) SetUpYBClient(yb_tier_master_addresses_);
 
   rpc::RedisClientCommand& c = call->GetClientCommand();
-  auto handler = FetchHandler(c.cmd_args);
-  (this->*handler)(call, &c);
+
+  auto cmd_info = FetchHandler(c.cmd_args);
+  ValidateAndHandle(cmd_info, call, &c);
 }
 
 void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
@@ -283,23 +292,6 @@ void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
       RedisWriteOpForSetKV(table_.get(), c->cmd_args)));
   // Callback will delete itself, after processing the callback.
   tmp_session->FlushAsync(new SetCommandCb(tmp_session, call, metrics_["set"]));
-}
-
-void RedisServiceImpl::DummyCommand(InboundCall* call, RedisClientCommand* c) {
-  // process the request
-  LOG(INFO) << " Processing request from client ";
-  int size = c->cmd_args.size();
-  for (int i = 0; i < size; i++) {
-    LOG(INFO) << i + 1 << " / " << size << " : " << c->cmd_args[i].ToDebugString(8);
-  }
-
-  // Send the result.
-  DVLOG(4) << "Responding to call " << call->ToString();
-  RedisResponsePB* ok_response = new RedisResponsePB();
-  ok_response->set_string_response("OK");
-  RpcContext* context = new RpcContext(call, nullptr, ok_response, metrics_["dummy"]);
-  context->RespondSuccess();
-  DVLOG(4) << "Done Responding.";
 }
 
 void RedisServiceImpl::RespondWithFailure(

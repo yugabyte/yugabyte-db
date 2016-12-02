@@ -132,23 +132,27 @@ bool RedisInboundTransfer::FindEndOfLine() {
   return true;
 }
 
-int64_t RedisInboundTransfer::ParseNumber() {
+Status RedisInboundTransfer::ParseNumber(int64_t* parse_result) {
   // NOLINTNEXTLINE
   static_assert(sizeof(long long) == sizeof(int64_t),
                 "Expecting long long to be a 64-bit integer");
   char* end_ptr = nullptr;
-  int64_t parse_result = std::strtoll(buf_.c_str() + parsing_pos_, &end_ptr, 0);
+  *parse_result = std::strtoll(buf_.c_str() + parsing_pos_, &end_ptr, 0);
   // If the length is well-formed, it should extend all the way until newline.
-  // TODO: fail gracefully without killing the server.
-  CHECK_EQ('\r', end_ptr[0]) << "Redis protocol error: expecting a number followed by newline";
-  CHECK_EQ('\n', end_ptr[1]) << "Redis protocol error: expecting a number followed by newline";
+  SCHECK_EQ(
+      '\r', end_ptr[0], Corruption, "Redis protocol error: expecting a number followed by newline");
+  SCHECK_EQ(
+      '\n', end_ptr[1], Corruption, "Redis protocol error: expecting a number followed by newline");
   parsing_pos_ = (end_ptr - buf_.c_str()) + 2;
-  return parse_result;
+  return Status::OK();
 }
 
-bool RedisInboundTransfer::CheckInlineBuffer() {
-  if (!FindEndOfLine())
-    return false;
+Status RedisInboundTransfer::CheckInlineBuffer() {
+  if (done_) return Status::OK();
+
+  if (!FindEndOfLine()) {
+    return Status::OK();
+  }
 
   client_command_.cmd_args.clear();
   const char* newline = static_cast<const char*>(memchr(buf_.c_str() + searching_pos_, '\r',
@@ -157,12 +161,15 @@ bool RedisInboundTransfer::CheckInlineBuffer() {
   // Split the input buffer up to the \r\n.
   Slice aux(&buf_[parsing_pos_], query_len);
   // TODO: fail gracefully without killing the server.
-  CHECK_OK(util::SplitArgs(aux, &client_command_.cmd_args));
+  RETURN_NOT_OK(util::SplitArgs(aux, &client_command_.cmd_args));
   parsing_pos_ = query_len + 2;
-  return true;
+  done_ = true;
+  return Status::OK();
 }
 
-bool RedisInboundTransfer::CheckMultiBulkBuffer() {
+Status RedisInboundTransfer::CheckMultiBulkBuffer() {
+  if (done_) return Status::OK();
+
   if (client_command_.num_multi_bulk_args_left == 0) {
     // Multi bulk length cannot be read without a \r\n.
     parsing_pos_ = 0;
@@ -171,51 +178,66 @@ bool RedisInboundTransfer::CheckMultiBulkBuffer() {
 
     DVLOG(4) << "Looking at : "
              << Slice(buf_.c_str() + parsing_pos_, cur_offset_ - parsing_pos_).ToDebugString(8);
-    if (!FindEndOfLine())
-      return false;
+    if (!FindEndOfLine()) return Status::OK();
 
-    // TODO: fail gracefully without killing the server.
-    CHECK_EQ('*', buf_[parsing_pos_]);
+    SCHECK_EQ(
+        '*', buf_[parsing_pos_], Corruption,
+        StringPrintf("Expected to see '*' instead of %c", buf_[parsing_pos_]));
     parsing_pos_++;
-    const int64_t num_args = ParseNumber();
-    // TODO: fail gracefully without killing the server.
-    CHECK(num_args > 0 && num_args <= 1024 * 1024)
-        << "Number of lines in multibulk out of expected range (0, 1024 * 1024] : " << num_args;
+    int64_t num_args = 0;
+    RETURN_NOT_OK(ParseNumber(&num_args));
+    SCHECK_GT(
+        num_args, 0, Corruption,
+        StringPrintf(
+            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : %lld",
+            num_args));
+    SCHECK_LE(
+        num_args, 1024 * 1024, Corruption,
+        StringPrintf(
+            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : %lld",
+            num_args));
     client_command_.num_multi_bulk_args_left = num_args;
   }
 
   while (client_command_.num_multi_bulk_args_left > 0) {
     if (client_command_.current_multi_bulk_arg_len == -1) {  // Read bulk length if unknown.
-      if (!FindEndOfLine())
-        return false;
+      if (!FindEndOfLine()) return Status::OK();
 
-      // TODO: fail gracefully without killing the server.
-      CHECK(buf_[parsing_pos_] == '$') << "Protocol error: expected '$', got "
-                                       << buf_[parsing_pos_];
+      SCHECK_EQ(
+          buf_[parsing_pos_], '$', Corruption,
+          StringPrintf("Protocol error: expected '$', got '%c'", buf_[parsing_pos_]));
       parsing_pos_++;
-      const int64_t parsed_len = ParseNumber();
+      int64_t parsed_len = 0;
+      RETURN_NOT_OK(ParseNumber(&parsed_len));
+      SCHECK_GE(
+          parsed_len, 0, Corruption,
+          StringPrintf(
+              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : %lld",
+              parsed_len));
+      SCHECK_LE(
+          parsed_len, 512 * 1024 * 1024, Corruption,
+          StringPrintf(
+              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : %lld",
+              parsed_len));
       client_command_.current_multi_bulk_arg_len = parsed_len;
-      // TODO: fail gracefully without killing the server.
-      CHECK(parsed_len >= 0 && parsed_len <= 512 * 1024 * 1024)
-          << "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : "
-          << parsed_len;
     }
 
     // Read bulk argument.
     if (cur_offset_ < parsing_pos_ + client_command_.current_multi_bulk_arg_len + 2) {
       // Not enough data (+2 == trailing \r\n).
-      return false;
-    } else {
-      client_command_.cmd_args.push_back(Slice(buf_.data() + parsing_pos_,
-                                               client_command_.current_multi_bulk_arg_len));
-      parsing_pos_ += client_command_.current_multi_bulk_arg_len + 2;
-      client_command_.num_multi_bulk_args_left--;
-      client_command_.current_multi_bulk_arg_len = -1;
+      return Status::OK();
     }
+
+    client_command_.cmd_args.push_back(
+        Slice(buf_.data() + parsing_pos_, client_command_.current_multi_bulk_arg_len));
+    parsing_pos_ += client_command_.current_multi_bulk_arg_len + 2;
+    client_command_.num_multi_bulk_args_left--;
+    client_command_.current_multi_bulk_arg_len = -1;
   }
 
   // We're done consuming the client's command when num_multi_bulk_args_left == 0.
-  return true;
+  done_ = true;
+  return Status::OK();
 }
 
 RedisInboundTransfer* RedisInboundTransfer::ExcessData() const {
@@ -238,15 +260,14 @@ RedisInboundTransfer* RedisInboundTransfer::ExcessData() const {
   return excess;
 }
 
-void RedisInboundTransfer::CheckReadCompletely() {
-  if (done_) return;
-
+Status RedisInboundTransfer::CheckReadCompletely() {
   /* Determine request type when unknown. */
   if (buf_[0] == '*') {
-    done_ = CheckMultiBulkBuffer();
+    RETURN_NOT_OK(CheckMultiBulkBuffer());
   } else {
-    done_ = CheckInlineBuffer();
+    RETURN_NOT_OK(CheckInlineBuffer());
   }
+  return Status::OK();
 }
 
 Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
@@ -266,7 +287,7 @@ Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
   cur_offset_ += bytes_read;
 
   // Check if we have read the whole command.
-  CheckReadCompletely();
+  RETURN_NOT_OK(CheckReadCompletely());
   return Status::OK();
 }
 

@@ -36,15 +36,20 @@ class TestRedisService : public RedisTableTestBase {
   void TearDown() override;
 
  protected:
+  void StartServer();
+  void StartClient();
+  void StopClient();
+  void RestartClient();
   void SendCommandAndExpectTimeout(const string& cmd);
 
   void SendCommandAndExpectResponse(const string& cmd, const string& resp);
 
   int server_port() { return redis_server_port_; }
- private:
+
   Status SendCommandAndGetResponse(
       const string& cmd, int expected_resp_length, int timeout_in_millis = 1000);
 
+ private:
   Socket client_sock_;
   unique_ptr<RedisServer> server_;
   int redis_server_port_ = 0;
@@ -57,6 +62,12 @@ class TestRedisService : public RedisTableTestBase {
 void TestRedisService::SetUp() {
   RedisTableTestBase::SetUp();
 
+  StartServer();
+  StartClient();
+}
+
+void TestRedisService::StartServer() {
+  redis_server_port_ = GetFreePort(&redis_port_lock_);
   RedisServerOptions opts;
   redis_server_port_ = GetFreePort(&redis_port_lock_);
   opts.rpc_opts.rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", redis_server_port_);
@@ -73,7 +84,9 @@ void TestRedisService::SetUp() {
   LOG(INFO) << "Starting redis server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "Redis server successfully started.";
+}
 
+void TestRedisService::StartClient() {
   Sockaddr remote;
   remote.ParseString("0.0.0.0", server_port());
   CHECK_OK(client_sock_.Init(0));
@@ -82,8 +95,15 @@ void TestRedisService::SetUp() {
   CHECK_OK(client_sock_.Connect(remote));
 }
 
+void TestRedisService::StopClient() { EXPECT_OK(client_sock_.Close()); }
+
+void TestRedisService::RestartClient() {
+  StopClient();
+  StartClient();
+}
+
 void TestRedisService::TearDown() {
-  EXPECT_OK(client_sock_.Close());
+  StopClient();
   RedisTableTestBase::TearDown();
 }
 
@@ -120,7 +140,7 @@ void TestRedisService::SendCommandAndExpectResponse(const string& cmd, const str
 }
 
 TEST_F(TestRedisService, SimpleCommandInline) {
-  SendCommandAndExpectResponse("TEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse("set foo bar\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, SimpleCommandMulti) {
@@ -128,19 +148,30 @@ TEST_F(TestRedisService, SimpleCommandMulti) {
 }
 
 TEST_F(TestRedisService, BatchedCommandsInline) {
-  SendCommandAndExpectResponse("TEST1\r\nTEST2\r\nTEST3\r\nTEST4\r\n",
-                               "+OK\r\n+OK\r\n+OK\r\n+OK\r\n");
+  SendCommandAndExpectResponse(
+      "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n", "+OK\r\n+OK\r\n+bar\r\n+5\r\n");
 }
 
 TEST_F(TestRedisService, BatchedCommandMulti) {
-  SendCommandAndExpectResponse("*3\r\n$4\r\nset1\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
-                                   "*3\r\n$4\r\nset2\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
-                                   "*3\r\n$4\r\nset3\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",
-                               "+OK\r\n+OK\r\n+OK\r\n");
+  SendCommandAndExpectResponse(
+      "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
+      "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
+      "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",
+      "+OK\r\n+OK\r\n+OK\r\n");
 }
 
 TEST_F(TestRedisService, IncompleteCommandInline) {
   SendCommandAndExpectTimeout("TEST");
+}
+
+TEST_F(TestRedisService, MalformedCommandsFollowedByAGoodOne) {
+  ASSERT_FALSE(SendCommandAndGetResponse("*3\r\n.1\r\n", 1).ok());
+  RestartClient();
+  ASSERT_FALSE(SendCommandAndGetResponse("*0\r\n.2\r\n", 1).ok());
+  RestartClient();
+  ASSERT_FALSE(SendCommandAndGetResponse("*-4\r\n.3\r\n", 1).ok());
+  RestartClient();
+  SendCommandAndExpectResponse("*2\r\n$4\r\necho\r\n$3\r\nfoo\r\n", "+foo\r\n");
 }
 
 TEST_F(TestRedisService, IncompleteCommandMulti) {
@@ -162,6 +193,14 @@ TEST_F(TestRedisService, Echo) {
 TEST_F(TestRedisService, TestSetOnly) {
   SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
   SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$4\r\nfool\r\n$4\r\nBEST\r\n", "+OK\r\n");
+}
+
+TEST_F(TestRedisService, TestCaseInsensitiveness) {
+  SendCommandAndExpectResponse("*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse("*3\r\n$3\r\nSet\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse("*3\r\n$3\r\nsEt\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse("*3\r\n$3\r\nseT\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
+  SendCommandAndExpectResponse("*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n", "+OK\r\n");
 }
 
 TEST_F(TestRedisService, TestSetThenGet) {

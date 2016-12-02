@@ -433,6 +433,20 @@ inline void Status::operator=(Status&& s) {
 #define STATUS_SUBSTITUTE(status_type, ...) \
     (Status::status_type(__FILE__, __LINE__, Substitute(__VA_ARGS__)))
 
+// Utility macros to perform the appropriate check. If the check fails,
+// returns the specified (error) Status, with the given message.
+#define SCHECK_OP(var1, op, var2, type, msg)                        \
+  do {                                                              \
+    if (PREDICT_FALSE(!((var1)op(var2)))) return STATUS(type, msg); \
+  } while (0)
+#define SCHECK(expr, type, msg) SCHECK_OP(expr, ==, true, type, msg)
+#define SCHECK_EQ(var1, var2, type, msg) SCHECK_OP(var1, ==, var2, type, msg)
+#define SCHECK_NE(var1, var2, type, msg) SCHECK_OP(var1, !=, var2, type, msg)
+#define SCHECK_GT(var1, var2, type, msg) SCHECK_OP(var1, >, var2, type, msg)  // NOLINT.
+#define SCHECK_GE(var1, var2, type, msg) SCHECK_OP(var1, >=, var2, type, msg)
+#define SCHECK_LT(var1, var2, type, msg) SCHECK_OP(var1, <, var2, type, msg)  // NOLINT.
+#define SCHECK_LE(var1, var2, type, msg) SCHECK_OP(var1, <=, var2, type, msg)
+
 #define CHECKED_STATUS MUST_USE_RESULT yb::Status
 
 #endif  // YB_UTIL_STATUS_H_
