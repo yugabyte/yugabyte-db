@@ -27,6 +27,21 @@ cpu_usage:
   group_by: "cpu"
   layout:
     title: "CPU Usage"
+disk_iops:
+  metric: "collectd_yb_system_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "iostat_write_count|iostat_read_count"
+  group_by: "type"
+  layout:
+    title: "Disk IOPS"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "iostat_write_count": "Writes"
+        "iostat_read_count": "Reads"
 memory_usage:
   metric: "collectd_memory"
   function: "avg"
@@ -37,6 +52,21 @@ memory_usage:
     title: "Memory Usage"
     xaxis:
       type: "date"
+network_bytes:
+  metric: "collectd_yb_system_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "net_bytes_sent|net_bytes_recv"
+  group_by: "type"
+  layout:
+    title: "Network Bytes / sec / host"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "net_bytes_sent": "TX"
+        "net_bytes_recv": "RX"
 redis_ops_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
@@ -68,3 +98,34 @@ redis_rpcs_per_sec:
         "rpc_RedisServerService_get.num": "Get"
         "rpc_RedisServerService_set.num": "Set"
         "rpc_RedisServerService_echo.num": "Echo"
+tserver_ops_latency:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_TabletServerService_Scan.avg|rpc_TabletServerService_Write.avg|rpc_TabletServerService_Read.avg"
+  group_by: "type"
+  layout:
+    title: "YugaByte Op Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_TabletServerService_Scan.avg": "Scan"
+        "rpc_TabletServerService_Write.avg": "Write"
+        "rpc_TabletServerService_Read.avg": "Read"
+tserver_rpcs_per_sec:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rpc_TabletServerService_Scan.num|rpc_TabletServerService_Write.num|rpc_TabletServerService_Read.num"
+  group_by: "type"
+  layout:
+    title: "YugaByte RPCs / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_TabletServerService_Scan.num": "Scan"
+        "rpc_TabletServerService_Write.num": "Write"
+        "rpc_TabletServerService_Read.num": "Read"
