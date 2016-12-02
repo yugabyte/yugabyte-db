@@ -3,6 +3,8 @@
 import React, { Component, PropTypes } from 'react';
 var GaugeJS = require('../../../vendors/gauge.js/gauge.min.js');
 
+import './stylesheets/ProgressGauge.css'
+
 export default class ProgressGauge extends Component {
   static propTypes = {
     maxValue: PropTypes.number.isRequired,

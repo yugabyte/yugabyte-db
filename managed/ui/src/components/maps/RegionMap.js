@@ -7,6 +7,8 @@ import 'leaflet/dist/leaflet.css';
 import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
 import MarkerClusterLayer from './MarkerClusterLayer';
 
+import './stylesheets/RegionMap.css'
+
 export default class RegionMap extends Component {
   static propTypes = {
     regions: PropTypes.array.isRequired,

@@ -8,6 +8,8 @@ import moment from 'moment';
 var momentLocalizer = require('react-widgets/lib/localizers/moment')
 require('react-widgets/dist/css/react-widgets.css');
 
+import './stylesheets/GraphPanelHeader.css'
+
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
 // if the filter type has a divider, we would just add a divider in the dropdown
@@ -113,13 +115,13 @@ export default class GraphPanelHeader extends Component {
     return (
       <Grid className="x_panel graph-panel">
         <Row className="x_title">
-          <Col md={6}>
+          <Col md={2}>
             <h2>Graph Panels</h2>
           </Col>
-          <Col md={6}>
+          <Col md={10}>
             <div id="reportrange" className="pull-right" >
               {datePicker}
-              <Dropdown id={"graph-filter-dropdown"} pullRight={true} >
+              <Dropdown id="graph-filter-dropdown" pullRight={true} >
                 <Dropdown.Toggle>
                   <i className="fa fa-clock-o"></i>&nbsp;
                   {this.state.filterLabel}

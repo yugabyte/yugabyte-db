@@ -6,6 +6,8 @@ import { Col, Image, ListGroup, ListGroupItem} from 'react-bootstrap';
 import { YBButton } from '../common/forms/fields';
 import { RootMarkerIcon, AsyncMarkerIcon, CacheMarkerIcon } from './images';
 
+import './stylesheets/YBMapLegendItem.css'
+
 export default class YBMapLegendItem extends Component {
   render() {
     const {regions, title, type} = this.props;

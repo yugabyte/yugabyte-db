@@ -6,6 +6,7 @@ import { YBInputField, YBSelect, YBCheckBox, YBMultiSelect,
   YBNumericInput, YBModal } from './fields'
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 import { DescriptionItem, YBCost } from '../descriptors';
+import './stylesheets/UniverseForm.css'
 
 class UniverseConfigDetail extends Component {
   render() {
@@ -266,7 +267,7 @@ export default class UniverseForm extends Component {
                       providerSelected={this.state.providerSelected}/>
                <Field name="numNodes" type="text" component={YBNumericInput}
                      label="Number Of Nodes" onValueChanged={this.numNodesChanged}/>
-              <div className="universeFormSplit">
+              <div className="universe-form-advanced">
                 Advanced
               </div>
               <Field name="isMultiAZ" type="checkbox" component={YBCheckBox}

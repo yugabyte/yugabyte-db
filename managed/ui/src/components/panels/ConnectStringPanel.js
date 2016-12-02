@@ -5,8 +5,9 @@ import { FormattedDate } from 'react-intl';
 import { DescriptionList } from '../common/descriptors';
 import { ROOT_URL } from '../../config';
 import { YBPanelItem } from '.';
+import './stylesheets/connectStringPanel.css'
 
-export default class UniverseInfoPanel extends Component {
+export default class connectStringPanel extends Component {
   render() {
     const {universeInfo, customerId} = this.props;
     var universeId = universeInfo.universeUUID;
@@ -25,7 +26,7 @@ export default class UniverseInfoPanel extends Component {
       {name: "Universe ID", data: universeId},
       {name: "Customer ID", data: customerId},
       {name: "Meta Masters", data: endpoint},
-      {name: "Load Test", data: connect_string, dataClass: "ybCodeSnippet well well-sm"}
+      {name: "Load Test", data: connect_string, dataClass: "yb-code-snippet well well-sm"}
     ];
     return (
       <YBPanelItem name="Basic Details">

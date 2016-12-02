@@ -4,6 +4,8 @@ import React, { Component, PropTypes } from 'react';
 import moment from 'moment';
 import {FormattedNumber} from 'react-intl';
 
+import './stylesheets/YBCost.css'
+
 export default class YBCost extends Component {
   static propTypes = {
     multiplier: PropTypes.oneOf(['day', 'month', 'hour']).isRequired
@@ -20,7 +22,8 @@ export default class YBCost extends Component {
     }
     return (
       <div>
-        <FormattedNumber value={finalCost} maximumFractionDigits={2} style="currency" currency="USD" multiplier={multiplier}/>
+        <FormattedNumber value={finalCost} maximumFractionDigits={2}
+          style="currency" currency="USD" multiplier={multiplier}/>
         <span className="config-price-subscript">{`/${multiplier}`}</span>
       </div>
     )

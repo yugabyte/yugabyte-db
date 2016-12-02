@@ -3,11 +3,12 @@
 import React, { Component } from 'react';
 import {ListGroup, ListGroupItem, Checkbox} from 'react-bootstrap';
 
+import './stylesheets/RegionMapLegend.css'
 
-export default class SupportedRegionsMapLegend extends Component{
+export default class RegionMapLegend extends Component{
   render() {
     return (
-      <div className="supported-map-legend-container">
+      <div className="region-map-legend-container">
         <h3>Platforms</h3>
         <span>Select <small>All |  None</small></span>
         <ListGroup>
