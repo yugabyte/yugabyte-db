@@ -95,14 +95,19 @@ public class CustomerController extends AuthenticatedController {
 
     Map<String, String> params = formData.data();
     ObjectNode filterJson = Json.newObject();
-    ArrayList<String> universePrefixes = new ArrayList();
-    for (Universe universe: customer.getUniverses()) {
-      if (universe.getUniverseDetails().nodePrefix != null) {
-        universePrefixes.add(universe.getUniverseDetails().nodePrefix);
+    if (!params.containsKey("nodePrefix")) {
+      ArrayList<String> universePrefixes = new ArrayList();
+      for (Universe universe: customer.getUniverses()) {
+        if (universe.getUniverseDetails().nodePrefix != null) {
+          universePrefixes.add(universe.getUniverseDetails().nodePrefix);
+        }
       }
+
+      filterJson.put("node_prefix", String.join("|", universePrefixes));
+    } else {
+      filterJson.put("node_prefix", params.remove("nodePrefix"));
     }
 
-    filterJson.put("node_prefix", String.join("|", universePrefixes));
     params.put("filters", Json.stringify(filterJson));
     try {
       JsonNode response = metricQueryHelper.query(params);
