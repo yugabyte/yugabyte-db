@@ -12,6 +12,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 
 public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdater() {
+    return mockUniverseUpdater("host");
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(String nodePrefix) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -24,7 +28,7 @@ public class ApiUtils {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running);
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.nodePrefix = "host";
+        universeDetails.nodePrefix = nodePrefix;
         universe.setUniverseDetails(universeDetails);
       }
     };

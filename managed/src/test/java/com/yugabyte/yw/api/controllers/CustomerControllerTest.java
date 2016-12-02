@@ -215,9 +215,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-a"));
     Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
-    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-b"));
     customer.addUniverseUUID(u1.universeUUID);
     customer.addUniverseUUID(u2.universeUUID);
     customer.save();
@@ -235,9 +235,34 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertThat(queryArgs.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryArgs.getValue().get("filters").toString());
     String nodePrefix = filters.get("node_prefix").asText();
-    assertThat(nodePrefix, allOf(notNullValue(), containsString("host")));
-    assertEquals(nodePrefix.split("\\|").length, 2);
+    assertThat(nodePrefix, allOf(notNullValue(), containsString("host-a")));
+    assertThat(nodePrefix, allOf(notNullValue(), containsString("host-b")));
+    String[] nodePrefixes = nodePrefix.split("\\|");
+    assertEquals(nodePrefixes.length, 2);
   }
 
+  @Test
+  public void testCustomerMetricsWithNodePrefixParam() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
+    Universe u2 = Universe.create("Foo-2", UUID.randomUUID(), customer.getCustomerId());
+    u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.addUniverseUUID(u2.universeUUID);
+    customer.save();
 
+    ObjectNode params = Json.newObject();
+    params.put("metricKey", "metric");
+    params.put("start", "1479281737");
+    params.put("nodePrefix", "host-1");
+    ArgumentCaptor<Map> queryArgs = ArgumentCaptor.forClass(Map.class);
+    route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/metrics").cookie(validCookie).bodyJson(params));
+    verify(mockMetricQueryHelper).query((Map<String, String>) queryArgs.capture());
+    assertThat(queryArgs.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryArgs.getValue().get("filters").toString());
+    String nodePrefix = filters.get("node_prefix").asText();
+    assertThat(nodePrefix, allOf(notNullValue(), equalTo("host-1")));
+  }
 }
