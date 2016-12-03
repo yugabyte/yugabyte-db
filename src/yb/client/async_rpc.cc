@@ -100,8 +100,8 @@ void AsyncRpc::SendRpc() {
   // new leader. This relies on some properties of LookupTabletByKey():
   // 1. The fast path only works when there's a non-failed leader (which we
   //    know is untrue here).
-  // 2. The slow path always fetches consensus configuration information and updates the
-  //    looked-up tablet.
+  // 2. The slow path always fetches consensus configuration information and
+  //    updates the looked-up tablet.
   // Put another way, we don't care about the lookup results at all; we're
   // just using it to fetch the latest consensus configuration information.
   //
@@ -223,14 +223,6 @@ void AsyncRpc::InitTSProxyCb(const Status& status) {
   SendRpcToTserver();
 }
 
-void AsyncRpc::MarkOpsAsFailed() {
-  for (int i = 0; i < ops_.size(); i++) {
-    RedisResponsePB r = RedisResponsePB();
-    r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-    *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
-  }
-}
-
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    RemoteTablet* const tablet,
                    vector<InFlightOp*> ops,
@@ -308,7 +300,18 @@ Status WriteRpc::response_error_status() {
 }
 
 void WriteRpc::ProcessResponseFromTserver(Status status) {
-  batcher_->ProcessWriteResponse(*this, status);
+  batcher_->ProcessKuduWriteResponse(*this, status);
+  if (resp_.has_error()) {
+    LOG(WARNING) << "Write Rpc to tablet server has error:"
+                 << resp_.error().DebugString()
+                 << ". Requests not processed.";
+    // If there is an error at the Rpc itself,
+    // there should be no individual redis responses. All of them need to be
+    // marked as failed.
+    MarkOpsAsFailed();
+    return;
+  }
+  // In the following section, we process Redis Responses only.
   size_t response_idx = 0;
   for (int i = 0; i < ops_.size(); i++) {
     YBOperation* yb_op = ops_[i]->yb_op.get();
@@ -325,6 +328,16 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
   if (response_idx != resp_.redis_response_batch().size()) {
     batcher_->AddOpCountMismatchError();
     return;
+  }
+}
+
+void WriteRpc::MarkOpsAsFailed() {
+  for (int i = 0; i < ops_.size(); i++) {
+    if (ops_[i]->yb_op->type() == YBOperation::Type::REDIS_WRITE) {
+      RedisResponsePB r = RedisResponsePB();
+      r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+      *(down_cast<YBRedisWriteOp *>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
+    }
   }
 }
 
@@ -357,7 +370,16 @@ void ReadRpc::SendRpcToTserver() {
 Status ReadRpc::response_error_status() { return Status::OK(); }
 
 void ReadRpc::ProcessResponseFromTserver(Status status) {
-  // Read response handling
+  if (resp_.has_error()) {
+    LOG(WARNING) << "Read Rpc to tablet server has error:"
+                 << resp_.error().DebugString()
+                 << ". Requests not processed.";
+    // If there is an error at the Rpc itself,
+    // there should be no individual redis responses. All of them need to be
+    // marked as failed.
+    MarkOpsAsFailed();
+    return;
+  }
   size_t n = ops_.size();
   if (resp_.redis_batch().size() != n) {
     batcher_->AddOpCountMismatchError();
@@ -367,6 +389,14 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
   for (int i = 0; i < n; i++) {
     *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) =
         std::move(resp_.redis_batch(i));
+  }
+}
+
+void ReadRpc::MarkOpsAsFailed() {
+  for (int i = 0; i < ops_.size(); i++) {
+    RedisResponsePB r = RedisResponsePB();
+    r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+    *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
   }
 }
 

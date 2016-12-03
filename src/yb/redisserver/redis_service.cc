@@ -306,9 +306,10 @@ void RedisServiceImpl::RespondWithFailure(
 
   // Send the result.
   DVLOG(4) << "Responding to call " << call->ToString() << " with failure " << error;
-  RpcContext* context = new RpcContext(call, nullptr, nullptr, metrics_[0]);
+  string cmd = c->cmd_args[0].ToString();
+  RpcContext* context = new RpcContext(call, nullptr, nullptr, metrics_["error"]);
   context->RespondFailure(STATUS(
-      RuntimeError, StringPrintf("%s : %s", error.c_str(), c->cmd_args[0].ToString().c_str())));
+      RuntimeError, StringPrintf("%s : %s", error.c_str(),  cmd.c_str())));
 }
 
 }  // namespace redisserver

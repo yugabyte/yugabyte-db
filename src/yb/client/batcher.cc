@@ -417,8 +417,8 @@ void Batcher::RemoveInFlightOps(const vector<InFlightOp*>& ops) {
   }
 }
 
-void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
-                                   const Status& s) {
+void Batcher::ProcessKuduWriteResponse(const WriteRpc &rpc,
+    const Status &s) {
   // TODO: there is a potential race here -- if the Batcher gets destructed while
   // RPCs are in-flight, then accessing state_ will crash. We probably need to keep
   // track of the in-flight RPCs, and in the destructor, change each of them to an

@@ -147,7 +147,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Cleans up an RPC response, scooping out any errors and passing them up
   // to the batcher.
-  void ProcessWriteResponse(const WriteRpc& rpc, const Status& s);
+  void ProcessKuduWriteResponse(const WriteRpc &rpc, const Status &s);
 
   // Async Callbacks.
   void TabletLookupFinished(InFlightOp* op, const Status& s);
@@ -228,4 +228,4 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 }  // namespace internal
 }  // namespace client
 }  // namespace yb
-#endif /* YB_CLIENT_BATCHER_H */
+#endif  // YB_CLIENT_BATCHER_H_
