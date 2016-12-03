@@ -32,3 +32,9 @@
 .graph-panel .x_title {
   margin: 10px 20px;
 }
+
+.panel-heading {
+    padding-left: 2%;
+    font-size: 16px;
+    font-weight: 500;
+}

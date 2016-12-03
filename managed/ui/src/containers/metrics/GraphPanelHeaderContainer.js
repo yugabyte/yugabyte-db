@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-
+import { reduxForm } from 'redux-form';
 import { GraphPanelHeader } from '../../components/metrics';
 import { changeGraphQueryPeriod, resetGraphQueryPeriod } from '../../actions/graph';
 
@@ -18,8 +18,16 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   return {
-    graph: state.graph
+    graph: state.graph,
+    universe: state.universe
   };
 }
 
-export default connect( mapStateToProps, mapDispatchToProps)(GraphPanelHeader);
+
+var graphPanelFilter = reduxForm({
+  form: 'GraphPanelFilterForm',
+  fields: ["timeSelect", "universeSelect"]
+})
+
+
+export default connect( mapStateToProps, mapDispatchToProps)(graphPanelFilter(GraphPanelHeader));
