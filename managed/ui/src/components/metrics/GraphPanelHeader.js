@@ -3,10 +3,12 @@
 import React, { Component } from 'react';
 import { Dropdown, MenuItem, Row, Col, Grid } from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
-import { YBButton } from '../common/forms/fields';
+import { YBButton, YBMultiSelect } from '../common/forms/fields';
 import moment from 'moment';
-var momentLocalizer = require('react-widgets/lib/localizers/moment')
+import { isValidObject } from '../../utils/ObjectUtils';
+var momentLocalizer = require('react-widgets/lib/localizers/moment');
 require('react-widgets/dist/css/react-widgets.css');
+import {Field} from 'redux-form';
 
 import './stylesheets/GraphPanelHeader.css'
 
@@ -81,7 +83,7 @@ export default class GraphPanelHeader extends Component {
   }
 
   render() {
-    var datePicker = null
+    var datePicker = null;
     if (this.state.filterType === "custom") {
       datePicker =
         <span className="graph-filter-custom" >
@@ -89,15 +91,30 @@ export default class GraphPanelHeader extends Component {
             value={this.state.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()} />
-          &nbsp;&ndash;&nbsp;
+            &nbsp;&ndash;&nbsp;
           <DateTimePicker
             value={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
             max={new Date()} min={this.state.startMoment.toDate()} />
-          &nbsp;
+            &nbsp;
           <YBButton btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
         </span>;
     }
+
+    var universePicker = <span/>;
+    var universeSelectionChanged = function(universeVals) {
+      // TODO Add Universe Filter Logic Here
+    }
+    if (isValidObject(this.props.origin) && this.props.origin === "customer") {
+      var universeItems = this.props.universe.universeList.map(function(item, idx){
+        return {"label": item.name, "value": item.universeDetails.nodePrefix}
+      });
+      universePicker = <Col md={3}><Field name="universeSelect" component={YBMultiSelect}
+                         options={universeItems} selectValChanged={universeSelectionChanged}
+                         multi={true}/>
+                       </Col>
+    }
+
 
     var self = this;
     var menuItems = filterTypes.map(function(filter, idx) {
@@ -119,18 +136,21 @@ export default class GraphPanelHeader extends Component {
             <h2>Graph Panels</h2>
           </Col>
           <Col md={10}>
-            <div id="reportrange" className="pull-right" >
-              {datePicker}
-              <Dropdown id="graph-filter-dropdown" pullRight={true} >
-                <Dropdown.Toggle>
-                  <i className="fa fa-clock-o"></i>&nbsp;
-                  {this.state.filterLabel}
-                </Dropdown.Toggle>
-                <Dropdown.Menu>
-                  {menuItems}
-                </Dropdown.Menu>
-              </Dropdown>
-            </div>
+            <form name="GraphPanelFilterForm">
+              {universePicker}
+              <div id="reportrange" className="pull-right">
+                {datePicker}
+                <Dropdown id="graph-filter-dropdown" pullRight={true} >
+                  <Dropdown.Toggle>
+                    <i className="fa fa-clock-o"></i>&nbsp;
+                    {this.state.filterLabel}
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu>
+                    {menuItems}
+                  </Dropdown.Menu>
+                </Dropdown>
+              </div>
+            </form>
           </Col>
         </Row>
         {this.props.children}
