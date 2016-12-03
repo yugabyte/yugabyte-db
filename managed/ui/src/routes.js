@@ -13,6 +13,7 @@ import Universes from './pages/Universes';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
 import SetupDataCenter from './pages/SetupDataCenter';
+import Metrics from './pages/Metrics';
 
 function validateSession(store, replacePath, callback) {
   let token = localStorage.getItem('customer_token');
@@ -57,6 +58,7 @@ export default (store) => {
           <Route path="/universes/:uuid" component={UniverseDetail} />
         </Route>
         <Route path="/alerts" component={Alerts} />
+        <Route path="/metrics" component={Metrics} />
         <Route path="/setup_datacenter" component={SetupDataCenter} />
       </Route>
     </Route>
