@@ -61,20 +61,24 @@ public class YBClient implements AutoCloseable {
   // Redis key column name.
   public static final String REDIS_KEY_COLUMN_NAME = "key";
 
+  // 2 power 16
+  public static final int TWO_POWER_SIXTEEN = (int)Math.pow(2, 16);
+
   public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
 
-  // Convert an integer to native representation of the four bytes it is made up of.
-  // Keeps the big-endianness order by saving MSB in left most index (0) and LSB in
-  // right most index (3).
-  private static byte[] toByteArray(int input) {
-    byte[] result = new byte[4];
+  // Convert a uint16 to a canonical (big-endian, MSB first) two byte representation.
+  private static byte[] uint16ToByteArray(int input) {
+    if (input < 0 || input >= TWO_POWER_SIXTEEN) {
+      throw new IllegalArgumentException("Invalid value " + input + ", needs to between 0 and " +
+                                         (TWO_POWER_SIXTEEN - 1) + " (inclusive).");
+    }
 
-    result[0] = (byte) (input >> 24);
-    result[1] = (byte) (input >> 16);
-    result[2] = (byte) (input >> 8);
-    result[3] = (byte) (input);
+    byte[] result = new byte[2];
+
+    result[0] = (byte) (input >> 8);
+    result[1] = (byte) (input);
 
     return result;
   }
@@ -94,10 +98,10 @@ public class YBClient implements AutoCloseable {
       numTablets = 1;
     }
 
-    // We split the key space into 4-byte sized partition keys.
+    // We split the key space into 2-byte sized partition keys.
     for (int i = 1; i < numTablets; i++) {
       PartialRow row = schema.newPartialRow();
-      byte[] bytes = toByteArray(i * (Integer.MAX_VALUE / numTablets));
+      byte[] bytes = uint16ToByteArray(i * (TWO_POWER_SIXTEEN / numTablets));
       row.addBinary(0, bytes);
       cto.addSplitRow(row);
     }
