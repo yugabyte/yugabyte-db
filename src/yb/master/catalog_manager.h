@@ -546,6 +546,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Return the table info for the table with the specified UUID, if it exists.
   scoped_refptr<TableInfo> GetTableInfo(const std::string& table_id);
+  scoped_refptr<TableInfo> GetTableInfoUnlocked(const std::string& table_id);
 
   // Return all the available TableInfo, which also may include not running tables
   // NOTE: This should only be used by tests or web-ui

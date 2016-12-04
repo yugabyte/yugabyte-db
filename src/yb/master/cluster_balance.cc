@@ -1133,7 +1133,7 @@ const TabletInfoMap& ClusterLoadBalancer::GetTabletMap() const {
 }
 
 const scoped_refptr<TableInfo> ClusterLoadBalancer::GetTableInfo(const TableId& table_uuid) const {
-  return catalog_manager_->GetTableInfo(table_uuid);
+  return catalog_manager_->GetTableInfoUnlocked(table_uuid);
 }
 
 const Status ClusterLoadBalancer::GetTabletsForTable(

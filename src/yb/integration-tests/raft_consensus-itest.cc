@@ -1951,6 +1951,10 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   // in quorum to vote.
   if (!status.IsIllegalState()) {
     ASSERT_OK(status);
+  } else {
+    LOG(INFO) << "Resuming Peer " << tservers[2]->uuid() << " as leader did not step down...";
+    ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Resume());
+    InsertOrDie(&active_tablet_servers, tservers[2]->uuid(), tservers[2]);
   }
   // Resume TS 1 so we have a majority of 3 to elect a new leader.
   LOG(INFO) << "Resuming Peer " << tservers[1]->uuid() << " ...";

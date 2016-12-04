@@ -1208,12 +1208,16 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     return s;
   }
 
-  // 4. Remove it from the by-name map
+  // 4. Remove it from the maps
   {
     TRACE("Removing from by-name map");
     std::lock_guard<LockType> l_map(lock_);
     if (table_names_map_.erase(l.data().name()) != 1) {
       PANIC_RPC(rpc, "Could not remove table from map, name=" + l.data().name());
+    }
+    TRACE("Removing from by-ids map");
+    if (table_ids_map_.erase(table->id()) != 1) {
+      PANIC_RPC(rpc, "Could not remove table from map, id=" + table->id());
     }
   }
 
@@ -1538,6 +1542,10 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const string& table_id) {
   boost::shared_lock<LockType> l(lock_);
+  return FindPtrOrNull(table_ids_map_, table_id);
+}
+
+scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const string& table_id) {
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
@@ -2569,6 +2577,10 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
     }
     if (delete_done) {
       master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
+      shared_ptr<TSDescriptor> ts_desc;
+      if (master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
+        ts_desc->ClearPendingTabletDelete(tablet_id_);
+      }
     }
   }
 
