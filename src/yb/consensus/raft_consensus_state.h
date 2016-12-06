@@ -174,6 +174,9 @@ class ReplicaState {
   // metadata. In order to be persisted, SetCommittedConfigUnlocked() must be called.
   Status SetPendingConfigUnlocked(const RaftConfigPB& new_config) WARN_UNUSED_RESULT;
 
+  // Clears the pending config.
+  Status ClearPendingConfigUnlocked() WARN_UNUSED_RESULT;
+
   // Return the pending configuration, or crash if one is not set.
   const RaftConfigPB& GetPendingConfigUnlocked() const;
 

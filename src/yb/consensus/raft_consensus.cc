@@ -2206,6 +2206,15 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
     // TODO: Do something with the status on failure?
     LOG(INFO) << state_->LogPrefixThreadSafe() << op_type_str << " replication failed: "
               << status.ToString();
+
+    // Clear out the pending state (ENG-590).
+    if (IsChangeConfigOperation(op_type)) {
+      Status s = state_->ClearPendingConfigUnlocked();
+      if (!s.ok()) {
+        LOG(WARNING) << "Could not clear pending state : " << s.ToString();
+      }
+    }
+
     client_cb.Run(status);
     return;
   }

@@ -224,6 +224,17 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
   return Status::OK();
 }
 
+Status ReplicaState::ClearPendingConfigUnlocked() {
+  DCHECK(update_lock_.is_locked());
+  if (!cmeta_->has_pending_config()) {
+    LOG(WARNING) << "Attempt to clear a non-existent pending config."
+                 << "Existing committed config: " << cmeta_->committed_config().ShortDebugString();
+    return STATUS(IllegalState, "Attempt to clear a non-existent pending config.");
+  }
+  cmeta_->clear_pending_config();
+  return Status::OK();
+}
+
 const RaftConfigPB& ReplicaState::GetPendingConfigUnlocked() const {
   DCHECK(update_lock_.is_locked());
   CHECK(IsConfigChangePendingUnlocked()) << "No pending config";
