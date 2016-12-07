@@ -31,6 +31,12 @@ DEFINE_int32(leader_balance_threshold,
              "Number of leaders per each tablet server to balance below. If this is configured to "
              "0 (the default), the leaders will be balanced optimally at extra cost.");
 
+DEFINE_int32(leader_balance_unresponsive_timeout_ms,
+             3 * 1000,
+             "The period of time that a master can go without receiving a heartbeat from a "
+             "tablet server before considering it unresponsive. Unresponsive servers are "
+             "excluded from leader balancing.");
+
 class TabletMetadata {
  public:
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
@@ -295,8 +301,11 @@ class ClusterLoadBalancer::ClusterLoadState {
       }
     }
 
-    // Add this tablet server for leader load-balancing only if it is not blacklisted.
-    if (!is_blacklisted) {
+    // Add this tablet server for leader load-balancing only if it is not blacklisted and it has
+    // heartbeated recently enough to be considered responsive for leader balancing.
+    if (!is_blacklisted &&
+        ts_desc->TimeSinceHeartbeat().ToMilliseconds() <
+        FLAGS_leader_balance_unresponsive_timeout_ms) {
       sorted_leader_load_.push_back(ts_uuid);
     }
 
