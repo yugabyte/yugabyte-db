@@ -393,6 +393,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
   void TestAddRemoveServer(RaftPeerPB::MemberType member_type);
   void TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::MemberType member_type);
+  void TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type);
 
   shared_ptr<YBTable> table_;
   std::vector<scoped_refptr<yb::Thread> > threads_;
@@ -921,6 +922,70 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
                              MonoDelta::FromSeconds(10));
   ASSERT_TRUE(status.IsIllegalState());
   ASSERT_STR_CONTAINS(status.ToString(), "Leader is not ready for Config Change");
+}
+
+// In TestRemoveTserverFailsWhenServerInTransition we are testing that a REMOVE_SERVER request
+// operation fails whenever the committed config contains a server in PRE_VOTER or PRE_OBSERVER
+// mode. In this test we are testing that a REMOVE_SERVER operation succeeds whenever the committed
+// config contains a PRE_VOTER or PRE_OBSERVER mode and it's the same server we are trying to
+// remove.
+void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::MemberType member_type) {
+    ASSERT_TRUE(member_type == RaftPeerPB::PRE_VOTER || member_type == RaftPeerPB::PRE_OBSERVER);
+    FLAGS_num_tablet_servers = 3;
+    FLAGS_num_replicas = 3;
+    vector<string> ts_flags;
+    ts_flags.push_back("--enable_leader_failure_detection=false");
+    ts_flags.push_back("--skip_change_role");
+    vector<string> master_flags;
+    master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+            NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+    vector<TServerDetails*> tservers;
+    AppendValuesFromMap(tablet_servers_, &tservers);
+    ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
+
+    // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
+    TServerDetails* initial_leader = tservers[0];
+    const MonoDelta timeout = MonoDelta::FromSeconds(10);
+    ASSERT_OK(StartElection(initial_leader, tablet_id_, timeout));
+    ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
+    ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, initial_leader, tablet_id_, timeout));
+
+    // The server we will remove and then bring back.
+    TServerDetails* tserver = tservers[2];
+
+    // Kill the master, so we can change the config without interference.
+    cluster_->master()->Shutdown();
+
+    // Now remove server 2 from the configuration.
+    TabletServerMap active_tablet_servers = tablet_servers_;
+    LOG(INFO) << "Removing tserver with uuid " << tserver->uuid();
+    ASSERT_OK(RemoveServer(initial_leader, tablet_id_, tserver, boost::none,
+                           MonoDelta::FromSeconds(10)));
+    ASSERT_EQ(1, active_tablet_servers.erase(tserver->uuid()));
+    int64_t cur_log_index = 2;
+    ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10),
+                                    active_tablet_servers, tablet_id_, cur_log_index));
+    ASSERT_OK(WaitUntilCommittedOpIdIndexIs(cur_log_index, initial_leader, tablet_id_, timeout));
+
+    ASSERT_OK(DeleteTablet(tserver, tablet_id_, tablet::TABLET_DATA_TOMBSTONED, boost::none,
+                           MonoDelta::FromSeconds(30)));
+
+    // Now add server 2 back in PRE_VOTER or PRE_OBSERVER mode. This server will never transition to
+    // VOTER or OBSERVER because flag skip_change_role is set.
+    LOG(INFO) << "Adding back Peer " << tserver->uuid();
+    ASSERT_OK(AddServer(initial_leader, tablet_id_, tserver, member_type, boost::none,
+                        MonoDelta::FromSeconds(10)));
+
+    // Only wait for TS 0 and 1 to agree that the new change config op (ADD_SERVER for server 2)
+    // has been replicated.
+    ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(60),
+                                    active_tablet_servers, tablet_id_, ++cur_log_index));
+
+    // Now try to remove server 2 from the configuration. This should succeed.
+    LOG(INFO) << "Removing tserver with uuid " << tservers[2]->uuid();
+    ASSERT_OK(RemoveServer(initial_leader, tablet_id_, tservers[2], boost::none,
+                           MonoDelta::FromSeconds(10)));
 }
 
 // Test that the leader doesn't crash if one of its followers has
@@ -2619,5 +2684,13 @@ TEST_F(RaftConsensusITest, TestRemoveTserverFailsWhenObserverInTransition) {
   TestRemoveTserverFailsWhenServerInTransition(RaftPeerPB::PRE_OBSERVER);
 }
 
-}  // namespace tserver
+TEST_F(RaftConsensusITest, TestRemovePreObserverServerSucceeds) {
+  TestRemoveTserverInTransitionSucceeds(RaftPeerPB::PRE_VOTER);
+}
+
+TEST_F(RaftConsensusITest, TestRemovePreVoterServerSucceeds) {
+  TestRemoveTserverInTransitionSucceeds(RaftPeerPB::PRE_OBSERVER);
+}
+
+    }  // namespace tserver
 }  // namespace yb

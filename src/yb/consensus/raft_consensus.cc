@@ -1570,11 +1570,16 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   return RequestVoteRespondVoteGranted(request, response);
 }
 
-Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type) {
+Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
+                                                           const string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
   int servers_in_transition = 0;
-  if (type != CHANGE_ROLE) {
+  if (type == ADD_SERVER) {
     servers_in_transition = CountServersInTransition(active_config);
+  } else if (type == REMOVE_SERVER) {
+    // If we are trying to remove the server in transition, then servers_in_transition shouldn't
+    // count it so we can proceed with the operation.
+    servers_in_transition = CountServersInTransition(active_config, server_uuid);
   }
 
   // Check that all the following requirements are met:
@@ -1629,7 +1634,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
       return s;
     }
 
-    s = IsLeaderReadyForChangeConfigUnlocked(type);
+    s = IsLeaderReadyForChangeConfigUnlocked(type, server.permanent_uuid());
     if (!s.ok()) {
       LOG(INFO) << "Returning not ready for " << ChangeConfigType_Name(type)
                 << " due to error " << s.ToString();

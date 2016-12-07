@@ -56,8 +56,11 @@ Status GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb);
 // Returns true on success.
 bool RemoveFromRaftConfig(RaftConfigPB* config, const std::string& uuid);
 
-// Helper function to count number of peers of type member_type.
-int CountMemberType(const RaftConfigPB& config, const RaftPeerPB::MemberType member_type);
+// Helper function to count number of peers of type member_type whose uuid doesn't match
+// ignore_uuid. We assume that peer's uuids are never empty strings.
+int CountMemberType(const RaftConfigPB& config,
+                    const RaftPeerPB::MemberType member_type,
+                    const std::string& ignore_uuid = "");
 
 // Counts the number of voters in the configuration.
 int CountVoters(const RaftConfigPB& config);
@@ -66,7 +69,7 @@ int CountVoters(const RaftConfigPB& config);
 int CountVotersInTransition(const RaftConfigPB& config);
 
 // Counts the number of servers that are in transition to become voters or observers.
-int CountServersInTransition(const RaftConfigPB& config);
+int CountServersInTransition(const RaftConfigPB& config, const std::string& ignore_uuid = "");
 
 // Calculates size of a configuration majority based on # of voters.
 int MajoritySize(int num_voters);

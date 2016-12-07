@@ -104,15 +104,16 @@ int CountVotersInTransition(const RaftConfigPB& config) {
   return CountMemberType(config, RaftPeerPB::PRE_VOTER);
 }
 
-int CountServersInTransition(const RaftConfigPB& config) {
-  return CountMemberType(config, RaftPeerPB::PRE_VOTER) +
-      CountMemberType(config, RaftPeerPB::PRE_OBSERVER);
+int CountServersInTransition(const RaftConfigPB& config, const string& ignore_uuid) {
+  return CountMemberType(config, RaftPeerPB::PRE_VOTER, ignore_uuid) +
+      CountMemberType(config, RaftPeerPB::PRE_OBSERVER, ignore_uuid);
 }
 
-int CountMemberType(const RaftConfigPB& config, const RaftPeerPB::MemberType member_type) {
+int CountMemberType(const RaftConfigPB& config, const RaftPeerPB::MemberType member_type,
+                    const string& ignore_uuid) {
   int count = 0;
   for (const RaftPeerPB& peer : config.peers()) {
-    if (peer.member_type() == member_type) {
+    if (peer.member_type() == member_type && peer.permanent_uuid() != ignore_uuid) {
       count++;
     }
   }

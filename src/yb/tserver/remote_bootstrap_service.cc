@@ -73,6 +73,11 @@ DEFINE_uint64(inject_latency_before_change_role_secs, 0,
               "(For testing only!)");
 TAG_FLAG(inject_latency_before_change_role_secs, unsafe);
 
+DEFINE_bool(skip_change_role, false,
+            "When set, we don't call ChangeRole after successfully finishing a remote bootstrap. "
+            "(For testing only!)");
+TAG_FLAG(skip_change_role, unsafe);
+
 namespace yb {
 namespace tserver {
 
@@ -353,6 +358,12 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
     if (PREDICT_FALSE(FLAGS_inject_latency_before_change_role_secs)) {
       LOG(INFO) << "Injecting latency for test";
       SleepFor(MonoDelta::FromSeconds(FLAGS_inject_latency_before_change_role_secs));
+    }
+
+    if (PREDICT_FALSE(FLAGS_skip_change_role)) {
+      LOG(INFO) << "Not changing role for " << session->requestor_uuid()
+                << " because flag FLAGS_skip_change_role is set";
+      return Status::OK();
     }
     Status s = session->ChangeRole();
     if (!s.ok()) {

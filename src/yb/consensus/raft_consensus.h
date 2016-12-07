@@ -348,7 +348,6 @@ class RaftConsensus : public Consensus,
   void ElectionCallback(const ElectionResult& result);
   void DoElectionCallback(const ElectionResult& result);
 
-
   // Helper struct that tracks the RunLeaderElection as part of leadership transferral.
   struct RunLeaderElectionState {
     gscoped_ptr<PeerProxy> proxy;
@@ -402,7 +401,10 @@ class RaftConsensus : public Consensus,
   // Checks if the leader is ready to process a change config request (one requirement for this is
   // for it to have at least one committed op in the current term). Also checks that there are no
   // voters in transition in the active config state. Status OK() implies leader is ready.
-  Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type);
+  // server_uuid is the uuid of the server that we are trying to remove, add, or change its
+  // role.
+  Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
+                                              const std::string& server_uuid);
 
   // Increment the term to the next term, resetting the current leader, etc.
   Status IncrementTermUnlocked();
