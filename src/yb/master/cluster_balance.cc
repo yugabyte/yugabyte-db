@@ -613,7 +613,6 @@ void ClusterLoadBalancer::RunLoadBalancer() {
 
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
-    LOG(INFO) << "Balancing load for table " << table.first;
     ResetState();
 
     // Prepare the in-memory structures.

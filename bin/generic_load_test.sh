@@ -22,4 +22,5 @@ fi
 set -x
 build/latest/bin/yb_load_test_tool \
   --use_kv_table \
+  --logtostderr \
   --load_test_master_addresses "$master_addresses" "$@"
