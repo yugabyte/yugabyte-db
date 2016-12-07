@@ -1,23 +1,25 @@
 /* Copyright (c) YugaByte, Inc. */
 
-#ybPortal .container {
-  width: 100%;
-  padding: 0
+#ybPortal {
+  .container {
+    width: 100%;
+    padding: 0
+  }
+
+  button.bg-orange {
+    background: #CD6500 ;
+    border: 1px solid #CD6500 ;
+    color: #fff;
+  }
 }
 
-#ybPortal body {
+body {
   color: #333;
   background: #545454;
   font-family: "Helvetica Neue", Roboto, Arial, "Droid Sans", sans-serif;
   font-size: 13px;
   font-weight: 400;
   line-height: 1.471;
-}
-
-#ybPortal button.bg-orange {
-  background: #CD6500 ;
-  border: 1px solid #CD6500 ;
-  color: #fff;
 }
 
 .login-panel {
@@ -272,8 +274,4 @@ a, a:visited, a:focus, a:active, :visited, :focus, :active, .btn:focus, .btn:act
 h2 {
   font-size: 18px;
   font-weight: 400;
-}
-.navbar-fixed-top {
-    top: 0;
-    border-width: 0 0 1px;
 }
