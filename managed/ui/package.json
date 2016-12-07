@@ -24,7 +24,6 @@
     "react-copy-to-clipboard": "^4.2.3",
     "react-fa": "^4.1.2",
     "react-intl": "^2.1.5",
-    "react-scripts": "^0.8.1",
     "react-widgets": "^3.4.4",
     "style-loader": "^0.13.1",
     "url-loader": "^0.5.7",
