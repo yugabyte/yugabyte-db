@@ -170,7 +170,7 @@ sql/pgtap-schema.sql: sql/pgtap.sql.in
 	rm sql/pgtap-schema.tmp
 
 # Make sure that we build the regression tests.
-installcheck: test/setup.sql install
+installcheck: test/setup.sql
 
 # In addition to installcheck, one can also run the tests through pg_prove.
 test: test/setup.sql
