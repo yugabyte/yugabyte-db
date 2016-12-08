@@ -82,6 +82,11 @@ enum YBTableType {
   UNKNOWN_TABLE_TYPE = -1
 };
 
+// This needs to be called by a client app before performing any operations that could result in
+// logging.
+void YB_EXPORT InitLogging();
+
+//
 // Installs a callback for internal client logging. It is invoked for a
 // log event of any severity, across any YBClient instance.
 //
@@ -156,7 +161,7 @@ class YB_EXPORT YBClientBuilder {
 
   // Set the number of reactor threads that are used to send out the requests.
   // (defaults to the flag value yb_client_num_reactors : 4).
-  YBClientBuilder& set_num_reactors(int32 num_reactors);
+  YBClientBuilder& set_num_reactors(int32_t num_reactors);
 
   // Creates the client.
   //

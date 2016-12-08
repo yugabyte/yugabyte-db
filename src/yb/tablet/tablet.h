@@ -37,6 +37,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/row_operations.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -150,8 +151,6 @@ class Tablet {
   // Finish the Prepare phase of a write transaction.
   //
   // Starts an MVCC transaction and assigns a timestamp for the transaction.
-  // This also snapshots the current set of tablet components into the transaction
-  // state.
   //
   // This should always be done _after_ any relevant row locks are acquired
   // (using CreatePreparedInsert/CreatePreparedMutate). This ensures that,
@@ -172,11 +171,6 @@ class Tablet {
   // This would cause the mutation list to look like: @t1: DELETE, @t2: UPDATE
   // which is invalid, since we expect to be able to be able to replay mutations
   // in increasing timestamp order on a given row.
-  //
-  // This requirement is basically two-phase-locking: the order in which row locks
-  // are acquired for transactions determines their serialization order. If/when
-  // we support multi-node serializable transactions, we'll have to acquire _all_
-  // row locks (across all nodes) before obtaining a timestamp.
   //
   // TODO: rename this to something like "FinishPrepare" or "StartApply", since
   // it's not the first thing in a transaction!
@@ -681,6 +675,8 @@ class Tablet {
   mutable yb::util::PendingOperationCounter pending_op_counter_;
 
   std::shared_ptr<LargestFlushedSeqNumCollector> largest_flushed_seqno_collector_;
+
+  std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Failed to start child process: " << start_status.ToString();
     return EXIT_FAILURE;
   }
+  LOG(INFO) << "Child process pid: " << subprocess.pid();
   mutex lock;
   condition_variable finished_cond;
   bool finished = false;
@@ -146,5 +147,3 @@ int main(int argc, char** argv) {
   LOG(INFO) << "Total time taken: " << StringPrintf("%.3f", duration_ms / 1000.0) << " sec";
   return exit_code;
 }
-
-

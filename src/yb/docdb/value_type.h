@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include <glog/logging.h>
+
 #include "rocksdb/slice.h"
 
 namespace yb {
@@ -12,15 +14,15 @@ namespace docdb {
 
 // Changes to this enum may invalidate persistent data.
 enum class ValueType : char {
-  // This indicates the end of the "hashed" or "range" group of components of the primary key, as
-  // well as the end of a sequence of subkeys that denote a path from the root of a document to a
-  // subdocument. This needs to sort before all other value types, so that a key that has a prefix
-  // of the sequence of components of another key sorts before the other key.
+  // This indicates the end of the "hashed" or "range" group of components of the primary key. This
+  // needs to sort before all other value types, so that a DocKey that has a prefix of the sequence
+  // of components of another key sorts before the other key.
   kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
 
-  // Timestamp must be lower than all other primitive types (other than kGroupEnd) so that keys
-  // that have fewer subkeys within a document sort above those that have all the same subkeys
-  // and more. In our MVCC document model layout the timestamp always appears in the end of the key.
+  // Timestamp must be lower than all other primitive types (other than kGroupEnd) so that
+  // SubDocKeys that have fewer subkeys within a document sort above those that have all the same
+  // subkeys and more. In our MVCC document model layout the timestamp always appears at the end of
+  // the key.
   kTimestamp = '#',  // ASCII code 35 (34 is double quote, which would be a bit confusing here).
 
   // Primitive value types
@@ -62,18 +64,13 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
 }
 
 inline ValueType DecodeValueType(const rocksdb::Slice& value) {
-  assert(!value.empty());
+  CHECK(!value.empty());  // TODO: graceful error handling.
   return static_cast<ValueType>(value.data()[0]);
 }
 
 inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
-  assert(!slice->empty());
+  CHECK(!slice->empty());  // TODO: graceful error handling.
   return static_cast<ValueType>(slice->ConsumeByte());
-}
-
-inline std::string EncodeValueType(const ValueType value_type) {
-  std::string s(1, static_cast<char>(value_type));
-  return s;
 }
 
 inline std::ostream& operator<<(std::ostream& out, const ValueType value_type) {

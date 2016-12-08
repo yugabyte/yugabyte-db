@@ -58,6 +58,9 @@ METRIC_DEFINE_histogram(
     "RPC requests",
     60000000LU, 2);
 
+DEFINE_int32(redis_service_yb_client_timeout_millis, 60000,
+             "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
+
 namespace yb {
 namespace redisserver {
 
@@ -154,6 +157,10 @@ void RedisServiceImpl::ValidateAndHandle(
   }
 }
 
+void RedisServiceImpl::ConfigureSession(client::YBSession *session) {
+  session->SetTimeoutMillis(FLAGS_redis_service_yb_client_timeout_millis);
+}
+
 RedisServiceImpl::RedisServiceImpl(RedisServer* server, string yb_tier_master_addresses)
     : RedisServerServiceIf(server->metric_entity()),
       yb_tier_master_addresses_(yb_tier_master_addresses),
@@ -247,7 +254,7 @@ void GetCommandCb::Run(const Status& status) {
 void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
   VLOG(1) << "Processing Get.";
   auto read_only_session = client_->NewSession(true);
-  read_only_session->SetTimeoutMillis(1000);
+  ConfigureSession(read_only_session.get());
   CHECK_OK(read_only_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   auto get_op = RedisReadOpForGetKey(table_.get(), c->cmd_args[1].ToString());
   read_only_session->ReadAsync(
@@ -335,7 +342,7 @@ void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
   }
 
   auto tmp_session = client_->NewSession();
-  tmp_session->SetTimeoutMillis(1000);
+  ConfigureSession(tmp_session.get());
   CHECK_OK(tmp_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
   CHECK_OK(tmp_session->Apply(
       RedisWriteOpForSetKV(table_.get(), c->cmd_args)));

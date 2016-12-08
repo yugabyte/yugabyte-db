@@ -161,6 +161,10 @@ static TableType ClientToPBTableType(YBTableType table_type) {
   }
 }
 
+void InitLogging() {
+  InitGoogleLoggingSafeBasic("yb_client");
+}
+
 void InstallLoggingCallback(YBLoggingCallback* cb) {
   RegisterLoggingCallback(Bind(&LoggingAdapterCB, Unretained(cb)));
 }

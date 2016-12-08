@@ -88,11 +88,11 @@ class DocWriteBatch {
 
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
-  int GetAndResetNumRocksDBSeeks() {
-    const int ret_val = num_rocksdb_seeks_;
-    num_rocksdb_seeks_ = 0;
-    return ret_val;
-  }
+  int GetAndResetNumRocksDBSeeks();
+
+  // This is used in tests to verify we are not trying to apply a DocWriteBatch to a different
+  // RocksDB instance than it was constructed with.
+  void CheckBelongsToSameRocksDB(const rocksdb::DB* rocksdb) const;
 
  private:
   DocWriteBatchCache cache_;
@@ -175,15 +175,17 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
 yb::Status GetDocument(rocksdb::DB* rocksdb,
                        const KeyBytes& document_key,
                        SubDocument* result,
-                       bool* doc_found);
+                       bool* doc_found,
+                       Timestamp scan_ts = Timestamp::kMax);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,
 // if any.
-yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out);
+yb::Status DocDBDebugDump(rocksdb::DB* rocksdb, std::ostream& out, bool include_binary = false);
 
-std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb);
+std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, bool include_binary = false);
 
+void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 
 }  // namespace docdb
 }  // namespace yb

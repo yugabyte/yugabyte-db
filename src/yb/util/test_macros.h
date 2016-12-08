@@ -24,8 +24,11 @@
 // ASSERT_NO_FATAL_FAILURE is just too long to type.
 #define NO_FATALS ASSERT_NO_FATAL_FAILURE
 
+// We are using "const auto" for storing the status so that the same macros work for both YB and
+// RocksDB's Status types.
+
 #define ASSERT_OK(status) do { \
-    Status _s = status; \
+    const auto _s = (status); \
     if (_s.ok()) { \
       SUCCEED(); \
     } else { \
@@ -34,7 +37,7 @@
   } while (0)
 
 #define ASSERT_OK_PREPEND(status, msg) do { \
-  Status _s = status; \
+  const auto _s = (status); \
   if (_s.ok()) { \
     SUCCEED(); \
   } else { \
@@ -43,7 +46,7 @@
 } while (0)
 
 #define EXPECT_OK(status) do { \
-    Status _s = status; \
+    const auto _s = (status); \
     if (_s.ok()) { \
       SUCCEED(); \
     } else { \
@@ -54,7 +57,7 @@
 // Like the above, but doesn't record successful
 // tests.
 #define ASSERT_OK_FAST(status) do {      \
-    Status _s = status; \
+    const auto _s = (status); \
     if (!_s.ok()) { \
       FAIL() << "Bad status: " << _s.ToString();  \
     } \
@@ -69,13 +72,13 @@
   } while (0)
 
 #define ASSERT_FILE_EXISTS(env, path) do { \
-  std::string _s = path; \
+  std::string _s = (path); \
   ASSERT_TRUE(env->FileExists(_s)) \
     << "Expected file to exist: " << _s; \
   } while (0)
 
 #define ASSERT_FILE_NOT_EXISTS(env, path) do { \
-  std::string _s = path; \
+  std::string _s = (path); \
   ASSERT_FALSE(env->FileExists(_s)) \
     << "Expected file not to exist: " << _s; \
   } while (0)

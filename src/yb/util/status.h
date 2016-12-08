@@ -25,7 +25,11 @@
 
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
-#include "yb/gutil/strings/substitute.h"
+
+// We can't include strings/substitute.h because of client_samples-test: adding this here pulls a
+// lot of dependencies into the client. Therefore, we require that any user of STATUS_SUBSTITUTE
+// include this header on their own.
+// #include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
 #define YB_RETURN_NOT_OK(s) do { \
@@ -66,7 +70,7 @@
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define YB_CHECK_OK_PREPEND(to_call, msg) do { \
-  ::yb::Status _s = (to_call); \
+  const auto _s = (to_call); \
   YB_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
   } while (0);
 
@@ -431,7 +435,7 @@ inline void Status::operator=(Status&& s) {
 
 #define STATUS(status_type, ...) (Status::status_type(__FILE__, __LINE__, __VA_ARGS__))
 #define STATUS_SUBSTITUTE(status_type, ...) \
-    (Status::status_type(__FILE__, __LINE__, Substitute(__VA_ARGS__)))
+    (Status::status_type(__FILE__, __LINE__, strings::Substitute(__VA_ARGS__)))
 
 // Utility macros to perform the appropriate check. If the check fails,
 // returns the specified (error) Status, with the given message.

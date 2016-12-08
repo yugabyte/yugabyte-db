@@ -42,10 +42,10 @@ boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
 #ifdef DOCDB_DEBUG
   if (iter == prefix_to_gen_ts_.end()) {
     DOCDB_DEBUG_LOG("DocWriteBatchCache contained no entry for $0",
-        BestEffortKeyBytesToStr(encoded_key_prefix));
+                    BestEffortDocDBKeyToStr(encoded_key_prefix));
   } else {
     DOCDB_DEBUG_LOG("DocWriteBatchCache entry found for key $0: $1",
-        BestEffortKeyBytesToStr(encoded_key_prefix), EntryToStr(iter->second));
+                    BestEffortDocDBKeyToStr(encoded_key_prefix), EntryToStr(iter->second));
   }
 #endif
   return iter == prefix_to_gen_ts_.end() ? boost::optional<Entry>() : iter->second;

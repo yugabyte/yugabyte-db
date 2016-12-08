@@ -231,6 +231,7 @@ static void LogCb(void* unused,
 }
 
 int main(int argc, char* argv[]) {
+  yb::client::InitLogging();
   yb::client::YBLoggingFunctionCallback<void*> log_cb(&LogCb, NULL);
   yb::client::InstallLoggingCallback(&log_cb);
 

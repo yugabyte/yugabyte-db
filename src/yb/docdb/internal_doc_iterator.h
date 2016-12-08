@@ -105,8 +105,6 @@ class InternalDocIterator {
     return iter_->Valid();
   }
 
-  static std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb);
-
  private:
   // An internal helper method that seeks the RocksDB iterator to the current document/subdocument
   // key prefix (which is assumed not to end with a generation timestamp), and checks whether or not

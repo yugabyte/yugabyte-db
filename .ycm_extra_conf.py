@@ -64,6 +64,8 @@ flags = [
 '-I',
 'src',
 '-I',
+'src/rocksdb/include',
+'-I',
 'build/latest/src',
 '-isystem',
 'thirdparty/installed/include',

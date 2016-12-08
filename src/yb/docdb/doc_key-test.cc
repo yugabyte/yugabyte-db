@@ -6,6 +6,7 @@
 
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -191,7 +192,8 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
       encoded_subdoc_key.ToString()
   );
   SubDocKey decoded_subdoc_key;
-  ASSERT_OK(decoded_subdoc_key.DecodeFrom(encoded_subdoc_key.AsSlice()));
+  ASSERT_OK(decoded_subdoc_key.FullyDecodeFrom(encoded_subdoc_key.AsSlice()));
+  ASSERT_EQ(decoded_subdoc_key, subdoc_key);
 }
 
 
@@ -254,6 +256,30 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
       ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ts));
     }
   }
+}
+
+TEST(DocKeyTest, TestNumSharedPrefixComponents) {
+  const DocKey doc_key({PrimitiveValue("a"), PrimitiveValue("b")});
+  const DocKey doc_key2({PrimitiveValue("aa")});
+  const SubDocKey k1(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L), Timestamp(12345));
+
+  // If the document key is different, we have no shared prefix components.
+  ASSERT_EQ(0, k1.NumSharedPrefixComponents(SubDocKey(doc_key2)));
+
+  // When only the document key matches, we have one shared prefix component.
+  ASSERT_EQ(1, k1.NumSharedPrefixComponents(SubDocKey(doc_key)));
+  ASSERT_EQ(1, k1.NumSharedPrefixComponents(SubDocKey(doc_key, PrimitiveValue("another_value"))));
+
+  ASSERT_EQ(2, k1.NumSharedPrefixComponents(SubDocKey(doc_key, PrimitiveValue("value"))));
+  ASSERT_EQ(3, k1.NumSharedPrefixComponents(
+      SubDocKey(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L))));
+
+  // Can't match more components than there are in one of the SubDocKeys.
+  ASSERT_EQ(3, k1.NumSharedPrefixComponents(
+      SubDocKey(doc_key,
+                PrimitiveValue("value"),
+                PrimitiveValue(1000L),
+                PrimitiveValue("some_more"))));
 }
 
 }  // namespace docdb

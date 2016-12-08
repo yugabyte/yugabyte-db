@@ -99,6 +99,7 @@ class SubDocument : public PrimitiveValue {
   bool DeleteChild(const PrimitiveValue& key);
 
   int object_num_keys() const {
+    DCHECK_EQ(ValueType::kObject, type_);
     if (!has_valid_object_container()) {
       return 0;
     }
@@ -131,6 +132,7 @@ class SubDocument : public PrimitiveValue {
   }
 
   void EnsureContainerAllocated();
+
   bool container_allocated() const {
     assert(type_ == ValueType::kObject || type_ == ValueType::kArray);
     return complex_data_structure_ != nullptr;
@@ -163,6 +165,11 @@ class SubDocument : public PrimitiveValue {
   }
 
   friend void SubDocumentToStreamInternal(ostream& out, const SubDocument& subdoc, int indent);
+
+  // We use a SubDocument as the top-level map from encoded document keys to documents (also
+  // represented as SubDocuments) in InMemDocDbState, and we need access to object_container()
+  // from there.
+  friend class InMemDocDbState;
 };
 
 std::ostream& operator <<(ostream& out, const SubDocument& subdoc);

@@ -561,7 +561,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
 
     if (real_size_ < filesize_ || real_size_ < pre_allocated_size_) {
       LOG(INFO) << filename_ << ": Truncating file from size: " << filesize_
-                << "to size: " << real_size_
+                << " to size: " << real_size_
                 << ". Preallocated size: " << pre_allocated_size_;
       if (ftruncate(fd_, real_size_) != 0) {
         return IOError(filename_, errno);

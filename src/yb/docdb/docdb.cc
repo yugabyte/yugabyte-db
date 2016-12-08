@@ -24,6 +24,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/docdb/docdb_compaction_filter.h"
 
 using std::endl;
 using std::string;
@@ -32,6 +33,7 @@ using std::unique_ptr;
 using std::shared_ptr;
 using std::stack;
 using std::vector;
+using std::make_shared;
 
 using yb::Timestamp;
 using yb::util::FormatBytesAsStr;
@@ -139,9 +141,9 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
     }
     if (doc_iter.subdoc_exists()) {
       if (doc_iter.subdoc_type() != ValueType::kObject) {
-        return STATUS(IllegalState, Substitute(
+        return STATUS_SUBSTITUTE(IllegalState,
             "Cannot set values inside a subdocument of type $0",
-            ValueTypeToStr(doc_iter.subdoc_type())));
+            ValueTypeToStr(doc_iter.subdoc_type()));
       }
       if (subkey_index == num_subkeys - 1 && !is_deletion) {
         // We don't need to perform a RocksDB read at the last level for upserts, we just
@@ -222,7 +224,7 @@ void DocWriteBatch::PopulateRocksDBWriteBatchInTest(rocksdb::WriteBatch *rocksdb
   for (const auto& entry : put_batch_) {
     SubDocKey subdoc_key;
     // We don't expect any invalid encoded keys in the write batch.
-    CHECK_OK_PREPEND(subdoc_key.DecodeFrom(entry.first),
+    CHECK_OK_PREPEND(subdoc_key.FullyDecodeFrom(entry.first),
                      Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
     if (timestamp != Timestamp::kMax) {
       subdoc_key.ReplaceMaxTimestampWith(timestamp);
@@ -252,6 +254,17 @@ void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
   }
 }
 
+int DocWriteBatch::GetAndResetNumRocksDBSeeks() {
+  const int ret_val = num_rocksdb_seeks_;
+  num_rocksdb_seeks_ = 0;
+  return ret_val;
+}
+
+void DocWriteBatch::CheckBelongsToSameRocksDB(const rocksdb::DB* const rocksdb) const {
+  CHECK_EQ(rocksdb, rocksdb_);
+}
+
+
 // ------------------------------------------------------------------------------------------------
 // Standalone functions
 // ------------------------------------------------------------------------------------------------
@@ -276,9 +289,11 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 // @param scan_ts The timestamp we are trying to scan the state of the database at.
 // @param lowest_ts
 //     The lowest timestamp that we need to consider while walking the nested document tree. This is
-//     based on init markers or tombstones seen at higher level. E.g. if we've already seen an init
+//     based on init markers or tombstones seen at higher levels. E.g. if we've already seen an init
 //     marker at timestamp t, then lowest_ts will be t, or if we've seen a tombstone at timestamp t,
-//     lowest_ts will be t + 1.
+//     lowest_ts will be t + 1 (because that's the earliest timestamp we need to care about after
+//     a deletion at timestamp t). The latter case is only relevant for the case when optional
+//     init markers are enabled, which is not supported as of 12/06/2016.
 static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
                                              rocksdb::Iterator* rocksdb_iter,
                                              DocVisitor* visitor,
@@ -286,8 +301,10 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
                                              Timestamp lowest_ts) {
   DOCDB_DEBUG_LOG("higher_level_key=$0, scan_ts=$1, lowest_ts=$2",
                   higher_level_key.ToString(), scan_ts.ToDebugString(), lowest_ts.ToDebugString());
-  DCHECK_LE(higher_level_key.timestamp(), scan_ts);
-  DCHECK_GE(higher_level_key.timestamp(), lowest_ts);
+  DCHECK_LE(higher_level_key.timestamp(), scan_ts)
+      << "; higher_level_key=" << higher_level_key.ToString();
+  DCHECK_GE(higher_level_key.timestamp(), lowest_ts)
+      << "; higher_level_key=" << higher_level_key.ToString();
 
   Value top_level_value;
   RETURN_NOT_OK(top_level_value.Decode(rocksdb_iter->value()));
@@ -319,8 +336,8 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
     return Status::OK();
   }
 
-  return STATUS(Corruption, Substitute("Invalid value type at the top level of a document: $0",
-      ValueTypeToStr(top_level_value.primitive_value().value_type())));
+  return STATUS_SUBSTITUTE(Corruption, "Invalid value type at the top level of a document: $0",
+                           ValueTypeToStr(top_level_value.primitive_value().value_type()));
 }
 
 // @param higher_level_key
@@ -357,7 +374,7 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 
   while (rocksdb_iter->Valid()) {
     SubDocKey subdoc_key;
-    RETURN_NOT_OK(subdoc_key.DecodeFrom(rocksdb_iter->key()));
+    RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(rocksdb_iter->key()));
     if (!subdoc_key.StartsWith(higher_level_key_no_ts)) {
       // We have reached the end of the subdocument we are trying to scan. This could also be the
       // end of the entire document.
@@ -404,27 +421,8 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
           subdoc_key, rocksdb_iter, visitor, scan_ts, subdoc_key.timestamp());
     }
 
-    // Make sure we go to a SubDocKey that has a lexicographically higher vector of subkeys.
-    // In other words, ensure we advance to the next field (subkeh) within the object( subdocument)
-    // we are currently scanning. Example:
-    //
-    // 1. SubDocKey(DocKey([], ["a"]), [TS(1)]) -> {}
-    // 2. SubDocKey(DocKey([], ["a"]), ["x", TS(1)]) -> {} ---------------------------
-    // 3. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(2)]) -> null                     |
-    // 4. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(1)]) -> {}                       |
-    // 5. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", TS(1)]) -> {}                  |
-    // 6. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", "x", TS(1)]) -> true           |
-    // 7. SubDocKey(DocKey([], ["a"]), ["y", TS(3)]) -> {}                  <---------
-    // 8. SubDocKey(DocKey([], ["a"]), ["y", "y", TS(3)]) -> {}
-    // 9. SubDocKey(DocKey([], ["a"]), ["y", "y", "x", TS(3)]) ->
-    //
-    // This is achieved by simply appending a byte that is higher than any ValueType in an encoded
-    // representation of a SubDocKey that extends the vector of subkeys present in the current one,
-    // i.e. key/value pairs #3-6 in the above example.
-
-    KeyBytes subdoc_key_no_ts = subdoc_key.Encode(/* include_timestamp = */ false);
-    subdoc_key_no_ts.AppendRawBytes("\xff", 1);
-    ROCKSDB_SEEK(rocksdb_iter, subdoc_key_no_ts.AsSlice());
+    // Get out of the subdocument we've just scanned and go to the next one.
+    ROCKSDB_SEEK(rocksdb_iter, subdoc_key.AdvanceOutOfSubDoc().AsSlice());
   }
   return Status::OK();
 }
@@ -435,8 +433,10 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
                         const KeyBytes& document_key,
                         DocVisitor* visitor,
                         Timestamp scan_ts) {
-  auto rocksdb_iter = InternalDocIterator::CreateRocksDBIterator(rocksdb);
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb);
 
+  // TODO: Use a SubDocKey API to build the proper seek key without assuming anything about the
+  //       internal structure of SubDocKey here.
   KeyBytes seek_key(document_key);
   seek_key.AppendValueType(ValueType::kTimestamp);
   seek_key.AppendTimestamp(scan_ts);
@@ -451,11 +451,33 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
   }
 
   SubDocKey doc_key;
-  RETURN_NOT_OK(doc_key.DecodeFrom(rocksdb_iter->key()));
+  RETURN_NOT_OK(doc_key.FullyDecodeFrom(rocksdb_iter->key()));
   if (doc_key.num_subkeys() > 0) {
-    return STATUS(Corruption,
-                  Substitute("A top-level document key is not supposed to contain any sub-keys: $0",
-                             doc_key.ToString()));
+    // This could happen when we are trying to scan at an old timestamp at which the document does
+    // not exist yet. In that case we'll jump directly into the section of the RocksDB key space
+    // that contains deeper levels of the document.
+
+    // Example (from a real test failure)
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Suppose the above RocksDB seek is as follows:
+    //
+    //        Seek key:       SubDocKey(DocKey([], [-7805187538405744458, false]), [TS(3)])
+    //        Seek key (raw): "I\x13\xaegI\x98\x05 \xb6F!#\xff\xff\xff\xff\xff\xff\xff\xfc"
+    //        Actual key:     SubDocKey(DocKey([], [-7805187538405744458, false]), [true; TS(4)])
+    //        Actual value:   "{"
+    //
+    // and the relevant part of the RocksDB state is as follows (as SubDocKey and binary):
+    //
+    // SubDocKey(DocKey([], [-7805187538405744458, false]), [TS(4)]) -> {}
+    // "I\x13\xaegI\x98\x05 \xb6F!#\xff\xff\xff\xff\xff\xff\xff\xfb" -> "{"
+    //
+    // SubDocKey(DocKey([], [-7805187538405744458, false]), [true; TS(4)]) -> {}  <--------------.
+    // "I\x13\xaegI\x98\x05 \xb6F!T#\xff\xff\xff\xff\xff\xff\xff\xfb" -> "{"                     |
+    //                                                                                           |
+    // Then we'll jump directly here as we try to retrieve the document state at timestamp 3: ---/
+    //
+    // The right thing to do here is just to return, assuming the document does not exist.
+    return Status::OK();
   }
 
   RETURN_NOT_OK(visitor->StartDocument(doc_key.doc_key()));
@@ -502,9 +524,9 @@ class SubDocumentBuildingVisitor : public DocVisitor {
         // TODO(mbautin): check for duplicate keys here.
         top->SetChildPrimitive(key_, value);
       } else {
-        return STATUS(Corruption,
-                      Substitute("Cannot set a value within a subdocument of type $0",
-                                 ValueTypeToStr(value_type)));
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Cannot set a value within a subdocument of type $0",
+                                 ValueTypeToStr(value_type));
       }
     }
     return Status::OK();
@@ -525,13 +547,13 @@ class SubDocumentBuildingVisitor : public DocVisitor {
         if (!new_subdoc_and_child_added.second) {
           // TODO(mbautin): include the duplicate key into status, ensuring the string
           //                representation is not too long.
-          return STATUS(Corruption, Substitute("Duplicate key"));
+          return STATUS_SUBSTITUTE(Corruption, "Duplicate key");
         }
         stack_.push(new_subdoc_and_child_added.first);
       } else {
-        return STATUS(Corruption,
-                      Substitute("Cannot set a value within a subdocument of type $0",
-                                 ValueTypeToStr(value_type)));
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Cannot set a value within a subdocument of type $0",
+                                 ValueTypeToStr(value_type));
       }
     }
     return Status::OK();
@@ -563,13 +585,13 @@ class SubDocumentBuildingVisitor : public DocVisitor {
  private:
   Status EnsureInsideObject(const char* function_name) {
     if (stack_.empty()) {
-      return STATUS(Corruption, Substitute("$0 called on an empty stack", function_name));
+      return STATUS_SUBSTITUTE(Corruption, "$0 called on an empty stack", function_name);
     }
     const ValueType value_type = stack_.top()->value_type();
     if (value_type != ValueType::kObject) {
-      return STATUS(Corruption,
-                    Substitute("$0 called but the current subdocument type is $1",
-                               function_name, ValueTypeToStr(value_type)));
+      return STATUS_SUBSTITUTE(Corruption,
+                               "$0 called but the current subdocument type is $1",
+                               function_name, ValueTypeToStr(value_type));
     }
     return Status::OK();
   }
@@ -585,12 +607,13 @@ class SubDocumentBuildingVisitor : public DocVisitor {
 yb::Status GetDocument(rocksdb::DB* rocksdb,
                        const KeyBytes& document_key,
                        SubDocument* result,
-                       bool* doc_found) {
+                       bool* doc_found,
+                       const Timestamp scan_ts) {
   DOCDB_DEBUG_LOG("GetDocument for key $0", document_key.ToString());
   *doc_found = false;
 
   SubDocumentBuildingVisitor subdoc_builder;
-  RETURN_NOT_OK(ScanDocument(rocksdb, document_key, &subdoc_builder));
+  RETURN_NOT_OK(ScanDocument(rocksdb, document_key, &subdoc_builder, scan_ts));
   *result = subdoc_builder.ReleaseResult();
   *doc_found = subdoc_builder.doc_found();
   return Status::OK();
@@ -600,7 +623,7 @@ yb::Status GetDocument(rocksdb::DB* rocksdb,
 // Debug output
 // ------------------------------------------------------------------------------------------------
 
-Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out) {
+Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, const bool include_binary) {
   rocksdb::ReadOptions read_opts;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
@@ -608,7 +631,7 @@ Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out) {
   while (iter->Valid()) {
     SubDocKey subdoc_key;
     rocksdb::Slice key_slice(iter->key());
-    Status subdoc_key_decode_status = subdoc_key.DecodeFrom(key_slice);
+    Status subdoc_key_decode_status = subdoc_key.FullyDecodeFrom(key_slice);
     if (!subdoc_key_decode_status.ok()) {
       out << "Error: failed decoding RocksDB key " << FormatRocksDBSliceAsStr(iter->key()) << ": "
           << subdoc_key_decode_status.ToString() << endl;
@@ -631,18 +654,19 @@ Status DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out) {
     }
 
     out << subdoc_key.ToString() << " -> " << value.ToString() << endl;
+    if (include_binary) {
+      out << FormatRocksDBSliceAsStr(iter->key()) << " -> "
+          << FormatRocksDBSliceAsStr(iter->value()) << endl << endl;
+    }
 
     iter->Next();
   }
   return Status::OK();
 }
 
-std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb) {
+std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, const bool include_binary) {
   stringstream ss;
-  Status dump_status = DocDBDebugDump(rocksdb, ss);
-  if (!dump_status.ok()) {
-    ss << "\nError during DocDB debug dump:\n" << dump_status.ToString();
-  }
+  CHECK_OK(DocDBDebugDump(rocksdb, ss, include_binary));
   return ss.str();
 }
 

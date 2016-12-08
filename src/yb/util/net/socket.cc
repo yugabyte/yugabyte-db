@@ -503,14 +503,25 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
   DCHECK_LE(amt, std::numeric_limits<int32_t>::max()) << "Reads > INT32_MAX not supported";
   DCHECK(nread);
   size_t tot_read = 0;
+
+  // We populate this with the full (initial) duration of the timeout on the first iteration of the
+  // loop below.
+  MonoDelta full_timeout;
+
   while (tot_read < amt) {
-    int32_t inc_num_read = 0;
-    int32_t num_to_read = amt - tot_read;
-    MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    // Read at most the max value of int32_t bytes at a time.
+    const int32_t num_to_read = std::min(amt - tot_read,
+                                         static_cast<size_t>(std::numeric_limits<int32_t>::max()));
+    const MonoDelta timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
+    if (!full_timeout.Initialized()) {
+      full_timeout = timeout;
+    }
     if (PREDICT_FALSE(timeout.ToNanoseconds() <= 0)) {
+      VLOG(4) << __func__ << " timed out in " << full_timeout.ToString();
       return STATUS(TimedOut, "");
     }
     RETURN_NOT_OK(SetRecvTimeout(timeout));
+    int32_t inc_num_read = 0;
     Status s = Recv(buf, num_to_read, &inc_num_read);
     tot_read += inc_num_read;
     buf += inc_num_read;
@@ -518,11 +529,13 @@ Status Socket::BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoT
 
     if (PREDICT_FALSE(!s.ok())) {
       // Continue silently when the syscall is interrupted.
-      if (s.posix_code() == EINTR) {
+      //
+      // We used to treat EAGAIN as a timeout, and the reason for that is not entirely clear
+      // to me (mbautin). http://man7.org/linux/man-pages/man2/recv.2.html says that EAGAIN and
+      // EWOULDBLOCK could be used interchangeably, and these could happen on a nonblocking socket
+      // that no data is available on. I think we should just retry in that case.
+      if (s.posix_code() == EINTR || s.posix_code() == EAGAIN) {
         continue;
-      }
-      if (s.posix_code() == EAGAIN) {
-        return STATUS(TimedOut, "");
       }
       return s.CloneAndPrepend("BlockingRecv error");
     }

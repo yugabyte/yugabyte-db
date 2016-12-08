@@ -1586,7 +1586,7 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalReadAmp(
     uint64_t older_file_size = 0;
     for (size_t i = sorted_runs.size() - 1; i >= first_index_after; i--) {
       older_file_size += sorted_runs[i].size;
-      if (older_file_size * 100L >= total_size * (long) ratio_to_compress) {
+      if (older_file_size * 100L >= total_size * static_cast<int64_t>(ratio_to_compress)) {
         enable_compression = false;
         break;
       }
@@ -1716,14 +1716,14 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalSizeAmp(
     LOG_TO_BUFFER(
         log_buffer,
         "[%s] Universal: size amp not needed. newer-files-total-size %" PRIu64
-        "earliest-file-size %" PRIu64,
+        " earliest-file-size %" PRIu64,
         cf_name.c_str(), candidate_size, earliest_file_size);
     return nullptr;
   } else {
     LOG_TO_BUFFER(
         log_buffer,
         "[%s] Universal: size amp needed. newer-files-total-size %" PRIu64
-        "earliest-file-size %" PRIu64,
+        " earliest-file-size %" PRIu64,
         cf_name.c_str(), candidate_size, earliest_file_size);
   }
   assert(start_index < sorted_runs.size() - 1);

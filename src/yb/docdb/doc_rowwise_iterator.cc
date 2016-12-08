@@ -12,7 +12,6 @@
 
 using std::string;
 
-using strings::Substitute;
 using yb::FormatRocksDBSliceAsStr;
 
 namespace yb {
@@ -26,12 +25,12 @@ Status ExpectValueType(ValueType expected_value_type,
   if (expected_value_type == actual_value.value_type()) {
     return Status::OK();
   } else {
-    return STATUS(Corruption, Substitute(
+    return STATUS_SUBSTITUTE(Corruption,
         "Expected a internal value type $0 for column $1 of physical SQL type $2, got $3",
         ValueTypeToStr(expected_value_type),
         column.name(),
         column.type_info()->name(),
-        ValueTypeToStr(actual_value.value_type())));
+        ValueTypeToStr(actual_value.value_type()));
   }
 }
 
@@ -59,10 +58,11 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   db_iter_.reset(db_->NewIterator(read_options));
 
   if (spec->lower_bound_key() != nullptr) {
-    db_iter_->Seek(
-        SubDocKey(KuduToDocKey(*spec->lower_bound_key()), timestamp_).Encode().AsSlice());
+    ROCKSDB_SEEK(db_iter_.get(),
+                 SubDocKey(KuduToDocKey(*spec->lower_bound_key()), timestamp_).Encode().AsSlice());
   } else {
-    db_iter_->SeekToFirst();
+    // The equivalent of db_iter_->SeekToFirst().
+    ROCKSDB_SEEK(db_iter_.get(), "");
   }
 
   if (spec->exclusive_upper_bound_key() != nullptr) {
@@ -92,7 +92,7 @@ bool DocRowwiseIterator::HasNext() const {
       return false;
     }
 
-    status_ = subdoc_key_.DecodeFrom(db_iter_->key());
+    status_ = subdoc_key_.FullyDecodeFrom(db_iter_->key());
     if (!status_.ok()) {
       // Defer error reporting to NextBlock.
       return true;
@@ -109,19 +109,15 @@ bool DocRowwiseIterator::HasNext() const {
       // key/value pairs outside of the timestamp range (the lower end of that range is based on
       // the delete timestamp), and come up with a return value for HasNext. We might also have to
       // go the next row as part of this process.
-      //
-      // TODO: the pattern below repeats in a few places, need to encapsulate and deduplicate it.
-      KeyBytes subdoc_key_no_ts = subdoc_key_.Encode(/* include_timestamp = */ false);
-      subdoc_key_no_ts.AppendRawBytes("\xff", 1);
-      ROCKSDB_SEEK(db_iter_.get(), subdoc_key_no_ts.AsSlice());
+      ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
       continue;
     }
 
     if (subdoc_key_.num_subkeys() > 0) {
       // Defer error reporting to NextBlock.
-      status_ = STATUS(Corruption,
-                       Substitute("Did not expect to find any subkeys when starting row "
-                                  "iteration, found $0", subdoc_key_.num_subkeys()));
+      status_ = STATUS_SUBSTITUTE(Corruption,
+                                  "Did not expect to find any subkeys when starting row "
+                                  "iteration, found $0", subdoc_key_.num_subkeys());
       return true;
     }
 
@@ -146,14 +142,14 @@ bool DocRowwiseIterator::HasNext() const {
     }
     if (value_type != ValueType::kTombstone) {
       // Defer error reporting to NextBlock.
-      status_ = STATUS(Corruption, Substitute(
+      status_ = STATUS_SUBSTITUTE(Corruption,
           "Invalid value type at the top of a document, object or tombstone expected: $0",
-          ValueTypeToStr(value_type)));
+          ValueTypeToStr(value_type));
       return true;
     }
     // No document with this key exists at this timestamp (it has been deleted). Go to the next
     // document key and repeat.
-    db_iter_->Seek(subdoc_key_.doc_key().Encode().Increment().AsSlice());
+    ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.doc_key().Encode().IncrementInPlace().AsSlice());
   }
 }
 
@@ -197,15 +193,15 @@ Status DocRowwiseIterator::PrimitiveValueToKudu(
     case DataType::BOOL: {
       if (value.value_type() != ValueType::kTrue &&
           value.value_type() != ValueType::kFalse) {
-        return STATUS(Corruption,
-                      Substitute("Expected true/false, got $0", value.ToString()));
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Expected true/false, got $0", value.ToString());
       }
       *(reinterpret_cast<bool*>(dest_ptr)) = value.value_type() == ValueType::kTrue;
       break;
     }
     default:
-      return STATUS(IllegalState,
-                    Substitute("Unsupported column data type $0", data_type));
+      return STATUS_SUBSTITUTE(IllegalState,
+                               "Unsupported column data type $0", data_type);
   }
   return Status::OK();
 }
@@ -237,9 +233,9 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   // "range group" of the DocKey.
   const auto& range_group = subdoc_key_.doc_key().range_group();
   if (range_group.size() < projection_.num_key_columns()) {
-    return STATUS(Corruption,
-                  Substitute("Document key has $0 range keys, but at least $1 are expected.",
-                             range_group.size(), projection_.num_key_columns()));
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Document key has $0 range keys, but at least $1 are expected.",
+                             range_group.size(), projection_.num_key_columns());
   }
 
   // Key columns come from the key.
@@ -262,9 +258,9 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
       Value value;
       RETURN_NOT_OK(value.Decode(db_iter_->value()));
       if (value.has_ttl()) {
-        return STATUS(IllegalState,
-            Substitute("TTL in YSQL tables currently not supported, found $0",
-                value.ttl().ToString()));
+        return STATUS_SUBSTITUTE(IllegalState,
+            "TTL in YSQL tables currently not supported, found $0",
+            value.ttl().ToString());
       }
       if (value.primitive_value().value_type() != ValueType::kNull &&
           value.primitive_value().value_type() != ValueType::kTombstone) {
@@ -277,8 +273,8 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     }
 
     if (is_null && !is_nullable) {
-      return STATUS(IllegalState,
-                    Substitute("Column $0 is not nullable, but no data is found", i));
+      return STATUS_SUBSTITUTE(IllegalState,
+                               "Column $0 is not nullable, but no data is found", i);
     }
     if (is_nullable) {
       dst->column_block(i).SetCellIsNull(0, is_null);
@@ -289,10 +285,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 
   // Advance to the next column (the next field of the top-level document in our SQL to DocDB
   // mapping).
-  // TODO: reduce buffer copies.
-  KeyBytes subdoc_key_no_ts = subdoc_key_.Encode(/* include_timestamp = */ false);
-  subdoc_key_no_ts.AppendRawBytes("\xff", 1);
-  ROCKSDB_SEEK(db_iter_.get(), subdoc_key_no_ts.AsSlice());
+  ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
 
   return Status::OK();
 }

@@ -127,11 +127,17 @@ class PrimitiveValue {
 
   int CompareTo(const PrimitiveValue& other) const;
 
-  // Assuming this PrimitiveValue represents a string, return a Slice pointing to it. This returns
-  // a YB slice, not a RocksDB slice based on the current need.
+  // Assuming this PrimitiveValue represents a string, return a Slice pointing to it.
+  // This returns a YB slice, not a RocksDB slice, based on what was needed when this function was
+  // implemented. This distinction should go away if we merge RocksDB and YB Slice classes.
   Slice GetStringAsSlice() const {
     DCHECK_EQ(ValueType::kString, type_);
     return Slice(str_val_);
+  }
+
+  const std::string& GetString() const {
+    DCHECK_EQ(ValueType::kString, type_);
+    return str_val_;
   }
 
   void SwapStringValue(std::string *other) {

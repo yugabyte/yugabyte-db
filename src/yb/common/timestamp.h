@@ -31,7 +31,7 @@ class Timestamp {
  public:
   typedef uint64_t val_type;
 
-  Timestamp() : v(kInvalidTimestamp.v) {}
+  Timestamp() noexcept : v(kInvalidTimestamp.v) {}
 
   explicit Timestamp(uint64_t val) : v(val) {}
 

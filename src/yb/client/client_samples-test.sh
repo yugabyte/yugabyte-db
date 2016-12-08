@@ -23,6 +23,8 @@
 
 set -e -u -o pipefail
 
+keep_library_dir=""
+
 # Clean up after the test. Must be idempotent.
 cleanup() {
   if [ -n "$TS_PID" ]; then
@@ -36,8 +38,10 @@ cleanup() {
   if [ -n "$BASE_DIR" -a -d "$BASE_DIR" ]; then
       rm -rf "$BASE_DIR"
   fi
-  if [ -n "$LIBRARY_DIR" -a -d "$LIBRARY_DIR" ]; then
-      rm -rf "$LIBRARY_DIR"
+  if [[ -z ${keep_library_dir} ]]; then
+    if [ -n "$LIBRARY_DIR" -a -d "$LIBRARY_DIR" ]; then
+        rm -rf "$LIBRARY_DIR"
+    fi
   fi
 }
 trap cleanup EXIT
@@ -132,5 +136,37 @@ TS_PID=$!
 # Let them run for a bit.
 sleep 5
 
+set +e
+
+ulimit -c unlimited  # Ignore errors in setting the core dump size limit.
+
 # Run the samples.
 $SAMPLES_DIR/sample $LOCALHOST_IP
+exit_code=$?
+
+set +x
+
+if [[ $exit_code -ne 0 ]]; then
+  echo "Current directory: $PWD"
+  echo "LIBRARY_DIR: $LIBRARY_DIR"
+  echo "TEST_TMPDIR: $TEST_TMPDIR"
+fi
+
+core_found=false
+for core_path in core.*; do
+  if [[ -f $core_path ]]; then
+    core_found=true
+  fi
+done
+
+# Copy the executable to the main temporary directory of the test so we can analyze it later.  Also
+# keep the libraries around, because gdb will search for them in their exact original locations.
+if "$core_found"; then
+  keep_library_dir=1
+  (
+    set -x
+    cp "$SAMPLES_DIR"/sample "$TEST_TMPDIR"
+  )
+fi
+
+exit "$exit_code"

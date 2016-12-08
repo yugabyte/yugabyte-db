@@ -17,7 +17,8 @@ oprofile_data
 # VIM/emacs stuff
 *.swp
 *~
-core*
+# These files could be used to auto-save vim sessions.
+.session.vim
 
 # IDE cruft
 .settings/
@@ -34,3 +35,15 @@ www/tracing.*
 python/kudu/*.so
 python/kudu/*.cpp
 *.py[ocd]
+
+# Backup files
+*.bak
+
+# Core dumps
+core*
+
+# CLion directories
+/cmake-build-debug
+
+# screen sometimes makes these, I think
+/hardcopy.*

@@ -54,6 +54,7 @@ set(TABLET_SRCS
   delta_store.cc
   delta_tracker.cc
   key_value_iterator.cc
+  tablet_retention_policy.cc
 )
 
 PROTOBUF_GENERATE_CPP(

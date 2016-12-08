@@ -17,6 +17,8 @@
 
 #include "yb/client/yb_op.h"
 
+#include <assert.h>
+
 #include "yb/client/client.h"
 #include "yb/common/encoded_key.h"
 #include "yb/common/row.h"
@@ -106,6 +108,12 @@ YBRedisReadOp::~YBRedisReadOp() {}
 
 std::string YBRedisReadOp::ToString() const {
   return "REDIS_READ " + redis_read_request_->get_request().key_value().key();
+}
+
+const RedisResponsePB& YBRedisReadOp::response() const {
+  // Cannot use CHECK or DCHECK here, or client_samples-test will fail.
+  assert(redis_response_ != nullptr);
+  return *redis_response_;
 }
 
 RedisResponsePB* YBRedisReadOp::mutable_response() {

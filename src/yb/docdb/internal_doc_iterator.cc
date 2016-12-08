@@ -21,13 +21,6 @@ using strings::Substitute;
 namespace yb {
 namespace docdb {
 
-std::unique_ptr<rocksdb::Iterator> InternalDocIterator::CreateRocksDBIterator(
-    rocksdb::DB* rocksdb) {
-  // TODO: avoid instantiating ReadOptions every time.
-  rocksdb::ReadOptions read_opts;
-  return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
-}
-
 InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
                                          DocWriteBatchCache* doc_write_batch_cache,
                                          int* num_rocksdb_seeks)

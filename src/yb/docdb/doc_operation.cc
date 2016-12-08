@@ -64,7 +64,7 @@ Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, Timestamp timestamp) {
   RETURN_NOT_OK(Value::DecodeTtl(&value, &ttl));
   if (!ttl.Equals(Value::kMaxTtl)) {
     SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.DecodeFrom(key));
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key));
     const Timestamp expiry =
         server::HybridClock::AddPhysicalTimeToTimestamp(sub_doc_key.timestamp(), ttl);
     if (timestamp.CompareTo(expiry) > 0) {

@@ -80,9 +80,11 @@ class RedisServiceImpl : public RedisServerServiceIf {
   void ValidateAndHandle(
       const RedisCommandInfo* cmd_info, yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
 
+  void ConfigureSession(client::YBSession* session);
+
   // Redis command table, for commands that we currently support.
   //
-  // Based on  "redisCommandTable[]" from redis/src/server.c
+  // Based on "redisCommandTable[]" from redis/src/server.c
   // kMethodCount has to reflect the correct number of commands in the table.
   //
   // Every entry is composed of the following fields:

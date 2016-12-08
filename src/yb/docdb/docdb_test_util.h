@@ -3,10 +3,17 @@
 #ifndef YB_DOCDB_DOCDB_TEST_UTIL_H_
 #define YB_DOCDB_DOCDB_TEST_UTIL_H_
 
-#include <vector>
 #include <random>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "rocksdb/db.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
 
@@ -48,6 +55,204 @@ template<typename T>
 const T& RandomElementOf(const std::vector<T>& v, RandomNumberGenerator* rng) {
   return v[(*rng)() % v.size()];
 }
+
+// Perform a major compaction on the given database.
+void FullyCompactDB(rocksdb::DB* rocksdb);
+
+// An implementation of the document node visitor interface that dumps all events (document
+// start/end, object keys and values, etc.) to a string as separate lines.
+class DebugDocVisitor : public DocVisitor {
+ public:
+  DebugDocVisitor();
+  virtual ~DebugDocVisitor();
+
+  Status StartDocument(const DocKey& key) override;
+
+  Status VisitKey(const PrimitiveValue& key) override;
+  Status VisitValue(const PrimitiveValue& value) override;
+
+  Status EndDocument() override;
+  Status StartObject() override;
+  Status EndObject() override;
+  Status StartArray() override;
+  Status EndArray() override;
+
+  std::string ToString();
+
+ private:
+  std::stringstream out_;
+};
+
+class LogicalRocksDBDebugSnapshot {
+ public:
+  LogicalRocksDBDebugSnapshot() {}
+  void Capture(rocksdb::DB* rocksdb);
+  void RestoreTo(rocksdb::DB *rocksdb) const;
+ private:
+  std::vector<std::pair<std::string, std::string>> kvs;
+  string docdb_debug_dump_str;
+};
+
+// A wrapper around a RocksDB instance and provides utility functions on top of it, such as
+// compacting the history until a certain point. This is also a convenient base class for GTest test
+// classes, because it exposes member functions such as rocksdb() and write_oiptions().
+class DocDBRocksDBFixture {
+ public:
+  DocDBRocksDBFixture();
+  ~DocDBRocksDBFixture();
+
+  rocksdb::DB* rocksdb();
+
+  const rocksdb::WriteOptions& write_options() const { return write_options_; }
+
+  void OpenRocksDB();
+  void DestroyRocksDB();
+
+  // Writes the given DocWriteBatch to RocksDB. Unlike the production codepath, here we assume it
+  // already contains valid timestamps in its keys, and do not substitue a new timestamp for
+  // Timestamp::kMax.
+  rocksdb::Status WriteToRocksDB(const DocWriteBatch& write_batch);
+
+  void SetHistoryCutoffTimestamp(Timestamp history_cutoff);
+  void CompactHistoryBefore(Timestamp history_cutoff);
+
+  // Produces a string listing the contents of the entire RocksDB database, with every key and value
+  // decoded as a DocDB key/value and converted to a human-readable string representation.
+  std::string DocDBDebugDumpToStr();
+
+  // "Walks" the latest state of the given document using using DebugDocVisitor and returns a string
+  // that lists all "events" encountered (document start/end, object start/end/keys/values, etc.)
+  std::string DebugWalkDocument(const KeyBytes& encoded_doc_key);
+
+  void SetPrimitive(const DocPath& doc_path,
+                    const PrimitiveValue& value,
+                    Timestamp timestamp,
+                    DocWriteBatch* doc_write_batch = nullptr);
+
+  void DocDBDebugDumpToConsole();
+
+  void FlushRocksDB();
+
+ private:
+  std::unique_ptr<rocksdb::DB> rocksdb_;
+  std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
+  rocksdb::Options rocksdb_options_;
+  rocksdb::WriteOptions write_options_;
+  string rocksdb_dir_;
+};
+
+class DocDBLoadGenerator {
+ public:
+  static constexpr uint64_t kDefaultRandomSeed = 23874297385L;
+
+  DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
+                     int num_doc_keys,
+                     int num_unique_subkeys,
+                     int deletion_chance = 100,
+                     int max_nesting_level = 10,
+                     uint64 random_seed = kDefaultRandomSeed,
+                     int verification_frequency = 100);
+
+  // Performs a random DocDB operation according to the configured options. This also verifies
+  // the consistency of RocksDB-backed DocDB (which is close to the production codepath) with an
+  // in-memory non-thread-safe data structure maintained just for sanity checking. Such verification
+  // is only performed from time to time, not on every call to PerformOperation.
+  //
+  // The caller should wrap calls to this function in NO_FATALS.
+  //
+  // @param compact_history If this is set, we perform the RocksDB-backed DocDB read before and
+  //                        after history cleanup, and verify that the state of the document is
+  //                        the same in both cases.
+  void PerformOperation(bool compact_history = false);
+
+  // @return The next "iteration number" to be performed when PerformOperation is called.
+  int next_iteration() const { return iteration_; }
+
+  // The timestamp of the last operation performed is always based on the last iteration number.
+  // Most times it will be one less than what next_iteration() would return, if we convert the
+  // timestamp to an integer. This can only be called after PerformOperation() has been called at
+  // least once.
+  //
+  // @return The timestamp of the last operation performed.
+  Timestamp last_operation_ts() const;
+
+  void FlushRocksDB();
+
+  // Generate a random unsiged 64-bit integer using the random number generator maintained by this
+  // object.
+  uint64_t NextRandom() { return random_(); }
+
+  // Generate a random integer from 0 to n - 1 using the random number generator maintained by this
+  // object.
+  int NextRandomInt(int n) { return NextRandom() % n; }
+
+  // Capture and remember a "logical DocDB snapshot" (not to be confused with what we call
+  // a "logical RocksDB snapshot"). This keeps track of all document keys and corresponding
+  // documents existing at the latest timestamp.
+  void CaptureDocDbSnapshot();
+
+  void VerifyOldestSnapshot();
+  void VerifyRandomDocDbSnapshot();
+
+  // Perform a flashback query at the time of the latest snapshot before the given cleanup
+  // timestamp and compare it to the state recorded with the snapshot. Expect the two to diverge
+  // using ASSERT_TRUE. This is used for testing that old history is actually being cleaned up
+  // during compactions.
+  void CheckIfOldestSnapshotIsStillValid(const Timestamp cleanup_ts);
+
+  // Removes all snapshots taken before the given timestamp. This is done to test history cleanup.
+  void RemoveSnapshotsBefore(Timestamp ts);
+
+  int num_divergent_old_snapshot() { return divergent_snapshot_ts_and_cleanup_ts_.size(); }
+
+  std::vector<std::pair<int, int>> divergent_snapshot_ts_and_cleanup_ts() {
+    return divergent_snapshot_ts_and_cleanup_ts_;
+  }
+
+ private:
+  rocksdb::DB* rocksdb() { return fixture_->rocksdb(); }
+
+  DocDBRocksDBFixture* fixture_;
+  RandomNumberGenerator random_;  // Using default seed.
+  std::vector<DocKey> doc_keys_;
+  std::vector<PrimitiveValue> possible_subkeys_;
+  int iteration_;
+  InMemDocDbState in_mem_docdb_;
+
+  // Deletions happen once every this number of iterations.
+  const int deletion_chance_;
+
+  // If this is 1, we'll only use primitive-type documents. If this is 2, we'll make some documents
+  // objects (maps). If this is 3, we'll use maps of maps, etc.
+  const int max_nesting_level_;
+
+  Timestamp last_operation_ts_;
+
+  std::vector<InMemDocDbState> docdb_snapshots_;
+
+  int num_divergent_old_snapshots_;
+
+  // Timestamps and cleanup timestamps of examples when
+  std::vector<std::pair<int, int>> divergent_snapshot_ts_and_cleanup_ts_;
+
+  // PerformOperation() will verify DocDB state consistency once in this number of iterations.
+  const int verification_frequency_;
+
+  const InMemDocDbState& GetOldestSnapshot();
+
+  // Perform a "flashback query" in the RocksDB-based DocDB at the timestamp snapshot.captured_at()
+  // and verify that the state matches what's in the provided snapshot. This is only invoked on
+  // snapshots whose capture timestamp has not been garbage-collected, and therefore we always
+  // expect this verification to succeed.
+  //
+  // Calls to this function should be wrapped in NO_FATALS.
+  void VerifySnapshot(const InMemDocDbState& snapshot);
+
+  // Look at whether the given snapshot is still valid, and if not, track it in
+  // divergent_snapshot_ts_and_cleanup_ts_, so we can later verify that some snapshots have become
+  // invalid after history cleanup.
+  void RecordSnapshotDivergence(const InMemDocDbState &snapshot, Timestamp cleanup_ts);
+};
 
 }  // namespace docdb
 }  // namespace yb

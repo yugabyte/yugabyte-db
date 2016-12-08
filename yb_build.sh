@@ -38,9 +38,7 @@ Options:
   --target
     Pass the given target to make.
   --cxx-test <test_name>
-    Build and run the given C++ test. We run the test directly (not going through ctest).
-  --gtest_filter <filter>
-    This will be passed to the C++ test specified by --cxx-test.
+    Build and run the given C++ test. We run the test using ctest.
   --no-tcmalloc
     Do not use tcmalloc.
   --no-rebuild-thirdparty
@@ -54,6 +52,8 @@ Options:
   --gtest-regex
     Use the given regular expression to filter tests within a gtest-based binary when running them
     with --cxx-test.
+  --test-args
+    Extra arguments to pass to the test. Used with --cxx-test.
   --rebuild-file <source_file_to_rebuild>
     The .o file corresponding to the given source file will be deleted from the build directory
     before the build.
@@ -86,6 +86,9 @@ object_files_to_delete=()
 unset YB_GTEST_REGEX
 
 original_args=( "$@" )
+
+export YB_EXTRA_GTEST_FLAGS=""
+
 while [ $# -gt 0 ]; do
   if is_valid_build_type "$1"; then
     build_type="$1"
@@ -171,6 +174,10 @@ while [ $# -gt 0 ]; do
     ;;
     --rebuild-file)
       object_files_to_delete+=( "$2.o" )
+      shift
+    ;;
+    --test-args)
+      YB_EXTRA_GTEST_FLAGS+=" $2"
       shift
     ;;
     rocksdb_*)
@@ -343,7 +350,18 @@ fi
 if [[ -n $cxx_test_name ]]; then
   set_asan_tsan_options
   cd "$BUILD_ROOT"
-  ctest -R ^"$cxx_test_name"$ --output-on-failure
+
+  # The following makes our test framework repeat the test log in stdout in addition writing the log
+  # file instead of simply redirecting it to the log file. Combined with the --verbose ctest option,
+  # this gives us nice real-time test output, while still taking advantage of correct test flags
+  # such (e.g. ASAN/TSAN options and suppression rules) that are set in run-test.sh.
+  export YB_CTEST_VERBOSE=1
+
+  # --verbose: enable verbose output from tests.  Test output is normally suppressed and only
+  # summary information is displayed.  This option will show all test output.  --output-on-failure
+  # is unnecessary when --verbose is specified. In fact, adding --output-on-failure will result in
+  # duplicate output in case of a failure.
+  ctest --verbose -R ^"$cxx_test_name"$
 fi
 
 # Check if the java build is needed. And skip java unit test runs if specified - time taken

@@ -8,16 +8,6 @@
 namespace yb {
 namespace docdb {
 
-#ifdef NDEBUG
-
-// Release mode
-#define ROCKSDB_SEEK(iter, key) \
-  do { \
-    (iter)->Seek(key); \
-  } while (0)
-
-#else
-
 // Debug mode: allow printing detailed information about RocksDB seeks.
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,
@@ -25,12 +15,13 @@ void PerformRocksDBSeek(
     const char* file_name,
     int line);
 
+// TODO: is there too much overhead in passing file name and line here in release mode?
 #define ROCKSDB_SEEK(iter, key) \
   do { \
     PerformRocksDBSeek((iter), (key), __FILE__, __LINE__); \
   } while (0)
 
-#endif
+std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb);
 
 }  // namespace docdb
 }  // namespace yb

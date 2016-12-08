@@ -344,28 +344,35 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   constexpr uint16_t kMaxPort = 65535;
   static yb::Random rand(GetCurrentTimeMicros());
   for (int i = 0; i < 1000; ++i) {
-    uint16_t random_port = kMinPort + rand.Next() % (kMaxPort -  kMinPort + 1);
+    const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
+    VLOG(1) << "Trying to bind to port " << random_port;
 
     Sockaddr sock_addr;
     CHECK_OK(sock_addr.ParseString("127.0.0.1", random_port));
     Socket sock;
     sock.Init(0);
 
-    if (sock.Bind(sock_addr, /* explain_addr_in_use */ false).ok()) {
+    const auto bind_status = sock.Bind(sock_addr, /* explain_addr_in_use */ false);
+    if (bind_status.ok()) {
       // We found an unused port.
 
       // Now, lock this "port" for use by the current process before 'sock' goes out of scope.
       // This will ensure that no other process can get this port while this process is still
       // running. LockFile() returns immediately if we can't get the lock. That's the behavior
       // we want. In that case, we'll just try another port.
-      string lock_file = lock_file_dir + "/" + std::to_string(random_port) + ".lck";
+      const string lock_file = lock_file_dir + "/" + std::to_string(random_port) + ".lck";
       FileLock *lock = nullptr;
-      if (env->LockFile(lock_file, &lock, false /* recursive_lock_ok */).ok()) {
+      const Status lock_status = env->LockFile(lock_file, &lock, false /* recursive_lock_ok */);
+      if (lock_status.ok()) {
         CHECK(lock) << "Lock should not be NULL";
         file_lock->reset(lock);
         LOG(INFO) << "Selected random free RPC port " << random_port;
         return random_port;
+      } else {
+        VLOG(1) << "Could not lock file " << lock_file << ": " << lock_status.ToString();
       }
+    } else {
+      VLOG(1) << "Failed to bind to port " << random_port << ": " << bind_status.ToString();
     }
   }
 

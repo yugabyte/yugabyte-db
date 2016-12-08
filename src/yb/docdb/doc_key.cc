@@ -12,12 +12,14 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/enums.h"
+#include "yb/util/compare_util.h"
 
 using std::ostringstream;
 
 using strings::Substitute;
 
 using yb::util::to_underlying;
+using yb::util::CompareVectors;
 
 namespace yb {
 namespace docdb {
@@ -87,6 +89,13 @@ KeyBytes DocKey::Encode() const {
   return result;
 }
 
+void DocKey::Clear() {
+  hash_present_ = false;
+  hash_ = 0xdeadbeef;
+  hashed_group_.clear();
+  range_group_.clear();
+}
+
 yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
   Clear();
 
@@ -96,9 +105,9 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
   const ValueType first_value_type = static_cast<ValueType>(*slice->data());
 
   if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
-    return STATUS(Corruption, Substitute(
+    return STATUS_SUBSTITUTE(Corruption,
         "Expected first value type to be primitive or GroupEnd, got $0",
-        ValueTypeToStr(first_value_type)));
+        ValueTypeToStr(first_value_type));
   }
 
   if (first_value_type == ValueType::kUInt32Hash) {
@@ -110,9 +119,9 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
       hash_present_ = true;
       slice->remove_prefix(sizeof(DocKeyHash) + 1);
     } else {
-      return STATUS(Corruption, Substitute(
+      return STATUS_SUBSTITUTE(Corruption,
           "Could not decode a 32-bit hash component of a document key: only $0 bytes left",
-          slice->size()));
+          slice->size());
     }
     RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, &hashed_group_),
         "Error when decoding hashed components of a document key");
@@ -130,9 +139,9 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
   rocksdb::Slice mutable_slice = slice;
   Status status = DecodeFrom(&mutable_slice);
   if (!mutable_slice.empty()) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS_SUBSTITUTE(InvalidArgument,
         "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes",
-        mutable_slice.size()));
+        mutable_slice.size());
   }
   return status;
 }
@@ -149,6 +158,33 @@ string DocKey::ToString() const {
   result += rocksdb::VectorToString(range_group_);
   result.push_back(')');
   return result;
+}
+
+bool DocKey::operator ==(const DocKey& other) const {
+  return hash_present_ == other.hash_present_ &&
+         // Only compare hashes and hashed groups if the hash presence flag is set.
+         (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_)) &&
+         range_group_ == other.range_group_;
+}
+
+int DocKey::CompareTo(const DocKey& other) const {
+  // Each table will only contain keys with hash present or absent, so we should never compare
+  // keys from both categories.
+  //
+  // TODO: see how we can prevent this from ever happening in production. This might change
+  //       if we decide to rethink DocDB's implementation of hash components as part of end-to-end
+  //       integration of CQL's hash partition keys in December 2016.
+  DCHECK_EQ(hash_present_, other.hash_present_);
+
+  int result = 0;
+  if (hash_present_) {
+    result = GenericCompare(hash_, other.hash_);
+    if (result != 0) return result;
+  }
+  result = CompareVectors(hashed_group_, other.hashed_group_);
+  if (result != 0) return result;
+
+  return CompareVectors(range_group_, other.range_group_);
 }
 
 DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &schema) {
@@ -197,32 +233,52 @@ KeyBytes SubDocKey::Encode(bool include_timestamp) const {
   return key_bytes;
 }
 
-Status SubDocKey::DecodeFrom(const rocksdb::Slice& original_bytes,
+Status SubDocKey::DecodeFrom(rocksdb::Slice* slice,
                              const bool require_timestamp) {
-  rocksdb::Slice slice(original_bytes);
+  const rocksdb::Slice original_bytes(*slice);
 
   Clear();
-  RETURN_NOT_OK(doc_key_.DecodeFrom(&slice));
-  while (!slice.empty() &&
-         *slice.data() != static_cast<char>(ValueType::kTimestamp)) {
+  RETURN_NOT_OK(doc_key_.DecodeFrom(slice));
+  while (!slice->empty() &&
+         *slice->data() != static_cast<char>(ValueType::kTimestamp)) {
+    if (*slice->data() == '\xff' && !require_timestamp) {
+      // A special case for easier debugging. In SubDocKey::AdvanceOutOfSubDoc we add '\xff' after
+      // the last subkey to an encoded SubDocKey without a timestamp to seek to the next vector of
+      // subkeys (or "jump out" of the current subdocument). We want such special-case keys to be
+      // successfully decoded here as a SubDocKey with no timestamp followed by some raw bytes.
+      return Status::OK();
+    }
     subkeys_.emplace_back();
     auto& current_subkey = subkeys_.back();
     RETURN_NOT_OK_PREPEND(
-        current_subkey.DecodeFromKey(&slice),
+        current_subkey.DecodeFromKey(slice),
         Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
   }
-  if (slice.empty()) {
+  if (slice->size() < kBytesPerTimestamp + 1) {
     if (!require_timestamp) {
       return Status::OK();
     }
-    return STATUS(Corruption,
-                  Substitute("SubDocKey does not end with a type-prefixed timestamp: $0",
-                             ToShortDebugStr(original_bytes)));
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "Found too few bytes in the end of a SubDocKey for a type-prefixed timestamp: $0",
+        ToShortDebugStr(*slice));
   }
-  CHECK_EQ(to_underlying(ValueType::kTimestamp), slice.ConsumeByte());
-  RETURN_NOT_OK(ConsumeTimestampFromKey(&slice, &timestamp_));
+  CHECK_EQ(to_underlying(ValueType::kTimestamp), slice->ConsumeByte());
+  RETURN_NOT_OK(ConsumeTimestampFromKey(slice, &timestamp_));
 
   return Status::OK();
+}
+
+Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
+                                  const bool require_timestamp) {
+  rocksdb::Slice mutable_slice = slice;
+  Status status = DecodeFrom(&mutable_slice, require_timestamp);
+  if (!mutable_slice.empty()) {
+    return STATUS_SUBSTITUTE(InvalidArgument,
+        "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes: $1",
+        mutable_slice.size(), ToShortDebugStr(mutable_slice));
+  }
+  return status;
 }
 
 string SubDocKey::ToString() const {
@@ -289,23 +345,17 @@ int SubDocKey::CompareTo(const SubDocKey& other) const {
 }
 
 string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
+  rocksdb::Slice mutable_slice(key_bytes.AsSlice());
   SubDocKey subdoc_key;
-  Status subdoc_key_decode_status =
-      subdoc_key.DecodeFrom(key_bytes.AsSlice(), /* require_timestamp = */ false);
-  if (subdoc_key_decode_status.ok()) {
+  Status decode_status = subdoc_key.DecodeFrom(&mutable_slice, /* require_timestamp = */ false);
+  if (decode_status.ok()) {
+    ostringstream ss;
     if (!subdoc_key.has_timestamp() && subdoc_key.num_subkeys() == 0) {
       // This is really just a DocKey.
-      return subdoc_key.doc_key().ToString();
+      ss << subdoc_key.doc_key().ToString();
+    } else {
+      ss << subdoc_key.ToString();
     }
-    return subdoc_key.ToString();
-  }
-  DocKey doc_key;
-
-  // Try to decode as a DocKey with some trailing bytes.
-  rocksdb::Slice mutable_slice = key_bytes.AsSlice();
-  if (doc_key.DecodeFrom(&mutable_slice).ok()) {
-    ostringstream ss;
-    ss << doc_key.ToString();
     if (mutable_slice.size() > 0) {
       ss << " followed by raw bytes " << FormatRocksDBSliceAsStr(mutable_slice);
       // Can append the above status of why we could not decode a SubDocKey, if needed.
@@ -313,10 +363,14 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
     return ss.str();
   }
 
+  VLOG(4) << __func__ << ": could not decode " << key_bytes.ToString() << ", error: "
+          << decode_status.ToString();
+
+  // We could not decode a SubDocKey at all, even without a timestamp.
   return key_bytes.ToString();
 }
 
-std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice) {
+std::string BestEffortDocDBKeyToStr(const rocksdb::Slice& slice) {
   return BestEffortDocDBKeyToStr(KeyBytes(slice));
 }
 
@@ -324,6 +378,28 @@ void SubDocKey::ReplaceMaxTimestampWith(Timestamp timestamp) {
   if (timestamp_ == Timestamp::kMax) {
     timestamp_ = timestamp;
   }
+}
+
+int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {
+  if (doc_key_ != other.doc_key_) {
+    return 0;
+  }
+  const int min_num_subkeys = min(num_subkeys(), other.num_subkeys());
+  for (int i = 0; i < min_num_subkeys; ++i) {
+    if (subkeys_[i] != other.subkeys_[i]) {
+      // If we found a mismatch at the first subkey (i = 0), but the DocKey matches, we return 1.
+      // If one subkey matches but the second one (i = 1) is a mismatch, we return 2, etc.
+      return i + 1;
+    }
+  }
+  // The DocKey and all subkeys match up until the subkeys in one of the SubDocKeys are exhausted.
+  return min_num_subkeys + 1;
+}
+
+KeyBytes SubDocKey::AdvanceOutOfSubDoc() {
+  KeyBytes subdoc_key_no_ts = Encode(/* include_timestamp = */ false);
+  subdoc_key_no_ts.AppendRawBytes("\xff", 1);
+  return subdoc_key_no_ts;
 }
 
 }  // namespace docdb

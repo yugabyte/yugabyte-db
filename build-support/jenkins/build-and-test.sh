@@ -254,6 +254,13 @@ fi
 
 declare -i EXIT_STATUS=0
 
+set +e
+if [[ -d /tmp/yb-port-locks ]]; then
+  # Allow other users to also run minicluster tests on this machine.
+  chmod a+rwx /tmp/yb-port-locks
+fi
+set -e
+
 if [[ $BUILD_CPP == "1" ]]; then
   echo
   echo Building C++ code.

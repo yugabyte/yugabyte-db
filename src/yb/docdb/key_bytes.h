@@ -122,8 +122,9 @@ class KeyBytes {
     return data_ > other.data_;
   }
 
-  // Increments this key to the smallest key that is greater than it.
-  KeyBytes& Increment() {
+  // Increments this key in place to the smallest key that is greater than it. Returns a non-const
+  // reference for easier chaining.
+  KeyBytes& IncrementInPlace() {
     data_.push_back('\0');
     return *this;
   }

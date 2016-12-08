@@ -163,13 +163,22 @@ if [[ $iteration -gt 0 ]]; then
   set +e
   export TEST_TMPDIR=/tmp/yb__${0##*/}__$RANDOM.$RANDOM.$RANDOM.$$
   mkdir -p "$TEST_TMPDIR"
-  core_dir=$TEST_TMPDIR
+  set_expected_core_dir "$TEST_TMPDIR"
+  determine_test_timeout
+
+  # TODO: deduplicate the setup here against run_one_test() in common-test-env.sh.
+  test_cmd_line=( "$abs_test_binary_path" --gtest_filter="$test_filter" $more_test_args )
+  test_wrapper_cmd_line=(
+    "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
+  )
+
   (
     cd "$TEST_TMPDIR"
     if [[ $verbose_level -gt 0 ]]; then
       set -x
     fi
-    "$abs_test_binary_path" --gtest_filter="$test_filter" $more_test_args &>"$raw_test_log_path"
+    ulimit -c unlimited
+    "${test_wrapper_cmd_line[@]}" &>"$raw_test_log_path"
   )
   exit_code=$?
   set -e

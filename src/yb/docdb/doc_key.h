@@ -21,57 +21,24 @@ using DocKeyHash = uint32_t;
 // DocKey
 // ------------------------------------------------------------------------------------------------
 
-template<typename T>
-int CompareVectors(const std::vector<T>& a, const std::vector<T>& b) {
-  auto a_iter = a.begin();
-  auto b_iter = b.begin();
-  while (a_iter != a.end() && b_iter != b.end()) {
-    int result = a_iter->CompareTo(*b_iter);
-    if (result != 0) {
-      return result;
-    }
-    ++a_iter;
-    ++b_iter;
-  }
-  if (a_iter == a.end()) {
-    return b_iter == b.end() ? 0 : -1;
-  }
-  DCHECK(b_iter == b.end());  // This follows from the while loop condition.
-  return 1;
-}
-
-// A template for comparing vectors of pairs of classes implementing CompareTo. An optional flag
-// allows to reverse the sort order of the second component (used for timestamp ordering).
-template<typename T1, typename T2, bool reverse_second_component = false>
-int ComparePairVectors(const std::vector<std::pair<T1, T2>>& a,
-                       const std::vector<std::pair<T1, T2>>& b) {
-  auto a_iter = a.begin();
-  auto b_iter = b.begin();
-  while (a_iter != a.end() && b_iter != b.end()) {
-    int result = a_iter->first.CompareTo(b_iter->first);
-    if (result != 0) return result;
-
-    result = a_iter->second.CompareTo(b_iter->second);
-    if (result != 0) {
-      return (reverse_second_component ? -1 : 1) * result;
-    }
-
-    ++a_iter;
-    ++b_iter;
-  }
-  if (a_iter == a.end()) {
-    return b_iter == b.end() ? 0 : -1;
-  }
-  DCHECK(b_iter == b.end());  // This follows from the while loop condition.
-  return 1;
-}
-
 // A key that allows us to locate a document. This is the prefix of all RocksDB keys of records
 // inside this document. A document key contains:
 //   - An optional fixed-width hash prefix.
 //   - A group of primitive values representing "hashed" components (this is what the hash is
 //     computed based on, so this group is present/absent together with the hash).
 //   - A group of "range" components suitable for doing ordered scans.
+//
+// The encoded representation of the key is as follows:
+//   - Optional fixed-width hash prefix, followed by hashed components:
+//     * The byte ValueType::kUnit32Hash, followed by four bytes of the hash prefix.
+//     * Hashed components:
+//       1. Each hash component consists of a type byte (ValueType) followed by the encoded
+//          representation of the respective type (see PrimitiveValue's key encoding).
+//       2. ValueType::kGroupEnd terminates the sequence.
+//   - Range components are stored similarly to the hashed components:
+//     1. Each range component consists of a type byte (ValueType) followed by the encoded
+//        representation of the respective type (see PrimitiveValue's key encoding).
+//     2. ValueType::kGroupEnd terminates the sequence.
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
@@ -94,12 +61,7 @@ class DocKey {
   KeyBytes Encode() const;
 
   // Resets the state to an empty document key.
-  void Clear() {
-    hash_present_ = false;
-    hash_ = 0xdeadbeef;
-    hashed_group_.clear();
-    range_group_.clear();
-  }
+  void Clear();
 
   const std::vector<PrimitiveValue>& range_group() const {
     return range_group_;
@@ -116,31 +78,13 @@ class DocKey {
   // Converts the document key to a human-readable representation.
   std::string ToString() const;
 
-  bool operator ==(const DocKey& other) const {
-    return hash_present_ == other.hash_present_ &&
-           // Only compare hashes and hashed groups if the hash presence flag is set.
-           (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_)) &&
-           range_group_ == other.range_group_;
-  }
+  bool operator ==(const DocKey& other) const;
 
   bool operator !=(const DocKey& other) const {
     return !(*this == other);
   }
 
-  int CompareTo(const DocKey& other) const {
-    // Each table will only contain keys with hash present or absent, so we should never compare
-    // keys from both categories.
-    assert(hash_present_ == other.hash_present_);
-    int result = 0;
-    if (hash_present_) {
-      result = GenericCompare(hash_, other.hash_);
-      if (result != 0) return result;
-    }
-    result = CompareVectors(hashed_group_, other.hashed_group_);
-    if (result != 0) return result;
-
-    return CompareVectors(range_group_, other.range_group_);
-  }
+  int CompareTo(const DocKey& other) const;
 
   bool operator <(const DocKey& other) const {
     return CompareTo(other) < 0;
@@ -190,8 +134,8 @@ inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
 // the timestamp field optional while a SubDocKey is being constructed. If the timestamp is not set,
 // it is omitted from the encoded representation of a SubDocKey.
 //
-// Implementation note: we use Timestamp::kInvalidTimestamp to represent an omitted timestamp.
-// We heavily rely on that being the default-constructed value of a Timestamp.
+// Implementation note: we use Timestamp::kInvalidTimestamp to represent an omitted timestamp.  We
+// rely on that being the default-constructed value of a Timestamp.
 //
 // TODO: this should be renamed to something more generic, e.g. Key or LogicalKey, to reflect that
 // this is actually the logical representation of keys that we store in the RocksDB key-value store.
@@ -227,8 +171,6 @@ class SubDocKey {
     AppendSubKeysAndMaybeTimestamp(subkeys_and_maybe_timestamp...);
   }
 
-  void AppendSubKeys() {}
-
   // Append a sequence of sub-keys to this key. We require that the timestamp is not set, because
   // we append it last.
   template<class ...T>
@@ -263,16 +205,23 @@ class SubDocKey {
   KeyBytes Encode(bool include_timestamp = true) const;
 
   // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key.
+  // @param slice
+  //     A pointer to the slice containing the bytes to decode the SubDocKey from. This slice is
+  //     modified, with consumed bytes being removed.
   // @param require_timestamp
-  //     Whether a timestamp is required in the end of the SubDocKey. If this is set to false, we
-  //     allow decoding an incomplete SubDocKey without a timestamp.
-  Status DecodeFrom(const rocksdb::Slice& original_bytes,
+  //     Whether a timestamp is required in the end of the SubDocKey. If this is true, we require
+  //     a ValueType::kTimestamp byte followed by a timestamp to be present in the input slice.
+  //     Otherwise, we allow decoding an incomplete SubDocKey without a timestamp in the end. Note
+  //     that we also allow input that has a few bytes in the end but not enough to represent a
+  //     timestamp.
+  Status DecodeFrom(rocksdb::Slice* slice,
                     bool require_timestamp = true);
 
-  // Unlike the DocKey case, this is the same as DecodeFrom, because a "subdocument key" occupies
-  // the entire RocksDB key. This is here for compatibility with templates that can operate both on
-  // DocKeys and SubDocKeys.
-  Status FullyDecodeFrom(const rocksdb::Slice& slice) { return DecodeFrom(slice); }
+  // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
+  // reference to a slice. This still respects the require_timestamp parameter, but in case a
+  // timestamp is omitted, we don't allow any extra bytes to be present in the slice.
+  Status FullyDecodeFrom(const rocksdb::Slice& slice,
+                         bool require_timestamp = true);
 
   std::string ToString() const;
 
@@ -322,6 +271,35 @@ class SubDocKey {
   void RemoveTimestamp() {
     timestamp_ = Timestamp::kInvalidTimestamp;
   }
+
+  // @return The number of initial components (including document key and subkeys) that this
+  //         SubDocKey shares with another one. This does not care about the timestamp field.
+  int NumSharedPrefixComponents(const SubDocKey& other) const;
+
+  // Generate a RocksDB key that would allow us to seek to the smallest SubDocKey that has a
+  // lexicographically higher sequence of subkeys than this one, but is not an extension of this
+  // sequence of subkeys.  In other words, ensure we advance to the next field (subkey) either
+  // within the object (subdocument) we are currently scanning, or at any higher level, including
+  // advancing to the next document key.
+  //
+  // E.g. assuming the SubDocKey this is being called on is #2 from the following example,
+  // performing a RocksDB seek on the return value of this takes us to #7.
+  //
+  // 1. SubDocKey(DocKey([], ["a"]), [TS(1)]) -> {}
+  // 2. SubDocKey(DocKey([], ["a"]), ["x", TS(1)]) -> {} ---------------------------.
+  // 3. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(2)]) -> null                     |
+  // 4. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(1)]) -> {}                       |
+  // 5. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", TS(1)]) -> {}                  |
+  // 6. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", "x", TS(1)]) -> true           |
+  // 7. SubDocKey(DocKey([], ["a"]), ["y", TS(3)]) -> {}                  <---------
+  // 8. SubDocKey(DocKey([], ["a"]), ["y", "y", TS(3)]) -> {}
+  // 9. SubDocKey(DocKey([], ["a"]), ["y", "y", "x", TS(3)]) ->
+  //
+  // This is achieved by simply appending a byte that is higher than any ValueType in an encoded
+  // representation of a SubDocKey that extends the vector of subkeys present in the current one,
+  // or has the same vector of subkeys, i.e. key/value pairs #3-6 in the above example. Timestamp
+  // is omitted from the resulting encoded representation.
+  KeyBytes AdvanceOutOfSubDoc();
 
  private:
   DocKey doc_key_;

@@ -1,14 +1,27 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/docdb/in_mem_docdb.h"
-#include "yb/gutil/strings/substitute.h"
 
+#include <sstream>
+
+#include "rocksdb/db.h"
+
+#include "yb/common/timestamp.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/yb_rocksdb.h"
+
+using std::endl;
+using std::string;
+using std::stringstream;
 using strings::Substitute;
 
 namespace yb {
 namespace docdb {
 
-Status InMemDocDB::SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value) {
+Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value) {
+  VLOG(2) << __func__ << ": doc_path=" << doc_path.ToString() << ", value=" << value.ToString();
   const PrimitiveValue encoded_doc_key_as_primitive(doc_path.encoded_doc_key().AsStringRef());
   const bool is_deletion = value.value_type() == ValueType::kTombstone;
   if (doc_path.num_subkeys() == 0) {
@@ -65,13 +78,166 @@ Status InMemDocDB::SetPrimitive(const DocPath& doc_path, const PrimitiveValue& v
   return Status::OK();
 }
 
-Status InMemDocDB::DeleteSubDoc(const DocPath &doc_path) {
+Status InMemDocDbState::DeleteSubDoc(const DocPath &doc_path) {
   return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone));
 }
 
-const SubDocument* InMemDocDB::GetDocument(const KeyBytes& encoded_doc_key) const {
+void InMemDocDbState::SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc) {
+  root_.SetChild(PrimitiveValue(encoded_doc_key.AsStringRef()), std::move(doc));
+}
+
+const SubDocument* InMemDocDbState::GetDocument(const KeyBytes& encoded_doc_key) const {
   return root_.GetChild(PrimitiveValue(encoded_doc_key.AsStringRef()));
 }
 
+void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, Timestamp timestamp) {
+  // Clear the internal state.
+  root_ = SubDocument();
+
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb);
+  rocksdb_iter->SeekToFirst();
+  KeyBytes prev_key;
+  while (rocksdb_iter->Valid()) {
+    const auto key = rocksdb_iter->key();
+    CHECK_NE(0, prev_key.CompareTo(key)) << "Infinite loop detected on key " << prev_key.ToString();
+    prev_key = KeyBytes(key);
+
+    SubDocKey subdoc_key;
+    CHECK_OK(subdoc_key.FullyDecodeFrom(key));
+    CHECK_EQ(0, subdoc_key.num_subkeys())
+        << "Expected to be positioned at the first key of a new document with no subkeys, "
+        << "but found " << subdoc_key.num_subkeys() << " subkeys: " << subdoc_key.ToString();
+
+    bool doc_found = false;
+    SubDocument subdoc;
+    // TODO: It would be good to be able to refer to a slice of the original key whenever we need
+    //       to extract document key out of a subdocument key.
+    auto encoded_doc_key = subdoc_key.doc_key().Encode();
+    const Status get_doc_status =
+        yb::docdb::GetDocument(rocksdb, encoded_doc_key, &subdoc, &doc_found, timestamp);
+    if (!get_doc_status.ok()) {
+      // This will help with debugging the GetDocument failure.
+      LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);
+    }
+    CHECK_OK(get_doc_status);
+    // doc_found can be false for deleted documents, and that is perfectly valid.
+    if (doc_found) {
+      SetDocument(encoded_doc_key, std::move(subdoc));
+    }
+
+
+    // Go to the next top-level document key.
+    ROCKSDB_SEEK(rocksdb_iter.get(), subdoc_key.AdvanceOutOfSubDoc().AsSlice());
+
+    VLOG(4) << "After performing a seek: IsValid=" << rocksdb_iter->Valid();
+    if (VLOG_IS_ON(4) && rocksdb_iter->Valid()) {
+      VLOG(4) << "Next key: " << FormatRocksDBSliceAsStr(rocksdb_iter->key());
+      SubDocKey tmp_subdoc_key;
+      CHECK_OK(tmp_subdoc_key.FullyDecodeFrom(rocksdb_iter->key()));
+      VLOG(4) << "Parsed as SubDocKey: " << tmp_subdoc_key.ToString();
+    }
+  }
+
+  // Initialize the "captured at" timestamp now, even though we expect it to be overwritten in many
+  // cases. One common usage pattern is that this will be called with Timestamp::kMax, but we'll
+  // later call SetCaptureTimestamp and set the timestamp to the last known timestamp of an
+  // operation performed on DocDB.
+  captured_at_ = timestamp;
+
+  // Ensure we don't get any funny value types in the root node (had a test failure like this).
+  CHECK_EQ(root_.value_type(), ValueType::kObject);
 }
+
+void InMemDocDbState::SetCaptureTimestamp(Timestamp timestamp) {
+  CHECK_NE(timestamp, Timestamp::kInvalidTimestamp);
+  captured_at_ = timestamp;
 }
+
+bool InMemDocDbState::EqualsAndLogDiff(const InMemDocDbState &expected, bool log_diff) {
+  bool matches = true;
+  if (num_docs() != expected.num_docs()) {
+    if (log_diff) {
+      LOG(WARNING) << "Found " << num_docs() << " documents but expected to find "
+                   << expected.num_docs();
+    }
+    matches = false;
+  }
+
+  // As an optimization, a SubDocument won't even maintain a map if it is an empty object that no
+  // operations have been performed on. As we are using a SubDocument to represent the top-level
+  // mapping of encoded document keys to SubDocuments here, we need to check for that situation.
+  if (expected.root_.has_valid_object_container()) {
+    for (const auto& expected_kv : expected.root_.object_container()) {
+      const KeyBytes encoded_doc_key(expected_kv.first.GetString());
+      const SubDocument& expected_doc = expected_kv.second;
+      DocKey doc_key;
+      CHECK_OK(doc_key.FullyDecodeFrom(encoded_doc_key.AsSlice()));
+      const SubDocument* child_from_this = GetDocument(encoded_doc_key);
+      if (child_from_this == nullptr) {
+        if (log_diff) {
+          LOG(WARNING) << "Document with key " << doc_key.ToString() << " is missing but is "
+                       << "expected to be " << expected_doc.ToString();
+        }
+        matches = false;
+        continue;
+      }
+      if (*child_from_this != expected_kv.second) {
+        if (log_diff) {
+          LOG(WARNING) << "Expected document with key " << doc_key.ToString() << " to be "
+                       << expected_doc.ToString() << " but found " << *child_from_this;
+        }
+        matches = false;
+      }
+    }
+  }
+
+  // Also report all document keys that are present in this ("actual") database but are absent from
+  // the other ("expected") database.
+  if (root_.has_valid_object_container()) {
+    for (const auto& actual_kv : root_.object_container()) {
+      const KeyBytes encoded_doc_key(actual_kv.first.GetString());
+      const SubDocument* child_from_expected = GetDocument(encoded_doc_key);
+      if (child_from_expected == nullptr) {
+        DocKey doc_key;
+        CHECK_OK(doc_key.FullyDecodeFrom(encoded_doc_key.AsSlice()));
+        if (log_diff) {
+          LOG(WARNING) << "Unexpected document found with key " << doc_key.ToString() << ":"
+                       << actual_kv.second.ToString();
+        }
+        matches = false;
+      }
+    }
+  }
+
+  // A brute-force way to check that the comparison logic above is correct.
+  // TODO: disable this if it makes tests much slower.
+  CHECK_EQ(matches, ToDebugString() == expected.ToDebugString());
+  return matches;
+}
+
+string InMemDocDbState::ToDebugString() const {
+  stringstream ss;
+  if (root_.has_valid_object_container()) {
+    int i = 1;
+    for (const auto& kv : root_.object_container()) {
+      DocKey doc_key;
+      CHECK_OK(doc_key.FullyDecodeFrom(rocksdb::Slice(kv.first.GetString())));
+      ss << i << ". " << doc_key.ToString() << " => " << kv.second.ToString() << endl;
+      ++i;
+    }
+  }
+  string dump_str = ss.str();
+  return dump_str.empty() ? "<Empty>" : dump_str;
+}
+
+Timestamp InMemDocDbState::captured_at() const {
+  CHECK_NE(captured_at_, Timestamp::kInvalidTimestamp);
+  return captured_at_;
+}
+
+void InMemDocDbState::SanityCheck() const {
+  CHECK_EQ(root_.value_type(), ValueType::kObject);
+}
+
+}  // namespace docdb
+}  // namespace yb

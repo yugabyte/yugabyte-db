@@ -49,6 +49,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -75,6 +76,7 @@
 #include "yb/tablet/tablet_mm_ops.h"
 #include "yb/tablet/transactions/alter_schema_transaction.h"
 #include "yb/tablet/transactions/write_transaction.h"
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
@@ -122,6 +124,7 @@ DEFINE_int64(db_block_size_bytes, 64 * 1024,
              "Size of RocksDB block (in bytes).");
 
 using std::shared_ptr;
+using std::make_shared;
 using std::string;
 using std::unordered_set;
 using std::vector;
@@ -138,6 +141,7 @@ using yb::docdb::KeyBytes;
 using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
 using yb::docdb::YSQLWriteOperation;
+using yb::docdb::DocDBCompactionFilterFactory;
 
 // Make sure RocksDB does not disappear while we're using it. This is used at the top level of
 // functions that perform RocksDB operations (directly or indirectly). Once a function is using
@@ -304,6 +308,10 @@ Status Tablet::Open() {
 Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_);
+
+  // Install the history cleanup handler.
+  rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
+      make_shared<TabletRetentionPolicy>(clock_));
 
   // Set block cache options.
   rocksdb::BlockBasedTableOptions table_options;
@@ -848,7 +856,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
     CHECK(kv_pair.has_value());
     docdb::SubDocKey subdoc_key;
 
-    const auto s = subdoc_key.DecodeFrom(kv_pair.key());
+    const auto s = subdoc_key.FullyDecodeFrom(kv_pair.key());
     CHECK(s.ok())
         << "Failed decoding key: " << s.ToString() << "; "
         << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
@@ -1970,9 +1978,6 @@ Status Tablet::CaptureConsistentIterators(
     const MvccSnapshot &snap,
     const ScanSpec *spec,
     vector<shared_ptr<RowwiseIterator> > *iters) const {
-//  if (table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-//    LOG(INFO) << __func__ << ": snapshot=" << snap.ToString();
-//  }
 
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
