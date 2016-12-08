@@ -19,5 +19,5 @@ BEGIN;
 -- CREATE SCHEMA tap; SET search_path TO tap,public;
 
 -- Load the TAP functions.
---\i sql/pgtap.sql
-CREATE EXTENSION pgtap;
+\i sql/pgtap.sql
+--CREATE EXTENSION pgtap;
