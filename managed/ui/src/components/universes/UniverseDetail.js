@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Grid, Row, Col, ButtonGroup, Image,
-          DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+  DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { UniverseInfoPanel, ConnectStringPanel } from '../panels'
 import { GraphPanelContainer } from '../../containers/metrics';
 import { TaskProgressContainer } from '../../containers/tasks';
@@ -81,7 +81,7 @@ export default class UniverseDetail extends Component {
             <YBMapLegend regions={currentUniverse.regions}/>
           </Col>
           <Col lg={8}>
-          <RegionMap regions={currentUniverse.regions} type={"Root"} />
+            <RegionMap regions={currentUniverse.regions} type={"Root"} />
           </Col>
         </YBPanelItem>
       </Tab>,
@@ -98,19 +98,19 @@ export default class UniverseDetail extends Component {
     if (universeTaskUUIDs.length > 0) {
       tabElements.push(
          <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
-          <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>
-        </Tab>)
+           <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>
+         </Tab>)
     }
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row className="header-row">
           <Col lg={10}>
             <div className="detail-label-small">
-               <Link to="/universes">
-                 <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
-                   Universes
-                 </YBLabelWithIcon>
-               </Link>
+              <Link to="/universes">
+                <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
+                  Universes
+                </YBLabelWithIcon>
+              </Link>
             </div>
             <div>
               <h2><Image src={universelogo}/> Universe { currentUniverse.name }</h2>
@@ -143,10 +143,9 @@ export default class UniverseDetail extends Component {
           <UniverseFormContainer type="Edit"
                                  visible={showModal===true && visibleModal==="universeModal"}
                                  onHide={this.props.closeModal} title="Edit Universe" />
-
           <RollingUpgradeFormContainer modalVisible={showModal === true &&
           (visibleModal === "gFlagsModal" || visibleModal ==="softwareUpgradesModal")}
-                               onHide={this.props.closeModal} />
+                                       onHide={this.props.closeModal} />
           <DeleteUniverseContainer visible={showModal===true && visibleModal==="deleteUniverseModal"}
                                        onHide={this.props.closeModal} title="Delete Universe"/>
         </Row>
