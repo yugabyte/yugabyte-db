@@ -44,7 +44,7 @@ export default class MetricsPanel extends Component {
   applyFilter(filterParams) {
     const { origin, universeUUID, metricKey } = this.props;
     var params = {
-      metricKey: metricKey,
+      metrics: [metricKey],
       start: filterParams.startDate.format('X'),
       end: filterParams.endDate.format('X')
     };

@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -26,10 +27,13 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.junit.Before;
 import org.junit.Test;
@@ -576,7 +580,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), is(containsString("\"start\":[\"This field is required\"]")));
-    assertThat(contentAsString(result), is(containsString("\"metricKey\":[\"This field is required\"]")));
+    assertThat(contentAsString(result), is(containsString("\"metrics\":[\"This field is required\"]")));
   }
 
   @Test
@@ -584,18 +588,21 @@ public class UniverseControllerTest extends FakeDBApplication {
     Universe universe = Universe.create("TestU", UUID.randomUUID(), customer.getCustomerId());
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater());
     ObjectNode params = Json.newObject();
-    params.put("metricKey", "metric");
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
 
-    ArgumentCaptor<Map> queryArgs = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyMap())).thenReturn(response);
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(response);
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(params));
-    verify(mockMetricQueryHelper).query((Map<String, String>) queryArgs.capture());
-    assertThat(queryArgs.getValue().get("filters"), allOf(notNullValue(), equalTo("{\"node_prefix\":\"host\"}")));
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+                                        (Map<String, String>) queryParams.capture());
+    assertThat(metricKeys.getValue(), is(notNullValue()));
+    assertThat(queryParams.getValue().get("filters"), allOf(notNullValue(), equalTo("{\"node_prefix\":\"host\"}")));
 
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
@@ -605,13 +612,13 @@ public class UniverseControllerTest extends FakeDBApplication {
   public void testUniverseMetricsWithInValidMetricsParam() {
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     ObjectNode params = Json.newObject();
-    params.put("metricKey", "metric1");
+    params.set("metrics", Json.toJson(ImmutableList.of("metric1")));
     params.put("start", "1479281737");
 
     ObjectNode response = Json.newObject();
     response.put("error", "something went wrong");
 
-    when(mockMetricQueryHelper.query(anyMap())).thenReturn(response);
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(response);
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
@@ -622,13 +629,13 @@ public class UniverseControllerTest extends FakeDBApplication {
   public void testUniverseMetricsExceptionThrown() {
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     ObjectNode params = Json.newObject();
-    params.put("metricKey", "metric");
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737000");
 
     ObjectNode response = Json.newObject();
     response.put("error", "something went wrong");
 
-    when(mockMetricQueryHelper.query(anyMap())).thenThrow(new RuntimeException("Weird Data provided"));
+    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenThrow(new RuntimeException("Weird Data provided"));
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/metrics").cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());

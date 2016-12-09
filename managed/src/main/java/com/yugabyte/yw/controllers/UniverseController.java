@@ -464,7 +464,7 @@ public class UniverseController extends AuthenticatedController {
     }
 
     try {
-      JsonNode response = metricQueryHelper.query(params);
+      JsonNode response = metricQueryHelper.query(formData.get().metrics, params);
       if (response.has("error")) {
         return ApiResponse.error(BAD_REQUEST, response.get("error"));
       }

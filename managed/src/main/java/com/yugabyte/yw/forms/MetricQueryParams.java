@@ -4,10 +4,13 @@ package com.yugabyte.yw.forms;
 
 import play.data.validation.Constraints;
 
+import java.util.ArrayList;
+import java.util.List;
+
 
 public class MetricQueryParams {
   @Constraints.Required()
-  public String metricKey;
+  public List<String> metrics;
 
   @Constraints.Required()
   public Long start;
