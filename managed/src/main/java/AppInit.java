@@ -1,12 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
 import play.Application;
@@ -48,6 +51,13 @@ public class AppInit {
         AWSInitializer aws = new AWSInitializer();
         aws.run();
       }
+
+      // Load metrics configurations.
+      Map<String, Object> configs = (HashMap<String, Object>) Yaml.load(
+        application.resourceAsStream("metrics.yml"),
+        application.classloader()
+      );
+      MetricConfig.loadConfig(configs);
     }
   }
 }

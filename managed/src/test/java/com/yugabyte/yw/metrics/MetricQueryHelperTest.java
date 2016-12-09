@@ -2,30 +2,36 @@
 package com.yugabyte.yw.metrics;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.MetricConfig;
+import org.joda.time.DateTime;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
 
+import static junit.framework.TestCase.assertTrue;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.core.AllOf.allOf;
+import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,211 +49,127 @@ public class MetricQueryHelperTest extends FakeDBApplication {
   @Mock
   ApiHelper mockApiHelper;
 
+  MetricConfig validMetric;
+
   @Before
   public void setUp() {
+    JsonNode configJson = Json.parse("{\"metric\": \"my_valid_metric\", \"function\": \"sum\"}");
+    validMetric = MetricConfig.create("valid_metric", configJson);
+    validMetric.save();
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
   }
 
   @Test
-  public void testQueryWithMultipleMetrics() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "cpu_usage_user");
-    params.put("start", "1479281737");
-    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
-                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n" +
-                                         " {\"cpu\":\"system\"}, \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
-
-    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
-
-    JsonNode result = metricQueryHelper.query(params);
-
-    assertThat(result.get("metricKey").asText(), allOf(notNullValue(), equalTo("cpu_usage_user")));
-
-    JsonNode data = result.get("data");
-    assertThat(data, allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    assertEquals(data.size(), 2);
-    for (int i = 0; i< data.size(); i++) {
-      assertThat(data.get(i).get("name").asText(), allOf(notNullValue(), equalTo("system")));
-      assertThat(data.get(i).get("type").asText(), allOf(notNullValue(), equalTo("scatter")));
-      assertThat(data.get(i).get("x"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-      assertThat(data.get(i).get("y"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    }
-
-    JsonNode layout = result.get("layout");
-    assertThat(layout, allOf(notNullValue(), instanceOf(ObjectNode.class)));
-    assertThat(layout.get("title").asText(), allOf(notNullValue(), equalTo("CPU Usage (User)")));
-    assertThat(layout.get("xaxis"), allOf(notNullValue(), instanceOf(ObjectNode.class)));
-    assertThat(layout.get("xaxis").get("type").asText(), allOf(notNullValue(), equalTo("date")));
-  }
-
-  @Test
-  public void testQueryWithSingleMetric() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "cpu_usage_user");
-    params.put("start", "1479281737");
-    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
-                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
-
-    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
-
-    JsonNode result = metricQueryHelper.query(params);
-
-    assertThat(result.get("metricKey").asText(), allOf(notNullValue(), equalTo("cpu_usage_user")));
-
-    JsonNode data = result.get("data");
-    assertThat(data, allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    assertEquals(data.size(), 1);
-    assertThat(data.get(0).get("name").asText(), allOf(notNullValue(), equalTo("system")));
-    assertThat(data.get(0).get("type").asText(), allOf(notNullValue(), equalTo("scatter")));
-    assertThat(data.get(0).get("x"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    assertThat(data.get(0).get("y"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-
-    JsonNode layout = result.get("layout");
-    assertThat(layout, allOf(notNullValue(), instanceOf(ObjectNode.class)));
-    assertThat(layout.get("title").asText(), allOf(notNullValue(), equalTo("CPU Usage (User)")));
-    assertThat(layout.get("xaxis"), allOf(notNullValue(), instanceOf(ObjectNode.class)));
-    assertThat(layout.get("xaxis").get("type").asText(), allOf(notNullValue(), equalTo("date")));
-  }
-
-  @Test
-  public void testQueryRangeWithMultipleMetrics() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "memory_usage");
-    params.put("start", "1479281730");
-    params.put("end", "1479281734");
-
-    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{\"memory\":\"buffered\"},\"values\":[[1479281730,\"0\"],\n" +
-                                       " [1479281732,\"0\"],[1479281734,\"0\"]]},{\"metric\":{\"memory\":\"cached\"},\"values\":[[1479281730,\"2902821546.6666665\"],[1479281732,\"2901345621.3333335\"],\n" +
-                                       " [1479281734,\"2901345621.3333335\"]]},{\"metric\":{\"memory\":\"free\"},\"values\":[[1479281730,\"137700693.33333334\"],[1479281732,\"139952128\"],\n" +
-                                       " [1479281734,\"139952128\"]]},{\"metric\":{\"memory\":\"used\"},\"values\":[[1479281730,\"4193042432\"],[1479281732,\"4192290133.3333335\"],[1479281734,\"4192290133.3333335\"]]}]}}");
-
-    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
-
-    JsonNode result = metricQueryHelper.query(params);
-
-    assertThat(result.get("metricKey").asText(), allOf(notNullValue(), equalTo("memory_usage")));
-
-    JsonNode data = result.get("data");
-    assertThat(data, allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    List<JsonNode> memoryTags = responseJson.findValues("memory");
-
-    assertEquals(4, data.size());
-    for (int i = 0; i< data.size(); i++) {
-      assertThat(data.get(i).get("name").asText(), allOf(notNullValue()));
-      assertTrue(memoryTags.contains(data.get(i).get("name")));
-      assertThat(data.get(i).get("type").asText(), allOf(notNullValue(), equalTo("scatter")));
-      assertThat(data.get(i).get("x"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-      assertThat(data.get(i).get("y"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    }
-
-    JsonNode layout = result.get("layout");
-    assertThat(layout, allOf(notNullValue(), instanceOf(ObjectNode.class)));
-    assertThat(layout.get("title").asText(), allOf(notNullValue(), equalTo("Memory Usage")));
-    assertThat(layout.get("xaxis"), allOf(notNullValue(), instanceOf(ObjectNode.class)));
-    assertThat(layout.get("xaxis").get("type").asText(), allOf(notNullValue(), equalTo("date")));
-  }
-
-  @Test
-  public void testQueryWithFilters() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "cpu_usage_user");
-    params.put("start", "1479281730");
-    params.put("end", "1479281734");
-    ObjectNode filterJson = Json.newObject();
-    filterJson.put("foo", "bar");
-    params.put("filters", Json.stringify(filterJson));
-
-    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
-                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
-
-    HashMap<String, String> queryParams = new HashMap<>();
-    queryParams.put("query", "avg(collectd_cpu_percent{cpu=\"user\", foo=\"bar\"})");
-    queryParams.put("start", params.get("start"));
-    queryParams.put("end", params.get("end"));
-    queryParams.put("step", "0");
-    queryParams.put("filters", "{\"foo\":\"bar\"}");
-
-    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), eq(queryParams))).thenReturn(Json.toJson(responseJson));
-    metricQueryHelper.query(params);
-  }
-
-  @Test
-  public void testQueryForLargerTimeframe() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "cpu_usage_user");
-    params.put("start", "1439281730");
-    params.put("end", "1479281734");
-
-    HashMap<String, String> queryParams = new HashMap<>();
-    queryParams.put("query", "avg(collectd_cpu_percent{cpu=\"user\"})");
-    queryParams.put("start", params.get("start"));
-    queryParams.put("end", params.get("end"));
-    queryParams.put("step", "400000");
-    JsonNode responseJson = Json.parse("{\"status\":null,\"data\":{\"resultType\":null,\"result\":[]}," +
-                                         "\"errorType\":null,\"error\":null}");
-    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), eq(queryParams))).thenReturn(responseJson);
-    metricQueryHelper.query(params);
-    verify(mockApiHelper, times(1)).getRequest(eq("foo://bar/query_range"), anyMap(), eq(queryParams));
-  }
-
-  @Test
-  public void testQueryWithInvalidFilterParam() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "cpu_usage_user");
-    params.put("start", "1479281730");
-    params.put("end", "1479281734");
-    params.put("filters", "foo:bar");
-
-    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
-                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
-
-    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
-    try {
-      metricQueryHelper.query(params);
-    } catch (RuntimeException re) {
-      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Invalid filter params provided, it should be a hash")));
-    }
-  }
-
-  @Test
   public void testQueryWithInvalidParams() {
-    HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "cpu_usage_user");
-    params.put("start", "1479281730");
-    params.put("end", "1479281734");
-
-    JsonNode responseJson = Json.parse("{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"cannot parse \\\"\\\" to a valid duration\"}");
-
-    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
-    JsonNode result = metricQueryHelper.query(params);
-    assertThat(result.get("error").asText(), allOf(notNullValue(), equalTo("cannot parse \"\" to a valid duration")));
+    try {
+      metricQueryHelper.query(Collections.emptyList(), Collections.emptyMap());
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Empty metricKeys data provided.")));
+    }
   }
 
+  @Test
+  public void testQueryWithInvalidFilterParams() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("filters", "my-own-filter");
+
+    try {
+      metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Invalid filter params provided, it should be a hash.")));
+    }
+  }
 
   @Test
-  public void testQueryMetricsWithAlias() {
+  public void testQuerySingleMetricWithoutEndTime() {
+    DateTime date = DateTime.now().minusMinutes(1);
+    Integer startTimestamp = Math.toIntExact(date.getMillis() / 1000);
     HashMap<String, String> params = new HashMap<>();
-    params.put("metricKey", "redis_rpcs_per_sec");
-    params.put("start", "1479281737");
-    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[\n" +
-      "{\"metric\":{\"type\":\"rpc_RedisServerService_get.num\"},\"values\":[[1480527366,\"0\"],[1480527387,\"0\"]]},\n" +
-      "{\"metric\":{\"type\":\"rpc_RedisServerService_set.num\"},\"values\":[[1480527366,\"0\"],[1480527387,\"0\"]]},\n" +
-      "{\"metric\":{\"type\":\"rpc_RedisServerService_echo.num\"},\"values\":[[1480527366,\"0\"],[1480527387,\"0\"]]}]}}");
+    params.put("start", startTimestamp.toString());
 
-    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
+    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
+                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
 
-    JsonNode result = metricQueryHelper.query(params);
+    ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
 
-    assertThat(result.get("metricKey").asText(), allOf(notNullValue(), equalTo("redis_rpcs_per_sec")));
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
+    metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    verify(mockApiHelper).getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    JsonNode data = result.get("data");
-    assertThat(data, allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    assertEquals(data.size(), 3);
-    assertThat(data.get(0).get("type").asText(), allOf(notNullValue(), equalTo("scatter")));
-    assertThat(data.get(0).get("x"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    assertThat(data.get(0).get("y"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
-    assertThat(data.get(0).get("name").asText(), allOf(notNullValue(), equalTo("Get")));
-    assertThat(data.get(1).get("name").asText(), allOf(notNullValue(), equalTo("Set")));
-    assertThat(data.get(2).get("name").asText(), allOf(notNullValue(), equalTo("Echo")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query")));
+    assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
+
+    Map<String, String> graphQueryParam = queryParam.getValue();
+    assertThat(graphQueryParam.get("query"), allOf(notNullValue(), equalTo("sum(my_valid_metric)")));
+    assertThat(Integer.parseInt(graphQueryParam.get("time")), allOf(notNullValue(), equalTo(startTimestamp)));
+    assertThat(Integer.parseInt(graphQueryParam.get("step")), is(notNullValue()));
+    assertThat(Integer.parseInt(graphQueryParam.get("_")), is(notNullValue()));
+  }
+
+  @Test
+  public void testQuerySingleMetricWithEndTime() {
+    DateTime date = DateTime.now();
+    Integer startTimestamp = Math.toIntExact(date.minusMinutes(10).getMillis() / 1000);
+    Integer endTimestamp = Math.toIntExact(date.getMillis() / 1000);
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", startTimestamp.toString());
+    params.put("end", endTimestamp.toString());
+
+    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
+                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
+
+    ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
+
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
+    metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
+    verify(mockApiHelper).getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
+
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
+
+    Map<String, String> graphQueryParam = queryParam.getValue();
+    assertThat(graphQueryParam.get("query"), allOf(notNullValue(), equalTo("sum(my_valid_metric)")));
+    assertThat(Integer.parseInt(graphQueryParam.get("start")), allOf(notNullValue(), equalTo(startTimestamp)));
+    assertThat(Integer.parseInt(graphQueryParam.get("end")), allOf(notNullValue(), equalTo(endTimestamp)));
+    assertThat(Integer.parseInt(graphQueryParam.get("step")), allOf(notNullValue(), equalTo(6)));
+  }
+
+  @Test
+  public void testQueryMultipleMetrics() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1481147528");
+    params.put("end", "1481147648");
+
+    JsonNode configJson = Json.parse("{\"metric\": \"my_valid_metric2\", \"function\": \"avg\"}");
+    MetricConfig validMetric2 = MetricConfig.create("valid_metric2", configJson);
+    validMetric2.save();
+
+    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
+                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
+
+    ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Map> queryParam = ArgumentCaptor.forClass(Map.class);
+    List<String> metricKeys = ImmutableList.of("valid_metric2", "valid_metric");
+
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(responseJson);
+    JsonNode result = metricQueryHelper.query(metricKeys, params);
+    verify(mockApiHelper, times(2)).getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryParam.getValue(), allOf(notNullValue(), instanceOf(Map.class)));
+
+    List<String> expectedQueryStrings = new ArrayList<>();
+    expectedQueryStrings.add(validMetric.getQuery(new HashMap<>()));
+    expectedQueryStrings.add(validMetric2.getQuery(new HashMap<>()));
+
+    for (Map<String, String> capturedQueryParam: queryParam.getAllValues()) {
+      assertTrue(expectedQueryStrings.contains(capturedQueryParam.get("query")));
+      assertTrue(metricKeys.contains(capturedQueryParam.get("queryKey")));
+      assertThat(Integer.parseInt(capturedQueryParam.get("start").toString()), allOf(notNullValue(), equalTo(1481147528)));
+      assertThat(Integer.parseInt(capturedQueryParam.get("step").toString()), allOf(notNullValue(), equalTo(1)));
+      assertThat(Integer.parseInt(capturedQueryParam.get("end").toString()), allOf(notNullValue(), equalTo(1481147648)));
+    }
   }
 }
