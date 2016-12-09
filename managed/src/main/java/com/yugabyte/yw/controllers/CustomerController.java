@@ -3,8 +3,10 @@
 package com.yugabyte.yw.controllers;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -96,21 +98,17 @@ public class CustomerController extends AuthenticatedController {
     Map<String, String> params = formData.data();
     ObjectNode filterJson = Json.newObject();
     if (!params.containsKey("nodePrefix")) {
-      ArrayList<String> universePrefixes = new ArrayList();
-      for (Universe universe: customer.getUniverses()) {
-        if (universe.getUniverseDetails().nodePrefix != null) {
-          universePrefixes.add(universe.getUniverseDetails().nodePrefix);
-        }
-      }
-
+      String universePrefixes = customer.getUniverses().stream()
+        .map((universe -> universe.getUniverseDetails().nodePrefix)).collect(Collectors.joining("|"));
       filterJson.put("node_prefix", String.join("|", universePrefixes));
     } else {
       filterJson.put("node_prefix", params.remove("nodePrefix"));
     }
 
     params.put("filters", Json.stringify(filterJson));
+
     try {
-      JsonNode response = metricQueryHelper.query(params);
+      JsonNode response = metricQueryHelper.query(formData.get().metrics, params);
       if (response.has("error")) {
         return ApiResponse.error(BAD_REQUEST, response.get("error"));
       }
