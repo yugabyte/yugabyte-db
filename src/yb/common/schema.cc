@@ -63,7 +63,8 @@ string ColumnSchema::ToString() const {
 string ColumnSchema::TypeToString() const {
   return strings::Substitute("$0 $1",
                              type_info_->name(),
-                             is_nullable_ ? "NULLABLE" : "NOT NULL");
+                             is_nullable_ ? "NULLABLE" : "NOT NULL",
+                             is_hash_key_ ? "PARTITION KEY" : "NOT A PARTITION KEY");
 }
 
 size_t ColumnSchema::memory_footprint_excluding_this() const {
@@ -94,6 +95,7 @@ Schema& Schema::operator=(const Schema& other) {
 
 void Schema::CopyFrom(const Schema& other) {
   num_key_columns_ = other.num_key_columns_;
+  num_hash_key_columns_ = other.num_hash_key_columns_;
   cols_ = other.cols_;
   col_ids_ = other.col_ids_;
   col_offsets_ = other.col_offsets_;
@@ -113,6 +115,7 @@ void Schema::CopyFrom(const Schema& other) {
 
 void Schema::swap(Schema& other) {
   std::swap(num_key_columns_, other.num_key_columns_);
+  std::swap(num_hash_key_columns_, other.num_hash_key_columns_);
   cols_.swap(other.cols_);
   col_ids_.swap(other.col_ids_);
   col_offsets_.swap(other.col_offsets_);
@@ -126,6 +129,22 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
                      int key_columns) {
   cols_ = cols;
   num_key_columns_ = key_columns;
+  num_hash_key_columns_ = 0;
+
+  // Determine whether any column is nullable and count number of hash columns.
+  has_nullables_ = false;
+  for (const ColumnSchema& col : cols_) {
+    if (col.is_hash_key()) {
+      num_hash_key_columns_++;
+    }
+    if (col.is_nullable()) {
+      has_nullables_ = true;
+
+      // Stop the counting. Because all hash columns are listed first, all hash keys have already
+      // been counted when we reach a nullable column.
+      break;
+    }
+  }
 
   if (PREDICT_FALSE(key_columns > cols_.size())) {
     return STATUS(InvalidArgument,
@@ -179,15 +198,6 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
       max_col_id_ = ids[i];
     }
     id_to_index_.set(ids[i], i);
-  }
-
-  // Determine whether any column is nullable
-  has_nullables_ = false;
-  for (const ColumnSchema& col : cols_) {
-    if (col.is_nullable()) {
-      has_nullables_ = true;
-      break;
-    }
   }
 
   return Status::OK();
@@ -408,12 +418,18 @@ Status SchemaBuilder::AddKeyColumn(const string& name, DataType type) {
   return AddColumn(ColumnSchema(name, type), true);
 }
 
+Status SchemaBuilder::AddHashKeyColumn(const string& name, DataType type) {
+  return AddColumn(ColumnSchema(name, type, false, true), true);
+}
+
 Status SchemaBuilder::AddColumn(const string& name,
                                 DataType type,
                                 bool is_nullable,
+                                bool is_hash_key,
                                 const void *read_default,
                                 const void *write_default) {
-  return AddColumn(ColumnSchema(name, type, is_nullable, read_default, write_default), false);
+  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key,
+                                read_default, write_default), false);
 }
 
 Status SchemaBuilder::RemoveColumn(const string& name) {

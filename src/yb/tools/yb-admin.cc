@@ -473,9 +473,8 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const string& table_name) {
-  vector<string> tablet_ids, range_starts, range_ends;
-  RETURN_NOT_OK(yb_client_->GetTablets(
-      table_name, 0, &tablet_ids, &range_starts, &range_ends));
+  vector<string> tablet_ids, ranges;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
   rpc::RpcController rpc;
   master::GetTabletLocationsRequestPB req;
   master::GetTabletLocationsResponsePB resp;
@@ -815,18 +814,13 @@ Status ClusterAdminClient::ListTables() {
 }
 
 Status ClusterAdminClient::ListTablets(const string& table_name, const int max_tablets) {
-  vector<string> tablet_uuids, range_starts, range_ends;
-  RETURN_NOT_OK(yb_client_->GetTablets(
-      table_name, max_tablets, &tablet_uuids, &range_starts, &range_ends));
-  const string header = "Tablet UUID\t\t\t\tKey range start\t\t\tKey range end";
+  vector<string> tablet_uuids, ranges;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, max_tablets, &tablet_uuids, &ranges));
+  const string header = "Tablet UUID\t\t\t\tRange";
   std::cout << header << std::endl;
   for (int i = 0; i < tablet_uuids.size(); i++) {
     string uuid = tablet_uuids[i];
-    string start = range_starts[i];
-    if (start.empty()) start = "<start>\t\t";
-    string end = range_ends.at(i);
-    if (end.empty()) end = "<end>\t";
-    std::cout << uuid << "\t" << start << "\t" + end << std::endl;
+    std::cout << uuid << "\t" << ranges[i] << std::endl;
   }
   return Status::OK();
 }

@@ -108,6 +108,9 @@ MAKE_ENUM_LIMITS(yb::client::YBScanner::OrderMode,
                  yb::client::YBScanner::UNORDERED,
                  yb::client::YBScanner::ORDERED);
 
+DEFINE_int32(yb_num_shards_per_tserver, 8,
+             "The default number of shards per table per tablet server when a table is created.");
+
 namespace yb {
 namespace client {
 
@@ -158,6 +161,8 @@ static TableType ClientToPBTableType(YBTableType table_type) {
       return TableType::REDIS_TABLE_TYPE;
     default:
       LOG(FATAL) << "Unknown value for YBTableType: " << table_type;
+      // Returns a dummy value to avoid compilation warning.
+      return TableType::DEFAULT_TABLE_TYPE;
   }
 }
 
@@ -226,7 +231,7 @@ YBClientBuilder& YBClientBuilder::default_rpc_timeout(const MonoDelta& timeout) 
   return *this;
 }
 
-YBClientBuilder& YBClientBuilder::set_num_reactors(int32 num_reactors) {
+YBClientBuilder& YBClientBuilder::set_num_reactors(int32_t num_reactors) {
   CHECK_GT(num_reactors, 0);
   data_->num_reactors_ = num_reactors;
   return *this;
@@ -314,6 +319,31 @@ Status YBClient::GetTableSchema(const string& table_name,
                                &table_id_ignored);
 }
 
+Status YBClient::TabletServerCount(int *tserver_count) {
+  ListTabletServersRequestPB req;
+  ListTabletServersResponsePB resp;
+
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+  Status s =
+      data_->SyncLeaderMasterRpc<ListTabletServersRequestPB, ListTabletServersResponsePB>(
+          deadline,
+          this,
+          req,
+          &resp,
+          nullptr,
+          "ListTabletServers",
+          &MasterServiceProxy::ListTabletServers);
+  RETURN_NOT_OK(s);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  *tserver_count = resp.servers_size();
+  return Status::OK();
+}
+
 Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
@@ -346,8 +376,7 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
 Status YBClient::GetTablets(const string& table_name,
                             const int max_tablets,
                             vector<string>* tablet_uuids,
-                            vector<string>* range_starts,
-                            vector<string>* range_ends) {
+                            vector<string>* ranges) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
@@ -374,14 +403,12 @@ Status YBClient::GetTablets(const string& table_name,
     return StatusFromPB(resp.error().status());
   }
   tablet_uuids->clear();
-  range_starts->clear();
-  range_ends->clear();
+  ranges->clear();
   for (int i = 0; i < resp.tablet_locations_size(); i++) {
     TabletLocationsPB tablet = resp.tablet_locations(i);
     PartitionPB partition = tablet.partition();
     tablet_uuids->push_back(tablet.tablet_id());
-    range_starts->push_back(partition.partition_key_start());
-    range_ends->push_back(partition.partition_key_end());
+    ranges->push_back(partition.ShortDebugString());
   }
 
   return Status::OK();
@@ -598,8 +625,18 @@ YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::num_tablets(int32_t count) {
+  data_->num_tablets_ = count;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   data_->schema_ = schema;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::set_use_multi_column_hash_schema() {
+  data_->partition_schema_.set_use_multi_column_hash_schema(true);
   return *this;
 }
 
@@ -708,10 +745,32 @@ Status YBTableCreator::Create() {
   RETURN_NOT_OK_PREPEND(SchemaToPB(*data_->schema_->schema_, req.mutable_schema()),
                         "Invalid schema");
 
-  RowOperationsPBEncoder encoder(req.mutable_split_rows());
 
-  for (const YBPartialRow* row : data_->split_rows_) {
-    encoder.Add(RowOperationsPB::SPLIT_ROW, *row);
+  // Check if partition schema is to multi column hash value.
+  int32_t num_hash_keys = data_->schema_->num_hash_key_columns();
+  if (num_hash_keys > 0 || data_->partition_schema_.use_multi_column_hash_schema()) {
+    if (!data_->split_rows_.empty()) {
+      return STATUS(InvalidArgument,
+                    "Split rows cannot be used with schema that contains hash key columns");
+    }
+
+    // Setup the number splits (i.e. number of tablets).
+    if (data_->num_tablets_ <= 0) {
+      int tserver_count = 0;
+      RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
+      data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+    }
+    req.set_num_tablets(data_->num_tablets_);
+
+    // Setup multi column hash schema option.
+    set_use_multi_column_hash_schema();
+
+  } else {
+    RowOperationsPBEncoder encoder(req.mutable_split_rows());
+
+    for (const YBPartialRow* row : data_->split_rows_) {
+      encoder.Add(RowOperationsPB::SPLIT_ROW, *row);
+    }
   }
   req.mutable_partition_schema()->CopyFrom(data_->partition_schema_);
 

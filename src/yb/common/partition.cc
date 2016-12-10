@@ -25,9 +25,9 @@
 #include "yb/common/scan_predicate.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/hash/hash.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/hash_util.h"
 
 namespace yb {
 
@@ -125,6 +125,12 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
                                PartitionSchema* partition_schema) {
   partition_schema->Clear();
 
+  if (pb.use_multi_column_hash_schema()) {
+    VLOG(3) << "Using multi-column hash value for partitioning";
+    partition_schema->use_multi_column_hash_schema_ = true;
+    return Status::OK();
+  }
+
   for (const PartitionSchemaPB_HashBucketSchemaPB& hash_bucket_pb : pb.hash_bucket_schemas()) {
     HashBucketSchema hash_bucket;
     RETURN_NOT_OK(ExtractColumnIds(hash_bucket_pb.columns(), schema, &hash_bucket.column_ids));
@@ -158,6 +164,9 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
 
 void PartitionSchema::ToPB(PartitionSchemaPB* pb) const {
   pb->Clear();
+
+  pb->set_use_multi_column_hash_schema(use_multi_column_hash_schema_);
+
   pb->mutable_hash_bucket_schemas()->Reserve(hash_bucket_schemas_.size());
   for (const HashBucketSchema& hash_bucket : hash_bucket_schemas_) {
     PartitionSchemaPB_HashBucketSchemaPB* hash_bucket_pb = pb->add_hash_bucket_schemas();
@@ -170,6 +179,10 @@ void PartitionSchema::ToPB(PartitionSchemaPB* pb) const {
 }
 
 Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
+  if (use_multi_column_hash_schema_) {
+    return EncodeColumns(row, buf);
+  }
+
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
@@ -182,6 +195,10 @@ Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
 }
 
 Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) const {
+  if (use_multi_column_hash_schema_) {
+    return EncodeColumns(row, buf);
+  }
+
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
@@ -191,6 +208,38 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
   }
 
   return EncodeColumns(row, range_schema_.column_ids, buf);
+}
+
+string PartitionSchema::EncodeMultiColumnHashValue(uint16_t hash_value) {
+  char value_bytes[2];
+  value_bytes[0] = hash_value >> 8;
+  value_bytes[1] = hash_value & 0xff;
+  return string(value_bytes, 2);
+}
+
+uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key) {
+  DCHECK_EQ(partition_key.size(), 2);
+  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(partition_key.data());
+  return (bytes[0] << 8) | bytes[1];
+}
+
+Status PartitionSchema::CreatePartitions(int32_t num_tablets, vector<Partition> *partitions) const {
+  // Allocate the partitions.
+  partitions->resize(num_tablets);
+  const uint16_t partition_interval = (1 << 16) / num_tablets;
+
+  uint16_t pstart;
+  uint16_t pend = 0;
+  for (int partition_index = 0; partition_index < num_tablets; partition_index++) {
+    pstart = pend;
+    pend = (partition_index + 1) * partition_interval;
+    (*partitions)[partition_index].partition_key_start_ = EncodeMultiColumnHashValue(pstart);
+    if (partition_index < num_tablets - 1) {
+      (*partitions)[partition_index].partition_key_end_ = EncodeMultiColumnHashValue(pend);
+    }
+  }
+
+  return Status::OK();
 }
 
 Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
@@ -338,15 +387,19 @@ Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
     }
   }
 
-  string range_partition_key;
-  RETURN_NOT_OK(EncodeColumns(row, range_schema_.column_ids, &range_partition_key));
+  string partition_key;
+  if (use_multi_column_hash_schema_) {
+    RETURN_NOT_OK(EncodeColumns(row, &partition_key));
+  } else {
+    RETURN_NOT_OK(EncodeColumns(row, range_schema_.column_ids, &partition_key));
+  }
 
   // If all of the hash buckets match, then the row is contained in the
   // partition if the row is gte the lower bound; and if there is no upper
   // bound, or the row is lt the upper bound.
-  *contains = (Slice(range_partition_key).compare(partition.range_key_start()) >= 0)
+  *contains = (Slice(partition_key).compare(partition.range_key_start()) >= 0)
            && (partition.range_key_end().empty()
-                || Slice(range_partition_key).compare(partition.range_key_end()) < 0);
+                || Slice(partition_key).compare(partition.range_key_end()) < 0);
 
   return Status::OK();
 }
@@ -421,6 +474,18 @@ Status PartitionSchema::DecodeHashBuckets(Slice* encoded_key,
 string PartitionSchema::PartitionDebugString(const Partition& partition,
                                              const Schema& schema) const {
   string s;
+
+  if (use_multi_column_hash_schema_) {
+    uint16_t hash_start = DecodeMultiColumnHashValue(partition.partition_key_start());
+    const string& pend = partition.partition_key_end();
+    if (!pend.empty()) {
+      uint16 hash_end = DecodeMultiColumnHashValue(pend);
+      s.append(Substitute("hash_split: [$0, $1)", hash_start, hash_end));
+    } else {
+      s.append(Substitute("hash_split: [$0, NaN)", hash_start));
+    }
+    return s;
+  }
 
   if (!partition.hash_buckets().empty()) {
     vector<string> components;
@@ -571,6 +636,14 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
 
   vector<string> components;
 
+  if (use_multi_column_hash_schema_) {
+    if (key.empty()) {
+      return "hash_code: NaN";
+    } else {
+      return Substitute("hash_code: $0", DecodeMultiColumnHashValue(key));
+    }
+  }
+
   if (!hash_bucket_schemas_.empty()) {
     vector<int32_t> buckets;
     Status s = DecodeHashBuckets(&encoded_key, &buckets);
@@ -614,6 +687,10 @@ string ColumnIdsToColumnNames(const Schema& schema,
 string PartitionSchema::DebugString(const Schema& schema) const {
   vector<string> component_types;
 
+  if (use_multi_column_hash_schema_) {
+    return "Multi Column Hash Partition";
+  }
+
   if (!hash_bucket_schemas_.empty()) {
     vector<string> hash_components;
     for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
@@ -640,6 +717,11 @@ string PartitionSchema::DebugString(const Schema& schema) const {
 bool PartitionSchema::Equals(const PartitionSchema& other) const {
   if (this == &other) return true;
 
+  // Compare if both partitions schema are using a hash based scheme.
+  if (use_multi_column_hash_schema_ != other.use_multi_column_hash_schema_) {
+    return false;
+  }
+
   // Compare range component.
   if (range_schema_.column_ids != other.range_schema_.column_ids) return false;
 
@@ -657,12 +739,19 @@ bool PartitionSchema::Equals(const PartitionSchema& other) const {
 }
 
 bool PartitionSchema::IsSimplePKRangePartitioning(const Schema& schema) const {
+  // If we are using hash based splitting, then we consider this case also as a simple range based
+  // partitioning scheme to leverage most of the tablet location logic.
+  if (use_multi_column_hash_schema_) {
+    return true;
+  }
+
   if (!hash_bucket_schemas_.empty()) return false;
   if (range_schema_.column_ids.size() != schema.num_key_columns()) return false;
 
   for (int i = 0; i < schema.num_key_columns(); i++) {
     if (range_schema_.column_ids[i] != schema.column_id(i)) return false;
   }
+
   return true;
 }
 
@@ -701,14 +790,69 @@ Status PartitionSchema::EncodeColumns(const YBPartialRow& row,
   return Status::OK();
 }
 
+uint16_t PartitionSchema::HashColumnCompoundValue(const string& compound) {
+  // In the future, if you wish to change the hashing behavior, you must introduce a new hashing
+  // method for your newly-created tables.  Existing tables must continue to use their hashing
+  // methods that was define by their PartitionSchema.
+
+  // At the moment, Jenkins' hash is the only method we are using. In the future, we'll keep this
+  // as the default hashing behavior. Constant 'kseed" cannot be changed as it'd yield a different
+  // hashing result.
+  static const int kseed = 97;
+  const uint64_t hash_value = Hash64StringWithSeed(compound, kseed);
+
+  // Convert the 64-bit hash value to 16 bit integer.
+  const uint64_t h1 = hash_value >> 48;
+  const uint64_t h2 = 3 * (hash_value >> 32);
+  const uint64_t h3 = 5 * (hash_value >> 16);
+  const uint64_t h4 = 7 * (hash_value & 0xffff);
+
+  return (h1 ^ h2 ^ h3 ^ h4) & 0xffff;
+}
+
+// Encodes the hash columns of the supplied row into a 2-byte partition key.
+Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row, string* buf) {
+  string tmp;
+  int num_cols = row.schema()->num_hash_key_columns();
+  for (int col_idx = 0; col_idx < num_cols; col_idx++) {
+    const TypeInfo* type = row.schema()->column(col_idx).type_info();
+    GetKeyEncoder<string>(type).Encode(row.cell_ptr(col_idx), col_idx + 1 == num_cols, &tmp);
+  }
+
+  uint16_t hash_value = HashColumnCompoundValue(tmp);
+  *buf = EncodeMultiColumnHashValue(hash_value);
+  return Status::OK();
+}
+
+// Encodes the hash columns of the supplied row into a 2-byte partition key.
+Status PartitionSchema::EncodeColumns(const YBPartialRow& row, string* buf) {
+  string tmp;
+  int num_cols = row.schema()->num_hash_key_columns();
+  for (int col_idx = 0; col_idx < num_cols; col_idx++) {
+    const TypeInfo* type_info = row.schema()->column(col_idx).type_info();
+    const KeyEncoder<string>& encoder = GetKeyEncoder<string>(type_info);
+
+    if (PREDICT_FALSE(!row.IsColumnSet(col_idx))) {
+      LOG(FATAL) << "Hash column must be specified: " << col_idx;
+    } else {
+      ContiguousRow cont_row(row.schema(), row.row_data_);
+      encoder.Encode(cont_row.cell_ptr(col_idx), col_idx + 1 == num_cols, &tmp);
+    }
+  }
+
+  uint16_t hash_value = HashColumnCompoundValue(tmp);
+  *buf = EncodeMultiColumnHashValue(hash_value);
+  return Status::OK();
+}
+
 template<typename Row>
 Status PartitionSchema::BucketForRow(const Row& row,
                                      const HashBucketSchema& hash_bucket_schema,
                                      int32_t* bucket) {
   string buf;
   RETURN_NOT_OK(EncodeColumns(row, hash_bucket_schema.column_ids, &buf));
-  uint64_t hash = HashUtil::MurmurHash2_64(buf.data(), buf.length(), hash_bucket_schema.seed);
-  *bucket = hash % static_cast<uint64_t>(hash_bucket_schema.num_buckets);
+  uint16_t hash_value = HashColumnCompoundValue(buf);
+  *bucket = hash_value % static_cast<uint64_t>(hash_bucket_schema.num_buckets);
   return Status::OK();
 }
 
@@ -730,6 +874,7 @@ Status PartitionSchema::BucketForRow(const ConstContiguousRow& row,
 void PartitionSchema::Clear() {
   hash_bucket_schemas_.clear();
   range_schema_.column_ids.clear();
+  use_multi_column_hash_schema_ = false;
 }
 
 Status PartitionSchema::Validate(const Schema& schema) const {

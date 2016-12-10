@@ -345,18 +345,7 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
                                             *schema_, &partition_schema_));
       Partition::FromPB(superblock.partition(), &partition_);
     } else {
-      // This clause may be removed after compatibility with tables created
-      // before KUDU-818 is not needed.
-      RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), *schema_, &partition_schema_));
-      PartitionPB partition;
-      if (!superblock.has_start_key() || !superblock.has_end_key()) {
-        return STATUS(Corruption,
-            "tablet superblock must contain either a partition or start and end primary keys",
-            superblock.ShortDebugString());
-      }
-      partition.set_partition_key_start(superblock.start_key());
-      partition.set_partition_key_end(superblock.end_key());
-      Partition::FromPB(partition, &partition_);
+      LOG(FATAL) << "partition field must be set in superblock: " << superblock.ShortDebugString();
     }
 
     tablet_data_state_ = superblock.tablet_data_state();

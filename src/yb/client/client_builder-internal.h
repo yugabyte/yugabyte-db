@@ -43,7 +43,7 @@ class YBClientBuilder::Data {
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
   std::vector<std::string> master_server_addrs_;
 
-  int32 num_reactors_;
+  int32_t num_reactors_;
 
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;
@@ -55,4 +55,4 @@ class YBClientBuilder::Data {
 }  // namespace client
 }  // namespace yb
 
-#endif
+#endif // YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_

@@ -35,10 +35,12 @@ namespace tablet {
 class TestCFileSet : public YBRowSetTest {
  public:
   TestCFileSet() :
-    YBRowSetTest(Schema({ ColumnSchema("c0", UINT32),
-                            ColumnSchema("c1", UINT32, false, nullptr, nullptr, GetRLEStorage()),
-                            ColumnSchema("c2", UINT32) }, 1))
-  {}
+    YBRowSetTest(Schema(
+      { ColumnSchema("c0", UINT32),
+        ColumnSchema("c1", UINT32, false, false, nullptr, nullptr, GetRLEStorage()),
+        ColumnSchema("c2", UINT32)},
+      1)) {
+  }
 
   virtual void SetUp() OVERRIDE {
     YBRowSetTest::SetUp();

@@ -17,10 +17,11 @@
 
 #include "yb/common/schema.h"
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
 #include <unordered_map>
 #include <vector>
+
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/common/key_encoder.h"
 #include "yb/common/row.h"
@@ -177,7 +178,7 @@ TEST(TestSchema, TestProjectMissingColumn) {
   Schema schema3({ ColumnSchema("val", UINT32), ColumnSchema("non_present", UINT32, true) }, 0);
   uint32_t default_value = 15;
   Schema schema4({ ColumnSchema("val", UINT32),
-                   ColumnSchema("non_present", UINT32, false, &default_value) },
+                   ColumnSchema("non_present", UINT32, false, false, &default_value) },
                  0);
 
   RowProjector row_projector(&schema1, &schema2);

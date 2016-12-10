@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+#include <vector>
+
 #include <boost/lexical_cast.hpp>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-
-#include <algorithm>
-#include <vector>
 
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
@@ -135,7 +135,7 @@ TEST_F(TestTabletSchema, TestWrite) {
   const int32_t c2_read_default = 7;
 
   SchemaBuilder builder(tablet()->metadata()->schema());
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, &c2_read_default, &c2_write_default));
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, &c2_read_default, &c2_write_default));
   AlterSchema(builder.Build());
   Schema s2 = builder.BuildWithoutIds();
 
@@ -178,7 +178,7 @@ TEST_F(TestTabletSchema, TestReInsert) {
   const int32_t c2_read_default = 7;
 
   SchemaBuilder builder(tablet()->metadata()->schema());
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, &c2_read_default, &c2_write_default));
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, &c2_read_default, &c2_write_default));
   AlterSchema(builder.Build());
   Schema s2 = builder.BuildWithoutIds();
 

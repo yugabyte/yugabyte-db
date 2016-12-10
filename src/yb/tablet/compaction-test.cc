@@ -16,10 +16,11 @@
 // under the License.
 
 #include <algorithm>
+#include <memory>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
 
 #include "yb/common/partial_row.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -106,7 +107,7 @@ class TestCompaction : public YBRowSetTest {
     if (!mrs->schema().Equals(row_builder_.schema())) {
       // The MemRowSet is not projecting the row, so must be done by the caller
       RowProjector projector(&row_builder_.schema(), &mrs->schema());
-      uint8_t rowbuf[ContiguousRowHelper::row_size(mrs->schema())];
+      uint8_t rowbuf[ContiguousRowHelper::row_size(mrs->schema())]; // NOLINT
       ContiguousRow dst_row(&mrs->schema(), rowbuf);
       ASSERT_OK_FAST(projector.Init());
       ASSERT_OK_FAST(projector.ProjectRowForWrite(row_builder_.row(),
@@ -677,12 +678,12 @@ TEST_F(TestCompaction, TestMergeMultipleSchemas) {
 
   // Add an int column with default
   int32_t default_c2 = 10;
-  CHECK_OK(builder.AddColumn("c2", INT32, false, &default_c2, &default_c2));
+  CHECK_OK(builder.AddColumn("c2", INT32, false, false, &default_c2, &default_c2));
   schemas.push_back(builder.Build());
 
   // add a string column with default
   Slice default_c3("Hello World");
-  CHECK_OK(builder.AddColumn("c3", STRING, false, &default_c3, &default_c3));
+  CHECK_OK(builder.AddColumn("c3", STRING, false, false, &default_c3, &default_c3));
   schemas.push_back(builder.Build());
 
   DoMerge(schemas.back(), schemas);

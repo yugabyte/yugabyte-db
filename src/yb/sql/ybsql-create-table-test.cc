@@ -41,6 +41,17 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   errcode = ybsql_->Process(session_context, sql_stmt4);
   ASSERT_EQ(errcode, ErrorCode::SUCCESSFUL_COMPLETION);
 
+  const char *sql_stmt5 =
+    "CREATE TABLE human_resource5(id int, name varchar, primary key((id), name));";
+  errcode = ybsql_->Process(session_context, sql_stmt5);
+  ASSERT_EQ(errcode, ErrorCode::SUCCESSFUL_COMPLETION);
+
+  const char *sql_stmt6 =
+    "CREATE TABLE human_resource6 "
+    "  (id int, name varchar, salary int, primary key((id, name), salary));";
+  errcode = ybsql_->Process(session_context, sql_stmt6);
+  ASSERT_EQ(errcode, ErrorCode::SUCCESSFUL_COMPLETION);
+
   // Create the table 1 again. This must fail.
   errcode = ybsql_->Process(session_context, sql_stmt1);
   ASSERT_NE(errcode, ErrorCode::SUCCESSFUL_COMPLETION);

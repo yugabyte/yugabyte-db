@@ -436,12 +436,11 @@ message GetTabletLocationsResponsePB {
 message CreateTableRequestPB {
   required string name = 1;
   optional SchemaPB schema = 2;
-  // repeated bytes pre_split_keys = 3;
-  // repeated PartialRowPB split_rows = 5;
-  optional RowOperationsPB split_rows = 6;
-  optional PartitionSchemaPB partition_schema = 7;
-  optional ReplicationInfoPB replication_info = 4;
-  optional TableType table_type = 8 [ default = DEFAULT_TABLE_TYPE ];
+  optional int32 num_tablets = 3;
+  optional RowOperationsPB split_rows = 4;
+  optional PartitionSchemaPB partition_schema = 5;
+  optional ReplicationInfoPB replication_info = 6;
+  optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
 }
 
 message CreateTableResponsePB {

@@ -225,6 +225,10 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   Status GetTableSchema(const std::string& table_name,
                         YBSchema* schema);
 
+  // Find the number of tservers. This function should not be called frequently for reading or
+  // writing actual data. Currently, it is called only for SQL DDL statements.
+  Status TabletServerCount(int *tserver_count);
+
   Status ListTabletServers(std::vector<YBTabletServer*>* tablet_servers);
 
   // List only those tables whose names pass a substring match on 'filter'.
@@ -238,8 +242,7 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   Status GetTablets(const std::string& table_name,
                     const int max_tablets,
                     std::vector<std::string>* tablet_uuids,
-                    std::vector<std::string>* range_starts,
-                    std::vector<std::string>* range_ends);
+                    std::vector<std::string>* ranges);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(
@@ -371,6 +374,10 @@ class YB_EXPORT YBTableCreator {
   // Sets the type of the table.
   YBTableCreator& table_type(YBTableType table_type);
 
+  // Number of tablets that should be used for this table. If tablet_count is not given, YBClient
+  // will calculate this value (num_shards_per_tserver * num_of_tservers).
+  YBTableCreator& num_tablets(int32_t count);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -448,6 +455,9 @@ class YB_EXPORT YBTableCreator {
   friend class YBClient;
 
   explicit YBTableCreator(YBClient* client);
+
+  // Use multi column hash schema to create partition.
+  YBTableCreator& set_use_multi_column_hash_schema();
 
   // Owned.
   Data* data_;

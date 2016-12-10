@@ -288,7 +288,7 @@ TEST_F(WireProtocolTest, TestColumnDefaultValue) {
   ASSERT_FALSE(col1fpb.has_write_default());
   ASSERT_TRUE(col1fpb.read_default_value() == nullptr);
 
-  ColumnSchema col2("col2", STRING, false, &read_default_str);
+  ColumnSchema col2("col2", STRING, false, false, &read_default_str);
   ColumnSchemaToPB(col2, &pb);
   ColumnSchema col2fpb = ColumnSchemaFromPB(pb);
   ASSERT_TRUE(col2fpb.has_read_default());
@@ -296,7 +296,7 @@ TEST_F(WireProtocolTest, TestColumnDefaultValue) {
   ASSERT_EQ(read_default_str, *static_cast<const Slice *>(col2fpb.read_default_value()));
   ASSERT_EQ(nullptr, static_cast<const Slice *>(col2fpb.write_default_value()));
 
-  ColumnSchema col3("col3", STRING, false, &read_default_str, &write_default_str);
+  ColumnSchema col3("col3", STRING, false, false, &read_default_str, &write_default_str);
   ColumnSchemaToPB(col3, &pb);
   ColumnSchema col3fpb = ColumnSchemaFromPB(pb);
   ASSERT_TRUE(col3fpb.has_read_default());
@@ -304,7 +304,7 @@ TEST_F(WireProtocolTest, TestColumnDefaultValue) {
   ASSERT_EQ(read_default_str, *static_cast<const Slice *>(col3fpb.read_default_value()));
   ASSERT_EQ(write_default_str, *static_cast<const Slice *>(col3fpb.write_default_value()));
 
-  ColumnSchema col4("col4", UINT32, false, &read_default_u32);
+  ColumnSchema col4("col4", UINT32, false, false, &read_default_u32);
   ColumnSchemaToPB(col4, &pb);
   ColumnSchema col4fpb = ColumnSchemaFromPB(pb);
   ASSERT_TRUE(col4fpb.has_read_default());
@@ -312,7 +312,7 @@ TEST_F(WireProtocolTest, TestColumnDefaultValue) {
   ASSERT_EQ(read_default_u32, *static_cast<const uint32_t *>(col4fpb.read_default_value()));
   ASSERT_EQ(nullptr, static_cast<const uint32_t *>(col4fpb.write_default_value()));
 
-  ColumnSchema col5("col5", UINT32, false, &read_default_u32, &write_default_u32);
+  ColumnSchema col5("col5", UINT32, false, false, &read_default_u32, &write_default_u32);
   ColumnSchemaToPB(col5, &pb);
   ColumnSchema col5fpb = ColumnSchemaFromPB(pb);
   ASSERT_TRUE(col5fpb.has_read_default());

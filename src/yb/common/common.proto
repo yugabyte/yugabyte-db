@@ -90,6 +90,7 @@ message ColumnSchemaPB {
   required string name = 2;
   required DataType type = 3;
   optional bool is_key = 4 [default = false];
+  optional bool is_hash_key = 11 [default = false];
   optional bool is_nullable = 5 [default = false];
   optional bytes read_default_value = 6;
   optional bytes write_default_value = 7;
@@ -269,6 +270,7 @@ message PartitionSchemaPB {
 
   repeated HashBucketSchemaPB hash_bucket_schemas = 1;
   optional RangeSchemaPB range_schema = 2;
+  optional bool use_multi_column_hash_schema = 3 [default = false];
 }
 
 // The serialized format of a YB table partition.

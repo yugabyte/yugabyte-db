@@ -113,6 +113,7 @@ class ColumnSchema {
   // name: column name
   // type: column type (e.g. UINT8, INT32, STRING, ...)
   // is_nullable: true if a row value can be null
+  // is_hash_key: true if a column's hash value can be used for partitioning.
   // read_default: default value used on read if the column was not present before alter.
   //    The value will be copied and released on ColumnSchema destruction.
   // write_default: default value added to the row if the column value was
@@ -126,13 +127,16 @@ class ColumnSchema {
   //   ColumnSchema col_c("c", INT32, false, &default_i32);
   //   Slice default_str("Hello");
   //   ColumnSchema col_d("d", STRING, false, &default_str);
-  ColumnSchema(string name, DataType type, bool is_nullable = false,
+  ColumnSchema(string name, DataType type,
+               bool is_nullable = false,
+               bool is_hash_key = false,
                const void* read_default = NULL,
                const void* write_default = NULL,
                ColumnStorageAttributes attributes = ColumnStorageAttributes())
       : name_(std::move(name)),
         type_info_(GetTypeInfo(type)),
         is_nullable_(is_nullable),
+        is_hash_key_(is_hash_key),
         read_default_(read_default ? new Variant(type, read_default) : NULL),
         attributes_(std::move(attributes)) {
     if (write_default == read_default) {
@@ -149,6 +153,10 @@ class ColumnSchema {
 
   bool is_nullable() const {
     return is_nullable_;
+  }
+
+  bool is_hash_key() const {
+    return is_hash_key_;
   }
 
   const string &name() const {
@@ -203,6 +211,7 @@ class ColumnSchema {
 
   bool EqualsType(const ColumnSchema &other) const {
     return is_nullable_ == other.is_nullable_ &&
+           is_hash_key_ == other.is_hash_key_ &&
            type_info()->type() == other.type_info()->type();
   }
 
@@ -282,6 +291,7 @@ class ColumnSchema {
   string name_;
   const TypeInfo *type_info_;
   bool is_nullable_;
+  bool is_hash_key_;
   // use shared_ptr since the ColumnSchema is always copied around.
   std::shared_ptr<Variant> read_default_;
   std::shared_ptr<Variant> write_default_;
@@ -307,6 +317,7 @@ class Schema {
 
   Schema()
     : num_key_columns_(0),
+      num_hash_key_columns_(0),
       name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
@@ -395,6 +406,11 @@ class Schema {
   // Return the length of the key prefix in this schema.
   size_t num_key_columns() const {
     return num_key_columns_;
+  }
+
+  // Number of hash key columns.
+  size_t num_hash_key_columns() const {
+    return num_hash_key_columns_;
   }
 
   // Return the byte offset within the row for the given column index.
@@ -759,6 +775,7 @@ class Schema {
 
   vector<ColumnSchema> cols_;
   size_t num_key_columns_;
+  size_t num_hash_key_columns_;
   ColumnId max_col_id_;
   vector<ColumnId> col_ids_;
   vector<size_t> col_offsets_;
@@ -799,6 +816,9 @@ class Schema {
 //   s = builder.AddColumn("new_c1", UINT32);
 //   ...
 //   Schema new_schema = builder.Build();
+//
+// TODO(neil): Must introduce hash_key in this builder. Currently, only YBSchemaBuilder support
+// hash key, and YBSchemaBuilder don't use this builder.
 class SchemaBuilder {
  public:
   SchemaBuilder() { Reset(); }
@@ -826,19 +846,22 @@ class SchemaBuilder {
 
   Status AddKeyColumn(const string& name, DataType type);
 
+  Status AddHashKeyColumn(const string& name, DataType type);
+
   Status AddColumn(const ColumnSchema& column, bool is_key);
 
   Status AddColumn(const string& name, DataType type) {
-    return AddColumn(name, type, false, NULL, NULL);
+    return AddColumn(name, type, false, false, NULL, NULL);
   }
 
   Status AddNullableColumn(const string& name, DataType type) {
-    return AddColumn(name, type, true, NULL, NULL);
+    return AddColumn(name, type, true, false, NULL, NULL);
   }
 
   Status AddColumn(const string& name,
                    DataType type,
                    bool is_nullable,
+                   bool is_hash_key,
                    const void *read_default,
                    const void *write_default);
 

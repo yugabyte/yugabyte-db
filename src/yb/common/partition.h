@@ -124,7 +124,6 @@ class Partition {
 // significance components.
 class PartitionSchema {
  public:
-
   // Deserializes a protobuf message into a partition schema.
   static Status FromPB(const PartitionSchemaPB& pb,
                        const Schema& schema,
@@ -140,6 +139,22 @@ class PartitionSchema {
   // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
   Status EncodeKey(const ConstContiguousRow& row, std::string* buf) const WARN_UNUSED_RESULT;
+
+  // Creates the set of table partitions using multi column hash schema. In this schema, we divide
+  // the [0, max<UINT16>] range equally into the requested number of intervals.
+  Status CreatePartitions(int32_t num_tablets,
+                          std::vector<Partition>* partitions) const WARN_UNUSED_RESULT;
+
+  // Predicate for using multi column hash schema.
+  bool use_multi_column_hash_schema() {
+    return use_multi_column_hash_schema_;
+  }
+
+  // Encodes the given uint16 value into a 2 byte string.
+  static std::string EncodeMultiColumnHashValue(uint16_t hash_value);
+
+  // Decode the given partition_key to a 2-byte integer.
+  static uint16_t DecodeMultiColumnHashValue(const string& partition_key);
 
   // Creates the set of table partitions for a partition schema and collection
   // of split rows.
@@ -195,17 +210,26 @@ class PartitionSchema {
     uint32_t seed;
   };
 
-  // Encodes the specified columns of a row into lexicographic sort-order
-  // preserving format.
+  // Encodes the specified columns of a row into lexicographic sort-order preserving format.
   static Status EncodeColumns(const YBPartialRow& row,
                               const std::vector<ColumnId>& column_ids,
                               std::string* buf);
 
-  // Encodes the specified columns of a row into lexicographic sort-order
-  // preserving format.
+  // Encodes the specified columns of a row into lexicographic sort-order preserving format.
   static Status EncodeColumns(const ConstContiguousRow& row,
                               const std::vector<ColumnId>& column_ids,
                               std::string* buf);
+
+  // Hashes a compound string of all columns into a 16-bit integer.
+  static uint16_t HashColumnCompoundValue(const string& compound);
+
+  // Encodes the specified columns of a row into 2-byte partition key using the multi column
+  // hashing scheme.
+  static Status EncodeColumns(const YBPartialRow& row, string* buf);
+
+  // Encodes the specified columns of a row into 2-byte partition key using the multi column
+  // hashing scheme.
+  static Status EncodeColumns(const ConstContiguousRow& row, string* buf);
 
   // Assigns the row to a hash bucket according to the hash schema.
   template<typename Row>
@@ -257,8 +281,9 @@ class PartitionSchema {
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;
+  bool use_multi_column_hash_schema_ = false;
 };
 
 } // namespace yb
 
-#endif
+#endif // YB_COMMON_PARTITION_H

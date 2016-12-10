@@ -195,6 +195,14 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   pb->set_name(col_schema.name());
   pb->set_type(col_schema.type_info()->type());
   pb->set_is_nullable(col_schema.is_nullable());
+  // We only need to process the *hash* primary key here. The regular primary key is set by the
+  // conversion for SchemaPB. The reason is that ColumnSchema and ColumnSchemaPB are not matching
+  // 1 to 1 as ColumnSchema doesn't have "is_key" field. That was Kudu's code, and we keep it that
+  // way for now.
+  if (col_schema.is_hash_key()) {
+    pb->set_is_key(true);
+    pb->set_is_hash_key(true);
+  }
   if (!(flags & SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES)) {
     pb->set_encoding(col_schema.attributes().encoding);
     pb->set_compression(col_schema.attributes().compression);
@@ -253,9 +261,10 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   if (pb.has_cfile_block_size()) {
     attributes.cfile_block_size = pb.cfile_block_size();
   }
-  return ColumnSchema(pb.name(), pb.type(), pb.is_nullable(),
-                      read_default_ptr, write_default_ptr,
-                      attributes);
+  // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
+  // processing SchemaPB.
+  return ColumnSchema(pb.name(), pb.type(), pb.is_nullable(), pb.is_hash_key(),
+                      read_default_ptr, write_default_ptr, attributes);
 }
 
 Status ColumnPBsToSchema(const RepeatedPtrField<ColumnSchemaPB>& column_pbs,

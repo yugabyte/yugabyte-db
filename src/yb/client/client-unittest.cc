@@ -60,23 +60,27 @@ TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
             b.Build(&s).ToString(/* no file/line */ false));
 }
 
-TEST(ClientUnitTest, TestSchemaBuilder_KeyNotFirstColumn) {
+TEST(ClientUnitTest, TestSchemaBuilder_WrongPrimaryKeyOrder) {
   YBSchema s;
   YBSchemaBuilder b;
   b.AddColumn("key")->Type(YBColumnSchema::INT32);
   b.AddColumn("x")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();;
   b.AddColumn("x")->Type(YBColumnSchema::INT32);
-  ASSERT_EQ("Invalid argument: primary key column must be the first column",
-            b.Build(&s).ToString(/* no file/line */ false));
+  const char *expected_status =
+    "Invalid argument: The given columns in a schema must be ordered as hash primary key columns "
+    "then primary key columns and then regular columns";
+  ASSERT_EQ(expected_status, b.Build(&s).ToString(/* no file/line */ false));
 }
 
-TEST(ClientUnitTest, TestSchemaBuilder_TwoPrimaryKeys) {
+TEST(ClientUnitTest, TestSchemaBuilder_WrongHashKeyOrder) {
   YBSchema s;
   YBSchemaBuilder b;
   b.AddColumn("a")->Type(YBColumnSchema::INT32)->PrimaryKey();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->PrimaryKey();
-  ASSERT_EQ("Invalid argument: multiple columns specified for primary key: a, b",
-            b.Build(&s).ToString(/* no file/line */ false));
+  b.AddColumn("b")->Type(YBColumnSchema::INT32)->HashPrimaryKey();
+  const char *expected_status =
+    "Invalid argument: The given columns in a schema must be ordered as hash primary key columns "
+    "then primary key columns and then regular columns";
+  ASSERT_EQ(expected_status, b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {

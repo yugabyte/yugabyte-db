@@ -1,12 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
-#include <glog/logging.h>
-
-#include <boost/bind.hpp>
-#include <boost/thread/mutex.hpp>
 #include <queue>
 #include <set>
 #include <atomic>
+
+#include <glog/logging.h>
+#include <boost/bind.hpp>
+#include <boost/thread/mutex.hpp>
 
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
@@ -253,6 +253,10 @@ void CreateTable(const string &table_name, const shared_ptr<YBClient> &client) {
   } else {
     CreateYBTable(table_name, client);
   }
+
+  // Workaround(ENG-516) After the table is created, wait a few seconds for leader balancing to
+  // settle down before processing IO operations.
+  sleep(10);
 }
 
 void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &client) {
@@ -260,7 +264,7 @@ void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &clie
   schemaBuilder.AddColumn(yb::client::RedisConstants::kRedisKeyColumnName)
       ->Type(YBColumnSchema::BINARY)
       ->NotNull()
-      ->PrimaryKey();
+      ->HashPrimaryKey();
 
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
@@ -269,7 +273,7 @@ void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &clie
   LOG(INFO) << "Creating table";
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status = table_creator->table_name(table_name)
-                                     .split_rows(splits)
+                                     .num_tablets(FLAGS_num_tablets)
                                      .num_replicas(FLAGS_num_replicas)
                                      .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
                                      .Create();
@@ -285,7 +289,7 @@ void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &clie
 void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client) {
   LOG(INFO) << "Building schema";
   YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
+  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
   schemaBuilder.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
@@ -297,7 +301,7 @@ void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client)
   Status table_creation_status =
       table_creator->table_name(table_name)
           .schema(&schema)
-          .split_rows(splits)
+          .num_tablets(FLAGS_num_tablets)
           .num_replicas(FLAGS_num_replicas)
           .table_type(
               FLAGS_use_kv_table ? yb::client::YBTableType::YSQL_TABLE_TYPE

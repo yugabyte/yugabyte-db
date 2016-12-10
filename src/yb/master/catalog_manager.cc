@@ -956,51 +956,48 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   Schema schema = client_schema.CopyWithColumnIds();
 
-  // RocksDB-backed key-value tables must have only one key column and no nullable columns.
-  // TODO: check for nullable value columns
-  // Nullable columns are currently not being tested for.
-  // Support and checks for nullable columns will be added later.
+  // Create partitions.
+  PartitionSchema partition_schema;
+  vector<Partition> partitions;
 
-  if (req.table_type() == TableType::YSQL_TABLE_TYPE) {
-    if (client_schema.num_key_columns() != 1) {
-      Status s = STATUS(InvalidArgument,
-        "A key-value table should have exactly one key column");
+  s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
+  if (partition_schema.use_multi_column_hash_schema()) {
+    // Use the given number of tablets to create partitions and ignore the other schema options in
+    // the request.
+    int32_t num_tablets = req.num_tablets();
+    LOG(INFO) << "num_tablets: ### " << num_tablets;
+    RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+
+  } else {
+    // If the client did not set a partition schema in the create table request,
+    // the default partition schema (no hash bucket components and a range
+    // partitioned on the primary key columns) will be used.
+    if (!s.ok()) {
       SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       return s;
     }
-  }
 
-  // If the client did not set a partition schema in the create table request,
-  // the default partition schema (no hash bucket components and a range
-  // partitioned on the primary key columns) will be used.
-  PartitionSchema partition_schema;
-  s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-  if (!s.ok()) {
-    SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
-    return s;
-  }
+    // Decode split rows.
+    vector<YBPartialRow> split_rows;
 
-  // Decode split rows.
-  vector<YBPartialRow> split_rows;
+    RowOperationsPBDecoder decoder(&req.split_rows(), &client_schema, &schema, nullptr);
+    vector<DecodedRowOperation> ops;
+    RETURN_NOT_OK(decoder.DecodeOperations(&ops));
 
-  RowOperationsPBDecoder decoder(&req.split_rows(), &client_schema, &schema, nullptr);
-  vector<DecodedRowOperation> ops;
-  RETURN_NOT_OK(decoder.DecodeOperations(&ops));
+    for (const DecodedRowOperation& op : ops) {
+      if (op.type != RowOperationsPB::SPLIT_ROW) {
+        Status s = STATUS(InvalidArgument,
+                          "Split rows must be specified as RowOperationsPB::SPLIT_ROW");
+        SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
+        return s;
+      }
 
-  for (const DecodedRowOperation& op : ops) {
-    if (op.type != RowOperationsPB::SPLIT_ROW) {
-      Status s = STATUS(InvalidArgument,
-          "Split rows must be specified as RowOperationsPB::SPLIT_ROW");
-      SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
-      return s;
+      split_rows.push_back(*op.split_row);
     }
 
-    split_rows.push_back(*op.split_row);
+    // Create partitions based on specified partition schema and split rows.
+    RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   }
-
-  // Create partitions based on specified partition schema and split rows.
-  vector<Partition> partitions;
-  RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
 
   // If they didn't specify a num_replicas, set it based on the default.
   if (!req.has_replication_info()) {
@@ -4619,7 +4616,6 @@ void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req,
   } else {
     it = tablet_map_.begin();
   }
-
   if (req->has_partition_key_end()) {
     it_end = tablet_map_.upper_bound(req->partition_key_end());
   } else {

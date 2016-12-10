@@ -72,11 +72,10 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   errcode = ybsql_->Process(session_context, insert_stmt);
   ASSERT_NE(errcode, ErrorCode::SUCCESSFUL_COMPLETION);
 
-  // INSERT: Invalid statement - Missing primary key (name). This is successful because currently
-  // we support only one primary key.
+  // INSERT: Invalid statement - Missing primary key (name).
   insert_stmt = "INSERT INTO human_resource(id, salary) VALUES(2, 100);";
   errcode = ybsql_->Process(session_context, insert_stmt);
-  ASSERT_EQ(errcode, ErrorCode::SUCCESSFUL_COMPLETION);
+  ASSERT_NE(errcode, ErrorCode::SUCCESSFUL_COMPLETION);
 
   // Because string and numeric datatypes are implicitly compatible, we cannot test datatype
   // mismatch yet. Once timestamp, boolean, ... types are introduced, type incompability should be

@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <iterator>
 #include <stdint.h>
+
+#include <iterator>
 #include <vector>
 
 #include "yb/common/common.pb.h"
@@ -80,12 +81,13 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
     ASSERT_OK(row.SetInt32("a", 0));
     ASSERT_OK(partition_schema.EncodeKey(row, &key));
 
-    EXPECT_EQ(string("\0\0\0\0"   // hash(0, "")
-                     "\0\0\0\x14" // hash("")
-                     "\x80\0\0\0" // a = 0
-                     "\0\0",      // b = ""; c is elided
+    EXPECT_EQ(string("\0\0\0\x1"   // hash(0, "")
+                     "\0\0\0\x4"   // hash("")
+                     "\x80\0\0\0"  // a = 0
+                     "\0\0",       // b = ""; c is elided
                      14), key);
-    string debug = "bucket=0, bucket=20, int32 a=0, string b=, string c=";
+
+    string debug = "bucket=1, bucket=4, int32 a=0, string b=, string c=";
     EXPECT_EQ(debug, partition_schema.RowDebugString(row));
     EXPECT_EQ(debug, partition_schema.PartitionKeyDebugString(key, schema));
   }
@@ -96,13 +98,13 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
     ASSERT_OK(row.SetInt32("a", 1));
     ASSERT_OK(partition_schema.EncodeKey(row, &key));
 
-    EXPECT_EQ(string("\0\0\0\x5"    // hash(1, "")
-                     "\0\0\0\x14"   // hash("")
+    EXPECT_EQ(string("\0\0\0\x3"    // hash(1, "")
+                     "\0\0\0\x4"    // hash("")
                      "\x80\0\0\x01" // a = 1
                      "\0\0",        // b = ""; c is elided
                      14), key);
 
-    string debug_b = "bucket=5, bucket=20, int32 a=1, string b=, string c=";
+    string debug_b = "bucket=3, bucket=4, int32 a=1, string b=, string c=";
     EXPECT_EQ(debug_b, partition_schema.RowDebugString(row));
     EXPECT_EQ(debug_b, partition_schema.PartitionKeyDebugString(key, schema));
   }
@@ -115,14 +117,14 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
     ASSERT_OK(row.SetStringCopy("c", "c"));
     ASSERT_OK(partition_schema.EncodeKey(row, &key));
 
-    EXPECT_EQ(string("\0\0\0\x1A" // hash(0, "b")
-                     "\0\0\0\x1D" // hash("c")
+    EXPECT_EQ(string("\0\0\0\0"   // hash(0, "b")
+                     "\0\0\0\f"   // hash("c")
                      "\x80\0\0\0" // a = 0
                      "b\0\0"      // b = "b"
                      "c",         // c = "c"
                      16), key);
 
-    string debug = "bucket=26, bucket=29, int32 a=0, string b=b, string c=c";
+    string debug = "bucket=0, bucket=12, int32 a=0, string b=b, string c=c";
     EXPECT_EQ(debug, partition_schema.RowDebugString(row));
     EXPECT_EQ(debug, partition_schema.PartitionKeyDebugString(key, schema));
   }
@@ -135,14 +137,14 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
     ASSERT_OK(row.SetStringCopy("c", "c"));
     ASSERT_OK(partition_schema.EncodeKey(row, &key));
 
-    EXPECT_EQ(string("\0\0\0\x0"   // hash(1, "b")
-                     "\0\0\0\x1D"  // hash("c")
+    EXPECT_EQ(string("\0\0\0\x11"  // hash(1, "b")
+                     "\0\0\0\f"    // hash("c")
                      "\x80\0\0\x1" // a = 1
                      "b\0\0"       // b = "b"
                      "c",          // c = "c"
                      16), key);
 
-    string debug = "bucket=0, bucket=29, int32 a=1, string b=b, string c=c";
+    string debug = "bucket=17, bucket=12, int32 a=1, string b=b, string c=c";
     EXPECT_EQ(debug, partition_schema.RowDebugString(row));
     EXPECT_EQ(debug, partition_schema.PartitionKeyDebugString(key, schema));
   }

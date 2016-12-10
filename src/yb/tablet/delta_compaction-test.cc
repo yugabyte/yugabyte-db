@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+#include <vector>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-
-#include <string>
-#include <vector>
 
 #include "yb/common/schema.h"
 #include "yb/tablet/deltafile.h"
@@ -103,12 +103,12 @@ TEST_F(TestDeltaCompaction, TestMergeMultipleSchemas) {
 
   // Add an int column with default
   uint32_t default_c2 = 10;
-  ASSERT_OK(builder.AddColumn("c2", UINT32, false, &default_c2, &default_c2));
+  ASSERT_OK(builder.AddColumn("c2", UINT32, false, false, &default_c2, &default_c2));
   schemas.push_back(builder.Build());
 
   // add a string column with default
   Slice default_c3("Hello World");
-  ASSERT_OK(builder.AddColumn("c3", STRING, false, &default_c3, &default_c3));
+  ASSERT_OK(builder.AddColumn("c3", STRING, false, false, &default_c3, &default_c3));
   schemas.push_back(builder.Build());
 
   vector<shared_ptr<DeltaStore> > inputs;

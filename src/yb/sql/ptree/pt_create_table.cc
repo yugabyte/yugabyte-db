@@ -50,10 +50,31 @@ ErrorCode PTCreateTable::Analyze(SemContext *sem_context) {
     return err;
   }
 
-  // Set first column as primary key if the create statement doesn't define primary key.
-  if (hash_columns_.empty() && primary_columns_.empty()) {
-    primary_columns_.push_back(columns_.front());
-    columns_.pop_front();
+  // Move the all partition and primary columns from columns list to appropriate list.
+  MCList<PTColumnDefinition *>::iterator iter = columns_.begin();
+  while (iter != columns_.end()) {
+    if ((*iter)->is_hash_key()) {
+      AppendHashColumn(*iter);
+      iter = columns_.erase(iter);
+    } else if ((*iter)->is_primary_key()) {
+      AppendPrimaryColumn(*iter);
+      iter = columns_.erase(iter);
+    } else {
+      iter++;
+    }
+  }
+
+  // When partition or primary keys are not defined, the first column must be partition key.
+  if (hash_columns_.empty()) {
+    if (!primary_columns_.empty()) {
+      // First primary column must be a partition key.
+      AppendHashColumn(primary_columns_.front());
+      primary_columns_.pop_front();
+    } else {
+      // First column must be a partition key.
+      AppendPrimaryColumn(columns_.front());
+      columns_.pop_front();
+    }
   }
 
   // Restore the context value as we are done with this table.
@@ -126,13 +147,7 @@ ErrorCode PTColumnDefinition::Analyze(SemContext *sem_context) {
 
   // Add the analyzed column to table.
   PTCreateTable *table = sem_context->current_table();
-  if (is_hash_key_) {
-    table->AppendHashColumn(this);
-  } else if (is_primary_key_) {
-    table->AppendPrimaryColumn(this);
-  } else {
-    table->AppendColumn(this);
-  }
+  table->AppendColumn(this);
 
   // Restore the context value as we are done with this colummn.
   sem_context->set_current_processing_id(cached_entry);

@@ -16,6 +16,20 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+//
+// This module defines the schema that will be used when creating tables.
+//
+// Note on primary key definitions.
+// - There are two different APIs to define primary key. They cannot be used together but can be
+//   used interchangeably for the same purpose (This is different from Kudu's original design which
+//   uses one API for single-column key and another for multi-column key).
+// - First API:
+//   Each column of a primary key can be specified as hash or regular primary key.
+//   Function PrimaryKey()
+//   Function HashPrimaryKey().
+// - Second API:
+//   All hash and regular primary columns can be specified together in a list.
+//   Function YBSchemaBuilder::SetPrimaryKey().
 #ifndef YB_CLIENT_SCHEMA_H
 #define YB_CLIENT_SCHEMA_H
 
@@ -119,10 +133,11 @@ class YB_EXPORT YBColumnSchema {
   // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
   // the Builder API. Currently only the Python API uses this old API.
   YBColumnSchema(const std::string &name,
-                   DataType type,
-                   bool is_nullable = false,
-                   const void* default_value = NULL,
-                   YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
+                 DataType type,
+                 bool is_nullable = false,
+                 bool is_hash_key = false,
+                 const void* default_value = NULL,
+                 YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -208,6 +223,10 @@ class YB_EXPORT YBColumnSpec {
   // after a table is created.
   YBColumnSpec* PrimaryKey();
 
+  // Set this column to be a hash primary key column of the table. A hash value of all hash columns
+  // in the primary key will be used to determine what partition (tablet) a particular row falls in.
+  YBColumnSpec* HashPrimaryKey();
+
   // Set this column to be not nullable.
   // Column nullability may not be changed once a table is created.
   YBColumnSpec* NotNull();
@@ -264,7 +283,6 @@ class YB_EXPORT YBColumnSpec {
 //   t.AddColumn("a")->Type(YBColumnSchema::FLOAT)->Default(YBValue::FromFloat(1.5));
 //   YBSchema schema;
 //   t.Build(&schema);
-//
 class YB_EXPORT YBSchemaBuilder {
  public:
   YBSchemaBuilder();
@@ -274,9 +292,11 @@ class YB_EXPORT YBSchemaBuilder {
   // The returned object is owned by the YBSchemaBuilder.
   YBColumnSpec* AddColumn(const std::string& name);
 
-  // Set the primary key of the new Schema based on the given column names.
-  // This may be used to specify a compound primary key.
-  YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names);
+  // Set the primary key of the new Schema based on the given column names. The first
+  // 'key_hash_col_count' columns in the primary are hash columns whose values will be used for
+  // table partitioning. This may be used to specify a compound primary key.
+  YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names,
+                                 int key_hash_col_count = 0);
 
   // Resets 'schema' to the result of this builder.
   //
@@ -306,7 +326,9 @@ class YB_EXPORT YBSchema {
 
   bool Equals(const YBSchema& other) const;
   YBColumnSchema Column(size_t idx) const;
+  int32_t ColumnId(size_t idx) const;
   size_t num_columns() const;
+  size_t num_hash_key_columns() const;
 
   // Get the indexes of the primary key columns within this Schema.
   // In current versions of YB, these will always be contiguous column

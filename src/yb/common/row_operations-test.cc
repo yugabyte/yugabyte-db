@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <memory>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
 #include "yb/common/row_operations.h"
@@ -176,7 +177,7 @@ void AddFuzzedColumn(SchemaBuilder* builder,
     t = rand_types[random() % arraysize(rand_types)];
   }
   bool nullable = random() & 1;
-  CHECK_OK(builder->AddColumn(name, t, nullable, NULL, NULL));
+  CHECK_OK(builder->AddColumn(name, t, nullable, false, NULL, NULL));
 }
 
 // Generate a randomized schema, where some columns might be missing,
@@ -274,12 +275,12 @@ TEST_F(RowOperationsTest, SchemaFuzz) {
 // One case from SchemaFuzz which failed previously.
 TEST_F(RowOperationsTest, TestFuzz1) {
   SchemaBuilder client_schema_builder;
-  client_schema_builder.AddColumn("c1", INT32, false, nullptr, nullptr);
-  client_schema_builder.AddColumn("c2", STRING, false, nullptr, nullptr);
+  client_schema_builder.AddColumn("c1", INT32, false, false, nullptr, nullptr);
+  client_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr);
   Schema client_schema = client_schema_builder.BuildWithoutIds();
   SchemaBuilder server_schema_builder;
-  server_schema_builder.AddColumn("c1", INT32, false, nullptr, nullptr);
-  server_schema_builder.AddColumn("c2", STRING, false, nullptr, nullptr);
+  server_schema_builder.AddColumn("c1", INT32, false, false, nullptr, nullptr);
+  server_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr);
   Schema server_schema = server_schema_builder.Build();
   YBPartialRow row(&client_schema);
   CHECK_OK(row.SetInt32(0, 12345));
@@ -290,12 +291,12 @@ TEST_F(RowOperationsTest, TestFuzz1) {
 // Another case from SchemaFuzz which failed previously.
 TEST_F(RowOperationsTest, TestFuzz2) {
   SchemaBuilder client_schema_builder;
-  client_schema_builder.AddColumn("c1", STRING, true, nullptr, nullptr);
-  client_schema_builder.AddColumn("c2", STRING, false, nullptr, nullptr);
+  client_schema_builder.AddColumn("c1", STRING, true, false, nullptr, nullptr);
+  client_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr);
   Schema client_schema = client_schema_builder.BuildWithoutIds();
   SchemaBuilder server_schema_builder;
-  server_schema_builder.AddColumn("c1", STRING, true, nullptr, nullptr);
-  server_schema_builder.AddColumn("c2", STRING, false, nullptr, nullptr);
+  server_schema_builder.AddColumn("c1", STRING, true, false, nullptr, nullptr);
+  server_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr);
   Schema server_schema = server_schema_builder.Build();
   YBPartialRow row(&client_schema);
   CHECK_OK(row.SetNull(0));
@@ -380,9 +381,9 @@ TEST_F(RowOperationsTest, ProjectionTestWithDefaults) {
   int32_t non_null_default = 456;
   SchemaBuilder b;
   CHECK_OK(b.AddKeyColumn("key", INT32));
-  CHECK_OK(b.AddColumn("nullable_with_default", INT32, true,
+  CHECK_OK(b.AddColumn("nullable_with_default", INT32, true, false,
                        &nullable_default, &nullable_default));
-  CHECK_OK(b.AddColumn("non_null_with_default", INT32, false,
+  CHECK_OK(b.AddColumn("non_null_with_default", INT32, false, false,
                        &non_null_default, &non_null_default));
   Schema server_schema = b.Build();
 
@@ -434,7 +435,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithClientHavingValidSubset) {
   SchemaBuilder b;
   CHECK_OK(b.AddKeyColumn("key", INT32));
   CHECK_OK(b.AddColumn("int_val", INT32));
-  CHECK_OK(b.AddColumn("new_int_with_default", INT32, false,
+  CHECK_OK(b.AddColumn("new_int_with_default", INT32, false, false,
                        &nullable_default, &nullable_default));
   CHECK_OK(b.AddNullableColumn("new_nullable_int", INT32));
   Schema server_schema = b.Build();

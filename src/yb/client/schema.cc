@@ -17,8 +17,9 @@
 
 #include "yb/client/schema.h"
 
-#include <glog/logging.h>
 #include <unordered_map>
+
+#include <glog/logging.h>
 
 #include "yb/client/schema-internal.h"
 #include "yb/client/value-internal.h"
@@ -177,6 +178,12 @@ YBColumnSpec* YBColumnSpec::PrimaryKey() {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::HashPrimaryKey() {
+  data_->hash_primary_key = true;
+  data_->primary_key = true;
+  return this;
+}
+
 YBColumnSpec* YBColumnSpec::NotNull() {
   data_->has_nullable = true;
   data_->nullable = false;
@@ -228,7 +235,6 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
                       data_->name, internal_type, &default_val));
   }
 
-
   // Encoding and compression
   YBColumnStorageAttributes::EncodingType encoding =
     YBColumnStorageAttributes::AUTO_ENCODING;
@@ -247,9 +253,8 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
     block_size = data_->block_size;
   }
 
-  *col = YBColumnSchema(data_->name, data_->type, nullable,
-                          default_val,
-                          YBColumnStorageAttributes(encoding, compression, block_size));
+  *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
+                        default_val, YBColumnStorageAttributes(encoding, compression, block_size));
 
   return Status::OK();
 }
@@ -261,7 +266,9 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
 class YB_NO_EXPORT YBSchemaBuilder::Data {
  public:
-  Data() : has_key_col_names(false) {
+  Data()
+      : has_key_col_names(false),
+        key_hash_col_count(0) {
   }
 
   ~Data() {
@@ -270,8 +277,11 @@ class YB_NO_EXPORT YBSchemaBuilder::Data {
     // headers declaring friend classes with nested classes.
   }
 
+  // These members can be used to specify a subset of columns are primary or hash primary keys.
+  // NOTE: "key_col_names" and "key_hash_col_count" are not used unless "has_key_col_names" is true.
   bool has_key_col_names;
   vector<string> key_col_names;
+  int key_hash_col_count;
 
   vector<YBColumnSpec*> specs;
 };
@@ -297,9 +307,11 @@ YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
 }
 
 YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
-    const std::vector<std::string>& key_col_names) {
+    const std::vector<std::string>& key_col_names,
+    int key_hash_col_count) {
   data_->has_key_col_names = true;
   data_->key_col_names = key_col_names;
+  data_->key_hash_col_count = key_hash_col_count;
   return this;
 }
 
@@ -310,34 +322,48 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
 
-  int num_key_cols;
-
+  int num_key_cols = 0;
   if (!data_->has_key_col_names) {
-    // If they didn't explicitly pass the column names for key,
-    // then they should have set it on exactly one column.
-    int single_key_col_idx = -1;
+    // Change the API to allow specifying each column individually as part of a primary key.
+    // Previously, we must pass an extra list of columns if the key is a compound of columns.
+    //
+    // Removing the following restriction from Kudu:
+    //   If they didn't explicitly pass the column names for key,
+    //   then they should have set it on exactly one column.
+    bool has_order_error = false;
+    bool reached_regular_column = false;
+    bool reached_primary_column = false;
     for (int i = 0; i < cols.size(); i++) {
-      if (data_->specs[i]->data_->primary_key) {
-        if (single_key_col_idx != -1) {
-          return STATUS(InvalidArgument, "multiple columns specified for primary key",
-                                         Substitute("$0, $1",
-                                                    cols[single_key_col_idx].name(),
-                                                    cols[i].name()));
+      if (data_->specs[i]->data_->hash_primary_key) {
+        num_key_cols++;
+        if (reached_primary_column || reached_regular_column) {
+          has_order_error = true;
+          break;
         }
-        single_key_col_idx = i;
+
+      } else if (data_->specs[i]->data_->primary_key) {
+        num_key_cols++;
+        if (reached_regular_column) {
+          has_order_error = true;
+          break;
+        }
+        reached_primary_column = true;
+
+      } else {
+        reached_regular_column = true;
       }
     }
 
-    if (single_key_col_idx == -1) {
+    if (num_key_cols <= 0) {
       return STATUS(InvalidArgument, "no primary key specified");
     }
 
-    // TODO: eventually allow primary keys which aren't the first column
-    if (single_key_col_idx != 0) {
-      return STATUS(InvalidArgument, "primary key column must be the first column");
+    if (has_order_error) {
+      return STATUS(InvalidArgument,
+                    "The given columns in a schema must be ordered as hash primary key columns "
+                    "then primary key columns and then regular columns");
     }
 
-    num_key_cols = 1;
   } else {
     // Build a map from name to index of all of the columns.
     unordered_map<string, int> name_to_idx_map;
@@ -349,6 +375,15 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
         return STATUS(InvalidArgument, "primary key specified by both SetPrimaryKey() and on a "
                                        "specific column", spec->data_->name);
       }
+
+      // Set the primary keys here to make sure the two different APIs for ColumnSpecs yield the
+      // same result.
+      if (i < data_->key_hash_col_count) {
+        spec->HashPrimaryKey();
+      } else {
+        spec->PrimaryKey();
+      }
+
       // If we have a duplicate column name, the Schema::Reset() will catch it later,
       // anyway.
       name_to_idx_map[spec->data_->name] = i++;
@@ -374,6 +409,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
       }
     }
 
+    // Indicate the first "num_key_cols" are primary key.
     num_key_cols = key_col_indexes.size();
   }
 
@@ -392,14 +428,15 @@ std::string YBColumnSchema::DataTypeToString(DataType type) {
 }
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
-                                   DataType type,
-                                   bool is_nullable,
-                                   const void* default_value,
-                                   YBColumnStorageAttributes attributes) {
+                               DataType type,
+                               bool is_nullable,
+                               bool is_hash_key,
+                               const void* default_value,
+                               YBColumnStorageAttributes attributes) {
   ColumnStorageAttributes attr_private;
   attr_private.encoding = ToInternalEncodingType(attributes.encoding());
   attr_private.compression = ToInternalCompressionType(attributes.compression());
-  col_ = new ColumnSchema(name, ToInternalDataType(type), is_nullable,
+  col_ = new ColumnSchema(name, ToInternalDataType(type), is_nullable, is_hash_key,
                           default_value, default_value, attr_private);
 }
 
@@ -455,16 +492,16 @@ YBColumnSchema::DataType YBColumnSchema::type() const {
 ////////////////////////////////////////////////////////////
 
 YBSchema::YBSchema()
-  : schema_(nullptr) {
+    : schema_(nullptr) {
 }
 
 YBSchema::YBSchema(const YBSchema& other)
-  : schema_(nullptr) {
+    : schema_(nullptr) {
   CopyFrom(other);
 }
 
 YBSchema::YBSchema(const Schema& schema)
-  : schema_(new Schema(schema)) {
+    : schema_(new Schema(schema)) {
 }
 
 YBSchema::~YBSchema() {
@@ -506,8 +543,12 @@ YBColumnSchema YBSchema::Column(size_t idx) const {
   YBColumnStorageAttributes attrs(FromInternalEncodingType(col.attributes().encoding),
                                     FromInternalCompressionType(col.attributes().compression));
   return YBColumnSchema(col.name(), FromInternalDataType(col.type_info()->type()),
-                          col.is_nullable(), col.read_default_value(),
-                          attrs);
+                        col.is_nullable(), col.is_hash_key(), col.read_default_value(),
+                        attrs);
+}
+
+int32_t YBSchema::ColumnId(size_t idx) const {
+  return schema_->column_id(idx);
 }
 
 YBPartialRow* YBSchema::NewRow() const {
@@ -520,6 +561,10 @@ size_t YBSchema::num_columns() const {
 
 size_t YBSchema::num_key_columns() const {
   return schema_->num_key_columns();
+}
+
+size_t YBSchema::num_hash_key_columns() const {
+  return schema_->num_hash_key_columns();
 }
 
 void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {

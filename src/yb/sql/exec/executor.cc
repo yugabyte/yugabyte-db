@@ -105,7 +105,7 @@ ErrorCode Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBSchemaBuilder b;
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (auto column : hash_columns) {
-    b.AddColumn(column->yb_name())->Type(column->yb_data_type())->NotNull()->PrimaryKey();
+    b.AddColumn(column->yb_name())->Type(column->yb_data_type())->NotNull()->HashPrimaryKey();
   }
   const MCList<PTColumnDefinition *>& primary_columns = tnode->primary_columns();
   for (auto column : primary_columns) {
