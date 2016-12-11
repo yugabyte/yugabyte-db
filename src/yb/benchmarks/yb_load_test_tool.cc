@@ -187,12 +187,7 @@ int main(int argc, char *argv[]) {
         LaunchYBLoadTest(&session_factory);
       }
     } else {
-      // We support dropping and recreating the YB table even in the mode where we are querying the
-      // redis endpoints. If this behavior is desired, we expect the appropriate flags viz:
-      // --drop_table, --table_name, and one of load_test_master_addresses/endpoint to be set.
-      if (FLAGS_drop_table) {  // Don't require the above flags, unless --drop_table is specified.
-        SetupYBTable(CreateYBClient());
-      }
+      SetupYBTable(CreateYBClient());
       if (FLAGS_noop_only) {
         RedisNoopSessionFactory session_factory(FLAGS_target_redis_server_addresses);
         LaunchYBLoadTest(&session_factory);
@@ -227,7 +222,12 @@ shared_ptr<YBClient> CreateYBClient() {
 }
 
 void SetupYBTable(const shared_ptr<YBClient> &client) {
+  if (!FLAGS_target_redis_server_addresses.empty()) {
+    LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be .redis";
+    FLAGS_table_name = ".redis";
+  }
   const string table_name(FLAGS_table_name);
+
   if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
     CreateTable(table_name, client);
   }

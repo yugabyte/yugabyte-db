@@ -627,9 +627,9 @@ ReadStatus RedisSingleThreadedReader::PerformRead(
   clients_[idx]->sync_commit();
 
   if (expected_value_str != value_str) {
-    VLOG(1) << "Read the wrong value for #" << key_index << " from redis "
-            << " key : " << key_str << " value : " << value_str
-            << " expected : " << expected_value_str;
+    LOG(INFO) << "Read the wrong value for #" << key_index << " from redis "
+              << " key : " << key_str << " value : " << value_str
+              << " expected : " << expected_value_str;
     return ReadStatus::OTHER_ERROR;
   }
 
