@@ -2,78 +2,33 @@
 
 import React, { Component, PropTypes } from 'react';
 var Plotly = require('plotly.js/lib/core');
-import { removeNullProperties } from '../../utils/ObjectUtils';
+import { removeNullProperties, isValidObject } from '../../utils/ObjectUtils';
 
 export default class MetricsPanel extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      queryMetrics: true
-    }
-    this.applyFilter = this.applyFilter.bind(this);
-  }
 
   static propTypes = {
-    metricKey: PropTypes.oneOf(['cpu_usage', 'cpu_usage_user', 'cpu_usage_system',
-    'memory_usage', 'cpu_usage_system_avg', 'redis_ops_latency', 'redis_rpcs_per_sec', 'tserver_rpcs_per_sec', 'disk_iops',
-    'network_bytes','tserver_ops_latency']),
-    origin: PropTypes.oneOf(['customer', 'universe']).isRequired,
-    universeUUID: PropTypes.string
+    metric: PropTypes.object.isRequired,
+    metricKey: PropTypes.string.isRequired
   }
-
-  static defaultProps = {
-    universeUUID: null
-  }
-
-  componentWillReceiveProps(nextProps) {
-    if (this.props.graph.graphFilter !== nextProps.graph.graphFilter) {
-      this.applyFilter(nextProps.graph.graphFilter);
-    }
-  }
-
   componentDidMount() {
-    const { graphFilter } = this.props.graph;
-    this.applyFilter(graphFilter);
-  }
+    const { metricKey, metric } = this.props;
+    if (isValidObject(metric)) {
+      // Remove Null Properties from the layout
+      removeNullProperties(metric.layout);
 
-  componentWillUnmount() {
-    this.props.resetMetrics();
-  }
+      // TODO: send this data from backend.
+      metric.layout["autosize"] = false;
+      metric.layout["width"] = 650;
+      metric.layout["height"] = 500;
 
-
-  applyFilter(filterParams) {
-    const { origin, universeUUID, metricKey } = this.props;
-    var params = {
-      metrics: [metricKey],
-      start: filterParams.startDate.format('X'),
-      end: filterParams.endDate.format('X')
-    };
-
-    if (origin === "customer") {
-      // Fetch customer metrics
-      this.props.queryCustomerMetrics(params);
-    } else if (origin === "universe" && universeUUID !== null) {
-      // Fetch universe metrics
-      this.props.queryUniverseMetrics(universeUUID, params);
+      Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
     }
-
   }
 
   render() {
-    const { metricKey, graph: { loading, metrics }} = this.props;
-    if (typeof metrics === "undefined" || loading ) {
-      return (
-        <div id={metricKey} />
-      )
-    }
-    // Remove Null Properties from the layout
-    removeNullProperties(metrics.layout);
-    if (typeof metrics !== "undefined" && metrics.metricKey === metricKey) {
-      Plotly.newPlot(metricKey, metrics.data, metrics.layout, {displayModeBar: false});
-    }
-
+    // TODO: handle empty metric data case.
     return (
-      <div id={metricKey} />
+      <div id={this.props.metricKey} />
     );
   }
 }
