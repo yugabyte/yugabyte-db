@@ -611,6 +611,10 @@ void ClusterLoadBalancer::RunLoadBalancer() {
   // Lock the CatalogManager maps for the duration of the load balancer run.
   boost::shared_lock<CatalogManager::LockType> l(catalog_manager_->lock_);
 
+  int remaining_adds = options_.kMaxConcurrentAdds;
+  int remaining_removals = options_.kMaxConcurrentRemovals;
+  int remaining_leader_moves = options_.kMaxConcurrentLeaderMoves;
+
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
     ResetState();
@@ -627,24 +631,31 @@ void ClusterLoadBalancer::RunLoadBalancer() {
     TabletServerId out_to_ts;
 
     // Handle adding and moving replicas.
-    for (int i = 0; i < options_.kMaxConcurrentAdds; ++i) {
+    for (int i = 0; i < remaining_adds; ++i) {
       if (!HandleAddReplicas(&out_tablet_id, &out_from_ts, &out_to_ts)) {
         break;
       }
+      --remaining_adds;
     }
 
     // Handle cleanup after over-replication.
-    for (int i = 0; i < options_.kMaxConcurrentRemovals; ++i) {
+    for (int i = 0; i < remaining_removals; ++i) {
       if (!HandleRemoveReplicas(&out_tablet_id, &out_from_ts)) {
         break;
       }
+      --remaining_removals;
     }
 
     // Handle tablet servers with too many leaders.
-    for (int i = 0; i < options_.kMaxConcurrentLeaderMoves; ++i) {
+    for (int i = 0; i < remaining_leader_moves; ++i) {
       if (!HandleLeaderMoves(&out_tablet_id, &out_from_ts, &out_to_ts)) {
         break;
       }
+      --remaining_leader_moves;
+    }
+
+    if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
+      break;
     }
   }
 }
