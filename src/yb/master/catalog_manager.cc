@@ -2413,6 +2413,7 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Send the subclass RPC request.
   Status Run() {
     VLOG(1) << "Start Running " << description() << " " << state();
+    CHECK_EQ(state(), kStateWaiting);
     Status s = ResetTSProxy();
     if (!s.ok()) {
       MarkWaitingFailed();
@@ -2435,17 +2436,23 @@ class RetryingTSRpcTask : public MonitoredTask {
     return Status::OK();
   }
 
-  // Abort this task.
-  virtual void Abort() OVERRIDE {
-    if (state() == MonitoredTask::kStateWaiting) {
-      MarkWaitingAborted();
-    } else {
-      MarkAborted();
+  // Abort this task and return its value before it was successfully aborted. If the task entered
+  // a different terminal state before we were able to abort it, return that state.
+  virtual State AbortAndReturnPrevState() OVERRIDE {
+    auto prev_state = state();
+    while (prev_state == MonitoredTask::kStateRunning ||
+           prev_state == MonitoredTask::kStateWaiting) {
+      auto expected = prev_state;
+      if (state_.compare_exchange_strong(expected, kStateAborted)) {
+        return prev_state;
+      }
+      prev_state = state();
     }
+    return prev_state;
   }
 
   virtual State state() const OVERRIDE {
-    return static_cast<State>(NoBarrier_Load(&state_));
+    return state_.load();
   }
 
   virtual MonoTime start_timestamp() const OVERRIDE { return start_ts_; }
@@ -2472,38 +2479,39 @@ class RetryingTSRpcTask : public MonitoredTask {
   }
 
   // Transition from waiting -> running.
-  void MarkRunning() {
-    NoBarrier_CompareAndSwap(&state_, kStateWaiting, kStateRunning);
+  bool MarkRunning() {
+    auto expected = kStateWaiting;
+    return state_.compare_exchange_strong(expected, kStateRunning);
   }
 
   // Transition from running -> waiting.
-  void MarkWaiting() {
-    NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateWaiting);
+  bool MarkWaiting() {
+    auto expected = kStateRunning;
+    return state_.compare_exchange_strong(expected, kStateWaiting);
   }
 
   // Transition from running -> complete.
-  void MarkComplete() {
-    NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateComplete);
-  }
-
-  // Transition from waiting -> aborted.
-  void MarkWaitingAborted() {
-    NoBarrier_CompareAndSwap(&state_, kStateWaiting, kStateAborted);
+  bool MarkComplete() {
+    auto expected = kStateRunning;
+    return state_.compare_exchange_strong(expected, kStateComplete);
   }
 
   // Transition from running -> aborted.
-  void MarkAborted() {
-    NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateAborted);
+  bool MarkAborted() {
+    auto expected = kStateRunning;
+    return state_.compare_exchange_strong(expected, kStateAborted);
   }
 
   // Transition from running -> failed.
-  void MarkFailed() {
-    NoBarrier_CompareAndSwap(&state_, kStateRunning, kStateFailed);
+  bool MarkFailed() {
+    auto expected = kStateRunning;
+    return state_.compare_exchange_strong(expected, kStateFailed);
   }
 
   // Transition from waiting -> failed.
-  void MarkWaitingFailed() {
-    NoBarrier_CompareAndSwap(&state_, kStateWaiting, kStateFailed);
+  bool MarkWaitingFailed() {
+    auto expected = kStateWaiting;
+    return state_.compare_exchange_strong(expected, kStateFailed);
   }
 
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
@@ -2600,6 +2608,12 @@ class RetryingTSRpcTask : public MonitoredTask {
   // to execute the delayed task (with status == OK) or when the task
   // is cancelled, i.e. when the scheduling timer is shut down (status != OK).
   void RunDelayedTask(const Status& status) {
+    if (state() == kStateAborted) {
+      LOG(INFO) << "Async tablet task " << description() << " was aborted";
+      UnregisterAsyncTask();   // May delete this.
+      return;
+    }
+
     if (!status.ok()) {
       LOG(WARNING) << "Async tablet task " << description() << " failed or was cancelled: "
                    << status.ToString();
@@ -2643,7 +2657,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   }
 
   // Use state() and MarkX() accessors.
-  AtomicWord state_;
+  atomic<State> state_;
+
 };
 
 // RetryingTSRpcTask subclass which always retries the same tablet server,
@@ -2889,7 +2904,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
     if (state() == kStateComplete) {
       master_->catalog_manager()->HandleTabletSchemaVersionReport(tablet_.get(), schema_version_);
     } else {
-      VLOG(1) << "Still waiting for other tablets to finish ALTER";
+      VLOG(1) << "Task is not completed";
     }
   }
 
@@ -4664,14 +4679,14 @@ void TableInfo::AbortTasks() {
   std::unordered_set<MonitoredTask *> erase_tasks;
   std::lock_guard<simple_spinlock> l(lock_);
   for (MonitoredTask* task : pending_tasks_) {
-    if (task->state() == MonitoredTask::kStateWaiting) {
+    auto prev_state = task->AbortAndReturnPrevState();
+    if (prev_state == MonitoredTask::kStateWaiting) {
       erase_tasks.insert(task);
     }
-    task->Abort();
   }
 
   LOG(INFO) << "Aborted " << pending_tasks_.size() - erase_tasks.size()
-            << "tasks and erased " << erase_tasks.size() << " tasks.";
+            << " tasks and erased " << erase_tasks.size() << " tasks.";
   for (MonitoredTask* task : erase_tasks) {
     pending_tasks_.erase(task);
   }

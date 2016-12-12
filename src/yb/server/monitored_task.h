@@ -53,8 +53,9 @@ class MonitoredTask : public RefCountedThreadSafe<MonitoredTask> {
     return "UNKNOWN_STATE";
   }
 
-  // Abort the ongoing task.
-  virtual void Abort() = 0;
+  // Abort this task and return its value before it was successfully aborted. If the task entered
+  // a different terminal state before we were able to abort it, return that state.
+  virtual State AbortAndReturnPrevState() = 0;
 
   // Task State
   virtual State state() const = 0;
