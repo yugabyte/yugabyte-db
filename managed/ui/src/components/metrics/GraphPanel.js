@@ -1,32 +1,90 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
+import { Accordion, Panel, Col } from 'react-bootstrap';
 
-import { MetricsPanelContainer, GraphPanelHeaderContainer } from '../../containers/metrics'
+import { MetricsPanel } from '.'
 import './stylesheets/GraphPanel.css'
+
+const panelTypes = {
+  redis:   { title: "Redis Stats",
+             metrics: ["redis_ops_latency", "redis_rpcs_per_sec"]},
+  tserver: { title: "TServer Stats",
+             metrics: ["tserver_ops_latency", "tserver_rpcs_per_sec"]},
+  server:  { title: "YB Server Stats",
+             metrics: ["cpu_usage", "memory_usage", "disk_iops", "network_bytes"]}
+}
 
 export default class GraphPanel extends Component {
   static propTypes = {
-    origin: PropTypes.oneOf(['customer', 'universe']).isRequired,
-    universeUUID: PropTypes.string
-  };
+    type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
+    nodePrefixes: PropTypes.array
+  }
 
   static defaultProps = {
-    universeUUID: null
+    nodePrefixes: []
+  }
+
+  componentWillReceiveProps(nextProps) {
+    // Perform metric query only if the graph filter has changed.
+    // TODO: add the nodePrefixes to the queryParam
+    if(nextProps.graph.graphFilter !== this.props.graph.graphFilter) {
+      const { type, graph: {graphFilter: {startDate, endDate}}} = nextProps;
+      var params = {
+        metrics: panelTypes[type].metrics,
+        start: startDate,
+        end: endDate
+      }
+      this.props.queryMetrics(params, type);
+    }
+  }
+
+  componentWillUnmount() {
+    this.props.resetMetrics();
   }
 
   render() {
-    return (
-      <GraphPanelHeaderContainer>
-        <MetricsPanelContainer metricKey="redis_ops_latency" {...this.props} />
-        <MetricsPanelContainer metricKey="redis_rpcs_per_sec" {...this.props} />
-        <MetricsPanelContainer metricKey="tserver_ops_latency" {...this.props} />
-        <MetricsPanelContainer metricKey="tserver_rpcs_per_sec" {...this.props} />
-        <MetricsPanelContainer metricKey="cpu_usage" {...this.props} />
-        <MetricsPanelContainer metricKey="memory_usage" {...this.props} />
-        <MetricsPanelContainer metricKey="disk_iops" {...this.props} />
-        <MetricsPanelContainer metricKey="network_bytes" {...this.props} />
-      </GraphPanelHeaderContainer>
-    );
+    const { type, graph: { loading, metrics }} = this.props;
+    var metricsPanelsByType = []
+
+    if (!loading && Object.keys(metrics).length > 0) {
+      /* Logic here is, since there will be multiple instances of GraphPanel
+         we basically would have metrics data keyed off panel type. So we
+         loop through all the possible panel types in the metric data fetched
+         and group metrics by panel type and filter out anything that is empty.
+      */
+      metricsPanelsByType = Object.keys(metrics).map(function(panelType) {
+        var panelMetrics = metrics[panelType]
+        var metricsPanels = Object.keys(panelMetrics).map(function(key) {
+          if (panelTypes[type].metrics.includes(key)) {
+            return (
+              <Col lg={5} key={key}>
+                <MetricsPanel metricKey={key} metric={panelMetrics[key]} />
+              </Col>
+            )
+          }
+          return null
+        }).filter(Boolean);
+
+        if (metricsPanels.length > 0) {
+          const panelHeader = <h3>{panelTypes[panelType].title}</h3>
+
+          return (
+            <Panel header={panelHeader} key={panelType} className="metrics-container">
+              {metricsPanels}
+            </Panel>
+          );
+        }
+        return null
+      }).filter(Boolean);
+      
+      return (
+        <Accordion>
+          {metricsPanelsByType}
+        </Accordion>
+      );
+    }
+    // TODO: add loading indicator
+    return (<div />)
   }
 }

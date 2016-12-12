@@ -10,6 +10,10 @@
     margin: 0 2px;
 }
 
+.graph-panel .metrics-container {
+    margin: 10px 40px;
+}
+
 .graph-panel .js-plotly-plot {
   display: inline-block;
 }
@@ -17,4 +21,16 @@
 .graph-panel-grid div.dropdown {
     float: right;
     margin-top: -7px;
+}
+
+/* Symbol for showing chevron right before the title */
+.graph-panel .panel-title a:after {
+    font-family: 'FontAwesome';
+    content: "\f054";
+    float: left;
+    margin-right: 5px;
+    line-height: 18px;
+}
+.graph-panel .panel-title a.collapsed:after {
+    content: "\f078"; 
 }
