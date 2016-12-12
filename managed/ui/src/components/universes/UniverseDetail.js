@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { Grid, Row, Col, ButtonGroup, Image,
   DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { UniverseInfoPanel, ConnectStringPanel } from '../panels'
-import { GraphPanelContainer } from '../../containers/metrics';
+import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../containers/metrics';
 import { TaskProgressContainer } from '../../containers/tasks';
 import { RollingUpgradeFormContainer,
   UniverseFormContainer } from '../../containers/common/forms';
@@ -89,10 +89,11 @@ export default class UniverseDetail extends Component {
         <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
-        <GraphPanelContainer
-          nodePrefix={currentUniverse.universeDetails.nodePrefix}
-          origin={"universe"}
-          universeUUID={currentUniverse.universeUUID} />
+        <GraphPanelHeaderContainer>
+          <GraphPanelContainer
+            type={"server"}
+            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
+        </GraphPanelHeaderContainer>
       </Tab>]
 
     if (universeTaskUUIDs.length > 0) {

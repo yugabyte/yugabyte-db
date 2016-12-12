@@ -32,6 +32,7 @@ export const DEFAULT_GRAPH_FILTER = {
   endDate: moment()
 }
 
+
 export default class GraphPanelHeader extends Component {
   constructor(props) {
     momentLocalizer(moment);
@@ -40,6 +41,7 @@ export default class GraphPanelHeader extends Component {
     this.handleStartDateChange = this.handleStartDateChange.bind(this);
     this.handleEndDateChange = this.handleEndDateChange.bind(this);
     this.applyCustomFilter = this.applyCustomFilter.bind(this);
+    this.updateGraphQueryParams = this.updateGraphQueryParams.bind(this);
     var defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
 
     this.state = {
@@ -63,10 +65,13 @@ export default class GraphPanelHeader extends Component {
       var endMoment = moment()
       var startMoment = moment().subtract(filterInfo.value, filterInfo.type);
       this.setState({startMoment: startMoment, endMoment: endMoment})
-      this.props.changeGraphQueryPeriod({startDate: startMoment, endDate: endMoment })
+      this.updateGraphQueryParams(startMoment, endMoment)
     }
   }
 
+  componentDidMount() {
+    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
+  }
   handleStartDateChange(dateStr) {
     this.setState({startMoment: moment(dateStr)})
   }
@@ -76,9 +81,13 @@ export default class GraphPanelHeader extends Component {
   }
 
   applyCustomFilter() {
+      this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
+  }
+
+  updateGraphQueryParams(startMoment, endMoment) {
     this.props.changeGraphQueryPeriod({
-      startDate: this.state.startMoment,
-      endDate: this.state.endMoment
+      startDate: startMoment.format('X'),
+      endDate: endMoment.format('X')
     })
   }
 
@@ -115,7 +124,6 @@ export default class GraphPanelHeader extends Component {
                        </Col>
     }
 
-
     var self = this;
     var menuItems = filterTypes.map(function(filter, idx) {
       const key = 'graph-filter-' + idx;
@@ -128,6 +136,7 @@ export default class GraphPanelHeader extends Component {
           {filter.label}
         </MenuItem>)
     });
+
 
     return (
       <Grid className="x_panel graph-panel">
@@ -153,7 +162,9 @@ export default class GraphPanelHeader extends Component {
             </form>
           </Col>
         </Row>
-        {this.props.children}
+        <Row>
+          {this.props.children}
+        </Row>
       </Grid>
     );
   }
