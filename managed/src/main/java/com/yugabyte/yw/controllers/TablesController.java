@@ -11,6 +11,8 @@ import org.yb.client.ListTablesResponse;
 import play.libs.Json;
 import play.mvc.*;
 
+import java.util.UUID;
+
 public class TablesController extends AuthenticatedController {
   private final YBClientService ybService;
 
@@ -20,12 +22,11 @@ public class TablesController extends AuthenticatedController {
   /**
    * This API would query for all the tables using YB Client and return a JSON
    * with table names
-   * 
+   *
    * @return Result table names
    */
   public Result list() {
     ObjectNode result = Json.newObject();
-
     try {
       ListTablesResponse response = ybService.getClient(null).getTablesList();
       ArrayNode tableNames = result.putArray("table_names");
@@ -35,7 +36,21 @@ public class TablesController extends AuthenticatedController {
     } catch (Exception e) {
       return internalServerError("Error: " + e.getMessage());
     }
-
     return ok(result);
+  }
+
+  public Result universeList(UUID customerUUID, UUID universeUUID) {
+    ArrayNode resultNode = Json.newArray();
+    ObjectNode node1 = Json.newObject();
+    node1.put("tableType", "cassandra");
+    node1.put("tableName", "table1");
+    node1.put("tableUUID", "1");
+    ObjectNode node2 = Json.newObject();
+    node2.put("tableType", "redis");
+    node2.put("tableName", "table2");
+    node2.put("tableUUID", "2");
+    resultNode.add(node1);
+    resultNode.add(node2);
+    return ok(resultNode);
   }
 }

@@ -6,7 +6,6 @@ import { FormattedDate } from 'react-intl';
 import { Row, Col, Image } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-
 import { isValidArray, isValidObject } from '../../utils/ObjectUtils';
 import universelogo from './images/universe_icon.png';
 import { DescriptionItem, DescriptionList } from '../common/descriptors';
