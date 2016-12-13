@@ -7,6 +7,8 @@ export const FETCH_TASK_PROGRESS = 'FETCH_TASK_PROGRESS';
 export const FETCH_TASK_PROGRESS_SUCCESS = 'FETCH_TASK_PROGRESS_SUCCESS';
 export const FETCH_TASK_PROGRESS_FAILURE = 'FETCH_TASK_PROGRESS_FAILURE';
 export const RESET_TASK_PROGRESS = 'RESET_TASK_PROGRESS';
+export const FETCH_CURRENT_TASK_PROGRESS_SUCCESS = 'FETCH_CURRENT_TASK_PROGRESS_SUCCESS';
+export const FETCH_CURRENT_TASK_PROGRESS_FAILURE = 'FETCH_CURRENT_TASK_PROGRESS_FAILURE';
 
 export function fetchTaskProgress(taskUUID) {
   var customerUUID = localStorage.getItem("customer_id");
@@ -35,5 +37,19 @@ export function fetchTaskProgressFailure(error) {
 export function resetTaskProgress(error) {
   return {
     type: RESET_TASK_PROGRESS
+  }
+}
+
+export function fetchCurrentTaskListSuccess(taskDetail) {
+  return {
+    type: FETCH_CURRENT_TASK_PROGRESS_SUCCESS,
+    payload: taskDetail
+  }
+}
+
+export function fetchCurrentTaskListFailure(error) {
+  return {
+    type: FETCH_CURRENT_TASK_PROGRESS_FAILURE,
+    payload: error
   }
 }
