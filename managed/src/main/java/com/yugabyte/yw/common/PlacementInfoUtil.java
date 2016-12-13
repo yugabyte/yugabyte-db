@@ -61,7 +61,7 @@ public class PlacementInfoUtil {
     taskParams.nodeDetailsSet = new HashSet<>();
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix = Long.toString(customerId) + "-" + taskParams.userIntent.universeName;
+    taskParams.nodePrefix = "yb-" + Long.toString(customerId) + "-" + taskParams.userIntent.universeName;
     // If the universe already exists, figure out the delta change that is intended.
     int numNewNodes = taskParams.userIntent.numNodes;
     int numNewMasters = taskParams.userIntent.replicationFactor;
