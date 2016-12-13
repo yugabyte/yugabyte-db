@@ -4,6 +4,7 @@ EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
 			   sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
 VERSION_FILES = sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+BASE_FILES 	 = $(subst --$(EXTVERSION),,$(VERSION_FILES))
 _IN_FILES 	 = $(wildcard sql/*--*.sql.in)
 _IN_PATCHED	 = $(_IN_FILES:.in=)
 TESTS        = $(wildcard test/sql/*.sql)
@@ -15,7 +16,7 @@ REGRESS_OPTS = --inputdir=test --load-language=plpgsql
 PG_CONFIG   ?= pg_config
 
 # sort is necessary to remove dupes so install won't complain
-DATA         = $(sort $(wildcard sql/*--*.sql) $(VERSION_FILES) $(_IN_PATCHED)) # NOTE! This gets reset below!
+DATA         = $(BASE_FILES) # Set to something to make PGXS happy
 
 ifdef NO_PGXS
 top_builddir = ../..
@@ -83,9 +84,12 @@ OSNAME := $(shell $(SHELL) ./getos.sh)
 
 # Make sure we build these.
 EXTRA_CLEAN += $(_IN_PATCHED)
-all: $(_IN_PATCHED) sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+all: $(_IN_PATCHED) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
 
-# Note: The targets for these dependencies are below
+# Add extension build targets on 9.1 and up.
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
+all: sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+
 sql/$(MAINEXT)--$(EXTVERSION).sql: sql/$(MAINEXT).sql
 	cp $< $@
 
@@ -95,7 +99,9 @@ sql/$(MAINEXT)-core--$(EXTVERSION).sql: sql/$(MAINEXT)-core.sql
 sql/$(MAINEXT)-schema--$(EXTVERSION).sql: sql/$(MAINEXT)-schema.sql
 	cp $< $@
 
-# TODO: replace pgtap with $(MAINEXT) or just stop using $(MAINEXT)
+DATA         = $(sort $(wildcard sql/*--*.sql) $(BASE_FILES) $(VERSION_FILES) $(_IN_PATCHED))
+endif
+
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
