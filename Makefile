@@ -83,12 +83,9 @@ OSNAME := $(shell $(SHELL) ./getos.sh)
 
 # Make sure we build these.
 EXTRA_CLEAN += $(_IN_PATCHED)
-all: $(_IN_PATCHED) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
+all: $(_IN_PATCHED) sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
 
-# Add extension build targets on 9.1 and up.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
-all: sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
-
+# Note: The targets for these dependencies are below
 sql/$(MAINEXT)--$(EXTVERSION).sql: sql/$(MAINEXT).sql
 	cp $< $@
 
@@ -98,10 +95,7 @@ sql/$(MAINEXT)-core--$(EXTVERSION).sql: sql/$(MAINEXT)-core.sql
 sql/$(MAINEXT)-schema--$(EXTVERSION).sql: sql/$(MAINEXT)-schema.sql
 	cp $< $@
 
-# I think this can go away...
-DATA         = $(sort $(wildcard sql/*--*.sql) $(VERSION_FILES) $(_IN_PATCHED))
-endif
-
+# TODO: replace pgtap with $(MAINEXT) or just stop using $(MAINEXT)
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
 ifeq ($(shell echo $(VERSION) | grep -qE "9[.][01234]|8[.][1234]" && echo yes || echo no),yes)
