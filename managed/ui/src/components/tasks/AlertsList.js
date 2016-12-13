@@ -53,11 +53,13 @@ export default class AlertsList extends Component {
     const selectRowProp = {
       bgColor: "rgb(211,211,211)"
     };
+
+    const tableBodyContainer = {"marginBottom": "1%", "paddingBottom": "1%"}
       return (
         <div id="page-wrapper" className="dashboard-widget-container">
         <YBPanelItem name="Task Alerts">
           <BootstrapTable data={alertsDisplay} selectRow={selectRowProp}
-                          trClassName="data-table-row" bodyStyle="alerts-table-body-container"
+                          trClassName="data-table-row" bodyStyle={tableBodyContainer}
                           pagination={true}>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
             <TableHeaderColumn dataField="title"
