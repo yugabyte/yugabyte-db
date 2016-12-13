@@ -74,6 +74,7 @@ message MasterErrorPB {
     NAMESPACE_NOT_FOUND = 11;
     NAMESPACE_ALREADY_PRESENT = 12;
     CANNOT_DELETE_DEFAULT_NAMESPACE = 13;
+    NAMESPACE_IS_NOT_EMPTY = 14;
   }
 
   // The error code.
@@ -98,6 +99,14 @@ message TableIdentifierPB {
 
   // The table name to fetch info.
   optional string table_name = 2;
+}
+
+message NamespaceIdentifierPB {
+  // The namespace ID to fetch info.
+  optional bytes id = 1;
+
+  // The namespace name to fetch info.
+  optional string name = 2;
 }
 
 // This reprensents one instance of a placement constraint for a table. It is
@@ -216,6 +225,9 @@ message SysTablesEntryPB {
 
   // Table type
   optional TableType table_type = 10 [ default = DEFAULT_TABLE_TYPE ];
+
+  // The table namespace ID.
+  optional bytes namespace_id = 11;
 
   // sequence-id for the table metadata.
   // Used on tablet-report to avoid sending "alter-table" notifications.
@@ -441,6 +453,7 @@ message CreateTableRequestPB {
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
+  optional NamespaceIdentifierPB namespace = 8;
 }
 
 message CreateTableResponsePB {
@@ -484,6 +497,7 @@ message ListTablesResponsePB {
     required bytes id = 1;
     required string name = 2;
     optional TableType table_type = 3;
+    optional NamespaceIdentifierPB namespace = 4;
   }
 
   repeated TableInfo tables = 2;
@@ -546,6 +560,7 @@ message AlterTableRequestPB {
   required TableIdentifierPB table = 1;
   repeated Step alter_schema_steps = 2;
   optional string new_table_name = 3;
+  optional NamespaceIdentifierPB new_namespace = 4;
 }
 
 message AlterTableResponsePB {
@@ -759,16 +774,8 @@ message CreateNamespaceResponsePB {
   optional bytes id = 2;
 }
 
-message NamespaceIdentifierPB {
-  // The namespace ID to fetch info.
-  optional bytes id = 1;
-
-  // The namespace name to fetch info.
-  optional string name = 2;
-}
-
 message DeleteNamespaceRequestPB {
-  optional NamespaceIdentifierPB namespace_id = 1;
+  optional NamespaceIdentifierPB namespace = 1;
 }
 // Fails if the namespace is NOT empty
 
@@ -784,12 +791,7 @@ message ListNamespacesResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
 
-  message NamespaceInfo {
-    optional bytes id = 1;
-    optional string name = 2;
-  }
-
-  repeated NamespaceInfo namespaces = 2;
+  repeated NamespaceIdentifierPB namespaces = 2;
 }
 
 service MasterService {

@@ -934,6 +934,26 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             << ":\n" << req.DebugString();
 
   // a. Validate the user request.
+  std::string namespace_id = kDefaultNamespaceId;
+
+  // Validate namespace.
+  if (req.has_namespace_()) {
+    scoped_refptr<NamespaceInfo> ns;
+
+    // Lookup the namespace and verify if it exists.
+    TRACE("Looking up namespace");
+    RETURN_NOT_OK(FindNamespace(req.namespace_(), &ns));
+    if (ns == nullptr) {
+      Status s = STATUS(InvalidArgument,
+          "Invalid Namespace ID or Namespace Name", req.DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
+
+    namespace_id = ns->id();
+  }
+
+  // Validate schema.
   Schema client_schema;
   RETURN_NOT_OK(SchemaFromPB(req.schema(), &client_schema));
   if (client_schema.has_column_ids()) {
@@ -1090,7 +1110,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     // c. Add the new table in "preparing" state.
-    table = CreateTableInfo(req, schema, partition_schema);
+    table = CreateTableInfo(req, schema, partition_schema, namespace_id);
     table_ids_map_[table->id()] = table;
     table_names_map_[req.name()] = table;
 
@@ -1152,6 +1172,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   VLOG(1) << "Created table " << table->ToString();
+  LOG(INFO) << "Successfully created table " << table->ToString()
+            << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
   return Status::OK();
 }
@@ -1191,7 +1213,8 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
-                                           const PartitionSchema& partition_schema) {
+                                           const PartitionSchema& partition_schema,
+                                           const std::string& namespace_id) {
   DCHECK(schema.has_column_ids());
   TableInfo* table = new TableInfo(GenerateId());
   table->mutable_metadata()->StartMutation();
@@ -1199,6 +1222,7 @@ TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
   metadata->set_state(SysTablesEntryPB::PREPARING);
   metadata->set_name(req.name());
   metadata->set_table_type(req.table_type());
+  metadata->set_namespace_id(namespace_id);
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   metadata->mutable_replication_info()->CopyFrom(req.replication_info());
@@ -1230,6 +1254,20 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
     *table_info = FindPtrOrNull(table_names_map_, table_identifier.table_name());
   } else {
     return STATUS(InvalidArgument, "Missing Table ID or Table Name");
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
+                                     scoped_refptr<NamespaceInfo>* ns_info) {
+  boost::shared_lock<LockType> l(lock_);
+
+  if (ns_identifier.has_id()) {
+    *ns_info = FindPtrOrNull(namespace_ids_map_, ns_identifier.id());
+  } else if (ns_identifier.has_name()) {
+    *ns_info = FindPtrOrNull(namespace_names_map_, ns_identifier.name());
+  } else {
+    return STATUS(InvalidArgument, "Missing Namespace ID or Namespace Name");
   }
   return Status::OK();
 }
@@ -1406,13 +1444,27 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   scoped_refptr<TableInfo> table;
 
-  // 1. Lookup the table and verify if it exists
+  // Lookup the table and verify if it exists
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
     Status s = STATUS(NotFound, "The table does not exist", req->table().DebugString());
     SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
     return s;
+  }
+
+  scoped_refptr<NamespaceInfo> ns;
+
+  if (req->has_new_namespace()) {
+    // Lookup the new namespace and verify if it exists.
+    TRACE("Looking up new namespace");
+    RETURN_NOT_OK(FindNamespace(req->new_namespace(), &ns));
+    if (ns == nullptr) {
+      Status s = STATUS(InvalidArgument,
+          "Invalid Namespace ID or Namespace Name", req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
   }
 
   TRACE("Locking table");
@@ -1426,7 +1478,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   bool has_changes = false;
   string table_name = l.data().name();
 
-  // 2. Calculate new schema for the on-disk state, not persisted yet
+  // Try to set the new namespace
+  if (req->has_new_namespace()) {
+    NamespaceMetadataLock ns_lock(CHECK_NOTNULL(ns.get()), NamespaceMetadataLock::READ);
+    l.mutable_data()->pb.set_namespace_id(ns->id());
+    has_changes = true;
+  }
+
+  // Calculate new schema for the on-disk state, not persisted yet
   Schema new_schema;
   ColumnId next_col_id = ColumnId(l.data().pb.next_column_id());
   if (req->alter_schema_steps_size()) {
@@ -1442,7 +1501,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
-  // 3. Try to acquire the new table name
+  // Try to acquire the new table name
   if (req->has_new_table_name()) {
     std::lock_guard<LockType> catalog_lock(lock_);
 
@@ -1468,7 +1527,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return Status::OK();
   }
 
-  // 4. Serialize the schema Increment the version number
+  // Serialize the schema Increment the version number
   if (new_schema.initialized()) {
     if (!l.data().pb.has_fully_applied_schema()) {
       l.mutable_data()->pb.mutable_fully_applied_schema()->CopyFrom(l.data().pb.schema());
@@ -1482,7 +1541,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                                          l.mutable_data()->pb.version(),
                                          LocalTimeAsString()));
 
-  // 5. Update sys-catalog with the new table schema.
+  // Update sys-catalog with the new table schema.
   TRACE("Updating metadata on disk");
   Status s = sys_catalog_->UpdateTable(table.get());
   if (!s.ok()) {
@@ -1500,7 +1559,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return s;
   }
 
-  // 6. Remove the old name
+  // Remove the old name
   if (req->has_new_table_name()) {
     TRACE("Removing old-name $0 from by-name map", table_name);
     std::lock_guard<LockType> l_map(lock_);
@@ -1509,11 +1568,14 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
   }
 
-  // 7. Update the in-memory state
+  // Update the in-memory state
   TRACE("Committing in-memory state");
   l.Commit();
 
   SendAlterTableRequest(table);
+
+  LOG(INFO) << "Successfully altered table " << table->ToString()
+            << " per request from " << RequestorString(rpc);
   return Status::OK();
 }
 
@@ -1611,6 +1673,15 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
     table->set_id(entry.second->id());
     table->set_name(ltm.data().name());
     table->set_table_type(ltm.data().table_type());
+
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_,
+        ltm.data().namespace_id());
+
+    if (CHECK_NOTNULL(ns.get())) {
+      NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::READ);
+      table->mutable_namespace_()->set_id(ns->id());
+      table->mutable_namespace_()->set_name(ns->name());
+    }
   }
   return Status::OK();
 }
@@ -2011,39 +2082,51 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
             << ": " << req->ShortDebugString();
 
   RETURN_NOT_OK(CheckOnline());
-  scoped_refptr<NamespaceInfo> ns;
 
   // Prevent 'default' namespace deletion
-  if ((req->namespace_id().has_id() && req->namespace_id().id() == kDefaultNamespaceId) ||
-      (req->namespace_id().has_name() && req->namespace_id().name() == kDefaultNamespaceName)) {
+  if ((req->namespace_().has_id() && req->namespace_().id() == kDefaultNamespaceId) ||
+      (req->namespace_().has_name() && req->namespace_().name() == kDefaultNamespaceName)) {
     Status s = STATUS(InvalidArgument,
         "Cannot delete default namespace", req->DebugString());
     SetupError(resp->mutable_error(), MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE, s);
     return s;
   }
 
-  // 1. Lookup the namespace and verify if it exists.
-  TRACE("Looking up namespace");
-  {
-    boost::shared_lock<LockType> l(lock_);
+  scoped_refptr<NamespaceInfo> ns;
 
-    if (req->namespace_id().has_id()) {
-      ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id().id());
-    } else if (req->namespace_id().has_name()) {
-      ns = FindPtrOrNull(namespace_names_map_, req->namespace_id().name());
-    } else {
-      Status s = STATUS(InvalidArgument,
-        "Missing Namespace ID or Namespace Name", req->DebugString());
-      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-      return s;
-    }
+  // Lookup the namespace and verify if it exists.
+  TRACE("Looking up namespace");
+  RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
+  if (ns == nullptr) {
+    Status s = STATUS(InvalidArgument,
+        "Invalid Namespace ID or Namespace Name", req->DebugString());
+    SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    return s;
   }
 
   TRACE("Locking namespace");
   NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
 
+  // Only empty namespace can be deleted.
+  TRACE("Looking for tables in the namespace");
+  {
+    boost::shared_lock<LockType> catalog_lock(lock_);
+
+    for (const TableInfoMap::value_type& entry : table_names_map_) {
+      TableMetadataLock ltm(entry.second.get(), TableMetadataLock::READ);
+
+      if (ltm.data().namespace_id() == ns->id()) {
+        Status s = STATUS(InvalidArgument,
+            Substitute("Cannot delete namespace which has a table: $0 [id=$1]",
+                ltm.data().name(), entry.second->id()), req->DebugString());
+        SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
+        return s;
+      }
+    }
+  }
+
   TRACE("Updating metadata on disk");
-  // 2. Update sys-catalog.
+  // Update sys-catalog.
   Status s = sys_catalog_->DeleteNamespace(ns.get());
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
@@ -2054,7 +2137,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     return s;
   }
 
-  // 3. Remove it from the maps.
+  // Remove it from the maps.
   {
     TRACE("Removing from maps");
     std::lock_guard<LockType> l_map(lock_);
@@ -2066,7 +2149,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     }
   }
 
-  // 4. Update the in-memory state.
+  // Update the in-memory state.
   TRACE("Committing in-memory state");
   l.Commit();
 
@@ -2085,7 +2168,7 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
   for (const NamespaceInfoMap::value_type& entry : namespace_names_map_) {
     NamespaceMetadataLock ltm(entry.second.get(), NamespaceMetadataLock::READ);
 
-    ListNamespacesResponsePB::NamespaceInfo *ns = resp->add_namespaces();
+    NamespaceIdentifierPB *ns = resp->add_namespaces();
     ns->set_id(entry.second->id());
     ns->set_name(entry.second->name());
   }

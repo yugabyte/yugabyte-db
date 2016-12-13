@@ -257,6 +257,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.table_type();
   }
 
+  // Return the table's namespace id.
+  const std::string& namespace_id() const {
+    return pb.namespace_id();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
@@ -734,7 +739,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // "dirty" state field.
   TableInfo* CreateTableInfo(const CreateTableRequestPB& req,
                              const Schema& schema,
-                             const PartitionSchema& partition_schema);
+                             const PartitionSchema& partition_schema,
+                             const std::string& namespace_id);
 
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
@@ -750,6 +756,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   Status FindTable(const TableIdentifierPB& table_identifier,
                    scoped_refptr<TableInfo>* table_info);
+
+  Status FindNamespace(const NamespaceIdentifierPB& ns_identifier,
+                       scoped_refptr<NamespaceInfo>* ns_info);
 
   // Handle one of the tablets in a tablet reported.
   // Requires that the lock is already held.
