@@ -16,6 +16,7 @@ import { YBTabsPanel, YBPanelItem } from '../panels';
 import { YBMapLegendItem, RegionMap } from '../maps';
 import { NodeDetails } from '.';
 import universelogo from './images/universe_icon.png';
+import { ListTablesContainer } from '../../containers/tables';
 
 class YBMapLegend extends Component {
   render() {
@@ -84,6 +85,9 @@ export default class UniverseDetail extends Component {
             <RegionMap regions={currentUniverse.regions} type={"Root"} />
           </Col>
         </YBPanelItem>
+      </Tab>,
+      <Tab eventKey={"tables"} title="Tables" key="tables-tab">
+        <ListTablesContainer/>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
         <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>

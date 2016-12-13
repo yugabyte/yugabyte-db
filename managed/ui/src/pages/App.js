@@ -3,7 +3,7 @@
 import React from 'react';
 import { Component } from 'react';
 import 'bootstrap/dist/css/bootstrap.css';
-import './stylesheets/App.scss'
+import './stylesheets/App.scss';
 
 export default class App extends Component {
   render() {

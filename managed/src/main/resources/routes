@@ -57,6 +57,7 @@ POST    /api/customers/:cUUID/universes/:uniUUID/metrics  com.yugabyte.yw.contro
 GET     /api/customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 
 # Table Management API
+GET     /api/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.universeList(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /api/tables                                   com.yugabyte.yw.controllers.TablesController.list()
 GET     /api/tablet-servers                           com.yugabyte.yw.controllers.TabletServerController.list()
 
