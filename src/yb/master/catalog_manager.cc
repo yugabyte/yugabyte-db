@@ -2162,7 +2162,6 @@ Status CatalogManager::GetTabletPeer(const string& tablet_id,
                                      scoped_refptr<TabletPeer>* ret_tablet_peer) const {
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
-  boost::shared_lock<LockType> l(lock_);
 
   if (PREDICT_FALSE(!IsInitialized())) {
     // Master puts up the consensus service first and then initiates catalog manager's creation
