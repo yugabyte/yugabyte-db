@@ -7,6 +7,8 @@ import { fetchUniverseList, fetchUniverseListSuccess,
   fetchUniverseListFailure, resetUniverseList, fetchUniverseTasks,
   fetchUniverseTasksSuccess, fetchUniverseTasksFailure,
   resetUniverseTasks} from '../../actions/universe';
+import { fetchTaskProgress, fetchCurrentTaskListSuccess,
+  fetchCurrentTaskListFailure, resetTaskProgress } from '../../actions/tasks';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -35,6 +37,26 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
+    },
+    fetchCurrentTaskList: (taskUUIDList) => {
+      taskUUIDList.forEach(function(taskUUIDObject, idx){
+        var taskUUID = taskUUIDObject.id;
+        dispatch(fetchTaskProgress(taskUUID))
+          .then((response) => {
+            if (!response.error) {
+              var taskItem = response.payload.data;
+              taskItem.universeUUID = taskUUIDObject.universe;
+              taskItem.taskData = taskUUIDObject.data;
+              taskItem.taskUUID = taskUUID;
+              dispatch(fetchCurrentTaskListSuccess(taskItem));
+            } else {
+              dispatch(fetchCurrentTaskListFailure(response.payload));
+            }
+          });
+      })
+    },
+    resetTaskProgress: () => {
+      dispatch(resetTaskProgress());
     }
   }
 }

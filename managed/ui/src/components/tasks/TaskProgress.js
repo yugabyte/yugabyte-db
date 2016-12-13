@@ -2,6 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { TaskProgressBar, TaskProgressWidget, TaskProgressBarWithDetails, TaskProgressStepBar  } from '.';
+import { isValidObject } from '../../utils/ObjectUtils';
 
 export default class TaskProgress extends Component {
   static contextTypes = {
@@ -31,7 +32,8 @@ export default class TaskProgress extends Component {
   }
 
   render() {
-    const { taskUUIDs, tasks: { taskProgressData, loading}, type, currentOperation } = this.props;
+    const { taskUUIDs, tasks: { taskProgressData, currentTaskList, loading}, type, currentOperation } = this.props;
+    var currentTaskId = taskUUIDs[0];
     if (taskUUIDs.length === 0) {
       return <span />;
     } else if (loading || taskProgressData.length === 0) {
@@ -45,7 +47,11 @@ export default class TaskProgress extends Component {
     if ( type === "Widget" ) {
       return <TaskProgressWidget progressData={taskProgressData} />;
     } else if( type === "BarWithDetails" ) {
-      return <TaskProgressBarWithDetails progressData={taskProgressData} currentOperation={currentOperation}/>
+      if (!isValidObject(currentTaskList[currentTaskId])) {
+        return <div className="container">Loading...</div>;
+      }
+      return <TaskProgressBarWithDetails progressData={currentTaskList[currentTaskId]}
+                                         currentOperation={currentOperation}/>
     } else if (type === "StepBar") {
       return <TaskProgressStepBar progressData={taskProgressData}/>
     }
