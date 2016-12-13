@@ -4,7 +4,7 @@ EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
 			   sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
 VERSION_FILES = sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
-BASE_FILES 	 = $(subst --$(EXTVERSION),,$(VERSION_FILES))
+BASE_FILES 	 = $(subst --$(EXTVERSION),,$(VERSION_FILES)) sql/uninstall_$(MAINEXT).sql
 _IN_FILES 	 = $(wildcard sql/*--*.sql.in)
 _IN_PATCHED	 = $(_IN_FILES:.in=)
 TESTS        = $(wildcard test/sql/*.sql)
