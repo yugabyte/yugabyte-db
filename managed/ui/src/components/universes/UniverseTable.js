@@ -145,9 +145,11 @@ export default class UniverseTable extends Component {
   componentWillUnmount() {
     this.props.resetUniverseList();
     this.props.resetUniverseTasks();
+    this.props.resetTaskProgress();
   }
 
   render() {
+    var self = this;
     var universeDisplay = [];
 
     function detailStringFormatter(cell, row) {
@@ -197,9 +199,10 @@ export default class UniverseTable extends Component {
         var universeTaskUUIDs = [];
         if (isValidObject(universeTasks) && universeTasks[item.universeUUID] !== undefined) {
           universeTaskUUIDs = universeTasks[item.universeUUID].map(function (task) {
-            return {"id": task.id, "data": task};
+            return {"id": task.id, "data": task, "universe": item.universeUUID};
           });
         }
+        self.props.fetchCurrentTaskList(universeTaskUUIDs);
 
 
         var universeDetailString = {
@@ -258,8 +261,8 @@ export default class UniverseTable extends Component {
                         trClassName="data-table-row" bodyStyle={tableBodyStyle} headerStyle={tableHeaderStyle}>
           <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
           <TableHeaderColumn dataField="name"
-
-                             dataFormat={universeNameTypeFormatter} columnClassName="no-border-cell name-column"
+                             dataFormat={universeNameTypeFormatter}
+                             columnClassName="no-border-cell name-column"
                              className="no-border-cell">
             Universe Name
           </TableHeaderColumn>
