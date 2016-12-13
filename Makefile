@@ -8,6 +8,7 @@ _IN_FILES 	 = $(wildcard sql/*--*.sql.in)
 _IN_PATCHED	 = $(_IN_FILES:.in=)
 TESTS        = $(wildcard test/sql/*.sql)
 EXTRA_CLEAN  = $(VERSION_FILES) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql doc/*.html
+EXTRA_CLEAN  += $(wildcard sql/*.orig) # These are files left behind by patch
 DOCS         = doc/pgtap.mmd
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
