@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import moment from 'moment';
-import {FormattedNumber} from 'react-intl';
+import { YBFormattedNumber } from '../descriptors';
 
 import './stylesheets/YBCost.css'
 
@@ -22,8 +22,8 @@ export default class YBCost extends Component {
     }
     return (
       <div>
-        <FormattedNumber value={finalCost} maximumFractionDigits={2}
-          style="currency" currency="USD" multiplier={multiplier}/>
+        <YBFormattedNumber value={finalCost} maximumFractionDigits={2}
+          formattedNumberStyle="currency" currency="USD" multiplier={multiplier}/>
         <span className="config-price-subscript">{`/${multiplier}`}</span>
       </div>
     )

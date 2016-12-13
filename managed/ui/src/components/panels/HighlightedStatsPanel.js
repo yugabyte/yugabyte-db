@@ -2,12 +2,11 @@
 
 import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
-import {FormattedNumber} from 'react-intl';
 import moment from 'moment';
-
 import { DescriptionItem } from '../common/descriptors';
 import { isValidArray } from '../../utils/ObjectUtils';
 import './stylesheets/HighlightedStatsPanel.css'
+import {YBFormattedNumber} from '../common/descriptors';
 
 class StatsPanelComponent extends Component {
   render() {
@@ -46,8 +45,8 @@ export default class HighlightedStatsPanel extends Component {
         <Col md={6} mdOffset={3}>
           <StatsPanelComponent value={universeList.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
-          <StatsPanelComponent value={<FormattedNumber value={totalCost} maximumFractionDigits={2}
-                                                       style="currency" currency="USD"/>} label={"Cost"}/>
+          <StatsPanelComponent value={<YBFormattedNumber value={totalCost} maximumFractionDigits={2}
+                                                         formattedNumberStyle="currency" currency="USD"/>} label={"Cost"}/>
         </Col>
       </div>
     )
