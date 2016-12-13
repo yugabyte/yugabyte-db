@@ -5,3 +5,4 @@ export { default as DescriptionItem } from './DescriptionItem';
 export { default as YBCost } from './YBCost';
 export { default as YBLabel } from './YBLabel';
 export { default as YBLabelWithIcon } from './YBLabelWithIcon';
+export { default as YBFormattedNumber } from './YBFormattedNumber';

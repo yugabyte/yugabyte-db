@@ -1,12 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { FormattedDate, FormattedNumber } from 'react-intl';
+import { FormattedDate } from 'react-intl';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-
 import { isValidObject } from '../../utils/ObjectUtils';
 import { YBPanelItem } from '../panels';
 import './stylesheets/AlertsList.css'
+import {YBFormattedNumber} from '../common/descriptors';
 
 export default class AlertsList extends Component {
 
@@ -17,8 +17,7 @@ export default class AlertsList extends Component {
   render() {
 
     function percentFormatter(cell, row) {
-
-      return <FormattedNumber value={cell/100} style={"percent"} />;
+      return <YBFormattedNumber value={cell/100} formattedNumberStyle={"percent"} />;
     }
 
     function timeFormatter(cell, row) {
@@ -31,8 +30,7 @@ export default class AlertsList extends Component {
                               day='2-digit'
                               hour='numeric'
                               minute='numeric'
-
-        />
+               />
       }
     }
     function successStringFormatter(cell, row) {
