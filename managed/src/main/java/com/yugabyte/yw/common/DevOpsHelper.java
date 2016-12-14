@@ -84,7 +84,7 @@ public class DevOpsHelper {
           } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER)) {
             subcommand += " --tags tserver-gflags";
           }
-          subcommand += " --force_gflags --gflags " + Json.stringify(Json.toJson(taskParam.gflags));
+          subcommand += " --replace_gflags --gflags " + Json.stringify(Json.toJson(taskParam.gflags));
         }
         break;
     }
