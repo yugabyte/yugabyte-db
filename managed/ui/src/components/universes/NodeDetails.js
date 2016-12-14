@@ -4,12 +4,18 @@ import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../panels';
-import { isValidArray } from '../../utils/ObjectUtils'
+import { isValidObject, isValidArray } from '../../utils/ObjectUtils'
 
 export default class NodeDetails extends Component {
   static propTypes = {
     nodeDetails: PropTypes.array.isRequired
   };
+
+  componentWillReceiveProps(nextProps) {
+    if (isValidObject(this.refs.nodeDetailTable)) {
+      this.refs.nodeDetailTable.handleSort('asc', 'name');
+    }
+  }
 
   render() {
     const { nodeDetails } = this.props;
@@ -18,7 +24,6 @@ export default class NodeDetails extends Component {
     }
     const nodeDetailRows = nodeDetails.map(function(nodeDetail) {
       var privateIP = nodeDetail.cloudInfo.private_ip;
-
       return {
         name: nodeDetail.nodeName,
         regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
@@ -46,7 +51,7 @@ export default class NodeDetails extends Component {
 
     return (
       <YBPanelItem name="Node Details">
-        <BootstrapTable data={nodeDetailRows}>
+        <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
           <TableHeaderColumn dataField="name" isKey={true}>Instance Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
           <TableHeaderColumn
