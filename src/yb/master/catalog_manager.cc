@@ -112,9 +112,16 @@ DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
 TAG_FLAG(catalog_manager_wait_for_new_tablets_to_elect_leader, hidden);
 
 DEFINE_int32(unresponsive_ts_rpc_timeout_ms, 60 * 60 * 1000,  // 1 hour
-             "After this amount of time, the master will stop attempting to contact "
-             "a tablet server in order to perform operations such as deleting a tablet.");
+             "After this amount of time (or after we have retried unresponsive_ts_rpc_retry_limit "
+             "times, whichever happens first), the master will stop attempting to contact a tablet "
+             "server in order to perform operations such as deleting a tablet.");
 TAG_FLAG(unresponsive_ts_rpc_timeout_ms, advanced);
+
+DEFINE_int32(unresponsive_ts_rpc_retry_limit, 20,
+             "After this number of retries (or unresponsive_ts_rpc_timeout_ms expires, whichever "
+             "happens first), the master will stop attempting to contact a tablet server in order "
+             "to perform operations such as deleting a tablet.");
+TAG_FLAG(unresponsive_ts_rpc_retry_limit, advanced);
 
 DEFINE_int32(default_num_replicas, 3,
              "Default number of replicas for tables that do not have the num_replicas set.");
@@ -2566,6 +2573,13 @@ class RetryingTSRpcTask : public MonitoredTask {
     if (state() != kStateRunning) {
       LOG(INFO) << "No reschedule for " << description() << ", state="
                 << MonitoredTask::state(state());
+      return false;
+    }
+
+    if (attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
+      LOG(WARNING) << "Reached maximum number of retries ("
+                   << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description();
+      MarkFailed();
       return false;
     }
 
