@@ -271,7 +271,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
     String expectedCommand = baseCommand + " instance configure" +
       " --master_addresses_for_tserver (.*)(|:)([0-9]*)" +
-      " --force_gflags --gflags \\" + gflagsJson + "\\ " + params.nodeName;
+      " --replace_gflags --gflags \\" + gflagsJson + "\\ " + params.nodeName;
 
     assertThat(command, allOf(notNullValue(), RegexMatcher.matchesRegex(expectedCommand)));
   }
