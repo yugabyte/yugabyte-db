@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 var Plotly = require('plotly.js/lib/core');
-import { removeNullProperties, isValidObject } from '../../utils/ObjectUtils';
+import { removeNullProperties, isValidObject, isValidArray } from '../../utils/ObjectUtils';
 
 export default class MetricsPanel extends Component {
 
@@ -21,12 +21,26 @@ export default class MetricsPanel extends Component {
       metric.layout["width"] = 650;
       metric.layout["height"] = 500;
 
+      // Handle the case when the metric data is empty, we would show
+      // graph with No Data annotation.
+      if (!isValidArray(metric.data)){
+        metric.layout["annotations"] = [{
+          visible: true,
+          align: "center",
+          text: "No Data",
+          showarrow: false,
+          x: 1,
+          y: 1
+        }];
+        metric.layout["xaxis"] = {range: [0, 2]}
+        metric.layout["yaxis"] = {range: [0, 2]}
+      }
+
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
     }
   }
 
   render() {
-    // TODO: handle empty metric data case.
     return (
       <div id={this.props.metricKey} />
     );
