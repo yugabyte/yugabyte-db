@@ -119,6 +119,7 @@ export default class UniverseForm extends Component {
     this.createUniverse = this.createUniverse.bind(this);
     this.editUniverse = this.editUniverse.bind(this);
     this.universeNameChanged = this.universeNameChanged.bind(this);
+    this.serverPackageChanged = this.serverPackageChanged.bind(this);
     this.azChanged = this.azChanged.bind(this);
     var azInitState = true;
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
@@ -206,6 +207,11 @@ export default class UniverseForm extends Component {
     this.setState({azCheckState: !this.state.azCheckState});
     this.configureUniverseNodeList("isMultiAZ", !JSON.parse(event.target.value));
   }
+
+  serverPackageChanged(packageName) {
+    this.configureUniverseNodeList("ybServerPackage", packageName);
+  }
+
   componentDidUpdate(newProps) {
     if (newProps.universe.formSubmitSuccess) {
       this.props.reset();
@@ -277,7 +283,8 @@ export default class UniverseForm extends Component {
                      defaultValue={this.state.instanceTypeSelected} onSelectChange={this.instanceTypeChanged}
               />
               <Field name="ybServerPackage" type="text" component={YBInputField}
-                     label="Server Package" defaultValue={this.state.ybServerPackage} />
+                     label="Server Package" defaultValue={this.state.ybServerPackage}
+                     onValueChanged={this.serverPackageChanged} />
              </Col>
              <Col lg={6}>
                {configDetailItem}
