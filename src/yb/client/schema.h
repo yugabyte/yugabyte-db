@@ -351,6 +351,7 @@ class YB_EXPORT YBSchema {
   friend class YBTable;
   friend class YBTableCreator;
   friend class YBOperation;
+  friend class YBSqlReadOp;
   friend class internal::GetTableSchemaRpc;
   friend class internal::LookupRpc;
   friend class internal::WriteRpc;

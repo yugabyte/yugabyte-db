@@ -167,7 +167,7 @@ class TabletPeerTest : public YBTabletTest,
     std::unique_ptr<const WriteRequestPB> key_value_write_request;
     std::vector<std::string> locks_held;
     RETURN_NOT_OK(
-        tablet()->KeyValueBatchFromYSQLRowOps(*write_req, &key_value_write_request, &locks_held));
+        tablet()->KeyValueBatchFromKuduRowOps(*write_req, &key_value_write_request, &locks_held));
 
     for (const auto& lock : locks_held) {
         tablet()->shared_lock_manager()->Unlock(lock);

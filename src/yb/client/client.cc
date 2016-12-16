@@ -839,18 +839,28 @@ YBInsert* YBTable::NewInsert() {
   return new YBInsert(shared_from_this());
 }
 
-YBRedisWriteOp* YBTable::NewRedisWrite() {
-  return new YBRedisWriteOp(shared_from_this());
-}
-
-YBRedisReadOp* YBTable::NewRedisRead() { return new YBRedisReadOp(shared_from_this()); }
-
 YBUpdate* YBTable::NewUpdate() {
   return new YBUpdate(shared_from_this());
 }
 
 YBDelete* YBTable::NewDelete() {
   return new YBDelete(shared_from_this());
+}
+
+YBRedisWriteOp* YBTable::NewRedisWrite() {
+  return new YBRedisWriteOp(shared_from_this());
+}
+
+YBRedisReadOp* YBTable::NewRedisRead() {
+  return new YBRedisReadOp(shared_from_this());
+}
+
+YBSqlWriteOp* YBTable::NewYSQLWrite() {
+  return new YBSqlWriteOp(shared_from_this());
+}
+
+YBSqlReadOp* YBTable::NewYSQLRead() {
+  return new YBSqlReadOp(shared_from_this());
 }
 
 YBClient* YBTable::client() const {
@@ -968,7 +978,7 @@ Status YBSession::Flush() {
 }
 
 void YBSession::FlushAsync(YBStatusCallback* user_callback) {
-  CHECK_EQ(data_->flush_mode_, MANUAL_FLUSH) << "TODO: handle other flush modes";
+  CHECK_NE(data_->flush_mode_, AUTO_FLUSH_BACKGROUND) << "TODO: handle flush background mode";
 
   // Swap in a new batcher to start building the next batch.
   // Save off the old batcher.
@@ -1014,7 +1024,11 @@ void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* 
 
 Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
   CHECK_EQ(yb_op->read_only(), read_only_);
-  if (!yb_op->row().IsKeySet()) {
+  // For YSQL read and write ops, set the row key from the request protobuf.
+  if (yb_op->type() == YBOperation::Type::YSQL_READ ||
+      yb_op->type() == YBOperation::Type::YSQL_WRITE) {
+    down_cast<YBSqlOp*>(yb_op.get())->SetKey();
+  } else if (!yb_op->row().IsKeySet()) {
     Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
     data_->error_collector_->AddError(
         gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), status)));

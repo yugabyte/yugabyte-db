@@ -7,6 +7,7 @@
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/yb_op-internal.h"
+#include "yb/util/cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/common/wire_protocol.h"
@@ -296,15 +297,38 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
     << "Row " << partition_schema.RowDebugString(row)
     << "not in partition " << partition_schema.PartitionDebugString(partition, *schema);
 #endif
-    if (op->yb_op->type() == YBOperation::Type::REDIS_WRITE) {
-      CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-      RedisWriteRequestPB* redis_req = req_.mutable_redis_write_batch()->Add();
-      // We are copying the redis request for now. In future it may be prevented.
-      *redis_req = down_cast<YBRedisWriteOp*>(op->yb_op.get())->request();
-    } else {
-      CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-      enc.Add(ToInternalWriteType(op->yb_op->type()), op->yb_op->row());
+    switch (op->yb_op->type()) {
+      case YBOperation::Type::REDIS_WRITE: {
+        CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
+        RedisWriteRequestPB* redis_req = req_.mutable_redis_write_batch()->Add();
+        // We are copying the redis request for now. In future it may be prevented.
+        *redis_req = down_cast<YBRedisWriteOp*>(op->yb_op.get())->request();
+        break;
+      }
+      case YBOperation::Type::YSQL_WRITE: {
+        CHECK_EQ(table()->table_type(), YBTableType::YSQL_TABLE_TYPE);
+        YSQLWriteRequestPB* ysql_req = req_.mutable_ysql_write_batch()->Add();
+        // We are copying the YSQL request for now. In future it may be prevented.
+        *ysql_req = down_cast<YBSqlWriteOp*>(op->yb_op.get())->request();
+        break;
+      }
+      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::DELETE: {
+        CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE)
+            << "unsupported table type " << table()->table_type() << " for insert/update/delete";
+        enc.Add(ToInternalWriteType(op->yb_op->type()), op->yb_op->row());
+        break;
+      }
+      case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::YSQL_READ:
+        LOG(FATAL) << "Not a write operation " << op->yb_op->type();
+        break;
+      default:
+        LOG(FATAL) << "Unsupported write operation " << op->yb_op->type();
+        break;
     }
+
     // Set the state now, even though we haven't yet sent it -- at this point
     // there is no return, and we're definitely going to send it. If we waited
     // until after we sent it, the RPC callback could fire before we got a chance
@@ -345,26 +369,57 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
                  << resp_.error().DebugString()
                  << ". Requests not processed.";
     // If there is an error at the Rpc itself,
-    // there should be no individual redis responses. All of them need to be
+    // there should be no individual responses. All of them need to be
     // marked as failed.
     MarkOpsAsFailed();
     return;
   }
-  // In the following section, we process Redis Responses only.
-  size_t response_idx = 0;
-  for (int i = 0; i < ops_.size(); i++) {
-    YBOperation* yb_op = ops_[i]->yb_op.get();
-    if (yb_op->type() == YBOperation::REDIS_WRITE) {
-      if (response_idx >= resp_.redis_response_batch().size()) {
-        batcher_->AddOpCountMismatchError();
-        return;
+  size_t redis_idx = 0;
+  size_t ysql_idx = 0;
+  // Retrieve Redis and YSQL responses and make sure we received all the responses back.
+  for (InFlightOp* op : ops_) {
+    YBOperation* yb_op = op->yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::REDIS_WRITE: {
+        if (redis_idx >= resp_.redis_response_batch().size()) {
+          batcher_->AddOpCountMismatchError();
+          return;
+        }
+        *(down_cast<YBRedisWriteOp*>(yb_op)->mutable_response()) =
+            std::move(resp_.redis_response_batch(redis_idx));
+        redis_idx++;
+        break;
       }
-      *(down_cast<YBRedisWriteOp*>(yb_op)->mutable_response()) =
-          std::move(resp_.redis_response_batch(response_idx));
-      response_idx++;
+      case YBOperation::Type::YSQL_WRITE: {
+        if (ysql_idx >= resp_.ysql_response_batch().size()) {
+          batcher_->AddOpCountMismatchError();
+          return;
+        }
+        *(down_cast<YBSqlWriteOp*>(yb_op)->mutable_response()) =
+            std::move(resp_.ysql_response_batch(ysql_idx));
+        ysql_idx++;
+        break;
+      }
+
+      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::DELETE:
+        break; // these writes have no separate responses
+
+      case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::YSQL_READ:
+        LOG(FATAL) << "Not a write operation " << op->yb_op->type();
+        break;
     }
   }
-  if (response_idx != resp_.redis_response_batch().size()) {
+
+  if (redis_idx != resp_.redis_response_batch().size() ||
+      ysql_idx != resp_.ysql_response_batch().size()) {
+    LOG(ERROR) << Substitute("Write responses count mismatch: "
+                             "$0 Redis requests sent, $1 responses received. "
+                             "$2 YSQL requests sent, $3 responses received.",
+                             redis_idx, resp_.redis_response_batch().size(),
+                             ysql_idx, resp_.ysql_response_batch().size());
     batcher_->AddOpCountMismatchError();
     return;
   }
@@ -395,10 +450,30 @@ ReadRpc::ReadRpc(
   req_.set_tablet_id(tablet->tablet_id());
   int ctr = 0;
   for (InFlightOp* op : ops_) {
-    CHECK_EQ(op->yb_op->type(), YBOperation::Type::REDIS_READ);
-    CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
-    RedisReadRequestPB* redis_req = req_.mutable_redis_batch()->Add();
-    *redis_req = down_cast<YBRedisReadOp*>(op->yb_op.get())->request();
+    switch (op->yb_op->type()) {
+      case YBOperation::Type::REDIS_READ: {
+        CHECK_EQ(table()->table_type(), YBTableType::REDIS_TABLE_TYPE);
+        RedisReadRequestPB* redis_req = req_.mutable_redis_batch()->Add();
+        *redis_req = down_cast<YBRedisReadOp*>(op->yb_op.get())->request();
+        break;
+      }
+      case YBOperation::Type::YSQL_READ: {
+        CHECK_EQ(table()->table_type(), YBTableType::YSQL_TABLE_TYPE);
+        YSQLReadRequestPB* ysql_req = req_.mutable_ysql_batch()->Add();
+        *ysql_req = down_cast<YBSqlReadOp*>(op->yb_op.get())->request();
+        break;
+      }
+      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::YSQL_WRITE:
+        LOG(FATAL) << "Not a read operation " << op->yb_op->type();
+        break;
+      default:
+        LOG(FATAL) << "Unsupported read operation " << op->yb_op->type();
+        break;
+    }
     op->state = InFlightOp::kRequestSent;
     VLOG(4) << ++ctr << ". Encoded row " << op->yb_op->ToString();
   }
@@ -430,21 +505,64 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
                  << resp_.error().DebugString()
                  << ". Requests not processed.";
     // If there is an error at the Rpc itself,
-    // there should be no individual redis responses. All of them need to be
+    // there should be no individual responses. All of them need to be
     // marked as failed.
     MarkOpsAsFailed();
     return;
   }
-  // Read response handling
-  size_t n = ops_.size();
-  if (resp_.redis_batch().size() != n) {
+  // Retrieve Redis and YSQL responses and make sure we received all the responses back.
+  size_t redis_idx = 0;
+  size_t ysql_idx = 0;
+  for (InFlightOp* op : ops_) {
+    YBOperation* yb_op = op->yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::REDIS_READ: {
+        if (redis_idx >= resp_.redis_batch().size()) {
+          batcher_->AddOpCountMismatchError();
+          return;
+        }
+        *(down_cast<YBRedisReadOp*>(yb_op)->mutable_response()) =
+            std::move(resp_.redis_batch(redis_idx));
+        redis_idx++;
+        break;
+      }
+      case YBOperation::Type::YSQL_READ: {
+        if (ysql_idx >= resp_.ysql_batch().size()) {
+          batcher_->AddOpCountMismatchError();
+          return;
+        }
+        *(down_cast<YBSqlReadOp*>(yb_op)->mutable_response()) =
+            std::move(resp_.ysql_batch(ysql_idx));
+        const auto& ysql_response = down_cast<YBSqlReadOp*>(yb_op)->response();
+        if (ysql_response.has_rows_data_sidecar()) {
+          Slice rows_data;
+          CHECK_OK(retrier().controller().GetSidecar(
+              ysql_response.rows_data_sidecar(), &rows_data));
+          down_cast<YBSqlReadOp*>(yb_op)->mutable_rows_data()->assign(
+              util::to_char_ptr(rows_data.data()), rows_data.size());
+        }
+        ysql_idx++;
+        break;
+      }
+      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::REDIS_WRITE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::YSQL_WRITE:
+        LOG(FATAL) << "Not a read operation " << op->yb_op->type();
+        break;
+    }
+  }
+
+  if (redis_idx != resp_.redis_batch().size() ||
+      ysql_idx != resp_.ysql_batch().size()) {
+    LOG(ERROR) << Substitute("Read responses count mismatch: "
+                             "$0 Redis requests sent, $1 responses received. "
+                             "$2 YSQL requests sent, $3 responses received.",
+                             redis_idx, resp_.redis_batch().size(),
+                             ysql_idx, resp_.ysql_batch().size());
     batcher_->AddOpCountMismatchError();
     MarkOpsAsFailed();
-    return;
-  }
-  for (int i = 0; i < n; i++) {
-    *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) =
-        std::move(resp_.redis_batch(i));
   }
 }
 

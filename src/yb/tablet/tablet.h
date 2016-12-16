@@ -212,12 +212,24 @@ class Tablet {
 
   Status KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
-      std::unique_ptr<const tserver::WriteRequestPB>* kudu_write_batch_pb,
+      std::unique_ptr<const tserver::WriteRequestPB>* redis_write_batch_pb,
       vector<string> *keys_locked,
       vector<RedisResponsePB>* responses);
 
-  Status HandleRedisReadRequest(const RedisReadRequestPB redis_read_request,
+  Status HandleRedisReadRequest(const MvccSnapshot &snap,
+                                const RedisReadRequestPB& redis_read_request,
                                 RedisResponsePB* response);
+
+  Status KeyValueBatchFromYSQLWriteBatch(
+      const tserver::WriteRequestPB& ysql_write_request,
+      std::unique_ptr<const tserver::WriteRequestPB>* ysql_write_batch_pb,
+      vector<string> *keys_locked,
+      vector<YSQLResponsePB>* responses);
+
+  Status HandleYSQLReadRequest(const MvccSnapshot &snap,
+                               const YSQLReadRequestPB& ysql_read_request,
+                               YSQLResponsePB* response,
+                               gscoped_ptr<faststring>* rows_data);
 
   // Takes a Kudu WriteRequestPB as input with its row operations.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
@@ -227,7 +239,7 @@ class Tablet {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  Status KeyValueBatchFromYSQLRowOps(
+  Status KeyValueBatchFromKuduRowOps(
       const tserver::WriteRequestPB &kudu_write_request_pb,
       std::unique_ptr<const tserver::WriteRequestPB> *kudu_write_batch_pb,
       std::vector<std::string> *keys_locked);

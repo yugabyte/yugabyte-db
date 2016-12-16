@@ -31,6 +31,11 @@ class RedisWriteRequestPB;
 class RedisReadRequestPB;
 class RedisResponsePB;
 
+class YSQLWriteRequestPB;
+class YSQLReadRequestPB;
+class YSQLResponsePB;
+class YSQLRowBlock;
+
 namespace client {
 
 namespace internal {
@@ -38,6 +43,8 @@ class Batcher;
 class AsyncRpc;
 }  // namespace internal
 
+class YBSession;
+class YBStatusCallback;
 class YBTable;
 
 // A write or read operation operates on a single table and partial row.
@@ -57,6 +64,8 @@ class YB_EXPORT YBOperation {
     DELETE = 3,
     REDIS_WRITE = 4,
     REDIS_READ = 5,
+    YSQL_WRITE = 6,
+    YSQL_READ = 7,
   };
   virtual ~YBOperation();
 
@@ -67,6 +76,7 @@ class YB_EXPORT YBOperation {
   virtual std::string ToString() const = 0;
   virtual Type type() const = 0;
   virtual bool read_only() = 0;
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 
@@ -96,7 +106,7 @@ class YB_EXPORT YBInsert : public YBOperation {
 
   virtual std::string ToString() const OVERRIDE { return "INSERT " + row_.ToString(); }
 
-  bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() OVERRIDE { return false; };
 
  protected:
   virtual Type type() const OVERRIDE {
@@ -107,63 +117,6 @@ class YB_EXPORT YBInsert : public YBOperation {
   friend class YBTable;
   explicit YBInsert(const std::shared_ptr<YBTable>& table);
 };
-
-class YB_EXPORT YBRedisWriteOp : public YBOperation {
- public:
-  virtual ~YBRedisWriteOp();
-
-  const RedisWriteRequestPB& request() { return *redis_write_request_; }
-
-  RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
-
-  const RedisResponsePB& response() { return *redis_response_; }
-
-  RedisResponsePB* mutable_response();
-
-  virtual std::string ToString() const OVERRIDE;
-
-  bool read_only() OVERRIDE { return false; };
-
- protected:
-  virtual Type type() const OVERRIDE {
-    return REDIS_WRITE;
-  }
-
- private:
-  friend class YBTable;
-  explicit YBRedisWriteOp(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
-  std::unique_ptr<RedisResponsePB> redis_response_;
-};
-
-class YB_EXPORT YBRedisReadOp : public YBOperation {
- public:
-  virtual ~YBRedisReadOp();
-
-  const RedisReadRequestPB& request() { return *redis_read_request_; }
-
-  RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
-
-  bool has_response() { return redis_response_ ? true : false; }
-
-  const RedisResponsePB& response() const;
-
-  RedisResponsePB* mutable_response();
-
-  virtual std::string ToString() const OVERRIDE;
-
-  bool read_only() OVERRIDE { return true; };
-
- protected:
-  virtual Type type() const OVERRIDE { return REDIS_READ; }
-
- private:
-  friend class YBTable;
-  explicit YBRedisReadOp(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<RedisReadRequestPB> redis_read_request_;
-  std::unique_ptr<RedisResponsePB> redis_response_;
-};
-
 
 // A single row update to be sent to the cluster.
 // Row operation is defined by what's in the PartialRow instance here.
@@ -176,7 +129,7 @@ class YB_EXPORT YBUpdate : public YBOperation {
 
   virtual std::string ToString() const OVERRIDE { return "UPDATE " + row_.ToString(); }
 
-  bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() OVERRIDE { return false; };
 
  protected:
   virtual Type type() const OVERRIDE {
@@ -199,7 +152,7 @@ class YB_EXPORT YBDelete : public YBOperation {
 
   virtual std::string ToString() const OVERRIDE { return "DELETE " + row_.ToString(); }
 
-  bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() OVERRIDE { return false; };
 
  protected:
   virtual Type type() const OVERRIDE {
@@ -210,6 +163,145 @@ class YB_EXPORT YBDelete : public YBOperation {
   friend class YBTable;
   explicit YBDelete(const std::shared_ptr<YBTable>& table);
 };
+
+class YB_EXPORT YBRedisWriteOp : public YBOperation {
+ public:
+  virtual ~YBRedisWriteOp();
+
+  const RedisWriteRequestPB& request() const { return *redis_write_request_; }
+
+  RedisWriteRequestPB* mutable_request() { return redis_write_request_.get(); }
+
+  const RedisResponsePB& response() const { return *redis_response_; }
+
+  RedisResponsePB* mutable_response();
+
+  virtual std::string ToString() const OVERRIDE;
+
+  virtual bool read_only() OVERRIDE { return false; };
+
+ protected:
+  virtual Type type() const OVERRIDE {
+    return REDIS_WRITE;
+  }
+
+ private:
+  friend class YBTable;
+  explicit YBRedisWriteOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<RedisWriteRequestPB> redis_write_request_;
+  std::unique_ptr<RedisResponsePB> redis_response_;
+};
+
+
+class YB_EXPORT YBRedisReadOp : public YBOperation {
+ public:
+  virtual ~YBRedisReadOp();
+
+  const RedisReadRequestPB& request() const { return *redis_read_request_; }
+
+  RedisReadRequestPB* mutable_request() { return redis_read_request_.get(); }
+
+  bool has_response() { return redis_response_ ? true : false; }
+
+  const RedisResponsePB& response() const;
+
+  RedisResponsePB* mutable_response();
+
+  virtual std::string ToString() const OVERRIDE;
+
+  virtual bool read_only() OVERRIDE { return true; };
+
+ protected:
+  virtual Type type() const OVERRIDE { return REDIS_READ; }
+
+ private:
+  friend class YBTable;
+  explicit YBRedisReadOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<RedisReadRequestPB> redis_read_request_;
+  std::unique_ptr<RedisResponsePB> redis_response_;
+};
+
+
+class YB_EXPORT YBSqlOp : public YBOperation {
+ public:
+  virtual ~YBSqlOp();
+
+  // Set the row key in the YBPartialRow.
+  virtual Status SetKey() = 0;
+
+ protected:
+  explicit YBSqlOp(const std::shared_ptr<YBTable>& table);
+};
+
+class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
+ public:
+  virtual ~YBSqlWriteOp();
+
+  const YSQLWriteRequestPB& request() const { return *ysql_write_request_; }
+
+  YSQLWriteRequestPB* mutable_request() { return ysql_write_request_.get(); }
+
+  const YSQLResponsePB& response() const { return *ysql_response_; }
+
+  YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
+
+  virtual std::string ToString() const OVERRIDE;
+
+  virtual bool read_only() OVERRIDE { return false; };
+
+  // Set the row key from the primary key in YSQLWriteRequestPB.
+  virtual Status SetKey() OVERRIDE;
+
+ protected:
+  virtual Type type() const OVERRIDE {
+    return YSQL_WRITE;
+  }
+
+ private:
+  friend class YBTable;
+  explicit YBSqlWriteOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<YSQLWriteRequestPB> ysql_write_request_;
+  std::unique_ptr<YSQLResponsePB> ysql_response_;
+};
+
+class YB_EXPORT YBSqlReadOp : public YBSqlOp {
+ public:
+  virtual ~YBSqlReadOp();
+
+  const YSQLReadRequestPB& request() const { return *ysql_read_request_; }
+
+  YSQLReadRequestPB* mutable_request() { return ysql_read_request_.get(); }
+
+  const YSQLResponsePB& response() const { return *ysql_response_; }
+
+  YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
+
+  const std::string& rows_data() const { return *rows_data_; }
+
+  std::string* mutable_rows_data() { return rows_data_.get(); }
+
+  // Return the rows data as a row block. It is the caller's responsibility to free the row block
+  // after use.
+  YSQLRowBlock* GetRowBlock() const;
+
+  virtual std::string ToString() const OVERRIDE;
+
+  virtual bool read_only() OVERRIDE { return true; };
+
+  // Set the row key from the primary key in YSQLReadRequestPB.
+  virtual Status SetKey() OVERRIDE;
+
+ protected:
+  virtual Type type() const OVERRIDE { return YSQL_READ; }
+
+ private:
+  friend class YBTable;
+  explicit YBSqlReadOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<YSQLReadRequestPB> ysql_read_request_;
+  std::unique_ptr<YSQLResponsePB> ysql_response_;
+  std::unique_ptr<std::string> rows_data_;
+};
+
 
 }  // namespace client
 }  // namespace yb

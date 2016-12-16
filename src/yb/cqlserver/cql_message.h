@@ -14,6 +14,7 @@
 #include <set>
 #include <unordered_map>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -197,7 +198,30 @@ class CQLRequest : public CQLMessage {
   // Function to parse a request body that all CQLRequest subclasses need to implement
   virtual Status ParseBody() = 0;
 
-  // Helper parse functions
+  // Parse a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
+  // <converter> converts the number from network byte-order to machine order and <data_type>
+  // is the coverter's return type. The converter's return type <data_type> is unsigned while
+  // <num_type> may be signed or unsigned.
+  template<typename num_type, typename data_type>
+  inline Status ParseNum(
+      const char* type_name, data_type (*converter)(const void*), num_type* val) {
+    RETURN_NOT_OK(CQLDecodeNum(sizeof(num_type), converter, &body_, val));
+    DVLOG(4) << type_name << " " << static_cast<int64_t>(*val);
+    return Status::OK();
+  }
+
+  // Parse a CQL byte stream (string or bytes). <len_type> is the parsed length type.
+  // <len_parser> parses the byte length from network byte-order to machine order.
+  template<typename len_type>
+  inline Status ParseBytes(
+      const char* type_name, Status (CQLRequest::*len_parser)(len_type*), std::string* val) {
+    len_type len;
+    RETURN_NOT_OK((this->*len_parser)(&len));
+    RETURN_NOT_OK(CQLDecodeBytes(static_cast<size_t>(len), &body_, val));
+    DVLOG(4) << type_name << " " << *val;
+    return Status::OK();
+  }
+
   Status ParseInt(int32_t* value);
   Status ParseLong(int64_t* value);
   Status ParseByte(uint8_t* value);
@@ -361,7 +385,28 @@ class CQLResponse : public CQLMessage {
   // Function to serialize a response body that all CQLResponse subclasses need to implement
   virtual void SerializeBody(faststring* mesg) = 0;
 
-  // Helper serialize functions
+  // Serialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
+  // <converter> converts the number from machine byte-order to network order and <data_type>
+  // is the coverter's return type. The converter's return type <data_type> is unsigned while
+  // <num_type> may be signed or unsigned.
+  template<typename num_type, typename data_type>
+  inline void SerializeNum(
+      void (*converter)(void *, data_type), const num_type val, faststring* mesg) {
+    data_type byte_value;
+    (*converter)(&byte_value, static_cast<data_type>(val));
+    mesg->append(&byte_value, sizeof(byte_value));
+  }
+
+  // Serialize a CQL byte stream (string or bytes). <len_type> is the length type.
+  // <len_serializer> serializes the byte length from machine byte-order to network order.
+  template<typename len_type>
+  inline void SerializeBytes(
+      void (CQLResponse::*len_serializer)(len_type, faststring* mesg), std::string val,
+      faststring* mesg) {
+    (this->*len_serializer)(static_cast<len_type>(val.size()), mesg);
+    mesg->append(val);
+  }
+
   void SerializeInt(int32_t value, faststring* mesg);
   void SerializeLong(int64_t value, faststring* mesg);
   void SerializeByte(uint8_t value, faststring* mesg);

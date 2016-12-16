@@ -9,6 +9,8 @@
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/ysql_protocol.pb.h"
+#include "yb/common/ysql_rowblock.h"
 
 namespace yb {
 namespace docdb {
@@ -23,9 +25,9 @@ class DocOperation {
   virtual Status Apply(DocWriteBatch* doc_write_batch) = 0;
 };
 
-class YSQLWriteOperation: public DocOperation {
+class KuduWriteOperation: public DocOperation {
  public:
-  YSQLWriteOperation(DocPath doc_path, PrimitiveValue value) : doc_path_(doc_path), value_(value) {
+  KuduWriteOperation(DocPath doc_path, PrimitiveValue value) : doc_path_(doc_path), value_(value) {
   }
 
   DocPath DocPathToLock() const override;
@@ -63,6 +65,37 @@ class RedisReadOperation {
  private:
   RedisReadRequestPB request_;
   RedisResponsePB response_;
+};
+
+class YSQLWriteOperation : public DocOperation {
+ public:
+  explicit YSQLWriteOperation(const YSQLWriteRequestPB& request);
+
+  DocPath DocPathToLock() const override;
+
+  Status Apply(DocWriteBatch* doc_write_batch) override;
+
+  const YSQLResponsePB& response();
+
+ private:
+  const DocKey doc_key_;
+  const DocPath doc_path_;
+  const YSQLWriteRequestPB request_;
+  YSQLResponsePB response_;
+};
+
+class YSQLReadOperation {
+ public:
+  explicit YSQLReadOperation(const YSQLReadRequestPB& request);
+
+  Status Execute(rocksdb::DB *rocksdb, Timestamp timestamp, YSQLRowBlock* rowblock);
+
+  const YSQLResponsePB& response();
+
+ private:
+  class YSQLRowReader;
+  const YSQLReadRequestPB request_;
+  YSQLResponsePB response_;
 };
 
 }  // namespace docdb

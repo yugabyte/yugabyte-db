@@ -36,6 +36,7 @@ namespace tablet {
 class Tablet;
 class TabletPeer;
 class TransactionState;
+class MvccSnapshot;
 }  // namespace tablet
 
 namespace tserver {
@@ -106,6 +107,12 @@ class TabletServiceImpl : public TabletServerServiceIf {
                               const std::shared_ptr<tablet::Tablet>& tablet,
                               gscoped_ptr<RowwiseIterator>* iter,
                               Timestamp* snap_timestamp);
+
+  // Take a MVCC snapshot for read at the specified timestamp
+  Status TakeReadSnapshot(tablet::Tablet* tablet,
+                          const rpc::RpcContext* rpc_context,
+                          const Timestamp& timestamp,
+                          tablet::MvccSnapshot* snap);
 
   TabletServer* server_;
 };
@@ -179,4 +186,4 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_TABLET_SERVICE_H
+#endif  // YB_TSERVER_TABLET_SERVICE_H_

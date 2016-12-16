@@ -4,31 +4,36 @@ package yb;
 
 option java_package = "org.yb";
 
+import "yb/common/common.proto";
+
 // This is an internal protocol for communicating YSQL operations from a YB client to a tserver.
 //
 // Reference:
 // Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
-
-// YSQL data types
-enum YSQLDataType {
-  YSQL_DT_NULL = 0;
-  YSQL_DT_INT64 = 1;
-  YSQL_DT_DOUBLE = 2;
-  YSQL_DT_STRING = 3;
-  YSQL_DT_BOOLEAN = 4;
-  YSQL_DT_TIMESTAMP = 5;
-}
+// Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
 
 // A YSQL value
-message YSQLValue {
-  optional YSQLDataType datatype = 1;
+message YSQLValuePB {
+  // Note: UINT8, UINT16, UINT32, UINT64, and BINARY are not supported.
+  optional DataType datatype = 1;
+  // Note: an absent value means NULL
   oneof value {
-    int64 int64_value = 2;
-    double double_value = 3;
-    string string_value = 4;
-    bool boolean_value = 5;
-    int64 timestamp_value = 6;
+    int32 int8_value = 2;  // Note: min int size in protobuf is int32
+    int32 int16_value = 3;
+    int32 int32_value = 4;
+    int64 int64_value = 5;
+    float float_value = 6;
+    double double_value = 7;
+    string string_value = 8;
+    bool bool_value = 9;
+    int64 timestamp_value = 10;
   }
+}
+
+// A YSQL column value
+message YSQLColumnValuePB {
+  optional int32 column_id = 1;
+  optional YSQLValuePB value = 2;
 }
 
 // Relation operators
@@ -68,33 +73,32 @@ message YSQLWriteRequestPB {
 
   // Client info
   optional YSQLClient client = 2; // required
-  optional int32 request_id = 3; // client request id - for debug tracing purpose only
+  optional uint32 request_id = 3; // client request id - for debug tracing purpose only
 
   // Table schema version
-  optional int32 schema_version = 4; // required
+  optional uint32 schema_version = 4; // required
 
   // Primary key of the row to insert/update/delete - all fields required
   //
   // Note: the hash_code is the hash of the hashed_column_values. Technically, this can be
   // recomputed by tserver also, but since the client already calculates this to look up the
   // correct tablet server, it is passed in.
-  optional int32 hash_code = 5;
-  repeated YSQLValue hashed_column_values = 6;
-  repeated YSQLValue range_column_values = 7;
+  optional uint32 hash_code = 5;
+  repeated YSQLColumnValuePB hashed_column_values = 6;
+  repeated YSQLColumnValuePB range_column_values = 7;
 
-  // Column ids and values to insert/update/delete - all fields required except for no value
-  // for DELETE
-  repeated int32 column_ids = 8;
-  repeated YSQLValue column_values = 9;
+  // Column values to insert/update/delete - required
+  // Note: DELETE statement has no column value.
+  repeated YSQLColumnValuePB column_values = 8;
 
   // IF conditions:
   // - insert: NOT_EXISTS
   // - update: EXISTS or NOT_EXISTS
   // - delete: EXISTS
-  optional YSQLIf if = 10;
+  optional YSQLIf if = 9;
 
   // TTL: a 32-bit int (max value = 20 years in secs per org/apache/cassandra/cql3/Attributes.java)
-  optional int32 ttl = 11;
+  optional uint32 ttl = 10;
 }
 
 //-------------------------------------- Read request ----------------------------------------
@@ -102,35 +106,34 @@ message YSQLWriteRequestPB {
 message YSQLReadRequestPB {
 
   // A where-relation on a range column - all fields required
-  message YSQLRelation {
+  message YSQLRelationPB {
     optional int32 range_column_id = 1;
     optional YSQLOperator op = 2;
-    optional YSQLValue value = 3;
+    optional YSQLValuePB value = 3;
   }
 
   // Client info
   optional YSQLClient client = 1; // required
-  optional int32 request_id = 2; // client request id - for debug tracing purpose only
+  optional uint32 request_id = 2; // client request id - for debug tracing purpose only
 
   // Table schema version
-  optional int32 schema_version = 3; // required
+  optional uint32 schema_version = 3; // required
 
   // Hashed key of row(s) to read - all fields required
-  optional int32 hash_code = 4;
-  repeated int32 hashed_column_ids = 5;
-  repeated YSQLValue hashed_column_values = 6;
+  optional uint32 hash_code = 4;
+  repeated YSQLColumnValuePB hashed_column_values = 5;
 
   // Range relations
-  repeated YSQLRelation relations = 7; // CQL allows only WHERE relation AND relation AND ...
+  repeated YSQLRelationPB relations = 6; // CQL allows only WHERE relation AND relation AND ...
 
-  // Column ids to read
-  repeated int32 column_ids = 8; // required
+  // Column ids to read (select)
+  repeated int32 column_ids = 7; // required
 
   // Order-by column id
-  optional int32 order_by_column_id = 9;
+  optional int32 order_by_column_id = 8;
 
   // Limit number of rows to return
-  optional int32 limit = 10;
+  optional uint32 limit = 9;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------
@@ -141,6 +144,7 @@ message YSQLResponsePB {
   enum YSQLStatus {
     YSQL_STATUS_OK = 0;
     YSQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
+    YSQL_STATUS_RUNTIME_ERROR = 2;
   }
 
   // Status and error message
@@ -150,6 +154,6 @@ message YSQLResponsePB {
   // For write requests with an if-clause, whether the write has been applied successfully.
   optional bool applied = 3;
 
-  // Length of the response body to follow (0 means a void result)
-  optional int32 body_length = 4 [ default = 0 ]; // required
+  // Sidecar of rows data returned
+  optional int32 rows_data_sidecar = 5;
 }

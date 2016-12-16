@@ -22,6 +22,8 @@
 #include <vector>
 
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/cast.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -146,5 +148,96 @@ Status ExtractRowsFromRowBlockPB(const Schema& schema,
 Status FindLeaderHostPort(const google::protobuf::RepeatedPtrField<ServerEntryPB>& entries,
                           HostPort* leader_hostport);
 
+//----------------------------------- CQL value encode functions ---------------------------------
+static inline void CQLEncodeLength(const int32_t length, faststring* buffer) {
+  uint32_t byte_value;
+  NetworkByteOrder::Store32(&byte_value, static_cast<uint32_t>(length));
+  buffer->append(&byte_value, sizeof(byte_value));
+}
+
+// Encode a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
+// <converter> converts the number from machine byte-order to network order and <data_type>
+// is the coverter's return type. The converter's input type <data_type> is unsigned while
+// <num_type> may be signed or unsigned.
+template<typename num_type, typename data_type>
+static inline void CQLEncodeNum(
+    void (*converter)(void *, data_type), const num_type val, faststring* buffer) {
+  static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
+  CQLEncodeLength(sizeof(num_type), buffer);
+  data_type byte_value;
+  (*converter)(&byte_value, static_cast<data_type>(val));
+  buffer->append(&byte_value, sizeof(byte_value));
+}
+
+// Encode a CQL floating point number (float or double). <float_type> is the floating point type.
+// <converter> converts the number from machine byte-order to network order and <data_type>
+// is the coverter's input type. The converter's input type <data_type> is an integer type.
+template<typename float_type, typename data_type>
+static inline void CQLEncodeFloat(
+    void (*converter)(void *, data_type), const float_type val, faststring* buffer) {
+  static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
+  const data_type value = *reinterpret_cast<const data_type*>(&val);
+  CQLEncodeNum(converter, value, buffer);
+}
+
+static inline void CQLEncodeBytes(const std::string& val, faststring* buffer) {
+  CQLEncodeLength(val.size(), buffer);
+  buffer->append(val);
+}
+
+static inline void Store8(void* p, uint8_t v) {
+  *static_cast<uint8_t*>(p) = v;
+}
+
+//----------------------------------- CQL value decode functions ---------------------------------
+#define RETURN_NOT_ENOUGH(data, sz)                         \
+  do {                                                      \
+    if (data->size() < (sz)) {                              \
+      return STATUS(NetworkError, "Truncated CQL message"); \
+    }                                                       \
+  } while (0)
+
+// Decode a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
+// <converter> converts the number from network byte-order to machine order and <data_type>
+// is the coverter's return type. The converter's return type <data_type> is unsigned while
+// <num_type> may be signed or unsigned.
+template<typename num_type, typename data_type>
+static inline Status CQLDecodeNum(
+    size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
+  static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
+  if (len != sizeof(num_type)) return STATUS(NetworkError, "unexpected number byte length");
+  RETURN_NOT_ENOUGH(data, sizeof(num_type));
+  *val = static_cast<num_type>((*converter)(data->data()));
+  data->remove_prefix(sizeof(num_type));
+  return Status::OK();
+}
+
+// Decode a CQL floating point number (float or double). <float_type> is the parsed floating point
+// type. <converter> converts the number from network byte-order to machine order and <data_type>
+// is the coverter's return type. The converter's return type <data_type> is an integer type.
+template<typename float_type, typename data_type>
+static inline Status CQLDecodeFloat(
+    size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
+  // Make sure float and double are exactly sizeof uint32_t and uint64_t.
+  static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
+  data_type bval;
+  RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &bval));
+  *val = *reinterpret_cast<float_type*>(&bval);
+  return Status::OK();
+}
+
+static inline Status CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
+  RETURN_NOT_ENOUGH(data, len);
+  *val = std::string(util::to_char_ptr(data->data()), len);
+  data->remove_prefix(len);
+  return Status::OK();
+}
+
+static inline uint8_t Load8(const void* p) {
+  return *static_cast<const uint8_t*>(p);
+}
+
+#undef RETURN_NOT_ENOUGH
+
 } // namespace yb
-#endif
+#endif  // YB_COMMON_WIRE_PROTOCOL_H

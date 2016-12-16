@@ -32,7 +32,7 @@ bool CQLRequest::ParseRequest(
   *error_response = nullptr;
 
 // Short-hand macros for parsing fields in the message header
-#define PARSE_BYTE(buf, pos, type)  static_cast<type>(buf[pos])
+#define PARSE_BYTE(buf, pos, type)  static_cast<type>(Load8(&buf[pos]))
 #define PARSE_SHORT(buf, pos, type) static_cast<type>(NetworkByteOrder::Load16(&buf[pos]))
 #define PARSE_INT(buf, pos, type)   static_cast<type>(NetworkByteOrder::Load32(&buf[pos]))
 #define PARSE_LONG(buf, pos, type)  static_cast<type>(NetworkByteOrder::Load64(&buf[pos]))
@@ -174,59 +174,32 @@ static inline const char* ToChar(const in_addr_t* data) {
   return reinterpret_cast<const char*>(data);
 }
 
-// Short-hand macros for parsing number and bytes in the message body
-#define LOAD_BYTE(ptr) (*ptr)
-
-#define PARSE_NUMBER(type, sz, parser, val)         \
-  do {                                              \
-    RETURN_NOT_ENOUGH(sz);                          \
-    *val = static_cast<type>(parser(body_.data())); \
-    body_.remove_prefix(sz);                        \
-  } while (0)
-
-#define PARSE_BYTES(len_type, len_parser, val)                        \
-  do {                                                                \
-    len_type len;                                                     \
-    RETURN_NOT_OK(len_parser(&len));                                  \
-    RETURN_NOT_ENOUGH(len);                                           \
-    *val = string(ToChar(body_.data()), len); \
-    body_.remove_prefix(len);                                         \
-  } while (0)
-
 Status CQLRequest::ParseInt(int32_t* value) {
-  PARSE_NUMBER(int32_t, kIntSize, NetworkByteOrder::Load32, value);
-  DVLOG(4) << "CQL int " << *value;
-  return Status::OK();
+  static_assert(sizeof(int32_t) == kIntSize, "inconsistent int size");
+  return ParseNum("CQL int", NetworkByteOrder::Load32, value);
 }
 
 Status CQLRequest::ParseLong(int64_t* value) {
-  PARSE_NUMBER(int64_t, kLongSize, NetworkByteOrder::Load64, value);
-  DVLOG(4) << "CQL long " << *value;
-  return Status::OK();
+  static_assert(sizeof(int64_t) == kLongSize, "inconsistent long size");
+  return ParseNum("CQL long", NetworkByteOrder::Load64, value);
 }
 
 Status CQLRequest::ParseByte(uint8_t* value) {
-  PARSE_NUMBER(uint8_t, kByteSize, LOAD_BYTE, value);
-  DVLOG(4) << "CQL byte " << static_cast<uint32_t>(*value);
-  return Status::OK();
+  static_assert(sizeof(uint8_t) == kByteSize, "inconsistent byte size");
+  return ParseNum("CQL byte", Load8, value);
 }
 
 Status CQLRequest::ParseShort(uint16_t* value) {
-  PARSE_NUMBER(uint16_t, kShortSize, NetworkByteOrder::Load16, value);
-  DVLOG(4) << "CQL short " << *value;
-  return Status::OK();
+  static_assert(sizeof(uint16_t) == kShortSize, "inconsistent short size");
+  return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
 }
 
 Status CQLRequest::ParseString(string* value) {
-  PARSE_BYTES(uint16_t, ParseShort, value);
-  DVLOG(4) << "CQL string " << *value;
-  return Status::OK();
+  return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
 }
 
 Status CQLRequest::ParseLongString(string* value) {
-  PARSE_BYTES(int32_t, ParseInt, value);
-  DVLOG(4) << "CQL long string " << *value;
-  return Status::OK();
+  return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
 }
 
 Status CQLRequest::ParseUUID(string* value) {
@@ -250,21 +223,17 @@ Status CQLRequest::ParseStringList(vector<string>* list) {
 }
 
 Status CQLRequest::ParseBytes(string* value) {
-  PARSE_BYTES(int32_t, ParseInt, value);
-  DVLOG(4) << "CQL bytes " << *value;
-  return Status::OK();
+  return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
 }
 
 Status CQLRequest::ParseShortBytes(string* value) {
-  PARSE_BYTES(uint16_t, ParseShort, value);
-  DVLOG(4) << "CQL short bytes " << *value;
-  return Status::OK();
+  return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
 }
 
 Status CQLRequest::ParseInet(Sockaddr* value) {
   string ipaddr;
   int32_t port = 0;
-  PARSE_BYTES(uint8_t, ParseByte, &ipaddr);
+  RETURN_NOT_OK(ParseBytes("CQL ipaddr", &CQLRequest::ParseByte, &ipaddr));
   RETURN_NOT_OK(ParseInt(&port));
   // TODO(Robert): support IPv6
   if (ipaddr.size() != kIPv4Size) {
@@ -283,9 +252,8 @@ Status CQLRequest::ParseInet(Sockaddr* value) {
 }
 
 Status CQLRequest::ParseConsistency(Consistency* value) {
-  PARSE_NUMBER(Consistency, kConsistencySize, NetworkByteOrder::Load16, value);
-  DVLOG(4) << "CQL consistency 0x" << std::hex << static_cast<uint32_t>(*value);
-  return Status::OK();
+  static_assert(sizeof(Consistency) == kConsistencySize, "inconsistent consistency size");
+  return ParseNum("CQL consistency", NetworkByteOrder::Load16, value);
 }
 
 Status CQLRequest::ParseStringMap(unordered_map<string, string>* map) {
@@ -389,10 +357,6 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   }
   return Status::OK();
 }
-
-#undef LOAD_BYTE
-#undef PARSE_NUMBER
-#undef PARSE_BYTES
 
 // ------------------------------ Individual CQL requests -----------------------------------
 StartupRequest::StartupRequest(const Header& header, const Slice& body)
@@ -609,27 +573,28 @@ CQLResponse::~CQLResponse() {
 
 // Short-hand macros for serializing fields from the message header
 #define SERIALIZE_BYTE(buf, pos, value) \
-  do { (*buf)[pos] = static_cast<uint8_t>(value); } while (0)
+  Store8(&(buf)[pos], static_cast<uint8_t>(value))
 #define SERIALIZE_SHORT(buf, pos, value) \
-  NetworkByteOrder::Store16(&(*buf)[pos], static_cast<uint16_t>(value))
+  NetworkByteOrder::Store16(&(buf)[pos], static_cast<uint16_t>(value))
 #define SERIALIZE_INT(buf, pos, value) \
-  NetworkByteOrder::Store32(&(*buf)[pos], static_cast<int32_t>(value))
+  NetworkByteOrder::Store32(&(buf)[pos], static_cast<int32_t>(value))
 #define SERIALIZE_LONG(buf, pos, value) \
-  NetworkByteOrder::Store64(&(*buf)[pos], static_cast<int64_t>(value))
+  NetworkByteOrder::Store64(&(buf)[pos], static_cast<int64_t>(value))
 
 void CQLResponse::Serialize(faststring* mesg) {
   SerializeHeader(mesg);
   SerializeBody(mesg);
-  SERIALIZE_INT(mesg, kHeaderPosLength, mesg->size() - kMessageHeaderLength);
+  SERIALIZE_INT(mesg->data(), kHeaderPosLength, mesg->size() - kMessageHeaderLength);
 }
 
 void CQLResponse::SerializeHeader(faststring* mesg) {
-  mesg->resize(kMessageHeaderLength);
-  SERIALIZE_BYTE(mesg, kHeaderPosVersion, version());
-  SERIALIZE_BYTE(mesg, kHeaderPosFlags, flags());
-  SERIALIZE_SHORT(mesg, kHeaderPosStreamId, stream_id());
-  SERIALIZE_INT(mesg, kHeaderPosLength, 0);
-  SERIALIZE_BYTE(mesg, kHeaderPosOpcode, opcode());
+  uint8_t buffer[kMessageHeaderLength];
+  SERIALIZE_BYTE(buffer, kHeaderPosVersion, version());
+  SERIALIZE_BYTE(buffer, kHeaderPosFlags, flags());
+  SERIALIZE_SHORT(buffer, kHeaderPosStreamId, stream_id());
+  SERIALIZE_INT(buffer, kHeaderPosLength, 0);
+  SERIALIZE_BYTE(buffer, kHeaderPosOpcode, opcode());
+  mesg->append(buffer, sizeof(buffer));
 }
 
 #undef SERIALIZE_BYTE
@@ -637,44 +602,32 @@ void CQLResponse::SerializeHeader(faststring* mesg) {
 #undef SERIALIZE_INT
 #undef SERIALIZE_LONG
 
-// Short-hand macros for serializing number and bytes in the message body
-#define STORE_BYTE(dst, src) *dst = src
-
-#define SERIALIZE_NUMBER(type, sz, serializer, val, buf)    \
-  do {                                                      \
-    size_t curr_size = buf->size();                         \
-    buf->resize(curr_size + sz);                            \
-    serializer(&(*buf)[curr_size], static_cast<type>(val)); \
-  } while (0)
-
-#define SERIALIZE_BYTES(len_serializer, val, buf) \
-  do {                                            \
-    len_serializer(val.size(), buf);              \
-    buf->append(val);                             \
-  } while (0)
-
 void CQLResponse::SerializeInt(const int32_t value, faststring* mesg) {
-  SERIALIZE_NUMBER(int32_t, kIntSize, NetworkByteOrder::Store32, value, mesg);
+  static_assert(sizeof(int32_t) == kIntSize, "inconsistent int size");
+  SerializeNum(NetworkByteOrder::Store32, value, mesg);
 }
 
 void CQLResponse::SerializeLong(const int64_t value, faststring* mesg) {
-  SERIALIZE_NUMBER(int64_t, kLongSize, NetworkByteOrder::Store64, value, mesg);
+  static_assert(sizeof(int64_t) == kLongSize, "inconsistent long size");
+  SerializeNum(NetworkByteOrder::Store64, value, mesg);
 }
 
 void CQLResponse::SerializeByte(const uint8_t value, faststring* mesg) {
-  SERIALIZE_NUMBER(uint8_t, kByteSize, STORE_BYTE, value, mesg);
+  static_assert(sizeof(uint8_t) == kByteSize, "inconsistent byte size");
+  SerializeNum(Store8, value, mesg);
 }
 
 void CQLResponse::SerializeShort(const uint16_t value, faststring* mesg) {
-  SERIALIZE_NUMBER(uint16_t, kShortSize, NetworkByteOrder::Store16, value, mesg);
+  static_assert(sizeof(uint16_t) == kShortSize, "inconsistent short size");
+  SerializeNum(NetworkByteOrder::Store16, value, mesg);
 }
 
 void CQLResponse::SerializeString(const string& value, faststring* mesg) {
-  SERIALIZE_BYTES(SerializeShort, value, mesg);
+  SerializeBytes(&CQLResponse::SerializeShort, value, mesg);
 }
 
 void CQLResponse::SerializeLongString(const string& value, faststring* mesg) {
-  SERIALIZE_BYTES(SerializeInt, value, mesg);
+  SerializeBytes(&CQLResponse::SerializeInt, value, mesg);
 }
 
 void CQLResponse::SerializeUUID(const string& value, faststring* mesg) {
@@ -682,9 +635,8 @@ void CQLResponse::SerializeUUID(const string& value, faststring* mesg) {
     mesg->append(value);
   } else {
     LOG(ERROR) << "Internal error: inconsistent UUID size: " << value.size();
-    size_t curr_size = mesg->size();
-    mesg->resize(curr_size + kUUIDSize);
-    memset(&(*mesg)[curr_size], 0, kUUIDSize);
+    uint8_t empty_uuid[kUUIDSize] = {0};
+    mesg->append(empty_uuid, sizeof(empty_uuid));
   }
 }
 
@@ -696,11 +648,11 @@ void CQLResponse::SerializeStringList(const vector<string>& list, faststring* me
 }
 
 void CQLResponse::SerializeBytes(const string& value, faststring* mesg) {
-  SERIALIZE_BYTES(SerializeInt, value, mesg);
+  SerializeBytes(&CQLResponse::SerializeInt, value, mesg);
 }
 
 void CQLResponse::SerializeShortBytes(const string& value, faststring* mesg) {
-  SERIALIZE_BYTES(SerializeShort, value, mesg);
+  SerializeBytes(&CQLResponse::SerializeShort, value, mesg);
 }
 
 void CQLResponse::SerializeInet(const Sockaddr& value, faststring* mesg) {
@@ -713,7 +665,8 @@ void CQLResponse::SerializeInet(const Sockaddr& value, faststring* mesg) {
 }
 
 void CQLResponse::SerializeConsistency(const Consistency value, faststring* mesg) {
-  SERIALIZE_NUMBER(uint16_t, kConsistencySize, NetworkByteOrder::Store16, value, mesg);
+  static_assert(sizeof(Consistency) == kConsistencySize, "inconsistent consistency size");
+  SerializeNum(NetworkByteOrder::Store16, value, mesg);
 }
 
 void CQLResponse::SerializeStringMap(const unordered_map<string, string>& map, faststring* mesg) {
@@ -757,10 +710,6 @@ void CQLResponse::SerializeValue(const Value& value, faststring* mesg) {
   LOG(ERROR) << "Internal error: invalid/unknown value kind " << static_cast<uint32_t>(value.kind);
   SerializeInt(-1, mesg);
 }
-
-#undef STORE_BYTE
-#undef SERIALIZE_NUMBER
-#undef SERIALIZE_BYTES
 
 // ------------------------------ Individual CQL responses -----------------------------------
 ErrorResponse::ErrorResponse(const CQLRequest* request, const Code code, const string& message)
@@ -976,7 +925,7 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
 ResultResponse::RowsMetadata::Type::~Type() {
   switch (id) {
     case Id::CUSTOM:
-      custom_class_name.clear();
+      custom_class_name.~basic_string();
       return;
     case Id::ASCII:
     case Id::BIGINT:

@@ -15,6 +15,8 @@
 #include "yb/docdb/key_bytes.h"
 #include "yb/common/timestamp.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/ysql_protocol.pb.h"
+#include "yb/common/ysql_rowblock.h"
 
 namespace yb {
 namespace docdb {
@@ -82,6 +84,12 @@ class PrimitiveValue {
   // Construct a primitive value from a Slice containing a Kudu value.
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
+  // Construct a primitive value from a YSQLValuePB.
+  static PrimitiveValue FromYSQLValuePB(const YSQLValuePB& value);
+
+  // Set a primitive value in a YSQLRow column.
+  static void SetYSQLRowColumn(const PrimitiveValue& value, YSQLRow* row, size_t col_idx);
+
   ValueType value_type() const { return type_; }
 
   void AppendToKey(KeyBytes* key_bytes) const;
@@ -113,7 +121,7 @@ class PrimitiveValue {
 
   KeyBytes ToKeyBytes() const;
 
-  Timestamp timestamp() {
+  Timestamp timestamp() const {
     DCHECK(type_ == ValueType::kTimestamp);
     return timestamp_val_;
   }
@@ -148,6 +156,11 @@ class PrimitiveValue {
   int64_t GetInt64() const {
     DCHECK_EQ(ValueType::kInt64, type_);
     return int64_val_;
+  }
+
+  double GetDouble() const {
+    DCHECK_EQ(ValueType::kDouble, type_);
+    return double_val_;
   }
 
   bool operator <(const PrimitiveValue& other) const {

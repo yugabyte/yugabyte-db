@@ -14,6 +14,7 @@
 
 using std::string;
 using strings::Substitute;
+using yb::YSQLValuePB;
 using yb::util::FormatBytesAsStr;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
@@ -395,6 +396,100 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
       LOG(FATAL) << "Converting Kudu value of type " << data_type
                  << " to docdb PrimitiveValue is currently not supported";
     }
+}
+
+PrimitiveValue PrimitiveValue::FromYSQLValuePB(const YSQLValuePB& value) {
+  DCHECK(value.has_datatype());
+  switch (value.datatype()) {
+    case INT8:
+      return value.has_int8_value() ?
+          PrimitiveValue(value.int8_value()) : PrimitiveValue(ValueType::kNull);
+    case INT16:
+      return value.has_int16_value() ?
+          PrimitiveValue(value.int16_value()) : PrimitiveValue(ValueType::kNull);
+    case INT32:
+      return value.has_int32_value() ?
+          PrimitiveValue(value.int32_value()) : PrimitiveValue(ValueType::kNull);
+    case INT64:
+      return value.has_int64_value() ?
+          PrimitiveValue(value.int64_value()) : PrimitiveValue(ValueType::kNull);
+    case FLOAT:
+      return value.has_float_value() ?
+          PrimitiveValue::Double(value.float_value()) : PrimitiveValue(ValueType::kNull);
+    case DOUBLE:
+      return value.has_double_value() ?
+          PrimitiveValue::Double(value.double_value()) : PrimitiveValue(ValueType::kNull);
+    case STRING:
+      return value.has_string_value() ?
+          PrimitiveValue(value.string_value()) : PrimitiveValue(ValueType::kNull);
+    case BOOL:
+      return value.has_bool_value() ?
+          PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse) :
+          PrimitiveValue(ValueType::kNull);
+    case TIMESTAMP:
+      return value.has_timestamp_value() ?
+          PrimitiveValue(Timestamp(value.timestamp_value())) : PrimitiveValue(ValueType::kNull);
+
+    case UINT8:  FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case UINT32: FALLTHROUGH_INTENDED;
+    case UINT64: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Unsupported datatype " << value.datatype();
+}
+
+void PrimitiveValue::SetYSQLRowColumn(const PrimitiveValue& value, YSQLRow* row, size_t col_idx) {
+  if (value.value_type() == ValueType::kNull) {
+    row->SetNull(col_idx, true);
+    return;
+  }
+
+  switch (row->column_type(col_idx)) {
+    case INT8:
+      row->set_int8_value(col_idx, static_cast<int8_t>(value.GetInt64()));
+      return;
+    case INT16:
+      row->set_int16_value(col_idx, static_cast<int16_t>(value.GetInt64()));
+      return;
+    case INT32:
+      row->set_int32_value(col_idx, static_cast<int32_t>(value.GetInt64()));
+      return;
+    case INT64:
+      row->set_int64_value(col_idx, static_cast<int64_t>(value.GetInt64()));
+      return;
+    case FLOAT:
+      row->set_float_value(col_idx, static_cast<float>(value.GetDouble()));
+      return;
+    case DOUBLE:
+      row->set_double_value(col_idx, value.GetDouble());
+      return;
+    case BOOL:
+      row->set_bool_value(col_idx, (value.value_type() == ValueType::kTrue));
+      return;
+    case TIMESTAMP:
+      row->set_timestamp_value(col_idx, value.timestamp());
+      return;
+    case STRING:
+      row->set_string_value(col_idx, value.GetString());
+      return;
+    case UINT8:  FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case UINT32: FALLTHROUGH_INTENDED;
+    case UINT64: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Unsupported datatype " << row->column_type(col_idx);
 }
 
 }  // namespace docdb

@@ -491,10 +491,16 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
   // Create a new write operation for this table. It is the caller's
   // responsibility to free it, unless it is passed to YBSession::Apply().
   YBInsert* NewInsert();
-  YBRedisWriteOp* NewRedisWrite();
-  YBRedisReadOp* NewRedisRead();
   YBUpdate* NewUpdate();
   YBDelete* NewDelete();
+
+  // Create a new Redis operation for this table.
+  YBRedisWriteOp* NewRedisWrite();
+  YBRedisReadOp* NewRedisRead();
+
+  // Create a new YSQL operation for this table.
+  YBSqlWriteOp* NewYSQLWrite();
+  YBSqlReadOp* NewYSQLRead();
 
   // Create a new comparison predicate which can be used for scanners
   // on this table.

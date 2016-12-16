@@ -17,9 +17,10 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_TEST_H_
 
+#include <memory>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
 
 #include "yb/tablet/tablet-test-util.h"
 
@@ -172,7 +173,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       std::vector<std::string> keys_locked;
 
       if (table_type_ == TableType::YSQL_TABLE_TYPE) {
-        Status s = tablet()->KeyValueBatchFromYSQLRowOps(
+        Status s = tablet()->KeyValueBatchFromKuduRowOps(
             *req.get(), &key_value_write_request, &keys_locked);
         assert(s.ok());
       } else {

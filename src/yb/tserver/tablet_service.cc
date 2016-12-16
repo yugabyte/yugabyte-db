@@ -123,6 +123,17 @@ using tablet::TabletStatusPB;
 using tablet::TransactionCompletionCallback;
 using tablet::WriteTransactionState;
 
+#define RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context)       \
+  do {                                                         \
+    Status ss = s;                                             \
+    if (PREDICT_FALSE(!ss.ok())) {                             \
+      SetupErrorAndRespond((resp)->mutable_error(), ss,        \
+                           TabletServerErrorPB::UNKNOWN_ERROR, \
+                           (context));                         \
+      return;                                                  \
+    }                                                          \
+  } while (0)
+
 namespace {
 
 // Lookup the given tablet, ensuring that it both exists and is RUNNING.
@@ -561,12 +572,7 @@ void TabletServiceAdminImpl::AlterSchema(const AlterSchemaRequestPB* req,
 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
   Status s = tablet_peer->SubmitAlterSchema(tx_state.Pass());
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
 }
 
 void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
@@ -657,6 +663,42 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   context->RespondSuccess();
 }
 
+Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
+                                           const RpcContext* rpc_context,
+                                           const Timestamp& timestamp,
+                                           tablet::MvccSnapshot* snap) {
+  // Wait for the in-flights in the snapshot to be finished.
+  // We'll use the client-provided deadline, but not if it's more than
+  // FLAGS_max_wait_for_safe_time_ms from now -- it's better to make the client retry than hold RPC
+  // threads busy.
+  //
+  // TODO(KUDU-1127): even this may not be sufficient -- perhaps we should check how long it
+  // has been since the MVCC manager was able to advance its safe time. If it has been
+  // a long time, it's likely that the majority of voters for this tablet are down
+  // and some writes are "stuck" and therefore won't be committed.
+  MonoTime client_deadline = rpc_context->GetClientDeadline();
+  // Subtract a little bit from the client deadline so that it's more likely we actually
+  // have time to send our response sent back before it times out.
+  client_deadline.AddDelta(MonoDelta::FromMilliseconds(-10));
+
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_max_wait_for_safe_time_ms));
+  if (client_deadline.ComesBefore(deadline)) {
+    deadline = client_deadline;
+  }
+
+  TRACE("Waiting for operations in snapshot to commit");
+  MonoTime before = MonoTime::Now(MonoTime::FINE);
+  RETURN_NOT_OK_PREPEND(
+      tablet->mvcc_manager()->WaitForCleanSnapshotAtTimestamp(timestamp, snap, deadline),
+      "could not wait for desired snapshot timestamp to be consistent");
+
+  uint64_t duration_usec = MonoTime::Now(MonoTime::FINE).GetDeltaSince(before).ToMicroseconds();
+  tablet->metrics()->snapshot_read_inflight_wait_duration->Increment(duration_usec);
+  TRACE("All operations in snapshot committed. Waited for $0 microseconds", duration_usec);
+  return Status::OK();
+}
+
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext* context) {
@@ -712,12 +754,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     Timestamp ts(req->propagated_timestamp());
     s = server_->clock()->Update(ts);
   }
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
 
   if (PREDICT_FALSE(req->has_write_batch())) {
     Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
@@ -749,16 +786,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       break;
     }
     case TableType::REDIS_TABLE_TYPE: {
-      unique_ptr<const WriteRequestPB> key_value_write_request;
       vector<RedisResponsePB> responses;
       s = tablet->KeyValueBatchFromRedisWriteBatch(
           *req, &key_value_write_request, &locks_held, &responses);
-      if (PREDICT_FALSE(!s.ok())) {
-        SetupErrorAndRespond(resp->mutable_error(), s,
-                             TabletServerErrorPB::UNKNOWN_ERROR,
-                             context);
-        return;
-      }
+      RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
       for (auto& redis_resp : responses) {
         *(resp->add_redis_response_batch()) = std::move(redis_resp);
       }
@@ -768,13 +799,20 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       break;
     }
     case TableType::YSQL_TABLE_TYPE: {
-      // We'll construct a new WriteRequestPB for raft replication.
-      s = tablet->KeyValueBatchFromYSQLRowOps(*req, &key_value_write_request, &locks_held);
-      if (PREDICT_FALSE(!s.ok())) {
-        SetupErrorAndRespond(resp->mutable_error(), s,
-                             TabletServerErrorPB::UNKNOWN_ERROR,
-                             context);
-        return;
+      CHECK_NE(req->ysql_write_batch_size() > 0, req->row_operations().rows().size() > 0)
+          << "YSQL write and Kudu row operations not supported in the same request";
+      if (req->ysql_write_batch_size() > 0) {
+        vector<YSQLResponsePB> responses;
+        s = tablet->KeyValueBatchFromYSQLWriteBatch(
+            *req, &key_value_write_request, &locks_held, &responses);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+        for (auto& ysql_resp : responses) {
+          *(resp->add_ysql_response_batch()) = std::move(ysql_resp);
+        }
+      } else {
+        // We'll construct a new WriteRequestPB for raft replication.
+        s = tablet->KeyValueBatchFromKuduRowOps(*req, &key_value_write_request, &locks_held);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
       }
       tx_state = unique_ptr<WriteTransactionState>(
           new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
@@ -791,11 +829,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   s = tablet_peer->SubmitWrite(tx_state.release());
 
   // Check that we could submit the write
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
 }
 
 void TabletServiceImpl::Read(const ReadRequestPB* req,
@@ -819,20 +853,45 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  CHECK_EQ(tablet->table_type(), TableType::REDIS_TABLE_TYPE)
-      << "Currently, read requests are only "
-      << "supported for Redis table type. Existing tablet's table type is: "
-      << tablet->table_type();
-  for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
-    RedisResponsePB redis_response;
-    s = tablet->HandleRedisReadRequest(redis_read_req, &redis_response);
-    if (PREDICT_FALSE(!s.ok())) {
-      SetupErrorAndRespond(resp->mutable_error(), s,
-                           TabletServerErrorPB::UNKNOWN_ERROR,
-                           context);
-      return;
+  // Do all reads in the same request with a consistent MVCC snapshot
+  tablet::MvccSnapshot snap;
+  s = TakeReadSnapshot(tablet.get(), context, server_->clock()->Now(), &snap);
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+
+  switch (tablet->table_type()) {
+    case TableType::REDIS_TABLE_TYPE: {
+      for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
+        RedisResponsePB redis_response;
+        s = tablet->HandleRedisReadRequest(snap, redis_read_req, &redis_response);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+        *(resp->add_redis_batch()) = redis_response;
+      }
+      break;
     }
-    *(resp->add_redis_batch()) = redis_response;
+    case TableType::YSQL_TABLE_TYPE: {
+      for (const YSQLReadRequestPB& ysql_read_req : req->ysql_batch()) {
+        YSQLResponsePB ysql_response;
+        gscoped_ptr<faststring> rows_data;
+        int rows_data_idx = 0;
+        s = tablet->HandleYSQLReadRequest(snap, ysql_read_req, &ysql_response, &rows_data);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+        if (rows_data.get() != nullptr) {
+          s = context->AddRpcSidecar(make_gscoped_ptr(
+              new rpc::RpcSidecar(rows_data.Pass())), &rows_data_idx);
+          RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+          ysql_response.set_rows_data_sidecar(rows_data_idx);
+        }
+        *(resp->add_ysql_batch()) = ysql_response;
+      }
+      break;
+    }
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      LOG(FATAL) << "Currently, read requests are only supported for Redis and YSQL table type. "
+                 << "Existing tablet's table type is: " << tablet->table_type();
+      break;
+    default:
+      LOG(FATAL) << "Unknown table type: " << tablet->table_type();
+      break;
   }
   RpcTransactionCompletionCallback<ReadResponsePB> rpc(context, resp);
   rpc.TransactionCompleted();
@@ -893,12 +952,7 @@ void ConsensusServiceImpl::RequestConsensusVote(const VoteRequestPB* req,
   scoped_refptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
   Status s = consensus->RequestVote(req, resp);
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
   context->RespondSuccess();
 }
 
@@ -957,12 +1011,7 @@ void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* r
   Status s = consensus->StartElection(
       consensus::Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE,
       req->has_committed_index(), req->committed_index());
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
   context->RespondSuccess();
 }
 
@@ -981,12 +1030,7 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
   scoped_refptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
   Status s = consensus->StepDown(req, resp);
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
   LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
             << TabletServerErrorPB::Code_Name(resp->error().code());
   context->RespondSuccess();
@@ -1018,12 +1062,7 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
     return;
   }
   Status s = consensus->GetLastOpId(req->opid_type(), resp->mutable_opid());
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
   context->RespondSuccess();
 }
 
@@ -1060,12 +1099,7 @@ void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapReques
     return;
   }
   Status s = tablet_manager_->StartRemoteBootstrap(*req);
-  if (!s.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), s,
-                         TabletServerErrorPB::UNKNOWN_ERROR,
-                         context);
-    return;
-  }
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
   context->RespondSuccess();
 }
 
@@ -1789,37 +1823,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
   }
 
   tablet::MvccSnapshot snap;
-
-  // Wait for the in-flights in the snapshot to be finished.
-  // We'll use the client-provided deadline, but not if it's more than
-  // FLAGS_max_wait_for_safe_time_ms from now -- it's better to make the client retry than hold RPC
-  // threads busy.
-  //
-  // TODO(KUDU-1127): even this may not be sufficient -- perhaps we should check how long it
-  // has been since the MVCC manager was able to advance its safe time. If it has been
-  // a long time, it's likely that the majority of voters for this tablet are down
-  // and some writes are "stuck" and therefore won't be committed.
-  MonoTime client_deadline = rpc_context->GetClientDeadline();
-  // Subtract a little bit from the client deadline so that it's more likely we actually
-  // have time to send our response sent back before it times out.
-  client_deadline.AddDelta(MonoDelta::FromMilliseconds(-10));
-
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
-  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_max_wait_for_safe_time_ms));
-  if (client_deadline.ComesBefore(deadline)) {
-    deadline = client_deadline;
-  }
-
-  TRACE("Waiting for operations in snapshot to commit");
-  MonoTime before = MonoTime::Now(MonoTime::FINE);
-  RETURN_NOT_OK_PREPEND(
-      tablet->mvcc_manager()->WaitForCleanSnapshotAtTimestamp(
-          tmp_snap_timestamp, &snap, deadline),
-      "could not wait for desired snapshot timestamp to be consistent");
-
-  uint64_t duration_usec = MonoTime::Now(MonoTime::FINE).GetDeltaSince(before).ToMicroseconds();
-  tablet->metrics()->snapshot_read_inflight_wait_duration->Increment(duration_usec);
-  TRACE("All operations in snapshot committed. Waited for $0 microseconds", duration_usec);
+  RETURN_NOT_OK(TakeReadSnapshot(tablet.get(), rpc_context, tmp_snap_timestamp, &snap));
 
   tablet::Tablet::OrderMode order;
   switch (scan_pb.order_mode()) {

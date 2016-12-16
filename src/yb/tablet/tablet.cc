@@ -46,6 +46,7 @@
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
 #include "yb/common/timestamp.h"
+#include "yb/common/ysql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -142,6 +143,7 @@ using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
 using yb::docdb::YSQLWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
+using yb::docdb::KuduWriteOperation;
 
 // Make sure RocksDB does not disappear while we're using it. This is used at the top level of
 // functions that perform RocksDB operations (directly or indirectly). Once a function is using
@@ -881,7 +883,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 
 Status Tablet::KeyValueBatchFromRedisWriteBatch(
     const WriteRequestPB& redis_write_request,
-    unique_ptr<const WriteRequestPB>* kudu_write_batch_pb,
+    unique_ptr<const WriteRequestPB>* redis_write_batch_pb,
     vector<string> *keys_locked,
     vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
@@ -891,7 +893,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     doc_ops.emplace_back(new RedisWriteOperation(req));
   }
   WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
-  kudu_write_batch_pb->reset(write_request_copy);
+  redis_write_batch_pb->reset(write_request_copy);
   docdb::StartDocWriteTransaction(rocksdb_.get(), &doc_ops, &shared_lock_manager_,
                                   keys_locked, write_request_copy->mutable_write_batch());
   for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
@@ -903,23 +905,72 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::HandleRedisReadRequest(const RedisReadRequestPB redis_read_request,
+Status Tablet::HandleRedisReadRequest(const MvccSnapshot &snap,
+                                      const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   docdb::RedisReadOperation doc_op(redis_read_request);
-  // Now is a safe time to use.
-  // Case 1: No leader change between write and read: Now is more than the write TS (decided when
-  // appending to raft log)
-  // Case 2: Leader has changed: Given that the operation has committed, the Replicate messages
-  // were transferred to majority replicas, updating their clock to >= write TS. Even if leader
-  // changes, the new leader's Now() is guaranteed to be >= write TS.
-  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), clock_->Now()));
+  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), snap.LastCommittedTimestamp()));
   *response = std::move(doc_op.response());
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromYSQLRowOps(const WriteRequestPB &kudu_write_request_pb,
+Status Tablet::KeyValueBatchFromYSQLWriteBatch(
+    const WriteRequestPB& ysql_write_request,
+    unique_ptr<const WriteRequestPB>* ysql_write_batch_pb,
+    vector<string> *keys_locked,
+    vector<YSQLResponsePB>* responses) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
+  vector<unique_ptr<DocOperation>> doc_ops;
+
+  for (size_t i = 0; i < ysql_write_request.ysql_write_batch_size(); i++) {
+    const YSQLWriteRequestPB& req = ysql_write_request.ysql_write_batch(i);
+    // TODO(Robert): verify that all key column values are provided
+    doc_ops.emplace_back(new YSQLWriteOperation(req));
+  }
+  WriteRequestPB* const write_request_copy = new WriteRequestPB(ysql_write_request);
+  ysql_write_batch_pb->reset(write_request_copy);
+  docdb::StartDocWriteTransaction(rocksdb_.get(), &doc_ops, &shared_lock_manager_,
+                                  keys_locked, write_request_copy->mutable_write_batch());
+  for (size_t i = 0; i < ysql_write_request.ysql_write_batch_size(); i++) {
+    responses->emplace_back((down_cast<YSQLWriteOperation*>(doc_ops[i].get()))->response());
+  }
+  write_request_copy->clear_row_operations();
+
+  return Status::OK();
+}
+
+Status Tablet::HandleYSQLReadRequest(const MvccSnapshot &snap,
+                                     const YSQLReadRequestPB& ysql_read_request,
+                                     YSQLResponsePB* response,
+                                     gscoped_ptr<faststring>* rows_data) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
+  // TODO(Robert): verify that all key column values are provided
+  docdb::YSQLReadOperation doc_op(ysql_read_request);
+
+  vector<ColumnId> column_ids;
+  for (const auto column_id : ysql_read_request.column_ids()) {
+    column_ids.emplace_back(column_id);
+  }
+  YSQLRowBlock rowblock(metadata_->schema(), column_ids);
+  const Status s = doc_op.Execute(rocksdb_.get(), snap.LastCommittedTimestamp(), &rowblock);
+  if (!s.ok()) {
+    response->set_status(YSQLResponsePB::YSQL_STATUS_RUNTIME_ERROR);
+    response->set_error_message(s.message().ToString());
+    return Status::OK();
+  }
+
+  *response = std::move(doc_op.response());
+  response->set_status(YSQLResponsePB::YSQL_STATUS_OK);
+  rows_data->reset(new faststring());
+  rowblock.Serialize(ysql_read_request.client(), rows_data->get());
+  return Status::OK();
+}
+
+Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_request_pb,
                                            unique_ptr<const WriteRequestPB> *kudu_write_batch_pb,
                                            vector<string> *keys_locked) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
@@ -983,7 +1034,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
     switch (row_op.type) {
       case RowOperationsPB_Type_DELETE: {
         doc_ops.emplace_back(
-            new YSQLWriteOperation(DocPath(encoded_doc_key),
+            new KuduWriteOperation(DocPath(encoded_doc_key),
             PrimitiveValue(ValueType::kTombstone)));
         break;
       }
@@ -994,7 +1045,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           CHECK(decoder.is_update());
           RowChangeListDecoder::DecodedUpdate update;
           RETURN_NOT_OK(decoder.DecodeNext(&update));
-          doc_ops.emplace_back(new YSQLWriteOperation(
+          doc_ops.emplace_back(new KuduWriteOperation(
               DocPathForColumn(encoded_doc_key, update.col_id),
               update.null ? PrimitiveValue(ValueType::kTombstone)
                           : PrimitiveValue::FromKuduValue(
@@ -1007,7 +1058,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
         // Insert a top-level overwrite of the entire object.
         // TODO: for Cassandra-style inserts, which are really upserts, we probably should not
         //       overwrite/nullify columns that are not explicitly mentioned in the SQL statement.
-        doc_ops.emplace_back(new YSQLWriteOperation(
+        doc_ops.emplace_back(new KuduWriteOperation(
             DocPath(encoded_doc_key), PrimitiveValue(ValueType::kObject)));
         for (int i = schema()->num_key_columns(); i < schema()->num_columns(); i++) {
           const ColumnSchema &col_schema = schema()->column(i);
@@ -1026,7 +1077,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
           } else {
             column_value = PrimitiveValue::FromKuduValue(data_type, contiguous_row.CellSlice(i));
           }
-          doc_ops.emplace_back(new YSQLWriteOperation(DocPathForColumn(
+          doc_ops.emplace_back(new KuduWriteOperation(DocPathForColumn(
               encoded_doc_key, schema()->column_id(i)), column_value));
         }
         break;

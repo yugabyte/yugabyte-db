@@ -24,11 +24,14 @@
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/ysql_protocol.pb.h"
+#include "yb/common/ysql_rowblock.h"
 
 namespace yb {
 namespace client {
 
 using std::shared_ptr;
+using std::unique_ptr;
 
 RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
   switch (type) {
@@ -73,11 +76,27 @@ int64_t YBOperation::SizeInBuffer() const {
 
 // Insert -----------------------------------------------------------------------
 
-YBInsert::YBInsert(const shared_ptr<YBTable>& table)
-  : YBOperation(table) {
+YBInsert::YBInsert(const shared_ptr<YBTable>& table) : YBOperation(table) {
 }
 
-YBInsert::~YBInsert() {}
+YBInsert::~YBInsert() {
+}
+
+// Update -----------------------------------------------------------------------
+
+YBUpdate::YBUpdate(const shared_ptr<YBTable>& table) : YBOperation(table) {
+}
+
+YBUpdate::~YBUpdate() {
+}
+
+// Delete -----------------------------------------------------------------------
+
+YBDelete::YBDelete(const shared_ptr<YBTable>& table) : YBOperation(table) {
+}
+
+YBDelete::~YBDelete() {
+}
 
 // YBRedisWriteOp -----------------------------------------------------------------
 
@@ -123,21 +142,118 @@ RedisResponsePB* YBRedisReadOp::mutable_response() {
   return redis_response_.get();
 }
 
-// Update -----------------------------------------------------------------------
-
-YBUpdate::YBUpdate(const shared_ptr<YBTable>& table)
-  : YBOperation(table) {
+// YBSqlOp -----------------------------------------------------------------
+YBSqlOp::YBSqlOp(const shared_ptr<YBTable>& table) : YBOperation(table) {
 }
 
-YBUpdate::~YBUpdate() {}
-
-// Delete -----------------------------------------------------------------------
-
-YBDelete::YBDelete(const shared_ptr<YBTable>& table)
-  : YBOperation(table) {
+YBSqlOp::~YBSqlOp() {
 }
 
-YBDelete::~YBDelete() {}
+// YBSqlWriteOp -----------------------------------------------------------------
+
+YBSqlWriteOp::YBSqlWriteOp(const shared_ptr<YBTable>& table)
+    : YBSqlOp(table),
+      ysql_write_request_(new YSQLWriteRequestPB()),
+      ysql_response_(new YSQLResponsePB()) {
+}
+
+YBSqlWriteOp::~YBSqlWriteOp() {}
+
+std::string YBSqlWriteOp::ToString() const {
+  return "YSQL_WRITE " + ysql_write_request_->DebugString();
+}
+
+Status SetColumn(YBPartialRow* row, const int32 column_id, const YSQLValuePB& value) {
+  const auto column_idx = row->schema()->find_column_by_id(ColumnId(column_id));
+  CHECK_NE(column_idx, Schema::kColumnNotFound);
+  CHECK(value.has_datatype());
+  switch (value.datatype()) {
+    case INT8:
+      return value.has_int8_value() ?
+          row->SetInt8(column_idx, static_cast<int8_t>(value.int8_value())) :
+          row->SetNull(column_idx);
+    case INT16:
+      return value.has_int16_value() ?
+          row->SetInt16(column_idx, static_cast<int16_t>(value.int32_value())) :
+          row->SetNull(column_idx);
+    case INT32:
+      return value.has_int32_value() ?
+          row->SetInt32(column_idx, value.int32_value()) : row->SetNull(column_idx);
+    case INT64:
+      return value.has_int64_value() ?
+          row->SetInt64(column_idx, value.int64_value()) : row->SetNull(column_idx);
+    case FLOAT:
+      return value.has_float_value() ?
+          row->SetFloat(column_idx, value.float_value()) : row->SetNull(column_idx);
+    case DOUBLE:
+      return value.has_double_value() ?
+          row->SetDouble(column_idx, value.double_value()) : row->SetNull(column_idx);
+    case STRING:
+      return value.has_string_value() ?
+          row->SetString(column_idx, Slice(value.string_value())) : row->SetNull(column_idx);
+    case BOOL:
+      return value.has_bool_value() ?
+          row->SetBool(column_idx, value.bool_value()) : row->SetNull(column_idx);
+    case TIMESTAMP:
+      return value.has_timestamp_value() ?
+          row->SetTimestamp(column_idx, value.timestamp_value()) : row->SetNull(column_idx);
+
+    case UINT8:  FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case UINT32: FALLTHROUGH_INTENDED;
+    case UINT64: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(ERROR) << "Internal error: unsupported datatype " << value.datatype();
+  return STATUS(RuntimeError, "unsupported datatype");
+}
+
+Status YBSqlWriteOp::SetKey() {
+  // Set the row key from the hashed columns
+  for (const auto& column_value : ysql_write_request_->hashed_column_values()) {
+    RETURN_NOT_OK(SetColumn(mutable_row(), column_value.column_id(), column_value.value()));
+  }
+  return Status::OK();
+}
+
+// YBSqlReadOp -----------------------------------------------------------------
+
+YBSqlReadOp::YBSqlReadOp(const shared_ptr<YBTable>& table)
+    : YBSqlOp(table),
+      ysql_read_request_(new YSQLReadRequestPB()),
+      ysql_response_(new YSQLResponsePB()),
+      rows_data_(new string()) {
+}
+
+YBSqlReadOp::~YBSqlReadOp() {}
+
+std::string YBSqlReadOp::ToString() const {
+  return "YSQL_READ " + ysql_read_request_->DebugString();
+}
+
+Status YBSqlReadOp::SetKey() {
+  // Set the row key from the hashed columns
+  for (const auto& column_value : ysql_read_request_->hashed_column_values()) {
+    RETURN_NOT_OK(SetColumn(mutable_row(), column_value.column_id(), column_value.value()));
+  }
+  return Status::OK();
+}
+
+YSQLRowBlock* YBSqlReadOp::GetRowBlock() const {
+  vector<ColumnId> column_ids;
+  for (const auto column_id : ysql_read_request_->column_ids()) {
+    column_ids.emplace_back(column_id);
+  }
+  unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(*table_->schema().schema_, column_ids));
+  Slice data(*rows_data_);
+  rowblock->Deserialize(ysql_read_request_->client(), &data);
+  return rowblock.release();
+}
 
 }  // namespace client
 }  // namespace yb

@@ -54,9 +54,12 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES ysql_protocol.proto)
+set(YSQL_PROTOCOL_PROTO_LIBS
+  yb_common_proto
+  protobuf)
 ADD_EXPORTABLE_LIBRARY(ysql_protocol_proto
   SRCS ${YSQL_PROTOCOL_PROTO_SRCS}
-  DEPS protobuf
+  DEPS ${YSQL_PROTOCOL_PROTO_LIBS}
   NONLINK_DEPS ${YSQL_PROTOCOL_PROTO_TGTS})
 
 set(COMMON_SRCS
@@ -77,7 +80,9 @@ set(COMMON_SRCS
   schema.cc
   timestamp.cc
   types.cc
-  wire_protocol.cc)
+  wire_protocol.cc
+  ysql_value.cc
+  ysql_rowblock.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.

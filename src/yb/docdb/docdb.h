@@ -70,8 +70,9 @@ class DocWriteBatch {
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
-  Status SetPrimitive(const DocPath& doc_path, const Value& value, Timestamp timestamp);
-  Status DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp);
+  Status SetPrimitive(
+      const DocPath& doc_path, const Value& value, Timestamp timestamp = Timestamp::kMax);
+  Status DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp = Timestamp::kMax);
 
   std::string ToDebugString();
   void Clear();
