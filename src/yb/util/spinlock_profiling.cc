@@ -173,9 +173,12 @@ void ContentionStacks::Flush(std::stringstream* out, int64_t* dropped) {
   StackTrace t;
   int64_t cycles;
   int64_t count;
+  *out << "Format: Cycles\tCount @ Call Stack" << std::endl;
   while (g_contention_stacks->CollectSample(&iterator, &t, &count, &cycles)) {
     *out << cycles << "\t" << count
          << " @ " << t.ToHexString(StackTrace::NO_FIX_CALLER_ADDRESSES)
+         << "\n" << t.Symbolize()
+         << "\n-----------"
          << std::endl;
   }
 

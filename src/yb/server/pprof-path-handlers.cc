@@ -29,15 +29,16 @@
 
 #include "yb/server/pprof-path-handlers.h"
 
-#include <fstream>
-#include <glog/logging.h>
 #include <gperftools/heap-profiler.h>
 #include <gperftools/malloc_extension.h>
 #include <gperftools/profiler.h>
-#include <string>
 #include <sys/stat.h>
+
+#include <fstream>
+#include <string>
 #include <vector>
 
+#include <glog/logging.h>
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
@@ -171,19 +172,14 @@ static void PprofContentionHandler(const Webserver::WebRequest& req, stringstrea
   *output << "sampling period = 1" << endl;
   *output << "cycles/second = " << base::CyclesPerSecond() << endl;
 
-  MonoTime end = MonoTime::Now(MonoTime::FINE);
-  end.AddDelta(MonoDelta::FromSeconds(seconds));
   StartSynchronizationProfiling();
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(end)) {
-    SleepFor(MonoDelta::FromMilliseconds(500));
-    FlushSynchronizationProfile(output, &discarded_samples);
-  }
+  SleepFor(MonoDelta::FromSeconds(seconds));
   StopSynchronizationProfiling();
   FlushSynchronizationProfile(output, &discarded_samples);
 
   // pprof itself ignores this value, but we can at least look at it in the textual
   // output.
-  *output << "discarded samples = " << discarded_samples << std::endl;
+  *output << "Discarded samples = " << discarded_samples << std::endl;
 
 #if defined(__linux__)
   // procfs only exists on Linux.
