@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import TopNavBarContainer from '../../containers/dashboard/TopNavBarContainer';
+import TopNavBarContainer from '../../../containers/common/nav_bar/TopNavBarContainer';
 import SideNavBar from './SideNavBar';
-import './stylesheets/NavBar.css'
+import './stylesheets/NavBar.scss'
 
 export default class NavBar extends Component {
 	render() {
