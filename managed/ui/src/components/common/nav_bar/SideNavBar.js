@@ -1,12 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Link, IndexLink, withRouter } from 'react-router'
-import './stylesheets/SideNavBar.css'
+import { Link, IndexLink, withRouter } from 'react-router';
+import './stylesheets/SideNavBar.scss';
 
 class NavLink extends Component {
   render () {
-    const { router, index, to, children, icon, ...props } = this.props
+    const { router, index, to, children, icon, ...props } = this.props;
 
     // Added by withRouter in React Router 3.0.
     delete props.params;
@@ -23,7 +23,7 @@ class NavLink extends Component {
   }
 }
 
-NavLink = withRouter(NavLink)
+NavLink = withRouter(NavLink);
 
 
 export default class SideNavBar extends Component {
@@ -36,23 +36,28 @@ export default class SideNavBar extends Component {
             <div id="sidebar-menu" className="main_menu_side hidden-print main_menu">
               <div className="menu_section">
                 <ul className="nav side-menu">
-                  <NavLink to="/" index={true} icon="fa fa-home">
-                     Home
+                  <NavLink to="/" index={true} icon="fa fa-dashboard">
+                    Dashboard
                   </NavLink>
                   <NavLink to="/universes" icon="fa fa-globe">
-                     Universes
-                  </NavLink>
-                  <NavLink to="/alerts" icon="fa fa-bell-o">
-                     Alerts
+                    Universes
                   </NavLink>
                   <NavLink to="metrics" icon="fa fa-line-chart">
                     Metrics
                   </NavLink>
-                  <NavLink to="docs" icon="fa fa-file-text-o">
-                     Docs
+                  <NavLink to="/tasks" icon="fa fa-list">
+                    Tasks
                   </NavLink>
-                  <NavLink to="support" icon="fa fa-phone">
-                    Support
+                  <NavLink to="/alerts" icon="fa fa-bell-o">
+                    Alerts
+                  </NavLink>
+                  <NavLink to="/config" icon="fa fa-cloud-upload">
+                    Configuration
+                  </NavLink>
+                </ul>
+                <ul className="nav side-menu position-bottom">
+                  <NavLink to="support" icon="fa fa-question-circle-o">
+                    Help
                   </NavLink>
                 </ul>
               </div>

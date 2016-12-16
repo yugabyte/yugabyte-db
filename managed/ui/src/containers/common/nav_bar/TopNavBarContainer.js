@@ -2,8 +2,8 @@
 
 import { connect } from 'react-redux';
 
-import { TopNavBar } from '../../components/dashboard';
-import { logout, logoutSuccess, logoutFailure } from '../../actions/customers';
+import TopNavBar from '../../../components/common/nav_bar/TopNavBar';
+import { logout, logoutSuccess, logoutFailure } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {

@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import NavBar from '../components/dashboard/NavBar';
+import NavBar from '../components/common/nav_bar/NavBar';
 import AuthenticatedComponentContainer from '../containers/AuthenticatedComponentContainer';
 
 export default class AuthenticatedComponent extends Component {

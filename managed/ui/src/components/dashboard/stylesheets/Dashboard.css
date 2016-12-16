@@ -2,7 +2,6 @@
 
 .dashboard-container {
     position: inherit;
-    border-left: 1px solid #e7e7e7;
     background-color: transparent;
     min-height: 100%;
     padding: 0 15px;

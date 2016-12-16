@@ -57,7 +57,7 @@ export default (store) => {
           <IndexRoute component={ListUniverse} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
         </Route>
-        <Route path="/alerts" component={Alerts} />
+        <Route path="/tasks" component={Alerts} />
         <Route path="/metrics" component={Metrics} />
         <Route path="/setup_datacenter" component={SetupDataCenter} />
       </Route>
