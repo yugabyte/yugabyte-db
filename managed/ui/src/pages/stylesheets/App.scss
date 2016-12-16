@@ -118,7 +118,7 @@ ul {
 }
 
 .container-body {
-    margin-left: 140px;
+    margin-left: 90px;
     margin-top: 40px;
     padding-top: 25px;
 }
@@ -180,8 +180,6 @@ input[type="radio"] {
   margin-bottom: 10px;
   padding: 10px 17px;
   display: inline-block;
-  background: #fff;
-  border: 1px solid #E6E9ED;
   -webkit-column-break-inside: avoid;
   -moz-column-break-inside: avoid;
   column-break-inside: avoid;
@@ -193,7 +191,6 @@ input[type="radio"] {
   transition: all .2s ease;
 }
 .x_title {
-  border-bottom: 2px solid #E6E9ED;
   padding: 1px 5px 6px;
   margin-bottom: 10px;
 }

@@ -1,6 +1,22 @@
 /* Copyright (c) YugaByte, Inc. */
 
+$YB_TEXT_COLOR: #333;
+
 $YB_ORANGE: #CD6500;
+
+$YB_HOVER_BACKGROUND_COLOR: #fff;
 
 $YB_SUCCESS_COLOR: #2a0;
 $YB_FAIL_COLOR: #c20;
+
+.yb-orange {
+  color: $YB_ORANGE
+}
+
+.yb-success-color {
+  color: $YB_SUCCESS_COLOR;
+}
+
+.yb-fail-color {
+  color: $YB_FAIL_COLOR;
+}

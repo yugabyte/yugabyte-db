@@ -1,46 +1,34 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { ListGroup, ListGroupItem} from 'react-bootstrap';
-import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
+import { ListGroup, ListGroupItem } from 'react-bootstrap';
+import { Link } from 'react-router';
+import { isValidObject, isValidArray } from '../../utils/ObjectUtils';
 import moment from 'moment';
 
-import './stylesheets/TaskAlerts.css'
-
-class ShowMoreString extends Component {
-  render() {
-    const {count} = this.props;
-    if (isNaN(count) || count <= 0) {
-      return <span/>;
-    }
-    return (<p>Show { count } more <i className="fa fa-chevron-right"></i></p>);
-  }
-}
+import './stylesheets/TaskAlerts.scss'
 
 class AlertItem extends Component {
   render() {
     const {taskInfo} = this.props;
-    const currentStatus =  taskInfo.success === true ?
-                             <i className='fa fa-check-square-o fa-fw'></i>
-                               :
-                             <i className='fa fa-times fa-fw'></i>;
+    const statusText = taskInfo.success ? 'completed' : 'failed';
+    const statusVerbClassName = taskInfo.success ? 'yb-success-color' : 'yb-fail-color';
+    const statusIconClassName = taskInfo.success ? 'fa-check yb-success-color' : 'fa-warning yb-fail-color';
     var timeStampDifference = moment(taskInfo.createTime).fromNow();
-    var [universeName, currentTask] = taskInfo.title.split(":")
+    var [currentTask, universeName] = taskInfo.title.split(":")
     return (
-      <ListGroup>
-        <ListGroupItem className='task-alerts-cell-container'>
-          <div className='task-alerts-cell-head'>
-            {currentStatus}
-            {currentTask}
-            <div className="task-alerts-universe-name">
-              {universeName}
-            </div>
-          </div>
-          <div className='task-alerts-cell-body'>
-            {timeStampDifference}
-          </div>
-        </ListGroupItem>
-      </ListGroup>
+      <div className='task-cell'>
+        <div className='icon icon-hang-left'>
+          <i className={`fa ${statusIconClassName}`}></i>
+        </div>
+        <div className='task-name'>
+          {currentTask} <span className="task-universe-name">{universeName}</span>
+        </div>
+        <div className='task-status'>
+          <span className={'task-status-verb ' + statusVerbClassName}>{statusText}</span>
+          {timeStampDifference}
+        </div>
+      </div>
     )
   }
 }
@@ -73,12 +61,16 @@ export default class TaskAlerts extends Component {
       }
     }
 
-    var showMoreString = <ShowMoreString count={taskListLength - numOfElementsToDisplay}/>;
     return (
-      <div className="task-alerts-list-container">
-        <div className="task-list-heading"><i className="fa fa-bars"></i> Tasks</div>
+      <div className="task-list-container">
+        <div className="task-list-heading">
+          <div className="icon icon-hang-left">
+            <i className="fa fa-list"></i>
+          </div>
+          Tasks
+        </div>
         {tasksDisplayList}
-        <div className="task-alerts-show-more">{showMoreString}</div>
+        <Link to="tasks" className="task-cell">Open Tasks</Link>
       </div>
     )
   }
