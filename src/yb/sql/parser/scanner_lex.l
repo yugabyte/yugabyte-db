@@ -1,9 +1,13 @@
 %{ /* -*- C++ -*- */
-//--------------------------------------------------------------------------------------------------
-// NOTE: All entities in this modules are copies of PostgreSql's code. We made some minor changes
-// to avoid lint errors such as using '{' for if blocks and change the comment style from '/**/'
-// to '//'.
-//--------------------------------------------------------------------------------------------------
+/*--------------------------------------------------------------------------------------------------
+ * NOTE:
+ * - All entities in this modules are copies of PostgreSql's code. We made some minor changes
+ *   to avoid lint errors such as using '{' for if blocks.
+ * - Do not use c++ commenting style (//) here because MAC Flex 2.6.2 has problem processing it.
+ *   Example: Flex raise error for the following comment
+ *            // processing a single quote (') in c++ comment within a rule action.
+ * -------------------------------------------------------------------------------------------------
+ */
 
 /*--------------------------------------------------------------------------------------------------
  * Portions Copyright (c) YugaByte, Inc.
@@ -34,7 +38,7 @@
 #include "yb/sql/parser/scanner_util.h"
 #include "yb/util/logging.h"
 
-// Not including unistd.
+/* Not including unistd. */
 #define YY_NO_UNISTD_H
 
 using namespace std;
@@ -44,20 +48,21 @@ using namespace yb::sql;
 #define YY_DECL \
   GramProcessor::symbol_type LexProcessor::yylex(const ScanState& scan_state)
 
-// yyterminate is called to end yylex.
+/* yyterminate is called to end yylex. */
 #define yyterminate() return GramProcessor::make_END(cursor_)
 
-// YY_USER_ACTION is called to advance location after each time a pattern is matched.
+/* YY_USER_ACTION is called to advance location after each time a pattern is matched. */
 #define YY_USER_ACTION cursor_.columns(yyleng);
 
 #define yyerror(msg) ScanError(msg)
 
-// Each call to yylex must set yylloc to the location of the found token. When we parse a token
-// that requires multiple lexer rules to process, this should be done in the first such rule, else
-// yylloc will point into the middle of the token.
+/* Each call to yylex must set yylloc to the location of the found token. When we parse a token
+ * that requires multiple lexer rules to process, this should be done in the first such rule, else
+ * yylloc will point into the middle of the token.
+ */
 #define SET_YYLLOC() (token_loc_ = cursor_)
 
-// Advance yylloc by the given number of bytes.
+/* Advance yylloc by the given number of bytes. */
 #define ADVANCE_YYLLOC(delta) AdvanceCursor(delta)
 %}
 
@@ -332,8 +337,9 @@ other                     .
 %%
 
 %{
-  // FLEX initial code: The following code block is executed every time yylex is called.
-  // Reset the current scanning locations each time yylex is called to match new pattern.
+  /* FLEX initial code: The following code block is executed every time yylex is called.
+   * Reset the current scanning locations each time yylex is called to match new pattern.
+   */
   cursor_.step();
 %}
 
@@ -342,22 +348,22 @@ other                     .
 }
 
 {whitespace} {
-  // Increase line number and ignore this token.
+  /* Increase line number and ignore this token. */
   CountNewlineInToken(yytext);
 }
 
 {xcstart} {
-  // Save the location where token starts.
+  /* Save the location where token starts. */
   SET_YYLLOC();
   xcdepth_ = 0;
   BEGIN(xc);
-  // Put back any characters past slash-star; see above.
+  /* Put back any characters past slash-star; see above. */
   yyless(2);
 }
 
 <xc>{xcstart} {
   xcdepth_++;
-  // Put back any characters past slash-star; see above.
+  /* Put back any characters past slash-star; see above. */
   yyless(2);
 }
 
@@ -370,15 +376,15 @@ other                     .
 }
 
 <xc>{xcinside} {
-  // Ignore.
+  /* Ignore. */
 }
 
 <xc>{op_chars} {
-  // Ignore.
+  /* Ignore. */
 }
 
 <xc>\*+ {
-  // Ignore.
+  /* Ignore. */
 }
 
 <xc><<EOF>> {
@@ -386,11 +392,12 @@ other                     .
 }
 
 {xbstart} {
-  // Binary bit type.
-  // At some point we should simply pass the string
-  // forward to the parser and label it there.
-  // In the meantime, place a leading "b" on the string
-  // to mark it for the input routine as a binary string.
+  /* Binary bit type.
+   * At some point we should simply pass the string
+   * forward to the parser and label it there.
+   * In the meantime, place a leading "b" on the string
+   * to mark it for the input routine as a binary string.
+   */
   SET_YYLLOC();
   BEGIN(xb);
   startlit();
@@ -411,7 +418,7 @@ other                     .
 
 <xh>{quotecontinue} |
 <xb>{quotecontinue} {
-  // Increase line number and ignore this token.
+  /* Increase line number and ignore this token. */
   CountNewlineInToken(yytext);
 }
 
@@ -444,9 +451,10 @@ other                     .
 }
 
 {xnstart} {
-  // National character.
-  // We will pass this along as a normal character string,
-  // but preceded with an internally-generated "NCHAR".
+  /* National character.
+   * We will pass this along as a normal character string,
+   * but preceded with an internally-generated "NCHAR".
+   */
   SET_YYLLOC();
   yyless(1);        /* eat only 'n' this time */
 
@@ -496,7 +504,7 @@ other                     .
   yyless(1);
   BEGIN(INITIAL);
 
-  // Check that the data remains valid if it might have been made invalid by unescaping any chars.
+  /* Check that data remains valid if it might have been made invalid by unescaping any chars. */
   if (saw_non_ascii_)
     pg_verify_mbstr_len(literalbuf_, literallen_, false);
   return GramProcessor::make_SCONST(ScanLiteral(), cursor_);
@@ -511,15 +519,16 @@ other                     .
 }
 
 <xusend>{whitespace} {
-  // Stay in xusend state over whitespace.
-  // Increase line number and ignore this token.
+  /* Stay in xusend state over whitespace.
+   * Increase line number and ignore this token.
+   */
   CountNewlineInToken(yytext);
 }
 
 <xusend>{other} |
 <xusend>{xustop1} |
 <xusend><<EOF>> {
-  // Increase line number.
+  /* Increase line number. */
   CountNewlineInToken(yytext);
 
   /* no UESCAPE after the quote, throw back everything */
@@ -530,7 +539,7 @@ other                     .
 }
 
 <xusend>{xustop2} {
-  // Increase line number.
+  /* Increase line number. */
   CountNewlineInToken(yytext);
 
   /* found UESCAPE after the end quote */
@@ -627,7 +636,7 @@ other                     .
   }
 }
 <xq,xe,xus>{quotecontinue} {
-  // Increase line number and ignore this token.
+  /* Increase line number and ignore this token. */
   CountNewlineInToken(yytext);
 }
 
@@ -660,9 +669,10 @@ other                     .
     BEGIN(INITIAL);
     return GramProcessor::make_SCONST(ScanLiteral(), cursor_);
   } else {
-    // When we fail to match $...$ to dolqstart_, transfer
-    // the $... part to the output, but put back the final
-    // $ for rescanning.  Consider $delim$...$junk$delim$
+    /* When we fail to match $...$ to dolqstart_, transfer
+     * the $... part to the output, but put back the final
+     * $ for rescanning.  Consider $delim$...$junk$delim$
+     */
     addlit(yytext, yyleng-1);
     yyless(yyleng-1);
   }
@@ -714,15 +724,16 @@ other                     .
 }
 
 <xuiend>{whitespace} {
-  // stay in xuiend state over whitespace.
-  // Increase line number and ignore this token.
+  /* stay in xuiend state over whitespace.
+   * Increase line number and ignore this token.
+   */
   CountNewlineInToken(yytext);
 }
 
 <xuiend>{other} |
 <xuiend>{xustop1} |
 <xuiend><<EOF>> {
-  // Increase line number.
+  /* Increase line number. */
   CountNewlineInToken(yytext);
 
   /* no UESCAPE after the quote, throw back everything */
@@ -739,7 +750,7 @@ other                     .
 }
 
 <xuiend>{xustop2} {
-  // Increase line number.
+  /* Increase line number. */
   CountNewlineInToken(yytext);
 
   /* found UESCAPE after the end quote */
@@ -771,10 +782,10 @@ other                     .
 {xufailed} {
   SET_YYLLOC();
 
-  // Throw back all but the initial u/U.
+  /* Throw back all but the initial u/U. */
   yyless(1);
 
-  // Treat it as {identifier}. Convert to lower-case and create IDENT totken.
+  /* Treat it as {identifier}. Convert to lower-case and create IDENT totken. */
   const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
@@ -827,10 +838,11 @@ other                     .
 }
 
 {operator} {
-  // Check for embedded slash-star or dash-dash; those
-  // are comment starts, so operator must stop there.
-  // Note that slash-star or dash-dash at the first
-  // character will match a prior rule, not this one.
+  /* Check for embedded slash-star or dash-dash; those
+   * are comment starts, so operator must stop there.
+   * Note that slash-star or dash-dash at the first
+   * character will match a prior rule, not this one.
+   */
   int   nchars = yyleng;
   char *slashstar = strstr(yytext, "/*");
   char *dashdash = strstr(yytext, "--");
@@ -846,12 +858,13 @@ other                     .
     nchars = slashstar - yytext;
   }
 
-  // For SQL compatibility, '+' and '-' cannot be the
-  // last char of a multi-char operator unless the operator
-  // contains chars that are not in SQL operators.
-  // The idea is to lex '=-' as two operators, but not
-  // to forbid operator names like '?-' that could not be
-  // sequences of SQL operators.
+  /* For SQL compatibility, '+' and '-' cannot be the
+   * last char of a multi-char operator unless the operator
+   * contains chars that are not in SQL operators.
+   * The idea is to lex '=-' as two operators, but not
+   * to forbid operator names like '?-' that could not be
+   * sequences of SQL operators.
+   */
   while (nchars > 1 && (yytext[nchars-1] == '+' || yytext[nchars-1] == '-')) {
     int   ic;
 
@@ -869,19 +882,21 @@ other                     .
   if (nchars < yyleng) {
     /* Strip the unwanted chars from the token */
     yyless(nchars);
-    // If what we have left is only one char, and it's
-    // one of the characters matching "self", then
-    // return it as a character token the same way
-    // that the "self" rule would have.
+    /* If what we have left is only one char, and it's
+     * one of the characters matching "self", then
+     * return it as a character token the same way
+     * that the "self" rule would have.
+     */
     if (nchars == 1 && strchr(",()[].;:+-*/%^<>=", yytext[0])) {
       return GramProcessor::symbol_type(GramProcessor::token::yytokentype(yytext[0]), cursor_);
     }
   }
 
-  // Complain if operator is too long.  Unlike the case
-  // for identifiers, we make this an error not a notice-
-  // and-truncate, because the odds are we are looking at
-  // a syntactic mistake anyway.
+  /* Complain if operator is too long.  Unlike the case
+   * for identifiers, we make this an error not a notice-
+   * and-truncate, because the odds are we are looking at
+   * a syntactic mistake anyway.
+   */
   if (nchars >= NAMEDATALEN)
     yyerror("operator too long");
 
@@ -917,10 +932,11 @@ other                     .
 }
 
 {realfail1} {
-  // throw back the [Ee], and treat as {decimal}.  Note
-  // that it is possible the input is actually {integer},
-  // but since this case will almost certainly lead to a
-  // syntax error anyway, we don't bother to distinguish.
+  /* throw back the [Ee], and treat as {decimal}.  Note
+   * that it is possible the input is actually {integer},
+   * but since this case will almost certainly lead to a
+   * syntax error anyway, we don't bother to distinguish.
+   */
   yyless(yyleng-1);
   SET_YYLLOC();
   return GramProcessor::make_FCONST(MakeString(yytext), cursor_);
@@ -936,13 +952,13 @@ other                     .
 {identifier}  {
   SET_YYLLOC();
 
-  // Check against the keyword list.
+  /* Check against the keyword list. */
   const ScanKeyword &keyword = ScanKeywordLookup(yytext);
   if (keyword.is_valid()) {
     return GramProcessor::symbol_type(keyword.token(), keyword.name(), cursor_);
   }
 
-  // Not a keyword.  Convert the identifier to lower case, and truncate if necessary.
+  /* Not a keyword.  Convert the identifier to lower case, and truncate if necessary. */
   const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
@@ -959,9 +975,10 @@ other                     .
 
 %%
 
-// FLEX C++ version doesn't allow us to change the specification of allocation routines, so we
-// cannot insert our own memory context here. As a result, to avoid memory fragmentation, we just
-// make sure that FLEX allocate its buffers by multiple of 4k.
+/* FLEX C++ version doesn't allow us to change the specification of allocation routines, so we
+ * cannot insert our own memory context here. As a result, to avoid memory fragmentation, we just
+ * make sure that FLEX allocate its buffers by multiple of 4k.
+ */
 constexpr int kFlexBufferBlockSize = 4*1024;
 static yy_size_t YYRoundUpFlexBuffer(yy_size_t size) {
   yy_size_t remainder = size % kFlexBufferBlockSize;
@@ -973,13 +990,13 @@ static yy_size_t YYRoundUpFlexBuffer(yy_size_t size) {
 }
 
 void *yyalloc(yy_size_t size) {
-  // Round up size to multiple of kMinFlexBufferSize.
+  /* Round up size to multiple of kMinFlexBufferSize. */
   size = YYRoundUpFlexBuffer(size);
   return malloc(size);
 }
 
 void *yyrealloc(void *ptr, yy_size_t size) {
-  // Round up size to multiple of kMinFlexBufferSize.
+  /* Round up size to multiple of kMinFlexBufferSize. */
   size = YYRoundUpFlexBuffer(size);
   return realloc(static_cast<char *>(ptr), size);
 }
