@@ -68,9 +68,9 @@ export default function(state = INITIAL_STATE, action) {
     case CONFIGURE_UNIVERSE_TEMPLATE:
       return { ...state, universeConfigTemplate: {}, universeResourceTemplate: {}}
     case CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS:
-      return { ...state, universeConfigTemplate: action.payload.data}
+      return { ...state, universeConfigTemplate: action.payload.data, error: null}
     case CONFIGURE_UNIVERSE_TEMPLATE_FAILURE:
-      return { ...state, universeConfigTemplate: {}, universeResourceTemplate: {}}
+      return { ...state, universeConfigTemplate: {}, universeResourceTemplate: {}, error: action.payload.data.error}
     case CONFIGURE_UNIVERSE_RESOURCES:
       return { ...state,  universeResourceTemplate: {}}
     case CONFIGURE_UNIVERSE_RESOURCES_SUCCESS:

@@ -4,11 +4,16 @@ import React, { Component, PropTypes } from 'react';
 import { Modal } from 'react-bootstrap';
 import YBButton from './YBButton';
 import './stylesheets/YBModal.css'
+import {isValidObject} from '../../../../utils/ObjectUtils';
 
 export default class YBModal extends Component {
 
   render() {
-    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel, error} = this.props;
+    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel, error, submitting, asyncValidating} = this.props;
+    var btnDisabled = false;
+    if (isValidObject(error) || submitting || asyncValidating) {
+      btnDisabled = true;
+    }
     return (
       <Modal show={visible} onHide={onHide} bsSize={size}>
         <form name={formName} onSubmit={onFormSubmit}>
@@ -23,7 +28,7 @@ export default class YBModal extends Component {
             {this.props.children}
           </Modal.Body>
           <Modal.Footer>
-            <YBButton btnClass="btn-block bg-orange" btnText={submitLabel} btnType="submit"/>
+            <YBButton btnClass="btn-block bg-orange" disabled={btnDisabled} btnText={submitLabel} btnType="submit" />
           </Modal.Footer>
         </form>
       </Modal>
