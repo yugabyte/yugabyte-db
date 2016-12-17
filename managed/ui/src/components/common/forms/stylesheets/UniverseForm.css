@@ -63,3 +63,8 @@
     font-size: 16px;
     font-weight: 100;
 }
+
+button[disabled] {
+    background-color: rgba(205,101,0, 0.8) !important;
+    cursor: not-allowed;
+}
