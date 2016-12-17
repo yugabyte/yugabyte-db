@@ -15,8 +15,8 @@ import { YBLabelWithIcon } from '../common/descriptors';
 import { YBTabsPanel, YBPanelItem } from '../panels';
 import { YBMapLegendItem, RegionMap } from '../maps';
 import { NodeDetails } from '.';
-import universelogo from './images/universe_icon.png';
 import { ListTablesContainer } from '../../containers/tables';
+import universelogo from './images/universe_icon.png';
 
 class YBMapLegend extends Component {
   render() {

@@ -1,7 +1,6 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-
 import { ListTables } from '../../components/tables';
 import {fetchUniverseTables, fetchUniverseTablesSuccess, fetchUniverseTablesFailure} from '../../actions/tables';
 

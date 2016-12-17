@@ -1,0 +1,86 @@
+// Copyright (c) YugaByte, Inc.
+
+.table-name-cell {
+    width: 30px;
+    margin-left: 20px;
+}
+
+.form-item-label {
+    display: inline;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.form-control {
+    display: inline;
+    width: 70%;
+}
+
+.remove-item-btn {
+    background-color: rgba(255, 0, 0, 0.7);
+    color: white;
+    width: 20px;
+    border-radius: 50%;
+    text-align: right;
+    padding-left: 4px;
+    margin-top: 4px;
+}
+
+.add-key-column {
+    cursor: pointer;
+    color: #CD6500;
+    margin-bottom: 2px;
+    padding-bottom: 6px;
+}
+
+.form-group {
+    margin-bottom: 2px;
+}
+
+.key-row-heading {
+    font-size: 16px;
+    font-weight: 500;
+    display: block;
+}
+
+.key-row-subheading {
+    font-size: 14px;
+    font-weight: 400;
+    display: block;
+}
+
+.other-column-container {
+    border-top: 1px solid #d3d3d3;
+    padding-top: 18px;
+}
+
+.create-table-name-container {
+    margin-bottom: 10px;
+    padding: 10px 10px;
+}
+
+.table-selector-container {
+    display: inline;
+    padding: 4px 16px;
+    border: 2px solid #d3d3d3;
+
+}
+
+.table-selector-container.active{
+    height: 100%;
+    background-color: #BFE9FE;
+    border: 2px solid #BFE9FE;
+}
+
+.radio-label {
+    width: 100px;
+    margin-right: 10px;
+    cursor: pointer;
+}
+input[type="radio"] {
+    width: 0;
+}
+.table-btn {
+    margin-left: 6px;
+    padding-left: 6px;
+}
