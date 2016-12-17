@@ -112,11 +112,31 @@ set_test_log_url_prefix
 
 global_exit_code=0
 
+if [[ -n ${YB_NUM_TEST_ATTEMPTS:-} ]]; then
+  if [[ ! $YB_NUM_TEST_ATTEMPTS =~ ^[0-9]+$ ]]; then
+    fatal "YB_NUM_TEST_ATTEMPTS is not set to a valid integer: '${YB_NUM_TEST_ATTEMPTS}'"
+  fi
+  declare -i -r num_test_attempts=$YB_NUM_TEST_ATTEMPTS
+  if [[ $num_test_attempts -lt 1 ]]; then
+    fatal "YB_NUM_TEST_ATTEMPTS cannot be lower than 1"
+  fi
+else
+  num_test_attempts=1
+fi
+
 # Loop over all tests in a gtest binary, or just one element (the whole test binary) for tests that
 # we have to run in one shot.
 for test_descriptor in "${tests[@]}"; do
-  prepare_for_running_test
-  run_test_and_process_results
+  for (( test_attempt=1; test_attempt <= $num_test_attempts; test_attempt++ )); do
+    log "Starting test attempt $test_attempt"
+    if [[ $test_attempt -eq 1 && $num_test_attempts -eq 1 ]]; then
+      test_attempt_index=""
+    else
+      test_attempt_index=$test_attempt
+    fi
+    prepare_for_running_test
+    run_test_and_process_results
+  done
 done
 
 cd /tmp

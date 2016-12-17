@@ -37,6 +37,7 @@ fatal() {
   else
     yb_log_quiet=false
   fi
+  yb_log_skip_top_frames=1
   log "$@"
   if ! "$yb_log_quiet"; then
     print_stack_trace 2  # Exclude this line itself from the stack trace (start from 2nd line).
@@ -67,7 +68,23 @@ log() {
     # We want that to produce a single line the same way the echo command would. Putting $* by
     # itself achieves that effect. That has a side effect of passing echo-specific arguments
     # (e.g. -n or -e) directly to the final echo command.
-    echo "[$( get_timestamp ) ${BASH_SOURCE[0]##*/}:${BASH_LINENO[0]} ${FUNCNAME[1]}]" $* >&2
+    #
+    # On why the index for BASH_LINENO is one lower than that for BASH_SOURECE and FUNCNAME:
+    # This is different from the manual says at
+    # https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html:
+    #
+    #   An array variable whose members are the line numbers in source files where each
+    #   corresponding member of FUNCNAME was invoked. ${BASH_LINENO[$i]} is the line number in the
+    #   source file (${BASH_SOURCE[$i+1]}) where ${FUNCNAME[$i]} was called (or ${BASH_LINENO[$i-1]}
+    #   if referenced within another shell function). Use LINENO to obtain the current line number.
+    #
+    # Our experience is that FUNCNAME indexes exactly match those of BASH_SOURCE.
+    local stack_idx0=${yb_log_skip_top_frames:-0}
+    local stack_idx1=$(( $stack_idx0 + 1 ))
+
+    echo "[$( get_timestamp )" \
+         "${BASH_SOURCE[$stack_idx1]##*/}:${BASH_LINENO[$stack_idx0]}" \
+         "${FUNCNAME[$stack_idx1]}]" $* >&2
   fi
 }
 

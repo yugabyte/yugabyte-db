@@ -315,6 +315,13 @@ collect_gtest_tests() {
 # Set a number of variables in preparation to running a test.
 # Inputs:
 #   test_descriptor
+#     Identifies the test. Consists fo the relative test binary, optionally followed by ":::" and a
+#     gtest-compatible test description.
+#   test_attempt_index
+#     If this is set to a number, it is appended (followed by an underscore) to test output
+#     directory, work directory, JUnit xml file name, and other file/directory paths that are
+#     expected to be unique. This allows to run each test multiple times within the same test suite
+#     run.
 # Outputs:
 #   rel_test_binary
 #     Relative path of the test binary
@@ -326,7 +333,7 @@ collect_gtest_tests() {
 #     A human-readable string describing what tests we are running within the test binary.
 #   rel_test_log_path_prefix
 #     A prefix of various log paths for this test relative to the root directory we're using for
-#     all tests (YB_TEST_LOG_ROOT_DIR).
+#     all test logs and temporary files (YB_TEST_LOG_ROOT_DIR).
 #   is_gtest_test
 #     Whether this is a Google Test test ("true" or "false")
 #   TEST_TMPDIR (exported)
@@ -354,6 +361,14 @@ prepare_for_running_test() {
     YB_TEST_LOG_ROOT_DIR \
     test_descriptor
   validate_test_descriptor "$test_descriptor"
+
+  local test_attempt_suffix=""
+  if [[ -n ${test_attempt_index:-} ]]; then
+    if [[ ! ${test_attempt_index} =~ ^[0-9]+$ ]]; then
+      fatal "test_attempt_index is expected to be a number, found '$test_attempt_index'"
+    fi
+    test_attempt_suffix="__attempt_$test_attempt_index"
+  fi
 
   if [[ "$test_descriptor" =~ ::: ]]; then
     rel_test_binary=${test_descriptor%:::*}
@@ -392,6 +407,10 @@ prepare_for_running_test() {
   else
     rel_test_log_path_prefix+="/$test_name_sanitized"
   fi
+
+  # Use a separate directory to store results of every test attempt.
+  rel_test_log_path_prefix+=$test_attempt_suffix
+
   # At this point $rel_test_log_path contains the common prefix of the log (.log), the temporary
   # directory (.tmp), and the XML report (.xml) for this test relative to the yb-test-logs
   # directory.
