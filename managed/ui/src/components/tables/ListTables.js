@@ -6,8 +6,10 @@ import { Button, Image } from 'react-bootstrap';
 import cassandraLogo from './images/cassandra.png';
 import redisLogo from './images/redis.png';
 import './stylesheets/ListTables.scss';
+import { CreateTableContainer } from '../../containers/tables';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
+
 
 class TableTitle extends Component {
   render() {
@@ -34,32 +36,45 @@ export default class ListTables extends Component {
   constructor(props) {
     super(props);
     this.state = {'currentView': 'listTables'}
+    this.showCreateTable = this.showCreateTable.bind(this);
+    this.showListTables = this.showListTables.bind(this);
   }
+
   componentWillMount() {
     var universeUUID = this.props.universe.currentUniverse.universeUUID;
     this.props.fetchUniverseTables(universeUUID);
   }
+
+  showCreateTable() {
+    this.setState({'currentView': 'createTable'});
+  }
+
+  showListTables() {
+    this.setState({'currentView': 'listTables'});
+  }
+
   render() {
     var self = this;
     var getTableIcon = function(tableType) {
       if (tableType === "cassandra") {
         return <Image src={cassandraLogo} className="table-type-logo"/>;
       } else {
-        return <Image src={redisLogo} className="table-type-logo"/>;
+          return <Image src={redisLogo} className="table-type-logo"/>;
+        }
       }
-    }
 
-    var tablePlacementDummyData = { "asyncReplica": ["-"],
+      const tablePlacementDummyData = { "asyncReplica": ["-"],
                                      "remoteCache": ["-"],
                                      "read": "-", "write": "-"};
 
     var isTableMultiAZ = function(item) {
       if (item === true) {
-        return <i className="indicator-orange fa fa-check"></i>
+        return <i className="indicator-orange fa fa-check"/>
       } else {
-        return <i className="indicator-orange fa fa-times"></i>
+        return <i className="indicator-orange fa fa-times"/>
       }
     }
+
     var numCassandraTables = 0;
     var numRedisTables = 0;
     var listItems =  self.props.tables.universeTablesList.map(function(item, idx){
@@ -75,7 +90,7 @@ export default class ListTables extends Component {
                  "asyncReplica": tablePlacementDummyData.asyncReplica,
                  "remoteCache": tablePlacementDummyData.remoteCache,
                  "read": tablePlacementDummyData.read,
-                 "write": tablePlacementDummyData.write}
+                 "write": tablePlacementDummyData.write }
     });
 
     var tableListDisplay =
@@ -102,20 +117,22 @@ export default class ListTables extends Component {
                            columnClassName={"yb-table-cell"} >
           Write</TableHeaderColumn>
       </BootstrapTable>
-
     if (self.state.currentView === "listTables") {
       return (
         <div>
-          <TableTitle numRedisTables={numRedisTables} numCassandraTables={numCassandraTables}/>
+          <TableTitle numRedisTables={numRedisTables} numCassandraTables={numCassandraTables}
+                      onCreateButtonClick={this.showCreateTable}/>
           {tableListDisplay}
         </div>
       )
-    } else {
+    } else if (self.state.currentView === "createTable"){
       return (
         <div>
-          // Create Table Logic
+          <CreateTableContainer showListTables={this.showListTables}/>
         </div>
       )
+    } else {
+      return <span/>
     }
   }
 }

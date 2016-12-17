@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-
+import {isValidObject} from '../../../../utils/ObjectUtils';
 import { YBLabel } from '../../descriptors';
 
 export default class YBSelect extends Component {
@@ -9,7 +9,9 @@ export default class YBSelect extends Component {
     const { input, label, meta, options, onSelectChange, readOnlySelect, name} = this.props;
     var onChange = function(event) {
       input.onChange(event.target.value);
-      onSelectChange(event.target.value);
+      if (isValidObject(onSelectChange)) {
+        onSelectChange(event.target.value);
+      }
     }
     return (
       <YBLabel label={label} meta={meta}>
