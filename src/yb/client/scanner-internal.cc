@@ -97,10 +97,10 @@ void YBScanner::Data::CopyPredicateBound(const ColumnSchema& col,
 }
 
 Status YBScanner::Data::CanBeRetried(const bool isNewScan,
-                                       const Status& rpc_status, const Status& server_status,
-                                       const MonoTime& actual_deadline, const MonoTime& deadline,
-                                       const vector<RemoteTabletServer*>& candidates,
-                                       set<string>* blacklist) {
+                                     const Status& rpc_status, const Status& server_status,
+                                     const MonoTime& actual_deadline, const MonoTime& deadline,
+                                     const vector<RemoteTabletServer*>& candidates,
+                                     set<string>* blacklist) {
   CHECK(!rpc_status.ok() || !server_status.ok());
 
   // Check for ERROR_SERVER_TOO_BUSY, which should result in a retry after a delay.
@@ -166,6 +166,10 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
   //                          to the client's specified selection criteria.
   //                          The metadata for this tablet should be refreshed.
   //
+  //   - NOT_THE_LEADER     : The scan must be retried at the leader, because this tablet server
+  //                          is no longer the leader.
+  //                          The metadata for this tablet should be refreshed.
+  //
   //   - Any other error    : Fatal. This indicates an unexpected error while processing the scan
   //                          request.
   if (rpc_status.ok() && !server_status.ok()) {
@@ -190,8 +194,9 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
           blacklist->clear();
         }
         break;
-      case tserver::TabletServerErrorPB::TABLET_NOT_FOUND: {
-        // There was either a tablet configuration change or the table was
+      case tserver::TabletServerErrorPB::TABLET_NOT_FOUND:
+      case tserver::TabletServerErrorPB::NOT_THE_LEADER: {
+        // There was either a tablet configuration change, leader change or the table was
         // deleted, since at the time of this writing we don't support splits.
         // Backoff, then force a re-fetch of the tablet metadata.
         remote_->MarkStale();
@@ -199,6 +204,8 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
         // same tablet (see KUDU-1314).
         MonoDelta backoff_time = MonoDelta::FromMilliseconds((random() % 1000) + 500);
         SleepFor(backoff_time);
+        VLOG(1) << "Tried to make a request to a non-leader or tablet. Refreshing metadata. "
+                << "Error Code: " << tserver::TabletServerErrorPB::Code_Name(error.code());
         break;
       }
       default:
@@ -217,6 +224,8 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
 
   PrepareRequest(YBScanner::Data::NEW);
   next_req_.clear_scanner_id();
+  // Set leader only parameter based on the selection.
+  next_req_.set_leader_only(selection_ == YBClient::LEADER_ONLY);
   NewScanRequestPB* scan = next_req_.mutable_new_scan_request();
   switch (read_mode_) {
     case READ_LATEST: scan->set_read_mode(yb::READ_LATEST); break;
@@ -528,7 +537,7 @@ void YBScanBatch::Data::ExtractRows(vector<YBScanBatch::RowPtr>* rows) {
   const uint8_t* src = direct_data_.data();
   YBScanBatch::RowPtr* dst = &(*rows)[0];
   while (n_rows > 0) {
-    *dst = YBScanBatch::RowPtr(projection_, client_projection_,src);
+    *dst = YBScanBatch::RowPtr(projection_, client_projection_, src);
     dst++;
     src += projected_row_size_;
     n_rows--;

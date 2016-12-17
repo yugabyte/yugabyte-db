@@ -58,6 +58,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/trace.h"
+#include "yb/consensus/consensus.pb.h"
 
 DEFINE_int32(scanner_default_batch_size_bytes, 64 * 1024,
              "The default size for batches of scan results");
@@ -110,6 +111,7 @@ using consensus::StartRemoteBootstrapRequestPB;
 using consensus::StartRemoteBootstrapResponsePB;
 using consensus::VoteRequestPB;
 using consensus::VoteResponsePB;
+using consensus::RaftPeerPB;
 
 using std::unique_ptr;
 using google::protobuf::RepeatedPtrField;
@@ -1483,6 +1485,28 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
   DCHECK(result_collector != nullptr);
   DCHECK(error_code != nullptr);
   DCHECK(req->has_new_scan_request());
+  VLOG(1) << "New scan request for " << tablet_peer->tablet_id()
+          << " leader_only: "  << req->leader_only();
+  if (req->leader_only()) {
+    scoped_refptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
+    if (!consensus) {
+      *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
+      return STATUS(IllegalState,
+                    Substitute("Consensus not available for tablet: $0",
+                               tablet_peer->tablet_id()));
+    }
+    VLOG(1) << Substitute("Scan request $0 P $1 Role: $2",
+                          tablet_peer->tablet_id(),
+                          tablet_peer->permanent_uuid(),
+                          consensus->role());
+    if (consensus->role() != RaftPeerPB::LEADER) {
+      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
+      return STATUS(IllegalState,
+                    Substitute("Leader only scan request for tablet $0 at a non-leader. "
+                               "Current Role: $1", tablet_peer->tablet_id(), consensus->role()));
+    }
+  }
+
   const NewScanRequestPB& scan_pb = req->new_scan_request();
   TRACE_EVENT1("tserver", "TabletServiceImpl::HandleNewScanRequest",
                "tablet_id", scan_pb.tablet_id());

@@ -125,7 +125,7 @@ TEST_F(KVTableTest, Eng135MetricsTest) {
 }
 
 TEST_F(KVTableTest, LoadTest) {
-  std::atomic_bool stop_flag(false);
+  std::atomic_bool stop_requested_flag(false);
   int rows = 5000;
   int start_key = 0;
   int writer_threads = 4;
@@ -134,16 +134,25 @@ TEST_F(KVTableTest, LoadTest) {
   int max_write_errors = 0;
   int max_read_errors = 0;
   int retries_on_empty_read = 0;
-  yb::load_generator::YBSessionFactory session_factory(client_.get(), table_.get());
-  yb::load_generator::MultiThreadedWriter writer(
-      rows, start_key, writer_threads, &session_factory, &stop_flag, value_size_bytes,
-      max_write_errors);
-  yb::load_generator::MultiThreadedReader reader(rows, reader_threads, &session_factory,
+
+  // Create two separate clients for read and writes.
+  shared_ptr<YBClient> write_client = CreateYBClient();
+  shared_ptr<YBClient> read_client = CreateYBClient();
+  yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), table_.get());
+  yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), table_.get());
+
+  yb::load_generator::MultiThreadedWriter writer(rows, start_key, writer_threads,
+                                                 &write_session_factory, &stop_requested_flag,
+                                                 value_size_bytes, max_write_errors);
+  yb::load_generator::MultiThreadedReader reader(rows, reader_threads, &read_session_factory,
                                                  writer.InsertionPoint(), writer.InsertedKeys(),
-                                                 writer.FailedKeys(), &stop_flag, value_size_bytes,
-                                                 max_read_errors, retries_on_empty_read);
+                                                 writer.FailedKeys(), &stop_requested_flag,
+                                                 value_size_bytes, max_read_errors,
+                                                 retries_on_empty_read);
 
   writer.Start();
+  // Having separate write requires adding in write client id to the reader.
+  reader.set_client_id(write_session_factory.ClientId());
   reader.Start();
   writer.WaitForCompletion();
   LOG(INFO) << "Writing complete";

@@ -101,7 +101,7 @@ class MultiThreadedAction {
  public:
   MultiThreadedAction(
       const std::string& description, int64_t num_keys, int64_t start_key, int num_action_threads,
-      int num_extra_threads, SessionFactory* session_factory, std::atomic_bool* stop_requested_flag,
+      int num_extra_threads, const std::string& client_id, std::atomic_bool* stop_requested_flag,
       int value_size);
 
   virtual void Start();
@@ -109,6 +109,7 @@ class MultiThreadedAction {
 
   void Stop() { stop_requested_->store(true); }
   bool IsStopRequested() { return stop_requested_->load(); }
+  void set_client_id(const std::string& client_id) { client_id_ = client_id; }
 
  protected:
   friend class SingleThreadedReader;
@@ -127,7 +128,7 @@ class MultiThreadedAction {
   const int64_t num_keys_;  // Total number of keys in the table after successful end of this action
   const int64_t start_key_;  // First insertion key index of the write action
   const int num_action_threads_;
-  SessionFactory* session_factory_;
+  std::string client_id_;
 
   std::unique_ptr<ThreadPool> thread_pool_;
   yb::CountDownLatch running_threads_latch_;
@@ -170,6 +171,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
 
   KeyIndexSet inserted_keys_;
   KeyIndexSet failed_keys_;
+  SessionFactory* session_factory_;
 
   // This is the current key to be inserted by any thread. Each thread does an atomic get and
   // increment operation and inserts the current value.
@@ -299,6 +301,7 @@ class MultiThreadedReader : public MultiThreadedAction {
   friend class SingleThreadedReader;
   friend class YBSingleThreadedReader;
 
+  SessionFactory* session_factory_;
   const std::atomic<int64_t>* insertion_point_;
   const KeyIndexSet* inserted_keys_;
   const KeyIndexSet* failed_keys_;

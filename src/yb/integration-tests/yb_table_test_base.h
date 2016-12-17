@@ -103,7 +103,10 @@ class YBTableTestBase : public YBTest {
   static const char* const kDefaultTableName;
 
   vector<uint16_t> master_rpc_ports();
+  // Calls CreateYBClient and assigns it to local class field
   void CreateClient();
+  // Creates a ClientYB client without assigning it to the class field.
+  std::shared_ptr<yb::client::YBClient> CreateYBClient();
 
   std::shared_ptr<yb::client::YBSession> NewSession(bool read_only_ = false);
 

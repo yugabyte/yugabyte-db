@@ -1496,14 +1496,15 @@ Status YBScanner::Open() {
   set<string> blacklist;
 
   bool is_simple_range_partitioned =
-    data_->table_->partition_schema().IsSimplePKRangePartitioning(*data_->table_->schema().schema_);
+      data_->table_->partition_schema().IsSimplePKRangePartitioning(
+          *data_->table_->schema().schema_);
 
   if (!is_simple_range_partitioned &&
-      (data_->spec_.lower_bound_key() != nullptr ||
-       data_->spec_.exclusive_upper_bound_key() != nullptr ||
-       !data_->spec_.predicates().empty())) {
+    (data_->spec_.lower_bound_key() != nullptr ||
+      data_->spec_.exclusive_upper_bound_key() != nullptr ||
+      !data_->spec_.predicates().empty())) {
     YB_LOG_FIRST_N(WARNING, 1) << "Starting full table scan. In the future this scan may be "
-                                "automatically optimized with partition pruning.";
+        "automatically optimized with partition pruning.";
   }
 
   if (is_simple_range_partitioned) {
@@ -1513,14 +1514,14 @@ Status YBScanner::Open() {
     // partition key range. This is a stop-gap until real partition pruning is
     // in place that will work across any partition type.
     Slice start_primary_key = data_->spec_.lower_bound_key() == nullptr ? Slice()
-                            : data_->spec_.lower_bound_key()->encoded_key();
+      : data_->spec_.lower_bound_key()->encoded_key();
     Slice end_primary_key = data_->spec_.exclusive_upper_bound_key() == nullptr ? Slice()
-                          : data_->spec_.exclusive_upper_bound_key()->encoded_key();
+      : data_->spec_.exclusive_upper_bound_key()->encoded_key();
     Slice start_partition_key = data_->spec_.lower_bound_partition_key();
     Slice end_partition_key = data_->spec_.exclusive_upper_bound_partition_key();
 
     if ((!end_partition_key.empty() && start_primary_key.compare(end_partition_key) >= 0) ||
-        (!end_primary_key.empty() && start_partition_key.compare(end_primary_key) >= 0)) {
+      (!end_primary_key.empty() && start_partition_key.compare(end_primary_key) >= 0)) {
       // The primary key range and the partition key range do not intersect;
       // the scan will be empty. Keep the existing partition key range.
     } else {
@@ -1531,7 +1532,8 @@ Status YBScanner::Open() {
     }
   }
 
-  RETURN_NOT_OK(data_->OpenTablet(data_->spec_.lower_bound_partition_key(), deadline, &blacklist));
+  RETURN_NOT_OK(data_->OpenTablet(data_->spec_.lower_bound_partition_key(), deadline,
+                                  &blacklist));
 
   data_->open_ = true;
   return Status::OK();

@@ -102,14 +102,19 @@ vector<uint16_t> YBTableTestBase::master_rpc_ports() {
 }
 
 void YBTableTestBase::CreateClient() {
-  client_.reset();
+  client_ = CreateYBClient();
+}
+
+shared_ptr<yb::client::YBClient> YBTableTestBase::CreateYBClient() {
+  shared_ptr<yb::client::YBClient> client;
   YBClientBuilder builder;
   builder.default_rpc_timeout(MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
   if (use_external_mini_cluster()) {
-    ASSERT_OK(external_mini_cluster_->CreateClient(&builder, &client_));
+    CHECK_OK(external_mini_cluster_->CreateClient(&builder, &client));
   } else {
-    ASSERT_OK(mini_cluster_->CreateClient(&builder, &client_));
+    CHECK_OK(mini_cluster_->CreateClient(&builder, &client));
   }
+  return client;
 }
 
 void YBTableTestBase::OpenTable() {

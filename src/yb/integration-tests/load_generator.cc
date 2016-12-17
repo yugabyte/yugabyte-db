@@ -194,13 +194,13 @@ SingleThreadedWriter* RedisNoopSessionFactory::GetWriter(MultiThreadedWriter* wr
 
 MultiThreadedAction::MultiThreadedAction(
     const string& description, int64_t num_keys, int64_t start_key, int num_action_threads,
-    int num_extra_threads, SessionFactory* session_factory, atomic_bool* stop_requested_flag,
+    int num_extra_threads, const string& client_id, atomic_bool* stop_requested_flag,
     int value_size)
     : description_(description),
       num_keys_(num_keys),
       start_key_(start_key),
       num_action_threads_(num_action_threads),
-      session_factory_(session_factory),
+      client_id_(client_id),
       running_threads_latch_(num_action_threads),
       stop_requested_(stop_requested_flag),
       value_size_(value_size) {
@@ -214,7 +214,7 @@ string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
   string key_index_str(Substitute("key$0", key_index));
   return Substitute(
       "$0_$1_$2", FormatHexForLoadTestKey(std::hash<string>()(key_index_str)), key_index_str,
-      session_factory_->ClientId());
+      client_id_);
 }
 
 // Creates a human-readable string with hex characters to be used as a value in our test. This is
@@ -252,8 +252,9 @@ MultiThreadedWriter::MultiThreadedWriter(
     int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
     atomic_bool* stop_flag, int value_size, int max_num_write_errors)
     : MultiThreadedAction(
-          "writers", num_keys, start_key, num_writer_threads, 2, session_factory, stop_flag,
-          value_size),
+          "writers", num_keys, start_key, num_writer_threads, 2, session_factory->ClientId(),
+          stop_flag, value_size),
+      session_factory_(session_factory),
       next_key_(start_key),
       inserted_up_to_inclusive_(-1),
       max_num_write_errors_(max_num_write_errors) {}
@@ -492,7 +493,9 @@ MultiThreadedReader::MultiThreadedReader(int64_t num_keys, int num_reader_thread
                                          int value_size, int max_num_read_errors,
                                          int retries_on_empty_read)
     : MultiThreadedAction(
-          "readers", num_keys, 0, num_reader_threads, 1, session_factory, stop_flag, value_size),
+          "readers", num_keys, 0, num_reader_threads, 1, session_factory->ClientId(),
+          stop_flag, value_size),
+      session_factory_(session_factory),
       insertion_point_(insertion_point),
       inserted_keys_(inserted_keys),
       failed_keys_(failed_keys),

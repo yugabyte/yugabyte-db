@@ -346,6 +346,9 @@ message ScanRequestPB {
   // In order to simply close a scanner without selecting any rows, you
   // may set batch_size_bytes to 0 in conjunction with setting this flag.
   optional bool close_scanner = 5;
+
+  // If set, the server will reject the request if it is not the leader
+  optional bool leader_only = 6 [default = false];
 }
 
 message ScanResponsePB {
