@@ -39,7 +39,6 @@
 
 namespace yb {
 namespace tablet {
-
 class RowSetMetadata;
 class RowSetMetadataUpdate;
 
@@ -62,7 +61,11 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // Create metadata for a new tablet. This assumes that the given superblock
   // has not been written before, and writes out the initial superblock with
   // the provided parameters.
+  // data_root_dir and wal_root_dir dictates which disk this tablet will
+  // use in the respective directories.
+  // If empty string is passed in, it will be randomly chosen.
   static Status CreateNew(FsManager* fs_manager,
+                          const std::string& table_id,
                           const std::string& tablet_id,
                           const std::string& table_name,
                           const TableType table_type,
@@ -70,7 +73,9 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                           const PartitionSchema& partition_schema,
                           const Partition& partition,
                           const TabletDataState& initial_tablet_data_state,
-                          scoped_refptr<TabletMetadata>* metadata);
+                          scoped_refptr<TabletMetadata>* metadata,
+                          const std::string& data_root_dir = std::string(),
+                          const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
   static Status Load(FsManager* fs_manager,
@@ -83,6 +88,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   //
   // This is mostly useful for tests which instantiate tablets directly.
   static Status LoadOrCreate(FsManager* fs_manager,
+                             const std::string& table_id,
                              const std::string& tablet_id,
                              const std::string& table_name,
                              const TableType table_type,
@@ -114,9 +120,21 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   TableType table_type() const;
 
-  const std::string rocksdb_dir() const { return rocksdb_dir_; };
+  std::string rocksdb_dir() const { return rocksdb_dir_; }
 
-  const std::string wal_dir() const { return wal_dir_; };
+  std::string wal_dir() const { return wal_dir_; }
+
+  // Given the data directory of a tablet, returns the data root dir for that tablet.
+  // For example,
+  //  Given /mnt/d0/tserver/data1/data/rocksdb/0c966bbae43f470f8afbb3de648ed46a
+  //  Returns /mnt/d0/tserver/data1/data
+  std::string data_root_dir() const;
+
+  // Given the WAL directory of a tablet, returns the wal root dir for that tablet.
+  // For example,
+  //  Given /mnt/d0/tserver/wal1/wals/0c966bbae43f470f8afbb3de648ed46a
+  //  Returns /mnt/d0/tserver/wal1/wals
+  std::string wal_root_dir() const;
 
   uint32_t schema_version() const;
 
@@ -186,8 +204,13 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // partially-tombstoned tablets during crash recovery.
   //
   // Returns only once all data has been removed.
+  // The OUT parameter 'was_deleted' can be used by caller to determine if the tablet data was
+  // actually deleted from disk or not. For example, in some cases, the tablet may have been
+  // already deleted (and are here on a retry) and this operation essentially ends up being a no-op;
+  // in such a case, 'was_deleted' will be set to FALSE.
   Status DeleteTabletData(TabletDataState delete_type,
-                          const boost::optional<consensus::OpId>& last_logged_opid);
+                          const boost::optional<consensus::OpId>& last_logged_opid,
+                          bool* was_deleted);
 
   // Permanently deletes the superblock from the disk.
   // DeleteTabletData() must first be called and the tablet data state must be
@@ -241,6 +264,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // TODO: get rid of this many-arg constructor in favor of just passing in a
   // SuperBlock, which already contains all of these fields.
   TabletMetadata(FsManager* fs_manager,
+                 std::string table_id,
                  std::string tablet_id,
                  std::string table_name,
                  TableType table_type,
@@ -305,8 +329,8 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // If taken together with 'data_lock_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  const std::string tablet_id_;
   std::string table_id_;
+  const std::string tablet_id_;
 
   Partition partition_;
 

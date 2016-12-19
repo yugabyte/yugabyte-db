@@ -74,11 +74,11 @@ class TransitionInProgressDeleter;
 
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
-#define TOMBSTONE_NOT_OK(expr, meta, uuid, msg) \
+#define TOMBSTONE_NOT_OK(expr, meta, uuid, msg, ts_manager_ptr) \
   do { \
     Status _s = (expr); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      LogAndTombstone((meta), (msg), (uuid), _s); \
+      LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
       return _s; \
     } \
   } while (0)
@@ -206,6 +206,28 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   Status RunAllLogGC();
 
+  // Creates and updates the map of table to the count of directories used per table per disk
+  // for both data and wal directories.
+  void GetDataWalDirAndUpdateAssignmentMap(FsManager* fs_manager,
+                                           const std::string& table_id,
+                                           const TableType table_type,
+                                           std::string* data_root_dir,
+                                           std::string* wal_root_dir);
+  // Updates the map of table to the count of directories used per table per disk
+  // for both of the given data and wal directories.
+  void UpdateAssignmentMap(FsManager* fs_manager,
+                           const std::string& table_id,
+                           const TableType table_type,
+                           const std::string& data_root_dir,
+                           const std::string& wal_root_dir);
+  // Decrements the directory used count for the table for both the data and WAL directory
+  // as pointed by the data and wal directory map.
+  void UnregisterDataWalDirFromAssignmentMap(const std::string& table_id,
+                                             const TableType table_type,
+                                             const std::string& data_root_dir,
+                                             const std::string& wal_root_dir);
+
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
 
@@ -296,6 +318,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // TABLET_DATA_READY state. Generally, we tombstone the replica.
   Status HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
 
+  // Adds the count of existing data and wal directory into local into
+  // the table to disk assignment map/cache.
+  void RegisterDataAndWalDirAccounting(FsManager* fs_manager,
+                                       const scoped_refptr<tablet::TabletMetadata>& meta);
+
   TSTabletManagerStatePB state() const {
     boost::shared_lock<rw_spinlock> lock(lock_);
     return state_;
@@ -313,7 +340,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   consensus::RaftPeerPB local_peer_pb_;
 
-  typedef std::unordered_map<std::string, scoped_refptr<tablet::TabletPeer> > TabletMap;
+  typedef std::unordered_map<std::string, scoped_refptr<tablet::TabletPeer>> TabletMap;
+  // This is a map that takes a table id and maps it to a map of directory and
+  // its children directory counts.
+  typedef std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>
+    TableDiskAssignmentMap;
 
   // Lock protecting tablet_map_, dirty_tablets_, state_, and
   // transition_in_progress_.
@@ -321,6 +352,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Map from tablet ID to tablet
   TabletMap tablet_map_;
+
+  // Map from table ID to count of children in data and wal directories.
+  TableDiskAssignmentMap table_data_assignment_map_;
+  TableDiskAssignmentMap table_wal_assignment_map_;
+  mutable Mutex dir_assignment_lock_;
 
   // Map of tablet ids -> reason strings where the keys are tablets whose
   // bootstrap, creation, or deletion is in-progress
@@ -368,17 +404,21 @@ class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProg
 
 // Print a log message using the given info and tombstone the specified tablet.
 // If tombstoning the tablet fails, a FATAL error is logged, resulting in a crash.
+// If ts_manager pointer is passed in, it will unregister from the directory assignment map.
 void LogAndTombstone(const scoped_refptr<tablet::TabletMetadata>& meta,
                      const std::string& msg,
                      const std::string& uuid,
-                     const Status& s);
+                     const Status& s,
+                     TSTabletManager* ts_manager = nullptr);
 
 // Delete the tablet using the specified delete_type as the final metadata
 // state. Deletes the on-disk data, as well as all WAL segments.
+// If ts_manager pointer is passed in, it will unregister from the directory assignment map.
 Status DeleteTabletData(const scoped_refptr<tablet::TabletMetadata>& meta,
                         tablet::TabletDataState delete_type,
                         const std::string& uuid,
-                        const boost::optional<consensus::OpId>& last_logged_opid);
+                        const boost::optional<consensus::OpId>& last_logged_opid,
+                        TSTabletManager* ts_manager = nullptr);
 
 // Return Status::IllegalState if leader_term < last_logged_term.
 // Helper function for use with remote bootstrap.

@@ -38,6 +38,7 @@
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -146,7 +147,8 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetad
 
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     const HostPort& bootstrap_peer_addr,
-                                    scoped_refptr<TabletMetadata>* meta) {
+                                    scoped_refptr<TabletMetadata>* meta,
+                                    TSTabletManager* ts_manager) {
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
 
@@ -212,7 +214,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   Schema schema;
   RETURN_NOT_OK_PREPEND(SchemaFromPB(superblock_->schema(), &schema),
                         "Cannot deserialize schema from remote superblock");
-
+  const string table_id = superblock_->table_id();
+  string data_root_dir;
+  string wal_root_dir;
   if (replace_tombstoned_tablet_) {
     // Also validate the term of the bootstrap source peer, in case they are
     // different. This is a sanity check that protects us in case a bug or
@@ -240,25 +244,51 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     RETURN_NOT_OK_PREPEND(meta_->ReplaceSuperBlock(*superblock_),
                           "Remote bootstrap unable to replace superblock on tablet " +
                           tablet_id_);
+    // Update the directory assignment mapping.
+    data_root_dir = meta_->data_root_dir();
+    wal_root_dir = meta_->wal_root_dir();
+    if (ts_manager != nullptr) {
+      ts_manager->UpdateAssignmentMap(fs_manager_,
+                                      table_id,
+                                      meta_->table_type(),
+                                      data_root_dir,
+                                      wal_root_dir);
+    }
   } else {
-
     Partition partition;
     Partition::FromPB(superblock_->partition(), &partition);
     PartitionSchema partition_schema;
     RETURN_NOT_OK(PartitionSchema::FromPB(superblock_->partition_schema(),
                                           schema, &partition_schema));
-
     // Create the superblock on disk.
-    RETURN_NOT_OK(TabletMetadata::CreateNew(fs_manager_, tablet_id_,
-                                            superblock_->table_name(),
-                                            superblock_->table_type(),
-                                            schema,
-                                            partition_schema,
-                                            partition,
-                                            tablet::TABLET_DATA_COPYING,
-                                            &meta_));
+    if (ts_manager != nullptr) {
+      ts_manager->GetDataWalDirAndUpdateAssignmentMap(fs_manager_,
+                                                      table_id,
+                                                      superblock_->table_type(),
+                                                      &data_root_dir,
+                                                      &wal_root_dir);
+    }
+    Status create_status = TabletMetadata::CreateNew(fs_manager_,
+                                                     table_id,
+                                                     tablet_id_,
+                                                     superblock_->table_name(),
+                                                     superblock_->table_type(),
+                                                     schema,
+                                                     partition_schema,
+                                                     partition,
+                                                     tablet::TABLET_DATA_COPYING,
+                                                     &meta_,
+                                                     data_root_dir,
+                                                     wal_root_dir);
+    if (ts_manager != nullptr && !create_status.ok()) {
+      ts_manager->UnregisterDataWalDirFromAssignmentMap(table_id,
+                                                        superblock_->table_type(),
+                                                        data_root_dir,
+                                                        wal_root_dir);
+    }
+    RETURN_NOT_OK(create_status);
 
-    // Replace rocksdb_dir in the received superblock with our assigned rocksdb_dir.
+    // Replace rocksdb_dir in the received superblock with our rocksdb_dir.
     superblock_->set_rocksdb_dir(meta_->rocksdb_dir());
 
     // Replace wal_dir in the received superblock with our assigned wal_dir.

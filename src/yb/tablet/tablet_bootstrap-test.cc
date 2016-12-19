@@ -75,6 +75,7 @@ class BootstrapTest : public LogTestBase {
 
     RETURN_NOT_OK(TabletMetadata::LoadOrCreate(
       fs_manager_.get(),
+      log::kTestTable,
       log::kTestTablet,
       log::kTestTable,
       TableType::DEFAULT_TABLE_TYPE,

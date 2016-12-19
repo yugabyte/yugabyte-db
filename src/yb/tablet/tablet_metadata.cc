@@ -73,6 +73,7 @@ const int64 kNoDurableMemStore = -1;
 // ============================================================================
 
 Status TabletMetadata::CreateNew(FsManager* fs_manager,
+                                 const string& table_id,
                                  const string& tablet_id,
                                  const string& table_name,
                                  const TableType table_type,
@@ -80,28 +81,48 @@ Status TabletMetadata::CreateNew(FsManager* fs_manager,
                                  const PartitionSchema& partition_schema,
                                  const Partition& partition,
                                  const TabletDataState& initial_tablet_data_state,
-                                 scoped_refptr<TabletMetadata>* metadata) {
+                                 scoped_refptr<TabletMetadata>* metadata,
+                                 const string& data_root_dir,
+                                 const string& wal_root_dir) {
 
   // Verify that no existing tablet exists with the same ID.
   if (fs_manager->env()->FileExists(fs_manager->GetTabletMetadataPath(tablet_id))) {
     return STATUS(AlreadyPresent, "Tablet already exists", tablet_id);
   }
-
   string rocksdb_dir;
-  yb::Random rand(GetCurrentTimeMicros());
-  auto wal_root_dirs = fs_manager->GetWalRootDirs();
-  CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
-  auto wal_dir = JoinPathSegments(wal_root_dirs[rand.Uniform(wal_root_dirs.size())], tablet_id);
-  if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Determine the data dir to use for this tablet. Pick one of the data dirs at random.
-    auto data_root_dirs = fs_manager->GetDataRootDirs();
-    CHECK(!data_root_dirs.empty()) << "No data root directories found";
-    string data_root_dir = data_root_dirs[rand.Uniform(data_root_dirs.size())];
-    string rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
-    rocksdb_dir = JoinPathSegments(rocksdb_top_dir, tablet_id);
+  string wal_dir;
+  string rocksdb_top_dir;
+  // Use the original randomized logic if the indices are not explicitly passed in
+  if (data_root_dir.empty() || wal_root_dir.empty()) {
+    yb::Random rand(GetCurrentTimeMicros());
+    if (data_root_dir.empty()) {
+      auto data_root_dirs = fs_manager->GetDataRootDirs();
+      CHECK(!data_root_dirs.empty()) << "No data root directories found";
+      rocksdb_top_dir = JoinPathSegments(data_root_dirs[rand.Uniform(data_root_dirs.size())],
+                                         FsManager::kRocksDBDirName);
+    } else {
+      rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
+    }
+
+    if (wal_root_dir.empty()) {
+      auto wal_root_dirs = fs_manager->GetWalRootDirs();
+      CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
+      wal_dir = JoinPathSegments(wal_root_dirs[rand.Uniform(wal_root_dirs.size())], tablet_id);
+    } else {
+      wal_dir = JoinPathSegments(wal_root_dir, tablet_id);
+    }
+  } else {
+    wal_dir = JoinPathSegments(wal_root_dir, tablet_id);
+    rocksdb_top_dir = JoinPathSegments(data_root_dir, FsManager::kRocksDBDirName);
   }
 
+  // Do we need this check anymore?
+  if (table_type != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    // Determine the data dir to use for this tablet. Pick one of the data dirs at random.
+    rocksdb_dir = JoinPathSegments(rocksdb_top_dir, tablet_id);
+  }
   scoped_refptr<TabletMetadata> ret(new TabletMetadata(fs_manager,
+                                                       table_id,
                                                        tablet_id,
                                                        table_name,
                                                        table_type,
@@ -126,6 +147,7 @@ Status TabletMetadata::Load(FsManager* fs_manager,
 }
 
 Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
+                                    const string& table_id,
                                     const string& tablet_id,
                                     const string& table_name,
                                     TableType table_type,
@@ -143,9 +165,9 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
     }
     return Status::OK();
   } else if (s.IsNotFound()) {
-    return CreateNew(fs_manager, tablet_id, table_name, table_type, schema,
-                     partition_schema, partition, initial_tablet_data_state,
-                     metadata);
+    return CreateNew(fs_manager, table_id, tablet_id, table_name, table_type,
+                     schema, partition_schema, partition,
+                     initial_tablet_data_state, metadata);
   } else {
     return s;
   }
@@ -173,7 +195,9 @@ void TabletMetadata::CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
 }
 
 Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
-                                        const boost::optional<OpId>& last_logged_opid) {
+                                        const boost::optional<OpId>& last_logged_opid,
+                                        bool* was_deleted) {
+  *was_deleted = false;
   CHECK(delete_type == TABLET_DATA_DELETED ||
         delete_type == TABLET_DATA_TOMBSTONED)
       << "DeleteTabletData() called with unsupported delete_type on tablet "
@@ -210,6 +234,7 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
                  << status.ToString();
     } else {
       LOG(INFO) << "Successfully destroyed RocksDB at: " << rocksdb_dir_;
+      *was_deleted = true;
     }
   }
 
@@ -248,6 +273,7 @@ Status TabletMetadata::DeleteSuperBlock() {
 }
 
 TabletMetadata::TabletMetadata(FsManager* fs_manager,
+                               string table_id,
                                string tablet_id,
                                string table_name,
                                TableType table_type,
@@ -258,6 +284,7 @@ TabletMetadata::TabletMetadata(FsManager* fs_manager,
                                Partition partition,
                                const TabletDataState& tablet_data_state)
     : state_(kNotWrittenYet),
+      table_id_(std::move(table_id)),
       tablet_id_(std::move(tablet_id)),
       partition_(std::move(partition)),
       fs_manager_(fs_manager),
@@ -666,6 +693,22 @@ uint32_t TabletMetadata::schema_version() const {
   std::lock_guard<LockType> l(data_lock_);
   DCHECK_NE(state_, kNotLoadedYet);
   return schema_version_;
+}
+
+string TabletMetadata::data_root_dir() const {
+  if (rocksdb_dir_.empty()) {
+    return "";
+  } else {
+    return DirName(DirName(rocksdb_dir_));
+  }
+}
+
+string TabletMetadata::wal_root_dir() const {
+  if (wal_dir_.empty()) {
+    return "";
+  } else {
+    return DirName(wal_dir_);
+  }
 }
 
 void TabletMetadata::set_tablet_data_state(TabletDataState state) {

@@ -59,6 +59,7 @@ namespace tserver {
 class DataIdPB;
 class DataChunkPB;
 class RemoteBootstrapServiceProxy;
+class TSTabletManager;
 
 // Client class for using remote bootstrap to copy a tablet from another host.
 // This class is not thread-safe.
@@ -96,10 +97,13 @@ class RemoteBootstrapClient {
   // in progress. If the 'metadata' pointer is passed as NULL, it is ignored,
   // otherwise the TabletMetadata object resulting from the initial remote
   // bootstrap response is returned.
+  // ts_manager pointer allows the bootstrap function to assign non-random
+  // data and wal directories for the bootstrapped tablets.
   // TODO: Rename these parameters to bootstrap_source_*.
   Status Start(const std::string& bootstrap_peer_uuid,
                const HostPort& bootstrap_peer_addr,
-               scoped_refptr<tablet::TabletMetadata>* metadata);
+               scoped_refptr<tablet::TabletMetadata>* metadata,
+               TSTabletManager* ts_manager = nullptr);
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.

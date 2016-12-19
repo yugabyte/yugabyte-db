@@ -2386,14 +2386,16 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                    meta,
                    master_->fs_manager()->uuid(),
                    Substitute("Remote bootstrap: Unable to fetch data from remote peer $0 ($1)",
-                              bootstrap_peer_uuid, bootstrap_peer_addr.ToString()));
+                              bootstrap_peer_uuid, bootstrap_peer_addr.ToString()),
+                   nullptr);
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    master_->fs_manager()->uuid(),
-                   "Remote bootstrap: Failure calling Finish()");
+                   "Remote bootstrap: Failure calling Finish()",
+                   nullptr);
 
   // Synchronous tablet open for "local bootstrap".
   RETURN_NOT_OK(sys_catalog_->OpenTablet(meta));

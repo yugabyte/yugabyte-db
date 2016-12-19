@@ -89,6 +89,7 @@ class TabletHarness {
 
     scoped_refptr<TabletMetadata> metadata;
     RETURN_NOT_OK(TabletMetadata::LoadOrCreate(fs_manager_.get(),
+                                               "YBTableTest",
                                                options_.tablet_id,
                                                "YBTableTest",
                                                options_.table_type,

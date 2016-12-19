@@ -277,6 +277,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
 
   RETURN_NOT_OK(tablet::TabletMetadata::CreateNew(
     fs_manager,
+    kSysCatalogTableId,
     kSysCatalogTabletId,
     table_name(),
     TableType::YSQL_TABLE_TYPE,

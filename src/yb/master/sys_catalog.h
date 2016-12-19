@@ -42,6 +42,7 @@ class Master;
 class MasterOptions;
 
 static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
+static const char* const kSysCatalogTableId = "sys.catalog.uuid";
 
 class VisitorBase {
  public:
