@@ -254,8 +254,9 @@ void CreateTable(const string &table_name, const shared_ptr<YBClient> &client) {
     CreateYBTable(table_name, client);
   }
 
-  // Workaround(ENG-516) After the table is created, wait a few seconds for leader balancing to
-  // settle down before processing IO operations.
+  // Workaround for ENG-516. After the table is created, wait a few seconds for leader balancing
+  // to settle down before processing IO operations.
+  LOG(INFO) << "Sleeping 10 seconds for leader balancing operations to settle.";
   sleep(10);
 }
 
@@ -268,9 +269,8 @@ void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &clie
 
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
-  vector<const YBPartialRow *> splits = GetSplitsForTable(&schema);
 
-  LOG(INFO) << "Creating table";
+  LOG(INFO) << "Creating table with " << FLAGS_num_tablets << " hash based partitions.";
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status = table_creator->table_name(table_name)
                                      .num_tablets(FLAGS_num_tablets)
@@ -289,7 +289,7 @@ void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &clie
 void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client) {
   LOG(INFO) << "Building schema";
   YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
+  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
   schemaBuilder.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
@@ -301,7 +301,7 @@ void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client)
   Status table_creation_status =
       table_creator->table_name(table_name)
           .schema(&schema)
-          .num_tablets(FLAGS_num_tablets)
+          .split_rows(splits)
           .num_replicas(FLAGS_num_replicas)
           .table_type(
               FLAGS_use_kv_table ? yb::client::YBTableType::YSQL_TABLE_TYPE
