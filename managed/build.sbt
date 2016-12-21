@@ -4,7 +4,7 @@ import com.typesafe.sbt.packager.MappingsHelper._
 version := "1.0-SNAPSHOT"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
+  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, DockerPlugin)
   .disablePlugins(PlayLayoutPlugin)
 
 
@@ -35,3 +35,6 @@ javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 mappings in (Compile, packageDoc) := Seq()
 
 topLevelDirectory := None
+
+dockerExposedPorts := Seq(9000)
+dockerRepository := Some("registry.replicated.com/yugaware_apple")
