@@ -88,6 +88,8 @@ Batcher::Batcher(YBClient* client,
     outstanding_lookups_(0),
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0) {
+  const auto metric_entity = client_->data_->messenger_->metric_entity();
+  async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
 void Batcher::Abort() {
@@ -391,10 +393,12 @@ void Batcher::FlushBuffer(RemoteTablet* tablet, const vector<InFlightOp*>& ops) 
   // The RPC object takes ownership of the in flight ops.
   // The underlying YB OP is not directly owned, only a reference is kept.
   if (read_only_) {
-    ReadRpc* rpc = new ReadRpc(this, tablet, ops, deadline_, client_->data_->messenger_);
+    ReadRpc* rpc = new ReadRpc(this, tablet, ops, deadline_, client_->data_->messenger_,
+                               async_rpc_metrics_);
     rpc->SendRpc();
   } else {
-    WriteRpc* rpc = new WriteRpc(this, tablet, ops, deadline_, client_->data_->messenger_);
+    WriteRpc* rpc = new WriteRpc(this, tablet, ops, deadline_, client_->data_->messenger_,
+                                 async_rpc_metrics_);
     rpc->SendRpc();
   }
 }

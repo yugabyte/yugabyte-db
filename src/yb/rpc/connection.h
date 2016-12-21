@@ -283,6 +283,14 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   // Whether we completed connection negotiation.
   bool negotiation_complete_;
+
+  // We instantiate and store this metric instance at the level of connection, but not at the level
+  // of the class emitting metrics (OutboundTransfer) as recommended in metrics.h. This is on
+  // purpose, because OutboundTransfer is instantiated each time we need to send payload over a
+  // connection and creating a metric instance each time could be a performance hit, because
+  // it involves spin lock and search in a metrics map. Therefore we prepare metric instances
+  // at connection level.
+  scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 };
 
 class RedisConnection : public Connection {

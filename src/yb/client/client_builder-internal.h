@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 
@@ -47,6 +48,9 @@ class YBClientBuilder::Data {
 
   MonoDelta default_admin_operation_timeout_;
   MonoDelta default_rpc_timeout_;
+
+  // Metric entity to be used by components emitting metrics.
+  scoped_refptr<MetricEntity> metric_entity_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

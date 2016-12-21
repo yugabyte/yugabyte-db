@@ -253,7 +253,8 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
   // NOTE: 'payload' is currently restricted to a maximum of kMaxPayloadSlices
   // slices.
   OutboundTransfer(const std::vector<Slice>& payload,
-                   TransferCallbacks* callbacks);
+                   TransferCallbacks* callbacks,
+                   scoped_refptr<Histogram> handler_latency_OutboundTransfer);
 
   // Destruct the transfer. A transfer object should never be deallocated
   // before it has either (a) finished transferring, or (b) been Abort()ed.
@@ -285,10 +286,8 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
 
   std::string HexDump() const;
 
-  static void InitializeMetric(const scoped_refptr<MetricEntity>& entity);
-
  private:
-  static scoped_refptr<Histogram> rpc_metric_;
+  const scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 
   // Slices to send. Uses an array here instead of a vector to avoid an expensive
   // vector construction (improved performance a couple percent).

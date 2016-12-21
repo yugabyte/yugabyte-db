@@ -237,6 +237,12 @@ YBClientBuilder& YBClientBuilder::set_num_reactors(int32_t num_reactors) {
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_metric_entity(
+    const scoped_refptr<MetricEntity>& metric_entity) {
+  data_->metric_entity_ = metric_entity;
+  return *this;
+}
+
 Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
@@ -245,6 +251,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   // Init messenger.
   MessengerBuilder builder("client");
   builder.set_num_reactors(data_->num_reactors_);
+  builder.set_metric_entity(data_->metric_entity_);
   RETURN_NOT_OK(builder.Build(&c->data_->messenger_));
 
   c->data_->master_server_endpoint_ = data_->master_server_endpoint_;

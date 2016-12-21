@@ -7,6 +7,7 @@
 #include "yb/client/async_rpc.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
+#include "yb/client/client_builder-internal.h"
 #include "yb/client/redis_helpers.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/gutil/strings/join.h"
@@ -119,11 +120,6 @@ void RedisServiceImpl::PopulateHandlers() {
   metrics_["set_internal"].handler_latency =
       METRIC_handler_latency_yb_redisserver_RedisServerService_set_internal.Instantiate(
           server_->metric_entity());
-
-  yb::client::internal::WriteRpc::InitializeMetric(server_->metric_entity());
-  yb::client::internal::ReadRpc::InitializeMetric(server_->metric_entity());
-  yb::rpc::OutboundTransfer::InitializeMetric(server_->metric_entity());
-  yb::rpc::OutboundCall::InitializeMetric(server_->metric_entity());
 }
 
 const RedisServiceImpl::RedisCommandInfo* RedisServiceImpl::FetchHandler(
@@ -176,6 +172,7 @@ void RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
     YBClientBuilder client_builder;
     client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
     client_builder.add_master_server_addr(yb_tier_master_addresses);
+    client_builder.set_metric_entity(server_->metric_entity());
     CHECK_OK(client_builder.Build(&client_));
 
     const string table_name(RedisConstants::kRedisTableName);

@@ -110,6 +110,7 @@ class Proxy {
   std::shared_ptr<Messenger> messenger_;
   ConnectionId conn_id_;
   mutable std::atomic<bool> is_started_;
+  std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(Proxy);
 };

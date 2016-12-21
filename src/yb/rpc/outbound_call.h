@@ -149,6 +149,15 @@ class ConnectionIdEqual {
   bool operator() (const ConnectionId& cid1, const ConnectionId& cid2) const;
 };
 
+// Container for OutboundCall metrics
+struct OutboundCallMetrics {
+  explicit OutboundCallMetrics(const scoped_refptr<MetricEntity>& metric_entity);
+
+  scoped_refptr<Histogram> queue_time;
+  scoped_refptr<Histogram> send_time;
+  scoped_refptr<Histogram> time_to_response;
+};
+
 // Tracks the status of a call on the client side.
 //
 // This is an internal-facing class -- clients interact with the
@@ -161,6 +170,7 @@ class ConnectionIdEqual {
 class OutboundCall {
  public:
   OutboundCall(const ConnectionId& conn_id, const RemoteMethod& remote_method,
+               const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                google::protobuf::Message* response_storage,
                RpcController* controller, ResponseCallback callback);
 
@@ -231,15 +241,8 @@ class OutboundCall {
     return header_.call_id();
   }
 
-  static void InitializeMetric(const scoped_refptr<MetricEntity>& entity);
-
  private:
-  static scoped_refptr<Histogram> metric_queued_;
-  static scoped_refptr<Histogram> metric_sent_;
-  static scoped_refptr<Histogram> time_to_response_;
-
   friend class RpcController;
-  RpcMethodMetrics metric_;
 
   // Various states the call propagates through.
   // NB: if adding another state, be sure to update OutboundCall::IsFinished()
@@ -306,6 +309,8 @@ class OutboundCall {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
   MonoTime start_;
+
+  std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

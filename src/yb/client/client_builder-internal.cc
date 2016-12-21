@@ -16,6 +16,7 @@
 // under the License.
 
 #include "yb/client/client_builder-internal.h"
+#include "yb/util/metrics.h"
 
 DEFINE_int32(
     yb_client_num_reactors, 4,
@@ -28,7 +29,8 @@ namespace client {
 YBClientBuilder::Data::Data()
     : num_reactors_(FLAGS_yb_client_num_reactors),
       default_admin_operation_timeout_(MonoDelta::FromSeconds(60)),
-      default_rpc_timeout_(MonoDelta::FromSeconds(60)) {}
+      default_rpc_timeout_(MonoDelta::FromSeconds(60)),
+      metric_entity_(nullptr) {}
 
 YBClientBuilder::Data::~Data() {
 }

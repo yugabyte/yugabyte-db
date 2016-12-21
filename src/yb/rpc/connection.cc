@@ -37,6 +37,11 @@ using strings::Substitute;
 namespace yb {
 namespace rpc {
 
+METRIC_DEFINE_histogram(
+    server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the response to the wire",
+    60000000LU, 2);
+
 ///
 /// Connection
 ///
@@ -51,7 +56,11 @@ Connection::Connection(ReactorThread* reactor_thread,
       last_activity_time_(MonoTime::Now(MonoTime::FINE)),
       is_epoll_registered_(false),
       next_call_id_(1),
-      negotiation_complete_(false) {}
+      negotiation_complete_(false) {
+  const auto metric_entity = reactor_thread->reactor()->messenger()->metric_entity();
+  handler_latency_outbound_transfer_ = metric_entity ?
+      METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
+}
 
 Status Connection::SetNonBlocking(bool enabled) {
   return socket_.SetNonBlocking(enabled);
@@ -276,7 +285,8 @@ void Connection::QueueOutboundCall(const shared_ptr<OutboundCall>& call) {
 
   TransferCallbacks* cb = new CallTransferCallbacks(call);
   awaiting_response_[call_id] = car.release();
-  QueueOutbound(gscoped_ptr<OutboundTransfer>(new OutboundTransfer(slices_tmp_, cb)));
+  QueueOutbound(gscoped_ptr<OutboundTransfer>(new OutboundTransfer(slices_tmp_, cb,
+      handler_latency_outbound_transfer_)));
 }
 
 // Callbacks for sending an RPC call response from the server.
@@ -617,7 +627,8 @@ void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
 
   TransferCallbacks* cb = GetResponseTransferCallback(call.Pass());
   // After the response is sent, can delete the InboundCall object.
-  gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb));
+  gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb,
+      handler_latency_outbound_transfer_));
 
   QueueTransferTask* task = new QueueTransferTask(t.Pass(), this);
   reactor_thread_->reactor()->ScheduleReactorTask(task);

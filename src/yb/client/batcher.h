@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -221,6 +222,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // The number of bytes used in the buffer for pending operations.
   AtomicInt<int64_t> buffer_bytes_used_;
+
+  std::shared_ptr<yb::client::internal::AsyncRpcMetrics> async_rpc_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

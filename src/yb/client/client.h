@@ -41,11 +41,14 @@
 #include "yb/util/status.h"
 // --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
 
+template<class T> class scoped_refptr;
+
 namespace yb {
 
 class LinkedListTester;
 class PartitionSchema;
 class Sockaddr;
+class MetricEntity;
 
 namespace master {
 class ReplicationInfoPB;
@@ -162,6 +165,9 @@ class YB_EXPORT YBClientBuilder {
   // Set the number of reactor threads that are used to send out the requests.
   // (defaults to the flag value yb_client_num_reactors : 4).
   YBClientBuilder& set_num_reactors(int32_t num_reactors);
+
+  // Sets metric entity to be used for emitting metrics. Optional.
+  YBClientBuilder& set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
   // Creates the client.
   //

@@ -49,7 +49,9 @@ namespace rpc {
 Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
              const Sockaddr& remote, string service_name)
     : service_name_(std::move(service_name)),
-      messenger_(messenger) {
+      messenger_(messenger),
+      outbound_call_metrics_(messenger && messenger->metric_entity() ?
+          std::make_shared<OutboundCallMetrics>(messenger_->metric_entity()) : nullptr) {
   CHECK(messenger != nullptr);
   DCHECK(!service_name_.empty()) << "Proxy service name must not be blank";
 
@@ -78,7 +80,8 @@ void Proxy::AsyncRequest(const string& method,
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
   RemoteMethod remote_method(service_name_, method);
-  OutboundCall* call = new OutboundCall(conn_id_, remote_method, response, controller, callback);
+  OutboundCall* call = new OutboundCall(conn_id_, remote_method, outbound_call_metrics_,
+      response, controller, callback);
   controller->call_.reset(call);
   Status s = call->SetRequestParam(req);
   if (PREDICT_FALSE(!s.ok())) {

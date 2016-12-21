@@ -95,8 +95,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     path_handlers_(new TabletServerPathHandlers(this)),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
     master_config_index_(0) {
-  yb::rpc::OutboundTransfer::InitializeMetric(metric_entity());
-  yb::rpc::OutboundCall::InitializeMetric(metric_entity());
 }
 
 TabletServer::~TabletServer() {

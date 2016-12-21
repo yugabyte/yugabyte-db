@@ -35,15 +35,15 @@
 #include "yb/util/trace.h"
 
 METRIC_DEFINE_histogram(
-    server, handler_latency_OutboundCall_queue_time, "Time taken to queue the request ",
+    server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor",
     60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_OutboundCall_send_time, "Time taken to send the request ",
+    server, handler_latency_outbound_call_send_time, "Time taken to send the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire",
     60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_OutboundCall_time_to_response, "Time taken to get the response ",
+    server, handler_latency_outbound_call_time_to_response, "Time taken to get the response ",
     yb::MetricUnit::kMicroseconds,
     "Microseconds spent to send the request and get a response on the wire", 60000000LU, 2);
 
@@ -68,12 +68,19 @@ using google::protobuf::io::CodedOutputStream;
 
 static const double kMicrosPerSecond = 1000000.0;
 
+OutboundCallMetrics::OutboundCallMetrics(const scoped_refptr<MetricEntity>& entity)
+    : queue_time(METRIC_handler_latency_outbound_call_queue_time.Instantiate(entity)),
+      send_time(METRIC_handler_latency_outbound_call_send_time.Instantiate(entity)),
+      time_to_response(METRIC_handler_latency_outbound_call_time_to_response.Instantiate(entity)) {
+}
+
 ///
 /// OutboundCall
 ///
 
 OutboundCall::OutboundCall(
     const ConnectionId& conn_id, const RemoteMethod& remote_method,
+    const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
     ResponseCallback callback)
     : state_(READY),
@@ -83,7 +90,8 @@ OutboundCall::OutboundCall(
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
       trace_(new Trace),
-      start_(MonoTime::Now(MonoTime::FINE)) {
+      start_(MonoTime::Now(MonoTime::FINE)),
+      outbound_call_metrics_(outbound_call_metrics) {
   TRACE_TO(trace_, "Outbound Call initiated to %s", conn_id.ToString());
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
@@ -219,8 +227,8 @@ void OutboundCall::CallCallback() {
 void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
   TRACE_TO(trace_, "Response received.");
   // Track time taken to be queued.
-  if (time_to_response_) {
-    time_to_response_->Increment(
+  if (outbound_call_metrics_) {
+    outbound_call_metrics_->time_to_response->Increment(
         MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
   }
   call_response_ = resp.Pass();
@@ -251,21 +259,11 @@ void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
   }
 }
 
-scoped_refptr<Histogram> OutboundCall::metric_queued_ = nullptr;
-scoped_refptr<Histogram> OutboundCall::metric_sent_ = nullptr;
-scoped_refptr<Histogram> OutboundCall::time_to_response_ = nullptr;
-
-void OutboundCall::InitializeMetric(const scoped_refptr<MetricEntity>& entity) {
-  metric_queued_ = METRIC_handler_latency_OutboundCall_queue_time.Instantiate(entity);
-  metric_sent_ = METRIC_handler_latency_OutboundCall_send_time.Instantiate(entity);
-  time_to_response_ = METRIC_handler_latency_OutboundCall_time_to_response.Instantiate(entity);
-}
-
 void OutboundCall::SetQueued() {
   // Track time taken to be queued.
-  if (metric_queued_) {
+  if (outbound_call_metrics_) {
     auto end_time = MonoTime::Now(MonoTime::FINE);
-    metric_queued_->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    outbound_call_metrics_->queue_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
   set_state(ON_OUTBOUND_QUEUE);
   TRACE_TO(trace_, "Queued.");
@@ -273,9 +271,9 @@ void OutboundCall::SetQueued() {
 
 void OutboundCall::SetSent() {
   // Track time taken to be sent
-  if (metric_sent_) {
+  if (outbound_call_metrics_) {
     auto end_time = MonoTime::Now(MonoTime::FINE);
-    metric_sent_->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
   set_state(SENT);
   TRACE_TO(trace_, "Call Sent.");

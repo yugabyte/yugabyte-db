@@ -187,7 +187,7 @@ class Messenger {
     return closing_;
   }
 
-  scoped_refptr<MetricEntity> metric_entity() const { return metric_entity_.get(); }
+  scoped_refptr<MetricEntity> metric_entity() const { return metric_entity_; }
 
   const scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
 
@@ -229,8 +229,8 @@ class Messenger {
 
   gscoped_ptr<ThreadPool> negotiation_pool_;
 
-  scoped_refptr<MetricEntity> metric_entity_;
-  scoped_refptr<Histogram> outgoing_queue_time_;
+  const scoped_refptr<MetricEntity> metric_entity_;
+  const scoped_refptr<Histogram> outgoing_queue_time_;
 
   // The ownership of the Messenger object is somewhat subtle. The pointer graph
   // looks like this:
