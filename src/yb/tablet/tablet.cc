@@ -970,6 +970,53 @@ Status Tablet::HandleYSQLReadRequest(const MvccSnapshot &snap,
   return Status::OK();
 }
 
+Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state) {
+  if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
+    vector<string> locks_held;
+    const auto& req = *state->request();
+    unique_ptr<const WriteRequestPB> key_value_write_request;
+    bool invalid_table_type = true;
+    switch (table_type_) {
+      case TableType::REDIS_TABLE_TYPE: {
+        vector<RedisResponsePB> responses;
+        RETURN_NOT_OK(KeyValueBatchFromRedisWriteBatch(req, &key_value_write_request,
+            &locks_held, &responses));
+        for (auto &redis_resp : responses) {
+          *(state->response()->add_redis_response_batch()) = std::move(redis_resp);
+        }
+        invalid_table_type = false;
+        break;
+      }
+      case TableType::YSQL_TABLE_TYPE: {
+        CHECK_NE(req.ysql_write_batch_size() > 0, req.row_operations().rows().size() > 0)
+            << "YSQL write and Kudu row operations not supported in the same request";
+        if (req.ysql_write_batch_size() > 0) {
+          vector<YSQLResponsePB> responses;
+          RETURN_NOT_OK(KeyValueBatchFromYSQLWriteBatch(req, &key_value_write_request, &locks_held,
+              &responses));
+          for (auto& ysql_resp : responses) {
+            *(state->response()->add_ysql_response_batch()) = std::move(ysql_resp);
+          }
+        } else {
+          // Kudu-compatible codepath - we'll construct a new WriteRequestPB for raft replication.
+          RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(req, &key_value_write_request, &locks_held));
+        }
+        invalid_table_type = false;
+        break;
+      }
+      case KUDU_COLUMNAR_TABLE_TYPE:
+        LOG(FATAL) << "Invalid table type: " << table_type_;
+        break;
+    }
+    if (invalid_table_type) {
+      LOG(FATAL) << "Invalid table type: " << table_type_;
+    }
+    state->SetRequest(*key_value_write_request);
+    state->swap_docdb_locks(&locks_held);
+  }
+  return Status::OK();
+}
+
 Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_request_pb,
                                            unique_ptr<const WriteRequestPB> *kudu_write_batch_pb,
                                            vector<string> *keys_locked) {
@@ -2008,6 +2055,17 @@ void Tablet::UpdateCompactionStats(MaintenanceOpStats* stats) {
 }
 
 Status Tablet::DebugDump(vector<string> *lines) {
+  switch (table_type_) {
+    case TableType::KUDU_COLUMNAR_TABLE_TYPE:
+      return KuduDebugDump(lines);
+    case TableType::YSQL_TABLE_TYPE:
+    case TableType::REDIS_TABLE_TYPE:
+      return DocDBDebugDump(lines);
+  }
+  LOG(FATAL) << "Invalid table type: " << table_type_;
+}
+
+Status Tablet::KuduDebugDump(vector<string> *lines) {
   shared_lock<rw_spinlock> lock(component_lock_);
 
   LOG_STRING(INFO, lines) << "Dumping tablet:";
@@ -2022,6 +2080,12 @@ Status Tablet::DebugDump(vector<string> *lines) {
   }
 
   return Status::OK();
+}
+
+Status Tablet::DocDBDebugDump(vector<string> *lines) {
+  LOG_STRING(INFO, lines) << "Dumping tablet:";
+  LOG_STRING(INFO, lines) << "---------------------------";
+  return yb::docdb::DocDBDebugDump(rocksdb_.get(), LOG_STRING(INFO, lines));
 }
 
 Status Tablet::CaptureConsistentIterators(

@@ -122,13 +122,6 @@ class KeyBytes {
     return data_ > other.data_;
   }
 
-  // Increments this key in place to the smallest key that is greater than it. Returns a non-const
-  // reference for easier chaining.
-  KeyBytes& IncrementInPlace() {
-    data_.push_back('\0');
-    return *this;
-  }
-
   // This can be used to e.g. move the internal state of KeyBytes somewhere else, including a
   // string field in a protobuf, without copying the bytes.
   std::string* mutable_data() {

@@ -389,6 +389,9 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     case DataType::INT32:
       // TODO: fix cast when variable length integer encoding is implemented.
       return PrimitiveValue(*reinterpret_cast<const int32_t*>(slice.data()));
+    case DataType::INT8:
+      // TODO: fix cast when variable length integer encoding is implemented.
+      return PrimitiveValue(*reinterpret_cast<const int8_t*>(slice.data()));
     case DataType::BOOL:
       // TODO(mbautin): check if this is the right way to interpret a bool value in Kudu.
       return PrimitiveValue(*slice.data() == 0 ? ValueType::kFalse: ValueType::kTrue);

@@ -95,6 +95,13 @@ class WriteTransactionState : public TransactionState {
     return request_.get();
   }
 
+  // Sets client request
+  void SetRequest(const tserver::WriteRequestPB &request) {
+    // TODO: We copy request here to implement the same behavior as in constructor,
+    // but there is an open question if we should copy request in constructor.
+    request_.reset(new tserver::WriteRequestPB(request));
+  }
+
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
   tserver::WriteResponsePB *response() OVERRIDE {
@@ -199,7 +206,7 @@ class WriteTransactionState : public TransactionState {
   // pointers to the rpc context, request and response, lifecyle
   // is managed by the rpc subsystem. These pointers maybe NULL if the
   // transaction was not initiated by an RPC call.
-  const std::unique_ptr<const tserver::WriteRequestPB> request_;
+  std::unique_ptr<const tserver::WriteRequestPB> request_;
 
   tserver::WriteResponsePB* response_;
 

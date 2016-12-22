@@ -199,6 +199,9 @@ DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &s
       case DataType::INT32:
         new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int32_t*>(raw_key));
         break;
+      case DataType::INT8:
+        new_doc_key.range_group_.emplace_back(*reinterpret_cast<const int8_t*>(raw_key));
+        break;
       case DataType::STRING: FALLTHROUGH_INTENDED;
       case DataType::BINARY:
         new_doc_key.range_group_.emplace_back(reinterpret_cast<const Slice*>(raw_key)->ToString());
@@ -400,6 +403,12 @@ KeyBytes SubDocKey::AdvanceOutOfSubDoc() {
   KeyBytes subdoc_key_no_ts = Encode(/* include_timestamp = */ false);
   subdoc_key_no_ts.AppendRawBytes("\xff", 1);
   return subdoc_key_no_ts;
+}
+
+KeyBytes SubDocKey::AdvanceToNextDocKey() {
+  KeyBytes doc_key_encoded = doc_key_.Encode();
+  doc_key_encoded.AppendRawBytes("\xff", 1);
+  return doc_key_encoded;
 }
 
 }  // namespace docdb

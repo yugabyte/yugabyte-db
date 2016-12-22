@@ -329,6 +329,10 @@ string DocDBRocksDBFixture::DocDBDebugDumpToStr() {
   return yb::docdb::DocDBDebugDumpToStr(rocksdb());
 }
 
+void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEqVerboseTrimmed(const string &expected) {
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(expected, DocDBDebugDumpToStr());
+}
+
 string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
   DebugDocVisitor doc_visitor;
   CHECK_OK(ScanDocument(rocksdb(), encoded_doc_key, &doc_visitor));

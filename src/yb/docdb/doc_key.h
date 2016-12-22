@@ -301,6 +301,25 @@ class SubDocKey {
   // is omitted from the resulting encoded representation.
   KeyBytes AdvanceOutOfSubDoc();
 
+  // Similar to AdvanceOutOfSubDoc, but seeks to the smallest SubDocKey that has a
+  // lexicographically higher document key, excluding any subkeys.
+  //
+  // E.g. assuming the SubDocKey this is being called on is #2 from the following example,
+  // performing a RocksDB seek on the return value of this takes us to #10.
+  //
+  //  1. SubDocKey(DocKey([], ["a"]), [TS(1)]) -> {}
+  //  2. SubDocKey(DocKey([], ["a"]), ["x", TS(1)]) -> {} ----------------------------.
+  //  3. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(2)]) -> null                      |
+  //  4. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(1)]) -> {}                        |
+  //  5. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", TS(1)]) -> {}                   |
+  //  6. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", "x", TS(1)]) -> true            |
+  //  7. SubDocKey(DocKey([], ["a"]), ["y", TS(3)]) -> {}                             |
+  //  8. SubDocKey(DocKey([], ["a"]), ["y", "y", TS(3)]) -> {}                        |
+  //  9. SubDocKey(DocKey([], ["a"]), ["y", "y", "x", TS(3)]) ->                      |
+  // 10. SubDocKey(DocKey([], ["b"]), [TS(1)]) -> {}                    <-------------.
+  // 11. SubDocKey(DocKey([], ["b"]), ["z", TS(1)]) -> "value"
+  KeyBytes AdvanceToNextDocKey();
+
  private:
   DocKey doc_key_;
   Timestamp timestamp_;

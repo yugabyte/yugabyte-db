@@ -451,6 +451,10 @@ class Tablet {
 
   rocksdb::SequenceNumber LargestFlushedSequenceNumber() const;
 
+  // For non-kudu table type fills key-value batch in transaction state request and updates
+  // request in state. Due to acquiring locks it can block the thread.
+  Status AcquireLocksAndPerformDocOperations(WriteTransactionState *state);
+
   static const char* kDMSMemTrackerId;
 
  private:
@@ -557,6 +561,9 @@ class Tablet {
 
   Status OpenKeyValueTablet();
   Status OpenKuduColumnarTablet();
+
+  Status KuduDebugDump(vector<std::string> *lines);
+  Status DocDBDebugDump(vector<std::string> *lines);
 
   static void EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
                                  JsonWriter* writer,

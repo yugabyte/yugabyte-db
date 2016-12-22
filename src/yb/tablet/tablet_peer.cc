@@ -344,6 +344,7 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
 Status TabletPeer::SubmitWrite(WriteTransactionState *state) {
   RETURN_NOT_OK(CheckRunning());
 
+  RETURN_NOT_OK(tablet_->AcquireLocksAndPerformDocOperations(state));
   gscoped_ptr<WriteTransaction> transaction(new WriteTransaction(state, consensus::LEADER));
   scoped_refptr<TransactionDriver> driver;
   RETURN_NOT_OK(NewLeaderTransactionDriver(transaction.PassAs<Transaction>(), &driver));

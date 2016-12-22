@@ -120,6 +120,9 @@ class DocDBRocksDBFixture {
   // decoded as a DocDB key/value and converted to a human-readable string representation.
   std::string DocDBDebugDumpToStr();
 
+  // Checks that contents of the entire RocksDB database is exactly as expected.
+  void AssertDocDbDebugDumpStrEqVerboseTrimmed(const string &expected);
+
   // "Walks" the latest state of the given document using using DebugDocVisitor and returns a string
   // that lists all "events" encountered (document start/end, object start/end/keys/values, etc.)
   std::string DebugWalkDocument(const KeyBytes& encoded_doc_key);

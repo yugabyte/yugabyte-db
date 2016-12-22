@@ -85,6 +85,9 @@ bool DocRowwiseIterator::HasNext() const {
 
   if (done_) return false;
 
+  // Use empty slice as initial previous key value in order to not be equal to real key.
+  rocksdb::Slice prev_rocksdb_key{};
+
   while (true) {
     if (!db_iter_->Valid() ||
         has_upper_bound_key_ && exclusive_upper_bound_key_.CompareTo(db_iter_->key()) <= 0) {
@@ -97,6 +100,14 @@ bool DocRowwiseIterator::HasNext() const {
       // Defer error reporting to NextBlock.
       return true;
     }
+
+    if (prev_rocksdb_key == db_iter_->key()) {
+      // Infinite loop detected, defer error reporting to NextBlock.
+      status_ = STATUS_SUBSTITUTE(Corruption,
+          "Infinite loop detected at $0", subdoc_key_.ToString());
+      return true;
+    }
+    prev_rocksdb_key = db_iter_->key();
 
     if (subdoc_key_.num_subkeys() == 1) {
       // Even without optional init markers (i.e. if we require an object init marker at the top of
@@ -149,7 +160,7 @@ bool DocRowwiseIterator::HasNext() const {
     }
     // No document with this key exists at this timestamp (it has been deleted). Go to the next
     // document key and repeat.
-    ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.doc_key().Encode().IncrementInPlace().AsSlice());
+    ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceToNextDocKey().AsSlice());
   }
 }
 
@@ -188,6 +199,12 @@ Status DocRowwiseIterator::PrimitiveValueToKudu(
       // TODO: update these casts when all data types are supported in docdb
       RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
       *(reinterpret_cast<int32_t*>(dest_ptr)) = static_cast<int32_t>(value.GetInt64());
+      break;
+    }
+    case DataType::INT8: {
+      // TODO: update these casts when all data types are supported in docdb
+      RETURN_NOT_OK(ExpectValueType(ValueType::kInt64, col_schema, value));
+      *(reinterpret_cast<int8_t*>(dest_ptr)) = static_cast<int8_t>(value.GetInt64());
       break;
     }
     case DataType::BOOL: {

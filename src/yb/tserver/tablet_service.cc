@@ -774,52 +774,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  unique_ptr<WriteTransactionState> tx_state;
-
-  vector<string> locks_held;
-  unique_ptr<const WriteRequestPB> key_value_write_request;
-
-  switch (tablet->table_type()) {
-    case TableType::KUDU_COLUMNAR_TABLE_TYPE: {
-      tx_state = unique_ptr<WriteTransactionState>(
-          new WriteTransactionState(tablet_peer.get(), req, resp));
-      break;
-    }
-    case TableType::REDIS_TABLE_TYPE: {
-      vector<RedisResponsePB> responses;
-      s = tablet->KeyValueBatchFromRedisWriteBatch(
-          *req, &key_value_write_request, &locks_held, &responses);
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-      for (auto& redis_resp : responses) {
-        *(resp->add_redis_response_batch()) = std::move(redis_resp);
-      }
-      tx_state = unique_ptr<WriteTransactionState>(
-          new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
-      tx_state->swap_docdb_locks(&locks_held);
-      break;
-    }
-    case TableType::YSQL_TABLE_TYPE: {
-      CHECK_NE(req->ysql_write_batch_size() > 0, req->row_operations().rows().size() > 0)
-          << "YSQL write and Kudu row operations not supported in the same request";
-      if (req->ysql_write_batch_size() > 0) {
-        vector<YSQLResponsePB> responses;
-        s = tablet->KeyValueBatchFromYSQLWriteBatch(
-            *req, &key_value_write_request, &locks_held, &responses);
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-        for (auto& ysql_resp : responses) {
-          *(resp->add_ysql_response_batch()) = std::move(ysql_resp);
-        }
-      } else {
-        // We'll construct a new WriteRequestPB for raft replication.
-        s = tablet->KeyValueBatchFromKuduRowOps(*req, &key_value_write_request, &locks_held);
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-      }
-      tx_state = unique_ptr<WriteTransactionState>(
-          new WriteTransactionState(tablet_peer.get(), key_value_write_request.get(), resp));
-      tx_state->swap_docdb_locks(&locks_held);
-      break;
-    }
-  }
+  auto tx_state = unique_ptr<WriteTransactionState>(
+      new WriteTransactionState(tablet_peer.get(), req, resp));
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
       new RpcTransactionCompletionCallback<WriteResponsePB>(context,

@@ -24,6 +24,7 @@ set(DOCDB_SRCS
     docdb_rocksdb_util.cc
     in_mem_docdb.cc
     internal_doc_iterator.cc
+    key_bytes.cc
     primitive_value.cc
     value.cc
     subdocument.cc

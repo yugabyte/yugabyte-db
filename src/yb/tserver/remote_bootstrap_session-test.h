@@ -169,22 +169,7 @@ class RemoteBootstrapTest : public YBTabletTest {
       WriteResponsePB resp;
       CountDownLatch latch(1);
 
-      unique_ptr<const WriteRequestPB> key_value_write_request;
-      std::vector<std::string> keys_locked;
-
-      if (table_type_ == TableType::YSQL_TABLE_TYPE) {
-        Status s = tablet()->KeyValueBatchFromKuduRowOps(
-            *req.get(), &key_value_write_request, &keys_locked);
-        assert(s.ok());
-      } else {
-        key_value_write_request = std::move(req);
-      }
-
-      auto state = new WriteTransactionState(
-          tablet_peer_.get(), key_value_write_request.get(), &resp);
-      if (table_type_ == TableType::YSQL_TABLE_TYPE) {
-        state->swap_docdb_locks(&keys_locked);
-      }
+      const auto state = new WriteTransactionState(tablet_peer_.get(), req.get(), &resp);
       state->set_completion_callback(gscoped_ptr<tablet::TransactionCompletionCallback>(
           new tablet::LatchTransactionCompletionCallback<WriteResponsePB>(&latch, &resp)).Pass());
       ASSERT_OK(tablet_peer_->SubmitWrite(state));

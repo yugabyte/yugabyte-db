@@ -77,6 +77,32 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) 
       "EndObject\n"
       "EndDocument\n";
 
+  static KeyBytes kEncodedDocKey1;
+  static KeyBytes kEncodedDocKey2;
+  static Schema kSchemaForIteratorTests;
+  static Schema kProjectionForIteratorTests;
+
+  static void SetUpTestCase() {
+    kEncodedDocKey1 = DocKey(PrimitiveValues("row1", 11111)).Encode();
+    kEncodedDocKey2 = DocKey(PrimitiveValues("row2", 22222)).Encode();
+    kSchemaForIteratorTests = Schema({
+        ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
+        ColumnSchema("b", DataType::INT64, false),
+        // Non-key columns
+        ColumnSchema("c", DataType::STRING, true),
+        ColumnSchema("d", DataType::INT64, true),
+        ColumnSchema("e", DataType::STRING, true)
+    }, {
+        ColumnId(10),
+        ColumnId(20),
+        ColumnId(30),
+        ColumnId(40),
+        ColumnId(50)
+    }, 2);
+    ASSERT_OK(kSchemaForIteratorTests.CreateProjectionByNames( {"c", "d", "e"},
+        &kProjectionForIteratorTests));
+  }
+
   void TestInsertion(DocPath doc_path,
                      const PrimitiveValue& value,
                      Timestamp timestamp,
@@ -92,6 +118,11 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) 
   // history.
   void CheckExpectedLatestDBState();
 };
+
+KeyBytes DocDBTest::kEncodedDocKey1;
+KeyBytes DocDBTest::kEncodedDocKey2;
+Schema DocDBTest::kSchemaForIteratorTests;
+Schema DocDBTest::kProjectionForIteratorTests;
 
 void DocDBTest::TestInsertion(const DocPath doc_path,
                               const PrimitiveValue& value,
@@ -164,23 +195,21 @@ TEST_F(DocDBTest, HistoryCompactionFirstRowHandlingRegression) {
   NO_FATALS(SetPrimitive(DocPath(encoded_doc_key),
                          PrimitiveValue(ValueType::kObject),
                          Timestamp(4000)));
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(4000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(1000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; TS(3000)]) -> "value3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; TS(2000)]) -> "value2"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; TS(1000)]) -> "value1"
-      )#",
-      DocDBDebugDumpToStr());
+      )#");
   CompactHistoryBefore(Timestamp(3500));
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(4000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(1000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; TS(3000)]) -> "value3"
-      )#",
-      DocDBDebugDumpToStr());
+      )#");
 }
 
 TEST_F(DocDBTest, BasicTest) {
@@ -314,7 +343,7 @@ TEST_F(DocDBTest, BasicTest) {
       )#");
 
   // Check the final state of the database.
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(kPredefinedDBStateDebugDumpStr, DocDBDebugDumpToStr());
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(kPredefinedDBStateDebugDumpStr);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(kPredefinedDocumentDebugDumpStr,
                                 DebugWalkDocument(encoded_doc_key));
   CheckExpectedLatestDBState();
@@ -329,7 +358,7 @@ TEST_F(DocDBTest, BasicTest) {
   //
   // This entry is deleted because we can always remove deletes at or below the cutoff timestamp:
   // SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(5000)]) -> DEL
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000)]) -> {}
@@ -339,8 +368,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(6000)]) -> DEL
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(3000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) -> "value_bc_prime"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) -> "value_bd"
-      )#",
-      DocDBDebugDumpToStr());
+      )#");
   CheckExpectedLatestDBState();
 
   CaptureLogicalSnapshot();
@@ -357,15 +385,14 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) 
     //
     // And the deletion itself is removed because it is at the history cutoff timestamp:
     // SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(6000)]) -> DEL
-    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+    AssertDocDbDebugDumpStrEqVerboseTrimmed(
         R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_a"; TS(2000)]) -> "value_a"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(7000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) -> "value_bc_prime"
-        )#",
-        DocDBDebugDumpToStr());
+        )#");
     CheckExpectedLatestDBState();
   }
   CaptureLogicalSnapshot();
@@ -402,7 +429,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) 
   CaptureLogicalSnapshot();
   // This is similar to the kPredefinedDBStateDebugDumpStr, but has an additional overwrite of the
   // document with an empty object at timestamp 8000.
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(8000)]) -> {}
@@ -415,11 +442,10 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) 
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(5000)]) -> DEL
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(3000)]) -> "value_bc"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) -> "value_bd"
-      )#",
-      DocDBDebugDumpToStr());
+      )#");
 
   CompactHistoryBefore(Timestamp(7999));
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(8000)]) -> {}
@@ -427,8 +453,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_a"; TS(2000)]) -> "value_a"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; TS(7000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) -> "value_bc_prime"
-      )#",
-      DocDBDebugDumpToStr());
+      )#");
   CaptureLogicalSnapshot();
 
   // Starting with each snapshot, perform the final history compaction and verify we always get the
@@ -436,12 +461,11 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) 
   for (int i = 0; i < logical_snapshots().size(); ++i) {
     RestoreToRocksDBLogicalSnapshot(i);
     CompactHistoryBefore(Timestamp(8000));
-    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+    AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(8000)]) -> {}
-        )#",
-        DocDBDebugDumpToStr());
+        )#");
   }
 }
 
@@ -457,18 +481,13 @@ TEST_F(DocDBTest, MultiOperationDocWriteBatch) {
 
   ASSERT_OK(WriteToRocksDB(dwb));
 
-  // TODO: we need to be able to do these debug dumps with one line of code.
-  std::stringstream debug_dump;
-  ASSERT_OK(DocDBDebugDump(rocksdb(), debug_dump));
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
-      ApplyEagerLineContinuation(R"#(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
 SubDocKey(DocKey([], ["a"]), [TS(1000)]) -> {}
 SubDocKey(DocKey([], ["a"]), ["b"; TS(1000)]) -> "v1"
 SubDocKey(DocKey([], ["a"]), ["c"; TS(2000)]) -> {}
 SubDocKey(DocKey([], ["a"]), ["c", "d"; TS(2000)]) -> "v2"
 SubDocKey(DocKey([], ["a"]), ["c", "e"; TS(3000)]) -> "v3"
-      )#"),
-      debug_dump.str());
+      )#");
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
@@ -501,48 +520,42 @@ SubDocKey(DocKey([], ["a"]), ["c", "e"; TS(3000)]) -> "v3"
 TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   DocWriteBatch dwb(rocksdb());
 
-  const auto encoded_doc_key1 = DocKey(PrimitiveValues("row1", 11111)).Encode();
-  const auto encoded_doc_key2 = DocKey(PrimitiveValues("row2", 22222)).Encode();
-
   // Row 1
   // We only perform one seek to get the timestamp of the top-level document. Additional writes to
   // fields within that document do not incur any reads.
-  dwb.SetPrimitive(DocPath(encoded_doc_key1, 30), PrimitiveValue("row1_c"), Timestamp(1000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"), Timestamp(1000));
   ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
-  dwb.SetPrimitive(DocPath(encoded_doc_key1, 40), PrimitiveValue(10000), Timestamp(1000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000), Timestamp(1000));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
-  dwb.SetPrimitive(DocPath(encoded_doc_key1, 50), PrimitiveValue("row1_e"), Timestamp(1000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"), Timestamp(1000));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // Row 2: one null column, one column that gets deleted and overwritten, another that just gets
   // overwritten. We should still need one seek, because the document key has changed.
-  dwb.SetPrimitive(DocPath(encoded_doc_key2, 40), PrimitiveValue(20000), Timestamp(2000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000));
   ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
 
   // Deletions normally perform a lookup of the key to see whether it's already there. We will use
   // that to provide the expected result (the number of rows deleted in SQL or whether a key was
   // deleted in Redis). However, because we've just set a value at this path, we don't expect to
   // perform any reads for this deletion.
-  dwb.DeleteSubDoc(DocPath(encoded_doc_key2, 40), Timestamp(2500));
+  dwb.DeleteSubDoc(DocPath(kEncodedDocKey2, 40), Timestamp(2500));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // The entire subdocument under DocPath(encoded_doc_key2, 40) just got deleted, and that fact
   // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
-  dwb.SetPrimitive(DocPath(encoded_doc_key2, 40), PrimitiveValue(30000), Timestamp(3000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(30000), Timestamp(3000));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e"), Timestamp(2000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e"), Timestamp(2000));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  dwb.SetPrimitive(DocPath(encoded_doc_key2, 50), PrimitiveValue("row2_e_prime"), Timestamp(4000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e_prime"), Timestamp(4000));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   ASSERT_OK(WriteToRocksDB(dwb));
 
-  std::stringstream debug_dump;
-  ASSERT_OK(DocDBDebugDump(rocksdb(), debug_dump));
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(
-      ApplyEagerLineContinuation(R"#(
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [TS(1000)]) -> {}
 SubDocKey(DocKey([], ["row1", 11111]), [30; TS(1000)]) -> "row1_c"
 SubDocKey(DocKey([], ["row1", 11111]), [40; TS(1000)]) -> 10000
@@ -553,26 +566,10 @@ SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2500)]) -> DEL
 SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2000)]) -> 20000
 SubDocKey(DocKey([], ["row2", 22222]), [50; TS(4000)]) -> "row2_e_prime"
 SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
-      )#"),
-      debug_dump.str());
+      )#");
 
-  const Schema schema({
-      ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
-      ColumnSchema("b", DataType::INT64, false),
-      // Non-key columns
-      ColumnSchema("c", DataType::STRING, true),
-      ColumnSchema("d", DataType::INT64, true),
-      ColumnSchema("e", DataType::STRING, true)
-  }, {
-      ColumnId(10),
-      ColumnId(20),
-      ColumnId(30),
-      ColumnId(40),
-      ColumnId(50),
-  }, 2);
-
-  Schema projection;
-  ASSERT_OK(schema.CreateProjectionByNames( {"c", "d", "e"}, &projection));
+  const Schema& schema = kSchemaForIteratorTests;
+  const Schema& projection = kProjectionForIteratorTests;
 
   ScanSpec scan_spec;
 
@@ -586,6 +583,8 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 
     ASSERT_TRUE(iter.HasNext());
     ASSERT_OK(iter.NextBlock(&row_block));
+    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
+    // next rows.
     ASSERT_EQ(1, row_block.nrows());
 
     const auto& row1 = row_block.row(0);
@@ -600,6 +599,8 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
     ASSERT_OK(iter.NextBlock(&row_block));
     const auto& row2 = row_block.row(0);
 
+    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
+    // next rows.
     ASSERT_EQ(1, row_block.nrows());
     ASSERT_TRUE(row_block.row(0).is_null(0));
     ASSERT_FALSE(row_block.row(0).is_null(1));
@@ -619,6 +620,8 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 
     ASSERT_TRUE(iter.HasNext());
     ASSERT_OK(iter.NextBlock(&row_block));
+    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
+    // next rows.
     ASSERT_EQ(1, row_block.nrows());
 
     // This row is exactly the same as in the previous case. TODO: deduplicate.
@@ -634,6 +637,8 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
     ASSERT_OK(iter.NextBlock(&row_block));
     const auto& row2 = row_block.row(0);
 
+    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
+    // next rows.
     ASSERT_EQ(1, row_block.nrows());
     ASSERT_TRUE(row_block.row(0).is_null(0));
     ASSERT_FALSE(row_block.row(0).is_null(1));
@@ -646,6 +651,60 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
     ASSERT_FALSE(iter.HasNext());
   }
 
+}
+
+TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
+  DocWriteBatch dwb(rocksdb());
+
+  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"), Timestamp(1000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000), Timestamp(1000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"), Timestamp(1000));
+  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000));
+
+  // Delete entire row1 document to test that iterator can successfully jump to next document
+  // when it finds deleted document.
+  dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), Timestamp(2500));
+
+  ASSERT_OK(WriteToRocksDB(dwb));
+
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), [TS(2500)]) -> DEL
+SubDocKey(DocKey([], ["row1", 11111]), [TS(1000)]) -> {}
+SubDocKey(DocKey([], ["row1", 11111]), [30; TS(1000)]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [40; TS(1000)]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [50; TS(1000)]) -> "row1_e"
+SubDocKey(DocKey([], ["row2", 22222]), [TS(2000)]) -> {}
+SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2000)]) -> 20000
+      )#");
+
+  const Schema& schema = kSchemaForIteratorTests;
+  const Schema& projection = kProjectionForIteratorTests;
+
+  ScanSpec scan_spec;
+
+  Arena arena(32768, 1048576);
+
+  {
+    DocRowwiseIterator iter(projection, schema, rocksdb(), Timestamp(2500));
+    iter.Init(&scan_spec);
+
+    RowBlock row_block(projection, 10, &arena);
+
+    ASSERT_TRUE(iter.HasNext());
+    ASSERT_OK(iter.NextBlock(&row_block));
+    // Current implementation of DocRowwiseIterator::NextBlock always returns 1 row if there are
+    // next rows. Anyway in this specific test we only have one row matching criteria.
+    ASSERT_EQ(1, row_block.nrows());
+
+    const auto& row2 = row_block.row(0);
+
+    ASSERT_TRUE(row2.is_null(0));
+    ASSERT_FALSE(row2.is_null(1));
+    ASSERT_EQ(20000, row2.get_field<DataType::INT64>(1));
+    ASSERT_TRUE(row2.is_null(2));
+
+    ASSERT_FALSE(iter.HasNext());
+  }
 }
 
 }  // namespace docdb
