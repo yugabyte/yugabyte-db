@@ -224,19 +224,15 @@ class Stopwatch {
     struct rusage usage;
     struct timespec wall;
 
+    MicrosecondsInt64 user_cpu_us = 0;
+    MicrosecondsInt64 sys_cpu_us = 0;
 #if defined(__APPLE__)
     if (mode_ == THIS_THREAD) {
-      //Adapted from http://blog.kuriositaet.de/?p=257.
-      struct task_basic_info t_info;
-      mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
-      CHECK_EQ(KERN_SUCCESS, task_info(mach_task_self(), TASK_THREAD_TIMES_INFO,
-                                       (task_info_t)&t_info, &t_info_count));
-      usage.ru_utime.tv_sec = t_info.user_time.seconds;
-      usage.ru_utime.tv_usec = t_info.user_time.microseconds;
-      usage.ru_stime.tv_sec = t_info.system_time.seconds;
-      usage.ru_stime.tv_usec = t_info.system_time.microseconds;
+      GetThreadUserAndSysCpuTimeMicros(&user_cpu_us, &sys_cpu_us);
     } else {
       CHECK_EQ(0, getrusage(RUSAGE_SELF, &usage));
+      user_cpu_us = usage.ru_utime.tv_sec * 1e6L + usage.ru_utime.tv_usec;
+      sys_cpu_us = usage.ru_stime.tv_sec * 1e6L + usage.ru_stime.tv_usec;
     }
 
     mach_timespec_t ts;
@@ -246,10 +242,13 @@ class Stopwatch {
 #else
     CHECK_EQ(0, getrusage((mode_ == THIS_THREAD) ? RUSAGE_THREAD : RUSAGE_SELF, &usage));
     CHECK_EQ(0, clock_gettime(CLOCK_MONOTONIC, &wall));
+    user_cpu_us = usage.ru_utime.tv_sec * 1e6L + usage.ru_utime.tv_usec;
+    sys_cpu_us = usage.ru_stime.tv_sec * 1e6L + usage.ru_stime.tv_usec;
 #endif  // defined(__APPLE__)
+
     times->wall   = wall.tv_sec * 1000000000L + wall.tv_nsec;
-    times->user   = usage.ru_utime.tv_sec * 1000000000L + usage.ru_utime.tv_usec * 1000;
-    times->system = usage.ru_stime.tv_sec * 1000000000L + usage.ru_stime.tv_usec * 1000;
+    times->user   = user_cpu_us * 1000; // Convert to nanoseconds.
+    times->system = sys_cpu_us * 1000;  // Convert to nanoseconds.
   }
 
   bool stopped_;
@@ -324,4 +323,4 @@ class LogTiming {
 } // namespace sw_internal
 } // namespace yb
 
-#endif
+#endif  // YB_UTIL_STOPWATCH_H

@@ -16,9 +16,10 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef GUTIL_WALLTIME_H_
-#define GUTIL_WALLTIME_H_
+#ifndef YB_GUTIL_WALLTIME_H
+#define YB_GUTIL_WALLTIME_H
 
+#include <sys/resource.h>
 #include <sys/time.h>
 
 #include <glog/logging.h>
@@ -62,6 +63,50 @@ WallTime WallTime_Now();
 
 typedef int64 MicrosecondsInt64;
 
+// Get User & Sys CPU time of current thread since an arbitrary epoch.
+inline void GetThreadUserAndSysCpuTimeMicros(MicrosecondsInt64 *user,
+                                             MicrosecondsInt64 *sys) {
+#if defined(__APPLE__)
+  // See https://www.gnu.org/software/hurd/gnumach-doc/Thread-Information.html
+  // and Chromium base/time/time_mac.cc.
+  task_t thread = mach_thread_self();
+  if (thread == MACH_PORT_NULL) {
+    LOG(WARNING) << "Failed to get mach_thread_self()";
+    return;
+  }
+
+  mach_msg_type_number_t thread_info_count = THREAD_BASIC_INFO_COUNT;
+  thread_basic_info_data_t thread_info_data;
+
+  kern_return_t result = thread_info(
+      thread,
+      THREAD_BASIC_INFO,
+      reinterpret_cast<thread_info_t>(&thread_info_data),
+      &thread_info_count);
+
+  if (result != KERN_SUCCESS) {
+    LOG(WARNING) << "Failed to get thread_info()";
+    return;
+  }
+
+  if (user) {
+    *user = thread_info_data.user_time.seconds * 1e6L + thread_info_data.user_time.microseconds;
+  }
+  if (sys) {
+    *sys = thread_info_data.system_time.seconds * 1e6L + thread_info_data.system_time.microseconds;
+  }
+#else
+  struct rusage usage;
+  CHECK_EQ(0, getrusage(RUSAGE_THREAD, &usage));
+  if (user) {
+    *user = usage.ru_utime.tv_sec * 1e6L + usage.ru_utime.tv_usec;
+  }
+  if (sys) {
+    *sys = usage.ru_stime.tv_sec * 1e6L + usage.ru_stime.tv_usec;
+  }
+#endif
+}
+
 namespace walltime_internal {
 
 #if defined(__APPLE__)
@@ -99,29 +144,9 @@ inline MicrosecondsInt64 GetMonoTimeMicros() {
 }
 
 inline MicrosecondsInt64 GetThreadCpuTimeMicros() {
-  // See https://www.gnu.org/software/hurd/gnumach-doc/Thread-Information.html
-  // and Chromium base/time/time_mac.cc.
-  task_t thread = mach_thread_self();
-  if (thread == MACH_PORT_NULL) {
-    LOG(WARNING) << "Failed to get mach_thread_self()";
-    return 0;
-  }
-
-  mach_msg_type_number_t thread_info_count = THREAD_BASIC_INFO_COUNT;
-  thread_basic_info_data_t thread_info_data;
-
-  kern_return_t result = thread_info(
-      thread,
-      THREAD_BASIC_INFO,
-      reinterpret_cast<thread_info_t>(&thread_info_data),
-      &thread_info_count);
-
-  if (result != KERN_SUCCESS) {
-    LOG(WARNING) << "Failed to get thread_info()";
-    return 0;
-  }
-
-  return thread_info_data.user_time.seconds * 1e6 + thread_info_data.user_time.microseconds;
+  MicrosecondsInt64 thread_user_cpu = 0;
+  GetThreadUserAndSysCpuTimeMicros(&thread_user_cpu, nullptr);
+  return thread_user_cpu;
 }
 
 #else
@@ -176,4 +201,4 @@ class CycleClock {
 };
 
 #include "yb/gutil/cycleclock-inl.h"  // inline method bodies
-#endif  // GUTIL_WALLTIME_H_
+#endif  // YB_GUTIL_WALLTIME_H
