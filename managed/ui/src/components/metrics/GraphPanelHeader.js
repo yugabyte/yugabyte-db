@@ -10,7 +10,7 @@ var momentLocalizer = require('react-widgets/lib/localizers/moment');
 require('react-widgets/dist/css/react-widgets.css');
 import {Field} from 'redux-form';
 
-import './stylesheets/GraphPanelHeader.css'
+import './stylesheets/GraphPanelHeader.scss'
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
@@ -141,10 +141,10 @@ export default class GraphPanelHeader extends Component {
     return (
       <Grid className="x_panel graph-panel">
         <Row className="x_title">
-          <Col md={2}>
-            <h2>Graph Panels</h2>
+          <Col md={6}>
+            <h3>Metrics</h3>
           </Col>
-          <Col md={10}>
+          <Col md={6}>
             <form name="GraphPanelFilterForm">
               {universePicker}
               <div id="reportrange" className="pull-right">
@@ -163,7 +163,9 @@ export default class GraphPanelHeader extends Component {
           </Col>
         </Row>
         <Row>
-          {this.props.children}
+          <Col md={12}>
+            {this.props.children}
+          </Col>
         </Row>
       </Grid>
     );
