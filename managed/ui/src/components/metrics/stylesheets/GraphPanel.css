@@ -1,36 +1,36 @@
 /* Copyright (c) YugaByte, Inc. */
 
 .graph-panel-container {
-    margin-top: 4px;
-    margin-bottom: 10px;
-    padding-bottom: 10px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
 }
 
 .graph-panel {
-    margin: 0 2px;
+  margin: 0 2px;
 }
 
 .graph-panel .metrics-container {
-    margin: 10px 40px;
+  margin: 10px;
 }
 
 .graph-panel .js-plotly-plot {
-  display: inline-block;
+display: inline-block;
 }
 
 .graph-panel-grid div.dropdown {
-    float: right;
-    margin-top: -7px;
+  float: right;
+  margin-top: -7px;
 }
 
 /* Symbol for showing chevron right before the title */
 .graph-panel .panel-title a:after {
-    font-family: 'FontAwesome';
-    content: "\f054";
-    float: left;
-    margin-right: 5px;
-    line-height: 18px;
+  font-family: 'FontAwesome';
+  content: "\f078";
+  float: left;
+  margin-right: 5px;
+  line-height: 18px;
 }
 .graph-panel .panel-title a.collapsed:after {
-    content: "\f078"; 
+  content: "\f054";
 }
