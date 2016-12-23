@@ -37,7 +37,7 @@ DEFINE_bool(start_redis_proxy, true, "Starts a redis proxy along with the tablet
 DEFINE_string(redis_proxy_bind_address, "", "Address to bind the redis proxy to");
 DEFINE_int32(redis_proxy_webserver_port, 0, "Webserver port for redis proxy");
 
-DEFINE_bool(start_cql_proxy, false, "Starts a CQL proxy along with the tablet server");
+DEFINE_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
 DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
