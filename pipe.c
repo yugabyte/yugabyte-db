@@ -122,11 +122,10 @@ typedef struct PipesFctx {
 
 typedef struct
 {
-#if (PG_VERSION_NUM >= 90600)
+#if PG_VERSION_NUM >= 90600
 
 	int tranche_id;
 	LWLock shmem_lock;
-
 #else
 
 	LWLockId shmem_lockid;
@@ -256,12 +255,21 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			LWLockInitialize(&sh_mem->shmem_lock, sh_mem->tranche_id);
 
 			{
+
+#if PG_VERSION_NUM >= 100000
+
+				LWLockRegisterTranche(sh_mem->tranche_id, "orafce");
+
+#else
+
 				static LWLockTranche tranche;
 
 				tranche.name = "orafce";
 				tranche.array_base = &sh_mem->shmem_lock;
 				tranche.array_stride = sizeof(LWLock);
 				LWLockRegisterTranche(sh_mem->tranche_id, &tranche);
+
+#endif
 
 				shmem_lockid = &sh_mem->shmem_lock;
 			}
