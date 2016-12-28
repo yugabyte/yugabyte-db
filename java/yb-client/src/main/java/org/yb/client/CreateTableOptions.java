@@ -127,6 +127,17 @@ public class CreateTableOptions {
   }
 
   /**
+   * Sets the number of tablets.
+   *
+   * @param numTables the number of tablets to split the table.
+   * @return this instance
+   */
+  public CreateTableOptions setNumTablets(int numTablets) {
+    pb.setNumTablets(numTablets);
+    return this;
+  }
+
+  /**
    * Set the table type.
    *
    * @param tableType the table type to create

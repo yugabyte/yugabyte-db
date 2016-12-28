@@ -101,13 +101,32 @@ public class Schema {
     int offset = 0;
     boolean hasNulls = false;
     int primaryKeyCount = 0;
+    boolean gotNonHashKey = false;
+    int hashKeyCount = 0;
     // pre-compute a few counts and offsets
     for (int index = 0; index < columns.size(); index++) {
       final ColumnSchema column = columns.get(index);
+      if (column.isHashKey()) {
+        if (gotNonHashKey) {
+          throw new IllegalArgumentException("Got out-of-order hash key column " + column +
+                                             ", after non-hash key column.");
+        }
+        hashKeyCount += 1;
+        if (hashKeyCount != index + 1) {
+          throw new IllegalArgumentException("Got out-of-order hash key column: " + column +
+                                             " at index " + index);
+        }
+      }
+
       if (column.isKey()) {
         primaryKeyCount += 1;
-        if (primaryKeyCount != index + 1)
-          throw new IllegalArgumentException("Got out-of-order primary key column: " + column);
+        if (primaryKeyCount != index + 1) {
+          throw new IllegalArgumentException("Got out-of-order primary key column: " + column +
+                                             " at index " + index);
+        }
+        if (!column.isHashKey() && !gotNonHashKey) {
+          gotNonHashKey = true;
+        }
       }
 
       hasNulls |= column.isNullable();

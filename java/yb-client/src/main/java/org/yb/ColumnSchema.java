@@ -32,6 +32,7 @@ public class ColumnSchema {
   private final String name;
   private final Type type;
   private final boolean key;
+  private final boolean hashKey;
   private final boolean nullable;
   private final Object defaultValue;
   private final int desiredBlockSize;
@@ -88,12 +89,13 @@ public class ColumnSchema {
     }
   };
 
-  private ColumnSchema(String name, Type type, boolean key, boolean nullable,
+  private ColumnSchema(String name, Type type, boolean key, boolean hashKey, boolean nullable,
                        Object defaultValue, int desiredBlockSize, Encoding encoding,
                        CompressionAlgorithm compressionAlgorithm) {
     this.name = name;
     this.type = type;
     this.key = key;
+    this.hashKey = hashKey;
     this.nullable = nullable;
     this.defaultValue = defaultValue;
     this.desiredBlockSize = desiredBlockSize;
@@ -123,6 +125,14 @@ public class ColumnSchema {
    */
   public boolean isKey() {
     return key;
+  }
+
+  /**
+   * Answers if the column is used in hashing part of the key
+   * @return true if the column is part of the hash key, else false
+   */
+  public boolean isHashKey() {
+    return hashKey;
   }
 
   /**
@@ -174,6 +184,7 @@ public class ColumnSchema {
     ColumnSchema that = (ColumnSchema) o;
 
     if (key != that.key) return false;
+    if (hashKey != that.hashKey) return false;
     if (!name.equals(that.name)) return false;
     if (!type.equals(that.type)) return false;
 
@@ -200,6 +211,7 @@ public class ColumnSchema {
     private final String name;
     private final Type type;
     private boolean key = false;
+    private boolean hashKey = false;
     private boolean nullable = false;
     private Object defaultValue = null;
     private int blockSize = 0;
@@ -223,6 +235,17 @@ public class ColumnSchema {
      */
     public ColumnSchemaBuilder key(boolean key) {
       this.key = key;
+      return this;
+    }
+
+    /**
+     * Sets if the column is to be used in the hash part of the row key. False by default.
+     * @param hashKey a boolean that indicates if the column is part of the hash key
+     * @return this instance
+     */
+    public ColumnSchemaBuilder hashKey(boolean hashKey) {
+      this.hashKey = hashKey;
+      this.key = hashKey;
       return this;
     }
 
@@ -294,7 +317,7 @@ public class ColumnSchema {
      */
     public ColumnSchema build() {
       return new ColumnSchema(name, type,
-                              key, nullable, defaultValue,
+                              key, hashKey, nullable, defaultValue,
                               blockSize, encoding, compressionAlgorithm);
     }
   }

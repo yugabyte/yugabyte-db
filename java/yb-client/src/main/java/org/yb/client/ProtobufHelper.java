@@ -66,6 +66,7 @@ public class ProtobufHelper {
         .setName(column.getName())
         .setType(column.getType().getDataType())
         .setIsKey(column.isKey())
+        .setIsHashKey(column.isHashKey())
         .setIsNullable(column.isNullable())
         .setCfileBlockSize(column.getDesiredBlockSize());
     if (column.getEncoding() != null) {
@@ -91,6 +92,7 @@ public class ProtobufHelper {
           ColumnSchema.CompressionAlgorithm.valueOf(columnPb.getCompression().name());
       ColumnSchema column = new ColumnSchema.ColumnSchemaBuilder(columnPb.getName(), type)
           .key(columnPb.getIsKey())
+          .hashKey(columnPb.getIsHashKey())
           .nullable(columnPb.getIsNullable())
           .defaultValue(defaultValue)
           .encoding(encoding)

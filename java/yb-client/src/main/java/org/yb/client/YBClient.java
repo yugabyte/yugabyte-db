@@ -68,43 +68,21 @@ public class YBClient implements AutoCloseable {
     this.asyncClient = asyncClient;
   }
 
-  // Convert a uint16 to a canonical (big-endian, MSB first) two byte representation.
-  private static byte[] uint16ToByteArray(int input) {
-    if (input < 0 || input >= TWO_POWER_SIXTEEN) {
-      throw new IllegalArgumentException("Invalid value " + input + ", needs to between 0 and " +
-                                         (TWO_POWER_SIXTEEN - 1) + " (inclusive).");
-    }
-
-    byte[] result = new byte[2];
-
-    result[0] = (byte) (input >> 8);
-    result[1] = (byte) (input);
-
-    return result;
-  }
-
   /**
    * Create redis table options object.
-   * @param schema Table schema to use for split row creation.
    * @param numTablets number of pre-split tablets.
    * @return an options object to be used during table creation.
    */
-  public static CreateTableOptions getRedisTableOptions(Schema schema, int numTablets) {
+  public static CreateTableOptions getRedisTableOptions(int numTablets) {
     CreateTableOptions cto = new CreateTableOptions();
-    cto.setTableType(TableType.REDIS_TABLE_TYPE);
 
     if (numTablets == 0) {
       LOG.info("Number of tablets cannot be zero, defaulting it to 1.");
       numTablets = 1;
     }
 
-    // We split the key space into 2-byte sized partition keys.
-    for (int i = 1; i < numTablets; i++) {
-      PartialRow row = schema.newPartialRow();
-      byte[] bytes = uint16ToByteArray(i * (TWO_POWER_SIXTEEN / numTablets));
-      row.addBinary(0, bytes);
-      cto.addSplitRow(row);
-    }
+    cto.setTableType(TableType.REDIS_TABLE_TYPE)
+       .setNumTablets(numTablets);
 
     return cto;
   }
@@ -116,9 +94,7 @@ public class YBClient implements AutoCloseable {
    * @return an object to communicate with the created table.
    */
   public YBTable createRedisTable(String name, int numTablets) throws Exception {
-    Schema schema = YBClient.getRedisSchema();
-    CreateTableOptions cto = getRedisTableOptions(schema, numTablets);
-    return createTable(name, schema, cto);
+    return createTable(name, getRedisSchema(), getRedisTableOptions(numTablets));
   }
 
   /**
@@ -507,7 +483,9 @@ public class YBClient implements AutoCloseable {
   public static Schema getRedisSchema() {
     ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(5);
     columns.add(new ColumnSchema.ColumnSchemaBuilder(REDIS_KEY_COLUMN_NAME, Type.BINARY)
-                    .key(true).build());
+                                .hashKey(true)
+                                .nullable(false)
+                                .build());
     return new Schema(columns);
   }
 

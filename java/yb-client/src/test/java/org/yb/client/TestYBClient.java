@@ -267,7 +267,7 @@ public class TestYBClient extends BaseYBTest {
   @Test(timeout = 100000)
   public void testRedisTable() throws Exception {
     LOG.info("Starting testRedisTable");
-    CreateTableOptions cto = YBClient.getRedisTableOptions(redisSchema, 16);
+    CreateTableOptions cto = YBClient.getRedisTableOptions(16);
     // Check that we can create a redis table.
     YBTable table = syncClient.createTable(tableName, redisSchema, cto);
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
