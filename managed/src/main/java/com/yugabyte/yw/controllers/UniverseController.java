@@ -3,26 +3,32 @@
 package com.yugabyte.yw.controllers;
 
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yugabyte.yw.cloud.AWSConstants;
-import com.yugabyte.yw.cloud.AWSResourceUtil;
-import com.yugabyte.yw.cloud.UniverseResourceDetails;
-import com.yugabyte.yw.forms.MetricQueryParams;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.AWSConstants;
+import com.yugabyte.yw.cloud.AWSResourceUtil;
+import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -36,14 +42,6 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
-import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 
 
 public class UniverseController extends AuthenticatedController {
@@ -95,7 +93,7 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.success(taskParams);
     } catch (Exception e) {
       LOG.error("Unable to Configure Universe for Customer with ID {} Failed with message: {}.",
-                customerUUID, e.getMessage());
+                customerUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
@@ -268,6 +266,7 @@ public class UniverseController extends AuthenticatedController {
   }
 
   public Result destroy(UUID customerUUID, UUID universeUUID) {
+    LOG.info("Destroy universe, customer uuid: {}, universeUUID: {} ", customerUUID, universeUUID);
     // Verify the customer with this universe is present.
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -478,7 +477,7 @@ public class UniverseController extends AuthenticatedController {
   private UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, CloudType cloudType) throws Exception {
     UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
     for (NodeDetails node : nodes) {
-      if (node.isActive() && cloudType == aws) {
+      if (node.isActive() && cloudType == CloudType.aws) {
         AWSResourceUtil.mergeResourceDetails(node.cloudInfo.instance_type, node.cloudInfo.az,
           AvailabilityZone.find.byId(node.azUuid).region.code,
           AWSConstants.Tenancy.Shared, universeResourceDetails);
