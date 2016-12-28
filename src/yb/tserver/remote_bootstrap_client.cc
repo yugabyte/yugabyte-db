@@ -19,7 +19,6 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <yb/rpc/rpc_controller.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_meta.h"
@@ -31,6 +30,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/transfer.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap.h"
@@ -257,6 +257,9 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                             partition,
                                             tablet::TABLET_DATA_COPYING,
                                             &meta_));
+
+    // Replace rocksdb_dir in the received superblock with our assigned rocksdb_dir.
+    superblock_->set_rocksdb_dir(meta_->rocksdb_dir());
 
     // Replace wal_dir in the received superblock with our assigned wal_dir.
     superblock_->set_wal_dir(meta_->wal_dir());
