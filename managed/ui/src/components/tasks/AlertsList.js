@@ -57,9 +57,9 @@ export default class AlertsList extends Component {
     const tableBodyContainer = {"marginBottom": "1%", "paddingBottom": "1%"}
       return (
         <div id="page-wrapper" className="dashboard-widget-container">
-        <YBPanelItem name="Task Alerts">
+        <YBPanelItem name="Tasks">
           <BootstrapTable data={alertsDisplay} selectRow={selectRowProp}
-                          trClassName="data-table-row" bodyStyle={tableBodyContainer}
+                          bodyStyle={tableBodyContainer}
                           pagination={true}>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
             <TableHeaderColumn dataField="title"
