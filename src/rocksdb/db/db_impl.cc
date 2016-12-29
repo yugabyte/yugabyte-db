@@ -599,7 +599,7 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
       }
     }
 
-    //Add log files in wal_dir
+    // Add log files in wal_dir
     if (db_options_.wal_dir != dbname_) {
       std::vector<std::string> log_files;
       env_->GetChildren(db_options_.wal_dir, &log_files);  // Ignore errors
@@ -4493,7 +4493,12 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       assert(WriteBatchInternal::Count(merged_batch) == total_count);
 
       Slice log_entry = WriteBatchInternal::Contents(merged_batch);
-      status = logs_.back().writer->AddRecord(log_entry);
+      log::Writer* log_writer = nullptr;
+      {
+        InstrumentedMutexLock l(&mutex_);
+        log_writer = logs_.back().writer;
+      }
+      status = log_writer->AddRecord(log_entry);
       total_log_size_.fetch_add(static_cast<int64_t>(log_entry.size()));
       alive_log_files_.back().AddSize(log_entry.size());
       log_empty_ = false;
