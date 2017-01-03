@@ -16,7 +16,7 @@ DECLARE
 v_control                   text;
 v_datetime_string           text;
 v_current_partition_name    text;
-v_epoch                     boolean;
+v_epoch                     text;
 v_last_partition            text;
 v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
@@ -72,10 +72,11 @@ AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
-v_partition_expression := case
-    when v_epoch = true then format('to_timestamp(%I)', v_control)
-    else format('%I', v_control)
-end;
+v_partition_expression := CASE
+    WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
+    WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+    ELSE format('%I', v_control)
+END;
 
 FOR i IN 1..p_batch_count LOOP
 

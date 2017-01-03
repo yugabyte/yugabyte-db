@@ -16,7 +16,7 @@ v_analyze                       boolean := FALSE;
 v_control                       text;
 v_datetime_string               text;
 v_exists                        text;
-v_epoch                         boolean;
+v_epoch                         text;
 v_grantees                      text[];
 v_hasoids                       boolean;
 v_inherit_fk                    boolean;
@@ -97,10 +97,11 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
 END IF;
 
-v_partition_expression := case
-    when v_epoch = true then format('to_timestamp(%I)', v_control)
-    else format('%I', v_control)
-end;
+v_partition_expression := CASE
+    WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
+    WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+    ELSE format('%I', v_control)
+END;
 IF p_debug THEN
     RAISE NOTICE 'create_partition_time: v_partition_expression: %', v_partition_expression;
 END IF;
@@ -176,7 +177,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         , v_partition_expression
         , v_partition_timestamp_start
         , v_partition_timestamp_end);
-    IF v_epoch = true THEN
+    IF v_epoch = 'seconds' THEN
         EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
                         , v_parent_schema
                         , v_partition_name
@@ -185,6 +186,15 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                         , EXTRACT('epoch' from v_partition_timestamp_start)
                         , v_control
                         , EXTRACT('epoch' from v_partition_timestamp_end) );
+    ELSIF v_epoch = 'milliseconds' THEN
+        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                        , v_parent_schema
+                        , v_partition_name
+                        , v_partition_name||'_partition_int_check'
+                        , v_control
+                        , EXTRACT('epoch' from v_partition_timestamp_start) * 1000
+                        , v_control
+                        , EXTRACT('epoch' from v_partition_timestamp_end) * 1000);
     END IF;
 
     EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
@@ -333,5 +343,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

@@ -1,6 +1,7 @@
 -- ########## TIME WEEKLY EPOCH TESTS ##########
 -- Other tests: combination of start_partition & constraint_cols/optimize_constraint. Requires manually running apply_constraint to set other old partitions
     -- Set optimize_trigger higher than premake. No real way to test that this works (due to hybrid dynamic function), but doing it to test that it makes a proper trigger without any issues.
+-- Test millisecond epoch time partitioning
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -12,11 +13,11 @@ SELECT plan(68);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 
-CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 int NOT NULL DEFAULT extract('epoch' from CURRENT_TIMESTAMP)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), extract('epoch' from CURRENT_TIMESTAMP - '8 weeks'::interval)::int);
+CREATE TABLE partman_test.time_taptest_table (col1 bigint primary key, col2 text, col3 bigint NOT NULL DEFAULT (extract('epoch' from CURRENT_TIMESTAMP)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), (extract('epoch' from CURRENT_TIMESTAMP - '8 weeks'::interval)::bigint)*1000);
 
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'weekly', '{"col1"}', p_epoch := 'seconds' 
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'weekly', '{"col1"}', p_epoch := 'milliseconds' 
     , p_premake := 2, p_start_partition := to_char(CURRENT_TIMESTAMP-'8 weeks'::interval, 'YYYY-MM-DD HH24:MI:SS'));
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' exists');
@@ -74,15 +75,15 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', A
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP - '8 weeks'::interval, 'IYYY"w"IW'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'8 weeks'::interval, 'IYYY"w"IW')||' (-8 weeks)');
 
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(11,20), extract('epoch' from CURRENT_TIMESTAMP - '7 weeks'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(21,25), extract('epoch' from CURRENT_TIMESTAMP - '6 weeks'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(26,30), extract('epoch' from CURRENT_TIMESTAMP - '5 weeks'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(31,37), extract('epoch' from CURRENT_TIMESTAMP - '4 week'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(38,49), extract('epoch' from CURRENT_TIMESTAMP - '3 week'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(50,70), extract('epoch' from CURRENT_TIMESTAMP - '2 weeks'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(71,85), extract('epoch' from CURRENT_TIMESTAMP - '1 week'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(86,100), extract('epoch' from CURRENT_TIMESTAMP + '1 week'::interval)::int);
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(101,110), extract('epoch' from CURRENT_TIMESTAMP + '2 weeks'::interval)::int);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(11,20), (extract('epoch' from CURRENT_TIMESTAMP - '7 weeks'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(21,25), (extract('epoch' from CURRENT_TIMESTAMP - '6 weeks'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(26,30), (extract('epoch' from CURRENT_TIMESTAMP - '5 weeks'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(31,37), (extract('epoch' from CURRENT_TIMESTAMP - '4 week'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(38,49), (extract('epoch' from CURRENT_TIMESTAMP - '3 week'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(50,70), (extract('epoch' from CURRENT_TIMESTAMP - '2 weeks'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(71,85), (extract('epoch' from CURRENT_TIMESTAMP - '1 week'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(86,100), (extract('epoch' from CURRENT_TIMESTAMP + '1 week'::interval)::bigint)*1000);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(101,110), (extract('epoch' from CURRENT_TIMESTAMP + '2 weeks'::interval)::bigint)*1000);
 
 SELECT partition_data_time('partman_test.time_taptest_table', 20);
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check that parent table has had no data inserted to it');
@@ -128,7 +129,7 @@ SELECT col_has_check('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIM
 SELECT col_has_check('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'5 weeks'::interval, 'IYYY"w"IW'), 'col1'
     , 'Check for additional constraint on col1 on time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'5 weeks'::interval, 'IYYY"w"IW'));
 
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(111,120), extract('epoch' from CURRENT_TIMESTAMP + '3 weeks'::interval)::int);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(111,120), (extract('epoch' from CURRENT_TIMESTAMP + '3 weeks'::interval)::bigint)*1000);
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'3 weeks'::interval, 'IYYY"w"IW')||' exists (+3 weeks');
@@ -142,7 +143,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 
 UPDATE part_config SET premake = 4 WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT run_maintenance();
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(121,130), extract('epoch' from CURRENT_TIMESTAMP + '4 weeks'::interval)::int);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(121,130), (extract('epoch' from CURRENT_TIMESTAMP + '4 weeks'::interval)::bigint)*1000);
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', ARRAY[130], 'Check count from parent table');
@@ -157,7 +158,7 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 weeks'::interval, 'IYYY"w"IW')||' (+4 weeks)');
 
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), extract('epoch' from CURRENT_TIMESTAMP + '20 weeks'::interval)::int);
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), (extract('epoch' from CURRENT_TIMESTAMP + '20 weeks'::interval)::bigint)*1000);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
 
 SELECT drop_partition_time('partman_test.time_taptest_table', '3 weeks', p_keep_table := false);

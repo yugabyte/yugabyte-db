@@ -15,7 +15,7 @@ CREATE FUNCTION create_sub_parent(
     , p_premake int DEFAULT 4
     , p_start_partition text DEFAULT NULL
     , p_inherit_fk boolean DEFAULT true
-    , p_epoch boolean DEFAULT false
+    , p_epoch text DEFAULT 'none' 
     , p_upsert text DEFAULT ''
     , p_trigger_return_null boolean DEFAULT true
     , p_jobmon boolean DEFAULT true

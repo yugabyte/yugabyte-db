@@ -1,3 +1,12 @@
+2.6.3
+-- IMPORTANT NOTE: Installing the new C library requires a restart of the database cluster. Even if you are not running 9.6, it is recommended to restart after this update to ensure the latest library file is loaded into the database if you have compiled the C library.
+-- Fixed pg_partman background worker to work with PostgreSQL 9.6. If configured for multiple databases in a single cluster, the background worker processes will no longer start up and run in parallel. Unfortunately, changes in background worker code have made that harder to do at this time. Note it never ran in parallel on a single database before, it would only do that for multiple databases. (Github Issue #141).
+-- Allow option for millisecond epoch partitioning. (Github Issue #150, Also requested back in #75)
+    -- The "epoch" parameter to any function and the column in the part_config table has changed from boolean to text and only accepts the values: "seconds", "milliseconds", "none".
+    -- The default is "none".
+    -- Any current epoch partition sets will automatically have this value set to "seconds".
+
+
 2.6.2
 -- Refactor of time functions in relation to epoch partitioning to improve maintainability of the code. Much thanks to Michael Rasmussen (Trekoid)! (Github Pull Request #143)
 -- Some code cleanup for python scripts. Much thanks to Rodolphe Quiédeville (rodo)! (Github Pull Request #148)

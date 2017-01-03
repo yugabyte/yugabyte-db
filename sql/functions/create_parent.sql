@@ -11,7 +11,7 @@ CREATE FUNCTION create_parent(
     , p_use_run_maintenance boolean DEFAULT NULL
     , p_start_partition text DEFAULT NULL
     , p_inherit_fk boolean DEFAULT true
-    , p_epoch boolean DEFAULT false
+    , p_epoch text DEFAULT 'none' 
     , p_upsert text DEFAULT ''
     , p_trigger_return_null boolean DEFAULT true
     , p_jobmon boolean DEFAULT true
@@ -88,7 +88,7 @@ AND a.attname = p_control::name;
         RAISE EXCEPTION 'Control column given (%) for parent table (%) does not exist or must be set to NOT NULL', p_control, p_parent_table;
     END IF;
 
-IF p_type = 'id' AND p_epoch = true THEN
+IF p_type = 'id' AND p_epoch <> 'none' THEN
     RAISE EXCEPTION 'p_epoch can only be used with time-based partitioning';
 END IF;
 

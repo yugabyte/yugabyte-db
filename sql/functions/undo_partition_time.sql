@@ -16,7 +16,7 @@ v_child_loop_total      bigint := 0;
 v_child_min             timestamptz;
 v_child_table           text;
 v_control               text;
-v_epoch                 boolean;
+v_epoch                 text;
 v_function_name         text;
 v_inner_loop_count      int;
 v_lock_iter             int := 1;
@@ -106,9 +106,10 @@ FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
 
-v_partition_expression := case
-    when v_epoch = true then format('to_timestamp(%I)', v_control)
-    else format('%I', v_control)
+v_partition_expression := CASE
+    WHEN v_epoch = 'seconds' THEN format('to_timestamp(%I)', v_control)
+    WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_control)
+    ELSE format('%I', v_control)
 end;
 
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.

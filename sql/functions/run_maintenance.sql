@@ -126,10 +126,11 @@ LOOP
     WHERE schemaname = split_part(v_row.parent_table, '.', 1)::name
     AND tablename = split_part(v_row.parent_table, '.', 2)::name;
 
-    v_partition_expression := case
-        when v_row.epoch = true then format('to_timestamp(%I)', v_row.control)
-        else format('%I', v_row.control)
-    end;
+    v_partition_expression := CASE
+        WHEN v_row.epoch = 'seconds' THEN format('to_timestamp(%I)', v_row.control)
+        WHEN v_row.epoch = 'milliseconds' THEN format('to_timestamp((%I/1000)::float)', v_row.control)
+        ELSE format('%I', v_row.control)
+    END;
     IF p_debug THEN
         RAISE NOTICE 'run_maint: v_partition_expression: %', v_partition_expression;
     END IF;

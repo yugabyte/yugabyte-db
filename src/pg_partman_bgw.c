@@ -30,9 +30,9 @@
 
 PG_MODULE_MAGIC;
 
-void    _PG_init(void);
-void    pg_partman_bgw_main(Datum);
-void    pg_partman_bgw_run_maint(Datum);
+void        _PG_init(void);
+void        pg_partman_bgw_main(Datum);
+void        pg_partman_bgw_run_maint(Datum);
 
 /* flags set by signal handlers */
 static volatile sig_atomic_t got_sighup = false;
@@ -79,7 +79,6 @@ static void pg_partman_bgw_sighup(SIGNAL_ARGS) {
 
     errno = save_errno;
 }
-
 
 /*
  * Entrypoint of this module.
@@ -175,7 +174,6 @@ _PG_init(void)
 
 }
 
-
 void pg_partman_bgw_main(Datum main_arg) {
     StringInfoData buf;
 
@@ -213,31 +211,22 @@ void pg_partman_bgw_main(Datum main_arg) {
         ListCell                *l;
         pid_t                   pid;
 
-        /*
-         * Background workers mustn't call usleep() or any direct equivalent:
-         * instead, they may wait on their process latch, which sleeps as
-         * necessary, but is awakened if postmaster dies.  That way the
-         * background process goes away immediately in an emergency.
-         */
-        rc = WaitLatch(&MyProc->procLatch,
-                       WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-                       pg_partman_bgw_interval * 1000L);
+        /* Using Latch loop method suggested in latch.h
+         * Uses timeout flag in WaitLatch() further below instead of sleep to allow clean shutdown */
         ResetLatch(&MyProc->procLatch);
 
-        /* emergency bailout if postmaster has died */
-        if (rc & WL_POSTMASTER_DEATH) {
-            proc_exit(1);
-        }
+        CHECK_FOR_INTERRUPTS();
 
         /* In case of a SIGHUP, just reload the configuration. */
         if (got_sighup) {
             got_sighup = false;
             ProcessConfigFile(PGC_SIGHUP);
         }
+        elog(DEBUG1, "After sighup check (got_sighup: %d)", got_sighup);
 
         /* In case of a SIGTERM in middle of loop, stop all further processing and return from BGW function to allow it to exit cleanly. */
         if (got_sigterm) {
-            elog(LOG, "pg_partman master BGW received SIGTERM. Shutting down.");
+            elog(LOG, "pg_partman master BGW received SIGTERM. Shutting down. (got_sigterm: %d)", got_sigterm);
             return;
         }
 
@@ -282,11 +271,14 @@ void pg_partman_bgw_main(Datum main_arg) {
 
                 dbcounter++;
 
+                elog(DEBUG1, "Registering dynamic background worker...");
                 if (!RegisterDynamicBackgroundWorker(&worker, &handle)) {
                     elog(FATAL, "Unable to register dynamic background worker for pg_partman");
                 }
 
+                elog(DEBUG1, "Waiting for BGW startup...");
                 status = WaitForBackgroundWorkerStartup(handle, &pid);
+                elog(DEBUG1, "BGW startup status: %d", status);
 
                 if (status == BGWH_STOPPED) {
                     ereport(ERROR,
@@ -302,6 +294,15 @@ void pg_partman_bgw_main(Datum main_arg) {
                              errhint("Kill all remaining database processes and restart the database.")));
                 }
                 Assert(status == BGWH_STARTED);
+
+                #if (PG_VERSION_NUM >= 90500)
+                // Shutdown wait function introduced in 9.5. The latch problems this wait fixes are only encountered in 
+                // 9.6 and later. So this shouldn't be a problem for 9.4.
+                elog(DEBUG1, "Waiting for BGW shutdown...");
+                status = WaitForBackgroundWorkerShutdown(handle);
+                elog(DEBUG1, "BGW shutdown status: %d", status);
+                Assert(status == BGWH_STOPPED);
+                #endif
             }
 
             pfree(rawstring);
@@ -309,6 +310,19 @@ void pg_partman_bgw_main(Datum main_arg) {
         } else { // pg_partman_bgw_dbname if null
             elog(DEBUG1, "pg_partman_bgw.dbname GUC is NULL. Nothing to do in main loop.");
         }
+
+
+        elog(DEBUG1, "Latch status just before waitlatch call: %d", MyProc->procLatch.is_set);
+
+        rc = WaitLatch(&MyProc->procLatch,
+                       WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+                       pg_partman_bgw_interval * 1000L);
+        /* emergency bailout if postmaster has died */
+        if (rc & WL_POSTMASTER_DEATH) {
+            proc_exit(1);
+        }
+
+        elog(DEBUG1, "Latch status after waitlatch call: %d", MyProc->procLatch.is_set);
 
     } // end sigterm while
 
@@ -326,10 +340,8 @@ void pg_partman_bgw_run_maint(Datum arg) {
     char                *jobmon;
     char                *partman_schema;
     char                *rawstring;
-    int                 dbcounter;
     int                 db_main_counter = DatumGetInt32(arg);
     List                *elemlist;
-    ListCell            *l;
     int                 ret;
     StringInfoData      buf;
 
@@ -353,15 +365,10 @@ void pg_partman_bgw_run_maint(Datum arg) {
                  errmsg("invalid list syntax in parameter \"pg_partman_bgw.dbname\" in postgresql.conf")));
         return;
     }
-    dbcounter = 0;
-    foreach(l, elemlist) {
-        elog(DEBUG1, "Entered foreach loop: name (%s), db_main_counter (%d), dbcounter (%d)", (char *) lfirst(l), db_main_counter, dbcounter);
-        if (db_main_counter == dbcounter) {
-            dbname = (char *) lfirst(l);
-            elog(DEBUG1, "Parsing list: %s (%d)", dbname, dbcounter);
-        }
-        dbcounter++;
-    }
+
+    dbname = list_nth(elemlist, db_main_counter);
+    elog(DEBUG1, "Parsing dbname list: %s (%d)", dbname, db_main_counter);
+    
     if (strcmp(dbname, "template1") == 0) {
         elog(DEBUG1, "Default database name found in dbname local variable (\"template1\").");
     }

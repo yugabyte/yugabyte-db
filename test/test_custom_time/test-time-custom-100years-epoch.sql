@@ -18,7 +18,7 @@ INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time-custom', '100 years', p_epoch := true);
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time-custom', '100 years', p_epoch := 'seconds');
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY'), 'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)+'100 years'::interval, 'YYYY'), 

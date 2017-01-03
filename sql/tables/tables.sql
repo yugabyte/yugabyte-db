@@ -7,7 +7,7 @@ CREATE TABLE part_config (
     , premake int NOT NULL DEFAULT 4
     , optimize_trigger int NOT NULL DEFAULT 4
     , optimize_constraint int NOT NULL DEFAULT 30
-    , epoch boolean NOT NULL DEFAULT false
+    , epoch text NOT NULL DEFAULT 'none' 
     , inherit_fk boolean NOT NULL DEFAULT true
     , retention text
     , retention_schema text
@@ -39,7 +39,7 @@ CREATE TABLE part_config_sub (
     , sub_premake int NOT NULL DEFAULT 4
     , sub_optimize_trigger int NOT NULL DEFAULT 4
     , sub_optimize_constraint int NOT NULL DEFAULT 30
-    , sub_epoch boolean NOT NULL DEFAULT false
+    , sub_epoch text NOT NULL DEFAULT 'none' 
     , sub_inherit_fk boolean NOT NULL DEFAULT true
     , sub_retention text
     , sub_retention_schema text
@@ -88,6 +88,29 @@ CHECK (@extschema@.check_partition_type(partition_type));
 ALTER TABLE @extschema@.part_config_sub
 ADD CONSTRAINT part_config_sub_type_check
 CHECK (@extschema@.check_partition_type(sub_partition_type));
+
+/*
+ * Check function for config table epoch types
+ */
+CREATE FUNCTION @extschema@.check_epoch_type (p_type text) RETURNS boolean
+    LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
+    AS $$
+DECLARE
+v_result    boolean;
+BEGIN
+    SELECT p_type IN ('none', 'seconds', 'milliseconds') INTO v_result;
+    RETURN v_result;
+END
+$$;
+
+ALTER TABLE @extschema@.part_config
+ADD CONSTRAINT part_config_epoch_check 
+CHECK (@extschema@.check_epoch_type(epoch));
+
+ALTER TABLE @extschema@.part_config_sub
+ADD CONSTRAINT part_config_sub_epoch_check 
+CHECK (@extschema@.check_epoch_type(sub_epoch));
+
 
 -- Ensure the control column cannot be one of the additional constraint columns. 
 ALTER TABLE @extschema@.part_config ADD CONSTRAINT control_constraint_col_chk CHECK ((constraint_cols @> ARRAY[control]) <> true);

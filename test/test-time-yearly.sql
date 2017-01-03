@@ -442,6 +442,7 @@ SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_tabl
 
 -- **** This test may fail around the beginning of the year. If so, swap to the commented out one above 
 --SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[108], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
+
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 
