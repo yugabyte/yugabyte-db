@@ -82,7 +82,7 @@ As a note for people that were not aware, you can name arguments in function cal
 
 ### Creation Functions
 
-*`create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT false, p_upsert text DEFAULT '', p_trigger_return_null boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false)`*
+*`create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT 'none', p_upsert text DEFAULT '', p_trigger_return_null boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false)`*
 
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
@@ -121,7 +121,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_use_run_maintenance` - Used to tell partman whether you'd like to override the default way that child partitions are created. Set this value to TRUE to allow you to use the `run_maintenance()` function, without any table paramter, to create new child tables for serial partitioning instead of using 50% method mentioned above. Time based partitining MUST use `run_maintenance()`, so either leave this value true or call the `run_maintenance()` function directly on a partition set by passing the parent table as a parameter. See **run_mainteanance** in Maintenance Functions section below for more info.
  * `p_start_partition` - allows the first partition of a set to be specified instead of it being automatically determined. Must be a valid timestamp (for time-based) or positive integer (for id-based) value. Be aware, though, the actual paramater data type is text. For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus `premake`) will be created. For id-based partitioning, only the partition starting at the given value (plus `premake`) will be made. 
  * `p_inherit_fk` - allows `pg_partman` to automatically manage inheriting any foreign keys that exist on the parent table to all its children. Defaults to TRUE.
- * `p_epoch` - tells `pg_partman` that the control column is an integer type, but actually represents and epoch time value. All triggers, constraints & table names will be time-based. In addition to a normal index on the control column, be sure you create a functional, time-based index on the control column (to_timestamp(controlcolumn)) as well so this works efficiently.
+ * `p_epoch` - tells `pg_partman` that the control column is an integer type, but actually represents and epoch time value. You can also specify whether the value is seconds or milliseconds. Valid values for this option are: 'seconds', 'milliseconds' & 'none'. The default is 'none'. All triggers, constraints & table names will be time-based. In addition to a normal index on the control column, be sure you create a functional, time-based index on the control column (to_timestamp(controlcolumn)) as well so this works efficiently.
  * `p_upsert` - adds upsert to insert queries in the partition trigger to allow handeling of conflicts  Defaults to '' (empty string) which means it's inactive.
     + the value entered here is the entire ON CONFLICT clause which will then be appended to the INSERT statement(s) in the trigger
     + Ex: to ignore conflicting rows on a table with primary key "id" set p_upsert to `'ON CONFLICT (id) DO NOTHING'`
@@ -133,7 +133,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_debug` - turns on additional debugging information.
 
 
-*`create_sub_parent(p_top_parent text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT false, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean;`*
+*`create_sub_parent(p_top_parent text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT 'none', p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean;`*
 
  * Create a subpartition set of an already existing partitioned set.
  * `p_top_parent` - This parameter is the parent table of an already existing partition set. It tells `pg_partman` to turn all child tables of the given partition set into their own parent tables of their own partition sets using the rest of the parameters for this function. 
@@ -368,7 +368,7 @@ The rest are managed by the extension itself and should not be changed unless ab
  - `optimize_constraint`
     - Manages which old tables get additional constraints set if configured to do so. See **About** section for more info. Default 30.
  - `epoch`
-    - Flag the table to be partitioned by time by an integer epoch value instead of a timestamp. See `create_parent()` function for more info. Default false.
+    - Flag the table to be partitioned by time by an integer epoch value instead of a timestamp. See `create_parent()` function for more info. Default 'none'.
  - `inherit_fk`
     - Set whether `pg_partman` manages inheriting foreign keys from the parent table to all children.
     - Defaults to TRUE. Can be set with the `create_parent()` function at creation time as well.
