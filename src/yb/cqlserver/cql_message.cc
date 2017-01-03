@@ -2,6 +2,8 @@
 
 #include <regex>
 
+#include "yb/client/client.h"
+#include "yb/common/ysql_protocol.pb.h"
 #include "yb/cqlserver/cql_message.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
@@ -139,14 +141,14 @@ bool CQLRequest::ParseRequest(
   if (!status.ok()) {
     error_response->reset(
         new ErrorResponse(
-            request->get(), ErrorResponse::Code::PROTOCOL_ERROR, status.message().ToString()));
+            *request->get(), ErrorResponse::Code::PROTOCOL_ERROR, status.message().ToString()));
   } else if (!request->get()->body_.empty()) {
     // Flag error when there are bytes remaining after we have parsed the whole request body
     // according to the protocol. Either the request's length field from the client is
     // wrong. Or we could have a bug in our parser.
     error_response->reset(
         new ErrorResponse(
-            request->get(), ErrorResponse::Code::PROTOCOL_ERROR, "Request length too long"));
+            *request->get(), ErrorResponse::Code::PROTOCOL_ERROR, "Request length too long"));
   }
 
   // If there is any error, free the partially parsed request and return.
@@ -378,10 +380,10 @@ CQLResponse* StartupRequest::Execute() {
     if (it == SupportedResponse::options_.end() ||
         std::find(it->second.begin(), it->second.end(), value) == it->second.end()) {
       return new ErrorResponse(
-          this, ErrorResponse::Code::PROTOCOL_ERROR, "Unsupported option " + name);
+          *this, ErrorResponse::Code::PROTOCOL_ERROR, "Unsupported option " + name);
     }
   }
-  return new ReadyResponse(this);
+  return new ReadyResponse(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -398,7 +400,7 @@ Status AuthResponseRequest::ParseBody() {
 
 CQLResponse* AuthResponseRequest::Execute() {
   // TODO(Robert): authentication support
-  return new ErrorResponse(this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
 
 //----------------------------------------------------------------------------------------
@@ -414,7 +416,7 @@ Status OptionsRequest::ParseBody() {
 }
 
 CQLResponse* OptionsRequest::Execute() {
-  return new SupportedResponse(this);
+  return new SupportedResponse(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -441,11 +443,11 @@ CQLResponse* QueryRequest::Execute() {
     if (token == "CREATE" || token == "DROP" || token == "ALTER" || token == "TRUNCATE" ||
         token == "INSERT" || token == "UPDATE" || token == "DELETE" || token == "SELECT" ||
         token == "BATCH" || token == "USE") {
-      return new VoidResultResponse(this);
+      return new VoidResultResponse(*this);
     }
   }
 
-  return new ErrorResponse(this, ErrorResponse::Code::SYNTAX_ERROR, "unknown statement");
+  return new ErrorResponse(*this, ErrorResponse::Code::SYNTAX_ERROR, "unknown statement");
 }
 
 //----------------------------------------------------------------------------------------
@@ -462,7 +464,7 @@ Status PrepareRequest::ParseBody() {
 
 CQLResponse* PrepareRequest::Execute() {
   // TODO(Robert): return actual results
-  return new ErrorResponse(this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
 
 //----------------------------------------------------------------------------------------
@@ -480,7 +482,7 @@ Status ExecuteRequest::ParseBody() {
 
 CQLResponse* ExecuteRequest::Execute() {
   // TODO(Robert): return actual results
-  return new ErrorResponse(this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
 
 //----------------------------------------------------------------------------------------
@@ -536,7 +538,7 @@ Status BatchRequest::ParseBody() {
 
 CQLResponse* BatchRequest::Execute() {
   // TODO(Robert)
-  return new ErrorResponse(this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
 
 //----------------------------------------------------------------------------------------
@@ -553,14 +555,14 @@ Status RegisterRequest::ParseBody() {
 
 CQLResponse* RegisterRequest::Execute() {
   // TODO(Robert): implement real event responses
-  return new ReadyResponse(this);
+  return new ReadyResponse(*this);
 }
 
 // ------------------------------------ CQL response -----------------------------------
-CQLResponse::CQLResponse(const CQLRequest* request, const Opcode opcode)
+CQLResponse::CQLResponse(const CQLRequest& request, const Opcode opcode)
     : CQLMessage(
           Header(
-              request->version() | kResponseVersion, request->flags(), request->stream_id(),
+              request.version() | kResponseVersion, request.flags(), request.stream_id(),
               opcode)) {
 }
 
@@ -712,11 +714,11 @@ void CQLResponse::SerializeValue(const Value& value, faststring* mesg) {
 }
 
 // ------------------------------ Individual CQL responses -----------------------------------
-ErrorResponse::ErrorResponse(const CQLRequest* request, const Code code, const string& message)
+ErrorResponse::ErrorResponse(const CQLRequest& request, const Code code, const string& message)
     : CQLResponse(request, Opcode::ERROR), code_(code), message_(message) {
 }
 
-ErrorResponse::ErrorResponse(const CQLRequest* request, const Code code, const Status& status)
+ErrorResponse::ErrorResponse(const CQLRequest& request, const Code code, const Status& status)
     : CQLResponse(request, Opcode::ERROR), code_(code),
       message_(ToChar(status.message().data())) {
 }
@@ -734,7 +736,7 @@ void ErrorResponse::SerializeBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-ReadyResponse::ReadyResponse(const CQLRequest* request) : CQLResponse(request, Opcode::READY) {
+ReadyResponse::ReadyResponse(const CQLRequest& request) : CQLResponse(request, Opcode::READY) {
 }
 
 ReadyResponse::~ReadyResponse() {
@@ -745,7 +747,7 @@ void ReadyResponse::SerializeBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-AuthenticateResponse::AuthenticateResponse(const CQLRequest* request, const string& authenticator)
+AuthenticateResponse::AuthenticateResponse(const CQLRequest& request, const string& authenticator)
     : CQLResponse(request, Opcode::AUTHENTICATE), authenticator_(authenticator) {
 }
 
@@ -760,7 +762,7 @@ void AuthenticateResponse::SerializeBody(faststring* mesg) {
 const unordered_map<string, vector<string>> SupportedResponse::options_ =
   { {"CQL_VERSION", {"3.0.0"} } };
 
-SupportedResponse::SupportedResponse(const CQLRequest* request)
+SupportedResponse::SupportedResponse(const CQLRequest& request)
     : CQLResponse(request, Opcode::SUPPORTED) {
 }
 
@@ -772,7 +774,7 @@ void SupportedResponse::SerializeBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-ResultResponse::ResultResponse(const CQLRequest* request, const Kind kind)
+ResultResponse::ResultResponse(const CQLRequest& request, const Kind kind)
   : CQLResponse(request, Opcode::RESULT), kind_(kind) {
 }
 
@@ -922,6 +924,46 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
+ResultResponse::RowsMetadata::Type::Type(const client::YBColumnSchema::DataType type) {
+  switch (type) {
+    case client::YBColumnSchema::DataType::INT8:
+      id = Id::TINYINT;
+      return;
+    case client::YBColumnSchema::DataType::INT16:
+      id = Id::SMALLINT;
+      return;
+    case client::YBColumnSchema::DataType::INT32:
+      id = Id::INT;
+      return;
+    case client::YBColumnSchema::DataType::INT64:
+      id = Id::BIGINT;
+      return;
+    case client::YBColumnSchema::DataType::FLOAT:
+      id = Id::FLOAT;
+      return;
+    case client::YBColumnSchema::DataType::DOUBLE:
+      id = Id::DOUBLE;
+      return;
+    case client::YBColumnSchema::DataType::STRING:
+      id = Id::VARCHAR;
+      return;
+    case client::YBColumnSchema::DataType::BOOL:
+      id = Id::BOOLEAN;
+      return;
+    case client::YBColumnSchema::DataType::TIMESTAMP:
+      id = Id::TIMESTAMP;
+      return;
+
+    case client::YBColumnSchema::DataType::BINARY: FALLTHROUGH_INTENDED;
+    case client::YBColumnSchema::DataType::MAX_TYPE_INDEX:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(ERROR) << "Internal error: invalid/unsupported type " << static_cast<uint32_t>(type);
+}
+
 ResultResponse::RowsMetadata::Type::~Type() {
   switch (id) {
     case Id::CUSTOM:
@@ -965,6 +1007,22 @@ ResultResponse::RowsMetadata::Type::~Type() {
   }
 
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
+}
+
+
+ResultResponse::RowsMetadata::RowsMetadata(const client::YBSqlReadOp& read_op, bool no_metadata)
+    : flags(no_metadata ? kNoMetadata : kHasGlobalTableSpec), paging_state(""),
+      global_table_spec(
+          GlobalTableSpec("" /* keyspace */, no_metadata ? "" : read_op.table()->name())),
+      col_count(read_op.request().column_ids_size()) {
+  if (!no_metadata) {
+    col_specs.reserve(col_count);
+    const auto& schema = read_op.table()->schema();
+    for (const auto column_id : read_op.request().column_ids()) {
+      const auto column = schema.ColumnById(column_id);
+      col_specs.emplace_back(column.name(), Type(column.type()));
+    }
+  }
 }
 
 void ResultResponse::SerializeBody(faststring* mesg) {
@@ -1047,20 +1105,21 @@ void ResultResponse::SerializeColSpecs(
 
 void ResultResponse::SerializeRowsMetadata(const RowsMetadata& metadata, faststring* mesg) {
   SerializeInt(metadata.flags, mesg);
-  SerializeInt(metadata.col_specs.size(), mesg);
+  SerializeInt(metadata.col_count, mesg);
   if (metadata.flags & RowsMetadata::kHasMorePages) {
     SerializeBytes(metadata.paging_state, mesg);
   }
   if (metadata.flags & RowsMetadata::kNoMetadata) {
     return;
   }
+  CHECK_EQ(metadata.col_count, metadata.col_specs.size());
   SerializeColSpecs(
       metadata.flags & RowsMetadata::kHasGlobalTableSpec, metadata.global_table_spec,
       metadata.col_specs, mesg);
 }
 
 //----------------------------------------------------------------------------------------
-VoidResultResponse::VoidResultResponse(const CQLRequest* request)
+VoidResultResponse::VoidResultResponse(const CQLRequest& request)
     : ResultResponse(request, Kind::VOID) {
 }
 
@@ -1073,26 +1132,22 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 RowsResultResponse::RowsResultResponse(
-    const CQLRequest* request, const RowsMetadata& metadata, const Rows& rows)
-    : ResultResponse(request, Kind::ROWS), metadata_(metadata), rows_(rows) {
+    const QueryRequest& request, const client::YBSqlReadOp& read_op)
+    : ResultResponse(request, Kind::ROWS), read_op_(read_op),
+      skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::~RowsResultResponse() {
 }
 
 void RowsResultResponse::SerializeResultBody(faststring* mesg) {
-  SerializeRowsMetadata(metadata_, mesg);
-  SerializeInt(rows_.size(), mesg);
-  for (const auto& row : rows_) {
-    for (const auto& col_value : row) {
-      SerializeValue(col_value, mesg);
-    }
-  }
+  SerializeRowsMetadata(RowsMetadata(read_op_, skip_metadata_), mesg);
+  mesg->append(read_op_.rows_data());
 }
 
 //----------------------------------------------------------------------------------------
 PreparedResultResponse::PreparedResultResponse(
-    const CQLRequest* request, const PreparedMetadata& prepared_metadata,
+    const CQLRequest& request, const PreparedMetadata& prepared_metadata,
     const RowsMetadata& rows_metadata)
     : ResultResponse(request, Kind::PREPARED), prepared_metadata_(prepared_metadata),
       rows_metadata_(rows_metadata) {
@@ -1122,7 +1177,7 @@ void PreparedResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 SetKeyspaceResultResponse::SetKeyspaceResultResponse(
-    const CQLRequest* request, const string& keyspace)
+    const CQLRequest& request, const string& keyspace)
     : ResultResponse(request, Kind::SET_KEYSPACE), keyspace_(keyspace) {
 }
 
@@ -1137,7 +1192,7 @@ void SetKeyspaceResultResponse::SerializeResultBody(faststring* mesg) {
 const vector<string> SchemaChangeResultResponse::kEmptyArgumentTypes = {};
 
 SchemaChangeResultResponse::SchemaChangeResultResponse(
-    const CQLRequest* request, const string& change_type, const string& target,
+    const CQLRequest& request, const string& change_type, const string& target,
     const string& keyspace, const string& object, const vector<string>& argument_types)
     : ResultResponse(request, Kind::SCHEMA_CHANGE), change_type_(change_type),
       keyspace_(keyspace), object_(object), argument_types_(argument_types) {
@@ -1162,7 +1217,7 @@ void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-EventResponse::EventResponse(const CQLRequest* request, const string& event_type)
+EventResponse::EventResponse(const CQLRequest& request, const string& event_type)
     : CQLResponse(request, Opcode::EVENT), event_type_(event_type) {
 }
 
@@ -1176,7 +1231,7 @@ void EventResponse::SerializeBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 TopologyChangeEventResponse::TopologyChangeEventResponse(
-    const CQLRequest* request, const string& topology_change_type, const Sockaddr& node)
+    const CQLRequest& request, const string& topology_change_type, const Sockaddr& node)
     : EventResponse(request, "TOPOLOGY_CHANGE"), topology_change_type_(topology_change_type),
       node_(node) {
 }
@@ -1191,7 +1246,7 @@ void TopologyChangeEventResponse::SerializeEventBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 StatusChangeEventResponse::StatusChangeEventResponse(
-    const CQLRequest* request, const string& status_change_type, const Sockaddr& node)
+    const CQLRequest& request, const string& status_change_type, const Sockaddr& node)
     : EventResponse(request, "STATUS_CHANGE"), status_change_type_(status_change_type),
       node_(node) {
 }
@@ -1208,7 +1263,7 @@ void StatusChangeEventResponse::SerializeEventBody(faststring* mesg) {
 const vector<string> SchemaChangeEventResponse::kEmptyArgumentTypes = {};
 
 SchemaChangeEventResponse::SchemaChangeEventResponse(
-    const CQLRequest* request, const string& schema_change_type, const string& target,
+    const CQLRequest& request, const string& schema_change_type, const string& target,
     const string& keyspace, const string& object, const vector<string>& argument_types)
     : EventResponse(request, "SCHEMA_CHANGE"), schema_change_type_(schema_change_type),
       target_(target),  keyspace_(keyspace), object_(object), argument_types_(argument_types) {
@@ -1233,7 +1288,7 @@ void SchemaChangeEventResponse::SerializeEventBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-AuthChallengeResponse::AuthChallengeResponse(const CQLRequest* request, const string& token)
+AuthChallengeResponse::AuthChallengeResponse(const CQLRequest& request, const string& token)
     : CQLResponse(request, Opcode::AUTH_CHALLENGE), token_(token) {
 }
 
@@ -1245,7 +1300,7 @@ void AuthChallengeResponse::SerializeBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-AuthSuccessResponse::AuthSuccessResponse(const CQLRequest* request, const string& token)
+AuthSuccessResponse::AuthSuccessResponse(const CQLRequest& request, const string& token)
     : CQLResponse(request, Opcode::AUTH_SUCCESS), token_(token) {
 }
 

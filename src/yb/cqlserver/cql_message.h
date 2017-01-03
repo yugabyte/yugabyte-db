@@ -14,6 +14,8 @@
 #include <set>
 #include <unordered_map>
 
+#include "yb/client/schema.h"
+#include "yb/client/yb_op.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -294,6 +296,8 @@ class QueryRequest : public CQLRequest {
   virtual Status ParseBody() override;
 
  private:
+  friend class RowsResultResponse;
+
   std::string query_;
   QueryParameters params_;
 };
@@ -378,7 +382,7 @@ class CQLResponse : public CQLMessage {
   void Serialize(faststring* mesg);
   virtual ~CQLResponse();
  protected:
-  CQLResponse(const CQLRequest* request, Opcode opcode);
+  CQLResponse(const CQLRequest& request, Opcode opcode);
   CQLResponse(StreamId stream_id, Opcode opcode);
   void SerializeHeader(faststring* mesg);
 
@@ -436,15 +440,15 @@ class ErrorResponse : public CQLResponse {
   virtual void SerializeBody(faststring* mesg) override;
 
  private:
-  friend CQLRequest;
-  friend StartupRequest;
-  friend AuthResponseRequest;
-  friend OptionsRequest;
-  friend QueryRequest;
-  friend PrepareRequest;
-  friend ExecuteRequest;
-  friend BatchRequest;
-  friend RegisterRequest;
+  friend class CQLRequest;
+  friend class StartupRequest;
+  friend class AuthResponseRequest;
+  friend class OptionsRequest;
+  friend class QueryRequest;
+  friend class PrepareRequest;
+  friend class ExecuteRequest;
+  friend class BatchRequest;
+  friend class RegisterRequest;
 
   enum class Code : int32_t {
     SERVER_ERROR     = 0x0000,
@@ -469,8 +473,8 @@ class ErrorResponse : public CQLResponse {
 
   // Construct an error response for the request, or by just the stream id if the request object
   // is not constructed (e.g. when the request opcode is invalid).
-  ErrorResponse(const CQLRequest* request, Code code, const std::string& message);
-  ErrorResponse(const CQLRequest* request, Code code, const Status& status);
+  ErrorResponse(const CQLRequest& request, Code code, const std::string& message);
+  ErrorResponse(const CQLRequest& request, Code code, const Status& status);
   ErrorResponse(StreamId stream_id, Code code, const std::string& message);
 
   const Code code_;
@@ -486,10 +490,10 @@ class ReadyResponse : public CQLResponse {
   virtual void SerializeBody(faststring* mesg) override;
 
  private:
-  friend StartupRequest;
-  friend RegisterRequest;
+  friend class StartupRequest;
+  friend class RegisterRequest;
 
-  explicit ReadyResponse(const CQLRequest* request);
+  explicit ReadyResponse(const CQLRequest& request);
 };
 
 //------------------------------------------------------------
@@ -501,7 +505,7 @@ class AuthenticateResponse : public CQLResponse {
   virtual void SerializeBody(faststring* mesg) override;
 
  private:
-  AuthenticateResponse(const CQLRequest* request, const std::string& authenticator);
+  AuthenticateResponse(const CQLRequest& request, const std::string& authenticator);
 
   const std::string authenticator_;
 };
@@ -515,10 +519,10 @@ class SupportedResponse : public CQLResponse {
   virtual void SerializeBody(faststring* mesg) override;
 
  private:
-  friend StartupRequest;
-  friend OptionsRequest;
+  friend class StartupRequest;
+  friend class OptionsRequest;
 
-  explicit SupportedResponse(const CQLRequest* request);
+  explicit SupportedResponse(const CQLRequest& request);
 
   static const std::unordered_map<std::string, std::vector<std::string>> options_;
 };
@@ -550,6 +554,9 @@ class ResultResponse : public CQLResponse {
     struct GlobalTableSpec {
       std::string keyspace;
       std::string table;
+
+      GlobalTableSpec(const std::string& keyspace, const std::string& table)
+          : keyspace(keyspace), table(table) { }
     };
     GlobalTableSpec global_table_spec;
 
@@ -621,6 +628,7 @@ class ResultResponse : public CQLResponse {
       explicit Type(std::shared_ptr<const UDTType> udt_type);
       explicit Type(std::shared_ptr<const TupleComponentTypes> tuple_component_types);
       explicit Type(const Type& t);
+      explicit Type(client::YBColumnSchema::DataType type);
       ~Type();
     };
     struct ColSpec {
@@ -628,11 +636,17 @@ class ResultResponse : public CQLResponse {
       std::string table;
       std::string column;
       Type type;
+
+      ColSpec(std::string column, const Type& type)
+          : keyspace(""), table(""), column(column), type(type) {}
     };
+    int32_t col_count;
     std::vector<ColSpec> col_specs;
+
+    explicit RowsMetadata(const client::YBSqlReadOp& read_op, bool no_metadata);
   };
 
-  ResultResponse(const CQLRequest* request, Kind kind);
+  ResultResponse(const CQLRequest& request, Kind kind);
   virtual void SerializeBody(faststring* mesg) override;
 
   // Function to serialize a result body that all ResultResponse subclasses need to implement
@@ -658,9 +672,9 @@ class VoidResultResponse : public ResultResponse {
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  friend QueryRequest;
+  friend class QueryRequest;
 
-  explicit VoidResultResponse(const CQLRequest* request);
+  explicit VoidResultResponse(const CQLRequest& request);
 };
 
 //------------------------------------------------------------
@@ -672,19 +686,18 @@ class RowsResultResponse : public ResultResponse {
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  typedef std::vector<Value> Row;
-  typedef std::vector<Row> Rows;
+  friend class QueryRequest;
 
-  RowsResultResponse(const CQLRequest* request, const RowsMetadata& metadata, const Rows& rows);
+  RowsResultResponse(const QueryRequest& request, const client::YBSqlReadOp& read_op);
 
-  const RowsMetadata metadata_;
-  const Rows rows_;
+  const client::YBSqlReadOp& read_op_;
+  const bool skip_metadata_;
 };
 
 //------------------------------------------------------------
 class SetKeyspaceResultResponse : public ResultResponse {
  public:
-  SetKeyspaceResultResponse(const CQLRequest* request, const std::string& keyspace);
+  SetKeyspaceResultResponse(const CQLRequest& request, const std::string& keyspace);
   virtual ~SetKeyspaceResultResponse() override;
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
@@ -712,7 +725,7 @@ class PreparedResultResponse : public ResultResponse {
   };
 
   PreparedResultResponse(
-      const CQLRequest* request, const PreparedMetadata& prepared_metadata,
+      const CQLRequest& request, const PreparedMetadata& prepared_metadata,
       const RowsMetadata& rows_metadata);
   void SerializePreparedMetadata(const PreparedMetadata& metadata, faststring* mesg);
 
@@ -733,7 +746,7 @@ class SchemaChangeResultResponse : public ResultResponse {
   static const std::vector<std::string> kEmptyArgumentTypes;
 
   SchemaChangeResultResponse(
-      const CQLRequest* request, const std::string& change_type, const std::string& target,
+      const CQLRequest& request, const std::string& change_type, const std::string& target,
       const std::string& keyspace, const std::string& object = "",
       const std::vector<std::string>& argument_types = kEmptyArgumentTypes);
 
@@ -747,7 +760,7 @@ class SchemaChangeResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class EventResponse : public CQLResponse {
  protected:
-  EventResponse(const CQLRequest* request, const std::string& event_type);
+  EventResponse(const CQLRequest& request, const std::string& event_type);
   virtual ~EventResponse() override;
   virtual void SerializeBody(faststring* mesg) override;
   virtual void SerializeEventBody(faststring* mesg) = 0;
@@ -765,7 +778,7 @@ class TopologyChangeEventResponse : public EventResponse {
 
  private:
   TopologyChangeEventResponse(
-      const CQLRequest* request, const std::string& topology_change_type, const Sockaddr& node);
+      const CQLRequest& request, const std::string& topology_change_type, const Sockaddr& node);
 
   const std::string topology_change_type_;
   const Sockaddr node_;
@@ -781,7 +794,7 @@ class StatusChangeEventResponse : public EventResponse {
 
  private:
   StatusChangeEventResponse(
-      const CQLRequest* request, const std::string& status_change_type, const Sockaddr& node);
+      const CQLRequest& request, const std::string& status_change_type, const Sockaddr& node);
 
   const std::string status_change_type_;
   const Sockaddr node_;
@@ -799,7 +812,7 @@ class SchemaChangeEventResponse : public EventResponse {
   static const std::vector<std::string> kEmptyArgumentTypes;
 
   SchemaChangeEventResponse(
-      const CQLRequest* request, const std::string& schema_change_type, const std::string& target,
+      const CQLRequest& request, const std::string& schema_change_type, const std::string& target,
       const std::string& keyspace, const std::string& object = "",
       const std::vector<std::string>& argument_types = kEmptyArgumentTypes);
 
@@ -819,7 +832,7 @@ class AuthChallengeResponse : public CQLResponse {
   virtual void SerializeBody(faststring* mesg) override;
 
  private:
-  AuthChallengeResponse(const CQLRequest* request, const std::string& token);
+  AuthChallengeResponse(const CQLRequest& request, const std::string& token);
 
   const std::string token_;
 };
@@ -833,7 +846,7 @@ class AuthSuccessResponse : public CQLResponse {
   virtual void SerializeBody(faststring* mesg) override;
 
  private:
-  AuthSuccessResponse(const CQLRequest* request, const std::string& token);
+  AuthSuccessResponse(const CQLRequest& request, const std::string& token);
 
   const std::string token_;
 };

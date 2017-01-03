@@ -326,6 +326,7 @@ class YB_EXPORT YBSchema {
 
   bool Equals(const YBSchema& other) const;
   YBColumnSchema Column(size_t idx) const;
+  YBColumnSchema ColumnById(int32_t id) const;
   int32_t ColumnId(size_t idx) const;
   size_t num_columns() const;
   size_t num_hash_key_columns() const;

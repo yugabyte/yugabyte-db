@@ -547,6 +547,10 @@ YBColumnSchema YBSchema::Column(size_t idx) const {
                         attrs);
 }
 
+YBColumnSchema YBSchema::ColumnById(int32_t column_id) const {
+  return Column(schema_->find_column_by_id(yb::ColumnId(column_id)));
+}
+
 int32_t YBSchema::ColumnId(size_t idx) const {
   return schema_->column_id(idx);
 }

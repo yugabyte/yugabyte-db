@@ -69,6 +69,8 @@ class YB_EXPORT YBOperation {
   };
   virtual ~YBOperation();
 
+  const YBTable* table() const { return table_.get(); }
+
   // See YBPartialRow API for field setters, etc.
   const YBPartialRow& row() const { return row_; }
   YBPartialRow* mutable_row() { return &row_; }
@@ -86,8 +88,6 @@ class YB_EXPORT YBOperation {
  private:
   friend class internal::Batcher;
   friend class internal::AsyncRpc;
-
-  const YBTable* table() const { return table_.get(); }
 
   // Return the number of bytes required to buffer this operation,
   // including direct and indirect data.
