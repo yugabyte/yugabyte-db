@@ -8,7 +8,7 @@
 #ifndef YB_SQL_EXEC_EXEC_CONTEXT_H_
 #define YB_SQL_EXEC_EXEC_CONTEXT_H_
 
-#include "yb/sql/session_context.h"
+#include "yb/sql/util/sql_env.h"
 #include "yb/sql/ptree/process_context.h"
 
 namespace yb {
@@ -26,16 +26,26 @@ class ExecContext : public ProcessContext {
   ExecContext(const char *sql_stmt,
               size_t stmt_len,
               ParseTree::UniPtr parse_tree,
-              SessionContext *session_context);
+              SqlEnv *sql_env);
   virtual ~ExecContext();
 
   // Get a table creator from YB client.
   client::YBTableCreator* NewTableCreator() {
-    return session_context_->NewTableCreator();
+    return sql_env_->NewTableCreator();
+  }
+
+  // Apply YBClient write operator.
+  Status ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op) {
+    return sql_env_->ApplyWrite(yb_op);
+  }
+
+  // Apply YBClient read operator.
+  Status ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op) {
+    return sql_env_->ApplyRead(yb_op);
   }
 
  private:
-  SessionContext *session_context_;
+  SqlEnv *sql_env_;
 };
 
 }  // namespace sql

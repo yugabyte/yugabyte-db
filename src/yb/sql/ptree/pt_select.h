@@ -7,40 +7,16 @@
 #ifndef YB_SQL_PTREE_PT_SELECT_H_
 #define YB_SQL_PTREE_PT_SELECT_H_
 
+#include "yb/client/client.h"
+
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_name.h"
 #include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_dml.h"
 
 namespace yb {
 namespace sql {
-
-//--------------------------------------------------------------------------------------------------
-
-// This class represents the data of collection type. PostgreSql syntax rules dictate how we form
-// the hierarchy of our C++ classes, so classes for VALUES and SELECT clause must share the same
-// base class.
-// - VALUES (x, y, z)
-// - (SELECT x, y, z FROM tab)
-// Functionalities of this class should be "protected" to make sure that PTCollection instances are
-// not created and used by application.
-class PTCollection : public TreeNode {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTCollection> SharedPtr;
-  typedef MCSharedPtr<const PTCollection> SharedPtrConst;
-
- protected:
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor. Define them in protected section to prevent application from
-  // declaring them.
-  PTCollection(MemoryContext *memctx, YBLocation::SharedPtr loc)
-      : TreeNode(memctx, loc) {
-  }
-  virtual ~PTCollection() {
-  }
-};
 
 //--------------------------------------------------------------------------------------------------
 // This class represents VALUES clause
@@ -142,6 +118,17 @@ class PTTableRef : public TreeNode {
     return MCMakeShared<PTTableRef>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+
+  // Returns last component in qualified name because we don't yet supported namespace.
+  const MCString& table_name() {
+    return name_->last_name();
+  }
+
+  bool is_system() const {
+    return name_->is_system();
+  }
+
  private:
   PTQualifiedName::SharedPtr name_;
   MCString::SharedPtr alias_;
@@ -151,7 +138,7 @@ using PTTableRefListNode = TreeListNode<PTTableRef>;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents SELECT statement.
-class PTSelectStmt : public PTCollection {
+class PTSelectStmt : public PTDmlStmt {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -179,6 +166,7 @@ class PTSelectStmt : public PTCollection {
 
   // Node semantics analysis.
   virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  ErrorCode AnalyzeTarget(TreeNode *target, SemContext *sem_context);
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Execution opcode.
@@ -194,12 +182,36 @@ class PTSelectStmt : public PTCollection {
     limit_clause_ = limit_clause;
   }
 
+  // Selected columns.
+  const MCVector<const ColumnDesc*> &selected_columns() const {
+    return selected_columns_;
+  }
+
+  // Returns table name.
+  const char *table_name() const {
+    // CQL only allows one table at a time.
+    return from_clause_->element(0)->table_name().c_str();
+  }
+
   // Returns location of table name.
-  const YBLocation& name_loc() const {
+  const YBLocation& table_loc() const {
     return from_clause_->loc();
   }
 
+  bool is_system() const {
+    return from_clause_->element(0)->is_system();
+  }
+
  private:
+  // The following members represent different components of SELECT statement. However, Cassandra
+  // doesn't support all of SQL syntax and semantics.
+  //
+  // SELECT <target_>
+  //   FROM      <from_clause_>
+  //   WHERE     <where_clause_>
+  //   GROUP BY  <group_by_clause_> HAVING <having_clause_>
+  //   ORDER BY  <order_by_clause_>
+  //   LIMIT     <limit_clause_>
   PTListNode::SharedPtr target_;
   PTTableRefListNode::SharedPtr from_clause_;
   PTExpr::SharedPtr where_clause_;
@@ -207,6 +219,9 @@ class PTSelectStmt : public PTCollection {
   PTListNode::SharedPtr having_clause_;
   PTListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
+
+  // Members that will be constructed by semantic analyzer.
+  MCVector<const ColumnDesc*> selected_columns_;
 };
 
 }  // namespace sql

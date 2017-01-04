@@ -644,9 +644,12 @@ bool YBPartialRow::AllColumnsSet() const {
 }
 
 bool YBPartialRow::IsKeySet() const {
-  return BitMapIsAllSet(isset_bitmap_, 0, schema_->num_key_columns());
+  return
+    (schema_->num_hash_key_columns() > 0 &&
+     BitMapIsAllSet(isset_bitmap_, 0, schema_->num_hash_key_columns())) ||
+    (schema_->num_key_columns() > 0 &&
+     BitMapIsAllSet(isset_bitmap_, 0, schema_->num_key_columns()));
 }
-
 
 std::string YBPartialRow::ToString() const {
   ContiguousRow row(schema_, row_data_);

@@ -177,8 +177,10 @@ class YB_EXPORT YBPartialRow {
   // Utility code
   //------------------------------------------------------------
 
-  // Return true if all of the key columns have been specified
-  // for this mutation.
+  // Return true if all one of the following condition is true.
+  // - Has hash keys and all hash keys are set.
+  // - Has primary keys and all primary keys are set.
+  // NOTE: It'd return false if the schema doesn't have any primary or hash keys.
   bool IsKeySet() const;
 
   // Return true if all columns have been specified.

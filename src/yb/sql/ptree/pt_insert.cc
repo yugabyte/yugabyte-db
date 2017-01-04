@@ -6,6 +6,7 @@
 
 #include "yb/sql/ptree/sem_context.h"
 #include "yb/sql/ptree/pt_insert.h"
+#include "yb/client/schema-internal.h"
 
 namespace yb {
 namespace sql {
@@ -21,20 +22,21 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            PTQualifiedName::SharedPtr relation,
                            PTQualifiedNameListNode::SharedPtr columns,
-                           PTCollection::SharedPtr value_clause)
-    : TreeNode(memctx, loc),
+                           PTCollection::SharedPtr value_clause,
+                           PTOptionExist option_exists)
+    : PTDmlStmt(memctx, loc, option_exists),
       relation_(relation),
       columns_(columns),
       value_clause_(value_clause),
-      tuple_(memctx) {
+      column_args_(memctx) {
 }
 
 PTInsertStmt::~PTInsertStmt() {
 }
 
 ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
-  // Clear tuple_ as this call might be a reentrance due to metadata mismatch.
-  tuple_.clear();
+  // Clear column_args_ as this call might be a reentrance due to metadata mismatch.
+  column_args_.clear();
 
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
 
@@ -43,17 +45,9 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
   if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
     return err;
   }
-  VLOG(3) << "Loading table descriptor for " << yb_table_name();
-  std::shared_ptr<YBTable> table = sem_context->GetTableDesc(yb_table_name());
-  if (table == nullptr) {
-    err = ErrorCode::FDW_TABLE_NOT_FOUND;
-    sem_context->Error(relation_->loc(), err);
-    return err;
-  }
-  const YBSchema& schema = table->schema();
-  const int num_columns = schema.num_columns();
-  VLOG(3) << "Table " << yb_table_name() << " has " << num_columns << " columns";
-  CHECK_GE(num_columns, 0) << "Wrong column number in table descriptor for " << yb_table_name();
+
+  LookupTable(sem_context);
+  const int num_cols = num_columns();
 
   // Check the selected columns. Cassandra only supports inserting one tuple / row at a time.
   PTValues *value_clause = static_cast<PTValues *>(value_clause_.get());
@@ -63,8 +57,16 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
     return err;
   }
   const MCList<PTExpr::SharedPtr>& exprs = value_clause->Tuple(0)->node_list();
+  for (const auto& const_expr : exprs) {
+    if (const_expr->expr_op() != ExprOperator::kConst) {
+      err = ErrorCode::CQL_STATEMENT_INVALID;
+      sem_context->Error(loc(), "Only literal values are allowed in this context", err);
+      sem_context->Error(const_expr->loc(), err);
+    }
+  }
 
-  tuple_.resize(num_columns);
+  int idx = 0;
+  column_args_.resize(num_cols);
   if (columns_) {
     // Mismatch between column names and their values.
     const MCList<PTQualifiedName::SharedPtr>& names = columns_->node_list();
@@ -81,45 +83,36 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
     // Mismatch between arguments and columns.
     MCList<PTExpr::SharedPtr>::const_iterator iter = exprs.begin();
     for (PTQualifiedName::SharedPtr name : names) {
-      int idx;
-      YBColumnSchema::DataType col_type;
-      for (idx = 0; idx < num_columns; idx++) {
-        const YBColumnSchema col = schema.Column(idx);
-        if (strcmp(name->last_name().c_str(), col.name().c_str()) == 0) {
-          col_type = col.type();
-          break;
-        }
-      }
+      const ColumnDesc *col_desc = sem_context->GetColumnDesc(name->last_name());
 
       // Check that the column exists.
-      if (idx == num_columns) {
+      if (col_desc == nullptr) {
         err = ErrorCode::UNDEFINED_COLUMN;
         sem_context->Error(name->loc(), err);
         return err;
       }
 
-      // Check that the column is not a duplicate.
-      if (tuple_[idx].IsInitialized()) {
-        err = ErrorCode::DUPLICATE_COLUMN;
-        sem_context->Error((*iter)->loc(), err);
-        return err;
-      }
-
       // Check that the datatypes are compatible.
-      if (!sem_context->IsCompatible(col_type, (*iter)->yb_data_type())) {
+      if (!sem_context->IsCompatible(col_desc->sql_type(), (*iter)->sql_type())) {
         err = ErrorCode::DATATYPE_MISMATCH;
         sem_context->Error((*iter)->loc(), err);
         return err;
       }
 
-      // TODO(neil) Currently column_index is the same as idx but needs to be corrected.
-      tuple_[idx].Init(idx, false, false, col_type, *iter);
+      // Check that the given column is not a duplicate and initialize the argument entry.
+      idx = col_desc->index();
+      if (column_args_[idx].IsInitialized()) {
+        err = ErrorCode::DUPLICATE_COLUMN;
+        sem_context->Error((*iter)->loc(), err);
+        return err;
+      }
+      column_args_[idx].Init(col_desc, *iter);
       iter++;
     }
   } else {
     // Check number of arguments.
-    if (exprs.size() != num_columns) {
-      if (exprs.size() > num_columns) {
+    if (exprs.size() != num_cols) {
+      if (exprs.size() > num_cols) {
         err = ErrorCode::TOO_MANY_ARGUMENTS;
       } else {
         err = ErrorCode::TOO_FEW_ARGUMENTS;
@@ -129,36 +122,26 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
     }
 
     // Check that the argument datatypes are compatible with all columns.
-    int idx = 0;
-    for (auto expr : exprs) {
-      const YBColumnSchema col = schema.Column(idx);
-      const YBColumnSchema::DataType col_type = col.type();
-      if (!sem_context->IsCompatible(col_type, expr->yb_data_type())) {
+    idx = 0;
+    for (const auto& expr : exprs) {
+      ColumnDesc *col_desc = &table_columns_[idx];
+      if (!sem_context->IsCompatible(col_desc->sql_type(), expr->sql_type())) {
         err = ErrorCode::DATATYPE_MISMATCH;
         sem_context->Error(expr->loc(), err);
         return err;
       }
 
-      tuple_[idx].Init(idx, false, false, col_type, expr);
+      // Initialize the argument entry.
+      column_args_[idx].Init(col_desc, expr);
       idx++;
     }
   }
 
-  // Now check that each primary key is associated with an argument.
+  // Now check that each column in primary key is associated with an argument.
   // NOTE: we assumed that primary_indexes and arguments are sorted by column_index.
-  std::vector<int> primary_indexes;
-  schema.GetPrimaryKeyColumnIndexes(&primary_indexes);
-  MCVector<Argument>::iterator arg_iter = tuple_.begin();
-  for (int primary_index : primary_indexes) {
-    while (arg_iter != tuple_.end()) {
-      if (arg_iter->index() == primary_index) {
-        arg_iter++;
-        break;
-      }
-      arg_iter++;
-    }
-
-    if (arg_iter == tuple_.end()) {
+  int num_keys = num_key_columns();
+  for (idx = 0; idx < num_keys; idx++) {
+    if (!column_args_[idx].IsInitialized()) {
       err = ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY;
       sem_context->Error(value_clause_->loc(), err);
       return err;
@@ -170,13 +153,14 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
 
 void PTInsertStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):";
-  for (const Argument& arg : tuple_) {
+  for (const ColumnArg& arg : column_args_) {
     if (arg.IsInitialized()) {
-      VLOG(3) << "ARG: " << arg.index()
-              << ", Hash: " << arg.is_hash()
-              << ", Primary: " << arg.is_primary()
-              << ", Expected Type: " << arg.expected_type()
-              << ", Expr Type: " << arg.expr()->yb_data_type();
+      const ColumnDesc *col_desc = arg.desc();
+      VLOG(3) << "ARG: " << col_desc->id()
+              << ", Hash: " << col_desc->is_hash()
+              << ", Primary: " << col_desc->is_primary()
+              << ", Expected Type: " << col_desc->type_id()
+              << ", Expr Type: " << arg.expr()->sql_type();
     }
   }
 }

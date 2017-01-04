@@ -80,6 +80,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_code(AppStatusPB::INCOMPLETE);
   } else if (status.IsEndOfFile()) {
     pb->set_code(AppStatusPB::END_OF_FILE);
+  } else if (status.IsInvalidCommand()) {
+    pb->set_code(AppStatusPB::INVALID_COMMAND);
   } else {
     LOG(WARNING) << "Unknown error code translation from internal error "
                  << status.ToString() << ": sending UNKNOWN_ERROR";
@@ -143,6 +145,8 @@ Status StatusFromPB(const AppStatusPB& pb) {
       return STATUS(Incomplete, pb.message(), "", posix_code);
     case AppStatusPB::END_OF_FILE:
       return STATUS(EndOfFile, pb.message(), "", posix_code);
+    case AppStatusPB::INVALID_COMMAND:
+      return STATUS(InvalidCommand, pb.message(), "", posix_code);
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();

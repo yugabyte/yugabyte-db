@@ -18,6 +18,9 @@ namespace sql {
 template<typename ContextType, typename NodeType = TreeNode>
 using TreeNodeOperator = std::function<ErrorCode(NodeType&, ContextType*)>;
 
+template<typename ContextType, typename NodeType = TreeNode>
+using TreeNodePtrOperator = std::function<ErrorCode(NodeType*, ContextType*)>;
+
 // TreeNode base class.
 template<typename NodeType = TreeNode, TreeNodeOpcode op = TreeNodeOpcode::kPTListNode>
 class TreeListNode : public TreeNode {
@@ -68,6 +71,18 @@ class TreeListNode : public TreeNode {
     ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
     for (auto tnode : node_list_) {
       err = tnode->Analyze(sem_context);
+      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
+        return err;
+      }
+    }
+    return err;
+  }
+
+  virtual ErrorCode Analyze(SemContext *sem_context,
+                            TreeNodePtrOperator<SemContext, NodeType> node_op) {
+    ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+    for (auto tnode : node_list_) {
+      err = node_op(tnode.get(), sem_context);
       if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
         return err;
       }

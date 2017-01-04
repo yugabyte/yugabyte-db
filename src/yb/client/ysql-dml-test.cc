@@ -121,17 +121,29 @@ class YsqlDmlTest : public YBTest {
   }
 
   void SetInt32ColumnValue(
-      YSQLColumnValuePB* column_value, const string& column_name, const int32_t value) {
+    YSQLColumnValuePB* column_value, const string& column_name, const int32_t value,
+    YBPartialRow *prow = nullptr, int prow_index = -1) {
+
     column_value->set_column_id(ColumnId(column_name));
     column_value->mutable_value()->set_datatype(INT32);
     column_value->mutable_value()->set_int32_value(value);
+
+    if (prow != nullptr) {
+      prow->SetInt32(prow_index, value);
+    }
   }
 
   void SetStringColumnValue(
-      YSQLColumnValuePB* column_value, const string& column_name, const string& value) {
+      YSQLColumnValuePB* column_value, const string& column_name, const string& value,
+      YBPartialRow *prow = nullptr, int prow_index = -1) {
+
     column_value->set_column_id(ColumnId(column_name));
     column_value->mutable_value()->set_datatype(STRING);
     column_value->mutable_value()->set_string_value(value);
+
+    if (prow != nullptr) {
+      prow->SetString(prow_index, value);
+    }
   }
 
   // Set a column id without value - for DELETE
@@ -178,8 +190,9 @@ TEST_F(YsqlDmlTest, TestInsertUpdateAndSelect) {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3);
@@ -194,8 +207,9 @@ TEST_F(YsqlDmlTest, TestInsertUpdateAndSelect) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -226,8 +240,9 @@ TEST_F(YsqlDmlTest, TestInsertUpdateAndSelect) {
     // update t set c1 = 4, c2 = 'd' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_UPDATE);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 4);
@@ -243,8 +258,9 @@ TEST_F(YsqlDmlTest, TestInsertUpdateAndSelect) {
     // Flush manually and async
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -275,8 +291,9 @@ TEST_F(YsqlDmlTest, TestInsertMultipleRows) {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBSqlWriteOp> op1 = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     req = op1->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op1->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3);
@@ -286,8 +303,9 @@ TEST_F(YsqlDmlTest, TestInsertMultipleRows) {
     // insert into t values (1, 'a', 2, 'd', 4, 'e');
     const shared_ptr<YBSqlWriteOp> op2 = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     req = op2->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    prow = op2->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "d");
     SetInt32ColumnValue(req->add_column_values(), "c1", 4);
@@ -308,8 +326,9 @@ TEST_F(YsqlDmlTest, TestInsertMultipleRows) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -374,8 +393,9 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBSqlWriteOp> op1 = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     req = op1->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op1->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3);
@@ -385,8 +405,9 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
     // insert into t values (1, 'a', 2, 'd', 4, 'e');
     const shared_ptr<YBSqlWriteOp> op2 = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     req = op2->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    prow = op2->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "d");
     SetInt32ColumnValue(req->add_column_values(), "c1", 4);
@@ -407,8 +428,9 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
     // select * from t where h1 = 1 and h2 = 'a' and r2 = 'b' or r2 = 'd';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_OR);
     SetStringCondition(condition->add_operands(), "r2", YSQL_OP_EQUAL, "b");
@@ -450,8 +472,9 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and (r2 = 'b' or r2 = 'd');
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -565,13 +588,14 @@ TEST_F(YsqlDmlTest, TestUpsert) {
     // update t set c1 = 3 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlWriteOp> op(table_->NewYSQLWrite());
     auto* const req = op->mutable_request();
+    YBPartialRow *prow = op->mutable_row();
     req->set_type(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     req->set_client(YSQL_CLIENT_CQL);
     req->set_request_id(0);
     req->set_schema_version(0);
     req->set_hash_code(0);
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3);
@@ -585,8 +609,9 @@ TEST_F(YsqlDmlTest, TestUpsert) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -617,8 +642,9 @@ TEST_F(YsqlDmlTest, TestUpsert) {
     // update t set c2 = 'c' where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetStringColumnValue(req->add_column_values(), "c2", "c");
@@ -632,8 +658,9 @@ TEST_F(YsqlDmlTest, TestUpsert) {
     // select * from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -666,8 +693,9 @@ TEST_F(YsqlDmlTest, TestDelete) {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3);
@@ -682,8 +710,9 @@ TEST_F(YsqlDmlTest, TestDelete) {
     // delete c1 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetColumn(req->add_column_values(), "c1");
@@ -697,8 +726,9 @@ TEST_F(YsqlDmlTest, TestDelete) {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -721,8 +751,9 @@ TEST_F(YsqlDmlTest, TestDelete) {
     // delete from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_DELETE);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
@@ -735,8 +766,9 @@ TEST_F(YsqlDmlTest, TestDelete) {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetInt32Condition(condition->add_operands(), "r1", YSQL_OP_EQUAL, 2);
@@ -758,8 +790,9 @@ TEST_F(YsqlDmlTest, TestError) {
     // insert into t values (1, 'a', 2, 'b', 3, 'c');
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3);
@@ -773,8 +806,9 @@ TEST_F(YsqlDmlTest, TestError) {
     // select c1, c2 from t where h1 = 1 and h2 = 'a' and r1 <> '2' and r2 <> 'b';
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     auto* const condition = req->mutable_condition();
     condition->set_op(YSQL_OP_AND);
     SetStringCondition(condition->add_operands(), "r1", YSQL_OP_NOT_EQUAL, "2");

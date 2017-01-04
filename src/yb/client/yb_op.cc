@@ -159,6 +159,33 @@ YBSqlWriteOp::YBSqlWriteOp(const shared_ptr<YBTable>& table)
 
 YBSqlWriteOp::~YBSqlWriteOp() {}
 
+static YBSqlWriteOp *NewYBSqlWriteOp(const shared_ptr<YBTable>& table,
+                                     YSQLWriteRequestPB::YSQLStmtType stmt_type) {
+  YBSqlWriteOp *op = new YBSqlWriteOp(table);
+  YSQLWriteRequestPB *req = op->mutable_request();
+  req->set_type(stmt_type);
+  req->set_client(YSQL_CLIENT_CQL);
+  req->set_request_id(reinterpret_cast<uint64_t>(op));
+
+  // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
+  VLOG(4) << "TODO: Schema version is not being used";
+  req->set_schema_version(0);
+
+  return op;
+}
+
+YBSqlWriteOp *YBSqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
+  return NewYBSqlWriteOp(table, YSQLWriteRequestPB::YSQL_STMT_INSERT);
+}
+
+YBSqlWriteOp *YBSqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
+  return NewYBSqlWriteOp(table, YSQLWriteRequestPB::YSQL_STMT_UPDATE);
+}
+
+YBSqlWriteOp *YBSqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
+  return NewYBSqlWriteOp(table, YSQLWriteRequestPB::YSQL_STMT_DELETE);
+}
+
 std::string YBSqlWriteOp::ToString() const {
   return "YSQL_WRITE " + ysql_write_request_->DebugString();
 }
@@ -252,6 +279,19 @@ YBSqlReadOp::YBSqlReadOp(const shared_ptr<YBTable>& table)
 }
 
 YBSqlReadOp::~YBSqlReadOp() {}
+
+YBSqlReadOp *YBSqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
+  YBSqlReadOp *op = new YBSqlReadOp(table);
+  YSQLReadRequestPB *req = op->mutable_request();
+  req->set_client(YSQL_CLIENT_CQL);
+  req->set_request_id(reinterpret_cast<uint64_t>(op));
+
+  // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
+  VLOG(4) << "TODO: Schema version is not being used";
+  req->set_schema_version(0);
+
+  return op;
+}
 
 std::string YBSqlReadOp::ToString() const {
   return "YSQL_READ " + ysql_read_request_->DebugString();

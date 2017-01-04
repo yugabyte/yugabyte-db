@@ -29,6 +29,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <typeindex>
 
 #include <type_traits>
 #include <unordered_map>
@@ -121,16 +122,16 @@ class MemoryContext {
   // Get the correct allocator for certain datatype.
   template<class MCObject>
   const MCAllocator<MCObject>& GetAllocator() {
-    const std::type_info& type_id = typeid(MCObject);
-    std::unordered_map<size_t, AllocatorBase*>::iterator iter =
-      allocator_map_.find(type_id.hash_code());
+    const std::type_index type_idx = std::type_index(typeid(MCObject));
+    std::unordered_map<std::type_index, AllocatorBase*>::iterator iter =
+      allocator_map_.find(type_idx);
     if (iter != allocator_map_.end()) {
       return *static_cast<MCAllocator<MCObject> *>(iter->second);
     }
 
     // Use Arena to malloc the allocators for STD containers.
     MCAllocator<MCObject> *allocator = manager_.NewObject<MCAllocator<MCObject>>(this, &manager_);
-    allocator_map_[type_id.hash_code()] = allocator;
+    allocator_map_[type_idx] = allocator;
     return *allocator;
   }
   const MCDeleter<>& GetDeleter() {
@@ -160,7 +161,7 @@ class MemoryContext {
   Arena manager_;
 
   // Consists of all allocators for all types that are allocated by this context.
-  std::unordered_map<size_t, AllocatorBase*> allocator_map_;
+  std::unordered_map<std::type_index, AllocatorBase*> allocator_map_;
 
   // Deleter for all objects within this context.
   MCDeleter<> deleter_;

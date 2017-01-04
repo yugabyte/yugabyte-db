@@ -2,7 +2,8 @@
 
 add_library(ybsql_exec
             executor.cc
-            exec_context.cc)
+            exec_context.cc
+            eval_expr.cc)
 
 target_link_libraries(ybsql_exec
                       ybsql_parser

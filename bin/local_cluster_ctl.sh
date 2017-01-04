@@ -526,7 +526,8 @@ cql_http_port_base=12000
 master_rpc_port_base=7100
 tserver_rpc_port_base=8100
 redis_rpc_port_base=10100
-cql_rpc_port_base=11100
+# By default cqlsh contact the server via this port base although it's configurable in cqlsh.
+cql_rpc_port_base=9041
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"

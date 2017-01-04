@@ -114,7 +114,7 @@ class YSQLRow {
 class YSQLRowBlock {
  public:
   // Create a row block for a table with the given schema and the selected column ids.
-  explicit YSQLRowBlock(const Schema& schema, const std::vector<ColumnId>& column_ids);
+  YSQLRowBlock(const Schema& schema, const std::vector<ColumnId>& column_ids);
   virtual ~YSQLRowBlock();
 
   // Row columns' schema

@@ -135,14 +135,19 @@ using namespace yb::sql;
 #undef yylex
 #define yylex parser_->Scan
 
-#define PARSER_ERROR(loc, code) parser_->Error(loc, ErrorCode:##:code)
-#define PARSER_ERROR_MSG(loc, code, msg) parser_->Error(loc, msg, ErrorCode:##:code)
-#define PARSER_UNSUPPORTED(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_SUPPORTED)
-#define PARSER_NOCODE(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED)
-
 #define PTREE_MEM parser_->PTreeMem()
 #define PTREE_LOC(loc) Location::MakeShared(PTREE_MEM, loc)
 #define MAKE_NODE(loc, node, ...) node::MakeShared(PTREE_MEM, PTREE_LOC(loc), ##__VA_ARGS__)
+
+#define PARSER_ERROR(loc, code) parser_->Error(loc, ErrorCode:##:code)
+#define PARSER_ERROR_MSG(loc, code, msg) parser_->Error(loc, msg, ErrorCode:##:code)
+
+#define PARSER_INVALID(loc) parser_->Error(loc, ErrorCode::SQL_STATEMENT_INVALID)
+#define PARSER_UNSUPPORTED(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_SUPPORTED)
+#define PARSER_NOCODE(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED)
+
+#define PARSER_CQL_INVALID(loc) parser_->Error(loc, ErrorCode::CQL_STATEMENT_INVALID)
+#define PARSER_CQL_INVALID_MSG(loc, msg) parser_->Error(loc, msg, ErrorCode::CQL_STATEMENT_INVALID)
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -184,7 +189,8 @@ using namespace yb::sql;
 %type <PValues>           values_clause
 
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
-                          where_clause where_or_current_clause
+                          where_clause opt_where_clause
+                          where_or_current_clause opt_where_or_current_clause
                           opt_select_limit select_limit limit_clause select_limit_value
 
 %type <PListNode>         // Clauses as list of tree nodes.
@@ -237,7 +243,6 @@ using namespace yb::sql;
 
 %type <KeywordType>       unreserved_keyword type_func_name_keyword
 %type <KeywordType>       col_name_keyword reserved_keyword
-
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -612,6 +617,7 @@ using namespace yb::sql;
 
 // kluge to keep xml_whitespace_option from causing shift/reduce conflicts.
 %right    PRESERVE STRIP_P
+%right    IF_P
 
 //--------------------------------------------------------------------------------------------------
 // Logging.
@@ -664,7 +670,7 @@ stmt:
     $$ = $1;
   }
   | UpdateStmt {
-    $$ = nullptr;
+    $$ = $1;
   }
   | inactive_stmt {
     // Report error that the syntax is not yet supported.
@@ -1301,11 +1307,11 @@ select_clause:
 // NOTE: only the leftmost component SelectStmt should have INTO.
 // However, this is not checked by the grammar; parse analysis must check it.
 simple_select:
-  SELECT opt_all_clause opt_target_list into_clause from_clause where_clause
+  SELECT opt_all_clause opt_target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
     $$ = MAKE_NODE(@1, PTSelectStmt, $3, $5, $6, $7, $8, nullptr, nullptr);
   }
-  | SELECT distinct_clause target_list into_clause from_clause where_clause
+  | SELECT distinct_clause target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
     PARSER_UNSUPPORTED(@2);
   }
@@ -1757,15 +1763,21 @@ common_table_expr:
 InsertStmt:
   opt_with_clause INSERT INTO insert_target SelectStmt
   opt_on_conflict returning_clause {
+    PARSER_CQL_INVALID_MSG(@5, "Missing list of target columns");
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, nullptr, $5);
   }
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' SelectStmt
   opt_on_conflict returning_clause {
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8);
   }
+  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
+  IF_P NOT EXISTS
+  {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
+  }
   | opt_with_clause INSERT INTO insert_target DEFAULT VALUES
   opt_on_conflict returning_clause {
-    PARSER_UNSUPPORTED(@1);
+    PARSER_CQL_INVALID_MSG(@5, "DEFAULT VALUES feature is not supported");
   }
 ;
 
@@ -1821,7 +1833,7 @@ opt_indirection:
 opt_on_conflict:
   /*EMPTY*/ {
   }
-  | ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list where_clause {
+  | ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list opt_where_clause {
     PARSER_UNSUPPORTED(@1);
   }
   | ON CONFLICT opt_conf_expr DO NOTHING {
@@ -1832,7 +1844,7 @@ opt_on_conflict:
 opt_conf_expr:
   /*EMPTY*/ {
   }
-  | '(' index_params ')' where_clause {
+  | '(' index_params ')' opt_where_clause {
   }
   | ON CONSTRAINT name {
   }
@@ -1842,7 +1854,7 @@ returning_clause:
   /* EMPTY */ {
   }
   | RETURNING target_list {
-    PARSER_UNSUPPORTED(@1);
+    PARSER_CQL_INVALID_MSG(@1, "RETURNING clause is not supported");
   }
 ;
 
@@ -1852,17 +1864,25 @@ returning_clause:
 
 DeleteStmt:
   opt_with_clause DELETE_P FROM relation_expr_opt_alias
-  using_clause where_or_current_clause returning_clause {
+  opt_where_or_current_clause returning_clause {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $5);
+  }
+  | opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  using_clause opt_where_or_current_clause returning_clause {
     $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6);
-    $$ = nullptr;
+  }
+  | opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  where_or_current_clause IF_P EXISTS {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $5, PTOptionExist::IF_EXISTS);
+  }
+  | opt_with_clause DELETE_P FROM relation_expr_opt_alias
+  using_clause where_or_current_clause IF_P EXISTS {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6, PTOptionExist::IF_EXISTS);
   }
 ;
 
 using_clause:
-  /*EMPTY*/ {
-    $$ = nullptr;
-  }
-  | USING from_list {
+  USING from_list {
     PARSER_NOCODE(@1);
   }
 ;
@@ -1873,11 +1893,16 @@ using_clause:
 
 UpdateStmt:
   opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
-  from_clause where_or_current_clause returning_clause {
-    if ($6 != nullptr) {
-      PARSER_UNSUPPORTED(@6);
-    }
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $7);
+  opt_where_or_current_clause returning_clause {
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $6);
+  }
+  | opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
+  opt_where_or_current_clause IF_P EXISTS {
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $6, PTOptionExist::IF_EXISTS);
+  }
+  | opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
+  opt_where_or_current_clause IF_P NOT EXISTS {
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $6, PTOptionExist::IF_NOT_EXISTS);
   }
 ;
 
@@ -2191,17 +2216,23 @@ opt_ordinality:
 ;
 
 
-where_clause:
+opt_where_clause:
   /*EMPTY*/                     { $$ = nullptr; }
-  | WHERE a_expr                { $$ = $2; }
+  | where_clause                { $$ = $1; }
+;
+
+where_clause:
+  WHERE a_expr                  { $$ = $2; }
 ;
 
 /* variant for UPDATE and DELETE */
+opt_where_or_current_clause:
+  /*EMPTY*/                     { $$ = nullptr; }
+  | where_or_current_clause     { $$ = $1; }
+;
+
 where_or_current_clause:
-  /*EMPTY*/ {
-    $$ = nullptr;
-  }
-  | WHERE a_expr {
+  WHERE a_expr {
     $$ = $2;
   }
   | WHERE CURRENT_P OF cursor_name {
@@ -2260,80 +2291,80 @@ a_expr:
 
   // Predicates that have one operand.
   | NOT a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kNot, $2);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kNot, $2);
   }
   | NOT_LA a_expr                                              %prec NOT {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kNot, $2);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kNot, $2);
   }
   | a_expr IS NULL_P                                           %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNull, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNull, $1);
   }
   | a_expr ISNULL {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNull, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNull, $1);
   }
   | a_expr IS NOT NULL_P                                       %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNotNull, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNotNull, $1);
   }
   | a_expr NOTNULL {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsNotNull, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNotNull, $1);
   }
   | a_expr IS TRUE_P                                           %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsTrue, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsTrue, $1);
   }
   | a_expr IS NOT TRUE_P                                       %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsFalse, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsFalse, $1);
   }
   | a_expr IS FALSE_P                                          %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsFalse, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsFalse, $1);
   }
   | a_expr IS NOT FALSE_P                                      %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, BuiltinOperator::kIsTrue, $1);
+    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsTrue, $1);
   }
 
   // Predicates that have two operands.
   | a_expr '=' a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kEQ, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kEQ, $1, $3);
   }
   | a_expr '<' a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kLT, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kLT, $1, $3);
   }
   | a_expr '>' a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kGT, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kGT, $1, $3);
   }
   | a_expr LESS_EQUALS a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kLE, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kLE, $1, $3);
   }
   | a_expr GREATER_EQUALS a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kGE, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kGE, $1, $3);
   }
   | a_expr NOT_EQUALS a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kNE, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNE, $1, $3);
   }
   | a_expr AND a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kAND, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kAND, $1, $3);
   }
   | a_expr OR a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kOR, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kOR, $1, $3);
   }
   | a_expr LIKE a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kLike, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kLike, $1, $3);
   }
   | a_expr NOT_LA LIKE a_expr                                  %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kNotLike, $1, $4);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotLike, $1, $4);
   }
   | a_expr IN_P in_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kIn, $1, $3);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kIn, $1, $3);
   }
   | a_expr NOT_LA IN_P in_expr                                 %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate2, BuiltinOperator::kNotIn, $1, $4);
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotIn, $1, $4);
   }
 
   // Predicates that have 3 operands.
   | a_expr BETWEEN opt_asymmetric b_expr AND a_expr            %prec BETWEEN {
-    $$ = MAKE_NODE(@1, PTPredicate3, BuiltinOperator::kBetween, $1, $4, $6);
+    $$ = MAKE_NODE(@1, PTPredicate3, ExprOperator::kBetween, $1, $4, $6);
   }
   | a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr     %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate3, BuiltinOperator::kNotBetween, $1, $5, $7);
+    $$ = MAKE_NODE(@1, PTPredicate3, ExprOperator::kNotBetween, $1, $5, $7);
   }
 
   | inactive_a_expr {
@@ -6827,10 +6858,10 @@ defacl_privilege_target:
 
 IndexStmt:
   CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_reloptions OptTableSpace where_clause {
+  access_method_clause '(' index_params ')' opt_reloptions OptTableSpace opt_where_clause {
   }
   | CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_reloptions OptTableSpace where_clause {
+  access_method_clause '(' index_params ')' opt_reloptions OptTableSpace opt_where_clause {
   }
 ;
 
@@ -7625,7 +7656,7 @@ AlterOwnerStmt:
  *****************************************************************************/
 
 RuleStmt:
-  CREATE opt_or_replace RULE name AS ON event TO qualified_name where_clause
+  CREATE opt_or_replace RULE name AS ON event TO qualified_name opt_where_clause
   DO opt_instead RuleActionList {
     PARSER_UNSUPPORTED(@3);
   }

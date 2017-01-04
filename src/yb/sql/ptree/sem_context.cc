@@ -2,7 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/session_context.h"
+#include "yb/sql/util/sql_env.h"
 #include "yb/sql/ptree/sem_context.h"
 
 namespace yb {
@@ -13,11 +13,11 @@ namespace sql {
 SemContext::SemContext(const char *sql_stmt,
                        size_t stmt_len,
                        ParseTree::UniPtr parse_tree,
-                       SessionContext *session_context,
+                       SqlEnv *sql_env,
                        int retry_count)
     : ProcessContext(sql_stmt, stmt_len, move(parse_tree)),
       symtab_(ptemp_mem_.get()),
-      session_context_(session_context),
+      sql_env_(sql_env),
       retry_count_(retry_count) {
 }
 
@@ -40,12 +40,37 @@ void SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
   symtab_[name].table_ = entry;
 }
 
-const SymbolEntry *SemContext::SeekSymbol(const MCString& name) {
+void SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
+  if (symtab_[name].column_desc_ != nullptr) {
+    LOG(FATAL) << "Entries of the same symbol are inserted"
+               << ", Existing entry = " << symtab_[name].column_desc_
+               << ", New entry = " << entry;
+  }
+  symtab_[name].column_desc_ = entry;
+}
+
+const SymbolEntry *SemContext::SeekSymbol(const MCString& name) const {
   auto iter = symtab_.find(name);
   if (iter != symtab_.end()) {
     return &iter->second;
   }
   return nullptr;
+}
+
+PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) const {
+  const SymbolEntry * entry = SeekSymbol(col_name);
+  if (entry == nullptr) {
+    return nullptr;
+  }
+  return entry->column_;
+}
+
+const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
+  const SymbolEntry * entry = SeekSymbol(col_name);
+  if (entry == nullptr) {
+    return nullptr;
+  }
+  return entry->column_desc_;
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -9,25 +9,10 @@
 
 #include "yb/client/client.h"
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/common/types.h"
 
 namespace yb {
 namespace sql {
-
-enum class PTTypeId {
-  kTinyInt = 0,
-  kSmallInt,
-  kInt,
-  kBigInt,
-  kFloat,
-  kDouble,
-  kBoolean,
-
-  kCharBaseType,
-  kChar,
-  kVarchar,
-
-  kMaxTypeId,
-};
 
 class PTBaseType : public TreeNode {
  public:
@@ -44,17 +29,17 @@ class PTBaseType : public TreeNode {
   virtual ~PTBaseType() {
   }
 
-  virtual PTTypeId type_id() const = 0;
-  virtual client::YBColumnSchema::DataType yb_data_type() const = 0;
+  virtual yb::DataType type_id() const = 0;
+  virtual client::YBColumnSchema::DataType sql_type() const = 0;
 };
 
-template<PTTypeId type_id_, client::YBColumnSchema::DataType yb_data_type_>
+template<yb::DataType type_id_, client::YBColumnSchema::DataType sql_type_>
 class PTPrimitiveType : public PTBaseType {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
-  typedef MCSharedPtr<PTPrimitiveType<type_id_, yb_data_type_>> SharedPtr;
-  typedef MCSharedPtr<const PTPrimitiveType<type_id_, yb_data_type_>> SharedPtrConst;
+  typedef MCSharedPtr<PTPrimitiveType<type_id_, sql_type_>> SharedPtr;
+  typedef MCSharedPtr<const PTPrimitiveType<type_id_, sql_type_>> SharedPtrConst;
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
@@ -69,25 +54,25 @@ class PTPrimitiveType : public PTBaseType {
     return MCMakeShared<PTPrimitiveType>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual PTTypeId type_id() const {
+  virtual yb::DataType type_id() const {
     return type_id_;
   }
 
-  virtual client::YBColumnSchema::DataType yb_data_type() const {
-    return yb_data_type_;
+  virtual client::YBColumnSchema::DataType sql_type() const {
+    return sql_type_;
   }
 };
 
 //--------------------------------------------------------------------------------------------------
 // Numeric Types.
 
-using PTBoolean = PTPrimitiveType<PTTypeId::kBoolean, client::YBColumnSchema::BOOL>;
-using PTTinyInt = PTPrimitiveType<PTTypeId::kTinyInt, client::YBColumnSchema::INT8>;
-using PTSmallInt = PTPrimitiveType<PTTypeId::kSmallInt, client::YBColumnSchema::INT16>;
-using PTInt = PTPrimitiveType<PTTypeId::kInt, client::YBColumnSchema::INT32>;
-using PTBigInt = PTPrimitiveType<PTTypeId::kBigInt, client::YBColumnSchema::INT64>;
+using PTBoolean = PTPrimitiveType<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
+using PTTinyInt = PTPrimitiveType<yb::DataType::INT8, client::YBColumnSchema::INT8>;
+using PTSmallInt = PTPrimitiveType<yb::DataType::INT16, client::YBColumnSchema::INT16>;
+using PTInt = PTPrimitiveType<yb::DataType::INT32, client::YBColumnSchema::INT32>;
+using PTBigInt = PTPrimitiveType<yb::DataType::INT64, client::YBColumnSchema::INT64>;
 
-class PTFloat : public PTPrimitiveType<PTTypeId::kFloat, client::YBColumnSchema::FLOAT> {
+class PTFloat : public PTPrimitiveType<yb::DataType::FLOAT, client::YBColumnSchema::FLOAT> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
@@ -110,7 +95,7 @@ class PTFloat : public PTPrimitiveType<PTTypeId::kFloat, client::YBColumnSchema:
   int8_t precision_;
 };
 
-class PTDouble : public PTPrimitiveType<PTTypeId::kDouble, client::YBColumnSchema::DOUBLE> {
+class PTDouble : public PTPrimitiveType<yb::DataType::DOUBLE, client::YBColumnSchema::DOUBLE> {
  public:
   typedef MCSharedPtr<PTDouble> SharedPtr;
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
@@ -137,7 +122,7 @@ class PTDouble : public PTPrimitiveType<PTTypeId::kDouble, client::YBColumnSchem
 // Char-based types.
 
 class PTCharBaseType
-    : public PTPrimitiveType<PTTypeId::kCharBaseType, client::YBColumnSchema::STRING> {
+    : public PTPrimitiveType<yb::DataType::STRING, client::YBColumnSchema::STRING> {
  public:
   typedef MCSharedPtr<PTCharBaseType> SharedPtr;
   typedef MCSharedPtr<const PTCharBaseType> SharedPtrConst;
@@ -173,8 +158,8 @@ class PTChar : public PTCharBaseType {
     return MCMakeShared<PTChar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual PTTypeId type_id() const {
-    return PTTypeId::kChar;
+  virtual yb::DataType type_id() const {
+    return yb::DataType::STRING;
   }
 };
 
@@ -193,8 +178,8 @@ class PTVarchar : public PTCharBaseType {
     return MCMakeShared<PTVarchar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual PTTypeId type_id() const {
-    return PTTypeId::kVarchar;
+  virtual yb::DataType type_id() const {
+    return yb::DataType::STRING;
   }
 };
 

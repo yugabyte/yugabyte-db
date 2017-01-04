@@ -47,6 +47,7 @@ message YSQLExpressionPB {
 
 // Condition operators
 enum YSQLOperator {
+  YSQL_OP_NOOP = 0;
 
   // Operators that take one operand.
   YSQL_OP_NOT = 1;
@@ -108,7 +109,7 @@ message YSQLWriteRequestPB {
 
   // Client info
   optional YSQLClient client = 2; // required
-  optional uint32 request_id = 3; // client request id - for debug tracing purpose only
+  optional uint64 request_id = 3; // client request id - for debug tracing purpose only
 
   // Table schema version
   optional uint32 schema_version = 4; // required
@@ -143,7 +144,7 @@ message YSQLReadRequestPB {
 
   // Client info
   optional YSQLClient client = 1; // required
-  optional uint32 request_id = 2; // client request id - for debug tracing purpose only
+  optional uint64 request_id = 2; // client request id - for debug tracing purpose only
 
   // Table schema version
   optional uint32 schema_version = 3; // required

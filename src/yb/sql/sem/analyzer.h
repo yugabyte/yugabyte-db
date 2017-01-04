@@ -30,7 +30,7 @@ class Analyzer {
   // as datatype or object-type of a database object.
   ErrorCode Analyze(const std::string& sql_stmt,
                     ParseTree::UniPtr ptree,
-                    SessionContext *session_context,
+                    SqlEnv *sql_env,
                     int retry_count);
 
   // Returns decorated parse tree from the semantic analysis.

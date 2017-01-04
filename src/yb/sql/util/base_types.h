@@ -111,6 +111,12 @@ class MCString : public MCStringBase {
   typedef MCSharedPtr<MCString> SharedPtr;
   typedef MCSharedPtr<const MCString> SharedPtrConst;
 
+  struct MapCmp {
+    bool operator() (const MCString& s1, const MCString& s2) const {
+      return strcmp(s1.c_str(), s2.c_str()) < 0;
+    }
+  };
+
   // Constructors.
   explicit MCString(MemoryContext *mem_ctx);
   MCString(MemoryContext *mem_ctx, const char *str);
@@ -126,6 +132,43 @@ class MCString : public MCStringBase {
     return mem_ctx->AllocateShared<MCString>(mem_ctx, std::forward<TypeArgs>(args)...);
   }
 };
+
+// MCString operators.
+inline bool operator==(const MCString& lhs, const char *rhs) {
+  return strcmp(lhs.c_str(), rhs) == 0;
+}
+
+inline bool operator==(const char *lhs, const MCString& rhs) {
+  return strcmp(lhs, rhs.c_str()) == 0;
+}
+
+inline bool operator!=(const MCString& lhs, const char *rhs) {
+  return strcmp(lhs.c_str(), rhs) != 0;
+}
+
+inline bool operator!=(const char *lhs, const MCString& rhs) {
+  return strcmp(lhs, rhs.c_str()) != 0;
+}
+
+inline bool operator==(const MCString& lhs, const MCString& rhs) {
+  return memcmp(lhs.data(), rhs.data(), std::min<size_t>(lhs.size(), rhs.size())) == 0;
+}
+
+inline bool operator<(const MCString& lhs, const MCString& rhs) {
+  return memcmp(lhs.data(), rhs.data(), std::min<size_t>(lhs.size(), rhs.size())) < 0;
+}
+
+inline bool operator<=(const MCString& lhs, const MCString& rhs) {
+  return memcmp(lhs.data(), rhs.data(), std::min<size_t>(lhs.size(), rhs.size())) <= 0;
+}
+
+inline bool operator>(const MCString& lhs, const MCString& rhs) {
+  return memcmp(lhs.data(), rhs.data(), std::min<size_t>(lhs.size(), rhs.size())) > 0;
+}
+
+inline bool operator>=(const MCString& lhs, const MCString& rhs) {
+  return memcmp(lhs.data(), rhs.data(), std::min<size_t>(lhs.size(), rhs.size())) >= 0;
+}
 
 //--------------------------------------------------------------------------------------------------
 // User-defined object support.

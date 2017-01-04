@@ -49,7 +49,7 @@ do { \
                   "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary));");
 
   // Valid statement: INSERT.
-  EXEC_VALID_STMT("INSERT INTO human_resource VALUES(7, \"Scott Tiger\");");
+  EXEC_VALID_STMT("INSERT INTO human_resource(id, name) VALUES(7, \"Scott Tiger\");");
 
   // Valid statement: UPDATE.
   EXEC_VALID_STMT("UPDATE human_resource SET name = \"Joe Street\" WHERE id = 7;");

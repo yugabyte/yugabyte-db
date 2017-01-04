@@ -146,6 +146,12 @@ YBColumnSpec* YBColumnSpec::Type(YBColumnSchema::DataType type) {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::Order(int32_t order) {
+  data_->has_order = true;
+  data_->order = order;
+  return this;
+}
+
 YBColumnSpec* YBColumnSpec::Default(YBValue* v) {
   data_->has_default = true;
   delete data_->default_val;
@@ -174,13 +180,14 @@ YBColumnSpec* YBColumnSpec::BlockSize(int32_t block_size) {
 }
 
 YBColumnSpec* YBColumnSpec::PrimaryKey() {
+  NotNull();
   data_->primary_key = true;
   return this;
 }
 
 YBColumnSpec* YBColumnSpec::HashPrimaryKey() {
+  PrimaryKey();
   data_->hash_primary_key = true;
-  data_->primary_key = true;
   return this;
 }
 
@@ -480,6 +487,10 @@ const std::string& YBColumnSchema::name() const {
 
 bool YBColumnSchema::is_nullable() const {
   return DCHECK_NOTNULL(col_)->is_nullable();
+}
+
+bool YBColumnSchema::is_hash_key() const {
+  return DCHECK_NOTNULL(col_)->is_hash_key();
 }
 
 YBColumnSchema::DataType YBColumnSchema::type() const {

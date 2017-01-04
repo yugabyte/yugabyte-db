@@ -12,7 +12,7 @@ namespace sql {
 //--------------------------------------------------------------------------------------------------
 
 PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTPrimitiveType<PTTypeId::kFloat, client::YBColumnSchema::FLOAT>(memctx, loc),
+    : PTPrimitiveType<yb::DataType::FLOAT, client::YBColumnSchema::FLOAT>(memctx, loc),
       precision_(precision) {
 }
 
@@ -20,7 +20,7 @@ PTFloat::~PTFloat() {
 }
 
 PTDouble::PTDouble(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTPrimitiveType<PTTypeId::kDouble, client::YBColumnSchema::DOUBLE>(memctx, loc),
+    : PTPrimitiveType<yb::DataType::DOUBLE, client::YBColumnSchema::DOUBLE>(memctx, loc),
       precision_(precision) {
 }
 
@@ -32,7 +32,7 @@ PTDouble::~PTDouble() {
 PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
                                YBLocation::SharedPtr loc,
                                int32_t max_length)
-    : PTPrimitiveType<PTTypeId::kCharBaseType, client::YBColumnSchema::STRING>(memctx, loc),
+    : PTPrimitiveType<yb::DataType::STRING, client::YBColumnSchema::STRING>(memctx, loc),
       max_length_(max_length) {
 }
 

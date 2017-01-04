@@ -7,8 +7,9 @@
 #ifndef YB_SQL_PTREE_SEM_CONTEXT_H_
 #define YB_SQL_PTREE_SEM_CONTEXT_H_
 
-#include "yb/sql/session_context.h"
+#include "yb/sql/util/sql_env.h"
 #include "yb/sql/ptree/process_context.h"
+#include "yb/sql/ptree/column_desc.h"
 #include "yb/sql/ptree/pt_create_table.h"
 
 namespace yb {
@@ -17,10 +18,18 @@ namespace sql {
 //--------------------------------------------------------------------------------------------------
 
 struct SymbolEntry {
+  // Parse tree node for column. It's used for table creation.
   PTColumnDefinition *column_;
+
+  // Parse tree node for table. It's used for table creation.
   PTCreateTable *table_;
 
-  SymbolEntry() : column_(nullptr), table_(nullptr) {
+  // Column description. It's used for DML statements including select.
+  // Not part of a parse tree, but it is allocated within the parse tree pool because it us
+  // persistent metadata. It represents a column during semantic and execution phases.
+  ColumnDesc *column_desc_;
+
+  SymbolEntry() : column_(nullptr), table_(nullptr), column_desc_(nullptr) {
   }
 };
 
@@ -46,7 +55,7 @@ class SemContext : public ProcessContext {
   SemContext(const char *sql_stmt,
              size_t stmt_len,
              ParseTree::UniPtr parse_tree,
-             SessionContext *session_context,
+             SqlEnv *sql_env,
              int retry_count);
   virtual ~SemContext();
 
@@ -54,7 +63,7 @@ class SemContext : public ProcessContext {
   // Symbol table support.
   void MapSymbol(const MCString& name, PTColumnDefinition *entry);
   void MapSymbol(const MCString& name, PTCreateTable *entry);
-  const SymbolEntry *SeekSymbol(const MCString& name);
+  void MapSymbol(const MCString& name, ColumnDesc *entry);
 
   // Access functions to current processing symbol.
   SymbolEntry *current_processing_id() {
@@ -80,10 +89,17 @@ class SemContext : public ProcessContext {
     current_processing_id_.table_ = table;
   }
 
+  // Find table descriptor from metadata server.
   std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name) {
     // If "retry_count_" is greater than 0, we want to reload metadata from master server.
-    return session_context_->GetTableDesc(table_name, retry_count_ > 0);
+    return sql_env_->GetTableDesc(table_name, retry_count_ > 0);
   }
+
+  // Find column descriptor from symbol table.
+  PTColumnDefinition *GetColumnDefinition(const MCString& col_name) const;
+
+  // Find column descriptor from symbol table.
+  const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
   // Find conversion mode from 'rhs_type' to 'lhs_type'.
   ConversionMode GetConversionMode(client::YBColumnSchema::DataType lhs_type,
@@ -101,14 +117,17 @@ class SemContext : public ProcessContext {
   }
 
  private:
+  // Find symbol.
+  const SymbolEntry *SeekSymbol(const MCString& name) const;
+
   // Symbol table.
-  MCMap<MCString, SymbolEntry> symtab_;
+  MCMap<MCString, SymbolEntry, MCString::MapCmp> symtab_;
 
   // Current processing symbol.
   SymbolEntry current_processing_id_;
 
   // Session.
-  SessionContext *session_context_;
+  SqlEnv *sql_env_;
 
   // Force to refresh metadata.
   int retry_count_;

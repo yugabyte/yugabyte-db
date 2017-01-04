@@ -842,6 +842,10 @@ const YBSchema& YBTable::schema() const {
   return data_->schema_;
 }
 
+const Schema& YBTable::InternalSchema() const {
+  return *(data_->schema_.schema_);
+}
+
 YBInsert* YBTable::NewInsert() {
   return new YBInsert(shared_from_this());
 }
@@ -864,6 +868,22 @@ YBRedisReadOp* YBTable::NewRedisRead() {
 
 YBSqlWriteOp* YBTable::NewYSQLWrite() {
   return new YBSqlWriteOp(shared_from_this());
+}
+
+YBSqlWriteOp* YBTable::NewYSQLInsert() {
+  return YBSqlWriteOp::NewInsert(shared_from_this());
+}
+
+YBSqlWriteOp* YBTable::NewYSQLUpdate() {
+  return YBSqlWriteOp::NewUpdate(shared_from_this());
+}
+
+YBSqlWriteOp* YBTable::NewYSQLDelete() {
+  return YBSqlWriteOp::NewDelete(shared_from_this());
+}
+
+YBSqlReadOp* YBTable::NewYSQLSelect() {
+  return YBSqlReadOp::NewSelect(shared_from_this());
 }
 
 YBSqlReadOp* YBTable::NewYSQLRead() {
@@ -1031,11 +1051,8 @@ void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* 
 
 Status YBSession::Apply(std::shared_ptr<YBOperation> yb_op) {
   CHECK_EQ(yb_op->read_only(), read_only_);
-  // For YSQL read and write ops, set the row key from the request protobuf.
-  if (yb_op->type() == YBOperation::Type::YSQL_READ ||
-      yb_op->type() == YBOperation::Type::YSQL_WRITE) {
-    down_cast<YBSqlOp*>(yb_op.get())->SetKey();
-  } else if (!yb_op->row().IsKeySet()) {
+
+  if (!yb_op->row().IsKeySet()) {
     Status status = STATUS(IllegalState, "Key not specified", yb_op->ToString());
     data_->error_collector_->AddError(
         gscoped_ptr<YBError>(new YBError(shared_ptr<YBOperation>(yb_op), status)));

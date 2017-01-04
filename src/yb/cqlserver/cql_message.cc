@@ -5,6 +5,8 @@
 #include "yb/client/client.h"
 #include "yb/common/ysql_protocol.pb.h"
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_processor.h"
+
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -28,7 +30,7 @@ using strings::Substitute;
 
 // ------------------------------------ CQL request -----------------------------------
 bool CQLRequest::ParseRequest(
-    const Slice& mesg, unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
+  const Slice& mesg, unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
 
   *request = nullptr;
   *error_response = nullptr;
@@ -372,7 +374,7 @@ Status StartupRequest::ParseBody() {
   return ParseStringMap(&options_);
 }
 
-CQLResponse* StartupRequest::Execute() {
+CQLResponse* StartupRequest::Execute(CQLProcessor *processor) {
   for (const auto& option : options_) {
     const auto& name = option.first;
     const auto& value = option.second;
@@ -398,7 +400,7 @@ Status AuthResponseRequest::ParseBody() {
   return ParseBytes(&token_);
 }
 
-CQLResponse* AuthResponseRequest::Execute() {
+CQLResponse* AuthResponseRequest::Execute(CQLProcessor *processor) {
   // TODO(Robert): authentication support
   return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
@@ -415,7 +417,7 @@ Status OptionsRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* OptionsRequest::Execute() {
+CQLResponse* OptionsRequest::Execute(CQLProcessor *processor) {
   return new SupportedResponse(*this);
 }
 
@@ -432,22 +434,8 @@ Status QueryRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* QueryRequest::Execute() {
-  // TODO(Robert): parse the query with YSQL parser and return actual results. For now, just
-  // verify the first token for recognized statements and return a VOID result.
-  std::regex token_regex("(\\w+).*");
-  std::smatch token_match;
-  if (std::regex_match(query_, token_match, token_regex)) {
-    string token = token_match[1];
-    std::transform(token.begin(), token.end(), token.begin(), ::toupper);
-    if (token == "CREATE" || token == "DROP" || token == "ALTER" || token == "TRUNCATE" ||
-        token == "INSERT" || token == "UPDATE" || token == "DELETE" || token == "SELECT" ||
-        token == "BATCH" || token == "USE") {
-      return new VoidResultResponse(*this);
-    }
-  }
-
-  return new ErrorResponse(*this, ErrorResponse::Code::SYNTAX_ERROR, "unknown statement");
+CQLResponse* QueryRequest::Execute(CQLProcessor *processor) {
+  return processor->ProcessQuery(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -462,7 +450,7 @@ Status PrepareRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* PrepareRequest::Execute() {
+CQLResponse* PrepareRequest::Execute(CQLProcessor *processor) {
   // TODO(Robert): return actual results
   return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
@@ -480,7 +468,7 @@ Status ExecuteRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* ExecuteRequest::Execute() {
+CQLResponse* ExecuteRequest::Execute(CQLProcessor *processor) {
   // TODO(Robert): return actual results
   return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
@@ -536,7 +524,7 @@ Status BatchRequest::ParseBody() {
   return Status::OK();
 }
 
-CQLResponse* BatchRequest::Execute() {
+CQLResponse* BatchRequest::Execute(CQLProcessor *processor) {
   // TODO(Robert)
   return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
 }
@@ -553,7 +541,7 @@ Status RegisterRequest::ParseBody() {
   return ParseStringList(&event_types_);
 }
 
-CQLResponse* RegisterRequest::Execute() {
+CQLResponse* RegisterRequest::Execute(CQLProcessor *processor) {
   // TODO(Robert): implement real event responses
   return new ReadyResponse(*this);
 }

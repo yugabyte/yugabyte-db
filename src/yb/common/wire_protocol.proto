@@ -55,6 +55,7 @@ message AppStatusPB {
     CONFIGURATION_ERROR = 16;
     INCOMPLETE = 17;
     END_OF_FILE = 18;
+    INVALID_COMMAND = 19;
   }
 
   required ErrorCode code = 1;

@@ -16,7 +16,8 @@ PTRef::PTRef(MemoryContext *memctx,
                          YBLocation::SharedPtr loc,
                          const PTQualifiedName::SharedPtr& name)
     : PTExpr(memctx, loc),
-      name_(name) {
+      name_(name),
+      desc_(nullptr) {
 }
 
 PTRef::~PTRef() {
@@ -24,6 +25,20 @@ PTRef::~PTRef() {
 
 ErrorCode PTRef::Analyze(SemContext *sem_context) {
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+
+  // Check if this refers to the whole table (SELECT *).
+  if (name_ == nullptr) {
+    return err;
+  }
+
+  // Look for a column descriptor from symbol table.
+  name_->Analyze(sem_context);
+  desc_ = sem_context->GetColumnDesc(name_->last_name());
+  if (desc_ == nullptr) {
+    sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
+    return ErrorCode::UNDEFINED_COLUMN;
+  }
+
   return err;
 }
 

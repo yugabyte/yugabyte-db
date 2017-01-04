@@ -1,0 +1,109 @@
+//--------------------------------------------------------------------------------------------------
+// Copyright (c) YugaByte, Inc.
+//--------------------------------------------------------------------------------------------------
+
+#include "yb/sql/ybsql-test-base.h"
+#include "yb/gutil/strings/substitute.h"
+
+using std::string;
+using std::unique_ptr;
+using std::shared_ptr;
+using strings::Substitute;
+
+namespace yb {
+namespace sql {
+
+class YbSqlQuery : public YbSqlTestBase {
+ public:
+  YbSqlQuery() : YbSqlTestBase() {
+  }
+};
+
+TEST_F(YbSqlQuery, TestSqlQuerySimple) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  // Create the table 1.
+  const char *create_stmt =
+    "CREATE TABLE test_table(h1 int, h2 varchar, "
+                            "r1 int, r2 varchar, "
+                            "v1 int, v2 varchar, "
+                            "primary key((h1, h2), r1, r2));";
+  Status s = processor->Run(create_stmt);
+  CHECK(s.ok());
+
+  // Insert 100 rows into the table.
+  static const int kNumRows = 100;
+  for (int idx = 0; idx < kNumRows; idx++) {
+    // INSERT: Valid statement with column list.
+    string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
+                             "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
+                             idx, idx, idx+100, idx+100, idx+1000, idx+1000);
+    s = processor->Run(stmt);
+    CHECK(s.ok()) << "Execution failed. Command = '" << stmt << "'. Status = " << s.ToString();
+  }
+  LOG(INFO) << kNumRows << " rows inserted";
+
+  // Test simple query and result.
+  const char *select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                            "WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;";
+  s = processor->Run(select_stmt);
+  CHECK(s.ok());
+
+  std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YSQLRow& row = row_block->row(0);
+  CHECK_EQ(row.column(0).int32_value(), 7);
+  CHECK_EQ(row.column(1).string_value(), "h7");
+  CHECK_EQ(row.column(2).int32_value(), 107);
+  CHECK_EQ(row.column(3).string_value(), "r107");
+  CHECK_EQ(row.column(4).int32_value(), 1007);
+  CHECK_EQ(row.column(5).string_value(), "v1007");
+
+  // Test single row query for the whole table.
+  for (int idx = 0; idx < kNumRows; idx++) {
+    // SELECT: Valid statement with column list.
+    string stmt = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                             "WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
+                             idx, idx, idx+100, idx+100);
+    s = processor->Run(stmt.c_str());
+    CHECK(s.ok()) << "Execution failed. Command = '" << stmt << "'. Status = " << s.ToString();
+
+    std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const YSQLRow& row = row_block->row(0);
+    CHECK_EQ(row.column(0).int32_value(), idx);
+    CHECK_EQ(row.column(1).string_value(), Substitute("h$0", idx));
+    CHECK_EQ(row.column(2).int32_value(), idx + 100);
+    CHECK_EQ(row.column(3).string_value(), Substitute("r$0", idx + 100));
+    CHECK_EQ(row.column(4).int32_value(), idx + 1000);
+    CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
+  }
+
+#if 0
+  // Test multi row query for the whole table.
+  // Insert 20 rows of the same hash key into the table.
+  static const int kHashNumRows = 20;
+  for (int idx = 0; idx < kNumRows; idx++) {
+    // INSERT: Valid statement with column list.
+    string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
+                             "VALUES(101, 'h_shared_key', $0, 'r$1', $2, 'v$3');",
+                             idx, idx, idx+1000, idx+1000);
+    s = processor->Run(stmt.c_str());
+    CHECK(s.ok());
+  }
+
+  // Select all 20 rows and check the values.
+  const char *multi_select = "SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                             "WHERE h1 = 101 AND h2 = 'h_shared_key';";
+  s = processor->Run(stmt.c_str());
+  CHECK(s.ok());
+
+#endif
+}
+
+} // namespace sql
+} // namespace yb

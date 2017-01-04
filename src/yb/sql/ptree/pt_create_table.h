@@ -105,24 +105,33 @@ class PTColumnDefinition : public TreeNode {
   bool is_primary_key() const {
     return is_primary_key_;
   }
-  void set_is_primary_key(bool value) {
-    is_primary_key_ = value;
+  void set_is_primary_key() {
+    is_primary_key_ = true;
   }
 
   // Access function for is_hash_key_.
   bool is_hash_key() const {
     return is_hash_key_;
   }
-  void set_is_hash_key(bool value) {
-    is_hash_key_ = value;
+  void set_is_hash_key() {
+    is_primary_key_ = true;
+    is_hash_key_ = true;
+  }
+
+  // Access function for order_.
+  int32_t order() const {
+    return order_;
+  }
+  void set_order(int32 order) {
+    order_ = order;
   }
 
   // Return the data types that are expected by docdb.
   const char *yb_name() const {
     return name_->c_str();
   }
-  client::YBColumnSchema::DataType yb_data_type() const {
-    return datatype_->yb_data_type();
+  client::YBColumnSchema::DataType sql_type() const {
+    return datatype_->sql_type();
   }
 
  private:
@@ -131,6 +140,7 @@ class PTColumnDefinition : public TreeNode {
   PTListNode::SharedPtr constraints_;
   bool is_primary_key_;
   bool is_hash_key_;
+  int32_t order_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -209,6 +219,7 @@ class PTCreateTable : public TreeNode {
  private:
   PTQualifiedName::SharedPtr relation_;
   PTListNode::SharedPtr elements_;
+
   MCList<PTColumnDefinition *> columns_;
   MCList<PTColumnDefinition *> primary_columns_;
   MCList<PTColumnDefinition *> hash_columns_;

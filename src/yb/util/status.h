@@ -252,6 +252,13 @@ class YB_EXPORT Status {
                           int64_t posix_code = -1) {
     return Status(kEndOfFile, msg, msg2, posix_code, file_name, line_number);
   }
+  static Status InvalidCommand(const char* file_name,
+                                int line_number,
+                                const Slice& msg,
+                                const Slice& msg2 = Slice(),
+                                int16_t posix_code = -1) {
+    return Status(kInvalidCommand, msg, msg2, posix_code, file_name, line_number);
+  }
 
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
@@ -309,6 +316,9 @@ class YB_EXPORT Status {
 
   // Returns true iff the status indicates end of file.
   bool IsEndOfFile() const { return code() == kEndOfFile; }
+
+  // Returns true iff the status indicates an InvalidCommand error
+  bool IsInvalidCommand() const { return code() == kInvalidCommand; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -377,6 +387,7 @@ class YB_EXPORT Status {
     kConfigurationError = 16,
     kIncomplete = 17,
     kEndOfFile = 18,
+    kInvalidCommand = 19,
     // NOTE: Remember to duplicate these constants into wire_protocol.proto and
     // and to add StatusTo/FromPB ser/deser cases in wire_protocol.cc !
     //

@@ -5,7 +5,9 @@
 #include "yb/sql/ybsql.h"
 #include <gflags/gflags.h>
 
-DEFINE_int32(YB_SQL_EXEC_MAX_METADATA_REFRESH_COUNT, 1,
+// Currently, the default is set to 0 because we don't cache the metadata. There's no need to
+// refresh and clear the stale metadata.
+DEFINE_int32(YB_SQL_EXEC_MAX_METADATA_REFRESH_COUNT, 0,
              "The maximum number of times YbSql engine can refresh metadata cache due to schema "
              "version mismatch error when executing a SQL statement");
 
@@ -24,7 +26,7 @@ YbSql::YbSql()
 YbSql::~YbSql() {
 }
 
-ErrorCode YbSql::Process(SessionContext *session_context, const string& sql_stmt) {
+ErrorCode YbSql::Process(SqlEnv *sql_env, const string& sql_stmt) {
   // Parse the statement and get the generated parse tree.
   ErrorCode errcode = parser_->Parse(sql_stmt);
   if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
@@ -38,7 +40,7 @@ ErrorCode YbSql::Process(SessionContext *session_context, const string& sql_stmt
     // Semantic analysis.
     // Traverse, error-check, and decorate the parse tree nodes with datatypes.
     ErrorCode sem_errcode =
-      analyzer_->Analyze(sql_stmt, move(parse_tree), session_context, refresh_count);
+      analyzer_->Analyze(sql_stmt, move(parse_tree), sql_env, refresh_count);
     parse_tree = analyzer_->Done();
     CHECK(parse_tree.get() != nullptr) << "SEM tree is null";
     if (sem_errcode == ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED) {
@@ -60,7 +62,7 @@ ErrorCode YbSql::Process(SessionContext *session_context, const string& sql_stmt
     // TODO(neil) Code generation. We bypass this step at this time.
 
     // Code execution.
-    errcode = executor_->Execute(sql_stmt, move(parse_tree), session_context);
+    errcode = executor_->Execute(sql_stmt, move(parse_tree), sql_env);
     parse_tree = executor_->Done();
     CHECK(parse_tree.get() != nullptr) << "Exec tree is null";
 

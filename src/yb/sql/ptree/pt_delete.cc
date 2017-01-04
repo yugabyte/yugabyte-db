@@ -17,17 +17,30 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            TreeNode::SharedPtr selections,
                            PTTableRef::SharedPtr relation,
                            TreeNode::SharedPtr using_clause,
-                           PTExpr::SharedPtr where_expr)
-    : TreeNode(memctx, loc),
+                           PTExpr::SharedPtr where_clause,
+                           PTOptionExist option_exists)
+    : PTDmlStmt(memctx, loc, option_exists),
       relation_(relation),
-      where_expr_(where_expr) {
+      where_clause_(where_clause) {
 }
 
 PTDeleteStmt::~PTDeleteStmt() {
 }
 
 ErrorCode PTDeleteStmt::Analyze(SemContext *sem_context) {
+  LOG(INFO) << kErrorFontStart;
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+
+  // Collect table's schema for semantic analysis.
+  LookupTable(sem_context);
+
+  // Run error checking on the WHERE conditions.
+  err = AnalyzeWhereClause(sem_context, where_clause_);
+  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
+    return err;
+  }
+
+  LOG(INFO) << kErrorFontEnd;
   return err;
 }
 

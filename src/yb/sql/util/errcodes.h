@@ -89,11 +89,17 @@ enum class ErrorCode : int64_t {
   // TODO(neil):
   // All error codes < SUCCESSFUL_COMPLETION
   // All warning codes > SUCCESSFUL_COMPLETION
+  MIN_ERROR_CODE = 0,
   SUCCESSFUL_COMPLETION = 0,
+
+  // Cassandra specific error codes. Some SQL syntax might be supported by ISO standard but not
+  // Cassandra and vice versa.
+  CQL_STATEMENT_INVALID,
 
   // Error codes. YbSql statement execution would stop after reporting these messages.
   NO_DATA,
   NO_ADDITIONAL_DYNAMIC_RESULT_SETS_RETURNED,
+  SQL_STATEMENT_INVALID,
   SQL_STATEMENT_NOT_YET_COMPLETE,
   DDL_EXECUTION_RERUN_NOT_ALLOWED,
   CONNECTION_EXCEPTION,
@@ -275,6 +281,7 @@ enum class ErrorCode : int64_t {
   CONFIGURATION_LIMIT_EXCEEDED,
   PROGRAM_LIMIT_EXCEEDED,
   STATEMENT_TOO_COMPLEX,
+  INVALID_ARGUMENTS,
   TOO_MANY_COLUMNS,
   TOO_FEW_ARGUMENTS,
   TOO_MANY_ARGUMENTS,
@@ -340,6 +347,9 @@ enum class ErrorCode : int64_t {
   WARNING_PRIVILEGE_NOT_REVOKED,
   WARNING_STRING_DATA_RIGHT_TRUNCATION,
   WARNING_DEPRECATED_FEATURE,
+
+  // DO NOT ENTER CODE AFTER THIS LINE.
+  MAX_ERROR_CODE
 };
 
 // Mapping errcode to text messages.

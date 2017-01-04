@@ -226,7 +226,7 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       // No simple range can be deduced from these conditions. So the range will be unbounded.
       return;
 
-    // default: fall through
+    case YSQL_OP_NOOP: FALLTHROUGH_INTENDED;
   }
 
   LOG(FATAL) << "Unknown op " << condition.op();
@@ -453,7 +453,7 @@ Status EvaluateCondition(
       return Status::OK();
     }
 
-    // default: fall through
+    case YSQL_OP_NOOP: FALLTHROUGH_INTENDED;
   }
 
   LOG(FATAL) << "Internal error: unsupported operator " << condition.op();

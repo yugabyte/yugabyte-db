@@ -7,17 +7,20 @@
 #ifndef YB_SQL_PTREE_PT_INSERT_H_
 #define YB_SQL_PTREE_PT_INSERT_H_
 
+#include "yb/client/client.h"
+
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_select.h"
-#include "yb/sql/ptree/argument.h"
+#include "yb/sql/ptree/column_desc.h"
+#include "yb/sql/ptree/pt_dml.h"
 
 namespace yb {
 namespace sql {
 
 //--------------------------------------------------------------------------------------------------
 
-class PTInsertStmt : public TreeNode {
+class PTInsertStmt : public PTDmlStmt {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -30,7 +33,8 @@ class PTInsertStmt : public TreeNode {
                YBLocation::SharedPtr loc,
                PTQualifiedName::SharedPtr relation,
                PTQualifiedNameListNode::SharedPtr columns,
-               PTCollection::SharedPtr value_clause);
+               PTCollection::SharedPtr value_clause,
+               PTOptionExist option_exists = PTOptionExist::DEFAULT);
   virtual ~PTInsertStmt();
 
   template<typename... TypeArgs>
@@ -49,20 +53,28 @@ class PTInsertStmt : public TreeNode {
   }
 
   // Table name.
-  const char *yb_table_name() const {
+  const char *table_name() const OVERRIDE {
     return relation_->last_name().c_str();
   }
 
   // Returns location of table name.
-  const YBLocation& name_loc() const {
+  const YBLocation& table_loc() const OVERRIDE {
     return relation_->loc();
   }
 
+  // Access to column_args_.
+  const MCVector<ColumnArg>& column_args() const {
+    return column_args_;
+  }
+
  private:
+  // The parser will constructs the following tree nodes.
   PTQualifiedName::SharedPtr relation_;
   PTQualifiedNameListNode::SharedPtr columns_;
   PTCollection::SharedPtr value_clause_;
-  MCVector<Argument> tuple_;
+
+  // The sematic analyzer will decorate this node with the following information.
+  MCVector<ColumnArg> column_args_;
 };
 
 }  // namespace sql

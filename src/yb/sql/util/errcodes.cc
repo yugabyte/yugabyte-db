@@ -6,14 +6,19 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/sql/util/errcodes.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace sql {
 
 static const char *kYbSqlErrorMessage[] = {
   "SUCCESSFUL COMPLETION",
+
+  "INVALID APACHE CQL STATEMENT",
+
   "NO DATA",
   "NO ADDITIONAL DYNAMIC RESULT SETS RETURNED",
+  "INVALID SQL STATEMENT",
   "SQL STATEMENT NOT YET COMPLETE",
   "DDL EXECUTION RERUN NOT ALLOWED",
   "CONNECTION EXCEPTION",
@@ -195,6 +200,7 @@ static const char *kYbSqlErrorMessage[] = {
   "CONFIGURATION LIMIT EXCEEDED",
   "PROGRAM LIMIT EXCEEDED",
   "STATEMENT TOO COMPLEX",
+  "INVALID ARGUMENTS",
   "TOO MANY COLUMNS",
   "TOO FEW ARGUMENTS",
   "TOO MANY ARGUMENTS",
@@ -262,6 +268,10 @@ static const char *kYbSqlErrorMessage[] = {
 };
 
 const char *ErrorText(ErrorCode error_code) {
+  DCHECK_EQ(sizeof(kYbSqlErrorMessage)/sizeof(const char*),
+            (static_cast<int>(ErrorCode::MAX_ERROR_CODE) -
+             static_cast<int>(ErrorCode::MIN_ERROR_CODE)))
+    << "Number of error messages does not match number of error codes";
   return kYbSqlErrorMessage[static_cast<int>(error_code)];
 }
 

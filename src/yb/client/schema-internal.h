@@ -48,6 +48,7 @@ class YBColumnSpec::Data {
   explicit Data(std::string name)
       : name(std::move(name)),
         has_type(false),
+        has_order(false),
         has_encoding(false),
         has_compression(false),
         has_block_size(false),
@@ -68,6 +69,9 @@ class YBColumnSpec::Data {
 
   bool has_type;
   YBColumnSchema::DataType type;
+
+  bool has_order;
+  int32_t order;
 
   bool has_encoding;
   YBColumnStorageAttributes::EncodingType encoding;

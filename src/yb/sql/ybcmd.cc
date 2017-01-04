@@ -12,7 +12,7 @@
 #include <glog/logging.h>
 
 #include "yb/sql/ybsql.h"
-#include "yb/sql/session_context.h"
+#include "yb/sql/util/sql_env.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"

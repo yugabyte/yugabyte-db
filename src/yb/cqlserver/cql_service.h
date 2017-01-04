@@ -9,8 +9,10 @@
 #include <vector>
 
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_processor.h"
 #include "yb/cqlserver/cql_service.service.h"
 #include "yb/rpc/transfer.h"
+#include "yb/rpc/inbound_call.h"
 #include "yb/util/string_case.h"
 
 namespace yb {
@@ -27,19 +29,35 @@ class CQLServer;
 
 class CQLServiceImpl : public CQLServerServiceIf {
  public:
+  // Constructor.
   CQLServiceImpl(CQLServer* server, const std::string& yb_tier_master_address);
 
+  // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCall* call) override;
+
+  // Either gets an available processor or creates a new one.
+  CQLProcessor *GetProcessor();
+
+  // Reply to a call request.
+  void SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse *response);
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
 
+  // Setup YBClient.
   void SetUpYBClient(const std::string& yb_master_address);
 
-  yb::rpc::RpcMethodMetrics metrics_;
-
+  // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;
-  std::shared_ptr<client::YBSession> session_;
+
+  // Processors.
+  vector<CQLProcessor::UniPtr> processors_;
+
+  // Mutex that protects the creation of client_ and processor_.
+  std::mutex process_mutex_;
+
+  // Metrics to be collected and reported.
+  yb::rpc::RpcMethodMetrics metrics_;
 };
 
 }  // namespace cqlserver

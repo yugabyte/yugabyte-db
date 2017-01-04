@@ -13,7 +13,7 @@
 #ifndef YB_SQL_YBSQL_H_
 #define YB_SQL_YBSQL_H_
 
-#include "yb/sql/session_context.h"
+#include "yb/sql/util/sql_env.h"
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/sem/analyzer.h"
 #include "yb/sql/exec/executor.h"
@@ -36,7 +36,7 @@ class YbSql {
   virtual ~YbSql();
 
   // Process a SQL statement and return error codes.
-  ErrorCode Process(SessionContext *session_context, const std::string& sql_stmt);
+  ErrorCode Process(SqlEnv *sql_env, const std::string& sql_stmt);
 
  private:
   //------------------------------------------------------------------------------------------------

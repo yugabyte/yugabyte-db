@@ -9,6 +9,7 @@
 
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/pt_dml.h"
 #include "yb/sql/ptree/pt_select.h"
 
 namespace yb {
@@ -16,7 +17,7 @@ namespace sql {
 
 //--------------------------------------------------------------------------------------------------
 
-class PTDeleteStmt : public TreeNode {
+class PTDeleteStmt : public PTDmlStmt {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -30,7 +31,8 @@ class PTDeleteStmt : public TreeNode {
                TreeNode::SharedPtr selections,
                PTTableRef::SharedPtr relation,
                TreeNode::SharedPtr using_clause,
-               PTExpr::SharedPtr where_expr);
+               PTExpr::SharedPtr where_clause,
+               PTOptionExist option_exists = PTOptionExist::DEFAULT);
   virtual ~PTDeleteStmt();
 
   template<typename... TypeArgs>
@@ -43,6 +45,16 @@ class PTDeleteStmt : public TreeNode {
   virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
+  // Table name.
+  const char *table_name() const OVERRIDE {
+    return relation_->table_name().c_str();
+  }
+
+  // Returns location of table name.
+  const YBLocation& table_loc() const OVERRIDE {
+    return relation_->loc();
+  }
+
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {
     return TreeNodeOpcode::kPTDeleteStmt;
@@ -50,7 +62,7 @@ class PTDeleteStmt : public TreeNode {
 
  private:
   PTTableRef::SharedPtr relation_;
-  PTExpr::SharedPtr where_expr_;
+  PTExpr::SharedPtr where_clause_;
 };
 
 }  // namespace sql

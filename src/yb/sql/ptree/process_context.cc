@@ -62,17 +62,18 @@ void ProcessContext::Error(const YBLocation& l,
       token.assign(token_bounds.first, token_bounds.second);
     }
     LOG(ERROR) << kErrorFontStart << "SQL Error (" << l << "): "
-               << ErrorText(error_code) << ". " << m << kErrorFontEnd << endl
+               << ErrorText(error_code) << " - " << m << kErrorFontEnd << endl
                << "\t" << kErrorFontStart << token << kErrorFontEnd
                << token_bounds.first + token_bounds.second << endl;
   } else {
-    LOG(ERROR) << kErrorFontStart << "SQL Error (" << l << "): " << m << kErrorFontEnd << endl
+    LOG(ERROR) << kErrorFontStart << "SQL Error (" << l << "): "
+               << ErrorText(error_code) << " - " << m << kErrorFontEnd << endl
                << "\t<< " << kErrorFontStart << token << kErrorFontEnd << " >>" << endl;
   }
 }
 
 void ProcessContext::Error(const YBLocation& l, const string& m, const char* token) {
-  Error(l, m, ErrorCode::SYNTAX_ERROR, token);
+  Error(l, m, ErrorCode::SQL_STATEMENT_INVALID, token);
 }
 
 void ProcessContext::Error(const YBLocation& l, ErrorCode error_code, const char* token) {

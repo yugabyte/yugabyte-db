@@ -24,6 +24,9 @@
 namespace yb {
 namespace cqlserver {
 
+// Forward declaration for owner. The CQLProcessor owns the message that it's processing.
+class CQLProcessor;
+
 class CQLRequest;
 class CQLResponse;
 
@@ -192,7 +195,7 @@ class CQLRequest : public CQLMessage {
 
   virtual ~CQLRequest();
 
-  virtual CQLResponse* Execute() = 0;
+  virtual CQLResponse* Execute(CQLProcessor *processor) = 0;
 
  protected:
   CQLRequest(const Header& header, const Slice& body);
@@ -251,7 +254,7 @@ class StartupRequest : public CQLRequest {
  public:
   StartupRequest(const Header& header, const Slice& body);
   virtual ~StartupRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -265,7 +268,7 @@ class AuthResponseRequest : public CQLRequest {
  public:
   AuthResponseRequest(const Header& header, const Slice& body);
   virtual ~AuthResponseRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -279,7 +282,7 @@ class OptionsRequest : public CQLRequest {
  public:
   OptionsRequest(const Header& header, const Slice& body);
   virtual ~OptionsRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -290,7 +293,14 @@ class QueryRequest : public CQLRequest {
  public:
   QueryRequest(const Header& header, const Slice& body);
   virtual ~QueryRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
+
+  const std::string& query() const {
+    return query_;
+  }
+  const QueryParameters& params() const {
+    return params_;
+  }
 
  protected:
   virtual Status ParseBody() override;
@@ -307,7 +317,7 @@ class PrepareRequest : public CQLRequest {
  public:
   PrepareRequest(const Header& header, const Slice& body);
   virtual ~PrepareRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -321,7 +331,7 @@ class ExecuteRequest : public CQLRequest {
  public:
   ExecuteRequest(const Header& header, const Slice& body);
   virtual ~ExecuteRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -336,7 +346,7 @@ class BatchRequest : public CQLRequest {
  public:
   BatchRequest(const Header& header, const Slice& body);
   virtual ~BatchRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -367,7 +377,7 @@ class RegisterRequest : public CQLRequest {
  public:
   RegisterRequest(const Header& header, const Slice& body);
   virtual ~RegisterRequest() override;
-  virtual CQLResponse* Execute() override;
+  virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
  protected:
   virtual Status ParseBody() override;
@@ -434,22 +444,6 @@ class CQLResponse : public CQLMessage {
 // ------------------------------ Individual CQL responses -----------------------------------
 class ErrorResponse : public CQLResponse {
  public:
-  virtual ~ErrorResponse() override;
-
- protected:
-  virtual void SerializeBody(faststring* mesg) override;
-
- private:
-  friend class CQLRequest;
-  friend class StartupRequest;
-  friend class AuthResponseRequest;
-  friend class OptionsRequest;
-  friend class QueryRequest;
-  friend class PrepareRequest;
-  friend class ExecuteRequest;
-  friend class BatchRequest;
-  friend class RegisterRequest;
-
   enum class Code : int32_t {
     SERVER_ERROR     = 0x0000,
     PROTOCOL_ERROR   = 0x000A,
@@ -477,6 +471,12 @@ class ErrorResponse : public CQLResponse {
   ErrorResponse(const CQLRequest& request, Code code, const Status& status);
   ErrorResponse(StreamId stream_id, Code code, const std::string& message);
 
+  virtual ~ErrorResponse() override;
+
+ protected:
+  virtual void SerializeBody(faststring* mesg) override;
+
+ private:
   const Code code_;
   const std::string message_;
 };
@@ -666,30 +666,23 @@ class ResultResponse : public CQLResponse {
 //------------------------------------------------------------
 class VoidResultResponse : public ResultResponse {
  public:
+  explicit VoidResultResponse(const CQLRequest& request);
   virtual ~VoidResultResponse() override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
-
- private:
-  friend class QueryRequest;
-
-  explicit VoidResultResponse(const CQLRequest& request);
 };
 
 //------------------------------------------------------------
 class RowsResultResponse : public ResultResponse {
  public:
+  RowsResultResponse(const QueryRequest& request, const client::YBSqlReadOp& read_op);
   virtual ~RowsResultResponse() override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  friend class QueryRequest;
-
-  RowsResultResponse(const QueryRequest& request, const client::YBSqlReadOp& read_op);
-
   const client::YBSqlReadOp& read_op_;
   const bool skip_metadata_;
 };

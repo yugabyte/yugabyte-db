@@ -9,6 +9,7 @@
 
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/pt_dml.h"
 #include "yb/sql/ptree/pt_select.h"
 
 namespace yb {
@@ -46,16 +47,27 @@ class PTAssign : public TreeNode {
     return TreeNodeOpcode::kPTAssign;
   }
 
+  const ColumnDesc *col_desc() const {
+    return col_desc_;
+  }
+
+  PTExpr::SharedPtr rhs() {
+    return rhs_;
+  }
+
  private:
   PTQualifiedName::SharedPtr lhs_;
   PTExpr::SharedPtr rhs_;
+
+  // Semantic phase will fill in this value.
+  const ColumnDesc *col_desc_;
 };
 
 using PTAssignListNode = TreeListNode<PTAssign>;
 
 //--------------------------------------------------------------------------------------------------
 
-class PTUpdateStmt : public TreeNode {
+class PTUpdateStmt : public PTDmlStmt {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -68,7 +80,8 @@ class PTUpdateStmt : public TreeNode {
                YBLocation::SharedPtr loc,
                PTTableRef::SharedPtr relation,
                PTAssignListNode::SharedPtr set_clause,
-               PTExpr::SharedPtr where_expr);
+               PTExpr::SharedPtr where_clause,
+               PTOptionExist option_exists = PTOptionExist::DEFAULT);
   virtual ~PTUpdateStmt();
 
   template<typename... TypeArgs>
@@ -80,6 +93,22 @@ class PTUpdateStmt : public TreeNode {
   // Node semantics analysis.
   virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
+  ErrorCode AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
+
+  // Access for column_args.
+  const MCVector<ColumnArg>& column_args() const {
+    return column_args_;
+  }
+
+  // Table name.
+  const char *table_name() const OVERRIDE {
+    return relation_->table_name().c_str();
+  }
+
+  // Returns location of table name.
+  const YBLocation& table_loc() const OVERRIDE {
+    return relation_->loc();
+  }
 
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {
@@ -89,7 +118,10 @@ class PTUpdateStmt : public TreeNode {
  private:
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;
-  PTExpr::SharedPtr where_expr_;
+  PTExpr::SharedPtr where_clause_;
+
+  // Semantic phase will decorate the following field.
+  MCVector<ColumnArg> column_args_;
 };
 
 }  // namespace sql

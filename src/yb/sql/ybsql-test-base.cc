@@ -16,7 +16,7 @@ using client::YBClientBuilder;
 //--------------------------------------------------------------------------------------------------
 
 YbSqlTestBase::YbSqlTestBase() : ybsql_(new YbSql()) {
-  session_contexts_.reserve(1);
+  sql_envs_.reserve(1);
 }
 
 YbSqlTestBase::~YbSqlTestBase() {
@@ -36,36 +36,60 @@ void YbSqlTestBase::CreateSimulatedCluster() {
 
 //--------------------------------------------------------------------------------------------------
 
-SessionContext *YbSqlTestBase::CreateSessionContext(shared_ptr<YBSession> session) {
+SqlEnv *YbSqlTestBase::CreateSqlEnv(shared_ptr<YBSession> write_session,
+                                    shared_ptr<YBSession> read_session) {
   CHECK(client_ != nullptr) << "Cannot create session context without a valid YB client";
 
-  const int max_id = session_contexts_.size();
-  if (session_contexts_.capacity() == max_id) {
-    session_contexts_.reserve(max_id + 10);
+  const int max_id = sql_envs_.size();
+  if (sql_envs_.capacity() == max_id) {
+    sql_envs_.reserve(max_id + 10);
   }
 
-  SessionContext *session_context = new SessionContext(max_id + 1, client_, session);
-  session_contexts_.emplace_back(session_context);
-  return session_context;
+  SqlEnv *sql_env = new SqlEnv(client_, write_session, read_session);
+  sql_envs_.emplace_back(sql_env);
+  return sql_env;
 }
 
-SessionContext *YbSqlTestBase::GetSessionContext(int session_id) {
-  if (session_contexts_.size() < session_id) {
+SqlEnv *YbSqlTestBase::GetSqlEnv(int session_id) {
+  if (sql_envs_.size() < session_id) {
     return nullptr;
   }
-  return session_contexts_[session_id - 1].get();
+  return sql_envs_[session_id - 1].get();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-SessionContext *YbSqlTestBase::CreateNewConnectionContext() {
+SqlEnv *YbSqlTestBase::CreateNewConnectionContext() {
   CHECK(client_ != nullptr) << "Cannot create new connection without a valid YB client";
 
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeoutMillis(kSessionTimeoutMs);
-  Status s = session->SetFlushMode(YBSession::MANUAL_FLUSH);
+  shared_ptr<YBSession> write_session = client_->NewSession();
+  write_session->SetTimeoutMillis(kSessionTimeoutMs);
+  Status s = write_session->SetFlushMode(YBSession::MANUAL_FLUSH);
   CHECK(s.ok());
-  return CreateSessionContext(session);
+
+  shared_ptr<YBSession> read_session = client_->NewSession(true);
+  read_session->SetTimeoutMillis(kSessionTimeoutMs);
+  s = read_session->SetFlushMode(YBSession::MANUAL_FLUSH);
+  CHECK(s.ok());
+
+  return CreateSqlEnv(write_session, read_session);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+SqlProcessor *YbSqlTestBase::GetSqlProcessor() {
+  CHECK(client_ != nullptr) << "Cannot create new sql processor without a valid YB client";
+
+  for (const SqlProcessor::UniPtr& processor : sql_processors_) {
+    if (!processor->is_used()) {
+      return processor.get();
+    }
+  }
+
+  const int size = sql_processors_.size();
+  sql_processors_.reserve(std::max<int>(size * 2, size + 10));
+  sql_processors_.emplace_back(new SqlProcessor(client_));
+  return sql_processors_.back().get();
 }
 
 }  // namespace sql

@@ -14,7 +14,8 @@ namespace sql {
 // TreeNode base class.
 //--------------------------------------------------------------------------------------------------
 
-TreeNode::TreeNode(MemoryContext *memctx, YBLocation::SharedPtr loc) : loc_(loc) {
+TreeNode::TreeNode(MemoryContext *memctx, YBLocation::SharedPtr loc)
+    : MCBase(memctx), loc_(loc) {
 }
 
 TreeNode::~TreeNode() {

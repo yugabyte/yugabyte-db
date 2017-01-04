@@ -238,6 +238,7 @@ class YB_EXPORT YBSqlOp : public YBOperation {
 
 class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
  public:
+  explicit YBSqlWriteOp(const std::shared_ptr<YBTable>& table);
   virtual ~YBSqlWriteOp();
 
   const YSQLWriteRequestPB& request() const { return *ysql_write_request_; }
@@ -265,7 +266,9 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
 
  private:
   friend class YBTable;
-  explicit YBSqlWriteOp(const std::shared_ptr<YBTable>& table);
+  static YBSqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
+  static YBSqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
+  static YBSqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<YSQLWriteRequestPB> ysql_write_request_;
   std::unique_ptr<YSQLResponsePB> ysql_response_;
 };
@@ -273,6 +276,8 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
 class YB_EXPORT YBSqlReadOp : public YBSqlOp {
  public:
   virtual ~YBSqlReadOp();
+
+  static YBSqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
 
   const YSQLReadRequestPB& request() const { return *ysql_read_request_; }
 

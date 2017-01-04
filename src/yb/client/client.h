@@ -493,6 +493,7 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
   const std::string& id() const;
 
   const YBSchema& schema() const;
+  const Schema& InternalSchema() const;
 
   // Create a new write operation for this table. It is the caller's
   // responsibility to free it, unless it is passed to YBSession::Apply().
@@ -506,7 +507,12 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
 
   // Create a new YSQL operation for this table.
   YBSqlWriteOp* NewYSQLWrite();
+  YBSqlWriteOp* NewYSQLInsert();
+  YBSqlWriteOp* NewYSQLUpdate();
+  YBSqlWriteOp* NewYSQLDelete();
+
   YBSqlReadOp* NewYSQLRead();
+  YBSqlReadOp* NewYSQLSelect();
 
   // Create a new comparison predicate which can be used for scanners
   // on this table.

@@ -30,6 +30,7 @@ ADD_EXPORTABLE_LIBRARY(cql_service_proto
 
 set(CQLSERVER_SRCS
   cql_message.cc
+  cql_processor.cc
   cql_service.cc
   cql_server.cc
   cql_server_options.cc
@@ -37,6 +38,7 @@ set(CQLSERVER_SRCS
 
 add_library(yb-cql ${CQLSERVER_SRCS})
 target_link_libraries(yb-cql
+  ybsql_api
   protobuf
   log
   yrpc

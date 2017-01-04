@@ -23,28 +23,33 @@ PTName::~PTName() {
 }
 
 ErrorCode PTName::SetupPrimaryKey(SemContext *sem_context) {
-  const SymbolEntry *entry = sem_context->SeekSymbol(*name_);
-  if (entry == nullptr) {
+  PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
+  if (column == nullptr) {
     LOG(INFO) << "Column \"" << *name_ << "\" doesn't exist";
+    sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
     return ErrorCode::UNDEFINED_COLUMN;
   }
+  column->set_is_primary_key();
 
-  PTColumnDefinition *column = entry->column_;
-  column->set_is_primary_key(true);
+  // Add the analyzed column to table.
+  PTCreateTable *table = sem_context->current_table();
+  table->AppendPrimaryColumn(column);
 
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
 
 ErrorCode PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
-  const SymbolEntry *entry = sem_context->SeekSymbol(*name_);
-  if (entry == nullptr) {
+  PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
+  if (column == nullptr) {
+    LOG(INFO) << "Column \"" << *name_ << "\" doesn't exist";
     sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
     return ErrorCode::UNDEFINED_COLUMN;
   }
+  column->set_is_hash_key();
 
-  PTColumnDefinition *column = entry->column_;
-  column->set_is_hash_key(true);
-  column->set_is_primary_key(true);
+  // Add the analyzed column to table.
+  PTCreateTable *table = sem_context->current_table();
+  table->AppendHashColumn(column);
 
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
@@ -64,7 +69,8 @@ PTQualifiedName::PTQualifiedName(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
                                  const PTName::SharedPtr& ptname)
     : PTName(memctx, loc),
-      ptnames_(memctx) {
+      ptnames_(memctx),
+      is_system_(false) {
   Append(ptname);
 }
 
@@ -88,8 +94,15 @@ void PTQualifiedName::Prepend(const PTName::SharedPtr& ptname) {
 }
 
 ErrorCode PTQualifiedName::Analyze(SemContext *sem_context) {
+  // We don't support qualified name yet except for "system" namespace.
   if (ptnames_.size() > 1) {
-    return ErrorCode::FEATURE_NOT_SUPPORTED;
+    const MCString& first_name = ptnames_.front()->name();
+    if (first_name == "system") {
+      is_system_ = true;
+    } else {
+      sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+      return ErrorCode::FEATURE_NOT_SUPPORTED;
+    }
   }
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }

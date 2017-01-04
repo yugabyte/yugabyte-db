@@ -6,7 +6,8 @@
 #define YB_SQL_YBSQL_TEST_BASE_H_
 
 #include "yb/sql/ybsql.h"
-#include "yb/sql/session_context.h"
+#include "yb/sql/sql_processor.h"
+#include "yb/sql/util/sql_env.h"
 
 #include "yb/client/client.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -47,14 +48,18 @@ class YbSqlTestBase : public YBTest {
   // Create simulated cluster.
   void CreateSimulatedCluster();
 
+  // Create sql processor.
+  SqlProcessor *GetSqlProcessor();
+
   // Create a session context for client_.
-  SessionContext *CreateSessionContext(std::shared_ptr<client::YBSession> session = nullptr);
+  SqlEnv *CreateSqlEnv(std::shared_ptr<client::YBSession> write_session = nullptr,
+                       std::shared_ptr<client::YBSession> read_session = nullptr);
 
   // Pull a session from the cached tables.
-  SessionContext *GetSessionContext(int session_id);
+  SqlEnv *GetSqlEnv(int session_id);
 
   // Create a session context for a new connection.
-  SessionContext *CreateNewConnectionContext();
+  SqlEnv *CreateNewConnectionContext();
 
  protected:
   //------------------------------------------------------------------------------------------------
@@ -70,7 +75,10 @@ class YbSqlTestBase : public YBTest {
   std::shared_ptr<client::YBClient> client_;
 
   // Contexts to be passed to SQL engine.
-  std::vector<SessionContext::UniPtr> session_contexts_;
+  std::vector<SqlEnv::UniPtr> sql_envs_;
+
+  // SQL Processor.
+  std::vector<SqlProcessor::UniPtr> sql_processors_;
 };
 
 }  // namespace sql

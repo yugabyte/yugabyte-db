@@ -11,6 +11,7 @@
 #define YB_SQL_PTREE_TREE_NODE_H_
 
 #include "yb/sql/ptree/yb_location.h"
+#include "yb/sql/ptree/pt_option.h"
 #include "yb/sql/util/base_types.h"
 #include "yb/sql/util/errcodes.h"
 

@@ -111,6 +111,9 @@ std::string Status::CodeAsString() const {
     case kEndOfFile:
       type = "End of file";
       break;
+    case kInvalidCommand:
+      type = "Invalid command";
+      break;
     default:
       return "Incorrect status code " + std::to_string(status_code);
   }

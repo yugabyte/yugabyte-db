@@ -51,13 +51,16 @@ ErrorCode PTCreateTable::Analyze(SemContext *sem_context) {
   }
 
   // Move the all partition and primary columns from columns list to appropriate list.
+  int32_t order = 0;
   MCList<PTColumnDefinition *>::iterator iter = columns_.begin();
   while (iter != columns_.end()) {
-    if ((*iter)->is_hash_key()) {
-      AppendHashColumn(*iter);
+    PTColumnDefinition *coldef = *iter;
+    coldef->set_order(order++);
+
+    // Remove a column from regular column list if it's already in hash or primary list.
+    if (coldef->is_hash_key()) {
       iter = columns_.erase(iter);
-    } else if ((*iter)->is_primary_key()) {
-      AppendPrimaryColumn(*iter);
+    } else if (coldef->is_primary_key()) {
       iter = columns_.erase(iter);
     } else {
       iter++;
@@ -72,7 +75,7 @@ ErrorCode PTCreateTable::Analyze(SemContext *sem_context) {
       primary_columns_.pop_front();
     } else {
       // First column must be a partition key.
-      AppendPrimaryColumn(columns_.front());
+      AppendHashColumn(columns_.front());
       columns_.pop_front();
     }
   }
@@ -106,7 +109,7 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
     } else {
       sem_output += " <Type = ";
     }
-    sem_output += to_string(column->yb_data_type()).c_str();
+    sem_output += to_string(column->sql_type()).c_str();
     sem_output += ">";
   }
 
@@ -126,7 +129,8 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
       datatype_(datatype),
       constraints_(constraints),
       is_primary_key_(false),
-      is_hash_key_(false) {
+      is_hash_key_(false),
+      order_(-1) {
 }
 
 PTColumnDefinition::~PTColumnDefinition() {
@@ -168,10 +172,19 @@ PTPrimaryKey::~PTPrimaryKey() {
 
 ErrorCode PTPrimaryKey::Analyze(SemContext *sem_context) {
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+
+  // Check if primary key is defined more than one time.
+  PTCreateTable *table = sem_context->current_table();
+  if (table->primary_columns().size() > 0 || table->hash_columns().size() > 0) {
+    sem_context->Error(loc(), "Too many primary key", ErrorCode::INVALID_TABLE_DEFINITION);
+    return ErrorCode::INVALID_TABLE_DEFINITION;
+  }
+
   if (columns_ == nullptr) {
     // Decorate the current processing name node as this is a column constraint.
     PTColumnDefinition *column = sem_context->current_column();
-    column->set_is_primary_key(true);
+    column->set_is_hash_key();
+    table->AppendHashColumn(column);
   } else {
     // Decorate all name node of this key as this is a table constraint.
     TreeNodeOperator<SemContext, PTName> func = &PTName::SetupPrimaryKey;

@@ -99,8 +99,13 @@ class PTQualifiedName : public PTName {
     return ptnames_.back()->name();
   }
 
+  bool is_system() const {
+    return is_system_;
+  }
+
  private:
   MCList<PTName::SharedPtr> ptnames_;
+  bool is_system_;
 };
 
 using PTQualifiedNameListNode = TreeListNode<PTQualifiedName>;

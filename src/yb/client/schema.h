@@ -150,6 +150,7 @@ class YB_EXPORT YBColumnSchema {
   // Getters to expose column schema information.
   const std::string& name() const;
   DataType type() const;
+  bool is_hash_key() const;
   bool is_nullable() const;
 
   // TODO: Expose default column value and attributes?
@@ -239,6 +240,9 @@ class YB_EXPORT YBColumnSpec {
   // Column types may not be changed once a table is created.
   YBColumnSpec* Type(YBColumnSchema::DataType type);
 
+  // Specify the user-defined order of the column.
+  YBColumnSpec* Order(int32_t order);
+
   // Operations only relevant for Alter Table
   // ------------------------------------------------------------
 
@@ -327,9 +331,18 @@ class YB_EXPORT YBSchema {
   bool Equals(const YBSchema& other) const;
   YBColumnSchema Column(size_t idx) const;
   YBColumnSchema ColumnById(int32_t id) const;
+
+  // Returns column id provided its index.
   int32_t ColumnId(size_t idx) const;
-  size_t num_columns() const;
+
+  // Returns the number of columns in hash primary keys.
   size_t num_hash_key_columns() const;
+
+  // Returns the number of columns in primary keys.
+  size_t num_key_columns() const;
+
+  // Returns the total number of columns.
+  size_t num_columns() const;
 
   // Get the indexes of the primary key columns within this Schema.
   // In current versions of YB, these will always be contiguous column
@@ -363,10 +376,6 @@ class YB_EXPORT YBSchema {
 
   // For use by yb tests.
   explicit YBSchema(const Schema& schema);
-
-  // Private since we don't want users to rely on the first N columns
-  // being the keys.
-  size_t num_key_columns() const;
 
   // Owned.
   Schema* schema_;
