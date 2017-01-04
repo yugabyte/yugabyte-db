@@ -29,13 +29,7 @@ using std::vector;
 
 class ScanSpec {
  public:
-  ScanSpec()
-    : lower_bound_key_(NULL),
-      exclusive_upper_bound_key_(NULL),
-      lower_bound_partition_key_(),
-      exclusive_upper_bound_partition_key_(),
-      cache_blocks_(true) {
-  }
+  ScanSpec() {}
 
   typedef vector<ColumnRangePredicate> PredicateList;
 
@@ -108,13 +102,13 @@ class ScanSpec {
   std::string ToStringWithOptionalSchema(const Schema* s) const;
 
   vector<ColumnRangePredicate> predicates_;
-  const EncodedKey* lower_bound_key_;
-  const EncodedKey* exclusive_upper_bound_key_;
+  const EncodedKey* lower_bound_key_ = nullptr;
+  const EncodedKey* exclusive_upper_bound_key_ = nullptr;
   std::string lower_bound_partition_key_;
   std::string exclusive_upper_bound_partition_key_;
-  bool cache_blocks_;
+  bool cache_blocks_ = true;
 };
 
 } // namespace yb
 
-#endif
+#endif  // YB_COMMON_SCAN_SPEC_H

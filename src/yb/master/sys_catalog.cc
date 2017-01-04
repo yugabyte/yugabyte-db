@@ -17,10 +17,11 @@
 
 #include "yb/master/sys_catalog.h"
 
-#include <boost/optional.hpp>
 #include <cmath>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
+#include <boost/optional.hpp>
 
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -88,7 +89,7 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 
 class SysCatalogWriter {
  public:
-  SysCatalogWriter(SysCatalogTable* sys_catalog)
+  explicit SysCatalogWriter(SysCatalogTable* sys_catalog)
       : sys_catalog_(sys_catalog),
         req_(),
         row_(&sys_catalog->schema_),

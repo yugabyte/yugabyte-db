@@ -23,7 +23,8 @@ void PerformRocksDBSeek(
     PerformRocksDBSeek((iter), (key), __FILE__, __LINE__); \
   } while (0)
 
-std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb);
+std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
+    rocksdb::DB* rocksdb, bool use_bloom_on_scan = true);
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The
 // 'statistics' object provided by the caller will be used by RocksDB to maintain

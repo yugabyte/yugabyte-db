@@ -32,7 +32,7 @@ DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
 DEFINE_int64(db_block_size_bytes, 64 * 1024,
              "Size of RocksDB block (in bytes).");
 
-DEFINE_bool(use_docdb_aware_bloom_filter, false,
+DEFINE_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 
 using std::shared_ptr;
@@ -66,11 +66,11 @@ void PerformRocksDBSeek(
       iter->Valid() ? FormatRocksDBSliceAsStr(iter->value()) : "N/A");
 }
 
-unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb) {
+unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb, bool use_bloom_on_scan) {
   // TODO: avoid instantiating ReadOptions every time. Pre-create it once and use for all iterators.
   //       We'll need some sort of a stateful wrapper class around RocksDB for that.
   rocksdb::ReadOptions read_opts;
-  read_opts.use_bloom_on_scan = FLAGS_use_docdb_aware_bloom_filter;
+  read_opts.use_bloom_on_scan = FLAGS_use_docdb_aware_bloom_filter && use_bloom_on_scan;
   return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
 }
 

@@ -54,7 +54,9 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 }
 
 Status DocRowwiseIterator::Init(ScanSpec *spec) {
-  db_iter_ = CreateRocksDBIterator(db_);
+  // TODO(bogdan): refactor this after we completely move away from the old ScanSpec. For now, just
+  // default to not using bloom filters on scans for these codepaths.
+  db_iter_ = CreateRocksDBIterator(db_, false /* use_bloom_on_scan */);
 
   if (spec->lower_bound_key() != nullptr) {
     ROCKSDB_SEEK(db_iter_.get(),
@@ -75,8 +77,9 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
 }
 
 Status DocRowwiseIterator::Init(const YSQLScanSpec& spec) {
-  rocksdb::ReadOptions read_options;
-  db_iter_.reset(db_->NewIterator(read_options));
+  // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
+  const bool is_fixed_point_get = spec.lower_bound() == spec.upper_bound();
+  db_iter_ = CreateRocksDBIterator(db_, is_fixed_point_get /* use_bloom_on_scan */);
 
   // Start scan with the lower bound doc key.
   const DocKey& lower_bound = spec.lower_bound();
