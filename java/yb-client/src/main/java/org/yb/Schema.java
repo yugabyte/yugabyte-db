@@ -62,6 +62,7 @@ public class Schema {
   private final int varLengthColumnCount;
   private final int rowSize;
   private final boolean hasNullableColumns;
+  private final int numHashKeyColumns;
 
   /**
    * Constructs a schema using the specified columns and does some internal accounting
@@ -152,6 +153,7 @@ public class Schema {
     this.varLengthColumnCount = varLenCnt;
     this.primaryKeyColumns = columns.subList(0, primaryKeyCount);
     this.rowSize = getRowSize(this.columnsByIndex);
+    this.numHashKeyColumns = hashKeyCount;
   }
 
   /**
@@ -177,6 +179,14 @@ public class Schema {
    */
   public int getRowSize() {
     return this.rowSize;
+  }
+
+  /**
+   * Get the number of hash key columns in this schema.
+   * @return count of hash keys.
+   */
+  public int getNumHashKeyColumns() {
+    return this.numHashKeyColumns;
   }
 
   /**

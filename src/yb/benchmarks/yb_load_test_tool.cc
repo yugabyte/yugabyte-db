@@ -261,15 +261,6 @@ void CreateTable(const string &table_name, const shared_ptr<YBClient> &client) {
 }
 
 void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &client) {
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn(yb::client::RedisConstants::kRedisKeyColumnName)
-      ->Type(YBColumnSchema::BINARY)
-      ->NotNull()
-      ->HashPrimaryKey();
-
-  YBSchema schema;
-  CHECK_OK(schemaBuilder.Build(&schema));
-
   LOG(INFO) << "Creating table with " << FLAGS_num_tablets << " hash based partitions.";
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status = table_creator->table_name(table_name)

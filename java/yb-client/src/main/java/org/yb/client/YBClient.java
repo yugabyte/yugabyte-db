@@ -481,7 +481,7 @@ public class YBClient implements AutoCloseable {
    * @return redis schema
    */
   public static Schema getRedisSchema() {
-    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(5);
+    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(1);
     columns.add(new ColumnSchema.ColumnSchemaBuilder(REDIS_KEY_COLUMN_NAME, Type.BINARY)
                                 .hashKey(true)
                                 .nullable(false)

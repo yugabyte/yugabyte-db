@@ -714,7 +714,7 @@ Status YBTableCreator::Create() {
     redis_schema = new YBSchema();
     YBSchemaBuilder b;
     b.AddColumn(RedisConstants::kRedisKeyColumnName)->
-        Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
+        Type(YBColumnSchema::BINARY)->NotNull()->HashPrimaryKey();
     RETURN_NOT_OK(b.Build(redis_schema));
     schema(redis_schema);
   }

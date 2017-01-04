@@ -273,11 +273,11 @@ public class TestYBClient extends BaseYBTest {
     assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
     assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
+    assertEquals(16, table.getTabletsLocations(100000).size());
 
     // Check that we can open a table and see that it has the new schema.
     table = syncClient.openTable(tableName);
     assertEquals(redisSchema.getColumnCount(), table.getSchema().getColumnCount());
-    assertTrue(table.getPartitionSchema().isSimpleRangePartitioning());
     assertEquals(TableType.REDIS_TABLE_TYPE, table.getTableType());
 
     // Check that we can delete it.
