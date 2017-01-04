@@ -496,8 +496,31 @@ rocksdb::FilterBitsReader* DocDbAwareFilterPolicy::GetFilterBitsReader(
   return new CustomFilterBitsReader(contents);
 }
 
-KeyBytes SubDocKey::AdvanceToNextDocKey() {
+KeyBytes SubDocKey::AdvanceOutOfDocKeyPrefix() {
+  // To construct key bytes that will seek past this DocKey and DocKeys that have the same hash
+  // components but add more range components to it, we will strip the group-end of the range
+  // components and append 0xff, which will be lexicographically higher than any key bytes
+  // with the same hash and range component prefix. For example,
+  //
+  // DocKey(0x1234, ["aa", "bb"], ["cc", "dd"])
+  // Encoded: H\0x12\0x34$aa\x00\x00$bb\x00\x00!$cc\x00\x00$dd\x00\x00!
+  // Result:  H\0x12\0x34$aa\x00\x00$bb\x00\x00!$cc\x00\x00$dd\x00\x00\xff
+  // This key will also skip all DocKeys that have additional range components, e.g.
+  // DocKey(0x1234, ["aa", "bb"], ["cc", "dd", "ee"])
+  // (encoded as H\0x12\0x34$aa\x00\x00$bb\x00\x00!$cc\x00\x00$dd\x00\x00$ee\x00\00!). That should
+  // make no difference to DocRowwiseIterator in a valid database, because all keys actually stored
+  // in DocDB will have exactly the same number of range components.
+  //
+  // Now, suppose there are no range components in the key passed to us (note: that does not
+  // necessarily mean there are no range components in the schema, just the doc key being passed to
+  // us is a custom-constructed DocKey with no range components because the caller wants a key
+  // that will skip pass all doc keys with the same hash components prefix). Example:
+  //
+  // DocKey(0x1234, ["aa", "bb"], [])
+  // Encoded: H\0x12\0x34$aa\x00\x00$bb\x00\x00!!
+  // Result: H\0x12\0x34$aa\x00\x00$bb\x00\x00!\xff
   KeyBytes doc_key_encoded = doc_key_.Encode();
+  doc_key_encoded.RemoveValueTypeSuffix(ValueType::kGroupEnd);
   doc_key_encoded.AppendRawBytes("\xff", 1);
   return doc_key_encoded;
 }

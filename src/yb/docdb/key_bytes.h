@@ -60,10 +60,16 @@ class KeyBytes {
     AppendEncodedTimestampToKey(timestamp, &data_);
   }
 
+  void RemoveValueTypeSuffix(ValueType value_type) {
+    CHECK_GE(data_.size(), sizeof(char));
+    CHECK_EQ(data_.back(), static_cast<char>(value_type));
+    data_.pop_back();
+  }
+
   // Assuming the key bytes currently end with a timestamp, replace that timestamp with a different
   // one.
   void ReplaceLastTimestamp(Timestamp timestamp) {
-    assert(data_.size() >= kBytesPerTimestamp);
+    CHECK_GE(data_.size(), kBytesPerTimestamp);
     data_.resize(data_.size() - kBytesPerTimestamp);
     AppendTimestamp(timestamp);
   }
@@ -88,7 +94,7 @@ class KeyBytes {
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
 
   rocksdb::Slice AsSliceWithoutTimestamp() const {
-    assert(data_.size() >= kBytesPerTimestamp);
+    CHECK_GE(data_.size(), kBytesPerTimestamp);
     auto slice = AsSlice();
     slice.remove_suffix(kBytesPerTimestamp);
     return slice;

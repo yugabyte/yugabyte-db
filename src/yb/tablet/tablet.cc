@@ -922,7 +922,7 @@ Status Tablet::KeyValueBatchFromYSQLWriteBatch(
   for (size_t i = 0; i < ysql_write_request.ysql_write_batch_size(); i++) {
     const YSQLWriteRequestPB& req = ysql_write_request.ysql_write_batch(i);
     // TODO(Robert): verify that all key column values are provided
-    doc_ops.emplace_back(new YSQLWriteOperation(req));
+    doc_ops.emplace_back(new YSQLWriteOperation(req, metadata_->schema()));
   }
   WriteRequestPB* const write_request_copy = new WriteRequestPB(ysql_write_request);
   ysql_write_batch_pb->reset(write_request_copy);
@@ -950,7 +950,8 @@ Status Tablet::HandleYSQLReadRequest(const MvccSnapshot &snap,
     column_ids.emplace_back(column_id);
   }
   YSQLRowBlock rowblock(metadata_->schema(), column_ids);
-  const Status s = doc_op.Execute(rocksdb_.get(), snap.LastCommittedTimestamp(), &rowblock);
+  const Status s = doc_op.Execute(
+      rocksdb_.get(), snap.LastCommittedTimestamp(), metadata_->schema(), &rowblock);
   if (!s.ok()) {
     response->set_status(YSQLResponsePB::YSQL_STATUS_RUNTIME_ERROR);
     response->set_error_message(s.message().ToString());

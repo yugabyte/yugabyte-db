@@ -16,11 +16,34 @@ YSQLRow::YSQLRow(const shared_ptr<const Schema>& schema)
       // Allocate just the YSQLValueCore array memory here. Explicit constructor call follows below.
       values_(reinterpret_cast<YSQLValueCore*>(
           ::operator new(sizeof(YSQLValueCore) * schema_->num_columns()))),
-      null_bitmaps_(new uint8_t[BitmapSize(schema_->num_columns())]) {
+      is_nulls_(vector<bool>(schema_->num_columns(), true)) {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
     new(&values_[col_idx]) YSQLValueCore(column_type(col_idx));
   }
-  BitmapChangeBits(null_bitmaps_, 0, schema_->num_columns(), true);
+}
+
+YSQLRow::YSQLRow(const YSQLRow& other)
+    : schema_(other.schema_),
+      // Allocate just the YSQLValueCore array memory here. Explicit constructor call follows below.
+      values_(reinterpret_cast<YSQLValueCore*>(
+          ::operator new(sizeof(YSQLValueCore) * schema_->num_columns()))),
+      is_nulls_(other.is_nulls_) {
+  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
+    new(&values_[col_idx]) YSQLValueCore(
+        column_type(col_idx), IsNull(col_idx), other.values_[col_idx]);
+  }
+}
+
+YSQLRow::YSQLRow(YSQLRow&& other)
+    : schema_(other.schema_),
+      // Allocate just the YSQLValueCore array memory here. Explicit constructor call follows below.
+      values_(reinterpret_cast<YSQLValueCore*>(
+          ::operator new(sizeof(YSQLValueCore) * schema_->num_columns()))),
+      is_nulls_(other.is_nulls_) {
+  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
+    new(&values_[col_idx]) YSQLValueCore(
+        column_type(col_idx), IsNull(col_idx), &other.values_[col_idx]);
+  }
 }
 
 YSQLRow::~YSQLRow() {
@@ -28,7 +51,6 @@ YSQLRow::~YSQLRow() {
     values_[col_idx].Free(column_type(col_idx));
   }
   ::operator delete(values_); // Just deallocate the YSQLValueCore array memory.
-  delete[] null_bitmaps_;
 }
 
 YSQLValue YSQLRow::column(const size_t col_idx) const {
@@ -39,7 +61,8 @@ YSQLValue YSQLRow::column(const size_t col_idx) const {
 void YSQLRow::set_column(const size_t col_idx, const YSQLValue& v) {
   SetNull(col_idx, v.IsNull());
   if (!v.IsNull()) {
-    values_[col_idx].CopyFrom(column_type(col_idx), v);
+    values_[col_idx].Free(column_type(col_idx));
+    new(&values_[col_idx]) YSQLValueCore(column_type(col_idx), v.IsNull(), v);
   }
 }
 
@@ -130,6 +153,30 @@ Status YSQLRow::Deserialize(const YSQLClient client, Slice* data) {
   return Status::OK();
 }
 
+string YSQLRow::ToString() const {
+  string s = "{ ";
+  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
+    if (col_idx > 0) {
+      s+= ", ";
+    }
+    s += values_[col_idx].ToString(column_type(col_idx), IsNull(col_idx));
+  }
+  s += " }";
+  return s;
+}
+
+YSQLRow& YSQLRow::operator=(const YSQLRow& other) {
+  this->~YSQLRow();
+  new(this) YSQLRow(other);
+  return *this;
+}
+
+YSQLRow& YSQLRow::operator=(YSQLRow&& other) {
+  this->~YSQLRow();
+  new(this) YSQLRow(other);
+  return *this;
+}
+
 //-------------------------------------- YSQL row block --------------------------------------
 YSQLRowBlock::YSQLRowBlock(const Schema& schema, const vector<ColumnId>& column_ids)
     : schema_(new Schema()) {
@@ -142,6 +189,16 @@ YSQLRowBlock::~YSQLRowBlock() {
 YSQLRow& YSQLRowBlock::Extend() {
   rows_.emplace_back(schema_);
   return rows_.back();
+}
+
+string YSQLRowBlock::ToString() const {
+  string s = "{ ";
+  for (size_t i = 0; i < rows_.size(); i++) {
+    if (i > 0) { s+= ", "; }
+    s += rows_[i].ToString();
+  }
+  s += " }";
+  return s;
 }
 
 void YSQLRowBlock::Serialize(const YSQLClient client, faststring* buffer) const {

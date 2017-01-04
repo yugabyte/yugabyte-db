@@ -74,6 +74,21 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   return Status::OK();
 }
 
+Status DocRowwiseIterator::Init(const YSQLScanSpec& spec) {
+  rocksdb::ReadOptions read_options;
+  db_iter_.reset(db_->NewIterator(read_options));
+
+  // Start scan with the lower bound doc key.
+  const DocKey& lower_bound = spec.lower_bound();
+  ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_bound, timestamp_).Encode().AsSlice());
+
+  // End scan with the upper bound key bytes.
+  has_upper_bound_key_ = true;
+  exclusive_upper_bound_key_ = SubDocKey(spec.upper_bound()).AdvanceOutOfDocKeyPrefix();
+
+  return Status::OK();
+}
+
 bool DocRowwiseIterator::HasNext() const {
   if (!status_.ok()) {
     // Unfortunately, we don't have a way to return an error status here, so we save it until the
@@ -157,14 +172,60 @@ bool DocRowwiseIterator::HasNext() const {
           ValueTypeToStr(value_type));
       return true;
     }
-    // No document with this key exists at this timestamp (it has been deleted). Go to the next
-    // document key and repeat.
-    ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceToNextDocKey().AsSlice());
+    // No document with this key exists at this timestamp (it has been deleted). Advance out
+    // of this doc key to go to the next document key and repeat.
+    ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfDocKeyPrefix().AsSlice());
   }
 }
 
 string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
+}
+
+// Get the non-key column values of a YSQL row and advance to the next row before return.
+Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveValue>* values) {
+
+  values->reserve(projection.num_columns() - projection.num_key_columns());
+
+  for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
+    const auto& column_id = projection.column_id(i);
+    subdoc_key_.RemoveTimestamp();
+    subdoc_key_.AppendSubKeysAndMaybeTimestamp(
+        PrimitiveValue(static_cast<int32_t>(column_id)), timestamp_);
+
+    const KeyBytes key_for_column = subdoc_key_.Encode();
+    ROCKSDB_SEEK(db_iter_.get(), key_for_column.AsSlice());
+
+    bool is_null = true;
+    if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
+      Value value;
+      RETURN_NOT_OK(value.Decode(db_iter_->value()));
+      if (value.has_ttl()) {
+        return STATUS_SUBSTITUTE(IllegalState,
+            "TTL in YSQL tables currently not supported, found $0",
+            value.ttl().ToString());
+      }
+      if (value.primitive_value().value_type() != ValueType::kNull &&
+          value.primitive_value().value_type() != ValueType::kTombstone) {
+        DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
+        values->emplace_back(value.primitive_value());
+        is_null = false;
+      } else {
+        DOCDB_DEBUG_LOG("Found a null value for column #$0: $1", i, value.ToString());
+      }
+    }
+    if (is_null) {
+      values->emplace_back(PrimitiveValue(ValueType::kNull));
+    }
+
+    subdoc_key_.RemoveLastSubKey();
+  }
+
+  // Advance to the next column (the next field of the top-level document in our SQL to DocDB
+  // mapping).
+  ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
+
+  return Status::OK();
 }
 
 Status DocRowwiseIterator::PrimitiveValueToKudu(
@@ -259,35 +320,16 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     RETURN_NOT_OK(PrimitiveValueToKudu(i, range_group[i], &dst_row));
   }
 
+  // Get the non-key column values of a YSQL row.
+  vector<PrimitiveValue> values;
+  RETURN_NOT_OK(GetValues(projection_, &values));
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
-    const auto& column_id = projection_.column_id(i);
-    subdoc_key_.RemoveTimestamp();
-    subdoc_key_.AppendSubKeysAndMaybeTimestamp(
-        PrimitiveValue(static_cast<int32_t>(column_id)), timestamp_);
-
-    const KeyBytes key_for_column = subdoc_key_.Encode();
-    ROCKSDB_SEEK(db_iter_.get(), key_for_column.AsSlice());
-
-    bool is_null = true;
+    const auto& value = values[i - projection_.num_key_columns()];
+    const bool is_null = (value.value_type() == ValueType::kNull);
     const bool is_nullable = dst->column_block(i).is_nullable();
-    if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
-      Value value;
-      RETURN_NOT_OK(value.Decode(db_iter_->value()));
-      if (value.has_ttl()) {
-        return STATUS_SUBSTITUTE(IllegalState,
-            "TTL in YSQL tables currently not supported, found $0",
-            value.ttl().ToString());
-      }
-      if (value.primitive_value().value_type() != ValueType::kNull &&
-          value.primitive_value().value_type() != ValueType::kTombstone) {
-        DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
-        RETURN_NOT_OK(PrimitiveValueToKudu(i, value.primitive_value(), &dst_row));
-        is_null = false;
-      } else {
-        DOCDB_DEBUG_LOG("Found a null value for column #$0: $1", i, value.ToString());
-      }
+    if (!is_null) {
+      RETURN_NOT_OK(PrimitiveValueToKudu(i, value, &dst_row));
     }
-
     if (is_null && !is_nullable) {
       return STATUS_SUBSTITUTE(IllegalState,
                                "Column $0 is not nullable, but no data is found", i);
@@ -295,13 +337,68 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     if (is_nullable) {
       dst->column_block(i).SetCellIsNull(0, is_null);
     }
-
-    subdoc_key_.RemoveLastSubKey();
   }
 
-  // Advance to the next column (the next field of the top-level document in our SQL to DocDB
-  // mapping).
-  ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
+  return Status::OK();
+}
+
+Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* rowblock) {
+  if (!status_.ok()) {
+    // An error happened in HasNext.
+    return status_;
+  }
+
+  if (PREDICT_FALSE(done_)) {
+    return STATUS(NotFound, "end of iter");
+  }
+
+  // Initialize all the row columns and populate the key column values from the doc key.
+  // The key column values in doc key were written in the same order as in the table schema
+  // (see DocKeyFromYSQLKey).
+  unordered_map<int32_t, YSQLValue> value_map;
+  auto hashed_component = subdoc_key_.doc_key().hashed_group().begin();
+  auto range_component = subdoc_key_.doc_key().range_group().begin();
+  const auto hashed_end = subdoc_key_.doc_key().hashed_group().end();
+  const auto range_end = subdoc_key_.doc_key().range_group().end();
+  for (size_t i = 0; i < schema_.num_columns(); i++) {
+    const auto column_id = schema_.column_id(i);
+    const auto data_type = schema_.column(i).type_info()->type();
+    const auto& elem = value_map.emplace(column_id, YSQLValue(data_type));
+
+    if (schema_.column(i).is_hash_key()) {
+      CHECK(hashed_component != hashed_end)
+          << "Hashed column value missing for column id " << column_id;
+      hashed_component->ToYSQLValue(&elem.first->second);
+      hashed_component++;
+    } else if (schema_.is_key_column(i)) {
+      CHECK(range_component != range_end)
+          << "Range column value missing for column id " << column_id;
+      range_component->ToYSQLValue(&elem.first->second);
+      range_component++;
+    }
+  }
+
+  // Get the non-key column values of a YSQL row.
+  vector<PrimitiveValue> values;
+  RETURN_NOT_OK(GetValues(schema_, &values));
+  for (size_t i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
+    const auto& column_id = schema_.column_id(i);
+    const auto& value = values[i - schema_.num_key_columns()];
+    value.ToYSQLValue(&value_map.at(column_id));
+  }
+
+  // Match the row with the where condition before adding to the row block.
+  bool match = false;
+  RETURN_NOT_OK(spec.Match(value_map, &match));
+  if (match) {
+    auto& row = rowblock->Extend();
+    for (size_t i = 0; i < row.schema().num_columns(); i++) {
+      const auto column_id = row.schema().column_id(i);
+      const auto it = value_map.find(column_id);
+      CHECK(it != value_map.end()) << "Projected column missing: " << column_id;
+      row.set_column(i, it->second);
+    }
+  }
 
   return Status::OK();
 }
@@ -309,7 +406,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
 void DocRowwiseIterator::GetIteratorStats(std::vector<IteratorStats>* stats) const {
   // A no-op implementation that adds new IteratorStats objects. This is an attempt to fix
   // linked_list-test with the YSQL table type.
-  for (int i = 0; i < projection_.num_columns(); ++i) {
+  for (int i = 0; i < projection_.num_columns(); i++) {
     stats->emplace_back();
   }
 }

@@ -64,6 +64,14 @@ class DocKey {
   // Resets the state to an empty document key.
   void Clear();
 
+  DocKeyHash hash() const {
+    return hash_;
+  }
+
+  const std::vector<PrimitiveValue>& hashed_group() const {
+    return hashed_group_;
+  }
+
   const std::vector<PrimitiveValue>& range_group() const {
     return range_group_;
   }
@@ -302,24 +310,38 @@ class SubDocKey {
   // is omitted from the resulting encoded representation.
   KeyBytes AdvanceOutOfSubDoc();
 
-  // Similar to AdvanceOutOfSubDoc, but seeks to the smallest SubDocKey that has a
-  // lexicographically higher document key, excluding any subkeys.
+  // Similar to AdvanceOutOfSubDoc, but seek to the smallest key that skips documents with this
+  // DocKey and DocKeys that have the same hash components but add more range components to it.
   //
-  // E.g. assuming the SubDocKey this is being called on is #2 from the following example,
-  // performing a RocksDB seek on the return value of this takes us to #10.
+  // E.g. assuming the SubDocKey this is being called on is #2 from the following example:
   //
-  //  1. SubDocKey(DocKey([], ["a"]), [TS(1)]) -> {}
-  //  2. SubDocKey(DocKey([], ["a"]), ["x", TS(1)]) -> {} ----------------------------.
-  //  3. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(2)]) -> null                      |
-  //  4. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(1)]) -> {}                        |
-  //  5. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", TS(1)]) -> {}                   |
-  //  6. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", "x", TS(1)]) -> true            |
-  //  7. SubDocKey(DocKey([], ["a"]), ["y", TS(3)]) -> {}                             |
-  //  8. SubDocKey(DocKey([], ["a"]), ["y", "y", TS(3)]) -> {}                        |
-  //  9. SubDocKey(DocKey([], ["a"]), ["y", "y", "x", TS(3)]) ->                      |
-  // 10. SubDocKey(DocKey([], ["b"]), [TS(1)]) -> {}                    <-------------.
-  // 11. SubDocKey(DocKey([], ["b"]), ["z", TS(1)]) -> "value"
-  KeyBytes AdvanceToNextDocKey();
+  //  1. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), [TS(1)]) -> {}
+  //  2. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", TS(1)]) -> {} <----------------.
+  //  3. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", TS(2)]) -> null           |
+  //  4. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", TS(1)]) -> {}             |
+  //  5. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", TS(1)]) -> {}        |
+  //  6. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", "x", TS(1)]) -> true |
+  //  7. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", TS(3)]) -> {}                  |
+  //  8. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", TS(3)]) -> {}             |
+  //  9. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", "x", TS(3)]) ->           |
+  // ...                                                                                        |
+  // 20. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["y", TS(3)]) -> {}             |
+  // 21. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["z", TS(3)]) -> {}             |
+  // 22. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "f"]), [TS(1)]) -> {}      <--- (*** 1 ***)-|
+  // 23. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "f"]), ["x", TS(1)]) -> {}                  |
+  // ...                                                                                        |
+  // 30. SubDocKey(DocKey(0x2345, ["a", "c"], ["c", "f"]), [TS(1)]) -> {}      <--- (*** 2 ***)-
+  // 31. SubDocKey(DocKey(0x2345, ["a", "c"], ["c", "f"]), ["x", TS(1)]) -> {}
+  //
+  // SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"])).AdvanceOutOfDocKeyPrefix() will seek to #22
+  // (*** 1 ***), pass doc keys with additional range components when they are present.
+  //
+  // And when given a doc key without range component like below, it can help seek pass all doc
+  // keys with the same hash components, e.g.
+  // SubDocKey(DocKey(0x1234, ["a", "b"], [])).AdvanceOutOfDocKeyPrefix() will seek to #30
+  // (*** 2 ***).
+
+  KeyBytes AdvanceOutOfDocKeyPrefix();
 
  private:
   DocKey doc_key_;

@@ -413,6 +413,11 @@ class Schema {
     return num_hash_key_columns_;
   }
 
+  // Number of range key columns.
+  size_t num_range_key_columns() const {
+    return num_key_columns_ - num_hash_key_columns_;
+  }
+
   // Return the byte offset within the row for the given column index.
   size_t column_offset(size_t col_idx) const {
     DCHECK_LT(col_idx, cols_.size());

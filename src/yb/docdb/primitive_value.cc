@@ -402,7 +402,7 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
 }
 
 PrimitiveValue PrimitiveValue::FromYSQLValuePB(const YSQLValuePB& value) {
-  DCHECK(value.has_datatype());
+  CHECK(value.has_datatype());
   switch (value.datatype()) {
     case INT8:
       return value.has_int8_value() ?
@@ -447,39 +447,78 @@ PrimitiveValue PrimitiveValue::FromYSQLValuePB(const YSQLValuePB& value) {
   LOG(FATAL) << "Unsupported datatype " << value.datatype();
 }
 
-void PrimitiveValue::SetYSQLRowColumn(const PrimitiveValue& value, YSQLRow* row, size_t col_idx) {
-  if (value.value_type() == ValueType::kNull) {
-    row->SetNull(col_idx, true);
+PrimitiveValue PrimitiveValue::FromYSQLValue(const YSQLValue& value) {
+  if (value.IsNull()) {
+    return PrimitiveValue(ValueType::kNull);
+  }
+
+  switch (value.type()) {
+    case INT8:
+      return PrimitiveValue(value.int8_value());
+    case INT16:
+      return PrimitiveValue(value.int16_value());
+    case INT32:
+      return PrimitiveValue(value.int32_value());
+    case INT64:
+      return  PrimitiveValue(value.int64_value());
+    case FLOAT:
+      return PrimitiveValue::Double(value.float_value());
+    case DOUBLE:
+      return PrimitiveValue::Double(value.double_value());
+    case STRING:
+      return PrimitiveValue(value.string_value());
+    case BOOL:
+      return PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse);
+    case TIMESTAMP:
+      return PrimitiveValue(Timestamp(value.timestamp_value()));
+
+    case UINT8:  FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case UINT32: FALLTHROUGH_INTENDED;
+    case UINT64: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Unsupported datatype " << value.type();
+}
+
+void PrimitiveValue::ToYSQLValue(YSQLValue* v) const {
+  if (value_type() == ValueType::kNull) {
+    v->SetNull(true);
     return;
   }
 
-  switch (row->column_type(col_idx)) {
+  switch (v->type()) {
     case INT8:
-      row->set_int8_value(col_idx, static_cast<int8_t>(value.GetInt64()));
+      v->set_int8_value(static_cast<int8_t>(GetInt64()));
       return;
     case INT16:
-      row->set_int16_value(col_idx, static_cast<int16_t>(value.GetInt64()));
+      v->set_int16_value(static_cast<int16_t>(GetInt64()));
       return;
     case INT32:
-      row->set_int32_value(col_idx, static_cast<int32_t>(value.GetInt64()));
+      v->set_int32_value(static_cast<int32_t>(GetInt64()));
       return;
     case INT64:
-      row->set_int64_value(col_idx, static_cast<int64_t>(value.GetInt64()));
+      v->set_int64_value(static_cast<int64_t>(GetInt64()));
       return;
     case FLOAT:
-      row->set_float_value(col_idx, static_cast<float>(value.GetDouble()));
+      v->set_float_value(static_cast<float>(GetDouble()));
       return;
     case DOUBLE:
-      row->set_double_value(col_idx, value.GetDouble());
+      v->set_double_value(GetDouble());
       return;
     case BOOL:
-      row->set_bool_value(col_idx, (value.value_type() == ValueType::kTrue));
+      v->set_bool_value((value_type() == ValueType::kTrue));
       return;
     case TIMESTAMP:
-      row->set_timestamp_value(col_idx, value.timestamp());
+      v->set_timestamp_value(timestamp());
       return;
     case STRING:
-      row->set_string_value(col_idx, value.GetString());
+      v->set_string_value(GetString());
       return;
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
@@ -492,7 +531,7 @@ void PrimitiveValue::SetYSQLRowColumn(const PrimitiveValue& value, YSQLRow* row,
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << row->column_type(col_idx);
+  LOG(FATAL) << "Unsupported datatype " << v->type();
 }
 
 }  // namespace docdb

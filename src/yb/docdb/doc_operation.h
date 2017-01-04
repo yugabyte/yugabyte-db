@@ -58,7 +58,7 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(yb::RedisReadRequestPB request) : request_(request) {}
 
-  Status Execute(rocksdb::DB *rocksdb, Timestamp timestamp);
+  Status Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp);
 
   const RedisResponsePB &response();
 
@@ -69,7 +69,7 @@ class RedisReadOperation {
 
 class YSQLWriteOperation : public DocOperation {
  public:
-  explicit YSQLWriteOperation(const YSQLWriteRequestPB& request);
+  YSQLWriteOperation(const YSQLWriteRequestPB& request, const Schema& schema);
 
   DocPath DocPathToLock() const override;
 
@@ -88,12 +88,13 @@ class YSQLReadOperation {
  public:
   explicit YSQLReadOperation(const YSQLReadRequestPB& request);
 
-  Status Execute(rocksdb::DB *rocksdb, Timestamp timestamp, YSQLRowBlock* rowblock);
+  Status Execute(
+      rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
+      YSQLRowBlock* rowblock);
 
   const YSQLResponsePB& response();
 
  private:
-  class YSQLRowReader;
   const YSQLReadRequestPB request_;
   YSQLResponsePB response_;
 };

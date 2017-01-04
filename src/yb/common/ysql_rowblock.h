@@ -9,16 +9,18 @@
 
 #include "yb/common/ysql_value.h"
 #include "yb/common/schema.h"
-#include "yb/util/bitmap.h"
 
 namespace yb {
 
 //----------------------------------------- YSQL row ----------------------------------------
 // A YSQL row. The columns' datatypes are kept in the row schema and the null states are stored in
-// a bitmap. Each column is identified by its column index in the row schema, not by the column id.
+// a bitmap (specialized vector<bool>). Each column is identified by its column index in the row
+// schema, not by the column id.
 class YSQLRow {
  public:
   explicit YSQLRow(const std::shared_ptr<const Schema>& schema);
+  explicit YSQLRow(const YSQLRow& row);
+  explicit YSQLRow(YSQLRow&& row);
   ~YSQLRow();
 
   // Row columns' schema
@@ -39,16 +41,12 @@ class YSQLRow {
 
   // Is the column null?
   inline bool IsNull(size_t col_idx) const {
-    return BitmapTest(null_bitmaps_, col_idx);
+    return is_nulls_[col_idx];
   }
 
   // Set the column to null or not.
   void SetNull(const size_t col_idx, const bool is_null) {
-    if (is_null) {
-      BitmapSet(null_bitmaps_, col_idx);
-    } else {
-      BitmapClear(null_bitmaps_, col_idx);
-    }
+    is_nulls_[col_idx] = is_null;
   }
 
   //----------------------------------- get value methods -----------------------------------
@@ -89,6 +87,13 @@ class YSQLRow {
   void set_bool_value(size_t col_idx, bool v);
   void set_timestamp_value(size_t col_idx, const Timestamp& v);
 
+  YSQLRow& operator=(const YSQLRow& other);
+  YSQLRow& operator=(YSQLRow&& other);
+
+  //------------------------------------ debug string ---------------------------------------
+  // Return a string for debugging.
+  std::string ToString() const;
+
  private:
   friend class YSQLRowBlock;
 
@@ -100,7 +105,7 @@ class YSQLRow {
 
   std::shared_ptr<const Schema> schema_;
   YSQLValueCore* values_;
-  uint8_t* null_bitmaps_;
+  std::vector<bool> is_nulls_;
 };
 
 //-------------------------------------- YSQL row block --------------------------------------
@@ -122,10 +127,14 @@ class YSQLRowBlock {
   std::vector<YSQLRow>& rows() { return rows_; }
 
   // Return the row by index
-  YSQLRow& row(size_t idx) { return rows_[idx]; }
+  YSQLRow& row(size_t idx) { return rows_.at(idx); }
 
   // Extend row block by 1 emtpy row and return the new row.
   YSQLRow& Extend();
+
+  //------------------------------------ debug string ---------------------------------------
+  // Return a string for debugging.
+  std::string ToString() const;
 
   //----------------------------- serializer / deserializer ---------------------------------
   void Serialize(YSQLClient client, faststring* buffer) const;
@@ -133,7 +142,9 @@ class YSQLRowBlock {
 
 
  private:
-  std::shared_ptr<Schema> schema_; // schema of the selected columns.
+  // Schema of the selected columns. (Note: this schema has no key column definitions)
+  std::shared_ptr<Schema> schema_;
+  // Rows in this block.
   std::vector<YSQLRow> rows_;
 };
 

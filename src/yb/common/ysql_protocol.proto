@@ -30,20 +30,55 @@ message YSQLValuePB {
   }
 }
 
-// A YSQL column value
+// A column value
 message YSQLColumnValuePB {
   optional int32 column_id = 1;
   optional YSQLValuePB value = 2;
 }
 
-// Relation operators
+// An expression in a WHERE condition
+message YSQLExpressionPB {
+  oneof expr {
+    YSQLValuePB value = 1;
+    int32 column_id = 2;
+    YSQLConditionPB condition = 3;
+  }
+}
+
+// Condition operators
 enum YSQLOperator {
-  YSQL_OP_EQUAL = 1;
-  YSQL_OP_LESS_THAN = 2;
-  YSQL_OP_LESS_THAN_EQUAL = 3;
-  YSQL_OP_GREATER_THAN = 4;
-  YSQL_OP_GREATER_THAN_EQUAL = 5;
-  YSQL_OP_NOT_EQUAL = 6;
+
+  // Operators that take one operand.
+  YSQL_OP_NOT = 1;
+  YSQL_OP_IS_NULL = 2;
+  YSQL_OP_IS_NOT_NULL = 3;
+  YSQL_OP_IS_TRUE = 4;
+  YSQL_OP_IS_FALSE = 5;
+
+  // Operators that take two operands.
+  YSQL_OP_EQUAL = 6;
+  YSQL_OP_LESS_THAN = 7;
+  YSQL_OP_LESS_THAN_EQUAL = 8;
+  YSQL_OP_GREATER_THAN = 9;
+  YSQL_OP_GREATER_THAN_EQUAL = 10;
+  YSQL_OP_NOT_EQUAL = 11;
+
+  YSQL_OP_AND = 12;
+  YSQL_OP_OR = 13;
+  YSQL_OP_LIKE = 14;
+  YSQL_OP_NOT_LIKE = 15;
+  YSQL_OP_IN = 16;
+  YSQL_OP_NOT_IN = 17;
+
+  // Operators that take three operands.
+  YSQL_OP_BETWEEN = 18;
+  YSQL_OP_NOT_BETWEEN = 19;
+}
+
+// A logical condition that evaluates to true/false. Used in the WHERE clause.
+message YSQLConditionPB {
+  optional YSQLOperator op = 1;
+  repeated YSQLExpressionPB operands = 2;
 }
 
 // Client type: only CQL client is supported currently
@@ -78,7 +113,8 @@ message YSQLWriteRequestPB {
   // Table schema version
   optional uint32 schema_version = 4; // required
 
-  // Primary key of the row to insert/update/delete - all fields required
+  // Primary key of the row to insert/update/delete - all fields required. The hashed and
+  // range column values must be in the same order as the column order in the table schema.
   //
   // Note: the hash_code is the hash of the hashed_column_values. Technically, this can be
   // recomputed by tserver also, but since the client already calculates this to look up the
@@ -105,13 +141,6 @@ message YSQLWriteRequestPB {
 
 message YSQLReadRequestPB {
 
-  // A where-relation on a range column - all fields required
-  message YSQLRelationPB {
-    optional int32 range_column_id = 1;
-    optional YSQLOperator op = 2;
-    optional YSQLValuePB value = 3;
-  }
-
   // Client info
   optional YSQLClient client = 1; // required
   optional uint32 request_id = 2; // client request id - for debug tracing purpose only
@@ -119,12 +148,13 @@ message YSQLReadRequestPB {
   // Table schema version
   optional uint32 schema_version = 3; // required
 
-  // Hashed key of row(s) to read - all fields required
+  // Hashed key of row(s) to read - all fields required. The hashed column values must be in the
+  // same order as the column order in the table schema.
   optional uint32 hash_code = 4;
   repeated YSQLColumnValuePB hashed_column_values = 5;
 
-  // Range relations
-  repeated YSQLRelationPB relations = 6; // CQL allows only WHERE relation AND relation AND ...
+  // Where clause condition
+  optional YSQLConditionPB condition = 6;
 
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required

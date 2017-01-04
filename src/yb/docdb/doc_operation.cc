@@ -3,6 +3,8 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/ysql_scanspec.h"
 #include "yb/server/hybrid_clock.h"
 
 namespace yb {
@@ -39,7 +41,7 @@ Status RedisWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
 
 const RedisResponsePB& RedisWriteOperation::response() { return response_; }
 
-Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, Timestamp timestamp) {
+Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp) {
   CHECK_EQ(request_.redis_op_type(), RedisReadRequestPB_Type_GET)
       << "Currently only GET is supported";
   const KeyBytes doc_key = DocKey::FromRedisStringKey(
@@ -91,29 +93,49 @@ const RedisResponsePB& RedisReadOperation::response() {
   return response_;
 }
 
-// Populate dockey from YSQL key columns
-static DocKey DocKeyFromYSQLKey(
-      uint32_t hash_code,
-      const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& hashed_column_values,
-      const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& range_column_values) {
-  std::vector<PrimitiveValue> hashed_components;
-  std::vector<PrimitiveValue> range_components;
-  for (const auto& column_value : hashed_column_values) {
-    DCHECK(column_value.has_value()) << "Hashed column value missing for column id "
-                                     << column_value.column_id();
-    hashed_components.push_back(PrimitiveValue::FromYSQLValuePB(column_value.value()));
+namespace {
+
+// Add primary key column values to the component group. Verify that they are in the same order
+// as in the table schema.
+void YSQLColumnValuesToPrimitiveValues(
+    const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& column_values,
+    const Schema& schema, size_t column_idx, const size_t column_count,
+    vector<PrimitiveValue>* components) {
+  CHECK_EQ(column_values.size(), column_count) << "Primary key column count mismatch";
+  for (const auto& column_value : column_values) {
+    CHECK_EQ(schema.column_id(column_idx), column_value.column_id())
+        << "Primary key column id mismatch";
+    components->push_back(PrimitiveValue::FromYSQLValuePB(column_value.value()));
+    column_idx++;
   }
-  for (const auto& column_value : range_column_values) {
-    DCHECK(column_value.has_value()) << "range column value missing for column id "
-                                     << column_value.column_id();
-    range_components.push_back(PrimitiveValue::FromYSQLValuePB(column_value.value()));
-  }
+}
+
+// Populate dockey from YSQL key columns.
+DocKey DocKeyFromYSQLKey(
+    const Schema& schema,
+    uint32_t hash_code,
+    const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& hashed_column_values,
+    const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& range_column_values) {
+  vector<PrimitiveValue> hashed_components;
+  vector<PrimitiveValue> range_components;
+
+  // Populate the hashed and range components in the same order as they are in the table schema.
+  YSQLColumnValuesToPrimitiveValues(
+      hashed_column_values, schema, 0,
+      schema.num_hash_key_columns(), &hashed_components);
+  YSQLColumnValuesToPrimitiveValues(
+      range_column_values, schema, schema.num_hash_key_columns(),
+      schema.num_key_columns() - schema.num_hash_key_columns(), &range_components);
+
   return DocKey(hash_code, hashed_components, range_components);
 }
 
-YSQLWriteOperation::YSQLWriteOperation(const YSQLWriteRequestPB& request)
+} // namespace
+
+YSQLWriteOperation::YSQLWriteOperation(const YSQLWriteRequestPB& request, const Schema& schema)
     : doc_key_(
           DocKeyFromYSQLKey(
+              schema,
               request.hash_code(),
               request.hashed_column_values(),
               request.range_column_values())),
@@ -178,117 +200,26 @@ Status YSQLWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
 
 const YSQLResponsePB& YSQLWriteOperation::response() { return response_; }
 
-// A doc visitor to retrieve selected column values
-class YSQLReadOperation::YSQLRowReader : public DocVisitor {
-
- public:
-  explicit YSQLRowReader(YSQLRowBlock* rowblock) : rowblock_(rowblock) { }
-
-  // Called once in the beginning of every new document.
-  Status StartDocument(const DocKey& key) override {
-    return Status::OK();
-  };
-
-  // Called in the end of a document.
-  Status EndDocument() override {
-    return Status::OK();
-  }
-
-  // VisitKey and VisitValue are called as part of enumerating key-value pairs in an object, e.g.
-  // VisitKey(key1), VisitValue(value1), VisitKey(key2), VisitValue(value2), etc.
-  Status VisitKey(const PrimitiveValue& key) override {
-    DCHECK_EQ(key.value_type(), ValueType::kInt64);
-    column_id_ = static_cast<int32_t>(key.GetInt64());
-    return Status::OK();
-  }
-
-  Status VisitValue(const PrimitiveValue& value) override {
-    const auto column_idx = row_->schema().find_column_by_id(ColumnId(column_id_));
-    if (column_idx != Schema::kColumnNotFound) {
-      PrimitiveValue::SetYSQLRowColumn(value, row_, column_idx);
-    }
-    return Status::OK();
-  }
-
-  // Called in the beginning of an object, before any key/value pairs.
-  Status StartObject() override {
-    level_++;
-    // We expect only 1 level of object(row) since we are not supporting set, list, map and
-    // abstract data type (ADT) yet.
-    DCHECK_EQ(level_, 1);
-    row_ = &rowblock_->Extend();
-    return Status::OK();
-  }
-
-  // Called after all key/value pairs in an object.
-  Status EndObject() override {
-    level_--;
-    return Status::OK();
-  }
-
-  // Called before enumerating elements of an array. Not used as of 9/26/2016.
-  Status StartArray() override {
-    return Status::OK();
-  }
-
-  // Called after enumerating elements of an array. Not used as of 9/26/2016.
-  Status EndArray() override {
-    return Status::OK();
-  }
-
-  bool found() const { return (row_ != nullptr); }
-
- private:
-  int level_ = 0;
-  int32_t column_id_ = 0;
-  YSQLRowBlock* rowblock_;
-  YSQLRow* row_ = nullptr;
-};
-
 YSQLReadOperation::YSQLReadOperation(const YSQLReadRequestPB& request) : request_(request) {
 }
 
 Status YSQLReadOperation::Execute(
-    rocksdb::DB *rocksdb, Timestamp timestamp, YSQLRowBlock* rowblock) {
+    rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
+    YSQLRowBlock* rowblock) {
 
-  // Populate dockey from YSQL key columns
+  // Populate dockey from YSQL key columns.
   docdb::DocKeyHash hash_code = request_.hash_code();
   vector<PrimitiveValue> hashed_components;
-  vector<PrimitiveValue> range_components;
-  for (const auto& column_value : request_.hashed_column_values()) {
-    PrimitiveValue value = PrimitiveValue::FromYSQLValuePB(column_value.value());
-    hashed_components.push_back(value);
-  }
-  for (const auto& relation : request_.relations()) {
-    if (relation.has_op() && relation.op() == YSQL_OP_EQUAL) {
-      PrimitiveValue value = PrimitiveValue::FromYSQLValuePB(relation.value());
-      range_components.push_back(value);
-    } else {
-      return STATUS(NotSupported, "Only equal relation operator is supported");
-    }
-  }
-  DocKey doc_key(hash_code, hashed_components, range_components);
-  DocPath doc_path(doc_key.Encode());
+  YSQLColumnValuesToPrimitiveValues(
+      request_.hashed_column_values(), schema, 0,
+      schema.num_hash_key_columns(), &hashed_components);
 
-  // Scan docdb for the row
-  YSQLRowReader row_reader(rowblock);
-  RETURN_NOT_OK(ScanDocument(rocksdb, doc_path.encoded_doc_key(), &row_reader, timestamp));
-  if (row_reader.found()) {
-    auto& row = rowblock->rows().back();
-    for (const auto& column_value : request_.hashed_column_values()) {
-      const auto column_idx = row.schema().find_column_by_id(ColumnId(column_value.column_id()));
-      if (column_idx != Schema::kColumnNotFound) {
-        PrimitiveValue::SetYSQLRowColumn(
-            PrimitiveValue::FromYSQLValuePB(column_value.value()), &row, column_idx);
-      }
-    }
-    for (const auto& relation : request_.relations()) {
-      const auto column_idx = row.schema().find_column_by_id(ColumnId(relation.range_column_id()));
-      if (column_idx != Schema::kColumnNotFound) {
-        PrimitiveValue::SetYSQLRowColumn(
-            PrimitiveValue::FromYSQLValuePB(relation.value()), &row, column_idx);
-      }
-    }
+  // Scan docdb for the row.
+  DocRowwiseIterator iterator(rowblock->schema(), schema, rocksdb, timestamp);
+  YSQLScanSpec spec(schema, hash_code, hashed_components, request_.condition());
+  RETURN_NOT_OK(iterator.Init(spec));
+  while (iterator.HasNext()) {
+    RETURN_NOT_OK(iterator.NextBlock(spec, rowblock));
   }
 
   return Status::OK();

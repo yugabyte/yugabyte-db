@@ -163,6 +163,8 @@ std::string YBSqlWriteOp::ToString() const {
   return "YSQL_WRITE " + ysql_write_request_->DebugString();
 }
 
+namespace {
+
 Status SetColumn(YBPartialRow* row, const int32 column_id, const YSQLValuePB& value) {
   const auto column_idx = row->schema()->find_column_by_id(ColumnId(column_id));
   CHECK_NE(column_idx, Schema::kColumnNotFound);
@@ -213,12 +215,31 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YSQLValuePB& va
   return STATUS(RuntimeError, "unsupported datatype");
 }
 
-Status YBSqlWriteOp::SetKey() {
-  // Set the row key from the hashed columns
-  for (const auto& column_value : ysql_write_request_->hashed_column_values()) {
-    RETURN_NOT_OK(SetColumn(mutable_row(), column_value.column_id(), column_value.value()));
+Status SetPartialRowKey(
+    YBPartialRow* row,
+    const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& hashed_column_values) {
+  // Set the partition key in partial row from the hashed columns.
+  for (const auto& column_value : hashed_column_values) {
+    RETURN_NOT_OK(SetColumn(row, column_value.column_id(), column_value.value()));
+  }
+  // Verify that all hashed columns have been specified.
+  const auto* schema = row->schema();
+  for (size_t column_idx = 0; column_idx < schema->num_key_columns(); ++column_idx) {
+    if (schema->column(column_idx).is_hash_key() && !row->IsColumnSet(column_idx)) {
+      return STATUS(IllegalState, "Not all hash column values specified");
+    }
   }
   return Status::OK();
+}
+
+} // namespace
+
+Status YBSqlWriteOp::SetKey() {
+  return SetPartialRowKey(mutable_row(), ysql_write_request_->hashed_column_values());
+}
+
+void YBSqlWriteOp::SetHashCode(const uint16_t hash_code) {
+  ysql_write_request_->set_hash_code(hash_code);
 }
 
 // YBSqlReadOp -----------------------------------------------------------------
@@ -237,11 +258,11 @@ std::string YBSqlReadOp::ToString() const {
 }
 
 Status YBSqlReadOp::SetKey() {
-  // Set the row key from the hashed columns
-  for (const auto& column_value : ysql_read_request_->hashed_column_values()) {
-    RETURN_NOT_OK(SetColumn(mutable_row(), column_value.column_id(), column_value.value()));
-  }
-  return Status::OK();
+  return SetPartialRowKey(mutable_row(), ysql_read_request_->hashed_column_values());
+}
+
+void YBSqlReadOp::SetHashCode(const uint16_t hash_code) {
+  ysql_read_request_->set_hash_code(hash_code);
 }
 
 YSQLRowBlock* YBSqlReadOp::GetRowBlock() const {

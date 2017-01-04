@@ -4,9 +4,12 @@
 
 #include "yb/common/ysql_value.h"
 
+#include <cfloat>
+
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/util/bytes_formatter.h"
 
 // The list of unsupported datypes to use in switch statements
 #define YSQL_UNSUPPORTED_TYPES_IN_SWITCH \
@@ -19,22 +22,55 @@
 
 namespace yb {
 
-void YSQLValueCore::CopyFrom(const DataType type, const YSQLValueCore& v) {
+using std::string;
+using std::to_string;
+using util::FormatBytesAsStr;
+
+//---------------------------------------- YSQLValueCore --------------------------------------
+YSQLValueCore::YSQLValueCore(const DataType type, const bool is_null, const YSQLValueCore& other) {
+  if (is_null) {
+    new(this) YSQLValueCore(type);
+    return;
+  }
+
   switch (type) {
-    case INT8: int8_value_ = v.int8_value_; return;
-    case INT16: int16_value_ = v.int16_value_; return;
-    case INT32: int32_value_ = v.int32_value_; return;
-    case INT64: int64_value_ = v.int64_value_; return;
-    case FLOAT: float_value_ = v.float_value_; return;
-    case DOUBLE: double_value_ = v.double_value_; return;
-    case STRING: string_value_ = v.string_value_; return;
-    case BOOL: bool_value_ = v.bool_value_; return;
-    case TIMESTAMP: timestamp_value_ = v.timestamp_value_; return;
+    case INT8: int8_value_ = other.int8_value_; return;
+    case INT16: int16_value_ = other.int16_value_; return;
+    case INT32: int32_value_ = other.int32_value_; return;
+    case INT64: int64_value_ = other.int64_value_; return;
+    case FLOAT: float_value_ = other.float_value_; return;
+    case DOUBLE: double_value_ = other.double_value_; return;
+    case STRING: new(&string_value_) string(other.string_value_); return;
+    case BOOL: bool_value_ = other.bool_value_; return;
+    case TIMESTAMP: timestamp_value_ = other.timestamp_value_; return;
     YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
     // default: fall through
   }
+  LOG(FATAL) << "Internal error: unsupported type " << type;
+}
 
+YSQLValueCore::YSQLValueCore(const DataType type, const bool is_null, YSQLValueCore* other) {
+  if (is_null) {
+    new(this) YSQLValueCore(type);
+    other->Free(type);
+    return;
+  }
+
+  switch (type) {
+    case INT8: int8_value_ = other->int8_value_; return;
+    case INT16: int16_value_ = other->int16_value_; return;
+    case INT32: int32_value_ = other->int32_value_; return;
+    case INT64: int64_value_ = other->int64_value_; return;
+    case FLOAT: float_value_ = other->float_value_; return;
+    case DOUBLE: double_value_ = other->double_value_; return;
+    case STRING: new(&string_value_) string(std::move(other->string_value_)); return;
+    case BOOL: bool_value_ = other->bool_value_; return;
+    case TIMESTAMP: timestamp_value_ = other->timestamp_value_; return;
+    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+      break;
+    // default: fall through
+  }
   LOG(FATAL) << "Internal error: unsupported type " << type;
 }
 
@@ -131,6 +167,136 @@ Status YSQLValueCore::Deserialize(
 
   LOG(FATAL) << "Internal error: unsupported type " << type;
   return STATUS(RuntimeError, "unsupported type");
+}
+
+string YSQLValueCore::ToString(const DataType type, const bool is_null) const {
+  string s = DataType_Name(type) + ":";
+  if (is_null) {
+    return s + "null";
+  }
+
+  switch (type) {
+    case INT8: return s + to_string(int8_value_);
+    case INT16: return s + to_string(int16_value_);
+    case INT32: return s + to_string(int32_value_);
+    case INT64: return s + to_string(int64_value_);
+    case FLOAT: return s + to_string(float_value_);
+    case DOUBLE: return s + to_string(double_value_);
+    case STRING: return s + FormatBytesAsStr(string_value_);
+    case BOOL: return s + (bool_value_ ? "true" : "false");
+    case TIMESTAMP: return s + to_string(timestamp_value_.ToUint64());
+
+    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+      break;
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Internal error: unsupported type " << type;
+  return s;
+}
+
+//------------------------------------------ YSQLValue ----------------------------------------
+YSQLValue& YSQLValue::operator=(const YSQLValue& other) {
+  CHECK_EQ(type_, other.type_);
+  is_null_ = other.is_null_;
+  Free(type_);
+  new(this) YSQLValueCore(other.type_, other.is_null_, other);
+  return *this;
+}
+
+YSQLValue& YSQLValue::operator=(YSQLValue&& other) {
+  CHECK_EQ(type_, other.type_);
+  is_null_ = other.is_null_;
+  Free(type_);
+  new(this) YSQLValueCore(other.type_, other.is_null_, &other);
+  return *this;
+}
+
+int YSQLValue::CompareTo(const YSQLValue& v) const {
+  CHECK_EQ(type_, v.type_);
+  CHECK(!is_null_);
+  CHECK(!v.is_null_);
+  switch (type_) {
+    case INT8:   return GenericCompare(int8_value_, v.int8_value_);
+    case INT16:  return GenericCompare(int16_value_, v.int16_value_);
+    case INT32:  return GenericCompare(int32_value_, v.int32_value_);
+    case INT64:  return GenericCompare(int64_value_, v.int64_value_);
+    case FLOAT:  return GenericCompare(float_value_, v.float_value_);
+    case DOUBLE: return GenericCompare(double_value_, v.double_value_);
+    case STRING: return string_value_.compare(v.string_value_);
+    case BOOL:
+      LOG(FATAL) << "Internal error: bool type not comparable";
+      return 0;
+    case TIMESTAMP:
+      return GenericCompare(timestamp_value_.ToUint64(), v.timestamp_value_.ToUint64());
+
+    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Internal error: unsupported type " << type_;
+  return 0;
+}
+
+YSQLValue YSQLValue::FromYSQLValuePB(const YSQLValuePB& vpb) {
+  CHECK(vpb.has_datatype());
+  YSQLValue v(vpb.datatype());
+  switch (vpb.datatype()) {
+    case INT8:
+      if (vpb.has_int8_value()) {
+        v.set_int8_value(static_cast<int8_t>(vpb.int8_value()));
+      }
+      return v;
+    case INT16:
+      if (vpb.has_int16_value()) {
+        v.set_int16_value(static_cast<int16_t>(vpb.int16_value()));
+      }
+      return v;
+    case INT32:
+      if (vpb.has_int32_value()) {
+        v.set_int32_value(vpb.int32_value());
+      }
+      return v;
+    case INT64:
+      if (vpb.has_int64_value()) {
+        v.set_int64_value(vpb.int64_value());
+      }
+      return v;
+    case FLOAT:
+      if (vpb.has_float_value()) {
+        v.set_float_value(vpb.float_value());
+      }
+      return v;
+    case DOUBLE:
+      if (vpb.has_double_value()) {
+        v.set_double_value(vpb.double_value());
+      }
+      return v;
+    case STRING:
+      if (vpb.has_string_value()) {
+        v.set_string_value(vpb.string_value());
+      }
+      return v;
+    case BOOL:
+      if (vpb.has_bool_value()) {
+        v.set_bool_value(vpb.bool_value());
+      }
+      return v;
+    case TIMESTAMP:
+      if (vpb.has_timestamp_value()) {
+        v.set_timestamp_value(Timestamp(vpb.timestamp_value()));
+      }
+      return v;
+
+    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Internal error: unsupported datatype " << vpb.datatype();
 }
 
 } // namespace yb

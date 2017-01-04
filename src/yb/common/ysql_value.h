@@ -26,20 +26,24 @@ class YSQLValueCore {
   friend class YSQLValue;
   friend class YSQLRow;
 
+  // Construct a YSQLValueCore for the specified datatype.
   inline explicit YSQLValueCore(const DataType type) {
+    // No need to call timestamp's constructor because it is a simple wrapper over an uint64_t.
     if (type == STRING) {
       new(&string_value_) std::string();
     }
   }
 
-  inline YSQLValueCore(const DataType type, const YSQLValueCore& v) : YSQLValueCore(type) {
-    CopyFrom(type, v);
-  }
+  // Copy/move constructor for the specified datatype.
+  YSQLValueCore(DataType type, bool is_null, const YSQLValueCore& other);
+  YSQLValueCore(DataType type, bool is_null, YSQLValueCore* other);
 
-  // Because destructor cannot take an argument, a YSQLValueCore should be destroyed by first
-  // calling the Free() method below with the datatype.
+  // Since destructor cannot take an argument to indicate the datatype of the value stored, a
+  // YSQLValueCore should be destroyed by first calling the Free() method below with the datatype.
   virtual inline ~YSQLValueCore() { }
+
   inline void Free(const DataType type) {
+    // No need to call timestamp's destructor because it is a simple wrapper over an uint64_t.
     if (type == STRING) {
       string_value_.~basic_string();
     }
@@ -66,12 +70,13 @@ class YSQLValueCore {
     *value = other;
   }
 
-  // Copy a value
-  void CopyFrom(DataType type, const YSQLValueCore& v);
-
   //----------------------------- serializer / deserializer ---------------------------------
   void Serialize(DataType type, bool is_null, YSQLClient client, faststring* buffer) const;
   Status Deserialize(DataType type, YSQLClient client, Slice* data, bool* is_null);
+
+  //------------------------------------ debug string ---------------------------------------
+  // Return a string for debugging.
+  std::string ToString(const DataType type, bool is_null) const;
 
   //-------------------------------- union of different value types -------------------------
   // Just primitive values currently.
@@ -91,18 +96,9 @@ class YSQLValueCore {
 // A YSQL value with datatype and null state. This class is good for expression evaluation.
 class YSQLValue : YSQLValueCore {
  public:
-  // No need to call timestamp's constructor/destructor because it is a simple wrapper over
-  // an uint64_t.
-  explicit YSQLValue(DataType type) : YSQLValueCore(type), type_(type) { }
-
-  YSQLValue(const DataType type, const bool is_null, const YSQLValueCore& v) : YSQLValue(type) {
-    is_null_ = is_null;
-    if (!is_null) {
-      CopyFrom(type, v);
-    }
-  }
-
-  YSQLValue(const YSQLValue& v) : YSQLValue(v.type_, v.is_null_, v) { }
+  explicit YSQLValue(DataType type) : YSQLValueCore(type), type_(type), is_null_(true) { }
+  YSQLValue(const YSQLValue& other) : YSQLValue(other.type_, other.is_null_, other) { }
+  YSQLValue(YSQLValue&& other) : YSQLValue(other.type_, other.is_null_, &other) { }
 
   virtual ~YSQLValue() {
     Free(type_);
@@ -151,14 +147,55 @@ class YSQLValue : YSQLValueCore {
     return set_value(TIMESTAMP, v, &timestamp_value_);
   }
 
+  // Assignment operator
+  YSQLValue& operator=(const YSQLValue& other);
+  YSQLValue& operator=(YSQLValue&& other);
+
+  // Comparison methods / operators
+  bool Comparable(const YSQLValue& other) const { return type_ == other.type_; }
+
+  template<typename T>
+  int GenericCompare(const T& a, const T& b) const {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+  }
+
+  int CompareTo(const YSQLValue& v) const;
+
+  inline bool operator <(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) < 0; }
+  inline bool operator >(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) > 0; }
+  inline bool operator <=(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) <= 0; }
+  inline bool operator >=(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) >= 0; }
+  inline bool operator ==(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) == 0; }
+  inline bool operator !=(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
+
+  // Get a YSQLValue from a YSQLValuePB protobuf.
+  static YSQLValue FromYSQLValuePB(const YSQLValuePB& v);
+
   // Note: YSQLValue doesn't have serialize / deserialize methods because we expect YSQL values
   // to be serialized / deserialized as part of a row block. See YSQLRowBlock.
+
+  //------------------------------------ debug string ---------------------------------------
+  // Return a string for debugging.
+  std::string ToString() const { return YSQLValueCore::ToString(type_, is_null_); }
 
   //-------------------------------- value datatype and null state --------------------------
  private:
   friend class YSQLRow;
+
+  YSQLValue(const DataType type, const bool is_null, const YSQLValueCore& v)
+      : YSQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
+  }
+
+  YSQLValue(const DataType type, const bool is_null, YSQLValueCore* v)
+      : YSQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
+  }
+
+  inline bool BothNotNull(const YSQLValue& v) const { return !is_null_ && !v.is_null_; }
+
   const DataType type_;
-  bool is_null_ = true;
+  bool is_null_;
 };
 
 } // namespace yb

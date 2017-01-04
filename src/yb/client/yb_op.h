@@ -229,6 +229,9 @@ class YB_EXPORT YBSqlOp : public YBOperation {
   // Set the row key in the YBPartialRow.
   virtual Status SetKey() = 0;
 
+  // Set the hash key in the partial row of this YSQL operation.
+  virtual void SetHashCode(uint16_t hash_code) = 0;
+
  protected:
   explicit YBSqlOp(const std::shared_ptr<YBTable>& table);
 };
@@ -251,6 +254,9 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
 
   // Set the row key from the primary key in YSQLWriteRequestPB.
   virtual Status SetKey() OVERRIDE;
+
+  // Set the hash key in the partial row of this YSQL operation.
+  virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
   virtual Type type() const OVERRIDE {
@@ -290,6 +296,9 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
 
   // Set the row key from the primary key in YSQLReadRequestPB.
   virtual Status SetKey() OVERRIDE;
+
+  // Set the hash key in the partial row of this YSQL operation.
+  virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
   virtual Type type() const OVERRIDE { return YSQL_READ; }

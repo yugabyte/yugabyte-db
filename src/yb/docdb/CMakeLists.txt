@@ -28,7 +28,8 @@ set(DOCDB_SRCS
     primitive_value.cc
     value.cc
     subdocument.cc
-    value_type.cc)
+    value_type.cc
+    ysql_scanspec.cc)
 
 set(DOCDB_DEPS
     rocksdb

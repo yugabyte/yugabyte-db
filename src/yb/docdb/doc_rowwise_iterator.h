@@ -14,6 +14,7 @@
 #include "yb/common/scan_spec.h"
 #include "yb/common/timestamp.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/ysql_scanspec.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
 
@@ -50,6 +51,12 @@ class DocRowwiseIterator : public RowwiseIterator {
 
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
 
+  // Init YSQL read scan
+  Status Init(const YSQLScanSpec& spec);
+
+  // Read next row into YSQL row block
+  Status NextBlock(const YSQLScanSpec& spec, YSQLRowBlock *rowblock);
+
  private:
   DocKey KuduToDocKey(const EncodedKey &encoded_key) {
     return DocKey::FromKuduEncodedKey(encoded_key, schema_);
@@ -59,6 +66,9 @@ class DocRowwiseIterator : public RowwiseIterator {
   // given RowBlockRow. The destination row's schema must match that of the projection associated
   // with this iterator.
   Status PrimitiveValueToKudu(int column_index, const PrimitiveValue& value, RowBlockRow* dest_row);
+
+  // Get the non-key column values of a YSQL row.
+  Status GetValues(const Schema& projection, vector<PrimitiveValue>* values);
 
   const Schema& projection_;
 

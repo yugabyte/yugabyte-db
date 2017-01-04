@@ -87,8 +87,11 @@ class PrimitiveValue {
   // Construct a primitive value from a YSQLValuePB.
   static PrimitiveValue FromYSQLValuePB(const YSQLValuePB& value);
 
-  // Set a primitive value in a YSQLRow column.
-  static void SetYSQLRowColumn(const PrimitiveValue& value, YSQLRow* row, size_t col_idx);
+  // Construct a primitive value from a YSQLValue.
+  static PrimitiveValue FromYSQLValue(const YSQLValue& value);
+
+  // Set a primitive value in a YSQLValue.
+  void ToYSQLValue(YSQLValue* v) const;
 
   ValueType value_type() const { return type_; }
 
