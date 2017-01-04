@@ -94,7 +94,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	ListCell	*option;
 	JsonDecodingData *data;
 
-	data = palloc(sizeof(JsonDecodingData));
+	data = palloc0(sizeof(JsonDecodingData));
 	data->context = AllocSetContextCreate(TopMemoryContext,
 										"text conversion context",
 										ALLOCSET_DEFAULT_MINSIZE,
