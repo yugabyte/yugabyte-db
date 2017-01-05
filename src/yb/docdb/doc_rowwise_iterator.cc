@@ -99,8 +99,8 @@ bool DocRowwiseIterator::HasNext() const {
 
   if (done_) return false;
 
-  // Use empty slice as initial previous key value in order to not be equal to real key.
-  rocksdb::Slice prev_rocksdb_key{};
+  // Use empty string as initial previous key value in order to not be equal to real key.
+  string prev_rocksdb_key;
 
   while (true) {
     if (!db_iter_->Valid() ||
@@ -121,7 +121,7 @@ bool DocRowwiseIterator::HasNext() const {
           "Infinite loop detected at $0", subdoc_key_.ToString());
       return true;
     }
-    prev_rocksdb_key = db_iter_->key();
+    prev_rocksdb_key = db_iter_->key().ToString();
 
     if (subdoc_key_.num_subkeys() == 1) {
       // Even without optional init markers (i.e. if we require an object init marker at the top of
