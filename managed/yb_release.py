@@ -9,6 +9,7 @@ import argparse
 
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, generate_checksum
+from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
   - Builds the React API and generates production files (js, css, etc)
@@ -26,7 +27,9 @@ parser = argparse.ArgumentParser()
 release_types = ["docker", "file"]
 parser.add_argument('--type', action='store', choices=release_types,
                    default="file", help='Provide a release type')
-parser.add_argument('--publish', action="store_true")
+parser.add_argument('--publish', action='store_true',
+                    help='Publish release to S3.')
+parser.add_argument('--destination', help='Copy release to Destination folder.')
 args = parser.parse_args()
 
 try:
@@ -66,6 +69,10 @@ try:
             log_message(logging.INFO, "Publish the release to S3")
             generate_checksum(release_file)
             publish_release(script_dir, release_file)
+        elif args.destination:
+            if not os.path.exists(args.destination):
+                raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
+            shutil.copy(release_file, args.destination)
 
 except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
