@@ -7,5 +7,5 @@ fi
 
 . "$DEVOPS_HOME/bin/"/common.sh
 activate_virtualenv
-"$( dirname "${BASH_SOURCE[0]}" )"/yw_release.py "$@"
+"$( dirname "${BASH_SOURCE[0]}" )"/yb_release.py "$@"
 
