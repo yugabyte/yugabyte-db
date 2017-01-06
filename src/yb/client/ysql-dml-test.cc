@@ -493,6 +493,73 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
   }
 }
 
+TEST_F(YsqlDmlTest, TestSelectWithoutConditionWithLimit) {
+  for (int32_t i = 0; i < 100; i++) {
+    const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
+    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    YSQLWriteRequestPB* req;
+
+    // insert 100 rows:
+    // insert into t values (1, 'a', 2, 'b', 3, 'c');
+    // insert into t values (1, 'a', 3, 'b', 4, 'c');
+    // insert into t values (1, 'a', 4, 'b', 5, 'c');
+    // ...
+    // insert into t values (1, 'a', 101, 'b', 102, 'c');
+    const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
+    req = op->mutable_request();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    SetInt32ColumnValue(req->add_range_column_values(), "r1", 2 + i);
+    SetStringColumnValue(req->add_range_column_values(), "r2", "b");
+    SetInt32ColumnValue(req->add_column_values(), "c1", 3 + i);
+    SetStringColumnValue(req->add_column_values(), "c2", "c");
+    CHECK_OK(session->Apply(op));
+
+    Synchronizer s;
+    YBStatusMemberCallback<Synchronizer> cb(&s, &Synchronizer::StatusCB);
+    session->FlushAsync(&cb);
+    CHECK_OK(s.Wait());
+
+    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
+  }
+
+  {
+    // select * from t where h1 = 1 and h2 = 'a' limit 5;
+    const shared_ptr<YBSqlReadOp> op = NewReadOp();
+    auto* const req = op->mutable_request();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    req->add_column_ids(ColumnId("h1"));
+    req->add_column_ids(ColumnId("h2"));
+    req->add_column_ids(ColumnId("r1"));
+    req->add_column_ids(ColumnId("r2"));
+    req->add_column_ids(ColumnId("c1"));
+    req->add_column_ids(ColumnId("c2"));
+    req->set_limit(5);
+    const shared_ptr<YBSession> session(client_->NewSession(true /* read_only */));
+    CHECK_OK(session->Apply(op));
+
+    // Expect 5 rows:
+    //   1, 'a', 2, 'b', 3, 'c'
+    //   1, 'a', 3, 'b', 4, 'c'
+    //   1, 'a', 4, 'b', 5, 'c'
+    //   1, 'a', 5, 'b', 6, 'c'
+    //   1, 'a', 6, 'b', 7, 'c'
+    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
+    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    EXPECT_EQ(rowblock->row_count(), 5);
+    for (int32_t i = 0; i < 5; i++) {
+      const auto& row = rowblock->row(i);
+      EXPECT_EQ(row.int32_value(0), 1);
+      EXPECT_EQ(row.string_value(1), "a");
+      EXPECT_EQ(row.int32_value(2), 2 + i);
+      EXPECT_EQ(row.string_value(3), "b");
+      EXPECT_EQ(row.int32_value(4), 3 + i);
+      EXPECT_EQ(row.string_value(5), "c");
+    }
+  }
+}
+
 TEST_F(YsqlDmlTest, TestUpsert) {
   {
     // update t set c1 = 3 where h1 = 1 and h2 = 'a' and r1 = 2 and r2 = 'b';

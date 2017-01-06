@@ -276,9 +276,11 @@ vector<YSQLValue> YSQLScanRange::range_values(const bool lower_bound) const {
 //-------------------------------------- YSQL scan spec ---------------------------------------
 YSQLScanSpec::YSQLScanSpec(
     const Schema& schema, const uint32_t hash_code,
-    const std::vector<PrimitiveValue>& hashed_components, const YSQLConditionPB& condition)
-    : hash_code_(hash_code), hashed_components_(hashed_components), condition_(condition),
-      range_(YSQLScanRange(schema, condition)) {
+    const std::vector<PrimitiveValue>& hashed_components, const YSQLConditionPB* condition,
+    const size_t row_count_limit)
+    : hash_code_(hash_code), hashed_components_(hashed_components),
+      condition_(condition), row_count_limit_(row_count_limit),
+      range_(condition != nullptr ? new YSQLScanRange(schema, *condition) : nullptr) {
 }
 
 namespace {
@@ -460,18 +462,24 @@ Status EvaluateCondition(
 } // namespace
 
 DocKey YSQLScanSpec::range_doc_key(const bool lower_bound) const {
-  const vector<YSQLValue> range_values = range_.range_values(lower_bound);
   vector<PrimitiveValue> range_components;
-  range_components.reserve(range_values.size());
-  for (const auto& value : range_values) {
-    range_components.emplace_back(PrimitiveValue::FromYSQLValue(value));
+  if (range_.get() != nullptr) {
+    const vector<YSQLValue> range_values = range_->range_values(lower_bound);
+    range_components.reserve(range_values.size());
+    for (const auto& value : range_values) {
+      range_components.emplace_back(PrimitiveValue::FromYSQLValue(value));
+    }
   }
   return DocKey(hash_code_, hashed_components_, range_components);
 }
 
 // Evaluate the WHERE condition for the given row.
 Status YSQLScanSpec::Match(const unordered_map<int32_t, YSQLValue>& row, bool* match) const {
-  return EvaluateCondition(condition_, row, match);
+  if (condition_ != nullptr) {
+    return EvaluateCondition(*condition_, row, match);
+  }
+  *match = true;
+  return Status::OK();
 }
 
 } // namespace docdb

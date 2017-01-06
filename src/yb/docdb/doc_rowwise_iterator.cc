@@ -410,6 +410,13 @@ Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* row
     }
   }
 
+  // Done if we have hit the row count limit. Since we are read one row in each NextBlock() call
+  // above, it shouldn't be possible for the row count to jump pass the limit suddenly. But just
+  // to play safe in case we read more than 1 row above and didn't
+  if (rowblock->row_count() == spec.row_count_limit()) {
+    done_ = true;
+  }
+
   return Status::OK();
 }
 

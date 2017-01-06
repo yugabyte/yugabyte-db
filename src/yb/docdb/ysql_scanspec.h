@@ -62,7 +62,8 @@ class YSQLScanSpec {
  public:
   YSQLScanSpec(
       const Schema& schema, uint32_t hash_code,
-      const std::vector<PrimitiveValue>& hashed_components, const YSQLConditionPB& condition);
+      const std::vector<PrimitiveValue>& hashed_components, const YSQLConditionPB* condition,
+      size_t row_count_limit);
 
   // Return the inclusive lower and upper bounds of the scan.
   DocKey lower_bound() const { return range_doc_key(true /* lower_bound */); }
@@ -72,7 +73,12 @@ class YSQLScanSpec {
   Status Match(const std::unordered_map<int32_t, YSQLValue>& row, bool* match) const;
 
   // Return all non-key columns referenced in the condition.
-  const std::unordered_set<ColumnId>& non_key_columns() const { return range_.non_key_columns(); }
+  const std::unordered_set<ColumnId>* non_key_columns() const {
+    return range_.get() != nullptr ? &range_->non_key_columns() : nullptr;
+  }
+
+  // Return the max number of rows to return.
+  size_t row_count_limit() const { return row_count_limit_; }
 
  private:
   // Return inclusive lower/upper range doc key
@@ -82,11 +88,14 @@ class YSQLScanSpec {
   const uint32_t hash_code_;
   const std::vector<PrimitiveValue>& hashed_components_;
 
-  // The WHERE condition (clause) of the scan.
-  const YSQLConditionPB& condition_;
+  // The WHERE condition (clause) of the scan. Can be null.
+  const YSQLConditionPB* condition_;
+
+  // Max number of rows to return.
+  const size_t row_count_limit_;
 
   // The scan range.
-  const YSQLScanRange range_;
+  const std::unique_ptr<const YSQLScanRange> range_;
 };
 
 } // namespace docdb

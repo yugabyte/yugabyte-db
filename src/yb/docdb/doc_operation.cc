@@ -207,6 +207,14 @@ Status YSQLReadOperation::Execute(
     rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
     YSQLRowBlock* rowblock) {
 
+  if (request_.has_order_by_column_id()) {
+    return STATUS(RuntimeError, "order by query not supported yet");
+  }
+
+  if (request_.has_limit() && request_.limit() == 0) {
+    return Status::OK();
+  }
+
   // Populate dockey from YSQL key columns.
   docdb::DocKeyHash hash_code = request_.hash_code();
   vector<PrimitiveValue> hashed_components;
@@ -215,7 +223,10 @@ Status YSQLReadOperation::Execute(
       schema.num_hash_key_columns(), &hashed_components);
 
   // Construct the scan spec basing on the WHERE condition.
-  YSQLScanSpec spec(schema, hash_code, hashed_components, request_.condition());
+  YSQLScanSpec spec(
+      schema, hash_code, hashed_components,
+      request_.has_condition() ? &request_.condition() : nullptr,
+      request_.has_limit() ? request_.limit() : std::numeric_limits<std::size_t>::max());
 
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
   // When DocRowwiseIterator::NextBlock() populates a YSQLRowBlock, it uses this projection only to
@@ -228,7 +239,9 @@ Status YSQLReadOperation::Execute(
       non_key_columns.insert(column_id);
     }
   }
-  non_key_columns.insert(spec.non_key_columns().begin(), spec.non_key_columns().end());
+  if (spec.non_key_columns() != nullptr) {
+    non_key_columns.insert(spec.non_key_columns()->begin(), spec.non_key_columns()->end());
+  }
 
   Schema projection;
   schema.CreateProjectionByIdsIgnoreMissing(
