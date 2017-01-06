@@ -250,13 +250,9 @@ export default class UniverseTable extends Component {
     const tableHeaderStyle = {"display": "none"};
     const tableBodyStyle = {"marginBottom": "1%","paddingBottom": "1%"};
 
-    const selectRowProp = {
-      bgColor: "rgb(211,211,211)"
-    };
-
     return (
       <div className="row">
-        <BootstrapTable data={universeDisplay} selectRow={selectRowProp}
+        <BootstrapTable data={universeDisplay}
                         trClassName="data-table-row" bodyStyle={tableBodyStyle} headerStyle={tableHeaderStyle}>
           <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
           <TableHeaderColumn dataField="name"
