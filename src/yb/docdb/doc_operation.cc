@@ -214,9 +214,28 @@ Status YSQLReadOperation::Execute(
       request_.hashed_column_values(), schema, 0,
       schema.num_hash_key_columns(), &hashed_components);
 
-  // Scan docdb for the row.
-  DocRowwiseIterator iterator(rowblock->schema(), schema, rocksdb, timestamp);
+  // Construct the scan spec basing on the WHERE condition.
   YSQLScanSpec spec(schema, hash_code, hashed_components, request_.condition());
+
+  // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
+  // When DocRowwiseIterator::NextBlock() populates a YSQLRowBlock, it uses this projection only to
+  // scan sub-documents. YSQLRowBlock's own projection schema is used to pupulate the row block,
+  // including key columns if any.
+  std::unordered_set<ColumnId> non_key_columns;
+  for (size_t idx = 0; idx < rowblock->schema().num_columns(); idx++) {
+    const auto column_id = rowblock->schema().column_id(idx);
+    if (!schema.is_key_column(schema.find_column_by_id(column_id))) {
+      non_key_columns.insert(column_id);
+    }
+  }
+  non_key_columns.insert(spec.non_key_columns().begin(), spec.non_key_columns().end());
+
+  Schema projection;
+  schema.CreateProjectionByIdsIgnoreMissing(
+      vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection);
+
+  // Scan docdb for the row.
+  DocRowwiseIterator iterator(projection, schema, rocksdb, timestamp);
   RETURN_NOT_OK(iterator.Init(spec));
   while (iterator.HasNext()) {
     RETURN_NOT_OK(iterator.NextBlock(spec, rowblock));

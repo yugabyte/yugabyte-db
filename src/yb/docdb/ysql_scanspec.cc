@@ -30,6 +30,7 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
   }
 
   const auto& operands = condition.operands();
+  const bool has_range_column = ProcessOperands(operands);
 
   switch (condition.op()) {
 
@@ -58,58 +59,62 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
     // exclusive lower bound in DocRowwiseIterator or increment the bound value by "1" to become
     // inclusive bound. Same for > and >=.
     case YSQL_OP_EQUAL: {
-      // - <column> = <value> --> lower/upper bounds = <value>
-      YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-      const int32_t column_id = col_expr->column_id();
-      if (!IsRangeColumn(column_id)) return;
-      YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
-      ranges_.at(column_id).lower_bound = value;
-      ranges_.at(column_id).upper_bound = value;
+      if (has_range_column) {
+        // - <column> = <value> --> lower/upper bounds = <value>
+        YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        const int32_t column_id = col_expr->column_id();
+        YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
+        ranges_.at(column_id).lower_bound = value;
+        ranges_.at(column_id).upper_bound = value;
+      }
       return;
     }
     case YSQL_OP_LESS_THAN:
     case YSQL_OP_LESS_THAN_EQUAL: {
-      YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-      const int32_t column_id = col_expr->column_id();
-      if (!IsRangeColumn(column_id)) return;
-      YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
-      if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
-        // - <column> <= <value> --> upper_bound = <value>
-        ranges_.at(column_id).upper_bound = value;
-      } else {
-        // - <value> <= <column> --> lower_bound = <value>
-        ranges_.at(column_id).lower_bound = value;
+      if (has_range_column) {
+        YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        const int32_t column_id = col_expr->column_id();
+        YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
+        if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+          // - <column> <= <value> --> upper_bound = <value>
+          ranges_.at(column_id).upper_bound = value;
+        } else {
+          // - <value> <= <column> --> lower_bound = <value>
+          ranges_.at(column_id).lower_bound = value;
+        }
       }
       return;
     }
     case YSQL_OP_GREATER_THAN:
     case YSQL_OP_GREATER_THAN_EQUAL: {
-      YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
-      const int32_t column_id = col_expr->column_id();
-      if (!IsRangeColumn(column_id)) return;
-      YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
-      if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
-        // - <column> >= <value> --> lower_bound = <value>
-        ranges_.at(column_id).lower_bound = value;
-      } else {
-        // - <value> >= <column> --> upper_bound = <value>
-        ranges_.at(column_id).upper_bound = value;
+      if (has_range_column) {
+        YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        const int32_t column_id = col_expr->column_id();
+        YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
+        if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+          // - <column> >= <value> --> lower_bound = <value>
+          ranges_.at(column_id).lower_bound = value;
+        } else {
+          // - <value> >= <column> --> upper_bound = <value>
+          ranges_.at(column_id).upper_bound = value;
+        }
       }
       return;
     }
     case YSQL_OP_BETWEEN: {
-      // <column> BETWEEN <value_1> <value_2>:
-      // - lower_bound = <value_1>
-      // - upper_bound = <value_2>
-      CHECK_EQ(operands.size(), 3);
-      if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
-        const auto column_id = operands.Get(0).column_id();
-        if (!IsRangeColumn(column_id)) return;
-        if (operands.Get(1).expr_case() == YSQLExpressionPB::ExprCase::kValue) {
-          ranges_.at(column_id).lower_bound = YSQLValue::FromYSQLValuePB(operands.Get(1).value());
-        }
-        if (operands.Get(2).expr_case() == YSQLExpressionPB::ExprCase::kValue) {
-          ranges_.at(column_id).upper_bound = YSQLValue::FromYSQLValuePB(operands.Get(2).value());
+      if (has_range_column) {
+        // <column> BETWEEN <value_1> <value_2>:
+        // - lower_bound = <value_1>
+        // - upper_bound = <value_2>
+        CHECK_EQ(operands.size(), 3);
+        if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+          const auto column_id = operands.Get(0).column_id();
+          if (operands.Get(1).expr_case() == YSQLExpressionPB::ExprCase::kValue) {
+            ranges_.at(column_id).lower_bound = YSQLValue::FromYSQLValuePB(operands.Get(1).value());
+          }
+          if (operands.Get(2).expr_case() == YSQLExpressionPB::ExprCase::kValue) {
+            ranges_.at(column_id).upper_bound = YSQLValue::FromYSQLValuePB(operands.Get(2).value());
+          }
         }
       }
       return;
@@ -124,6 +129,8 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       CHECK_EQ(operands.Get(1).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
       const YSQLScanRange left(schema_, operands.Get(0).condition());
       const YSQLScanRange right(schema_, operands.Get(1).condition());
+      non_key_columns_.insert(left.non_key_columns_.begin(), left.non_key_columns_.end());
+      non_key_columns_.insert(right.non_key_columns_.begin(), right.non_key_columns_.end());
       for (auto& elem : ranges_) {
         const auto column_id = elem.first;
         auto& range = elem.second;
@@ -158,6 +165,8 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       CHECK_EQ(operands.Get(1).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
       const YSQLScanRange left(schema_, operands.Get(0).condition());
       const YSQLScanRange right(schema_, operands.Get(1).condition());
+      non_key_columns_.insert(left.non_key_columns_.begin(), left.non_key_columns_.end());
+      non_key_columns_.insert(right.non_key_columns_.begin(), right.non_key_columns_.end());
       for (auto& elem : ranges_) {
         const auto column_id = elem.first;
         auto& range = elem.second;
@@ -182,6 +191,7 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       CHECK_EQ(operands.size(), 1);
       CHECK_EQ(operands.Get(0).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
       const YSQLScanRange other(schema_, operands.Get(0).condition());
+      non_key_columns_.insert(other.non_key_columns_.begin(), other.non_key_columns_.end());
       for (auto& elem : ranges_) {
         const auto column_id = elem.first;
         auto& range = elem.second;
@@ -218,12 +228,29 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
 
     // default: fall through
   }
+
   LOG(FATAL) << "Unknown op " << condition.op();
 }
 
-bool YSQLScanRange::IsRangeColumn(const int32_t column_id) const {
-  const size_t idx = schema_.find_column_by_id(ColumnId(column_id));
-  return schema_.is_key_column(idx) && !schema_.column(idx).is_hash_key();
+// Process operands. Save non-key columns and return true if there is a range column in the
+// operands. Note that this method needs to take care of the non-key column ids in the current
+// condition node only. The recursion is done in the constructor that recurses into the
+// conditions under AND, OR, NOT and merges the non-key column IDs from the constituent conditions.
+bool YSQLScanRange::ProcessOperands(
+    const google::protobuf::RepeatedPtrField<yb::YSQLExpressionPB>& operands) {
+  bool has_range_column = false;
+  for (const auto& operand : operands) {
+    if (operand.expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+      const auto id = ColumnId(operand.column_id());
+      const size_t idx = schema_.find_column_by_id(id);
+      if (!schema_.is_key_column(idx)) {
+        non_key_columns_.insert(id);
+      } else if (!schema_.column(idx).is_hash_key()) {
+        has_range_column = true;
+      }
+    }
+  }
+  return has_range_column;
 }
 
 // Return the lower/upper range components for the scan. We can use the range group as the bounds

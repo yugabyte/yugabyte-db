@@ -38,14 +38,22 @@ class YSQLScanRange {
   // Return the table schema of this scan range.
   const Schema& schema() const { return schema_; }
 
+  // Return all non-key columns referenced in the condition.
+  const std::unordered_set<ColumnId>& non_key_columns() const { return non_key_columns_; }
+
  private:
-  // Determine if the column is a range column.
-  bool IsRangeColumn(int32_t column_id) const;
+  // Process operands. Save non-key columns and return true if there is a range column in the
+  // operands. Note that this method needs to take care of the non-key column ids in the current
+  // condition node only. The recursion is done in the constructor that recurses into the conditions
+  // under AND, OR, NOT and merges the non-key column IDs from the constituent conditions.
+  bool ProcessOperands(const google::protobuf::RepeatedPtrField<yb::YSQLExpressionPB>& operands);
 
   // Table schema being scanned.
   const Schema& schema_;
   // Mapping of column id to the column value ranges (inclusive lower/upper bounds) to scan.
   std::unordered_map<int32_t, YSQLRange> ranges_;
+  // Non-key column ids referenced in the condition.
+  std::unordered_set<ColumnId> non_key_columns_;
 };
 
 
@@ -62,6 +70,9 @@ class YSQLScanSpec {
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   Status Match(const std::unordered_map<int32_t, YSQLValue>& row, bool* match) const;
+
+  // Return all non-key columns referenced in the condition.
+  const std::unordered_set<ColumnId>& non_key_columns() const { return range_.non_key_columns(); }
 
  private:
   // Return inclusive lower/upper range doc key

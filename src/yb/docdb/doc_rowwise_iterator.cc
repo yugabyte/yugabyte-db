@@ -352,39 +352,49 @@ Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* row
     return STATUS(NotFound, "end of iter");
   }
 
-  // Initialize all the row columns and populate the key column values from the doc key.
-  // The key column values in doc key were written in the same order as in the table schema
-  // (see DocKeyFromYSQLKey).
+  // Populate the key column values from the doc key. The key column values in doc key were
+  // written in the same order as in the table schema (see DocKeyFromYSQLKey).
   unordered_map<int32_t, YSQLValue> value_map;
   auto hashed_component = subdoc_key_.doc_key().hashed_group().begin();
   auto range_component = subdoc_key_.doc_key().range_group().begin();
   const auto hashed_end = subdoc_key_.doc_key().hashed_group().end();
   const auto range_end = subdoc_key_.doc_key().range_group().end();
-  for (size_t i = 0; i < schema_.num_columns(); i++) {
+  for (size_t i = 0; i < schema_.num_key_columns(); i++) {
     const auto column_id = schema_.column_id(i);
     const auto data_type = schema_.column(i).type_info()->type();
     const auto& elem = value_map.emplace(column_id, YSQLValue(data_type));
 
     if (schema_.column(i).is_hash_key()) {
-      CHECK(hashed_component != hashed_end)
-          << "Hashed column value missing for column id " << column_id;
+      if (hashed_component == hashed_end) {
+        return STATUS_SUBSTITUTE(
+            Corruption, "Hashed column value missing for column id $0", column_id);
+      }
       hashed_component->ToYSQLValue(&elem.first->second);
       hashed_component++;
-    } else if (schema_.is_key_column(i)) {
-      CHECK(range_component != range_end)
-          << "Range column value missing for column id " << column_id;
+    } else {
+      if (range_component == range_end) {
+        return STATUS_SUBSTITUTE(
+            Corruption, "Range column value missing for column id $0", column_id);
+      }
       range_component->ToYSQLValue(&elem.first->second);
       range_component++;
     }
   }
+  if (hashed_component != hashed_end) {
+    return STATUS(Corruption, "The row key in docdb contains too many hashed column values");
+  }
+  if (range_component != range_end) {
+    return STATUS(Corruption, "The row key in docdb contains too many range column values");
+  }
 
   // Get the non-key column values of a YSQL row.
   vector<PrimitiveValue> values;
-  RETURN_NOT_OK(GetValues(schema_, &values));
-  for (size_t i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
-    const auto& column_id = schema_.column_id(i);
-    const auto& value = values[i - schema_.num_key_columns()];
-    value.ToYSQLValue(&value_map.at(column_id));
+  RETURN_NOT_OK(GetValues(projection_, &values));
+  for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
+    const auto& column_id = projection_.column_id(i);
+    const auto data_type = projection_.column(i).type_info()->type();
+    const auto& elem = value_map.emplace(column_id, YSQLValue(data_type));
+    values[i - projection_.num_key_columns()].ToYSQLValue(&elem.first->second);
   }
 
   // Match the row with the where condition before adding to the row block.
