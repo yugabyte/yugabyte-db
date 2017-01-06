@@ -53,4 +53,12 @@ public class TablesController extends AuthenticatedController {
     resultNode.add(node2);
     return ok(resultNode);
   }
+
+  public Result index(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+    ObjectNode response = Json.newObject();
+    response.put("tableType", "cassandra");
+    response.put("tableName", "table1");
+    response.put("tableUUID", tableUUID.toString());
+    return ok(response);
+  }
 }

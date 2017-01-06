@@ -1,8 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 import { FETCH_TABLES_LIST, FETCH_TABLES_LIST_SUCCESS,
-  FETCH_TABLES_LIST_FAILURE, RESET_TABLES_LIST } from '../actions/tables';
+  FETCH_TABLES_LIST_FAILURE, RESET_TABLES_LIST, FETCH_TABLE_DETAIL,
+  FETCH_TABLE_DETAIL_SUCCESS, FETCH_TABLE_DETAIL_FAILURE, RESET_TABLE_DETAIL } from '../actions/tables';
 
-const INITIAL_STATE = {universeTablesList: []};
+const INITIAL_STATE = {universeTablesList: [], currentTableDetail: {}};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -16,6 +17,14 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, universeTablesList: [], error: error, loading: false};
     case RESET_TABLES_LIST:
       return { ...state, universeTablesList: [], error: null, loading: false};
+    case FETCH_TABLE_DETAIL:
+      return { ...state, currentTableDetail: {}, loading: true, error: null};
+    case FETCH_TABLE_DETAIL_SUCCESS:
+      return { ...state, currentTableDetail: action.payload.data, loading: false, error: null};
+    case FETCH_TABLE_DETAIL_FAILURE:
+      return {...state, currentTableDetail: {}, loading: false, error: action.payload.data.error};
+    case RESET_TABLE_DETAIL:
+      return {...state, currentTableDetail: {}}
     default:
       return state;
   }

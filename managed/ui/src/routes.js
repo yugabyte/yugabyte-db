@@ -14,6 +14,7 @@ import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
 import SetupDataCenter from './pages/SetupDataCenter';
 import Metrics from './pages/Metrics';
+import TableDetail from './pages/TableDetail';
 
 function validateSession(store, replacePath, callback) {
   let token = localStorage.getItem('customer_token');
@@ -56,6 +57,7 @@ export default (store) => {
         <Route path="/universes" component={Universes} >
           <IndexRoute component={ListUniverse} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
+          <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail}/>
         </Route>
         <Route path="/tasks" component={Alerts} />
         <Route path="/metrics" component={Metrics} />
