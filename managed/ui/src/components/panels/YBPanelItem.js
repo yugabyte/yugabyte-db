@@ -7,10 +7,8 @@ import './stylesheets/YBPanelItem.css'
 export default class YBPanelItem extends Component {
 
   render() {
-    const {hideToolBox, name, children} = this.props;
+    const { name, children} = this.props;
     var headerTextClass = "";
-    var toolBoxVisibleClass = hideToolBox === true ? "hidden" : "";
-    var toolBoxClass = `${toolBoxVisibleClass} nav navbar-right panel_toolbox`;
     return (
       <div>
         <div className="row">

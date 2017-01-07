@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { isValidObject, isValidArray } from '../../utils/ObjectUtils';
 import moment from 'moment';
