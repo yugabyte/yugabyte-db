@@ -21,10 +21,10 @@ SqlProcessor::SqlProcessor(shared_ptr<YBClient> client)
       is_used_(false) {
 
   write_session_->SetTimeoutMillis(kSessionTimeoutMs);
-  write_session_->SetFlushMode(YBSession::MANUAL_FLUSH);
+  CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   read_session_->SetTimeoutMillis(kSessionTimeoutMs);
-  read_session_->SetFlushMode(YBSession::MANUAL_FLUSH);
+  CHECK_OK(read_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
 SqlProcessor::~SqlProcessor() {

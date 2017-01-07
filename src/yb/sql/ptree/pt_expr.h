@@ -121,7 +121,7 @@ class PTExprOperator : public PTExpr {
   }
 
   // Access to op_.
-  ExprOperator expr_op() const {
+  virtual ExprOperator expr_op() const OVERRIDE {
     return op_;
   }
 
@@ -451,12 +451,12 @@ class PTExprAlias : public PTExpr {
   }
 
   // Expresion return type in Cassandra format.
-  virtual yb::DataType type_id() const {
+  virtual yb::DataType type_id() const OVERRIDE {
     return expr_->type_id();
   }
 
   // Expresion return type in DocDB format.
-  virtual client::YBColumnSchema::DataType sql_type() const {
+  virtual client::YBColumnSchema::DataType sql_type() const OVERRIDE {
     return expr_->sql_type();
   }
 

@@ -49,8 +49,7 @@ class TestCQLService : public YBTableTestBase {
 };
 
 void TestCQLService::SetUp() {
-  // TODO(Robert) - start YB cluster and test SQL execution using Cassandra cpp driver
-  // YBTableTestBase::SetUp();
+  YBTableTestBase::SetUp();
 
   CQLServerOptions opts;
   cql_server_port_ = GetFreePort(&cql_port_lock_);
@@ -61,9 +60,8 @@ void TestCQLService::SetUp() {
   opts.fs_opts.wal_paths = {fs_root};
   opts.fs_opts.data_paths = {fs_root};
 
-  // TODO(Robert) - Get YB master's addresses to connect to
-  // auto master_rpc_addrs = master_rpc_addresses_as_strings();
-  // opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
+  auto master_rpc_addrs = master_rpc_addresses_as_strings();
+  opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
 
   server_.reset(new CQLServer(opts));
   LOG(INFO) << "Starting CQL server...";
@@ -80,8 +78,7 @@ void TestCQLService::SetUp() {
 
 void TestCQLService::TearDown() {
   EXPECT_OK(client_sock_.Close());
-  // TODO(Robert)
-  // YBTableTestBase::TearDown();
+  YBTableTestBase::TearDown();
 }
 
 Status TestCQLService::SendRequestAndGetResponse(

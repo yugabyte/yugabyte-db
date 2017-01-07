@@ -188,13 +188,13 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   // Returns table name.
-  const char *table_name() const {
+  virtual const char *table_name() const OVERRIDE {
     // CQL only allows one table at a time.
     return from_clause_->element(0)->table_name().c_str();
   }
 
   // Returns location of table name.
-  const YBLocation& table_loc() const {
+  virtual const YBLocation& table_loc() const OVERRIDE {
     return from_clause_->loc();
   }
 

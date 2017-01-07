@@ -129,7 +129,7 @@ class YsqlDmlTest : public YBTest {
     column_value->mutable_value()->set_int32_value(value);
 
     if (prow != nullptr) {
-      prow->SetInt32(prow_index, value);
+      CHECK_OK(prow->SetInt32(prow_index, value));
     }
   }
 
@@ -142,7 +142,7 @@ class YsqlDmlTest : public YBTest {
     column_value->mutable_value()->set_string_value(value);
 
     if (prow != nullptr) {
-      prow->SetString(prow_index, value);
+      CHECK_OK(prow->SetString(prow_index, value));
     }
   }
 
@@ -530,8 +530,9 @@ TEST_F(YsqlDmlTest, TestSelectWithoutConditionWithLimit) {
     // insert into t values (1, 'a', 101, 'b', 102, 'c');
     const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
     req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     SetInt32ColumnValue(req->add_range_column_values(), "r1", 2 + i);
     SetStringColumnValue(req->add_range_column_values(), "r2", "b");
     SetInt32ColumnValue(req->add_column_values(), "c1", 3 + i);
@@ -550,8 +551,9 @@ TEST_F(YsqlDmlTest, TestSelectWithoutConditionWithLimit) {
     // select * from t where h1 = 1 and h2 = 'a' limit 5;
     const shared_ptr<YBSqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
-    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1);
-    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a");
+    YBPartialRow *prow = op->mutable_row();
+    SetInt32ColumnValue(req->add_hashed_column_values(), "h1", 1, prow, 0);
+    SetStringColumnValue(req->add_hashed_column_values(), "h2", "a", prow, 1);
     req->add_column_ids(ColumnId("h1"));
     req->add_column_ids(ColumnId("h2"));
     req->add_column_ids(ColumnId("r1"));

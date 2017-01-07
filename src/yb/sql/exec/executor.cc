@@ -175,7 +175,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       int8_t actual_value = static_cast<int8_t>(int_value.value_);
       col_pb->mutable_value()->set_int8_value(actual_value);
       if (row != nullptr) {
-        row->SetInt8(col_index, actual_value);
+        RETURN_NOT_OK(row->SetInt8(col_index, actual_value));
       }
       break;
     }
@@ -188,7 +188,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       int16_t actual_value = static_cast<int16_t>(int_value.value_);
       col_pb->mutable_value()->set_int16_value(actual_value);
       if (row != nullptr) {
-        row->SetInt16(col_index, actual_value);
+        RETURN_NOT_OK(row->SetInt16(col_index, actual_value));
       }
       break;
     }
@@ -201,7 +201,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       int32_t actual_value = static_cast<int32_t>(int_value.value_);
       col_pb->mutable_value()->set_int32_value(actual_value);
       if (row != nullptr) {
-        row->SetInt32(col_index, actual_value);
+        RETURN_NOT_OK(row->SetInt32(col_index, actual_value));
       }
       break;
     }
@@ -214,7 +214,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       int64_t actual_value = int_value.value_;
       col_pb->mutable_value()->set_int64_value(actual_value);
       if (row != nullptr) {
-        row->SetInt64(col_index, actual_value);
+        RETURN_NOT_OK(row->SetInt64(col_index, actual_value));
       }
       break;
     }
@@ -226,7 +226,8 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       col_pb->mutable_value()->set_string_value(string_value.value_->data(),
                                                 string_value.value_->size());
       if (row != nullptr) {
-        row->SetString(col_index, Slice(string_value.value_->data(), string_value.value_->size()));
+        RETURN_NOT_OK(row->SetString(
+            col_index, Slice(string_value.value_->data(), string_value.value_->size())));
       }
       break;
     }
@@ -239,7 +240,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       float actual_value = double_value.value_;
       col_pb->mutable_value()->set_float_value(actual_value);
       if (row != nullptr) {
-        row->SetFloat(col_index, actual_value);
+        RETURN_NOT_OK(row->SetFloat(col_index, actual_value));
       }
       break;
     }
@@ -252,7 +253,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       double actual_value = double_value.value_;
       col_pb->mutable_value()->set_double_value(actual_value);
       if (row != nullptr) {
-        row->SetDouble(col_index, actual_value);
+        RETURN_NOT_OK(row->SetDouble(col_index, actual_value));
       }
       break;
     }
@@ -264,7 +265,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       LOG(FATAL) << "BOOL type is not yet supported";
       col_pb->mutable_value()->set_bool_value(bool_value.value_);
       if (row != nullptr) {
-        row->SetBool(col_index, bool_value.value_);
+        RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));
       }
       break;
     }

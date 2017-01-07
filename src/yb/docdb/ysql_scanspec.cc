@@ -226,10 +226,11 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       // No simple range can be deduced from these conditions. So the range will be unbounded.
       return;
 
-    case YSQL_OP_NOOP: FALLTHROUGH_INTENDED;
+    case YSQL_OP_NOOP:
+      break;
   }
 
-  LOG(FATAL) << "Unknown op " << condition.op();
+  LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
 }
 
 // Process operands. Save non-key columns and return true if there is a range column in the
@@ -453,10 +454,11 @@ Status EvaluateCondition(
       return Status::OK();
     }
 
-    case YSQL_OP_NOOP: FALLTHROUGH_INTENDED;
+    case YSQL_OP_NOOP:
+      break;
   }
 
-  LOG(FATAL) << "Internal error: unsupported operator " << condition.op();
+  LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
 }
 
 } // namespace

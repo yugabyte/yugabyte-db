@@ -24,9 +24,6 @@ DECLARE_string(rpc_bind_addresses);
 namespace yb {
 namespace cqlserver {
 
-using std::cout;
-using std::endl;
-
 static int CQLServerMain(int argc, char** argv) {
   InitYBOrDie();
 
@@ -42,13 +39,10 @@ static int CQLServerMain(int argc, char** argv) {
   CQLServerOptions opts;
   opts.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
   opts.master_addresses_flag = FLAGS_cqlserver_master_addrs;
-
   CQLServer server(opts);
   LOG(INFO) << "Starting CQL server...";
-  Status s = server.Start();
-  CHECK(s.ok()) << s.ToString();
+  CHECK_OK(server.Start());
   LOG(INFO) << "CQL server successfully started.";
-
   while (true) {
     SleepFor(MonoDelta::FromSeconds(60));
   }
