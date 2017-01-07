@@ -78,7 +78,8 @@ PTQualifiedName::PTQualifiedName(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
                                  const MCString::SharedPtr& name)
     : PTName(memctx, loc),
-      ptnames_(memctx) {
+      ptnames_(memctx),
+      is_system_(false) {
   Append(PTName::MakeShared(memctx, loc, name));
 }
 

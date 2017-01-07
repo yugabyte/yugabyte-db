@@ -71,6 +71,9 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   // Reply to client.
   SendResponse(cql_call, response.get());
   DVLOG(4) << cql_call->ToString() << " responded.";
+
+  // Release the processor.
+  processor->unused();
 }
 
 CQLProcessor *CQLServiceImpl::GetProcessor() {

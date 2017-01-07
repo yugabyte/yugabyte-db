@@ -22,7 +22,7 @@ public class TestSelect extends TestBase {
     SetupTable("test_select", 10);
 
     // Select data from the test table.
-    String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_select1" +
+    String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_select" +
                          "  WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;";
     ResultSet rs = session.execute(select_stmt);
     Iterator<Row> iter = rs.iterator();
