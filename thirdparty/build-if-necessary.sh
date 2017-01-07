@@ -23,63 +23,71 @@
 # In a git repo, this uses git checksum information on the thirdparty
 # tree. Otherwise, it uses a 'stamp file' approach.
 
-set -e
-set -o pipefail
+# Portions Copyright (c) YugaByte, Inc.
 
-TP_DIR=$(dirname $BASH_SOURCE)
-cd $TP_DIR
+. "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
+
+set -euo pipefail
+
+TP_DIR=$( dirname "$BASH_SOURCE" )
+cd "$TP_DIR"
 
 NEEDS_BUILD=
 
-IS_IN_GIT=$(test -d ../.git && echo true || :)
+IS_IN_GIT=$( test -d ../.git && echo true || : )
 
-if [ -n "$IS_IN_GIT" ]; then
+if [[ -n $IS_IN_GIT ]]; then
   # Determine whether this subtree in the git repo has changed since thirdparty
   # was last built
 
-  CUR_THIRDPARTY_HASH=$(cd .. && git ls-tree -d HEAD thirdparty | awk '{print $3}')
-  LAST_BUILD_HASH=$(cat .build-hash || :)
+  CUR_THIRDPARTY_HASH=$( git rev-list HEAD --max-count=1 )
+  LAST_BUILD_HASH="none"
+  if [[ -f .build-hash ]]; then
+    LAST_BUILD_HASH=$(cat .build-hash)
+  fi
   if [ "$CUR_THIRDPARTY_HASH" != "$LAST_BUILD_HASH" ]; then
-    echo "Rebuilding thirdparty: the repository has changed since thirdparty was last built."
-    echo "Old git hash: $LAST_BUILD_HASH"
-    echo "New build hash: $CUR_THIRDPARTY_HASH"
+    log "Rebuilding thirdparty: the repository has changed since thirdparty was last built."
+    log "Old git hash: $LAST_BUILD_HASH"
+    log "New build hash: $CUR_THIRDPARTY_HASH"
     NEEDS_BUILD=1
   else
     # Determine whether the developer has any local changes
     if ! ( git diff --quiet .  && git diff --cached --quiet . ) ; then
-      echo "Rebuilding thirdparty: There are local changes in the repository."
+      log "Rebuilding thirdparty: There are local changes in the repository."
       NEEDS_BUILD=1
+      # Note that even though there are local changes, we'll still create a build hash file that
+      # will make it look like we built third-party dependencies at the latest git commit without
+      # these local changes.
     else
-      echo Not rebuilding thirdparty. No changes since last build.
+      log "Not rebuilding thirdparty. No changes since last build."
     fi
   fi
 else
-  # If we aren't inside running inside a git repository (e.g. we are
-  # part of a source distribution tarball) then we can't use git to find
-  # out whether the build is clean. Instead, use a .build-stamp file, and
-  # see if any files inside this directory have been modified since then.
-  if [ -f .build-stamp ]; then
-    CHANGED_FILE_COUNT=$(find . -cnewer .build-stamp | wc -l)
+  # If we aren't inside running inside a git repository (e.g. we are part of a source distribution
+  # tarball) then we can't use git to find out whether the build is clean. Instead, use a
+  # .build-stamp file, and see if any files inside this directory have been modified since then.
+  if [[ -f .build-stamp ]]; then
+    CHANGED_FILE_COUNT=$( find . -cnewer .build-stamp | wc -l )
     echo "$CHANGED_FILE_COUNT file(s) been modified since thirdparty was last built."
     if [ $CHANGED_FILE_COUNT -gt 0 ]; then
-      echo "Rebuilding."
-      echo NEEDS_BUILD=1
+      log "Rebuilding."
+      NEEDS_BUILD=1
     fi
   else
-    echo "It appears that thirdparty was never built. Building."
+    log "It appears that thirdparty was never built. Building."
     NEEDS_BUILD=1
   fi
 fi
 
-if [ -z "$NEEDS_BUILD" ]; then
+if [[ -z $NEEDS_BUILD ]]; then
   exit 0
 fi
 
 rm -f .build-hash .build-stamp
 ./build-thirdparty.sh
 
-if [ -n "$IS_IN_GIT" ]; then
-  echo $CUR_THIRDPARTY_HASH > .build-hash
+if [[ -n $IS_IN_GIT ]]; then
+  echo "$CUR_THIRDPARTY_HASH" > .build-hash
 else
   touch .build-stamp
 fi

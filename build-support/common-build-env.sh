@@ -57,6 +57,20 @@ log_empty_line() {
   echo >&2
 }
 
+log_separator() {
+  log_empty_line
+  echo >&2 "--------------------------------------------------------------------------------------"
+  log_empty_line
+}
+
+heading() {
+  log_empty_line
+  echo >&2 "--------------------------------------------------------------------------------------"
+  echo >&2 "$1"
+  echo >&2 "--------------------------------------------------------------------------------------"
+  log_empty_line
+}
+
 log() {
   if [[ "${yb_log_quiet:-}" != "true" ]]; then
     # Weirdly, when we put $* inside double quotes, that has an effect of making the following log
@@ -86,6 +100,12 @@ log() {
          "${BASH_SOURCE[$stack_idx1]##*/}:${BASH_LINENO[$stack_idx0]}" \
          "${FUNCNAME[$stack_idx1]}]" $* >&2
   fi
+}
+
+log_with_color() {
+  local log_color=$1
+  shift
+  log "$log_color$*$NO_COLOR"
 }
 
 horizontal_line() {
@@ -170,6 +190,9 @@ readonly EPHEMERAL_DRIVES_GLOB="/mnt/ephemeral* /mnt/d*"
 # The way we use this regex we expect it NOT to be anchored in the end.
 readonly EPHEMERAL_DRIVES_FILTER_REGEX="^/mnt/(ephemeral|d)[0-9]+"  # No "$" in the end.
 
+# http://stackoverflow.com/questions/5349718/how-can-i-repeat-a-character-in-bash
+readonly HORIZONTAL_LINE=$( printf '=%.0s' {1..80} )
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -192,6 +215,10 @@ to_lowercase() {
 
 is_mac() {
   [[ "$OSTYPE" =~ ^darwin ]]
+}
+
+is_linux() {
+  [[ "$OSTYPE" =~ ^linux ]]
 }
 
 expect_vars_to_be_set() {
@@ -342,10 +369,8 @@ set_build_type_based_on_jenkins_job_name() {
   local _build_type  # to avoid collision with the global build_type variable
   local jenkins_job_name=$( echo "$JOB_NAME" | to_lowercase )
   for _build_type in "${VALID_BUILD_TYPES[@]}"; do
-    # Word boundary ('\b') only works if the regular expression is stored in a variable.
-    # http://stackoverflow.com/questions/9792702/does-bash-support-word-boundary-regular-expressions
-    local _build_type_regex="\\b$_build_type\\b"
-    if [[ "$jenkins_job_name" =~ $_build_type_regex ]]; then
+    local _build_type_regex="-$_build_type-"
+    if [[ "-$jenkins_job_name-" =~ $_build_type_regex ]]; then
       log "Using build type '$_build_type' based on Jenkins job name '$JOB_NAME'."
       readonly build_type=$_build_type
       return
@@ -365,6 +390,22 @@ set_default_compiler_type() {
     fi
     export YB_COMPILER_TYPE
     readonly YB_COMPILER_TYPE
+  fi
+}
+
+is_clang() {
+  if [[ $YB_COMPILER_TYPE == "clang" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+is_gcc() {
+  if [[ $YB_COMPILER_TYPE == "gcc" ]]; then
+    return 0
+  else
+    return 1
   fi
 }
 
@@ -398,8 +439,20 @@ set_compiler_type_based_on_jenkins_job_name() {
 }
 
 validate_compiler_type() {
-  if [[ ! "${YB_COMPILER_TYPE:-}" =~ $VALID_COMPILER_TYPES_RE ]]; then
-    fatal "Invalid compiler type: YB_COMPILER_TYPE='${YB_COMPILER_TYPE:-}'" \
+  local compiler_type
+  if [[ $# -eq 0 ]]; then
+    if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
+      fatal "$FUNCNAME is called with no arguments but YB_COMPILER_TYPE is not set or is empty"
+    fi
+    compiler_type=$YB_COMPILER_TYPE
+  elif [[ $# -eq 1 ]]; then
+    compiler_type=$1
+  else
+    fatal "$FUNCNAME can only be called with 0 or 1 argument, got $# arguments: $*"
+  fi
+
+  if [[ ! $compiler_type =~ $VALID_COMPILER_TYPES_RE ]]; then
+    fatal "Invalid compiler type: YB_COMPILER_TYPE='$compiler_type'" \
           "(expected one of: ${VALID_COMPILER_TYPES[@]})."
   fi
 }
@@ -562,7 +615,9 @@ create_dir_on_ephemeral_drive() {
   fi
 
   if [[ $num_ephemeral_drives -eq 0 ]]; then
-    log "No ephemeral drives found, created directory '$target_path' in place."
+    if [[ -n ${YB_VERBOSE:-} && ! -d $target_path ]]; then
+      log "No ephemeral drives found, creating directory '$target_path' in place."
+    fi
     mkdir_safe "$target_path"
   else
     local random_drive=${ephemeral_drives[$RANDOM % $num_ephemeral_drives]}
@@ -601,6 +656,159 @@ Scanning dependencies of target |\
 Built target |[[:space:]]+CC(LD)?[[:space:]]+)[[:graph:]]+$"
 }
 
+# Removes the ccache wrapper directory from PATH so we can find the real path to a compiler, e.g.
+# /usr/bin/gcc instead of /usr/lib64/ccache/gcc.  This is expected to run in a subshell so that we
+# don't make any unexpected changes to the script's PATH.
+# TODO: how to do this properly on Mac OS X?
+remove_ccache_dir_from_path() {
+  PATH=:$PATH:
+  export PATH=${PATH//:\/usr\/lib64\/ccache:/:}
+}
+
+# Given a compiler type, e.g. gcc or clang, find the actual compiler executable (not a wrapper
+# provided by ccache).  Takes into account YB_GCC_PREFIX and YB_CLANG_PREFIX variables that allow to
+# use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
+# used both in compiler-wrapper.sh for YB build, as well as in build-thirdparty.sh for third-party
+# dependencies build.
+find_compiler_by_type() {
+  compiler_type=$1
+  validate_compiler_type "$1"
+  local compiler_type=$1
+  unset cc_executable
+  unset cxx_executable
+  case "$compiler_type" in
+    gcc)
+      if [[ -n ${YB_GCC_PREFIX:-} ]]; then
+        if [[ ! -d $YB_GCC_PREFIX/bin ]]; then
+          fatal "Directory YB_GCC_PREFIX/bin ($YB_GCC_PREFIX/bin) does not exist"
+        fi
+        cc_executable=$YB_GCC_PREFIX/bin/gcc
+        cxx_executable=$YB_GCC_PREFIX/bin/g++
+      else
+        cc_executable=gcc
+        cxx_executable=g++
+      fi
+    ;;
+    clang)
+      if [[ -n ${YB_CLANG_PREFIX:-} ]]; then
+        if [[ ! -d $YB_CLANG_PREFIX/bin ]]; then
+          fatal "Directory YB_CLANG_PREFIX/bin ($YB_CLANG_PREFIX/bin) does not exist"
+        fi
+        cc_executable=$YB_CLANG_PREFIX/bin/clang
+      elif [[ $OSTYPE =~ ^darwin ]]; then
+        cc_executable=/usr/bin/clang
+      else
+        local clang_path
+        local clang_found=false
+        local clang_paths_to_try=(
+          "$YB_THIRDPARTY_DIR/clang-toolchain/bin/clang"
+          # clang is present in this location in pre-built third-party archives built before
+          # the transition to Linuxbrew (https://phabricator.dev.yugabyte.com/D982). This can be
+          # removed when the transition is complete.
+          "$YB_THIRDPARTY_DIR/installed/bin/clang"
+        )
+        for clang_path in "${clang_paths_to_try[@]}"; do
+          if [[ -f $clang_path ]]; then
+            cc_executable=$clang_path
+            clang_found=true
+            break
+          fi
+        done
+        if ! "$clang_found"; then
+          fatal "Failed to find clang at the following locations: ${clang_paths_to_try[@]}"
+        fi
+      fi
+      if [[ -z ${cxx_executable:-} ]]; then
+        cxx_executable=$cc_executable++  # clang -> clang++
+      fi
+    ;;
+    *)
+      fatal "Unknown compiler type '$compiler_type'"
+  esac
+  local compiler_var_name
+  for compiler_var_name in cc_executable cxx_executable; do
+    if [[ -n ${!compiler_var_name:-} ]]; then
+      local compiler_path=${!compiler_var_name}
+      if [[ ! -x $compiler_path && $compiler_path =~ ^[a-z+]+$ ]]; then
+        # This is a plain "gcc/g++/clang/clang++" compiler command name. Try to find the exact
+        # compiler path using the "which" command.
+        set +e
+        compiler_path=$( remove_ccache_dir_from_path && which "${!compiler_var_name}" )
+        if [[ $? -ne 0 ]]; then
+          # "which" did not work, revert to the old value.
+          compiler_path=${!compiler_var_name}
+        fi
+        set -e
+      fi
+
+      if [[ ! -x $compiler_path ]]; then
+        fatal "Compiler executable does not exist at the path we set $compiler_var_name to" \
+              "(possibly applying 'which' expansion): $compiler_path" \
+              "(trying to use compiler type '$compiler_type')."
+      fi
+      eval $compiler_var_name=\"$compiler_path\"
+    fi
+  done
+}
+
+# Make pushd and popd quiet.
+# http://stackoverflow.com/questions/25288194/dont-display-pushd-popd-stack-accross-several-bash-scripts-quiet-pushd-popd
+pushd () {
+  local dir_name=$1
+  if [[ ! -d $dir_name ]]; then
+    fatal "Directory '$dir_name' does not exist"
+  fi
+  command pushd "$@" > /dev/null
+}
+
+popd () {
+  command popd "$@" > /dev/null
+}
+
+detect_linuxbrew() {
+  USING_LINUXBREW=false
+  LINUXBREW_DIR=/tmp/not_using_linuxbrew
+  if ! is_linux; then
+    return
+  fi
+  local d
+  for d in ~/.linuxbrew-yb-build ~/.linuxbrew; do
+    if [[ -d "$d" && -d "$d/lib" && -d "$d/include" ]]; then
+      LINUXBREW_DIR=$d
+      USING_LINUXBREW=true
+      break
+    fi
+  done
+  LINUXBREW_LIB_DIR=$LINUXBREW_DIR/lib
+}
+
+using_linuxbrew() {
+  if [[ $USING_LINUXBREW == true ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+detect_num_cpus() {
+  if [[ ${YB_NUM_CPUS:-} =~ ^[0-9]+$ ]]; then
+    # Already detected.
+    return
+  fi
+
+  if is_linux; then
+    YB_NUM_CPUS=$(grep -c processor /proc/cpuinfo)
+  elif is_mac; then
+    YB_NUM_CPUS=$(sysctl -n hw.ncpu)
+  else
+    fatal "Don't know how to detect the number of CPUs on OS $OSTYPE."
+  fi
+
+  if [[ ! $YB_NUM_CPUS =~ ^[0-9]+$ ]]; then
+    fatal "Invalid number of CPUs detected: '$YB_NUM_CPUS' (expected a number)."
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
@@ -619,3 +827,6 @@ readonly YB_DEFAULT_CMAKE_OPTS=(
   "-DCMAKE_C_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/cc"
   "-DCMAKE_CXX_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/c++"
 )
+
+
+detect_linuxbrew

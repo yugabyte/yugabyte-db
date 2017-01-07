@@ -47,8 +47,9 @@ INCREASED_TEST_TIMEOUT_SEC=1200
 
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with egrep.
-readonly RELEVANT_LOG_LINES_RE=\
-'^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|^Which is:|: Failure$'
+RELEVANT_LOG_LINES_RE="^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Failed|^Which is:"
+RELEVANT_LOG_LINES_RE+="|: Failure$|ThreadSanitizer: data race"
+readonly RELEVANT_LOG_LINES_RE
 
 # We put log messages about tests skipped due to YB_GTEST_REGEX here so that we can log them only in
 # case we end up filtering out all the tests.

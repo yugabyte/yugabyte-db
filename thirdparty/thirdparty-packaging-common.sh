@@ -1,8 +1,9 @@
 # Copyright (c) YugaByte, Inc.
 
+. "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
+
 if [ "${BASH_SOURCE#*/}" == "${0##*/}" ]; then
-  echo "The script $BASH_SOURCE must be sourced, not invoked." >&2
-  exit 1
+  fatal "The script $BASH_SOURCE must be sourced, not invoked."
 fi
 
 PREBUILT_THIRDPARTY_S3_URL=s3://binaries.yugabyte.com/prebuilt_thirdparty
@@ -28,8 +29,7 @@ get_system_conf_str() {
         # os_version will be something like "Ubuntu_15.10"
         os_version=$( cat /etc/issue | sed 's/\\[nl]/ /g' )
         if [[ "$os_version" != Ubuntu* ]]; then
-          echo "Unexpected contents of /etc/issue: '$os_version', should start with Ubuntu" >&2
-          exit 1
+          fatal "Unexpected contents of /etc/issue: '$os_version', should start with Ubuntu"
         fi
       fi
       os_version=$( echo $os_version )  # normalize spaces
@@ -40,12 +40,10 @@ get_system_conf_str() {
       os_version=$( sw_vers -productVersion )
     ;;
     *)
-      echo "Unknown operating system: $( uname )" >&2
-      exit 1
+      fatal "Unknown operating system: $( uname )"
   esac
   if [ -z "$os_version" ]; then
-    echo "Failed to determine OS version" >&2
-    exit 1
+    fatal "Failed to determine OS version"
   fi
   local os_version=$( echo "$os_version" | sed 's/ /_/g' )
 
@@ -55,44 +53,40 @@ get_system_conf_str() {
 get_prebuilt_thirdparty_name_prefix() {
   system_conf_str=$( get_system_conf_str )
   if [ -z "$system_conf_str" ]; then
-    echo "Failed to determine a 'system configuration string'" \
-      "consiting of OS name, version, and architecture in ${FUNCNAME[0]}" >&2
-    exit 1
+    fatal "Failed to determine a 'system configuration string'" \
+          "consiting of OS name, version, and architecture."
   fi
   echo "yb_prebuilt_thirdparty__${system_conf_str}__"
 }
 
 download_prebuilt_thirdparty_deps() {
-  # In this function, "exit 1" is an error condition that terminates the entire build, but
-  # "return 1" simply means we're skipping pre-built third-party dependency download and will build
-  # those dependencies from scratch.
+  # In this function, "fatal" is an error condition that terminates the entire build, but "return 1"
+  # simply means we're skipping pre-built third-party dependency download and will build those
+  # dependencies from scratch.
 
   if [ -z "${TP_DIR:-}" ]; then
-    echo "The 'thirdparty' directory path TP_DIR is not set in ${FUNCNAME[0]}" >&2
-    exit 1
+    fatal "The 'thirdparty' directory path TP_DIR is not set"
   fi
 
   if [ -n "${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-}" ]; then
-    echo "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
-         "third-party dependencies." >&2
-    return 1
+    fatal "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
+          "third-party dependencies."
   fi
 
   local skipped_msg_suffix="not attempting to download prebuilt third-party dependencies"
   if [ ! -f "$PREBUILT_THIRDPARTY_S3_CONFIG_PATH" ]; then
-    echo "S3 configuration file $PREBUILT_THIRDPARTY_S3_CONFIG_PATH not found, $skipped_msg_suffix"
+    log "S3 configuration file $PREBUILT_THIRDPARTY_S3_CONFIG_PATH not found, $skipped_msg_suffix"
     return 1
   fi
 
   if ! which s3cmd >/dev/null; then
-    echo "s3cmd not found, $skipped_msg_suffix"
+    log "s3cmd not found, $skipped_msg_suffix"
     return 1
   fi
 
   local name_prefix=$( get_prebuilt_thirdparty_name_prefix )
   if [ -z "$name_prefix" ]; then
-    echo "Unable to compute name prefix for pre-built third-party dependencies package" >&2
-    exit 1
+    fatal "Unable to compute name prefix for pre-built third-party dependencies package"
   fi
   local s3cmd_cmd_line_prefix=( s3cmd -c "$PREBUILT_THIRDPARTY_S3_CONFIG_PATH" )
   local s3cmd_ls_cmd_line=( "${s3cmd_cmd_line_prefix[@]}" )

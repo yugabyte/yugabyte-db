@@ -43,6 +43,8 @@ Options:
     Additional options to pass to make when building RocksDB.
   --disable-tcmalloc
     Make sure tcmalloc is not being used when building RocksDB.
+  --ld-flags <flags>
+    A list of additional linker flags.
 EOT
 }
 
@@ -59,6 +61,7 @@ c_compiler=""
 cxx_compiler=""
 c_flags=""
 cxx_flags=""
+ld_flags=""
 debug_level=""
 extra_include_dirs=()
 extra_lib_dirs=()
@@ -148,10 +151,14 @@ while [ $# -ne 0 ]; do
     --disable-tcmalloc)
       export YB_DISABLE_TCMALLOC=true
     ;;
+    --ld-flags)
+      ld_flags=$2
+      shift
+    ;;
     *)
       print_help >&2
       echo >&2
-      echo "Invalid option: $1" >&2
+      echo "Invalid option to ${0##*/}: $1" >&2
       exit 1
   esac
   shift
@@ -217,6 +224,7 @@ for extra_lib_dir in "${extra_lib_dirs[@]}"; do
 done
 
 extra_cflags+=" $c_flags"
+extra_ldflags+=" $ld_flags"
 
 set -u
 
@@ -309,9 +317,6 @@ fi
 if [ -n "$extra_cflags" ]; then
   make_opts+=( EXTRA_CFLAGS="$extra_cflags" )
 fi
-
-# TODO: this should probably be installed-deps-tsan in some cases.
-make_opts+=( EXTRA_EXEC_LDFLAGS="-Wl,-rpath,$YB_SRC_ROOT/thirdparty/installed-deps/lib" )
 
 if ! $skip_link_dir_creation; then
   (

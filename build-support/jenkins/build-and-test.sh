@@ -50,6 +50,8 @@
 #
 #   EXTRA_MAKE_ARGS
 #     Extra arguments to pass to Make
+#
+# Portions Copyright (c) YugaByte, Inc.
 
 set -e
 # We pipe our build output to a log file with tee.
@@ -57,6 +59,11 @@ set -e
 set -o pipefail
 
 . "${BASH_SOURCE%/*}/../common-test-env.sh"
+
+if [[ $OSTYPE =~ ^darwin ]]; then
+  # This is needed to make sure we're using Homebrew-installed CMake on Mac OS X.
+  export PATH=/usr/local/bin:$PATH
+fi
 
 MAX_NUM_PARALLEL_TESTS=3
 
@@ -177,8 +184,7 @@ if [ -d "$TOOLCHAIN_DIR" ]; then
 fi
 
 log "Starting third-party dependency build"
-enable_devtoolset_script=$YB_SRC_ROOT/build-support/enable_devtoolset.sh
-time "$enable_devtoolset_script" thirdparty/build-if-necessary.sh
+time thirdparty/build-if-necessary.sh
 log "Third-party dependency build finished (see timing information above)"
 
 THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
@@ -199,20 +205,19 @@ cd "$BUILD_ROOT"
 cmake_cmd_line="$THIRDPARTY_BIN/cmake ${cmake_opts[@]}"
 if [ "$BUILD_TYPE" = "asan" ]; then
   log "Starting ASAN build"
-  time "$enable_devtoolset_script" "$cmake_cmd_line $YB_SRC_ROOT"
+  time $cmake_cmd_line "$YB_SRC_ROOT"
   log "CMake invocation for ASAN build finished (see timing information above)"
   BUILD_PYTHON=0
 elif [ "$BUILD_TYPE" = "tsan" ]; then
   log "Starting TSAN build"
-  time "$enable_devtoolset_script" \
-    "$THIRDPARTY_BIN/cmake $cmake_cmd_line -DYB_USE_TSAN=1 $YB_SRC_ROOT"
+  time cmake $cmake_cmd_line -DYB_USE_TSAN=1 "$YB_SRC_ROOT"
   log "CMake invocation for TSAN build finished (see timing information above)"
   EXTRA_TEST_FLAGS="$EXTRA_TEST_FLAGS -LE no_tsan"
   BUILD_PYTHON=0
 elif [ "$BUILD_TYPE" = "coverage" ]; then
   DO_COVERAGE=1
   log "Starting coverage build"
-  time "$enable_devtoolset_script" "$cmake_cmd_line -DYB_GENERATE_COVERAGE=1 $YB_SRC_ROOT"
+  time $cmake_cmd_line -DYB_GENERATE_COVERAGE=1 "$YB_SRC_ROOT"
   log "CMake invocation for coverage build finished (see timing information above)"
 elif [ "$BUILD_TYPE" = "lint" ]; then
   # Create empty test logs or else Jenkins fails to archive artifacts, which
@@ -224,15 +229,16 @@ elif [ "$BUILD_TYPE" = "lint" ]; then
   set +e
   time (
     set -e
-    "$enable_devtoolset_script" "$cmake_cmd_line $YB_SRC_ROOT"
+    $cmake_cmd_line "$YB_SRC_ROOT"
     make lint
   ) 2>&1 | tee "$TEST_LOG_DIR"/lint.log
   exit_code=$?
+  set -e
   log "Lint build finished (see timing information above)"
   exit $exit_code
 else
   log "Running CMake with CMAKE_BUILD_TYPE set to $cmake_build_type"
-  time "$enable_devtoolset_script" "$cmake_cmd_line $YB_SRC_ROOT"
+  time $cmake_cmd_line "$YB_SRC_ROOT"
   log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
 fi
 

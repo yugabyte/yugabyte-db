@@ -52,7 +52,7 @@ fi
 # Only perform the fix on binaries that include a librocksdb dependency without an "@rpath/" suffix.
 # This may be unnecessary, because .
 if has_invalid_librocksdb_dependency "$binary"; then
-  log "Fixing librocksdb dependecy in $binary (current directory: $PWD)."
+  log "Fixing librocksdb dependency in $binary (current directory: $PWD)."
   "$@" "$binary"
   if has_invalid_librocksdb_dependency "$binary"; then
     fatal "Failed to fix invalid librocksdb dependency in '$binary'. Current directory: $PWD."

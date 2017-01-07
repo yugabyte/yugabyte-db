@@ -8,6 +8,8 @@
 # TODO: also enable "set -u" to disallow using undefined variables.
 set -eo pipefail
 
+. "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
+
 DEFAULT_DEST_DIR=/tmp/package-thirdparty
 
 show_help() {
@@ -26,11 +28,9 @@ EOT
 check_build_output_dirs_exist() {
   local d
   for d in "$@"; do
-    if [ ! -d "$d" ]; then
-      echo "Third-party dependency build output directory '$d' does not exist." >&2
-      echo "Please make sure build-thirdparty.sh succeeds before running ${0##*/}." >&2
-      echo >&2
-      exit 1
+    if [[ ! -d $d ]]; then
+      fatal "Third-party dependency build output directory '$d' does not exist." \
+           "Please make sure build-thirdparty.sh succeeds before running ${0##*/}."
     fi
   done
 }
@@ -53,8 +53,7 @@ while [ $# -gt 0 ]; do
     *)
       show_help >&2
       echo >&2
-      echo "Invalid option: $1" >&2
-      exit 1
+      fatal "Invalid option: $1"
   esac
   shift
 done
@@ -65,14 +64,13 @@ dest_dir=$( cd "$dest_dir" && pwd )
 
 TP_DIR=$( cd "$( dirname "$0" )" && pwd )
 
-source "$TP_DIR"/thirdparty-packaging-common.sh
-source "$TP_DIR"/vars.sh
+. "$TP_DIR"/thirdparty-packaging-common.sh
+. "$TP_DIR"/vars.sh
 
 cd "$TP_DIR"
 
 if ! git diff --quiet .; then
-  echo "There are local changes in the thirdparty directory! Refusing to proceed." >&2
-  exit 1
+  fatal "There are local changes in the thirdparty directory! Refusing to proceed."
 fi
 
 # Apart from the build directories, we also need to package the gflags directory separately
@@ -91,8 +89,7 @@ check_build_output_dirs_exist "${installed_dirs[@]}"
 
 thirdparty_dir_sha1=$( git log -n 1 --pretty=format:%H . )
 if [[ ! "$thirdparty_dir_sha1" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "Failed to get the SHA1 of the last change to the thirdparty directory" >&2
-  exit 1
+  fatal "Failed to get the SHA1 of the last change to the thirdparty directory"
 fi
 
 timestamp=$( date +%Y-%m-%dT%H_%M_%S )
@@ -101,8 +98,7 @@ dest_name="$( get_prebuilt_thirdparty_name_prefix )${timestamp}__${thirdparty_di
 dest_tarball_path="$dest_dir/$dest_name.tar.gz"
 
 if [ -f "$dest_tarball_path" ]; then
-  echo "The destination file already exists: $dest_tarball_path" >&2
-  exit 1
+  fatal "The destination file already exists: $dest_tarball_path"
 fi
 
 echo "Creating $dest_tarball_path"
@@ -112,9 +108,8 @@ installed_dir_rel_paths=()
 archived_top_level_dirs=()
 for d in "${installed_dirs[@]}"; do
   if [[ "${d#$TP_DIR/}" == "$d" ]]; then
-    echo "Internal error: expected the installed third-party library directory '$d'" \
-      "to be a subdirectory of '$TP_DIR'" >&2
-    exit 1
+    fatal "Internal error: expected the installed third-party library directory '$d'" \
+          "to be a subdirectory of '$TP_DIR'"
   fi
   rel_archived_dir="${d#$TP_DIR/}"
   installed_dir_rel_paths+=( "$rel_archived_dir" )
@@ -143,15 +138,14 @@ unset IFS
 if ! diff --ignore-space-change \
     <( for d in "${archived_top_level_dirs[@]}"; do echo "$d"; done ) \
     <( echo "$top_level_dirs_from_tar" ); then
-  echo "The actual list of top-level directories in the tarball is different from" \
-    "what's expected ('${archived_top_level_dirs[@]}'):" >&2
-  echo "$top_level_dirs_from_tar" >&2
-  exit 1
+  fatal "The actual list of top-level directories in the tarball is different from" \
+    "what's expected ('${archived_top_level_dir[@]}'): " \
+    "$top_level_dirs_from_tar"
 fi
 
-echo "$dest_tarball_path contains the right top-level directories"
+log "$dest_tarball_path contains the right top-level directories"
 
 if "$upload"; then
-  echo "Uploading to S3"
+  log "Uploading to S3"
   ( set -x; s3cmd put "$dest_tarball_path" "$PREBUILT_THIRDPARTY_S3_URL/${dest_tarball_path##*/}" )
 fi

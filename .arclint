@@ -3,7 +3,8 @@
   "linters": {
     "text": {
       "type": "text",
-      "text.max-line-length": 100
+      "text.max-line-length": 100,
+      "exclude": "(^thirdparty/thirdparty_src_checksums[.]txt$)"
     },
     "pycodestyle": {
       "type": "pep8",

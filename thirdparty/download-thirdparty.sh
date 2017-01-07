@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -22,54 +22,86 @@
 
 set -euo pipefail
 
+. "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
+
+EXPECTED_CHECKSUM_FILE=$YB_THIRDPARTY_DIR/thirdparty_src_checksums.txt
+
+# Maps file name to its expected SHA 256 checksum. These are loaded by load_expected_checksums.
+declare -A expected_checksums_by_name
+
 show_help() {
   cat >&2 <<-EOT
 Usage: ${0##*/} <options>
 Arguments:
   -h, --help
     Print usage
+
   --download-only
     Don't expand downloaded archives or run autoreconf
+
   --dest-dir <dest_dir>
-    Destination directory.
+    Destination directory. This is useful for testing. This directory will be used instead of the
+    thirdparty directory.
 EOT
 }
 
 delete_if_wrong_patchlevel() {
   local DIR=$1
   local PATCHLEVEL=$2
-  if [ ! -f $DIR/patchlevel-$PATCHLEVEL ]; then
+  if [[ $DOWNLOAD_ONLY -eq 0 && -d $DIR && ! -f $DIR/patchlevel-$PATCHLEVEL ]]; then
     echo It appears that $DIR is missing the latest local patches.
     echo Removing it so we re-download it.
-    rm -Rf $DIR
+    rm -Rf "$DIR"
+  fi
+}
+
+run_checksum() {
+  if [[ $OSTYPE =~ darwin ]]; then
+    shasum --portable --algorithm 256 "$@"
+  else
+    sha256sum --quiet "$@"
   fi
 }
 
 fetch_and_expand() {
   local FILENAME=$1
   if [ -z "$FILENAME" ]; then
-    echo "Error: Must specify file to fetch"
-    exit 1
+    fatal "Error: Must specify file to fetch"
   fi
 
-  echo "Fetching $FILENAME"
-  curl -O "${CLOUDFRONT_URL_PREFIX}/${FILENAME}"
+  set +u
+  local expected_checksum=${expected_checksums_by_name[$FILENAME]}
+  set -u
+  if [[ -z ${expected_checksum:-} ]]; then
+    fatal "No expected checksum provided in $EXPECTED_CHECKSUM_FILE for $FILENAME"
+  fi
 
+  mkdir -p "$TP_DOWNLOAD_DIR"
+  pushd "$TP_DOWNLOAD_DIR"
+  if [[ -f $FILENAME ]] && \
+     run_checksum --check <( echo "$expected_checksum  $FILENAME" ); then
+    log "No need to re-download $FILENAME: checksum already correct"
+  else
+    log "Fetching $FILENAME"
+    curl --remote-name "${CLOUDFRONT_URL_PREFIX}/${FILENAME}"
+  fi
+  popd
+
+  mkdir -p "$TP_SOURCE_DIR"
+  pushd "$TP_SOURCE_DIR"
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    echo "Unpacking $FILENAME"
+    log "Extracting $FILENAME in $TP_SOURCE_DIR"
     if echo "$FILENAME" | egrep -q '\.zip$'; then
-      unzip -q "$FILENAME"
+      # -o -- force overwriting existing files
+      unzip -q -o "$TP_DOWNLOAD_DIR/$FILENAME"
     elif echo "$FILENAME" | egrep -q '(\.tar\.gz|\.tgz)$'; then
-      tar xf "$FILENAME"
+      tar xf "$TP_DOWNLOAD_DIR/$FILENAME"
     else
-      echo "Error: unknown file format: $FILENAME"
-      exit 1
+      fatal "Error: unknown file format: $FILENAME"
     fi
-
-    echo "Removing $FILENAME"
-    rm "$FILENAME"
     echo
   fi
+  popd
 }
 
 run_autoreconf() {
@@ -77,6 +109,24 @@ run_autoreconf() {
     autoreconf "$@"
   fi
 }
+
+load_expected_checksums() {
+  if [[ ! -f $EXPECTED_CHECKSUM_FILE ]]; then
+    fatal "Expected checksum file not found at $EXPECTED_CHECKSUM_FILE"
+  fi
+
+  while read -r line || [[ -n "$line" ]]; do
+    local checksum=${line%%  *}
+    local archive_name=${line#*  }
+    if [[ ! $checksum =~ ^[0-9a-f]{64}$ ]]; then
+      fatal "Invalid checksum: '$checksum' for archive name: '$archive_name' in" \
+            "$EXPECTED_CHECKSUM_FILE. Expected to be a SHA-256 sum (64 hex characters)."
+    fi
+    expected_checksums_by_name[$archive_name]=$checksum
+  done <"$EXPECTED_CHECKSUM_FILE"
+}
+
+load_expected_checksums
 
 DOWNLOAD_ONLY=0
 DEST_DIR=""
@@ -104,26 +154,25 @@ SCRIPT_DIR=$(cd "$(dirname "$BASH_SOURCE")" && pwd)
 if [ -n "$DEST_DIR" ]; then
   echo "Using custom download directory '$DEST_DIR'"
   mkdir -p "$DEST_DIR"
+  # We have to set TP_DIR based on DEST_DIR, because we import vars.sh that sets a lot of variables
+  # based on TP_DIR.
   TP_DIR=$DEST_DIR
-  if [ ! -d "$DEST_DIR/patches" ]; then
+  if [[ ! -d "$DEST_DIR/patches" && $DOWNLOAD_ONLY -eq 0 ]]; then
     ln -s "$SCRIPT_DIR/patches" "$DEST_DIR/patches"
   fi
+  # We should not have to use the custom destination directory from this point on.
+  unset DEST_DIR
 else
   TP_DIR=$SCRIPT_DIR
 fi
 
 cd "$TP_DIR"
 
-OS_LINUX=0
-if [[ "$OSTYPE" =~ ^linux ]]; then
-  OS_LINUX=1
-fi
-
-source "$SCRIPT_DIR/vars.sh"
-
+. "$SCRIPT_DIR/vars.sh"
 
 GLOG_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$GLOG_DIR" "$GLOG_PATCHLEVEL"
+
 if [ ! -d "$GLOG_DIR" ]; then
   fetch_and_expand glog-${GLOG_VERSION}.tar.gz
 
@@ -197,8 +246,12 @@ fi
 
 if [ ! -d "$RAPIDJSON_DIR" ]; then
   fetch_and_expand rapidjson-${RAPIDJSON_VERSION}.zip
+  if [[ ! -d $TP_SOURCE_DIR/rapidjson ]]; then
+    fatal "Directory $TP_SOURCE_DIR/rapidjson was not extracted correctly from the rapidjson" \
+          "archive. Contents of the source directory: $( ls -l "$TP_SOURCE_DIR" )."
+  fi
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    mv rapidjson ${RAPIDJSON_DIR}
+    mv "$TP_SOURCE_DIR/rapidjson" "$RAPIDJSON_DIR"
   fi
 fi
 
@@ -240,15 +293,14 @@ if [ ! -d "$PYTHON_DIR" ]; then
   fetch_and_expand python-${PYTHON_VERSION}.tar.gz
 fi
 
-LLVM_PATCHLEVEL=2
-delete_if_wrong_patchlevel "$LLVM_DIR" "$LLVM_PATCHLEVEL"
-if [ ! -d "$LLVM_DIR" ]; then
+LLVM_PATCHLEVEL=1
+delete_if_wrong_patchlevel "$LLVM_SOURCE" "$LLVM_PATCHLEVEL"
+if [ ! -d "$LLVM_SOURCE" ]; then
   fetch_and_expand llvm-${LLVM_VERSION}.src.tar.gz
 
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
-    pushd "$LLVM_DIR"
+    pushd "$LLVM_SOURCE"
     patch -p1 < $TP_DIR/patches/llvm-fix-amazon-linux.patch
-    patch -p1 < $TP_DIR/patches/llvm-devtoolset-toolchain.patch
     touch patchlevel-$LLVM_PATCHLEVEL
     popd
   fi
@@ -291,9 +343,13 @@ if [ ! -d "$TRACE_VIEWER_DIR" ]; then
   fetch_and_expand "kudu-trace-viewer-${TRACE_VIEWER_VERSION}.tar.gz"
 fi
 
-if [ -n "$OS_LINUX" -a ! -d $NVML_DIR ]; then
+if is_linux && [[ ! -d $NVML_DIR ]]; then
   fetch_and_expand "nvml-${NVML_VERSION}.tar.gz"
 fi
 
 echo "---------------"
-echo "Thirdparty dependencies downloaded successfully"
+if [[ $DOWNLOAD_ONLY -eq 1 ]]; then
+  log "Sources of thirdparty dependencies downloaded successfully into $TP_DOWNLOAD_DIR"
+else
+  log "Sources of thirdparty dependencies downloaded and extracted into $TP_SOURCE_DIR"
+fi

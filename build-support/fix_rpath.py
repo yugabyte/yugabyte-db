@@ -2,14 +2,15 @@
 
 # Copyright (c) YugaByte, Inc.
 
-# Go through all executables and libraries in installation directories in the thirdparty directory,
-# and fix rpath/runpath entries so that they are relative. This has to be done before third-party
-# dependencies are packaged. Also, there is an ad-hoc fix for glog's rpath so that it can find
-# gflags. We also run this script after downloading pre-build third-party dependencies as well.
-# Finally, there is a mode where this script can do the same on YugaByte binaries after the main
-# build. That mode is triggered using the --build-root option.
-
-# This is only needed on Linux.
+# This script makes a few changes to the rpath field (dynamic library search path) of executables
+# and shared libraries in the thirdparty directory.  We go through all executables and libraries in
+# installation directories in the thirdparty directory, and fix rpath/runpath entries so that they
+# are relative. This has to be done before third-party dependencies are packaged. Also, there is an
+# ad-hoc fix for glog's rpath so that it can find gflags. We also run this script after downloading
+# pre-built third-party dependencies onto a Linux dev server / Jenkins slave as well, because the
+# third-party dependencies will likely be in a directory different than they were compiled in.
+# However, that should only be necessary if there are any changes to this script after the pre-built
+# third-party package was built.
 
 import argparse
 import logging
@@ -19,8 +20,16 @@ import re
 import subprocess
 import sys
 
-# We treat RPATH and RUNPATH uniformly, but set RUNPATH in the end.
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
+
+# We have to update paths to Linuxbrew libraries dependent on the home directory.  In addition to
+# ~/.linuxbrew, we are also allowding ~/.linuxbrew-..., e.g. ~/.linuxbrew-yb-build, so that we can
+# use multiple different Linuxbrew installations on the same machine, one with dependencies needed
+# to build YugaByte, and another for more software that might be useful during development but
+# should not be added to the build's include/library path.
+LINUXBREW_PATH_RE = re.compile(r'/home/[^/]+/([.]linuxbrew(?:-.*)?/.*)$')
+
+HOME_DIR = os.path.expanduser('~')
 
 
 def run_ldd(elf_file_path, report_missing_libs=False):
@@ -65,29 +74,6 @@ def add_if_absent(items, new_item):
         items.append(new_item)
 
 
-def get_rpath_on_mac(binary_path):
-    """
-    Extracts rpath entries from the given Mac OS X binary (library or executable).
-    @param binary_path: the binary file to extract rpath entries from
-    @return: an array of rpath items from the given file.
-    """
-
-    otool_subprocess = subprocess.Popen(
-        ['/usr/bin/otool', '-l', binary_path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-    otool_stdout, otool_stderr = otool_subprocess.communicate()
-    if otool_subprocess.returncode != 0:
-        raise RuntimeError("Failed to retrieve RPATH of '{}'".format(binary_path))
-    lines = [l.strip() for l in otool_stdout.strip().split('\n')]
-    rpaths = []
-    for i in xrange(len(lines) - 2):
-        if lines[i] == 'cmd LC_RPATH' and lines[i + 2].startswith('path'):
-            rpath = lines[i + 2].split()[1]
-            rpaths.append(rpath)
-    return rpaths
-
-
 def main():
     """
     Main entry point. Returns True on success.
@@ -113,15 +99,27 @@ def main():
     elf_files = []
 
     if sys.platform == 'darwin':
-        logging.info("fix_rpath.py does not have to do anything on Mac OS X anymore")
+        logging.info("fix_rpath.py does not do anything on Mac OS X")
         return True
 
     logging.info("Fixing rpath/runpath for the third-party binaries")
-    prefix_dirs = [
-        os.path.join(thirdparty_dir, prefix_rel_dir)
-        for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
-        ]
 
+    if os.path.isdir(os.path.join(thirdparty_dir, 'installed', 'common')):
+        logging.info("Using new directory hierarchy layout under thirdparty/installed")
+        # This is an indication that we are using a new-style directory layout in
+        # thirdparty/installed.
+        prefix_dirs = [
+            os.path.join(thirdparty_dir, 'installed', prefix_rel_dir)
+            for prefix_rel_dir in ['common', 'tsan', 'uninstrumented']
+            ]
+    else:
+        # Old-style directory structure, to be removed once migration is complete.
+        logging.info("Using old directory hierarchy layout under thirdparty/installed*")
+        prefix_dirs = [
+            os.path.join(thirdparty_dir, prefix_rel_dir)
+            for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
+            ]
+    print "prefix_dirs=" + str(prefix_dirs)
     if os.path.isfile('/usr/bin/patchelf'):
         linux_change_rpath_cmd = 'patchelf --set-rpath'
     else:
@@ -143,10 +141,6 @@ def main():
                         and not file_name.endswith('.sh')
                         and not file_name.endswith('.py')
                         and not file_name.endswith('.la')):
-
-                    # -----------------------------------------------------------------------------
-                    # Linux
-                    # -----------------------------------------------------------------------------
 
                     # Invoke readelf to read the current rpath.
                     readelf_subprocess = subprocess.Popen(
@@ -180,8 +174,12 @@ def main():
                                 add_if_absent(original_rpath_entries, rpath_entry)
                                 rpath_entry = rpath_entry.replace('$ORIGIN', file_dir)
                                 rpath_entry = rpath_entry.replace('${ORIGIN}', file_dir)
-                                add_if_absent(original_real_rpath_entries,
-                                              os.path.realpath(rpath_entry))
+                                # Ignore a special kind of rpath entry that we add just to increase
+                                # the number of bytes reserved for rpath.
+                                if not rpath_entry.startswith(
+                                        '/tmp/making_sure_we_have_enough_room_to_set_rpath_later'):
+                                    add_if_absent(original_real_rpath_entries,
+                                                  os.path.realpath(rpath_entry))
 
                     new_relative_rpath_entries = []
                     logging.debug("Original rpath from '%s': %s" % (
@@ -199,17 +197,25 @@ def main():
                     new_real_rpath_entries = []
                     for rpath_entry in original_real_rpath_entries:
                         real_rpath_entry = os.path.realpath(rpath_entry)
-                        rel_path = os.path.relpath(real_rpath_entry, os.path.realpath(file_dir))
-
-                        # Normalize the new rpath entry by making it relative to $ORIGIN. This
-                        # is only necessary for third-party libraries that may need to be moved
-                        # from place to place.
-                        if rel_path == '.':
-                            new_rpath_entry = '$ORIGIN'
+                        linuxbrew_rpath_match = LINUXBREW_PATH_RE.match(real_rpath_entry)
+                        if linuxbrew_rpath_match:
+                            # This is a Linuxbrew directory relative to the home directory of the
+                            # user that built the third-party package. We need to substitute the
+                            # current user's home directory into that instead.
+                            new_rpath_entry = os.path.join(HOME_DIR,
+                                                           linuxbrew_rpath_match.group(1))
                         else:
-                            new_rpath_entry = '$ORIGIN/' + rel_path
-                        if len(new_rpath_entry) > 2 and new_rpath_entry.endswith('/.'):
-                            new_rpath_entry = new_rpath_entry[:-2]
+                            rel_path = os.path.relpath(real_rpath_entry, os.path.realpath(file_dir))
+
+                            # Normalize the new rpath entry by making it relative to $ORIGIN. This
+                            # is only necessary for third-party libraries that may need to be moved
+                            # from place to place.
+                            if rel_path == '.':
+                                new_rpath_entry = '$ORIGIN'
+                            else:
+                                new_rpath_entry = '$ORIGIN/' + rel_path
+                            if len(new_rpath_entry) > 2 and new_rpath_entry.endswith('/.'):
+                                new_rpath_entry = new_rpath_entry[:-2]
 
                         # Remove duplicate entries but preserve order. There may be further
                         # deduplication at this point, because we may have entries that only differ

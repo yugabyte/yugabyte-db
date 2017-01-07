@@ -23,13 +23,18 @@
 #
 
 YB_DIR=`dirname $0`/../../..
-PROTOC_BIN=$YB_DIR/thirdparty/installed-deps/bin/protoc
-if [ ! -f "$PROTOC_BIN" ] ; then
-  if which protoc > /dev/null; then
-    PROTOC_BIN=`which protoc`
-  else
-    echo 'Error: protoc is missing from the 3rd party folder and on the PATH'
-    exit 1
+PROTOC_BIN=$YB_DIR/thirdparty/installed/uninstrumented/bin/protoc
+if [[ ! -f $PROTOC_BIN ]]; then
+  # Try the old location, before moving to the new third-party dependency installation directory
+  # layout.
+  PROTOC_BIN=$YB_DIR/thirdparty/installed-deps/bin/protoc
+  if [[ ! -f $PROTOC_BIN ]]; then
+    if which protoc > /dev/null; then
+      PROTOC_BIN=`which protoc`
+    else
+      echo 'Error: protoc is missing from the 3rd party folder and on the PATH' >&2
+      exit 1
+    fi
   fi
 fi
 

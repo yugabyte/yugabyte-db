@@ -128,7 +128,9 @@ fi
 # we have to run in one shot.
 for test_descriptor in "${tests[@]}"; do
   for (( test_attempt=1; test_attempt <= $num_test_attempts; test_attempt++ )); do
-    log "Starting test attempt $test_attempt"
+    if [[ $num_test_attempts -ne 1 ]]; then
+      log "Starting test attempt $test_attempt ($test_descriptor)"
+    fi
     if [[ $test_attempt -eq 1 && $num_test_attempts -eq 1 ]]; then
       test_attempt_index=""
     else

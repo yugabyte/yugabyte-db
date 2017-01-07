@@ -660,7 +660,6 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 
     ASSERT_FALSE(iter.HasNext());
   }
-
 }
 
 TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {

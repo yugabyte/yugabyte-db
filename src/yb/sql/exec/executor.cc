@@ -314,9 +314,11 @@ Status Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& t
 
     col_pb->set_column_id(col_desc->id());
     if (col_desc->is_hash()) {
-      ExprToPB<YSQLColumnValuePB>(col.expr(), col_desc->type_id(), col_pb, row, col_desc->index());
+      RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(
+          col.expr(), col_desc->type_id(), col_pb, row, col_desc->index()));
     } else {
-      ExprToPB<YSQLColumnValuePB>(col.expr(), col_desc->type_id(), col_pb);
+      RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(
+          col.expr(), col_desc->type_id(), col_pb));
     }
   }
 

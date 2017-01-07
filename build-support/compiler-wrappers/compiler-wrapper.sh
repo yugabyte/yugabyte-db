@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+# We'll sometimes generate scripts in this directory that could be re-run when debugging build
+# issues.
+GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
+
 fatal_error() {
   echo -e "$RED_COLOR[FATAL] $SCRIPT_NAME: $*$NO_COLOR"
   exit 1
@@ -20,36 +24,67 @@ treat_warning_pattern_as_error() {
   fi
 }
 
-show_compiler_command_line() {
+determine_compiler_cmdline() {
+  local compiler_cmdline
   if [[ -f ${stderr_path:-} ]]; then
-    local compiler_cmdline=$( head -1 "$stderr_path" | sed 's/^[+] //; s/\n$//' )
+    compiler_cmdline=$( head -1 "$stderr_path" | sed 's/^[+] //; s/\n$//' )
   else
-    local compiler_cmdline="(failed to determine compiler command line)"
+    echo "echo 'Failed to determine compiler command line: file $stderr_path does not exist.'"
+    return
   fi
-  local prefix=$1
-  local suffix=${2:-}
   # Create a command line that can be copied and pasted.
   # As part of that, replace the ccache invocation with the actual compiler executable.
   compiler_cmdline="&& $compiler_cmdline"
   compiler_cmdline=${compiler_cmdline//&& ccache compiler/&& $compiler_executable}
-  # Split the failed compilation command over multiple lines for easier reading.
-  echo -e "$prefix( cd \"$PWD\" $compiler_cmdline )$suffix$NO_COLOR" | python -c "
-import sys
+  echo "cd \"$PWD\" $compiler_cmdline"
+}
 
-line_length = 0
-buffer = ''
-for line in sys.stdin:
-  for c in line.rstrip():
-    if c.isspace() and line_length > 80:
-      print buffer + c + '\\\\'
-      buffer = ''
-      line_length = 0
-    else:
-      buffer += c
-      line_length += 1
-if buffer:
-  print buffer,
-  " >&2
+show_compiler_command_line() {
+  if [[ $# -lt 1 || $# -gt 2 ]]; then
+    fatal "${FUNCNAME[0]} only takes one or two arguments (message prefix / suffix), got $#: $*"
+  fi
+
+  # These command lines appear during compiler/linker and Boost version detection and we don't want
+  # to do output any additional information in these cases.
+  if [[ $compiler_args_str == "-v" ||
+        $compiler_args_str == "-Wl,--version" ||
+        $compiler_args_str == "-fuse-ld=gold -Wl,--version" ||
+        $compiler_args_str == "-dumpversion" ]]; then
+    return
+  fi
+
+  local compiler_cmdline=$( determine_compiler_cmdline )
+  local prefix=$1
+  local suffix=${2:-}
+
+  local command_line_filter=cat
+  if [[ -n ${YB_SPLIT_LONG_COMPILER_CMD_LINES:-} ]]; then
+    command_line_filter=$YB_SRC_DIR/build-support/split_long_command_line.py
+  fi
+
+  # Split the failed compilation command over multiple lines for easier reading.
+  echo -e "$prefix( $compiler_cmdline )$suffix$NO_COLOR" | \
+    $command_line_filter >&2
+  set -e
+}
+
+# This can be used to generate scripts that make it easy to re-run failed build commands.
+generate_build_debug_script() {
+  local script_name_prefix=$1
+  shift
+  if [[ -n ${YB_GENERATE_BUILD_DEBUG_SCRIPTS:-} ]]; then
+    mkdir -p "$GENERATED_BUILD_DEBUG_SCRIPT_DIR"
+    local script_name="$GENERATED_BUILD_DEBUG_SCRIPT_DIR/${script_name_prefix}__$(
+      get_timestamp_for_filenames
+    )__$$_$RANDOM$RANDOM.sh"
+    (
+      echo "#!/usr/bin/env bash"
+      # Make the script pass-through its arguments to the command it runs.
+      echo "$* \"\$@\""
+    ) >"$script_name"
+    chmod u+x "$script_name"
+    log "Generated a build debug script at $script_name"
+  fi
 }
 
 SCRIPT_NAME="compiler-wrapper.sh"
@@ -87,6 +122,12 @@ cc_or_cxx=${0##*/}
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
 compiler_args=( "$@" )
+set +u
+# The same as one string. We allow undefined variables for this line because an empty array is
+# treated as such.
+compiler_args_str="${compiler_args[*]}"
+set -u
+
 output_file=""
 input_files=()
 
@@ -108,24 +149,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 set_default_compiler_type
-case "$YB_COMPILER_TYPE" in
-  gcc)
-    cc_executable=gcc
-    cxx_executable=g++
-  ;;
-  clang)
-    if [[ "$OSTYPE" =~ ^darwin ]]; then
-      cc_executable=/usr/bin/clang
-      cxx_executable=/usr/bin/clang++
-    else
-      cc_executable=$thirdparty_install_dir/clang
-      cxx_executable=$thirdparty_install_dir/clang++
-    fi
-  ;;
-  *)
-    echo "Invalid value for YB_COMPILER_TYPE: '$YB_COMPILER_TYPE' (must be gcc or clang)" >&2
-    exit 1
-esac
+find_compiler_by_type "$YB_COMPILER_TYPE"
 
 case "$cc_or_cxx" in
   cc) compiler_executable="$cc_executable" ;;
@@ -144,6 +168,14 @@ if which ccache >/dev/null && [[ -z ${YB_NO_CCACHE:-} ]]; then
   cmd=( ccache compiler )
 else
   cmd=( "$compiler_executable" )
+  if [[ -n ${YB_EXPLAIN_WHY_NOT_USING_CCACHE:-} ]]; then
+    if ! which ccache >/dev/null; then
+      log "Could not find ccache in PATH ( $PATH )"
+    fi
+    if [[ -n ${YB_NO_CCACHE:-} ]]; then
+      log "YB_NO_CCACHE is set"
+    fi
+  fi
 fi
 
 cmd+=( "${compiler_args[@]}" )
@@ -179,10 +211,12 @@ exit_handler() {
         fi
       fi
       log_empty_line
-      echo "Input files:" >&2
-      for input_file in "${input_files[@]}"; do
-        echo "  $input_file" >&2
-      done
+      if [[ ${#input_files[@]} -gt 0 ]]; then
+        echo "Input files:" >&2
+        for input_file in "${input_files[@]}"; do
+          echo "  $input_file" >&2
+        done
+      fi
       echo "Output file (from -o): $output_file" >&2
       log_empty_line
     ) >&2
@@ -200,7 +234,12 @@ compiler_exit_code=$?
 
 set -e
 
-if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]]; then
+# Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
+# Extra output might break the version detection.
+if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} &&
+      "$compiler_args_str" != "-v" &&
+      "$compiler_args_str" != "-Wl,--version" &&
+      "$compiler_args_str" != "-fuse-ld=gold -Wl,--version" ]]; then
   show_compiler_command_line "$CYAN_COLOR"
 fi
 
@@ -223,6 +262,11 @@ then
 fi
 
 if [[ $compiler_exit_code -ne 0 ]]; then
+  if egrep 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
+     "$stderr_path"; then
+    generate_build_debug_script rerun_failed_link_step "$( determine_compiler_cmdline ) -v"
+  fi
+
   exit "$compiler_exit_code"
 fi
 
@@ -249,7 +293,7 @@ for pattern in \
     "warning: reference to local variable .* returned" \
     "warning: enumeration value .* not handled in switch" \
     "warning: comparison between .* and .* .*-Wenum-compare" \
-    "warning: ignoring return value of function declared with warn_unused_result" \
+    "warning: ignoring return value of function declared with '?warn_unused_result'?" \
     "will be initialized after .*Wreorder"; do
   treat_warning_pattern_as_error "$pattern"
 done

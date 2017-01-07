@@ -30,3 +30,5 @@ nvml-*
 python-*
 gcc-*
 prebuilt_downloads/
+src/
+download/

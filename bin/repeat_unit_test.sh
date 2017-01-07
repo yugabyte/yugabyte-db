@@ -4,7 +4,7 @@
 
 show_usage() {
   cat <<-EOT
-Usage: ${0##*/} <build_type> <test_binary_name> <test_filter> [<options>]
+Usage: ${0##*/} <build_type> <test_binary_name> [<test_filter>] [<options>]
 Runs the given test in a loop locally, collects statistics about successes/failures, and saves
 logs.
 
@@ -28,7 +28,8 @@ Options:
     Pass additional arguments to the test.
   --clang
     Use binaries built with Clang (e.g. to distinguish between debug/release builds made with
-    gcc vs. clang).
+    gcc vs. clang). If YB_COMPILER_TYPE is set, it will take precedence, and this option will not
+    be allowed.
 EOT
 }
 
@@ -64,8 +65,7 @@ declare -i num_iter=1000
 keep_all_logs=false
 original_args=( "$@" )
 verbose_level=0
-
-unset YB_COMPILER_TYPE
+yb_compiler_type_arg=""
 
 while [[ $# -gt 0 ]]; do
   if [[ ${#positional_args[@]} -eq 0 ]] && is_valid_build_type "$1"; then
@@ -116,7 +116,11 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --clang)
-      YB_COMPILER_TYPE="clang"
+      if [[ -n ${YB_COMPILER_TYPE:-} && ${YB_COMPILER_TYPE:-} != "clang" ]]; then
+        fatal "YB_COMPILER_TYPE is set to '$YB_COMPILER_TYPE'," \
+              "but --clang is specified on the command line"
+      fi
+      yb_compiler_type_arg="clang"
     ;;
     *)
       positional_args+=( "$1" )
@@ -125,19 +129,29 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+yb_compiler_type_from_env=${YB_COMPILER_TYPE:-}
+if [[ -n $yb_compiler_type_arg ]]; then
+  YB_COMPILER_TYPE=$yb_compiler_type_arg
+fi
+
 set_cmake_build_type_and_compiler_type
 set_build_root
 set_asan_tsan_options
 
 declare -i -r num_pos_args=${#positional_args[@]}
-if [[ $num_pos_args -ne 2 ]]; then
+if [[ $num_pos_args -lt 1 || $num_pos_args -gt 2 ]]; then
   show_usage >&2
-  fatal "Expected exactly two positional arguments other than build type:" \
-        "<test_binary_name> <test_filter>"
+  fatal "Expected two to three positional arguments:" \
+        "<build_type> <test_binary_name> [<test_filter>]"
 fi
 
 test_binary_name=${positional_args[0]}
-test_filter=${positional_args[1]}
+test_filter="all_tests"
+gtest_filter_arg=""
+if [[ $num_pos_args -eq 2 ]]; then
+  test_filter=${positional_args[1]}
+  gtest_filter_arg="--gtest_filter=$test_filter"
+fi
 
 abs_test_binary_path=$( find_test_binary "$test_binary_name" )
 rel_test_binary=${abs_test_binary_path#$BUILD_ROOT}
@@ -167,7 +181,7 @@ if [[ $iteration -gt 0 ]]; then
   determine_test_timeout
 
   # TODO: deduplicate the setup here against run_one_test() in common-test-env.sh.
-  test_cmd_line=( "$abs_test_binary_path" --gtest_filter="$test_filter" $more_test_args )
+  test_cmd_line=( "$abs_test_binary_path" "$gtest_filter_arg" $more_test_args )
   test_wrapper_cmd_line=(
     "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
@@ -204,6 +218,9 @@ if [[ $iteration -gt 0 ]]; then
     rm -f "$test_log_path"
   fi
 else
+  if [[ -n $yb_compiler_type_from_env ]]; then
+    log "YB_COMPILER_TYPE env variable was set to '$yb_compiler_type_from_env' by the caller."
+  fi
   # Parallel execution of many iterations
   seq 1 $num_iter | \
     xargs -P $parallelism -n 1 "$0" "${original_args[@]}" --log_dir "$log_dir" --iteration

@@ -63,6 +63,19 @@ if (NOT YB_TCMALLOC_AVAILABLE)
   SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG "--disable-tcmalloc")
 endif()
 
+set(GFLAGS_BUILD_DIR
+    "${YB_SRC_DIR}/thirdparty/build/${THIRDPARTY_INSTRUMENTATION_TYPE}/gflags-2.1.2")
+
+if (NOT EXISTS "${GFLAGS_BUILD_DIR}")
+  # Make it possible to work with packaged third-party dependencies built before the layout changed
+  # as Linuxbrew compatibility was added in https://phabricator.dev.yugabyte.com/D982.
+  message("gflags build directory not found at ${GFLAGS_BUILD_DIR}, using old location")
+  set(GFLAGS_BUILD_DIR "${YB_SRC_DIR}/thirdparty/gflags-2.1.2")
+endif()
+
+message("COMMON_LINKER_FLAGS to be specified as --ld-flags to build-rocksdb.sh:"
+        " ${COMMON_LINKER_FLAGS}")
+
 # TODO: auto-detect the gflags version installed in the thirdparty directory.
 set(BUILD_ROCKSDB_ARGS
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-rocksdb.sh
@@ -72,13 +85,14 @@ set(BUILD_ROCKSDB_ARGS
   --link-mode "${YB_LINK}"
   --cxx-compiler "${CMAKE_CXX_COMPILER}"
   --c-compiler "${CMAKE_C_COMPILER}"
-  --extra-include-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/include"
+  --extra-include-dir "${GFLAGS_BUILD_DIR}/include"
   --extra-include-dir "${YB_SRC_DIR}/src"
-  --extra-lib-dir "${YB_SRC_DIR}/thirdparty/gflags-2.1.2/lib"
+  --extra-lib-dir "${GFLAGS_BUILD_DIR}/lib"
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
   ${ROCKSDB_BUILD_VERBOSE_ARG}
   --make-opts "${ROCKSDB_MAKE_OPTS}"
   ${ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG}
+  --ld-flags "${COMMON_LINKER_FLAGS}"
 )
 
 
