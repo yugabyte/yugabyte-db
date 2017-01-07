@@ -75,7 +75,7 @@ public class SimpleLoadGenerator {
 
   public Key getKeyToWrite() {
     if (maxGeneratedKey.get() == endKey - 1) {
-      return null;
+      maxGeneratedKey.set(-1);
     }
     return new Key(maxGeneratedKey.incrementAndGet());
   }

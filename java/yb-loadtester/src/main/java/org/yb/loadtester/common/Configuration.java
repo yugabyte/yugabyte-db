@@ -26,6 +26,7 @@ public class Configuration {
 
   // The types of workloads currently registered.
   public static enum WorkLoadType {
+    CassandraSimpleReadWrite,
     RedisSimpleReadWrite,
   }
 
@@ -55,11 +56,15 @@ public class Configuration {
       // Create a new workload object.
       workload = workloadClass.newInstance();
       // Initialize the workload.
-      workload.initialize(this, null);
+      workload.workloadInit(this);
     } catch (Exception e) {
       LOG.error("Could not create instance of " + workloadClass.getName(), e);
     }
     return workload;
+  }
+
+  public List<Node> getNodes() {
+    return nodes;
   }
 
   public Node getRandomNode() {
@@ -115,10 +120,10 @@ public class Configuration {
     proxyAddrs.setArgs(1);
 
     Option numThreads = OptionBuilder.create("num_threads");
-    appType.setDescription("The total number of threads.");
-    appType.setRequired(false);
-    appType.setLongOpt("num_threads");
-    appType.setArgs(1);
+    numThreads.setDescription("The total number of threads.");
+    numThreads.setRequired(false);
+    numThreads.setLongOpt("num_threads");
+    numThreads.setArgs(1);
 
     Option logtostderr = OptionBuilder.create("logtostderr");
     logtostderr.setDescription("Log to console.");
@@ -147,7 +152,7 @@ public class Configuration {
       ConsoleAppender console = new ConsoleAppender();
       String PATTERN = "%d [%p|%c|%C{1}] %m%n";
       console.setLayout(new PatternLayout(PATTERN));
-      console.setThreshold(Level.INFO);
+      console.setThreshold(Level.DEBUG);
       console.activateOptions();
       Logger.getRootLogger().addAppender(console);
     }

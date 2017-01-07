@@ -15,4 +15,10 @@ public class WorkloadConfig {
   // This is the exact number of writer threads.
   public int numWriterThreads;
 
+  // The number of keys to write as a part of this workload.
+  public int numKeysToWrite;
+
+  // The number of keys to read as a part of this workload. This ignores the attempts to read where
+  // no data has yet to be written.
+  public int numKeysToRead;
 }

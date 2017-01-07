@@ -2,7 +2,6 @@ package org.yb.loadtester.workload;
 
 import org.apache.log4j.Logger;
 import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.Configuration;
 import org.yb.loadtester.common.Configuration.Node;
 import org.yb.loadtester.common.SimpleLoadGenerator;
 import org.yb.loadtester.common.SimpleLoadGenerator.Key;
@@ -10,38 +9,32 @@ import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 import redis.clients.jedis.Jedis;
 
 public class RedisSimpleReadWrite extends Workload {
-  static {
-    workloadConfig.description =
-        "One reader and one writer thread, writes 10 string keys and reads 10 random keys";
-
-    // Disable the read-write percentage.
-    workloadConfig.readIOPSPercentage = -1;
-
-    // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 1;
-    workloadConfig.numWriterThreads = 1;
-  }
-
   private static final Logger LOG = Logger.getLogger(RedisSimpleReadWrite.class);
-
   // The number of keys to write.
   private static final int NUM_KEYS_TO_WRITE = 10;
   // The number of keys to read.
   private static final int NUM_KEYS_TO_READ = 10;
-
-  private Configuration configuration;
+  // Static initialization of this workload's config.
+  static {
+    workloadConfig.description =
+        "This workload writes and reads some random string keys from a Redis server. One reader " +
+        "and one writer thread thread each is spawned.";
+    // Disable the read-write percentage.
+    workloadConfig.readIOPSPercentage = -1;
+    // Set the read and write threads to 1 each.
+    workloadConfig.numReaderThreads = 1;
+    workloadConfig.numWriterThreads = 1;
+    // Set the number of keys to read and write.
+    workloadConfig.numKeysToRead = NUM_KEYS_TO_READ;
+    workloadConfig.numKeysToWrite = NUM_KEYS_TO_WRITE;
+  }
+  // Instance of the load generator.
+  private static SimpleLoadGenerator loadGenerator = new SimpleLoadGenerator(0, NUM_KEYS_TO_WRITE);
+  // The Java redis client.
   private Jedis jedisClient;
-  private static SimpleLoadGenerator loadGenerator;
-  // The number of keys that have been read so far.
-  private int numKeysRead = 0;
-  // State variable to track if this workload has finished.
-  private boolean hasFinished = false;
 
   @Override
-  public void initialize(Configuration configuration, String args) {
-    this.configuration = configuration;
-    loadGenerator = new SimpleLoadGenerator(0, NUM_KEYS_TO_WRITE);
-  }
+  public void initialize(String args) {}
 
   @Override
   public void createTableIfNeeded() {
@@ -49,41 +42,37 @@ public class RedisSimpleReadWrite extends Workload {
   }
 
   @Override
-  public void doRead() {
-    if (numKeysRead == NUM_KEYS_TO_READ - 1) {
-      hasFinished = true;
-      return;
-    }
+  public boolean doRead() {
     Key key = loadGenerator.getKeyToRead();
     if (key == null) {
-      return;
+      // There are no keys to read yet.
+      return false;
     }
     String value = getClient().get(key.asString());
     key.verify(value);
     LOG.info("Read key: " + key.toString());
-    numKeysRead++;
+    return true;
   }
 
   @Override
-  public void doWrite() {
+  public boolean doWrite() {
     Key key = loadGenerator.getKeyToWrite();
-    if (key == null) {
-      hasFinished = true;
-      return;
-    }
     String retVal = getClient().set(key.asString(), key.getValueStr());
     LOG.info("Wrote key: " + key.toString() + ", return code: " + retVal);
     loadGenerator.recordWriteSuccess(key);
+    return true;
   }
 
   @Override
-  public boolean hasFinished() {
-    return hasFinished;
+  public void terminate() {
+    if (jedisClient != null) {
+      jedisClient.close();
+    }
   }
 
   private Jedis getClient() {
     if (jedisClient == null) {
-      Node node = configuration.getRandomNode();
+      Node node = getRandomNode();
       jedisClient = new Jedis(node.getHost(), node.getPort());
     }
     return jedisClient;

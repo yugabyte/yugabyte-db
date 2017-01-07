@@ -36,10 +36,12 @@ public class LoadTester {
       LOG.info("Starting " + ioType.toString() + " IOPS thread #" + threadIdx);
       while(!workload.hasFinished()) {
         switch (ioType) {
-        case Write: workload.doWrite(); break;
-        case Read: workload.doRead(); break;
+        case Write: workload.workloadWrite(); break;
+        case Read: workload.workloadRead(); break;
         }
       }
+      LOG.info("IOPS thread #" + threadIdx + " finished");
+      workload.terminate();
     }
   }
 
@@ -79,11 +81,13 @@ public class LoadTester {
         LOG.error("Error waiting for thread join()", e);
       }
     }
+    workload.terminate();
   }
 
   public static void main(String[] args) throws Exception {
     Configuration configuration = Configuration.createFromArgs(args);
     LoadTester lt = new LoadTester(configuration);
     lt.run();
+    LOG.info("Load tester finished");
   }
 }
