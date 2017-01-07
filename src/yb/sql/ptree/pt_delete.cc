@@ -28,7 +28,6 @@ PTDeleteStmt::~PTDeleteStmt() {
 }
 
 ErrorCode PTDeleteStmt::Analyze(SemContext *sem_context) {
-  LOG(INFO) << kErrorFontStart;
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
 
   // Collect table's schema for semantic analysis.
@@ -39,8 +38,6 @@ ErrorCode PTDeleteStmt::Analyze(SemContext *sem_context) {
   if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
     return err;
   }
-
-  LOG(INFO) << kErrorFontEnd;
   return err;
 }
 

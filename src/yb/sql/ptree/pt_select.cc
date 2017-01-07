@@ -79,7 +79,6 @@ PTSelectStmt::~PTSelectStmt() {
 }
 
 ErrorCode PTSelectStmt::Analyze(SemContext *sem_context) {
-  LOG(INFO) << kErrorFontStart;
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
 
   // Get the table descriptor.
@@ -112,8 +111,6 @@ ErrorCode PTSelectStmt::Analyze(SemContext *sem_context) {
   if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
     return err;
   }
-
-  LOG(INFO) << kErrorFontEnd;
   return err;
 }
 

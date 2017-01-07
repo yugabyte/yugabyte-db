@@ -77,7 +77,6 @@ PTUpdateStmt::~PTUpdateStmt() {
 }
 
 ErrorCode PTUpdateStmt::Analyze(SemContext *sem_context) {
-  LOG(INFO) << kErrorFontStart << "UPDATE - start";
   ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
 
   // Collect table's schema for semantic analysis.
@@ -105,7 +104,6 @@ ErrorCode PTUpdateStmt::Analyze(SemContext *sem_context) {
     return err;
   }
 
-  LOG(INFO) << "UPDATE - end" << kErrorFontEnd;
   return err;
 }
 
