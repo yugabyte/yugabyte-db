@@ -46,12 +46,16 @@ Status SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
   // Clear the previous result.
   read_op_ = nullptr;
 
-  // Execute the read.
-  RETURN_NOT_OK(read_session_->Apply(yb_op));
-  RETURN_NOT_OK(read_session_->Flush());
+  if (yb_op.get() != nullptr) {
 
-  // Read the processing result.
-  read_op_ = yb_op;
+    // Execute the read.
+    RETURN_NOT_OK(read_session_->Apply(yb_op));
+    RETURN_NOT_OK(read_session_->Flush());
+
+    // Read the processing result.
+    read_op_ = yb_op;
+  }
+
   return Status::OK();
 }
 

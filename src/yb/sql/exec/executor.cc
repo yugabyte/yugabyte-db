@@ -415,25 +415,27 @@ Status Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op)
 //--------------------------------------------------------------------------------------------------
 
 ErrorCode Executor::ExecPTNode(const PTSelectStmt *tnode) {
-  if (tnode->is_system()) {
-    return ErrorCode::SUCCESSFUL_COMPLETION;
+  shared_ptr<YBSqlReadOp> select_op;
+
+  if (!tnode->is_system()) {
+
+    // Create the read request.
+    const shared_ptr<client::YBTable>& table = tnode->table();
+    select_op.reset(table->NewYSQLSelect());
+    YSQLReadRequestPB *req = select_op->mutable_request();
+
+    // Where clause - Hash, range, and regular columns.
+    YBPartialRow *row = select_op->mutable_row();
+    WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops());
+
+    // Specify selected columns.
+    for (const ColumnDesc *col_desc : tnode->selected_columns()) {
+      req->add_column_ids(col_desc->id());
+    }
   }
 
-  // Create the read request.
-  const shared_ptr<client::YBTable>& table = tnode->table();
-  const shared_ptr<YBSqlReadOp> select_op(table->NewYSQLSelect());
-  YSQLReadRequestPB *req = select_op->mutable_request();
-
-  // Where clause - Hash, range, and regular columns.
-  YBPartialRow *row = select_op->mutable_row();
-  WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops());
-
-  // Specify selected columns.
-  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
-    req->add_column_ids(col_desc->id());
-  }
-
-  // Apply the operator.
+  // Apply the operator always even when select_op is "null" so that the last read_op saved in
+  // exec_context is always cleared.
   exec_context_->ApplyRead(select_op);
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
