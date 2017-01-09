@@ -3,6 +3,7 @@
 package com.yugabyte.yw.cloud;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 
 public class UniverseResourceDetails {
   public double pricePerHour = 0;
@@ -11,7 +12,7 @@ public class UniverseResourceDetails {
   public int volumeCount = 0;
   public int volumeSizeGB = 0;
   public String volumeType = "";
-  public ArrayList<String> azList = new ArrayList<String>();
+  public HashSet<String> azList = new HashSet<>();
 
   public void addCostPerHour(double price) {
     pricePerHour += price;
