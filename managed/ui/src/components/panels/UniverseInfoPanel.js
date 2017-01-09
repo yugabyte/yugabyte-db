@@ -14,8 +14,12 @@ export default class UniverseInfoPanel extends Component {
     const { universeInfo } = this.props;
     const { universeDetails } = universeInfo;
     const { userIntent } = universeDetails;
-    var azString = universeInfo.universeDetails.nodeDetailsSet.map(function(item, idx){
-      return item.cloudInfo.az;
+    var azString = universeInfo.universeDetails.placementInfo.cloudList.map(function(cloudItem, idx){
+      return cloudItem.regionList.map(function(regionItem, regionIdx){
+        return regionItem.azList.map(function(azItem, azIdx){
+          return azItem.name;
+        }).join(", ")
+      }).join(", ")
     }).join(", ");
 
     var regionList = universeInfo.regions.map(function(region) { return region.name; }).join(", ")
