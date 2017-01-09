@@ -542,6 +542,7 @@ CatalogManager::CatalogManager(Master* master)
       rng_(GetRandomSeed32()),
       tablet_exists_(false),
       is_initial_blacklist_load_set_(false),
+      last_known_percent_complete_(0),
       state_(kConstructed),
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
@@ -2660,7 +2661,8 @@ class RetryingTSRpcTask : public MonitoredTask {
 
     if (attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
       LOG(WARNING) << "Reached maximum number of retries ("
-                   << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description();
+                   << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description()
+                   << ", state=" << MonitoredTask::state(state());
       MarkFailed();
       return false;
     }
@@ -3106,6 +3108,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
 
   // Logging should be covered inside based on failure reasons.
   if (!PrepareRequest(attempt)) {
+    MarkAborted();
     return false;
   }
 
@@ -3126,15 +3129,18 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
 
   Status status = StatusFromPB(resp_.error().status());
 
-  // Do not retry on a CAS error, otherwise retry forever or until cancelled.
+  // Do not retry on some known errors, otherwise retry forever or until cancelled.
   switch (resp_.error().code()) {
     case TabletServerErrorPB::CAS_FAILED:
-      LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed with leader " << permanent_uuid()
-                               << " due to CAS failure. No further retry: " << status.ToString();
+    case TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT:
+    case TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT:
+    case TabletServerErrorPB::NOT_THE_LEADER:
+      LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
+                               << ". No further retry: " << status.ToString();
       MarkFailed();
       break;
     default:
-      LOG_WITH_PREFIX(INFO) << "ChangeConfig() failed with leader " << permanent_uuid()
+      LOG_WITH_PREFIX(INFO) << "ChangeConfig() failed on leader " << permanent_uuid()
                             << " due to error "
                             << TabletServerErrorPB::Code_Name(resp_.error().code())
                             << ". This operation will be retried. Error detail: "
@@ -4452,7 +4458,15 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
     }
   }
 
-  resp->set_percent(100 - (static_cast<double>(total_pending) * 100 / initial_blacklist_load_));
+  // Only when we have heard from all blacklisted servers, accept the total_pending value
+  // and store it, so we do not regress the value when some of the blacklisted tservers fail or get
+  // disconnected. This is a fail safe to ensure we do not claim data move completed prematurely.
+  if (num_blacklist_valid == blacklist_tservers_.size()) {
+    last_known_percent_complete_ =
+      100 - (static_cast<double>(total_pending) * 100 / initial_blacklist_load_);
+  }
+
+  resp->set_percent(last_known_percent_complete_);
 
   return Status::OK();
 }

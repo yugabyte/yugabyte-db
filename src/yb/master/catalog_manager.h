@@ -639,7 +639,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   bool IsInitialized() const;
 
-  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
+  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req)
+      OVERRIDE;
 
   // Set the current committed config.
   CHECKED_STATUS GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
@@ -654,7 +655,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // must be initialized before calling this method.
   consensus::RaftPeerPB::Role Role() const;
 
-  CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
+  CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
+                               bool on_disk = false);
 
   // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
   // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
@@ -980,6 +982,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   int64_t initial_blacklist_load_;
   // This bool is used to check in a new leader takeover case, if we can trust initial load value.
   bool is_initial_blacklist_load_set_;
+  // Track the data move percent completed when all blacklisted servers report their pending load.
+  double last_known_percent_complete_;
 
   enum State {
     kConstructed,

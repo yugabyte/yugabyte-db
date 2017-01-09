@@ -94,6 +94,12 @@ message TabletServerErrorPB {
 
     // This server leader is not ready to step down.
     LEADER_NOT_READY_TO_STEP_DOWN = 19;
+
+    // Adding a peer which is already present in the current raft config.
+    ADD_CHANGE_CONFIG_ALREADY_PRESENT = 20;
+
+    // Removing a peer which is not present in the current raft config.
+    REMOVE_CHANGE_CONFIG_NOT_PRESENT = 21;
   }
 
   // The error code.

@@ -1669,7 +1669,8 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
       case ADD_SERVER:
         // Ensure the server we are adding is not already a member of the configuration.
         if (IsRaftConfigMember(server_uuid, committed_config)) {
-          return STATUS(InvalidArgument,
+          *error_code = TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT;
+          return STATUS(IllegalState,
               Substitute("Server with UUID $0 is already a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));
         }
@@ -1704,6 +1705,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
                             .ShortDebugString()));
         }
         if (!RemoveFromRaftConfig(&new_config, server_uuid)) {
+          *error_code = TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT;
           return STATUS(NotFound,
               Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                         server_uuid, committed_config.ShortDebugString()));

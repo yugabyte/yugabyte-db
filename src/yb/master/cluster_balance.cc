@@ -391,7 +391,7 @@ class ClusterLoadBalancer::ClusterLoadState {
               // ENG-500 : Placement does not match, but we can still use this combo as a fallback.
               // It uses the last such pair, which should be fine.
               fallback_to_uuid = to_uuid;
-              fallback_to_uuid = from_uuid;
+              fallback_from_uuid = from_uuid;
             }
           }
         }
@@ -709,7 +709,6 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
     // of the tablet.
     if (tablet_running) {
       if (!UpdateTabletInfo(tablet.get())) {
-        // Logging for this error is handled in the call itself.
         return false;
       }
     }
