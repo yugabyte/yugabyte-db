@@ -1,0 +1,97 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+.provider-config-container {
+  margin-left: 2%;
+  padding: 4px;
+}
+.provider-config-container .list-group {
+  background-color: white;
+  margin-right: 2%;
+  padding: 10px 20px;
+}
+.provider-config-container .list-group-item {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  background-color: transparent;
+  border: none;
+}
+
+.provider-config-container .heading-text {
+  color: #CD6500;
+}
+
+.detail-text {
+  font-size: 16px;
+  font-weight: 400;
+  padding-left: 20px;
+}
+
+.detail-text span {
+  display: block;
+  margin-top: 10px;
+  padding-left: 20px;
+}
+
+.well {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.data-cell-input {
+  width: 60%;
+  float: right;
+}
+
+.provider-config-container button {
+  float: right;
+  margin-bottom: 4px;
+  width: 220px;
+  text-align: center;
+}
+
+.provider-config-container .row {
+  margin-bottom: 4px;
+}
+.yb-breadcrumb {
+  color: #CD6500;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.provider-config-container h2{
+  font-size: 20px;
+  padding: 0;
+  margin: 0 10px 10px 4px;
+  font-weight: 600;
+}
+
+.provider-config-container .list-group {
+  list-style: decimal inside;
+}
+
+.provider-config-container .list-group-item {
+  display: list-item;
+}
+
+.save-btn {
+  background-color: $YB_ORANGE;
+  width: 120px !important;
+  height: 36px !important;
+  padding: 0;
+  margin: 0px 6px;
+  color: white;
+  border: none;
+  float: right;
+}
+
+.cancel-btn {
+  float: left;
+  width: 120px !important;
+  height: 36px !important;
+  padding: 0;
+  margin: 0px 6px;
+
+}

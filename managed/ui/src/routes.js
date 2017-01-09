@@ -14,6 +14,7 @@ import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
 import SetupDataCenter from './pages/SetupDataCenter';
 import Metrics from './pages/Metrics';
+import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
 
 function validateSession(store, replacePath, callback) {
@@ -62,6 +63,7 @@ export default (store) => {
         <Route path="/tasks" component={Alerts} />
         <Route path="/metrics" component={Metrics} />
         <Route path="/setup_datacenter" component={SetupDataCenter} />
+        <Route path="/config" component={DataCenterConfiguration} />
       </Route>
     </Route>
   );
