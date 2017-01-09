@@ -52,6 +52,7 @@
     "react-bootstrap-multiselect": "^2.2.0",
     "react-bootstrap-table": "^2.5.8",
     "react-dom": "^15.3.0",
+    "react-dropzone": "^3.7.3",
     "react-gauge": "0.0.5",
     "react-highlight": "^0.9.0",
     "react-leaflet": "^1.0.0-rc.3",
