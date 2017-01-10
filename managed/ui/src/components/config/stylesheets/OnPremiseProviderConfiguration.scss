@@ -1,0 +1,140 @@
+
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+.on-prem-provider-container {
+  position: relative;
+  width: 100%;
+  margin-left: 6%;
+}
+
+.on-prem-provider-container .form-group {
+  width: 70%;
+  display: inline;
+}
+
+.on-prem-provider-container  .form-data-container {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  background-color: white;
+}
+
+.on-prem-provider-container .form-control {
+  display: inline;
+  float: left;
+  width: 65%;
+  margin: 0px 0px 10px 5%;
+  padding: 0;
+  height: 36px;
+}
+
+.host-data-cell .form-control{
+  display: inline;
+  float: left;
+  width: 34%;
+  margin: 0px 0px 10px 5%;
+  padding: 0;
+  height: 36px;
+}
+
+.host-data-cell .delete-btn {
+  border-radius: 50%;
+  background-color: red;
+  color: white;
+  width: 26px;
+  height: 26px;
+  padding: 0 0 0 6px;
+  border: none;
+  margin: 6px 16px;
+}
+
+.on-prem-provider-container .cell-button-group {
+  display: inline;
+  float: right;
+  width: 30%;
+  padding-left: 7px;
+  margin: 0px 0px;
+  height: 36px;
+}
+
+.on-prem-provider-container .form-action-button-container{
+ position: absolute;
+ margin-top: 40%;
+
+}
+.region-list-container {
+  position: absolute;
+  width: 300px;
+  top: 30px;
+}
+
+.zone-list-container {
+  position: absolute;
+  width: 300px;
+  margin-left: 340px;
+  top: 0;
+}
+
+.host-list-container {
+  position: absolute;
+  width: 300px;
+  margin-left: 340px;
+  top: 0;
+}
+
+.column-hidden {
+  display: none;
+}
+
+.column-visible {
+  display: block;
+}
+
+.on-prem-provider-container .list-column {
+  border: 1px solid #d3d3d3;
+  height: 350px;
+  overflow-y: scroll;
+}
+
+.host-list-container .list-column {
+  border: none;
+}
+
+.add-list-item-label {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.host-list-label {
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.config-action-btn {
+  width: 35px;
+  height: 100%;
+  color: $YB_ORANGE;
+  padding: 0 6px;
+}
+
+.cell-item {
+  font-weight: 600;
+  font-size: 16px;
+  margin-left: 10%;
+  text-align: center;
+  width: 50%;
+  display: inline;
+}
+
+.cell-saved-container {
+  position: relative;
+  margin-top: 10px;
+  height: 46px;
+}
+
+.data-item-active {
+  background-color: $YB_ORANGE;
+  color: white;
+}
