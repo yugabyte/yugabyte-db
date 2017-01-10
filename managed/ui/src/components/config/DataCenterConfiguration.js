@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { withRouter } from 'react-router';
 import { GCPProviderConfigurationContainer, AzureProviderConfigurationContainer,
          DockerProviderConfigurationContainer, AWSProviderConfigurationContainer,
-          } from '../../containers/config';
+         OnPremProviderConfigurationContainer } from '../../containers/config';
 import {Tab} from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import './stylesheets/providerConfig.scss';
@@ -35,7 +35,7 @@ class DataCenterConfiguration extends Component {
             <DockerProviderConfigurationContainer />
           </Tab>
           <Tab eventKey={"onprem"} title="OnPrem" key="onprem-tab">
-
+            <OnPremProviderConfigurationContainer />
           </Tab>
           <Tab eventKey={"azure"} title="Azure" key="azure-tab">
             <AzureProviderConfigurationContainer />
