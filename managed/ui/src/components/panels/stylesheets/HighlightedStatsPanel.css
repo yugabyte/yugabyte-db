@@ -1,5 +1,9 @@
 /* Copyright (c) YugaByte, Inc. */
 
+.highlighted-stats-panel {
+  margin-top: 10px;
+}
+
 /* From gentelella.css need to cleanup */
 .tile_count .tile_stats_count {
   border-bottom: 1px solid #D9DEE4;
@@ -19,7 +23,7 @@
   }
 }
 .tile_count .tile_stats_count {
-  border-left: 1px solid #ADB2B5;
+  border-left: 1px solid #ddd;
 }
 .tile_count .tile_stats_count:first-child {
   border-left: none;
@@ -30,18 +34,18 @@
   }
 }
 .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
-  font-size: 30px;
-  line-height: 25px;
+  font-size: 22px;
+  line-height: 22px;
   font-weight: 600;
 }
 @media (min-width:768px) {
   .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
-    font-size: 25px;
+    font-size: 22px;
   }
 }
 @media (min-width: 992px) and (max-width: 1100px) {
   .tile_count .tile_stats_count .count, .tile_count .tile_stats_count .count span {
-    font-size: 30px;
+    font-size: 22px;
   }
 }
 .tile_count .tile_stats_count span {

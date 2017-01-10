@@ -34,14 +34,15 @@ export default class HighlightedStatsPanel extends Component {
     }
     var numNodes = 0;
     var totalCost = 0;
-    if (isValidArray(universeList)) {
-      universeList.forEach(function (universeItem) {
-        numNodes += universeItem.universeDetails.userIntent.numNodes;
-        totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
-      });
+    if (!isValidArray(universeList)) {
+      return <span/>
     }
+    universeList.forEach(function (universeItem) {
+      numNodes += universeItem.universeDetails.userIntent.numNodes;
+      totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
+    });
     return (
-      <div className="row tile_count universe-cost-panel-container">
+      <div className="row tile_count highlighted-stats-panel">
         <Col md={6} mdOffset={3}>
           <StatsPanelComponent value={universeList.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
