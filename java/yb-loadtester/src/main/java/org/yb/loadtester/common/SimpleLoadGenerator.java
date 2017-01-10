@@ -2,9 +2,9 @@
 
 package org.yb.loadtester.common;
 
+import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
-import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
@@ -17,9 +17,14 @@ public class SimpleLoadGenerator {
 
     // The underlying key is an integer.
     Integer key;
+    // The prefix if any.
+    String keyPrefix = "";
 
-    public Key(int key) {
+    public Key(int key, String keyPrefix) {
       this.key = new Integer(key);
+      if (keyPrefix != null) {
+        this.keyPrefix = keyPrefix;
+      }
     }
 
     public int getInteger() {
@@ -27,7 +32,7 @@ public class SimpleLoadGenerator {
     }
 
     public String asString() {
-      return key.toString();
+      return keyPrefix + key.toString();
     }
 
     public String getValueStr() {
@@ -62,6 +67,8 @@ public class SimpleLoadGenerator {
   Set<Integer> writtenKeys;
   // A background thread to track keys written and increment maxWrittenKey.
   Thread writtenKeysTracker;
+  // The prefix for the key.
+  String keyPrefix;
   // Random number generator.
   Random random = new Random();
 
@@ -97,6 +104,10 @@ public class SimpleLoadGenerator {
     writtenKeysTracker.start();
   }
 
+  public void setKeyPrefix(String prefix) {
+    keyPrefix = prefix;
+  }
+
   public void recordWriteSuccess(Key key) {
     synchronized (writtenKeysTracker) {
       writtenKeys.add(key.getInteger());
@@ -115,7 +126,7 @@ public class SimpleLoadGenerator {
     if (maxGeneratedKey.get() == endKey - 1) {
       maxGeneratedKey.set(-1);
     }
-    return new Key(maxGeneratedKey.incrementAndGet());
+    return generateKey(maxGeneratedKey.incrementAndGet());
   }
 
   public Key getKeyToRead() {
@@ -123,12 +134,16 @@ public class SimpleLoadGenerator {
     if (maxKey < 0) {
       return null;
     } else if (maxKey == 0) {
-      return new Key(0);
+      return generateKey(0);
     }
     do {
       int key = random.nextInt(maxKey);
       if (!failedKeys.contains(key))
-        return new Key(key);
+        return generateKey(key);
     } while (true);
+  }
+
+  private Key generateKey(int key) {
+    return new Key(key, keyPrefix);
   }
 }

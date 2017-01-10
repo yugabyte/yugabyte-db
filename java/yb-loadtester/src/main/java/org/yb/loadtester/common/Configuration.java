@@ -27,6 +27,7 @@ public class Configuration {
   // The types of workloads currently registered.
   public static enum WorkLoadType {
     CassandraSimpleReadWrite,
+    CassandraTimeseries,
     RedisSimpleReadWrite,
   }
 
@@ -152,7 +153,7 @@ public class Configuration {
       ConsoleAppender console = new ConsoleAppender();
       String PATTERN = "%d [%p|%c|%C{1}] %m%n";
       console.setLayout(new PatternLayout(PATTERN));
-      console.setThreshold(Level.DEBUG);
+      console.setThreshold(Level.INFO);
       console.activateOptions();
       Logger.getRootLogger().addAppender(console);
     }

@@ -7,11 +7,13 @@ import org.yb.loadtester.Workload;
 import org.yb.loadtester.common.SimpleLoadGenerator;
 import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 
-import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
 
+/**
+ * This workload writes and reads some random string keys from a CQL server. One reader and one
+ * writer thread thread each is spawned.
+ */
 public class CassandraSimpleReadWrite extends Workload {
   private static final Logger LOG = Logger.getLogger(CassandraSimpleReadWrite.class);
   // The number of keys to write.
@@ -20,9 +22,6 @@ public class CassandraSimpleReadWrite extends Workload {
   private static final int NUM_KEYS_TO_READ = 10;
   // Static initialization of this workload's config.
   static {
-    workloadConfig.description =
-        "This workload writes and reads some random string keys from a CQL server. One reader " +
-        "and one writer thread thread each is spawned.";
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
@@ -34,9 +33,6 @@ public class CassandraSimpleReadWrite extends Workload {
   }
   // Instance of the load generator.
   private static SimpleLoadGenerator loadGenerator = new SimpleLoadGenerator(0, NUM_KEYS_TO_WRITE);
-  // The Cassandra client variables.
-  protected Cluster cluster = null;
-  protected Session session = null;
   // The table name.
   private String tableName = CassandraSimpleReadWrite.class.getSimpleName();
 
@@ -48,7 +44,7 @@ public class CassandraSimpleReadWrite extends Workload {
     String create_stmt =
         String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k));",
                       tableName);
-    getClient().execute(create_stmt);
+    getCassandraClient().execute(create_stmt);
     LOG.info("Created a Cassandra table + " + tableName + " using query: [" + create_stmt + "]");
   }
 
@@ -62,7 +58,7 @@ public class CassandraSimpleReadWrite extends Workload {
     // Do the read from Cassandra.
     String select_stmt = String.format("SELECT k, v FROM %s WHERE k = '%s';",
                                        tableName, key.asString());
-    ResultSet rs = getClient().execute(select_stmt);
+    ResultSet rs = getCassandraClient().execute(select_stmt);
     List<Row> rows = rs.all();
     if (rows.size() != 1) {
       LOG.fatal("Read [" + select_stmt + "], expected 1 row in result, got " + rows.size());
@@ -79,46 +75,9 @@ public class CassandraSimpleReadWrite extends Workload {
     // Do the write to Cassandra.
     String insert_stmt = String.format("INSERT INTO %s (k, v) VALUES ('%s', '%s');",
                                        tableName, key.asString(), key.getValueStr());
-    ResultSet resultSet = getClient().execute(insert_stmt);
+    ResultSet resultSet = getCassandraClient().execute(insert_stmt);
     LOG.info("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
     loadGenerator.recordWriteSuccess(key);
     return true;
-  }
-
-  @Override
-  public void terminate() {
-    destroyClient();
-  }
-
-  private Session getClient() {
-    if (cluster == null) {
-      createClient();
-    }
-    return session;
-  }
-
-  private synchronized void createClient() {
-    if (cluster == null) {
-      cluster = Cluster.builder()
-                       .addContactPointsWithPorts(getNodesAsInet())
-                       .withProtocolVersion(com.datastax.driver.core.ProtocolVersion.V3)
-                       .build();
-      LOG.info("Connected to cluster: " + cluster.getClusterName());
-    }
-    if (session == null) {
-      LOG.info("Creating a session...");
-      session = cluster.connect();
-    }
-  }
-
-  private void destroyClient() {
-    if (session != null) {
-      session.close();
-      session = null;
-    }
-    if (cluster != null) {
-      cluster.close();
-      cluster = null;
-    }
   }
 }

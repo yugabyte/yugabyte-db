@@ -2,12 +2,13 @@ package org.yb.loadtester.workload;
 
 import org.apache.log4j.Logger;
 import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.Configuration.Node;
 import org.yb.loadtester.common.SimpleLoadGenerator;
 import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 
-import redis.clients.jedis.Jedis;
-
+/**
+ * This workload writes and reads some random string keys from a Redis server. One reader and one
+ * writer thread thread each is spawned.
+ */
 public class RedisSimpleReadWrite extends Workload {
   private static final Logger LOG = Logger.getLogger(RedisSimpleReadWrite.class);
   // The number of keys to write.
@@ -16,9 +17,6 @@ public class RedisSimpleReadWrite extends Workload {
   private static final int NUM_KEYS_TO_READ = 10;
   // Static initialization of this workload's config.
   static {
-    workloadConfig.description =
-        "This workload writes and reads some random string keys from a Redis server. One reader " +
-        "and one writer thread thread each is spawned.";
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
@@ -30,8 +28,6 @@ public class RedisSimpleReadWrite extends Workload {
   }
   // Instance of the load generator.
   private static SimpleLoadGenerator loadGenerator = new SimpleLoadGenerator(0, NUM_KEYS_TO_WRITE);
-  // The Java redis client.
-  private Jedis jedisClient;
 
   @Override
   public void initialize(String args) {}
@@ -48,7 +44,7 @@ public class RedisSimpleReadWrite extends Workload {
       // There are no keys to read yet.
       return false;
     }
-    String value = getClient().get(key.asString());
+    String value = getRedisClient().get(key.asString());
     key.verify(value);
     LOG.info("Read key: " + key.toString());
     return true;
@@ -57,24 +53,10 @@ public class RedisSimpleReadWrite extends Workload {
   @Override
   public boolean doWrite() {
     Key key = loadGenerator.getKeyToWrite();
-    String retVal = getClient().set(key.asString(), key.getValueStr());
+    String retVal = getRedisClient().set(key.asString(), key.getValueStr());
     LOG.info("Wrote key: " + key.toString() + ", return code: " + retVal);
     loadGenerator.recordWriteSuccess(key);
     return true;
   }
 
-  @Override
-  public void terminate() {
-    if (jedisClient != null) {
-      jedisClient.close();
-    }
-  }
-
-  private Jedis getClient() {
-    if (jedisClient == null) {
-      Node node = getRandomNode();
-      jedisClient = new Jedis(node.getHost(), node.getPort());
-    }
-    return jedisClient;
-  }
 }

@@ -8,6 +8,11 @@ import org.apache.log4j.Logger;
 import org.yb.loadtester.common.Configuration;
 import org.yb.loadtester.common.Configuration.Node;
 
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Session;
+
+import redis.clients.jedis.Jedis;
+
 public abstract class Workload {
   private static final Logger LOG = Logger.getLogger(Workload.class);
   // Instance of the workload configuration.
@@ -20,6 +25,11 @@ public abstract class Workload {
   protected int numKeysRead = 0;
   // State variable to track if this workload has finished.
   protected boolean hasFinished = false;
+  // The Cassandra client variables.
+  protected Cluster cassandra_cluster = null;
+  protected Session cassandra_session = null;
+  // The Java redis client.
+  private Jedis jedisClient;
 
   /**
    * The load tester framework call this method of the base class. This in turn calls the
@@ -114,5 +124,49 @@ public abstract class Workload {
   /**
    * Terminate the workload (tear down connections if needed, etc).
    */
-  public abstract void terminate();
+  public void terminate() {
+    destroyClients();
+  }
+
+  protected Session getCassandraClient() {
+    if (cassandra_cluster == null) {
+      createCassandraClient();
+    }
+    return cassandra_session;
+  }
+
+  private synchronized void createCassandraClient() {
+    if (cassandra_cluster == null) {
+      cassandra_cluster = Cluster.builder()
+                       .addContactPointsWithPorts(getNodesAsInet())
+                       .build();
+      LOG.info("Connected to cluster: " + cassandra_cluster.getClusterName());
+    }
+    if (cassandra_session == null) {
+      LOG.info("Creating a session...");
+      cassandra_session = cassandra_cluster.connect();
+    }
+  }
+
+  protected Jedis getRedisClient() {
+    if (jedisClient == null) {
+      Node node = getRandomNode();
+      jedisClient = new Jedis(node.getHost(), node.getPort());
+    }
+    return jedisClient;
+  }
+
+  protected void destroyClients() {
+    if (cassandra_session != null) {
+      cassandra_session.close();
+      cassandra_session = null;
+    }
+    if (cassandra_cluster != null) {
+      cassandra_cluster.close();
+      cassandra_cluster = null;
+    }
+    if (jedisClient != null) {
+      jedisClient.close();
+    }
+  }
 }
