@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
 
 import { RegionMapLegend } from '../maps';
-import { HighlightedStatsPanelContainer, UniverseRegionLocationPanelContainer,
+import { UniverseRegionLocationPanelContainer,
    UniverseDisplayPanelContainer } from '../../containers/panels';
 import './stylesheets/Dashboard.css'
 
@@ -18,14 +18,11 @@ export default class Dashboard extends Component {
   render() {
     return (
       <div id="page-wrapper" className="dashboard-container">
-        <HighlightedStatsPanelContainer />
         <Col lg={12}>
           <UniverseDisplayPanelContainer {...this.props}/>
         </Col>
-        <Col lg={9}>
+        <Col lg={12}>
           <UniverseRegionLocationPanelContainer {...this.props}/>
-        </Col>
-        <Col lg={3}>
           <RegionMapLegend />
         </Col>
       </div>
