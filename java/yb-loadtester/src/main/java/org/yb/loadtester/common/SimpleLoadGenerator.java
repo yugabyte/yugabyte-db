@@ -3,6 +3,8 @@
 package org.yb.loadtester.common;
 
 import java.util.Random;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
@@ -50,10 +52,16 @@ public class SimpleLoadGenerator {
   final int startKey;
   // The key to write till.
   final int endKey;
-  // The max key that was successfully written.
+  // The max key that was successfully written consecutively.
   AtomicInteger maxWrittenKey;
   // The max key that has been generated and handed out so far.
   AtomicInteger maxGeneratedKey;
+  // Set of keys that failed to write.
+  Set<Integer> failedKeys;
+  // Keys that have been written above maxWrittenKey.
+  Set<Integer> writtenKeys;
+  // A background thread to track keys written and increment maxWrittenKey.
+  Thread writtenKeysTracker;
   // Random number generator.
   Random random = new Random();
 
@@ -62,15 +70,45 @@ public class SimpleLoadGenerator {
     this.endKey = endKey;
     maxWrittenKey = new AtomicInteger(-1);
     maxGeneratedKey = new AtomicInteger(-1);
+    failedKeys = new HashSet<Integer>();
+    writtenKeys = new HashSet<Integer>();
+    writtenKeysTracker = new Thread("Written Keys Tracker") {
+        @Override
+        public void run() {
+          do {
+            int key = maxWrittenKey.get() + 1;
+            synchronized (this) {
+              if (failedKeys.contains(key) || writtenKeys.remove(key)) {
+                maxWrittenKey.set(key);
+              } else {
+                try {
+                  wait();
+                } catch (InterruptedException e) {
+                  // Ignore
+                }
+              };
+            }
+          } while (true);
+        }
+      };
+    // Make tracker a daemon thread so that it will not block the load tester from exiting
+    // when done.
+    writtenKeysTracker.setDaemon(true);
+    writtenKeysTracker.start();
   }
 
   public void recordWriteSuccess(Key key) {
-    // TODO: fix this for multhreaded usage.
-    maxWrittenKey.set(key.getInteger());
+    synchronized (writtenKeysTracker) {
+      writtenKeys.add(key.getInteger());
+      writtenKeysTracker.notify();
+    }
   }
 
   public void recordWriteFailure(Key key) {
-    // TODO: implement.
+    synchronized (writtenKeysTracker) {
+      failedKeys.add(key.getInteger());
+      writtenKeysTracker.notify();
+    }
   }
 
   public Key getKeyToWrite() {
@@ -87,6 +125,10 @@ public class SimpleLoadGenerator {
     } else if (maxKey == 0) {
       return new Key(0);
     }
-    return new Key(random.nextInt(maxKey));
+    do {
+      int key = random.nextInt(maxKey);
+      if (!failedKeys.contains(key))
+        return new Key(key);
+    } while (true);
   }
 }

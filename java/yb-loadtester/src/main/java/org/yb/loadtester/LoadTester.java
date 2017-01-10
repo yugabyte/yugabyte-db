@@ -33,15 +33,18 @@ public class LoadTester {
 
     @Override
     public void run() {
-      LOG.info("Starting " + ioType.toString() + " IOPS thread #" + threadIdx);
-      while(!workload.hasFinished()) {
-        switch (ioType) {
-        case Write: workload.workloadWrite(); break;
-        case Read: workload.workloadRead(); break;
+      try {
+        LOG.info("Starting " + ioType.toString() + " IOPS thread #" + threadIdx);
+        while(!workload.hasFinished()) {
+          switch (ioType) {
+            case Write: workload.workloadWrite(); break;
+            case Read: workload.workloadRead(); break;
+          }
         }
+        LOG.info("IOPS thread #" + threadIdx + " finished");
+      } finally {
+        workload.terminate();
       }
-      LOG.info("IOPS thread #" + threadIdx + " finished");
-      workload.terminate();
     }
   }
 
@@ -55,33 +58,37 @@ public class LoadTester {
   }
 
   public void run() {
-    // Create the table if needed.
-    workload.createTableIfNeeded();
+    try {
+      // Create the table if needed.
+      workload.createTableIfNeeded();
 
-    // Create the reader and writer threads.
-    int idx = 0;
-    for (; idx < configuration.getNumWriterThreads(); idx++) {
-      iopsThreads.add(new IOPSThread(idx, configuration.getWorkloadInstance(), IOType.Write));
-    }
-    for (; idx < configuration.getNumWriterThreads() + configuration.getNumReaderThreads(); idx++) {
-      iopsThreads.add(new IOPSThread(idx, configuration.getWorkloadInstance(), IOType.Read));
-    }
-
-    // Start the reader and writer threads.
-    for (IOPSThread iopsThread : iopsThreads) {
-      iopsThread.start();
-    }
-
-    // Wait for the various threads to exit.
-    while (!iopsThreads.isEmpty()) {
-      try {
-        iopsThreads.get(0).join();
-        iopsThreads.remove(0);
-      } catch (InterruptedException e) {
-        LOG.error("Error waiting for thread join()", e);
+      // Create the reader and writer threads.
+      int idx = 0;
+      for (; idx < configuration.getNumWriterThreads(); idx++) {
+        iopsThreads.add(new IOPSThread(idx, configuration.getWorkloadInstance(), IOType.Write));
       }
+      for (; idx < configuration.getNumWriterThreads() + configuration.getNumReaderThreads();
+           idx++) {
+        iopsThreads.add(new IOPSThread(idx, configuration.getWorkloadInstance(), IOType.Read));
+      }
+
+      // Start the reader and writer threads.
+      for (IOPSThread iopsThread : iopsThreads) {
+        iopsThread.start();
+      }
+
+      // Wait for the various threads to exit.
+      while (!iopsThreads.isEmpty()) {
+        try {
+          iopsThreads.get(0).join();
+          iopsThreads.remove(0);
+        } catch (InterruptedException e) {
+          LOG.error("Error waiting for thread join()", e);
+        }
+      }
+    } finally {
+      workload.terminate();
     }
-    workload.terminate();
   }
 
   public static void main(String[] args) throws Exception {
