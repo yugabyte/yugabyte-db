@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import 'react-fa';
 import { MenuItem , NavDropdown, Navbar, Nav, Image } from 'react-bootstrap';
 import { Link } from 'react-router';
+import { HighlightedStatsPanelContainer } from '../../../containers/panels';
 
 import { TaskAlertsContainer } from '../../../containers/tasks';
 import logo from './images/small-logo.png';
@@ -45,6 +46,8 @@ export default class TopNavBar extends Component {
 						</MenuItem>
 					</NavDropdown>
 				</Nav>
+
+        <HighlightedStatsPanelContainer />
 			</Navbar>
 		);
 	}

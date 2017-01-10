@@ -9,12 +9,21 @@ export default class RegionMapLegend extends Component{
   render() {
     return (
       <div className="region-map-legend-container">
-        <h3>Platforms</h3>
+        <h4>Cloud Providers</h4>
         <span>Select <small>All |  None</small></span>
         <ListGroup>
-          <ListGroupItem>Google Cloud Platform <Checkbox inline/></ListGroupItem>
-          <ListGroupItem>Amazon Web Services <Checkbox inline/></ListGroupItem>
-          <ListGroupItem>Docker Localhost <Checkbox inline/></ListGroupItem>
+          <ListGroupItem>
+            <Checkbox inline/>
+            Google Cloud Platform
+          </ListGroupItem>
+          <ListGroupItem>
+            <Checkbox inline/>
+            Amazon Web Services
+          </ListGroupItem>
+          <ListGroupItem>
+            <Checkbox inline/>
+            Docker Localhost
+          </ListGroupItem>
         </ListGroup>
       </div>
     )

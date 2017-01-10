@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+var _ = require('lodash');
+
 export function isValidObject(obj) {
   if (typeof obj !== "undefined" && obj !== null) {
     return true;
@@ -22,4 +24,11 @@ export function removeNullProperties(obj) {
       delete obj[propName];
     }
   }
+}
+
+export function sortByLengthOfArrayProperty(array, propertyName) {
+  function arrayLengthComparator(item) {
+    return item[propertyName] ? item[propertyName].length : 0;
+  }
+  return _.sortBy(array, arrayLengthComparator);
 }

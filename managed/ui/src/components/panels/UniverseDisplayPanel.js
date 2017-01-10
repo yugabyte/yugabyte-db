@@ -41,7 +41,7 @@ class UniverseDisplayItem extends Component {
           <Link to={"/universes/" + universeDetailItem.universeUUID}>
             {universeDetailItem.name}
           </Link>
-          <Checkbox inline/>
+          <div className="float-right"><Checkbox inline/></div>
         </div>
         <DescriptionItem title="Replication Factor">
           <span>{replicationFactor}</span>
