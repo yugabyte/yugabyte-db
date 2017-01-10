@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_CLIENT_CALL_H_
-#define YB_RPC_CLIENT_CALL_H_
+#ifndef YB_RPC_OUTBOUND_CALL_H_
+#define YB_RPC_OUTBOUND_CALL_H_
 
 #include <string>
 #include <vector>
@@ -60,7 +60,7 @@ class RpcController;
 // we instead introduce a RemoteUser class or something?
 class UserCredentials {
  public:
-   UserCredentials();
+  UserCredentials();
 
   // Effective user, in cases where impersonation is supported.
   // If impersonation is not supported, this should be left empty.
@@ -118,6 +118,9 @@ class ConnectionId {
   const UserCredentials& user_credentials() const { return user_credentials_; }
   UserCredentials* mutable_user_credentials() { return &user_credentials_; }
 
+  void set_idx(uint8_t idx);
+  uint8_t idx() const { return idx_; }
+
   // Copy state from another object to this one.
   void CopyFrom(const ConnectionId& other);
 
@@ -131,6 +134,7 @@ class ConnectionId {
   // Remember to update HashCode() and Equals() when new fields are added.
   Sockaddr remote_;
   UserCredentials user_credentials_;
+  uint8_t idx_ = 0;  // Connection index, used to support multiple connections to the same server.
 
   // Implementation of CopyFrom that can be shared with copy constructor.
   void DoCopyFrom(const ConnectionId& other);
@@ -377,4 +381,4 @@ class CallResponse {
 }  // namespace rpc
 }  // namespace yb
 
-#endif
+#endif  // YB_RPC_OUTBOUND_CALL_H_

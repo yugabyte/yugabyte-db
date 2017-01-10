@@ -39,6 +39,8 @@
 #include "yb/util/status.h"
 #include "yb/util/user.h"
 
+DEFINE_int32(num_connections_to_server, 4, "Number of underlying connections to each server");
+
 using google::protobuf::Message;
 using std::string;
 using std::shared_ptr;
@@ -67,6 +69,7 @@ Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
   conn_id_.set_remote(remote);
   conn_id_.mutable_user_credentials()->set_real_user(real_user);
   is_started_.store(false, std::memory_order_release);
+  num_calls_.store(0, std::memory_order_release);
 }
 
 Proxy::~Proxy() {
@@ -80,8 +83,12 @@ void Proxy::AsyncRequest(const string& method,
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
   RemoteMethod remote_method(service_name_, method);
-  OutboundCall* call = new OutboundCall(conn_id_, remote_method, outbound_call_metrics_,
-      response, controller, callback);
+  uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;
+  auto indexed_conn_id = conn_id_;
+  indexed_conn_id.set_idx(idx);
+  OutboundCall* call =
+      new OutboundCall(
+          indexed_conn_id, remote_method, outbound_call_metrics_, response, controller, callback);
   controller->call_.reset(call);
   Status s = call->SetRequestParam(req);
   if (PREDICT_FALSE(!s.ok())) {
@@ -114,5 +121,5 @@ void Proxy::set_user_credentials(const UserCredentials& user_credentials) {
   conn_id_.set_user_credentials(user_credentials);
 }
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb

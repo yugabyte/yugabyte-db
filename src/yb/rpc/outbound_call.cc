@@ -442,6 +442,8 @@ void ConnectionId::set_user_credentials(const UserCredentials& user_credentials)
   user_credentials_.CopyFrom(user_credentials);
 }
 
+void ConnectionId::set_idx(uint8_t idx) { idx_ = idx; }
+
 void ConnectionId::CopyFrom(const ConnectionId& other) {
   DoCopyFrom(other);
 }
@@ -462,6 +464,7 @@ size_t ConnectionId::HashCode() const {
   size_t seed = 0;
   boost::hash_combine(seed, remote_.HashCode());
   boost::hash_combine(seed, user_credentials_.HashCode());
+  boost::hash_combine(seed, idx_);
   return seed;
 }
 
@@ -483,7 +486,7 @@ bool ConnectionIdEqual::operator() (const ConnectionId& cid1, const ConnectionId
 ///
 
 CallResponse::CallResponse()
- : parsed_(false) {
+    : parsed_(false) {
 }
 
 Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {

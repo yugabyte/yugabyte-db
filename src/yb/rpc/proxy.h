@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_RPC_PROXY_H
-#define YB_RPC_PROXY_H
+#ifndef YB_RPC_PROXY_H_
+#define YB_RPC_PROXY_H_
 
 #include <atomic>
 #include <memory>
@@ -34,8 +34,8 @@
 namespace google {
 namespace protobuf {
 class Message;
-} // namespace protobuf
-} // namespace google
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace rpc {
@@ -47,7 +47,8 @@ class Messenger;
 // Proxy objects do not map one-to-one with TCP connections.  The underlying TCP
 // connection is not established until the first call, and may be torn down and
 // re-established as necessary by the messenger. Additionally, the messenger is
-// likely to multiplex many Proxy objects on the same connection.
+// likely to multiplex many Proxy objects on the same connection. Or, split the
+// requests sent over a single proxy across different connections to the server.
 //
 // Proxy objects are thread-safe after initialization only.
 // Setters on the Proxy are not thread-safe, and calling a setter after any RPC
@@ -110,12 +111,13 @@ class Proxy {
   std::shared_ptr<Messenger> messenger_;
   ConnectionId conn_id_;
   mutable std::atomic<bool> is_started_;
+  mutable std::atomic_uint num_calls_;
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(Proxy);
 };
 
-} // namespace rpc
-} // namespace yb
+}  // namespace rpc
+}  // namespace yb
 
-#endif
+#endif  // YB_RPC_PROXY_H_
