@@ -60,7 +60,7 @@ class BinaryPlainBlockBuilder : public BlockBuilder {
 
   // Return the first added key.
   // key should be a Slice *
-  Status GetFirstKey(void *key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void *key) const OVERRIDE;
 
   // Length of a header.
   static const size_t kMaxHeaderSize = sizeof(uint32_t) * 3;
@@ -84,11 +84,11 @@ class BinaryPlainBlockDecoder : public BlockDecoder {
  public:
   explicit BinaryPlainBlockDecoder(Slice slice);
 
-  virtual Status ParseHeader() OVERRIDE;
+  virtual CHECKED_STATUS ParseHeader() OVERRIDE;
   virtual void SeekToPositionInBlock(uint pos) OVERRIDE;
-  virtual Status SeekAtOrAfterValue(const void *value,
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) OVERRIDE;
-  Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
+  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
 
   virtual bool HasNext() const OVERRIDE {
     DCHECK(parsed_);

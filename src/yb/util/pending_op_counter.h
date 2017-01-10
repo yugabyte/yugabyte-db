@@ -24,7 +24,7 @@ class PendingOperationCounter {
     return num_pending_operations_.load(std::memory_order::memory_order_acquire);
   }
 
-  Status WaitForAllOpsToFinish(const MonoDelta& timeout) const;
+  CHECKED_STATUS WaitForAllOpsToFinish(const MonoDelta& timeout) const;
 
  private:
   void Update(int64_t delta) {

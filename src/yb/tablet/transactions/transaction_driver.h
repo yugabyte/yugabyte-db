@@ -107,7 +107,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   // Perform any non-constructor initialization. Sets the transaction
   // that will be executed.
-  Status Init(gscoped_ptr<Transaction> transaction,
+  CHECKED_STATUS Init(gscoped_ptr<Transaction> transaction,
               consensus::DriverType driver);
 
   // Returns the OpId of the transaction being executed or an uninitialized
@@ -118,7 +118,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   // Submits the transaction for execution.
   // The returned status acknowledges any error on the submission process.
   // The transaction will be replied to asynchronously.
-  Status ExecuteAsync();
+  CHECKED_STATUS ExecuteAsync();
 
   // Aborts the transaction, if possible. Since transactions are executed in
   // multiple stages by multiple executors it might not be possible to stop
@@ -183,10 +183,10 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
   void PrepareAndStartTask();
 
   // Actually prepare and start.
-  Status PrepareAndStart();
+  CHECKED_STATUS PrepareAndStart();
 
   // Submits ApplyTask to the apply pool.
-  Status ApplyAsync();
+  CHECKED_STATUS ApplyAsync();
 
   // Calls Transaction::Apply() followed by Consensus::Commit() with the
   // results from the Apply().
@@ -194,7 +194,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   // Sleeps until the transaction is allowed to commit based on the
   // requested consistency mode.
-  Status CommitWait();
+  CHECKED_STATUS CommitWait();
 
   // Handle a failure in any of the stages of the operation.
   // In some cases, this will end the operation and call its callback.

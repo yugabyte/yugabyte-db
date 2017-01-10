@@ -350,7 +350,11 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
     Sockaddr sock_addr;
     CHECK_OK(sock_addr.ParseString("127.0.0.1", random_port));
     Socket sock;
-    sock.Init(0);
+    const Status init_status = sock.Init(0);
+    if (!init_status.ok()) {
+      VLOG(1) << "Failed to call Init() on socket ith address " << sock_addr.ToString();
+      continue;
+    }
 
     const auto bind_status = sock.Bind(sock_addr, /* explain_addr_in_use */ false);
     if (bind_status.ok()) {

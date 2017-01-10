@@ -51,29 +51,29 @@ class YBValue::Data {
   //
   // The returned pointer in *val_void is only guaranteed to live as long
   // as this YBValue object.
-  Status CheckTypeAndGetPointer(const std::string& col_name,
+  CHECKED_STATUS CheckTypeAndGetPointer(const std::string& col_name,
                                 DataType t,
                                 void** val_void);
 
  private:
   // Check that this value has the expected type 'type', returning
   // a nice error Status if not.
-  Status CheckValType(const std::string& col_name,
+  CHECKED_STATUS CheckValType(const std::string& col_name,
                       YBValue::Data::Type type,
                       const char* type_str) const;
 
   // Check that this value is a boolean constant, and set *val_void to
   // point to it if so.
-  Status CheckAndPointToBool(const std::string& col_name, void** val_void);
+  CHECKED_STATUS CheckAndPointToBool(const std::string& col_name, void** val_void);
 
   // Check that this value is an integer constant within the valid range,
   // and set *val_void to point to it if so.
-  Status CheckAndPointToInt(const std::string& col_name,
+  CHECKED_STATUS CheckAndPointToInt(const std::string& col_name,
                             size_t int_size, void** val_void);
 
   // Check that this value is a string constant, and set *val_void to
   // point to it if so.
-  Status CheckAndPointToString(const std::string& col_name,
+  CHECKED_STATUS CheckAndPointToString(const std::string& col_name,
                                void** val_void);
 };
 

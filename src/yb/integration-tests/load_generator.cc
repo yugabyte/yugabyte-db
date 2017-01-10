@@ -204,9 +204,10 @@ MultiThreadedAction::MultiThreadedAction(
       running_threads_latch_(num_action_threads),
       stop_requested_(stop_requested_flag),
       value_size_(value_size) {
-  ThreadPoolBuilder(description)
-      .set_max_threads(num_action_threads_ + num_extra_threads)
-      .Build(&thread_pool_);
+  CHECK_OK(
+      ThreadPoolBuilder(description)
+          .set_max_threads(num_action_threads_ + num_extra_threads)
+          .Build(&thread_pool_));
 }
 
 string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
@@ -312,7 +313,7 @@ void ConfigureRedisSessions(
   for (auto& addr : addresses) {
     shared_ptr<RedisClient> client(new RedisClient());
     Sockaddr remote;
-    remote.ParseString(addr, 6379);
+    CHECK_OK(remote.ParseString(addr, 6379));
     client->connect(remote.host(), remote.port(), [&remote](RedisClient&) {
       LOG(ERROR) << "client disconnected (disconnection handler) from " << remote.ToString();
     });
@@ -585,7 +586,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   }
 
   vector<YBScanBatch::RowPtr> rows;
-  scanner.NextBatch(&rows);
+  CHECK_OK(scanner.NextBatch(&rows));
   if (rows.size() != 1) {
     LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": " << rows.size()
                << " (expected to find 1 row), read timestamp: " << read_ts;

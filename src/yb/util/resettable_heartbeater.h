@@ -23,10 +23,10 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class MonoDelta;
-class Status;
 class ResettableHeartbeaterThread;
 
 typedef std::function<Status()> HeartbeatFunction;
@@ -57,10 +57,10 @@ class ResettableHeartbeater {
                         HeartbeatFunction function);
 
   // Starts the heartbeater
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Stops the hearbeater
-  Status Stop();
+  CHECKED_STATUS Stop();
 
   // Resets the heartbeat period.
   // When this is called, the subsequent heartbeat has some built-in jitter and

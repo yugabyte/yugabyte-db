@@ -49,7 +49,7 @@ class DeltaStats {
 
   // Increment delete and update counts based on changes contained in
   // 'update'.
-  Status UpdateStats(const Timestamp& timestamp,
+  CHECKED_STATUS UpdateStats(const Timestamp& timestamp,
                      const RowChangeList& update);
 
   // Return the number of deletes in the current delta store.
@@ -86,7 +86,7 @@ class DeltaStats {
   void ToPB(DeltaStatsPB* pb) const;
 
   // Load this object from the protobuf which is stored in the DeltaFile footer.
-  Status InitFromPB(const DeltaStatsPB& pb);
+  CHECKED_STATUS InitFromPB(const DeltaStatsPB& pb);
 
   // For each column which has at least one update, add that column's ID to the
   // set 'col_ids'.

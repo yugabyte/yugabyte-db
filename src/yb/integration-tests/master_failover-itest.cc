@@ -159,7 +159,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestCreateTableSync) {
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
   LOG(INFO) << "Pausing leader master";
-  cluster_->master(leader_idx)->Pause();
+  ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
   string table_name = "testCreateTableSync";
@@ -187,7 +187,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
   ASSERT_OK(CreateTable(table_id, kNoWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
-  cluster_->master(leader_idx)->Pause();
+  ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
@@ -215,7 +215,7 @@ TEST_F(MasterFailoverTest, TestDeleteTableSync) {
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
-  cluster_->master(leader_idx)->Pause();
+  ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
   ASSERT_OK(client_->DeleteTable(table_name));
@@ -245,7 +245,7 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
   ASSERT_OK(CreateTable(table_name_orig, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
-  cluster_->master(leader_idx)->Pause();
+  ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
   string table_name_new = "testAlterTableSyncRenamed";

@@ -27,6 +27,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
+#include "yb/util/status.h"
 
 namespace google {
 namespace protobuf {
@@ -43,7 +44,6 @@ class Env;
 class RandomAccessFile;
 class SequentialFile;
 class Slice;
-class Status;
 class WritableFile;
 
 namespace pb_util {
@@ -184,14 +184,14 @@ class WritablePBContainerFile {
   //
   // 'msg' need not be populated; its type is used to "lock" the container
   // to a particular protobuf message type in Append().
-  Status Init(const google::protobuf::Message& msg);
+  CHECKED_STATUS Init(const google::protobuf::Message& msg);
 
   // Writes a protobuf message to the container, beginning with its size
   // and ending with its CRC32 checksum.
-  Status Append(const google::protobuf::Message& msg);
+  CHECKED_STATUS Append(const google::protobuf::Message& msg);
 
   // Asynchronously flushes all dirty container data to the filesystem.
-  Status Flush();
+  CHECKED_STATUS Flush();
 
   // Synchronizes all dirty container data to the filesystem.
   //
@@ -199,10 +199,10 @@ class WritablePBContainerFile {
   // container file was provided during construction, we don't know whether
   // it was created or reopened, and parent directory synchronization is
   // only needed in the former case.
-  Status Sync();
+  CHECKED_STATUS Sync();
 
   // Closes the container.
-  Status Close();
+  CHECKED_STATUS Close();
 
  private:
   FRIEND_TEST(TestPBUtil, TestPopulateDescriptorSet);
@@ -217,7 +217,7 @@ class WritablePBContainerFile {
 
   // Serialize the contents of 'msg' into 'buf' along with additional metadata
   // to aid in deserialization.
-  Status AppendMsgToBuffer(const google::protobuf::Message& msg, faststring* buf);
+  CHECKED_STATUS AppendMsgToBuffer(const google::protobuf::Message& msg, faststring* buf);
 
   bool closed_;
 
@@ -238,20 +238,20 @@ class ReadablePBContainerFile {
   ~ReadablePBContainerFile();
 
   // Reads the header information from the container and validates it.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Reads a protobuf message from the container, validating its size and
   // data using a CRC32 checksum.
-  Status ReadNextPB(google::protobuf::Message* msg);
+  CHECKED_STATUS ReadNextPB(google::protobuf::Message* msg);
 
   // Dumps any unread protobuf messages in the container to 'os'. Each
   // message's DebugString() method is invoked to produce its textual form.
   //
   // If 'oneline' is true, prints each message on a single line.
-  Status Dump(std::ostream* os, bool oneline);
+  CHECKED_STATUS Dump(std::ostream* os, bool oneline);
 
   // Closes the container.
-  Status Close();
+  CHECKED_STATUS Close();
 
   // Expected PB type and schema for each message to be read.
   //
@@ -273,7 +273,7 @@ class ReadablePBContainerFile {
   //
   // If 'eofOK' is EOF_OK, an EOF is returned as-is. Otherwise, it is
   // considered to be an invalid short read and returned as an error.
-  Status ValidateAndRead(size_t length, EofOK eofOK,
+  CHECKED_STATUS ValidateAndRead(size_t length, EofOK eofOK,
                          Slice* result, gscoped_ptr<uint8_t[]>* scratch);
 
   size_t offset_;

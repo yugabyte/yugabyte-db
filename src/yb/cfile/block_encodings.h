@@ -41,7 +41,7 @@ class BlockBuilder {
 
   // Append extra information to the end of the current cfile, for example:
   // append the dictionary block for under dictionary encoding mode.
-  virtual Status AppendExtraInfo(CFileWriter *c_writer, CFileFooterPB* footer) {
+  virtual CHECKED_STATUS AppendExtraInfo(CFileWriter *c_writer, CFileFooterPB* footer) {
     return Status::OK();
   }
 
@@ -78,7 +78,7 @@ class BlockBuilder {
   // data is only valid until the next call to Reset().
   //
   // If no keys have been added, returns Status::NotFound
-  virtual Status GetFirstKey(void *key) const = 0;
+  virtual CHECKED_STATUS GetFirstKey(void *key) const = 0;
 
   virtual ~BlockBuilder() {}
  private:
@@ -90,7 +90,7 @@ class BlockDecoder {
  public:
   BlockDecoder() { }
 
-  virtual Status ParseHeader() = 0;
+  virtual CHECKED_STATUS ParseHeader() = 0;
 
   // Seek the decoder to the given positional index of the block.
   // For example, SeekToPositionInBlock(0) seeks to the first
@@ -118,7 +118,7 @@ class BlockDecoder {
   //
   // This will only return valid results when the data block
   // consists of values in sorted order.
-  virtual Status SeekAtOrAfterValue(const void *value,
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) = 0;
 
   // Fetch the next set of values from the block into 'dst'.
@@ -129,7 +129,7 @@ class BlockDecoder {
   // In the case that the values are themselves references
   // to other memory (eg Slices), the referred-to memory is
   // allocated in the dst block's arena.
-  virtual Status CopyNextValues(size_t *n, ColumnDataView *dst) = 0;
+  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) = 0;
 
   // Return true if there are more values remaining to be iterated.
   // (i.e that the next call to CopyNextValues will return at least 1

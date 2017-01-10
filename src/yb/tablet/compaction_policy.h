@@ -53,7 +53,7 @@ class CompactionPolicy {
   //
   // If 'log' is not NULL, then a verbose log of the compaction selection
   // process will be appended to it.
-  virtual Status PickRowSets(const RowSetTree &tree,
+  virtual CHECKED_STATUS PickRowSets(const RowSetTree &tree,
                              std::unordered_set<RowSet*>* picked,
                              double* quality,
                              std::vector<std::string>* log) = 0;
@@ -78,7 +78,7 @@ class BudgetedCompactionPolicy : public CompactionPolicy {
  public:
   explicit BudgetedCompactionPolicy(int size_budget_mb);
 
-  virtual Status PickRowSets(const RowSetTree &tree,
+  virtual CHECKED_STATUS PickRowSets(const RowSetTree &tree,
                              std::unordered_set<RowSet*>* picked,
                              double* quality,
                              std::vector<std::string>* log) OVERRIDE;

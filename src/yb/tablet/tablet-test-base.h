@@ -338,7 +338,7 @@ class TabletTestBase : public YBTabletTest {
   }
 
   // Inserts a single test row within a transaction.
-  Status InsertTestRow(LocalTabletWriter* writer,
+  CHECKED_STATUS InsertTestRow(LocalTabletWriter* writer,
                        int64_t key_idx,
                        int32_t val) {
     YBPartialRow row(&client_schema_);
@@ -346,7 +346,7 @@ class TabletTestBase : public YBTabletTest {
     return writer->Insert(row);
   }
 
-  Status UpdateTestRow(LocalTabletWriter* writer,
+  CHECKED_STATUS UpdateTestRow(LocalTabletWriter* writer,
                        int64_t key_idx,
                        int32_t new_val) {
     YBPartialRow row(&client_schema_);
@@ -359,7 +359,7 @@ class TabletTestBase : public YBTabletTest {
     return writer->Update(row);
   }
 
-  Status UpdateTestRowToNull(LocalTabletWriter* writer,
+  CHECKED_STATUS UpdateTestRowToNull(LocalTabletWriter* writer,
                              int64_t key_idx) {
     YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
@@ -371,7 +371,7 @@ class TabletTestBase : public YBTabletTest {
     return writer->Update(row);
   }
 
-  Status DeleteTestRow(LocalTabletWriter* writer, int64_t key_idx) {
+  CHECKED_STATUS DeleteTestRow(LocalTabletWriter* writer, int64_t key_idx) {
     YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
     return writer->Delete(row);
@@ -436,7 +436,7 @@ class TabletTestBase : public YBTabletTest {
   // Iterate through the full table, stringifying the resulting rows
   // into the given vector. This is only useful in tests which insert
   // a very small number of rows.
-  Status IterateToStringList(vector<string> *out) {
+  CHECKED_STATUS IterateToStringList(vector<string> *out) {
     gscoped_ptr<RowwiseIterator> iter;
     RETURN_NOT_OK(this->tablet()->NewRowIterator(this->client_schema_, &iter));
     RETURN_NOT_OK(iter->Init(NULL));

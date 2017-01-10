@@ -86,7 +86,7 @@ class RleBitMapBlockBuilder : public BlockBuilder {
   }
 
   // TODO Implement this method
-  virtual Status GetFirstKey(void* key) const OVERRIDE {
+  virtual CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
     return STATUS(NotSupported, "BOOL keys not supported");
   }
 
@@ -109,7 +109,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  virtual Status ParseHeader() OVERRIDE {
+  virtual CHECKED_STATUS ParseHeader() OVERRIDE {
     CHECK(!parsed_);
 
     if (data_.size() < kRleBitmapBlockHeaderSize) {
@@ -149,7 +149,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
     cur_idx_ = pos;
   }
 
-  virtual Status CopyNextValues(size_t *n, ColumnDataView* dst) OVERRIDE {
+  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView* dst) OVERRIDE {
     DCHECK(parsed_);
 
     DCHECK_LE(*n, dst->nrows());
@@ -177,7 +177,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  virtual Status SeekAtOrAfterValue(const void *value,
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) OVERRIDE {
     return STATUS(NotSupported, "BOOL keys are not supported!");
   }
@@ -245,7 +245,7 @@ class RleIntBlockBuilder : public BlockBuilder {
     return count_;
   }
 
-  virtual Status GetFirstKey(void* key) const OVERRIDE {
+  virtual CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
     if (count_ > 0) {
       *reinterpret_cast<CppType*>(key) = first_key_;
       return Status::OK();
@@ -284,7 +284,7 @@ class RleIntBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  virtual Status ParseHeader() OVERRIDE {
+  virtual CHECKED_STATUS ParseHeader() OVERRIDE {
     CHECK(!parsed_);
 
     if (data_.size() < kRleBitmapBlockHeaderSize) {
@@ -327,7 +327,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     cur_idx_ = pos;
   }
 
-  virtual Status SeekAtOrAfterValue(const void *value_void, bool *exact_match) OVERRIDE {
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value_void, bool *exact_match) OVERRIDE {
     // Currently using linear search as we do not check whether a
     // mid-point of a buffer will fall on a literal or not.
     //
@@ -361,7 +361,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     return STATUS(NotFound, "not in block");
   }
 
-  virtual Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {
+  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {
     DCHECK(parsed_);
 
     DCHECK_LE(*n, dst->nrows());

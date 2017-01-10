@@ -43,19 +43,19 @@ namespace server {
 class LogicalClock : public Clock {
  public:
 
-  virtual Status Init() OVERRIDE { return Status::OK(); }
+  virtual CHECKED_STATUS Init() OVERRIDE { return Status::OK(); }
 
   virtual Timestamp Now() OVERRIDE;
 
   // In the logical clock this call is equivalent to Now();
   virtual Timestamp NowLatest() OVERRIDE;
 
-  virtual Status Update(const Timestamp& to_update) OVERRIDE;
+  virtual CHECKED_STATUS Update(const Timestamp& to_update) OVERRIDE;
 
   // The Wait*() functions are not available for this clock.
-  virtual Status WaitUntilAfter(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfter(const Timestamp& then,
                                 const MonoTime& deadline) OVERRIDE;
-  virtual Status WaitUntilAfterLocally(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfterLocally(const Timestamp& then,
                                        const MonoTime& deadline) OVERRIDE;
 
   virtual bool IsAfter(Timestamp t) OVERRIDE;

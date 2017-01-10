@@ -48,7 +48,7 @@ class LogReader {
   // LogReader.
   //
   // 'index' may be NULL, but if it is, ReadReplicatesInRange() may not be used.
-  static Status Open(FsManager *fs_manager,
+  static CHECKED_STATUS Open(FsManager *fs_manager,
                      const scoped_refptr<LogIndex>& index,
                      const std::string& tablet_id,
                      const std::string& tablet_wal_path,
@@ -57,7 +57,7 @@ class LogReader {
 
   // Opens a LogReader on a specific tablet log recovery directory, and sets
   // 'reader' to the newly created LogReader.
-  static Status OpenFromRecoveryDir(FsManager *fs_manager,
+  static CHECKED_STATUS OpenFromRecoveryDir(FsManager *fs_manager,
                                     const std::string& tablet_id,
                                     const std::string& tablet_wal_path,
                                     const scoped_refptr<MetricEntity>& metric_entity,
@@ -65,7 +65,7 @@ class LogReader {
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
-  Status GetSegmentPrefixNotIncluding(int64_t index,
+  CHECKED_STATUS GetSegmentPrefixNotIncluding(int64_t index,
                                       SegmentSequence* segments) const;
 
   // Return the minimum replicate index that is retained in the currently available
@@ -94,7 +94,7 @@ class LogReader {
 
   // Copies a snapshot of the current sequence of segments into 'segments'.
   // 'segments' will be cleared first.
-  Status GetSegmentsSnapshot(SegmentSequence* segments) const;
+  CHECKED_STATUS GetSegmentsSnapshot(SegmentSequence* segments) const;
 
   // Reads all ReplicateMsgs from 'starting_at' to 'up_to' both inclusive.
   // The caller takes ownership of the returned ReplicateMsg objects.
@@ -104,7 +104,7 @@ class LogReader {
   // all, then will read exactly one operation.
   //
   // Requires that a LogIndex was passed into LogReader::Open().
-  Status ReadReplicatesInRange(
+  CHECKED_STATUS ReadReplicatesInRange(
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
@@ -113,7 +113,7 @@ class LogReader {
 
   // Look up the OpId for the given operation index.
   // Returns a bad Status if the log index fails to load (eg. due to an IO error).
-  Status LookupOpId(int64_t op_index, consensus::OpId* op_id) const;
+  CHECKED_STATUS LookupOpId(int64_t op_index, consensus::OpId* op_id) const;
 
   // Returns the number of segments.
   const int num_segments() const;
@@ -136,14 +136,14 @@ class LogReader {
   // Index entries in 'segment's footer will be added to the index.
   // If the segment has no footer it will be scanned so this should not be used
   // for new segments.
-  Status AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
+  CHECKED_STATUS AppendSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Same as above but for segments without any entries.
   // Used by the Log to add "empty" segments.
-  Status AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
+  CHECKED_STATUS AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Removes segments with sequence numbers less than or equal to 'seg_seqno' from this reader.
-  Status TrimSegmentsUpToAndIncluding(int64_t seg_seqno);
+  CHECKED_STATUS TrimSegmentsUpToAndIncluding(int64_t seg_seqno);
 
   // Replaces the last segment in the reader with 'segment'.
   // Used to replace a segment that was still in the process of being written
@@ -151,14 +151,14 @@ class LogReader {
   // Requires that the last segment in 'segments_' has the same sequence
   // number as 'segment'.
   // Expects 'segment' to be properly closed and to have footer.
-  Status ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& segment);
+  CHECKED_STATUS ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Appends 'segment' to the segment sequence.
   // Assumes that the segment was scanned, if no footer was found.
   // To be used only internally, clients of this class with private access (i.e. friends)
   // should use the thread safe version, AppendSegment(), which will also scan the segment
   // if no footer is present.
-  Status AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
+  CHECKED_STATUS AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Used by Log to update its LogReader on how far it is possible to read
   // the current segment. Requires that the reader has at least one segment
@@ -168,7 +168,7 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
-  Status ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
+  CHECKED_STATUS ReadBatchUsingIndexEntry(const LogIndexEntry& index_entry,
                                   faststring* tmp_buf,
                                   gscoped_ptr<LogEntryBatchPB>* batch) const;
 
@@ -177,10 +177,10 @@ class LogReader {
             const scoped_refptr<MetricEntity>& metric_entity);
 
   // Reads the headers of all segments in 'path_'.
-  Status Init(const std::string& path_);
+  CHECKED_STATUS Init(const std::string& path_);
 
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
-  Status InitEmptyReaderForTests();
+  CHECKED_STATUS InitEmptyReaderForTests();
 
   FsManager *fs_manager_;
   const scoped_refptr<LogIndex> log_index_;

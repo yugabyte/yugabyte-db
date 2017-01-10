@@ -48,19 +48,19 @@ class RpcServer {
   explicit RpcServer(RpcServerOptions opts);
   ~RpcServer();
 
-  Status Init(const std::shared_ptr<rpc::Messenger>& messenger);
+  CHECKED_STATUS Init(const std::shared_ptr<rpc::Messenger>& messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
-  Status RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> service);
-  Status Bind();
-  Status Start();
+  CHECKED_STATUS RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> service);
+  CHECKED_STATUS Bind();
+  CHECKED_STATUS Start();
   void Shutdown();
 
   std::string ToString() const;
 
   // Return the addresses that this server has successfully
   // bound to. Requires that the server has been Start()ed.
-  Status GetBoundAddresses(std::vector<Sockaddr>* addresses) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBoundAddresses(std::vector<Sockaddr>* addresses) const WARN_UNUSED_RESULT;
 
   const rpc::ServicePool* service_pool(const std::string& service_name) const;
 

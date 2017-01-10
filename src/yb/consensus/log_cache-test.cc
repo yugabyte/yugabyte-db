@@ -71,7 +71,7 @@ class LogCacheTest : public YBTest {
   }
 
   virtual void TearDown() OVERRIDE {
-    log_->WaitUntilAllFlushed();
+    ASSERT_OK(log_->WaitUntilAllFlushed());
   }
 
   void CloseAndReopenCache(const OpId& preceding_id) {
@@ -122,7 +122,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   ASSERT_OK(AppendReplicateMessagesToCache(1, 100));
   ASSERT_EQ(100, cache_->metrics_.log_cache_num_ops->value());
   ASSERT_GE(cache_->metrics_.log_cache_size->value(), 500);
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
 
   vector<ReplicateRefPtr> messages;
   OpId preceding;
@@ -166,7 +166,7 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
 
   // Append several large ops to the cache
   ASSERT_OK(AppendReplicateMessagesToCache(1, 4, kPayloadSize));
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
 
   // We should get one of them, even though we only ask for 100 bytes
   vector<ReplicateRefPtr> messages;
@@ -181,7 +181,7 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
 TEST_F(LogCacheTest, TestCacheEdgeCases) {
   // Append 1 message to the cache
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1));
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
 
   std::vector<ReplicateRefPtr> messages;
   OpId preceding;
@@ -226,7 +226,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   const int kPayloadSize = 400 * 1024;
   // Limit should not be violated.
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_EQ(1, cache_->num_cached_ops());
 
   // Verify the size is right. It's not exactly kPayloadSize because of in-memory
@@ -237,7 +237,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
 
   // Add another operation which fits under the 1MB limit.
   ASSERT_OK(AppendReplicateMessagesToCache(2, 1, kPayloadSize));
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_EQ(2, cache_->num_cached_ops());
 
   int size_with_two_msgs = cache_->BytesUsed();
@@ -250,7 +250,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   // Verify that we have trimmed by appending a message that would
   // otherwise be rejected, since the cache max size limit is 2MB.
   ASSERT_OK(AppendReplicateMessagesToCache(3, 1, kPayloadSize));
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_EQ(2, cache_->num_cached_ops());
   ASSERT_EQ(size_with_two_msgs, cache_->BytesUsed());
 
@@ -276,7 +276,7 @@ TEST_F(LogCacheTest, TestGlobalMemoryLimit) {
 
   // Should succeed, but only end up caching one of the two ops because of the global limit.
   ASSERT_OK(AppendReplicateMessagesToCache(1, 2, kPayloadSize));
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
 
   ASSERT_EQ(1, cache_->num_cached_ops());
   ASSERT_LE(cache_->BytesUsed(), 1024 * 1024);
@@ -297,7 +297,7 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
     ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));
   }
 
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
 
   EXPECT_EQ(size_with_one_msg, tracker->consumption());
   EXPECT_EQ(Substitute("Pinned index: 2, LogCacheStats(num_ops=1, bytes=$0)",

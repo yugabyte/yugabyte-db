@@ -87,7 +87,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Opens or continues a log and sets 'log' to the newly built Log.
   // After a successful Open() the Log is ready to receive entries.
-  static Status Open(const LogOptions &options,
+  static CHECKED_STATUS Open(const LogOptions &options,
                      FsManager *fs_manager,
                      const std::string& tablet_id,
                      const std::string& tablet_wal_path,
@@ -107,50 +107,50 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // WARNING: the caller _must_ call AsyncAppend() or else the log
   // will "stall" and will never be able to make forward progress.
-  Status Reserve(LogEntryTypePB type,
+  CHECKED_STATUS Reserve(LogEntryTypePB type,
                  gscoped_ptr<LogEntryBatchPB> entry_batch,
                  LogEntryBatch** reserved_entry);
 
   // Asynchronously appends 'entry' to the log. Once the append
   // completes and is synced, 'callback' will be invoked.
-  Status AsyncAppend(LogEntryBatch* entry,
+  CHECKED_STATUS AsyncAppend(LogEntryBatch* entry,
                      const StatusCallback& callback);
 
   // Synchronously append a new entry to the log.
   // Log does not take ownership of the passed 'entry'.
   // TODO get rid of this method, transition to the asynchronous API
-  Status Append(LogEntryPB* entry);
+  CHECKED_STATUS Append(LogEntryPB* entry);
 
   // Append the given set of replicate messages, asynchronously.
   // This requires that the replicates have already been assigned OpIds.
-  Status AsyncAppendReplicates(const vector<consensus::ReplicateRefPtr>& replicates,
+  CHECKED_STATUS AsyncAppendReplicates(const vector<consensus::ReplicateRefPtr>& replicates,
                                const StatusCallback& callback);
 
   // Append the given commit message, asynchronously.
   //
   // Returns a bad status if the log is already shut down.
-  Status AsyncAppendCommit(gscoped_ptr<consensus::CommitMsg> commit_msg,
+  CHECKED_STATUS AsyncAppendCommit(gscoped_ptr<consensus::CommitMsg> commit_msg,
                            const StatusCallback& callback);
 
 
   // Blocks the current thread until all the entries in the log queue
   // are flushed and fsynced (if fsync of log entries is enabled).
-  Status WaitUntilAllFlushed();
+  CHECKED_STATUS WaitUntilAllFlushed();
 
   // Kick off an asynchronous task that pre-allocates a new
   // log-segment, setting 'allocation_status_'. To wait for the
   // result of the task, use allocation_status_.Get().
-  Status AsyncAllocateSegment();
+  CHECKED_STATUS AsyncAllocateSegment();
 
   // The closure submitted to allocation_pool_ to allocate a new segment.
   void SegmentAllocationTask();
 
   // Syncs all state and closes the log.
-  Status Close();
+  CHECKED_STATUS Close();
 
   // Delete all WAL data from the log associated with this tablet.
   // REQUIRES: The Log must be closed.
-  static Status DeleteOnDiskData(FsManager* fs_manager,
+  static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager,
                                  const std::string& tablet_id,
                                  const std::string& tablet_wal_path);
 
@@ -174,7 +174,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // If we previous called DisableSync(), we should restore the
   // default behavior and then call Sync() which will perform the
   // actual syncing if required.
-  Status ReEnableSyncIfRequired() {
+  CHECKED_STATUS ReEnableSyncIfRequired() {
     sync_disabled_ = false;
     return Sync();
   }
@@ -196,7 +196,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // If successful, num_gced is set to the number of deleted log segments.
   //
   // This method is thread-safe.
-  Status GC(int64_t min_op_idx, int* num_gced);
+  CHECKED_STATUS GC(int64_t min_op_idx, int* num_gced);
 
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
   void GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
@@ -217,7 +217,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // Forces the Log to allocate a new segment and roll over.
   // This can be used to make sure all entries appended up to this point are
   // available in closed, readable segments.
-  Status AllocateSegmentAndRollOver();
+  CHECKED_STATUS AllocateSegmentAndRollOver();
 
   // Returns this Log's FsManager.
   FsManager* GetFsManager();
@@ -259,28 +259,28 @@ class Log : public RefCountedThreadSafe<Log> {
       uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity);
 
   // Initializes a new one or continues an existing log.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Make segments roll over.
-  Status RollOver();
+  CHECKED_STATUS RollOver();
 
   // Writes the footer and closes the current segment.
-  Status CloseCurrentSegment();
+  CHECKED_STATUS CloseCurrentSegment();
 
   // Sets 'out' to a newly created temporary file (see
   // Env::NewTempWritableFile()) for a placeholder segment. Sets
   // 'result_path' to the fully qualified path to the unique filename
   // created for the segment.
-  Status CreatePlaceholderSegment(const WritableFileOptions& opts,
+  CHECKED_STATUS CreatePlaceholderSegment(const WritableFileOptions& opts,
                                   std::string* result_path,
                                   std::shared_ptr<WritableFile>* out);
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to
   // disk as the header, and sets active_segment_ to point to this new segment.
-  Status SwitchToAllocatedSegment();
+  CHECKED_STATUS SwitchToAllocatedSegment();
 
   // Preallocates the space for a new segment.
-  Status PreAllocateNewSegment();
+  CHECKED_STATUS PreAllocateNewSegment();
 
   // Writes serialized contents of 'entry' to the log. Called inside
   // AppenderThread. If 'caller_owns_operation' is true, then the
@@ -288,7 +288,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // is appended.
   // TODO once Append() is removed, 'caller_owns_operation' and
   // associated logic will no longer be needed.
-  Status DoAppend(LogEntryBatch* entry, bool caller_owns_operation = true);
+  CHECKED_STATUS DoAppend(LogEntryBatch* entry, bool caller_owns_operation = true);
 
   // Update footer_builder_ to reflect the log indexes seen in 'batch'.
   void UpdateFooterForBatch(LogEntryBatch* batch);
@@ -296,17 +296,17 @@ class Log : public RefCountedThreadSafe<Log> {
   // Update the LogIndex to include entries for the replicate messages found in
   // 'batch'. The index entry points to the offset 'start_offset' in the current
   // log segment.
-  Status UpdateIndexForBatch(const LogEntryBatch& batch,
+  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch,
                              int64_t start_offset);
 
   // Replaces the last "empty" segment in 'log_reader_', i.e. the one currently
   // being written to, by the same segment once properly closed.
-  Status ReplaceSegmentInReaderUnlocked();
+  CHECKED_STATUS ReplaceSegmentInReaderUnlocked();
 
-  Status Sync();
+  CHECKED_STATUS Sync();
 
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
-  Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
+  CHECKED_STATUS GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
 
   LogEntryBatchQueue* entry_queue() {
     return &entry_batch_queue_;
@@ -422,7 +422,7 @@ class LogEntryBatch {
                 gscoped_ptr<LogEntryBatchPB> entry_batch_pb, size_t count);
 
   // Serializes contents of the entry to an internal buffer.
-  Status Serialize();
+  CHECKED_STATUS Serialize();
 
   // Sets the callback that will be invoked after the entry is
   // appended and synced to disk
@@ -537,17 +537,17 @@ class Log::LogFaultHooks {
 
   // Executed immediately before returning from Log::Sync() at *ALL*
   // times.
-  virtual Status PostSync() { return Status::OK(); }
+  virtual CHECKED_STATUS PostSync() { return Status::OK(); }
 
   // Iff fsync is enabled, executed immediately after call to fsync.
-  virtual Status PostSyncIfFsyncEnabled() { return Status::OK(); }
+  virtual CHECKED_STATUS PostSyncIfFsyncEnabled() { return Status::OK(); }
 
   // Emulate a slow disk where the filesystem has decided to synchronously
   // flush a full buffer.
-  virtual Status PostAppend() { return Status::OK(); }
+  virtual CHECKED_STATUS PostAppend() { return Status::OK(); }
 
-  virtual Status PreClose() { return Status::OK(); }
-  virtual Status PostClose() { return Status::OK(); }
+  virtual CHECKED_STATUS PreClose() { return Status::OK(); }
+  virtual CHECKED_STATUS PostClose() { return Status::OK(); }
 
   virtual ~LogFaultHooks() {}
 };

@@ -45,13 +45,13 @@ class EncodedKey {
   // provided schema.
   // The returned row data is allocated from 'arena' and returned in '*result'.
   // If allocation fails or the encoding is invalid, returns a bad Status.
-  static Status DecodeEncodedString(const Schema& schema,
+  static CHECKED_STATUS DecodeEncodedString(const Schema& schema,
                                     Arena* arena,
                                     const Slice& encoded,
                                     gscoped_ptr<EncodedKey> *result);
 
   // Given an EncodedKey, increment it to the next lexicographically greater EncodedKey.
-  static Status IncrementEncodedKey(const Schema& tablet_schema,
+  static CHECKED_STATUS IncrementEncodedKey(const Schema& tablet_schema,
                                     gscoped_ptr<EncodedKey>* key,
                                     Arena* arena);
 

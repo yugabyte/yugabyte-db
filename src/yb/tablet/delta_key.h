@@ -70,7 +70,7 @@ class DeltaKey {
   // contain further data after that.
   // The 'key' slice is mutated so that, upon return, the decoded key has been removed from
   // its beginning.
-  Status DecodeFrom(Slice *key) {
+  CHECKED_STATUS DecodeFrom(Slice *key) {
     Slice orig(*key);
     if (!PREDICT_TRUE(DecodeRowId(key, &row_idx_))) {
       return STATUS(Corruption, "Bad delta key: bad rowid", orig.ToDebugString(20));

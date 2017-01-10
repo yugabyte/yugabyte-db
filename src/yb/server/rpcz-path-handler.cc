@@ -48,7 +48,8 @@ void RpczPathHandler(const shared_ptr<Messenger>& messenger,
   string arg = FindWithDefault(req.parsed_args, "include_traces", "false");
   dump_req.set_include_traces(ParseLeadingBoolValue(arg.c_str(), false));
 
-  messenger->DumpRunningRpcs(dump_req, &dump_resp);
+  WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp),
+             "DumpRunningRpcs failed");
 
   JsonWriter writer(output, JsonWriter::PRETTY);
   writer.Protobuf(dump_resp);

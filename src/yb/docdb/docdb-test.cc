@@ -533,34 +533,37 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   // Row 1
   // We only perform one seek to get the timestamp of the top-level document. Additional writes to
   // fields within that document do not incur any reads.
-  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"), Timestamp(1000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"),
+            Timestamp(1000)));
   ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
-  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000), Timestamp(1000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000),
+            Timestamp(1000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
-  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"), Timestamp(1000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"),
+            Timestamp(1000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // Row 2: one null column, one column that gets deleted and overwritten, another that just gets
   // overwritten. We should still need one seek, because the document key has changed.
-  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000)));
   ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
 
   // Deletions normally perform a lookup of the key to see whether it's already there. We will use
   // that to provide the expected result (the number of rows deleted in SQL or whether a key was
   // deleted in Redis). However, because we've just set a value at this path, we don't expect to
   // perform any reads for this deletion.
-  dwb.DeleteSubDoc(DocPath(kEncodedDocKey2, 40), Timestamp(2500));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey2, 40), Timestamp(2500)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // The entire subdocument under DocPath(encoded_doc_key2, 40) just got deleted, and that fact
   // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
-  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(30000), Timestamp(3000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(30000), Timestamp(3000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e"), Timestamp(2000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e"), Timestamp(2000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e_prime"), Timestamp(4000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e_prime"), Timestamp(4000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   ASSERT_OK(WriteToRocksDB(dwb));
@@ -587,7 +590,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 
   {
     DocRowwiseIterator iter(projection, schema, rocksdb(), Timestamp(2000));
-    iter.Init(&scan_spec);
+    ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
 
@@ -625,7 +628,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 
   {
     DocRowwiseIterator iter(projection, schema, rocksdb(), Timestamp(5000));
-    iter.Init(&scan_spec);
+    ASSERT_OK(iter.Init(&scan_spec));
     RowBlock row_block(projection, 10, &arena);
 
     ASSERT_TRUE(iter.HasNext());
@@ -665,14 +668,14 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
   DocWriteBatch dwb(rocksdb());
 
-  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"), Timestamp(1000));
-  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000), Timestamp(1000));
-  dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"), Timestamp(1000));
-  dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"), Timestamp(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000), Timestamp(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"), Timestamp(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000)));
 
   // Delete entire row1 document to test that iterator can successfully jump to next document
   // when it finds deleted document.
-  dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), Timestamp(2500));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), Timestamp(2500)));
 
   ASSERT_OK(WriteToRocksDB(dwb));
 
@@ -695,7 +698,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [40; TS(2000)]) -> 20000
 
   {
     DocRowwiseIterator iter(projection, schema, rocksdb(), Timestamp(2500));
-    iter.Init(&scan_spec);
+    ASSERT_OK(iter.Init(&scan_spec));
 
     RowBlock row_block(projection, 10, &arena);
 
@@ -749,7 +752,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   // At this point, the blooms will effectively filter out one file for each key.
 
   dwb.Clear();
-  ts.FromUint64(1000);
+  ASSERT_OK(ts.FromUint64(1000));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value"), ts));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value"), ts));
   WriteToRocksDB(dwb);
@@ -776,7 +779,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   NO_FATALS(CheckBloom(total_bloom_usage));
 
   dwb.Clear();
-  ts.FromUint64(2000);
+  ASSERT_OK(ts.FromUint64(2000));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), PrimitiveValue("value"), ts));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value"), ts));
   WriteToRocksDB(dwb);
@@ -789,7 +792,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
   NO_FATALS(CheckBloom(++total_bloom_usage));
 
   dwb.Clear();
-  ts.FromUint64(3000);
+  ASSERT_OK(ts.FromUint64(3000));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value"), ts));
   ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value"), ts));
   WriteToRocksDB(dwb);

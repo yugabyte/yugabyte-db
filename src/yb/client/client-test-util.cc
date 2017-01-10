@@ -52,7 +52,7 @@ void ScanTableToStrings(YBTable* table, vector<string>* row_strings) {
   row_strings->clear();
   YBScanner scanner(table);
   ASSERT_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
-  scanner.SetTimeoutMillis(60000);
+  ASSERT_OK(scanner.SetTimeoutMillis(60000));
   ScanToStrings(&scanner, row_strings);
 }
 

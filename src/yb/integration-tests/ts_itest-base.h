@@ -210,7 +210,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return NULL;
   }
 
-  Status GetLeaderReplicaWithRetries(const std::string& tablet_id,
+  CHECKED_STATUS GetLeaderReplicaWithRetries(const std::string& tablet_id,
                                      TServerDetails** leader,
                                      int max_attempts = 100) {
     int attempts = 0;
@@ -225,7 +225,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return STATUS(NotFound, "Leader replica not found");
   }
 
-  Status GetTabletLeaderUUIDFromMaster(const std::string& tablet_id, std::string* leader_uuid) {
+  CHECKED_STATUS GetTabletLeaderUUIDFromMaster(const std::string& tablet_id, std::string* leader_uuid) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
     RpcController controller;
@@ -344,7 +344,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return max_replica_index;
   }
 
-  Status ShutdownServerWithUUID(const std::string& uuid) {
+  CHECKED_STATUS ShutdownServerWithUUID(const std::string& uuid) {
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
       ExternalTabletServer* ts = cluster_->tablet_server(i);
       if (ts->instance_id().permanent_uuid() == uuid) {
@@ -355,7 +355,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return STATUS(NotFound, "Unable to find server with UUID", uuid);
   }
 
-  Status RestartServerWithUUID(const std::string& uuid) {
+  CHECKED_STATUS RestartServerWithUUID(const std::string& uuid) {
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
       ExternalTabletServer* ts = cluster_->tablet_server(i);
       if (ts->instance_id().permanent_uuid() == uuid) {
@@ -372,7 +372,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // Since we're fault-tolerant we might mask when a tablet server is
   // dead. This returns Status::IllegalState() if fewer than 'num_tablet_servers'
   // are alive.
-  Status CheckTabletServersAreAlive(int num_tablet_servers) {
+  CHECKED_STATUS CheckTabletServersAreAlive(int num_tablet_servers) {
     int live_count = 0;
     std::string error = strings::Substitute("Fewer than $0 TabletServers were alive. Dead TSs: ",
                                             num_tablet_servers);

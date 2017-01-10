@@ -195,7 +195,7 @@ TYPED_TEST(TestTablet, TestGhostRowsOnDiskRowSets) {
 
   for (int i = 0; i < 3; i++) {
     CHECK_OK(this->InsertTestRow(&writer, 0, 0));
-    this->DeleteTestRow(&writer, 0);
+    ASSERT_OK(this->DeleteTestRow(&writer, 0));
     ASSERT_OK(this->tablet()->Flush());
   }
 
@@ -338,15 +338,15 @@ TYPED_TEST(TestTablet, TestReinsertDuringFlush) {
 
     Status PostWriteSnapshot() OVERRIDE {
       LocalTabletWriter writer(test_->tablet().get(), &test_->client_schema());
-      test_->InsertTestRow(&writer, 0, 1);
+      CHECK_OK(test_->InsertTestRow(&writer, 0, 1));
       CHECK_OK(test_->DeleteTestRow(&writer, 0));
       CHECK_EQ(1, writer.last_op_result().mutated_stores_size());
       CHECK_EQ(1L, writer.last_op_result().mutated_stores(0).mrs_id());
-      test_->InsertTestRow(&writer, 0, 2);
+      CHECK_OK(test_->InsertTestRow(&writer, 0, 2));
       CHECK_OK(test_->DeleteTestRow(&writer, 0));
       CHECK_EQ(1, writer.last_op_result().mutated_stores_size());
       CHECK_EQ(1L, writer.last_op_result().mutated_stores(0).mrs_id());
-      test_->InsertTestRow(&writer, 0, 3);
+      CHECK_OK(test_->InsertTestRow(&writer, 0, 3));
       return Status::OK();
     }
 

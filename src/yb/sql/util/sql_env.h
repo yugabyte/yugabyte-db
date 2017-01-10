@@ -31,9 +31,9 @@ class SqlEnv {
 
   virtual client::YBTableCreator *NewTableCreator();
 
-  virtual Status ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op);
+  virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op);
 
-  virtual Status ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op);
+  virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name,
                                                         bool refresh_metadata);

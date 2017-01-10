@@ -294,9 +294,9 @@ void TpchRealWorld::MonitorDbgenThread(int i) {
       SleepFor(MonoDelta::FromMilliseconds(100));
     }
   }
-  dbgen_proc->Kill(9);
+  CHECK_OK(dbgen_proc->Kill(9));
   int ret;
-  dbgen_proc->Wait(&ret);
+  CHECK_OK(dbgen_proc->Wait(&ret));
 }
 
 void TpchRealWorld::RunQueriesThread() {

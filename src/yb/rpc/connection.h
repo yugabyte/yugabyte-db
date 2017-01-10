@@ -90,7 +90,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
              Direction direction);
 
   // Set underlying socket to non-blocking (or blocking) mode.
-  Status SetNonBlocking(bool enabled);
+  CHECKED_STATUS SetNonBlocking(bool enabled);
 
   // Register our socket with an epoll loop.  We will only ever be registered in
   // one epoll loop at a time.
@@ -158,7 +158,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   ReactorThread* reactor_thread() const { return reactor_thread_; }
 
-  Status DumpPB(const DumpRunningRpcsRequestPB& req,
+  CHECKED_STATUS DumpPB(const DumpRunningRpcsRequestPB& req,
                 RpcConnectionPB* resp);
 
  protected:
@@ -377,10 +377,10 @@ class YBConnection : public Connection {
   SaslServer& sasl_server() { return sasl_server_; }
 
   // Initialize SASL client before negotiation begins.
-  Status InitSaslClient();
+  CHECKED_STATUS InitSaslClient();
 
   // Initialize SASL server before negotiation begins.
-  Status InitSaslServer();
+  CHECKED_STATUS InitSaslServer();
 
   virtual void RunNegotiation(const MonoTime& deadline) override;
 

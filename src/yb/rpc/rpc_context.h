@@ -149,7 +149,7 @@ class RpcContext {
   // Upon success, writes the index of the sidecar (necessary to be retrieved
   // later) to 'idx'. Call may fail if all sidecars have already been used
   // by the RPC response.
-  Status AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
+  CHECKED_STATUS AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
 
   // Return the credentials of the remote user who made this call.
   const UserCredentials& user_credentials() const;

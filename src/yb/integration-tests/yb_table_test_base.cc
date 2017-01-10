@@ -187,7 +187,7 @@ void YBTableTestBase::ConfigureScanner(YBScanner* scanner) {
 
 void YBTableTestBase::RestartCluster() {
   DCHECK(!use_external_mini_cluster());
-  mini_cluster_->RestartSync();
+  CHECK_OK(mini_cluster_->RestartSync());
   NO_FATALS(CreateClient());
   NO_FATALS(OpenTable());
 }
@@ -195,7 +195,7 @@ void YBTableTestBase::RestartCluster() {
 void YBTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, string>>* result_kvs) {
   while (scanner->HasMoreRows()) {
     vector<YBScanBatch::RowPtr> rows;
-    scanner->NextBatch(&rows);
+    ASSERT_OK(scanner->NextBatch(&rows));
     for (auto row : rows) {
       Slice returned_key, returned_value;
       ASSERT_OK(row.GetBinary("k", &returned_key));

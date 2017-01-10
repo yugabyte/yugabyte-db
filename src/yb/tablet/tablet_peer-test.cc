@@ -338,7 +338,7 @@ TEST_P(TabletPeerTest, TestMRSAnchorPreventsLogGC) {
   ASSERT_EQ(0, num_gced) << "earliest needed: " << min_log_index;
 
   // Flush MRS as needed to ensure that we don't have OpId anchors in the MRS.
-  tablet_peer_->tablet()->Flush();
+  ASSERT_OK(tablet_peer_->tablet()->Flush());
   AssertNoLogAnchors();
 
   // The first two segments should be deleted.
@@ -432,7 +432,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
   // Flush DMS to release the anchor.
-  tablet_peer_->tablet()->FlushBiggestDMS();
+  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
 
   // Verify no anchors after Flush().
   AssertNoLogAnchors();
@@ -477,7 +477,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
 
   // Flush MRS as needed to ensure that we don't have OpId anchors in the MRS.
   ASSERT_EQ(1, tablet_peer_->log_anchor_registry()->GetAnchorCountForTests());
-  tablet_peer_->tablet()->Flush();
+  ASSERT_OK(tablet_peer_->tablet()->Flush());
 
   // Verify no anchors after Flush().
   AssertNoLogAnchors();
@@ -536,7 +536,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
   if (table_type_ == KUDU_COLUMNAR_TABLE_TYPE) {
     ASSERT_EQ(1, tablet_peer_->log_anchor_registry()->GetAnchorCountForTests());
   }
-  tablet_peer_->tablet()->FlushBiggestDMS();
+  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
   ASSERT_EQ(0, tablet_peer_->log_anchor_registry()->GetAnchorCountForTests());
   ASSERT_EQ(1, tablet_peer_->txn_tracker_.GetNumPendingForTests());
 
@@ -556,7 +556,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
   rpc_latch.Wait();
   tablet_peer_->txn_tracker_.WaitForAllToFinish();
   ASSERT_EQ(0, tablet_peer_->txn_tracker_.GetNumPendingForTests());
-  tablet_peer_->tablet()->FlushBiggestDMS();
+  ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
   AssertNoLogAnchors();
 
   // All should be deleted except the two last segments.
@@ -569,7 +569,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
 
 TEST_P(TabletPeerTest, TestGCEmptyLog) {
   ConsensusBootstrapInfo info;
-  tablet_peer_->Start(info);
+  ASSERT_OK(tablet_peer_->Start(info));
   // We don't wait on consensus on purpose.
   ASSERT_OK(tablet_peer_->RunLogGC());
 }

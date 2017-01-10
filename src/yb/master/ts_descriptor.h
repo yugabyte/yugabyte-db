@@ -58,7 +58,7 @@ class TSRegistrationPB;
 // This class is thread-safe.
 class TSDescriptor {
  public:
-  static Status RegisterNew(const NodeInstancePB& instance,
+  static CHECKED_STATUS RegisterNew(const NodeInstancePB& instance,
                             const TSRegistrationPB& registration,
                             gscoped_ptr<TSDescriptor>* desc);
 
@@ -74,7 +74,7 @@ class TSDescriptor {
   MonoDelta TimeSinceHeartbeat() const;
 
   // Register this tablet server.
-  Status Register(const NodeInstancePB& instance,
+  CHECKED_STATUS Register(const NodeInstancePB& instance,
                   const TSRegistrationPB& registration);
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
@@ -102,15 +102,15 @@ class TSDescriptor {
   void GetNodeInstancePB(NodeInstancePB* instance_pb) const;
 
   // Return an RPC proxy to the tablet server admin service.
-  Status GetTSAdminProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+  CHECKED_STATUS GetTSAdminProxy(const std::shared_ptr<rpc::Messenger>& messenger,
                          std::shared_ptr<tserver::TabletServerAdminServiceProxy>* proxy);
 
   // Return an RPC proxy to the consensus service.
-  Status GetConsensusProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+  CHECKED_STATUS GetConsensusProxy(const std::shared_ptr<rpc::Messenger>& messenger,
                            std::shared_ptr<consensus::ConsensusServiceProxy>* proxy);
 
   // Return an RPC proxy to the tablet server service.
-  Status GetTSServiceProxy(const std::shared_ptr<rpc::Messenger>& messenger,
+  CHECKED_STATUS GetTSServiceProxy(const std::shared_ptr<rpc::Messenger>& messenger,
                            std::shared_ptr<tserver::TabletServerServiceProxy>* proxy);
 
   // Increment the accounting of the number of replicas recently created on this
@@ -150,7 +150,7 @@ class TSDescriptor {
   explicit TSDescriptor(std::string perm_id);
 
   // Uses DNS to resolve registered hosts to a single Sockaddr.
-  Status ResolveSockaddr(Sockaddr* addr) const;
+  CHECKED_STATUS ResolveSockaddr(Sockaddr* addr) const;
 
   void DecayRecentReplicaCreationsUnlocked();
 

@@ -52,19 +52,19 @@ class LocalConsensus : public Consensus {
                           ReplicaTransactionFactory* txn_factory,
                           log::Log* log);
 
-  virtual Status Start(const ConsensusBootstrapInfo& info) OVERRIDE;
+  virtual CHECKED_STATUS Start(const ConsensusBootstrapInfo& info) OVERRIDE;
 
   virtual bool IsRunning() const OVERRIDE;
 
-  virtual Status EmulateElection() OVERRIDE { return Status::OK(); }
+  virtual CHECKED_STATUS EmulateElection() OVERRIDE { return Status::OK(); }
 
-  virtual Status StartElection(
+  virtual CHECKED_STATUS StartElection(
       ElectionMode mode, const bool pending_commit = false,
       const OpId& opid = OpId::default_instance()) OVERRIDE {
     return Status::OK();
   }
 
-  virtual Status Replicate(const scoped_refptr<ConsensusRound>& context) OVERRIDE;
+  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& context) OVERRIDE;
 
   virtual RaftPeerPB::Role role() const OVERRIDE;
 
@@ -89,10 +89,10 @@ class LocalConsensus : public Consensus {
   //
   //  NOT IMPLEMENTED IN LOCAL CONSENSUS
   //
-  virtual Status Update(const ConsensusRequestPB* request,
+  virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
                         ConsensusResponsePB* response) OVERRIDE;
 
-  virtual Status RequestVote(const VoteRequestPB* request,
+  virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) OVERRIDE;
 
  private:
@@ -104,7 +104,7 @@ class LocalConsensus : public Consensus {
   //
   // This is used to re-apply operations which were found in the WAL at startup,
   // but did not have associated COMMIT records.
-  Status ResubmitOrphanedReplicates(const std::vector<ReplicateMsg*> replicates);
+  CHECKED_STATUS ResubmitOrphanedReplicates(const std::vector<ReplicateMsg*> replicates);
 
   const std::string peer_uuid_;
   const ConsensusOptions options_;

@@ -48,8 +48,8 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
 
-    tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0));
-    rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build(&messenger_);
+    ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0)));
+    ASSERT_OK(rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build(&messenger_));
     client_.reset(new RemoteBootstrapClient(GetTabletId(),
                                             fs_manager_.get(),
                                             messenger_,
@@ -63,7 +63,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   }
 
  protected:
-  Status CompareFileContents(const string& path1, const string& path2);
+  CHECKED_STATUS CompareFileContents(const string& path1, const string& path2);
 
   gscoped_ptr<FsManager> fs_manager_;
   shared_ptr<rpc::Messenger> messenger_;

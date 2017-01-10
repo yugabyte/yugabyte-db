@@ -59,12 +59,12 @@ class TabletServer : public server::RpcAndWebServerBase {
   // Some initialization tasks are asynchronous, such as the bootstrapping
   // of tablets. Caller can block, waiting for the initialization to fully
   // complete by calling WaitInited().
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Waits for the tablet server to complete the initialization.
-  Status WaitInited();
+  CHECKED_STATUS WaitInited();
 
-  Status Start();
+  CHECKED_STATUS Start();
   void Shutdown();
 
   std::string ToString() const;
@@ -92,7 +92,7 @@ class TabletServer : public server::RpcAndWebServerBase {
   void SetCurrentMasterIndex(int index) { master_config_index_ = index; }
 
   // Update in-memory list of master addresses that this tablet server pings to.
-  Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config);
+  CHECKED_STATUS UpdateMasterAddresses(const consensus::RaftConfigPB& new_config);
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
@@ -101,7 +101,7 @@ class TabletServer : public server::RpcAndWebServerBase {
  private:
   friend class TabletServerTestBase;
 
-  Status ValidateMasterAddressResolution() const;
+  CHECKED_STATUS ValidateMasterAddressResolution() const;
 
   bool initted_;
 

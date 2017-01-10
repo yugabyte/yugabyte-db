@@ -85,7 +85,7 @@ class ConsensusQueueTest : public YBTest {
   }
 
   virtual void TearDown() OVERRIDE {
-    log_->WaitUntilAllFlushed();
+    ASSERT_OK(log_->WaitUntilAllFlushed());
     queue_->Close();
   }
 
@@ -624,7 +624,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   queue_->SetNonLeaderMode();
   // Append a bunch of messages.
   AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 10);
-  log_->WaitUntilAllFlushed();
+  ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MakeOpId(1, 10));
   // Now rewrite some of the operations and wait for the log to append.
   Synchronizer synch;

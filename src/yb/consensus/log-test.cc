@@ -139,7 +139,7 @@ TEST_F(LogTest, TestMultipleEntriesInABatch) {
   opid.set_term(1);
   opid.set_index(1);
 
-  AppendNoOpsToLogSync(clock_, log_.get(), &opid, 2);
+  ASSERT_OK(AppendNoOpsToLogSync(clock_, log_.get(), &opid, 2));
 
   // RollOver() the batch so that we have a properly formed footer.
   ASSERT_OK(log_->AllocateSegmentAndRollOver());
@@ -196,7 +196,7 @@ TEST_F(LogTest, TestFsync) {
   opid.set_term(0);
   opid.set_index(1);
 
-  AppendNoOp(&opid);
+  ASSERT_OK(AppendNoOp(&opid));
 
   ASSERT_OK(log_->Close());
 }
@@ -209,14 +209,14 @@ TEST_F(LogTest, TestSizeIsMaintained) {
   BuildLog();
 
   OpId opid = MakeOpId(0, 1);
-  AppendNoOp(&opid);
+  ASSERT_OK(AppendNoOp(&opid));
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   int64_t orig_size = segments[0]->file_size();
   ASSERT_GT(orig_size, 0);
 
-  AppendNoOp(&opid);
+  ASSERT_OK(AppendNoOp(&opid));
 
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   int64_t new_size = segments[0]->file_size();
@@ -234,7 +234,7 @@ TEST_F(LogTest, TestLogNotTrimmed) {
   opid.set_term(0);
   opid.set_index(1);
 
-  AppendNoOp(&opid);
+  ASSERT_OK(AppendNoOp(&opid));
 
   vector<LogEntryPB*> entries;
   ElementDeleter deleter(&entries);
@@ -720,7 +720,7 @@ TEST_F(LogTest, TestLogReader) {
                    scoped_refptr<LogIndex>(),
                    kTestTablet,
                    nullptr);
-  reader.InitEmptyReaderForTests();
+  ASSERT_OK(reader.InitEmptyReaderForTests());
   ASSERT_OK(AppendNewEmptySegmentToReader(2, 10, &reader));
   ASSERT_OK(AppendNewEmptySegmentToReader(3, 20, &reader));
   ASSERT_OK(AppendNewEmptySegmentToReader(4, 30, &reader));

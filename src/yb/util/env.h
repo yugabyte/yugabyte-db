@@ -66,7 +66,7 @@ class Env {
   // not exist, returns a non-OK status.
   //
   // The returned file will only be accessed by one thread at a time.
-  virtual Status NewSequentialFile(const std::string& fname,
+  virtual CHECKED_STATUS NewSequentialFile(const std::string& fname,
                                    gscoped_ptr<SequentialFile>* result) = 0;
 
   // Create a brand new random access read-only file with the
@@ -76,11 +76,11 @@ class Env {
   // status.
   //
   // The returned file may be concurrently accessed by multiple threads.
-  virtual Status NewRandomAccessFile(const std::string& fname,
+  virtual CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
                                      gscoped_ptr<RandomAccessFile>* result) = 0;
 
   // Like the previous NewRandomAccessFile, but allows options to be specified.
-  virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
+  virtual CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
                                      const std::string& fname,
                                      gscoped_ptr<RandomAccessFile>* result) = 0;
 
@@ -91,13 +91,13 @@ class Env {
   // returns non-OK.
   //
   // The returned file will only be accessed by one thread at a time.
-  virtual Status NewWritableFile(const std::string& fname,
+  virtual CHECKED_STATUS NewWritableFile(const std::string& fname,
                                  gscoped_ptr<WritableFile>* result) = 0;
 
 
   // Like the previous NewWritableFile, but allows options to be
   // specified.
-  virtual Status NewWritableFile(const WritableFileOptions& opts,
+  virtual CHECKED_STATUS NewWritableFile(const WritableFileOptions& opts,
                                  const std::string& fname,
                                  gscoped_ptr<WritableFile>* result) = 0;
 
@@ -109,7 +109,7 @@ class Env {
   // The file is created with permissions 0600, that is, read plus write for
   // owner only. The implementation will create the file in a secure manner,
   // and will return an error Status if it is unable to open the file.
-  virtual Status NewTempWritableFile(const WritableFileOptions& opts,
+  virtual CHECKED_STATUS NewTempWritableFile(const WritableFileOptions& opts,
                                      const std::string& name_template,
                                      std::string* created_filename,
                                      gscoped_ptr<WritableFile>* result) = 0;
@@ -119,11 +119,11 @@ class Env {
   //
   // Some of the methods of the new file may be accessed concurrently,
   // while others are only safe for access by one thread at a time.
-  virtual Status NewRWFile(const std::string& fname,
+  virtual CHECKED_STATUS NewRWFile(const std::string& fname,
                            gscoped_ptr<RWFile>* result) = 0;
 
   // Like the previous NewRWFile, but allows options to be specified.
-  virtual Status NewRWFile(const RWFileOptions& opts,
+  virtual CHECKED_STATUS NewRWFile(const RWFileOptions& opts,
                            const std::string& fname,
                            gscoped_ptr<RWFile>* result) = 0;
 
@@ -133,40 +133,40 @@ class Env {
   // Store in *result the names of the children of the specified directory.
   // The names are relative to "dir".
   // Original contents of *results are dropped.
-  virtual Status GetChildren(const std::string& dir,
+  virtual CHECKED_STATUS GetChildren(const std::string& dir,
                              std::vector<std::string>* result) = 0;
 
   // Delete the named file.
-  virtual Status DeleteFile(const std::string& fname) = 0;
+  virtual CHECKED_STATUS DeleteFile(const std::string& fname) = 0;
 
   // Create the specified directory.
-  virtual Status CreateDir(const std::string& dirname) = 0;
+  virtual CHECKED_STATUS CreateDir(const std::string& dirname) = 0;
 
   // Delete the specified directory.
-  virtual Status DeleteDir(const std::string& dirname) = 0;
+  virtual CHECKED_STATUS DeleteDir(const std::string& dirname) = 0;
 
   // Synchronize the entry for a specific directory.
-  virtual Status SyncDir(const std::string& dirname) = 0;
+  virtual CHECKED_STATUS SyncDir(const std::string& dirname) = 0;
 
   // Recursively delete the specified directory.
   // This should operate safely, not following any symlinks, etc.
-  virtual Status DeleteRecursively(const std::string &dirname) = 0;
+  virtual CHECKED_STATUS DeleteRecursively(const std::string &dirname) = 0;
 
   // Store the logical size of fname in *file_size.
-  virtual Status GetFileSize(const std::string& fname, uint64_t* file_size) = 0;
+  virtual CHECKED_STATUS GetFileSize(const std::string& fname, uint64_t* file_size) = 0;
 
   // Store the physical size of fname in *file_size.
   //
   // This differs from GetFileSize() in that it returns the actual amount
   // of space consumed by the file, not the user-facing file size.
-  virtual Status GetFileSizeOnDisk(const std::string& fname, uint64_t* file_size) = 0;
+  virtual CHECKED_STATUS GetFileSizeOnDisk(const std::string& fname, uint64_t* file_size) = 0;
 
   // Store the block size of the filesystem where fname resides in
   // *block_size. fname must exist but it may be a file or a directory.
-  virtual Status GetBlockSize(const std::string& fname, uint64_t* block_size) = 0;
+  virtual CHECKED_STATUS GetBlockSize(const std::string& fname, uint64_t* block_size) = 0;
 
   // Rename file src to target.
-  virtual Status RenameFile(const std::string& src,
+  virtual CHECKED_STATUS RenameFile(const std::string& src,
                             const std::string& target) = 0;
 
   // Lock the specified file.  Used to prevent concurrent access to
@@ -188,20 +188,20 @@ class Env {
   // NOT maintained. A single unlock will release the lock.
   //
   // May create the named file if it does not already exist.
-  virtual Status LockFile(const std::string& fname,
+  virtual CHECKED_STATUS LockFile(const std::string& fname,
                           FileLock** lock,
                           bool recursive_lock_ok) = 0;
 
   // Release the lock acquired by a previous successful call to LockFile.
   // REQUIRES: lock was returned by a successful LockFile() call
   // REQUIRES: lock has not already been unlocked.
-  virtual Status UnlockFile(FileLock* lock) = 0;
+  virtual CHECKED_STATUS UnlockFile(FileLock* lock) = 0;
 
   // *path is set to a temporary directory that can be used for testing. It may
   // or many not have just been created. The directory may or may not differ
   // between runs of the same process, but subsequent calls will return the
   // same directory.
-  virtual Status GetTestDirectory(std::string* path) = 0;
+  virtual CHECKED_STATUS GetTestDirectory(std::string* path) = 0;
 
   // Returns the number of micro-seconds since some fixed point in time. Only
   // useful for computing deltas of time.
@@ -214,11 +214,11 @@ class Env {
   virtual uint64_t gettid() = 0;
 
   // Return the full path of the currently running executable.
-  virtual Status GetExecutablePath(std::string* path) = 0;
+  virtual CHECKED_STATUS GetExecutablePath(std::string* path) = 0;
 
   // Checks if the file is a directory. Returns an error if it doesn't
   // exist, otherwise writes true or false into 'is_dir' appropriately.
-  virtual Status IsDirectory(const std::string& path, bool* is_dir) = 0;
+  virtual CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) = 0;
 
   // The kind of file found during a walk. Note that symbolic links are
   // reported as FILE_TYPE.
@@ -248,7 +248,7 @@ class Env {
   //
   // The walk will not cross filesystem boundaries. It won't change the
   // working directory, nor will it follow symbolic links.
-  virtual Status Walk(const std::string& root,
+  virtual CHECKED_STATUS Walk(const std::string& root,
                       DirectoryOrder order,
                       const WalkCallback& cb) = 0;
 
@@ -258,10 +258,10 @@ class Env {
   // - Resolves all symbolic links.
   //
   // All directory entries in 'path' must exist on the filesystem.
-  virtual Status Canonicalize(const std::string& path, std::string* result) = 0;
+  virtual CHECKED_STATUS Canonicalize(const std::string& path, std::string* result) = 0;
 
   // Get the total amount of RAM installed on this machine.
-  virtual Status GetTotalRAMBytes(int64_t* ram) = 0;
+  virtual CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) = 0;
  private:
   // No copying allowed
   Env(const Env&);
@@ -282,7 +282,7 @@ class SequentialFile {
   // If an error was encountered, returns a non-OK status.
   //
   // REQUIRES: External synchronization
-  virtual Status Read(size_t n, Slice* result, uint8_t *scratch) = 0;
+  virtual CHECKED_STATUS Read(size_t n, Slice* result, uint8_t *scratch) = 0;
 
   // Skip "n" bytes from the file. This is guaranteed to be no
   // slower that reading the same data, but may be faster.
@@ -291,7 +291,7 @@ class SequentialFile {
   // file, and Skip will return OK.
   //
   // REQUIRES: External synchronization
-  virtual Status Skip(uint64_t n) = 0;
+  virtual CHECKED_STATUS Skip(uint64_t n) = 0;
 
   // Returns the filename provided when the SequentialFile was constructed.
   virtual const std::string& filename() const = 0;
@@ -312,11 +312,11 @@ class RandomAccessFile {
   // status.
   //
   // Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
+  virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
                       uint8_t *scratch) const = 0;
 
   // Returns the size of the file
-  virtual Status Size(uint64_t *size) const = 0;
+  virtual CHECKED_STATUS Size(uint64_t *size) const = 0;
 
   // Returns the filename provided when the RandomAccessFile was constructed.
   virtual const std::string& filename() const = 0;
@@ -364,26 +364,26 @@ class WritableFile {
   // size bytes are added to the current pre-allocated size or to the current
   // offset, whichever is bigger. In no case is the file truncated by this
   // operation.
-  virtual Status PreAllocate(uint64_t size) = 0;
+  virtual CHECKED_STATUS PreAllocate(uint64_t size) = 0;
 
-  virtual Status Append(const Slice& data) = 0;
+  virtual CHECKED_STATUS Append(const Slice& data) = 0;
 
   // If possible, uses scatter-gather I/O to efficiently append
   // multiple buffers to a file. Otherwise, falls back to regular I/O.
   //
   // For implementation specific quirks and details, see comments in
   // implementation source code (e.g., env_posix.cc)
-  virtual Status AppendVector(const std::vector<Slice>& data_vector) = 0;
+  virtual CHECKED_STATUS AppendVector(const std::vector<Slice>& data_vector) = 0;
 
-  virtual Status Close() = 0;
+  virtual CHECKED_STATUS Close() = 0;
 
   // Flush all dirty data (not metadata) to disk.
   //
   // If the flush mode is synchronous, will wait for flush to finish and
   // return a meaningful status.
-  virtual Status Flush(FlushMode mode) = 0;
+  virtual CHECKED_STATUS Flush(FlushMode mode) = 0;
 
-  virtual Status Sync() = 0;
+  virtual CHECKED_STATUS Sync() = 0;
 
   virtual uint64_t Size() const = 0;
 
@@ -437,18 +437,18 @@ class RWFile {
   // an IOError is returned.
   //
   // Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64_t offset, size_t length,
+  virtual CHECKED_STATUS Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const = 0;
 
   // Writes 'data' to the file position given by 'offset'.
-  virtual Status Write(uint64_t offset, const Slice& data) = 0;
+  virtual CHECKED_STATUS Write(uint64_t offset, const Slice& data) = 0;
 
   // Preallocates 'length' bytes for the file in the underlying filesystem
   // beginning at 'offset'. It is safe to preallocate the same range
   // repeatedly; this is an idempotent operation.
   //
   // In no case is the file truncated by this operation.
-  virtual Status PreAllocate(uint64_t offset, size_t length) = 0;
+  virtual CHECKED_STATUS PreAllocate(uint64_t offset, size_t length) = 0;
 
   // Deallocates space given by 'offset' and length' from the file,
   // effectively "punching a hole" in it. The space will be reclaimed by
@@ -456,7 +456,7 @@ class RWFile {
   // for making whole files sparse.
   //
   // Filesystems that don't implement this will return an error.
-  virtual Status PunchHole(uint64_t offset, size_t length) = 0;
+  virtual CHECKED_STATUS PunchHole(uint64_t offset, size_t length) = 0;
 
   // Flushes the range of dirty data (not metadata) given by 'offset' and
   // 'length' to disk. If length is 0, all bytes from 'offset' to the end
@@ -464,19 +464,19 @@ class RWFile {
   //
   // If the flush mode is synchronous, will wait for flush to finish and
   // return a meaningful status.
-  virtual Status Flush(FlushMode mode, uint64_t offset, size_t length) = 0;
+  virtual CHECKED_STATUS Flush(FlushMode mode, uint64_t offset, size_t length) = 0;
 
   // Synchronously flushes all dirty file data and metadata to disk. Upon
   // returning successfully, all previously issued file changes have been
   // made durable.
-  virtual Status Sync() = 0;
+  virtual CHECKED_STATUS Sync() = 0;
 
   // Closes the file, optionally calling Sync() on it if the file was
   // created with the sync_on_close option enabled.
-  virtual Status Close() = 0;
+  virtual CHECKED_STATUS Close() = 0;
 
   // Retrieves the file's size.
-  virtual Status Size(uint64_t* size) const = 0;
+  virtual CHECKED_STATUS Size(uint64_t* size) const = 0;
 
   // Returns the filename provided when the RWFile was constructed.
   virtual const std::string& filename() const = 0;
@@ -497,11 +497,11 @@ class FileLock {
 };
 
 // A utility routine: write "data" to the named file.
-extern Status WriteStringToFile(Env* env, const Slice& data,
+extern CHECKED_STATUS WriteStringToFile(Env* env, const Slice& data,
                                 const std::string& fname);
 
 // A utility routine: read contents of named file into *data
-extern Status ReadFileToString(Env* env, const std::string& fname,
+extern CHECKED_STATUS ReadFileToString(Env* env, const std::string& fname,
                                faststring* data);
 
 // An implementation of Env that forwards all calls to another Env.
@@ -517,64 +517,64 @@ class EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewSequentialFile(const std::string& f, gscoped_ptr<SequentialFile>* r) OVERRIDE {
+  CHECKED_STATUS NewSequentialFile(const std::string& f, gscoped_ptr<SequentialFile>* r) OVERRIDE {
     return target_->NewSequentialFile(f, r);
   }
-  Status NewRandomAccessFile(const std::string& f,
+  CHECKED_STATUS NewRandomAccessFile(const std::string& f,
                              gscoped_ptr<RandomAccessFile>* r) OVERRIDE {
     return target_->NewRandomAccessFile(f, r);
   }
-  Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
+  CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
                              const std::string& f,
                              gscoped_ptr<RandomAccessFile>* r) OVERRIDE {
     return target_->NewRandomAccessFile(opts, f, r);
   }
-  Status NewWritableFile(const std::string& f, gscoped_ptr<WritableFile>* r) OVERRIDE {
+  CHECKED_STATUS NewWritableFile(const std::string& f, gscoped_ptr<WritableFile>* r) OVERRIDE {
     return target_->NewWritableFile(f, r);
   }
-  Status NewWritableFile(const WritableFileOptions& o,
+  CHECKED_STATUS NewWritableFile(const WritableFileOptions& o,
                          const std::string& f,
                          gscoped_ptr<WritableFile>* r) OVERRIDE {
     return target_->NewWritableFile(o, f, r);
   }
-  Status NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
+  CHECKED_STATUS NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
                              std::string* f, gscoped_ptr<WritableFile>* r) OVERRIDE {
     return target_->NewTempWritableFile(o, t, f, r);
   }
-  Status NewRWFile(const std::string& f, gscoped_ptr<RWFile>* r) OVERRIDE {
+  CHECKED_STATUS NewRWFile(const std::string& f, gscoped_ptr<RWFile>* r) OVERRIDE {
     return target_->NewRWFile(f, r);
   }
-  Status NewRWFile(const RWFileOptions& o,
+  CHECKED_STATUS NewRWFile(const RWFileOptions& o,
                    const std::string& f,
                    gscoped_ptr<RWFile>* r) OVERRIDE {
     return target_->NewRWFile(o, f, r);
   }
   bool FileExists(const std::string& f) OVERRIDE { return target_->FileExists(f); }
-  Status GetChildren(const std::string& dir, std::vector<std::string>* r) OVERRIDE {
+  CHECKED_STATUS GetChildren(const std::string& dir, std::vector<std::string>* r) OVERRIDE {
     return target_->GetChildren(dir, r);
   }
-  Status DeleteFile(const std::string& f) OVERRIDE { return target_->DeleteFile(f); }
-  Status CreateDir(const std::string& d) OVERRIDE { return target_->CreateDir(d); }
-  Status SyncDir(const std::string& d) OVERRIDE { return target_->SyncDir(d); }
-  Status DeleteDir(const std::string& d) OVERRIDE { return target_->DeleteDir(d); }
-  Status DeleteRecursively(const std::string& d) OVERRIDE { return target_->DeleteRecursively(d); }
-  Status GetFileSize(const std::string& f, uint64_t* s) OVERRIDE {
+  CHECKED_STATUS DeleteFile(const std::string& f) OVERRIDE { return target_->DeleteFile(f); }
+  CHECKED_STATUS CreateDir(const std::string& d) OVERRIDE { return target_->CreateDir(d); }
+  CHECKED_STATUS SyncDir(const std::string& d) OVERRIDE { return target_->SyncDir(d); }
+  CHECKED_STATUS DeleteDir(const std::string& d) OVERRIDE { return target_->DeleteDir(d); }
+  CHECKED_STATUS DeleteRecursively(const std::string& d) OVERRIDE { return target_->DeleteRecursively(d); }
+  CHECKED_STATUS GetFileSize(const std::string& f, uint64_t* s) OVERRIDE {
     return target_->GetFileSize(f, s);
   }
-  Status GetFileSizeOnDisk(const std::string& f, uint64_t* s) OVERRIDE {
+  CHECKED_STATUS GetFileSizeOnDisk(const std::string& f, uint64_t* s) OVERRIDE {
     return target_->GetFileSizeOnDisk(f, s);
   }
-  Status GetBlockSize(const std::string& f, uint64_t* s) OVERRIDE {
+  CHECKED_STATUS GetBlockSize(const std::string& f, uint64_t* s) OVERRIDE {
     return target_->GetBlockSize(f, s);
   }
-  Status RenameFile(const std::string& s, const std::string& t) OVERRIDE {
+  CHECKED_STATUS RenameFile(const std::string& s, const std::string& t) OVERRIDE {
     return target_->RenameFile(s, t);
   }
-  Status LockFile(const std::string& f, FileLock** l, bool r) OVERRIDE {
+  CHECKED_STATUS LockFile(const std::string& f, FileLock** l, bool r) OVERRIDE {
     return target_->LockFile(f, l, r);
   }
-  Status UnlockFile(FileLock* l) OVERRIDE { return target_->UnlockFile(l); }
-  virtual Status GetTestDirectory(std::string* path) OVERRIDE {
+  CHECKED_STATUS UnlockFile(FileLock* l) OVERRIDE { return target_->UnlockFile(l); }
+  virtual CHECKED_STATUS GetTestDirectory(std::string* path) OVERRIDE {
     return target_->GetTestDirectory(path);
   }
   uint64_t NowMicros() OVERRIDE {
@@ -586,21 +586,21 @@ class EnvWrapper : public Env {
   uint64_t gettid() OVERRIDE {
     return target_->gettid();
   }
-  Status GetExecutablePath(std::string* path) OVERRIDE {
+  CHECKED_STATUS GetExecutablePath(std::string* path) OVERRIDE {
     return target_->GetExecutablePath(path);
   }
-  Status IsDirectory(const std::string& path, bool* is_dir) OVERRIDE {
+  CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) OVERRIDE {
     return target_->IsDirectory(path, is_dir);
   }
-  Status Walk(const std::string& root,
+  CHECKED_STATUS Walk(const std::string& root,
               DirectoryOrder order,
               const WalkCallback& cb) OVERRIDE {
     return target_->Walk(root, order, cb);
   }
-  Status Canonicalize(const std::string& path, std::string* result) OVERRIDE {
+  CHECKED_STATUS Canonicalize(const std::string& path, std::string* result) OVERRIDE {
     return target_->Canonicalize(path, result);
   }
-  Status GetTotalRAMBytes(int64_t* ram) OVERRIDE {
+  CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) OVERRIDE {
     return target_->GetTotalRAMBytes(ram);
   }
  private:

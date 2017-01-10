@@ -61,7 +61,7 @@ class RowSetTree {
   };
 
   RowSetTree();
-  Status Reset(const RowSetVector &rowsets);
+  CHECKED_STATUS Reset(const RowSetVector &rowsets);
   ~RowSetTree();
 
   // Return all RowSets whose range may contain the given encoded key.

@@ -89,7 +89,7 @@ class BloomFileTestBase : public YBTest {
     ASSERT_OK(bfw.Finish());
   }
 
-  Status OpenBloomFile() {
+  CHECKED_STATUS OpenBloomFile() {
     gscoped_ptr<ReadableBlock> source;
     RETURN_NOT_OK(fs_manager_->OpenBlock(block_id_, &source));
 

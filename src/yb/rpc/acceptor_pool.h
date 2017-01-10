@@ -47,7 +47,7 @@ class AcceptorPool {
   ~AcceptorPool();
 
   // Start listening and accepting connections.
-  Status Start(int num_threads);
+  CHECKED_STATUS Start(int num_threads);
   void Shutdown();
 
   // Return the address that the pool is bound to. If the port is specified as
@@ -57,7 +57,7 @@ class AcceptorPool {
   // Return the address that the pool is bound to. This only works while the
   // socket is open, and if the specified port is 0 then this will return the
   // actual port that was bound.
-  Status GetBoundAddress(Sockaddr* addr) const;
+  CHECKED_STATUS GetBoundAddress(Sockaddr* addr) const;
 
  private:
   void RunThread();

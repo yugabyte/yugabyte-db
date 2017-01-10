@@ -32,7 +32,7 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
   // Enqueue a call for processing.
   // On failure, the RpcService::QueueInboundCall() implementation is
   // responsible for responding to the client with a failure message.
-  virtual Status QueueInboundCall(gscoped_ptr<InboundCall> call) = 0;
+  virtual CHECKED_STATUS QueueInboundCall(gscoped_ptr<InboundCall> call) = 0;
 };
 
 } // namespace rpc

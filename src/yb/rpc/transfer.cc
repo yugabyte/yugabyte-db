@@ -37,6 +37,7 @@ namespace rpc {
 using std::ostringstream;
 using std::string;
 using cqlserver::CQLMessage;
+using strings::Substitute;
 
 #define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \
   if (PREDICT_FALSE(!status.ok())) {                            \
@@ -186,15 +187,17 @@ Status RedisInboundTransfer::CheckMultiBulkBuffer() {
     parsing_pos_++;
     int64_t num_args = 0;
     RETURN_NOT_OK(ParseNumber(&num_args));
+    // TODO: create a single macro that checks if a value is in a certain range and de-duplicate
+    // the following.
     SCHECK_GT(
         num_args, 0, Corruption,
-        StringPrintf(
-            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : %lld",
+        Substitute(
+            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : $0",
             num_args));
     SCHECK_LE(
         num_args, 1024 * 1024, Corruption,
-        StringPrintf(
-            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : %lld",
+        Substitute(
+            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : $0",
             num_args));
     client_command_.num_multi_bulk_args_left = num_args;
   }
@@ -211,13 +214,13 @@ Status RedisInboundTransfer::CheckMultiBulkBuffer() {
       RETURN_NOT_OK(ParseNumber(&parsed_len));
       SCHECK_GE(
           parsed_len, 0, Corruption,
-          StringPrintf(
-              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : %lld",
+          Substitute(
+              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : $0",
               parsed_len));
       SCHECK_LE(
           parsed_len, 512 * 1024 * 1024, Corruption,
-          StringPrintf(
-              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : %lld",
+          Substitute(
+              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : $0",
               parsed_len));
       client_command_.current_multi_bulk_arg_len = parsed_len;
     }
@@ -255,7 +258,9 @@ RedisInboundTransfer* RedisInboundTransfer::ExcessData() const {
          static_cast<const void *>(buf_.data() + parsing_pos_),
          excess_bytes_len);
   excess->cur_offset_ = excess_bytes_len;
-  excess->CheckReadCompletely();
+
+  // TODO: what's a better way to report errors here?
+  CHECK_OK(excess->CheckReadCompletely());
 
   return excess;
 }

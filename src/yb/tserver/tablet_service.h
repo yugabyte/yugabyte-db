@@ -87,7 +87,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
   virtual void Shutdown() OVERRIDE;
 
  private:
-  Status HandleNewScanRequest(tablet::TabletPeer* tablet_peer,
+  CHECKED_STATUS HandleNewScanRequest(tablet::TabletPeer* tablet_peer,
                               const ScanRequestPB* req,
                               const rpc::RpcContext* rpc_context,
                               ScanResultCollector* result_collector,
@@ -96,12 +96,12 @@ class TabletServiceImpl : public TabletServerServiceIf {
                               bool* has_more_results,
                               TabletServerErrorPB::Code* error_code);
 
-  Status HandleContinueScanRequest(const ScanRequestPB* req,
+  CHECKED_STATUS HandleContinueScanRequest(const ScanRequestPB* req,
                                    ScanResultCollector* result_collector,
                                    bool* has_more_results,
                                    TabletServerErrorPB::Code* error_code);
 
-  Status HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
+  CHECKED_STATUS HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
                               const rpc::RpcContext* rpc_context,
                               const Schema& projection,
                               const std::shared_ptr<tablet::Tablet>& tablet,
@@ -109,7 +109,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
                               Timestamp* snap_timestamp);
 
   // Take a MVCC snapshot for read at the specified timestamp
-  Status TakeReadSnapshot(tablet::Tablet* tablet,
+  CHECKED_STATUS TakeReadSnapshot(tablet::Tablet* tablet,
                           const rpc::RpcContext* rpc_context,
                           const Timestamp& timestamp,
                           tablet::MvccSnapshot* snap);

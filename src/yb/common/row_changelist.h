@@ -227,7 +227,7 @@ class RowChangeListDecoder {
 
   // Initialize the decoder. This will return an invalid Status if the RowChangeList
   // appears to be corrupt/malformed.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Like Init() above, but does not perform any safety checks in a release build.
   // This can be used when it's known that the source of the RowChangeList is
@@ -261,12 +261,12 @@ class RowChangeListDecoder {
 
   // If this RCL is a REINSERT, then returns the reinserted row in
   // the contiguous in-memory row format.
-  Status GetReinsertedRowSlice(const Schema& schema, Slice* s) const;
+  CHECKED_STATUS GetReinsertedRowSlice(const Schema& schema, Slice* s) const;
 
   // Append an entry to *column_ids for each column that is updated
   // in this RCL.
   // This 'consumes' the remainder of the encoded RowChangeList.
-  Status GetIncludedColumnIds(std::vector<ColumnId>* column_ids) {
+  CHECKED_STATUS GetIncludedColumnIds(std::vector<ColumnId>* column_ids) {
     column_ids->clear();
     DCHECK(is_update());
     while (HasNext()) {
@@ -279,7 +279,7 @@ class RowChangeListDecoder {
 
   // Applies changes in this decoder to the specified row and saves the old
   // state of the row into the undo_encoder.
-  Status ApplyRowUpdate(RowBlockRow *dst_row,
+  CHECKED_STATUS ApplyRowUpdate(RowBlockRow *dst_row,
                         Arena *arena, RowChangeListEncoder* undo_encoder);
 
   // Apply this UPDATE RowChangeList to row number 'row_idx' in 'dst_col', but only
@@ -287,7 +287,7 @@ class RowChangeListDecoder {
   // Any indirect data is copied into 'arena' if non-NULL.
   //
   // REQUIRES: is_update()
-  Status ApplyToOneColumn(size_t row_idx, ColumnBlock* dst_col,
+  CHECKED_STATUS ApplyToOneColumn(size_t row_idx, ColumnBlock* dst_col,
                           const Schema& dst_schema, int col_idx, Arena *arena);
 
   // If this changelist is a DELETE or REINSERT, twiddle '*deleted' to reference
@@ -308,7 +308,7 @@ class RowChangeListDecoder {
   // Project the 'src' RowChangeList using the delta 'projector'
   // The projected RowChangeList will be encoded to specified 'buf'.
   // The buffer will be cleared before adding the result.
-  static Status ProjectUpdate(const DeltaProjector& projector,
+  static CHECKED_STATUS ProjectUpdate(const DeltaProjector& projector,
                               const RowChangeList& src,
                               faststring *buf);
 
@@ -320,7 +320,7 @@ class RowChangeListDecoder {
   // 'column_ids' must be sorted; 'out' must be
   // valid for the duration of this method, but not have been
   // previously initialized.
-  static Status RemoveColumnIdsFromChangeList(const RowChangeList& src,
+  static CHECKED_STATUS RemoveColumnIdsFromChangeList(const RowChangeList& src,
                                               const std::vector<ColumnId>& column_ids,
                                               RowChangeListEncoder* out);
 
@@ -352,7 +352,7 @@ class RowChangeListDecoder {
     //
     // If the updated column is not present, sets *col_idx to -1 and returns
     // Status::OK.
-    Status Validate(const Schema& s,
+    CHECKED_STATUS Validate(const Schema& s,
                     int* col_idx,
                     const void** valid_value) const;
   };
@@ -364,7 +364,7 @@ class RowChangeListDecoder {
   // being decoded by this object. No copies are made.
   //
   // REQUIRES: is_update()
-  Status DecodeNext(DecodedUpdate* update);
+  CHECKED_STATUS DecodeNext(DecodedUpdate* update);
 
  private:
   FRIEND_TEST(TestRowChangeList, TestEncodeDecodeUpdates);

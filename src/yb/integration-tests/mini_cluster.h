@@ -76,15 +76,15 @@ class MiniCluster {
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
   // All servers run on the loopback interface with ephemeral ports.
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Like the previous method but performs initialization synchronously, i.e.
   // this will wait for all TS's to be started and initialized. Tests should
   // use this if they interact with tablets immediately after Start();
-  Status StartSync();
+  CHECKED_STATUS StartSync();
 
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
-  Status RestartSync();
+  CHECKED_STATUS RestartSync();
 
   void Shutdown();
 
@@ -94,14 +94,14 @@ class MiniCluster {
   // Setup a consensus configuration of distributed masters, with count specified in
   // 'options'. Requires that a reserve RPC port is specified in
   // 'options' for each master.
-  Status StartDistributedMasters();
+  CHECKED_STATUS StartDistributedMasters();
 
   // Add a new standalone master to the cluster. The new master is started.
-  Status StartSingleMaster();
+  CHECKED_STATUS StartSingleMaster();
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  Status AddTabletServer();
+  CHECKED_STATUS AddTabletServer();
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
@@ -136,15 +136,15 @@ class MiniCluster {
   // Requires that the master has started;
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
-  Status WaitForReplicaCount(const std::string& tablet_id,
+  CHECKED_STATUS WaitForReplicaCount(const std::string& tablet_id,
                              int expected_count,
                              master::TabletLocationsPB* locations);
 
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
-  Status WaitForTabletServerCount(int count);
-  Status WaitForTabletServerCount(int count,
+  CHECKED_STATUS WaitForTabletServerCount(int count);
+  CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
 
   // Create a client configured to talk to this cluster. Builder may contain
@@ -153,7 +153,7 @@ class MiniCluster {
   // used.
   //
   // REQUIRES: the cluster must have already been Start()ed.
-  Status CreateClient(client::YBClientBuilder* builder,
+  CHECKED_STATUS CreateClient(client::YBClientBuilder* builder,
                       std::shared_ptr<client::YBClient>* client);
 
   // Allocates a free port and stores a file lock guarding access to that port into an internal

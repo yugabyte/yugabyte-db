@@ -22,7 +22,7 @@ class DocOperation {
   virtual ~DocOperation() {}
 
   virtual DocPath DocPathToLock() const = 0;
-  virtual Status Apply(DocWriteBatch* doc_write_batch) = 0;
+  virtual CHECKED_STATUS Apply(DocWriteBatch* doc_write_batch) = 0;
 };
 
 class KuduWriteOperation: public DocOperation {
@@ -32,7 +32,7 @@ class KuduWriteOperation: public DocOperation {
 
   DocPath DocPathToLock() const override;
 
-  Status Apply(DocWriteBatch *doc_write_batch) override;
+  CHECKED_STATUS Apply(DocWriteBatch *doc_write_batch) override;
 
  private:
   DocPath doc_path_;
@@ -43,7 +43,7 @@ class RedisWriteOperation: public DocOperation {
  public:
   explicit RedisWriteOperation(yb::RedisWriteRequestPB request) : request_(request), response_() {}
 
-  Status Apply(DocWriteBatch *doc_write_batch) override;
+  CHECKED_STATUS Apply(DocWriteBatch *doc_write_batch) override;
 
   DocPath DocPathToLock() const override;
 
@@ -58,7 +58,7 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(yb::RedisReadRequestPB request) : request_(request) {}
 
-  Status Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp);
+  CHECKED_STATUS Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp);
 
   const RedisResponsePB &response();
 
@@ -73,7 +73,7 @@ class YSQLWriteOperation : public DocOperation {
 
   DocPath DocPathToLock() const override;
 
-  Status Apply(DocWriteBatch* doc_write_batch) override;
+  CHECKED_STATUS Apply(DocWriteBatch* doc_write_batch) override;
 
   const YSQLResponsePB& response();
 
@@ -88,7 +88,7 @@ class YSQLReadOperation {
  public:
   explicit YSQLReadOperation(const YSQLReadRequestPB& request);
 
-  Status Execute(
+  CHECKED_STATUS Execute(
       rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
       YSQLRowBlock* rowblock);
 

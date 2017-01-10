@@ -685,7 +685,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     ci->set_placement_zone(az);
 
     shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-    ts->Register(node, reg);
+    CHECK_OK(ts->Register(node, reg));
     return ts;
   }
 

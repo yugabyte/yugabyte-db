@@ -24,7 +24,7 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   const char *create_stmt =
     "CREATE TABLE human_resource(id int, name varchar, salary int, primary key(id, name));";
   Status s = processor->Run(create_stmt);
-  CHECK(s.ok());
+  CHECK_OK(s);
 
   // Start testing INSERT.
   const char *insert_stmt = nullptr;
@@ -32,7 +32,7 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   // INSERT: Valid statement with column list.
   insert_stmt = "INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100);";
   s = processor->Run(insert_stmt);
-  CHECK(s.ok());
+  CHECK_OK(s);
 
   // INSERT: Invalid CQL statement though it's a valid SQL statement without column list.
   insert_stmt = "INSERT INTO human_resource VALUES(2, 'Scott Tiger', 100);";
@@ -40,11 +40,11 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   CHECK(!s.ok());
 
   // INSERT: Invalid statement - Duplicate key.
-  // IF NOT EXISITS is not implemented yet, so we ignore this test case for now.
+  // IF NOT EXISTS is not implemented yet, so we ignore this test case for now.
   insert_stmt = "INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
                 "IF NOT EXISTS;";
   s = processor->Run(insert_stmt);
-  CHECK(s.ok());
+  CHECK_OK(s);
 
   // INSERT: Invalid statement - Wrong table name.
   insert_stmt = "INSERT INTO human_resource_wrong(id, name, salary) VALUES(1, 'Scott Tiger', 100);";

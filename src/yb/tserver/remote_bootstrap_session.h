@@ -58,7 +58,7 @@ struct ImmutableRandomAccessFileInfo {
                                 int64_t size)
       : readable(std::move(readable)), size(size) {}
 
-  Status ReadFully(uint64_t offset, int64_t size, Slice* data, uint8_t* scratch) const {
+  CHECKED_STATUS ReadFully(uint64_t offset, int64_t size, Slice* data, uint8_t* scratch) const {
     return env_util::ReadFully(readable.get(), offset, size, data, scratch);
   }
 };
@@ -75,7 +75,7 @@ struct ImmutableReadableBlockInfo {
     size(size) {
   }
 
-  Status ReadFully(uint64_t offset, int64_t size, Slice* data, uint8_t* scratch) const {
+  CHECKED_STATUS ReadFully(uint64_t offset, int64_t size, Slice* data, uint8_t* scratch) const {
     return readable->Read(offset, size, data, scratch);
   }
 };
@@ -92,7 +92,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Return ID of tablet corresponding to this session.
   const std::string& tablet_id() const;
@@ -108,7 +108,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // On error, Status is set to a non-OK value and error_code is filled in.
   //
   // This method is thread-safe.
-  Status GetBlockPiece(const BlockId& block_id,
+  CHECKED_STATUS GetBlockPiece(const BlockId& block_id,
                        uint64_t offset, int64_t client_maxlen,
                        std::string* data, int64_t* block_file_size,
                        RemoteBootstrapErrorPB::Code* error_code);
@@ -116,7 +116,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Get a piece of a log segment.
   // The behavior and params are very similar to GetBlockPiece(), but this one
   // is only for sending WAL segment files.
-  Status GetLogSegmentPiece(uint64_t segment_seqno,
+  CHECKED_STATUS GetLogSegmentPiece(uint64_t segment_seqno,
                             uint64_t offset, int64_t client_maxlen,
                             std::string* data, int64_t* log_file_size,
                             RemoteBootstrapErrorPB::Code* error_code);
@@ -124,7 +124,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Get a piece of a rocksdb checkpoint file.
   // The behavior and params are very similar to GetBlockPiece(), but this one
   // is only for sending rocksdb files.
-  Status GetFilePiece(const std::string file_name,
+  CHECKED_STATUS GetFilePiece(const std::string file_name,
                       uint64_t offset, int64_t client_maxlen,
                       std::string* data, int64_t* log_file_size,
                       RemoteBootstrapErrorPB::Code* error_code);
@@ -145,7 +145,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   bool Succeeded();
 
   // Change the peer's role to VOTER.
-  Status ChangeRole();
+  CHECKED_STATUS ChangeRole();
 
 private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
@@ -159,23 +159,23 @@ private:
   ~RemoteBootstrapSession();
 
   // Open the block and add it to the block map.
-  Status OpenBlockUnlocked(const BlockId& block_id);
+  CHECKED_STATUS OpenBlockUnlocked(const BlockId& block_id);
 
   // Look up cached block information.
-  Status FindBlock(const BlockId& block_id,
+  CHECKED_STATUS FindBlock(const BlockId& block_id,
                    ImmutableReadableBlockInfo** block_info,
                    RemoteBootstrapErrorPB::Code* error_code);
 
   // Snapshot the log segment's length and put it into segment map.
-  Status OpenLogSegmentUnlocked(uint64_t segment_seqno);
+  CHECKED_STATUS OpenLogSegmentUnlocked(uint64_t segment_seqno);
 
   // Look up log segment in cache or log segment map.
-  Status FindLogSegment(uint64_t segment_seqno,
+  CHECKED_STATUS FindLogSegment(uint64_t segment_seqno,
                         ImmutableRandomAccessFileInfo** file_info,
                         RemoteBootstrapErrorPB::Code* error_code);
 
   // Unregister log anchor, if it's registered.
-  Status UnregisterAnchorIfNeededUnlocked();
+  CHECKED_STATUS UnregisterAnchorIfNeededUnlocked();
 
   scoped_refptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;

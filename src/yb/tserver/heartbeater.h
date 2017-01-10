@@ -37,8 +37,8 @@ class TabletServerOptions;
 class Heartbeater {
  public:
   Heartbeater(const TabletServerOptions& options, TabletServer* server);
-  Status Start();
-  Status Stop();
+  CHECKED_STATUS Start();
+  CHECKED_STATUS Stop();
 
   // Trigger a heartbeat as soon as possible, even if the normal
   // heartbeat interval has not expired.

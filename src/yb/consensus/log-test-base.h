@@ -76,7 +76,7 @@ const bool APPEND_ASYNC = false;
 // Append a single batch of 'count' NoOps to the log.
 // If 'size' is not NULL, increments it by the expected increase in log size.
 // Increments 'op_id''s index once for each operation logged.
-static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
+static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                    Log* log,
                                    OpId* op_id,
                                    int count,
@@ -110,11 +110,11 @@ static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
   Synchronizer s;
   RETURN_NOT_OK(log->AsyncAppendReplicates(replicates,
                                            s.AsStatusCallback()));
-  s.Wait();
+  RETURN_NOT_OK(s.Wait());
   return Status::OK();
 }
 
-static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
+static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
                                   Log* log,
                                   OpId* op_id,
                                   int* size = NULL) {
@@ -289,7 +289,7 @@ class LogTestBase : public YBTest {
   // Append a single NO_OP entry. Increments op_id by one.
   // If non-NULL, and if the write is successful, 'size' is incremented
   // by the size of the written operation.
-  Status AppendNoOp(OpId* op_id, int* size = NULL) {
+  CHECKED_STATUS AppendNoOp(OpId* op_id, int* size = NULL) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
@@ -297,14 +297,14 @@ class LogTestBase : public YBTest {
   // Increments op_id's index by the number of records written.
   // If non-NULL, 'size' keeps track of the size of the operations
   // successfully written.
-  Status AppendNoOps(OpId* op_id, int num, int* size = NULL) {
+  CHECKED_STATUS AppendNoOps(OpId* op_id, int num, int* size = NULL) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
     }
     return Status::OK();
   }
 
-  Status RollLog() {
+  CHECKED_STATUS RollLog() {
     RETURN_NOT_OK(log_->AsyncAllocateSegment());
     return log_->RollOver();
   }

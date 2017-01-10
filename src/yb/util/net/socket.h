@@ -43,10 +43,10 @@ class Socket {
   ~Socket();
 
   // Close the Socket, checking for errors.
-  Status Close();
+  CHECKED_STATUS Close();
 
   // call shutdown() on the socket
-  Status Shutdown(bool shut_read, bool shut_write);
+  CHECKED_STATUS Shutdown(bool shut_read, bool shut_write);
 
   // Start managing a socket.
   void Reset(int fd);
@@ -62,86 +62,86 @@ class Socket {
   // the socket.
   static bool IsTemporarySocketError(int err);
 
-  Status Init(int flags); // See FLAG_NONBLOCKING
+  CHECKED_STATUS Init(int flags); // See FLAG_NONBLOCKING
 
   // Set or clear TCP_NODELAY
-  Status SetNoDelay(bool enabled);
+  CHECKED_STATUS SetNoDelay(bool enabled);
 
   // Set or clear O_NONBLOCK
-  Status SetNonBlocking(bool enabled);
-  Status IsNonBlocking(bool* is_nonblock) const;
+  CHECKED_STATUS SetNonBlocking(bool enabled);
+  CHECKED_STATUS IsNonBlocking(bool* is_nonblock) const;
 
   // Set SO_SENDTIMEO to the specified value. Should only be used for blocking sockets.
-  Status SetSendTimeout(const MonoDelta& timeout);
+  CHECKED_STATUS SetSendTimeout(const MonoDelta& timeout);
 
   // Set SO_RCVTIMEO to the specified value. Should only be used for blocking sockets.
-  Status SetRecvTimeout(const MonoDelta& timeout);
+  CHECKED_STATUS SetRecvTimeout(const MonoDelta& timeout);
 
   // Sets SO_REUSEADDR to 'flag'. Should be used prior to Bind().
-  Status SetReuseAddr(bool flag);
+  CHECKED_STATUS SetReuseAddr(bool flag);
 
   // Convenience method to invoke the common sequence:
   // 1) SetReuseAddr(true)
   // 2) Bind()
   // 3) Listen()
-  Status BindAndListen(const Sockaddr &sockaddr, int listen_queue_size);
+  CHECKED_STATUS BindAndListen(const Sockaddr &sockaddr, int listen_queue_size);
 
   // Start listening for new connections, with the given backlog size.
   // Requires that the socket has already been bound using Bind().
-  Status Listen(int listen_queue_size);
+  CHECKED_STATUS Listen(int listen_queue_size);
 
   // Call getsockname to get the address of this socket.
-  Status GetSocketAddress(Sockaddr *cur_addr) const;
+  CHECKED_STATUS GetSocketAddress(Sockaddr *cur_addr) const;
 
   // Call getpeername to get the address of the connected peer.
-  Status GetPeerAddress(Sockaddr *cur_addr) const;
+  CHECKED_STATUS GetPeerAddress(Sockaddr *cur_addr) const;
 
   // Call bind() to bind the socket to a given address.
   // If bind() fails and indicates that the requested port is already in use,
   // and if explain_addr_in_use is set to true, generates an informative log message by calling
   // 'lsof' if available.
-  Status Bind(const Sockaddr& bind_addr, bool explain_addr_in_use = true);
+  CHECKED_STATUS Bind(const Sockaddr& bind_addr, bool explain_addr_in_use = true);
 
   // Call accept(2) to get a new connection.
-  Status Accept(Socket *new_conn, Sockaddr *remote, int flags);
+  CHECKED_STATUS Accept(Socket *new_conn, Sockaddr *remote, int flags);
 
   // start connecting this socket to a remote address.
-  Status Connect(const Sockaddr &remote);
+  CHECKED_STATUS Connect(const Sockaddr &remote);
 
   // get the error status using getsockopt(2)
-  Status GetSockError() const;
+  CHECKED_STATUS GetSockError() const;
 
-  Status Write(const uint8_t *buf, int32_t amt, int32_t *nwritten);
+  CHECKED_STATUS Write(const uint8_t *buf, int32_t amt, int32_t *nwritten);
 
-  Status Writev(const struct ::iovec *iov, int iov_len, int32_t *nwritten);
+  CHECKED_STATUS Writev(const struct ::iovec *iov, int iov_len, int32_t *nwritten);
 
   // Blocking Write call, returns IOError unless full buffer is sent.
   // Underlying Socket expected to be in blocking mode. Fails if any Write() sends 0 bytes.
   // Returns OK if buflen bytes were sent, otherwise IOError.
   // Upon return, num_written will contain the number of bytes actually written.
   // See also writen() from Stevens (2004) or Kerrisk (2010)
-  Status BlockingWrite(const uint8_t *buf, size_t buflen, size_t *num_written,
+  CHECKED_STATUS BlockingWrite(const uint8_t *buf, size_t buflen, size_t *num_written,
       const MonoTime& deadline);
 
-  Status Recv(uint8_t *buf, int32_t amt, int32_t *nread);
+  CHECKED_STATUS Recv(uint8_t *buf, int32_t amt, int32_t *nread);
 
   // Blocking Recv call, returns IOError unless requested amt bytes are read.
   // Underlying Socket expected to be in blocking mode. Fails if any Recv() reads 0 bytes.
   // Returns OK if amt bytes were read, otherwise IOError.
   // Upon return, nread will contain the number of bytes actually read.
   // See also readn() from Stevens (2004) or Kerrisk (2010)
-  Status BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoTime& deadline);
+  CHECKED_STATUS BlockingRecv(uint8_t *buf, size_t amt, size_t *nread, const MonoTime& deadline);
 
  private:
   // Called internally from SetSend/RecvTimeout().
-  Status SetTimeout(int opt, std::string optname, const MonoDelta& timeout);
+  CHECKED_STATUS SetTimeout(int opt, std::string optname, const MonoDelta& timeout);
 
   // Called internally during socket setup.
-  Status SetCloseOnExec();
+  CHECKED_STATUS SetCloseOnExec();
 
   // Bind the socket to a local address before making an outbound connection,
   // based on the value of FLAGS_local_ip_for_outbound_sockets.
-  Status BindForOutgoingConnection();
+  CHECKED_STATUS BindForOutgoingConnection();
 
   int fd_;
 

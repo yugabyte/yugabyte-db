@@ -527,7 +527,7 @@ TEST_F(MvccTest, TestTxnAbort) {
 TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineTransactions) {
 
   MvccManager mgr(clock_.get());
-  clock_->Update(Timestamp(20));
+  CHECK_OK(clock_->Update(Timestamp(20)));
 
   CHECK_OK(mgr.StartTransactionAtTimestamp(Timestamp(10)));
   CHECK_OK(mgr.StartTransactionAtTimestamp(Timestamp(15)));
@@ -565,7 +565,7 @@ TEST_F(MvccTest, TestIllegalStateTransitionsCrash) {
     "Trying to commit a transaction with a future timestamp|"
     "Trying to remove timestamp which isn't in the in-flight set: 1");
 
-  clock_->Update(Timestamp(20));
+  CHECK_OK(clock_->Update(Timestamp(20)));
 
   EXPECT_DEATH({
       mgr.CommitTransaction(Timestamp(1));

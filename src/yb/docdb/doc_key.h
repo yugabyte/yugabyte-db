@@ -78,11 +78,11 @@ class DocKey {
 
   // Decodes a document key from the given RocksDB key.
   // slice (in/out) - a slice corresponding to a RocksDB key. Any consumed bytes are removed.
-  Status DecodeFrom(rocksdb::Slice* slice);
+  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
-  Status FullyDecodeFrom(const rocksdb::Slice& slice);
+  CHECKED_STATUS FullyDecodeFrom(const rocksdb::Slice& slice);
 
   // Converts the document key to a human-readable representation.
   std::string ToString() const;
@@ -223,13 +223,13 @@ class SubDocKey {
   //     Otherwise, we allow decoding an incomplete SubDocKey without a timestamp in the end. Note
   //     that we also allow input that has a few bytes in the end but not enough to represent a
   //     timestamp.
-  Status DecodeFrom(rocksdb::Slice* slice,
+  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
                     bool require_timestamp = true);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_timestamp parameter, but in case a
   // timestamp is omitted, we don't allow any extra bytes to be present in the slice.
-  Status FullyDecodeFrom(const rocksdb::Slice& slice,
+  CHECKED_STATUS FullyDecodeFrom(const rocksdb::Slice& slice,
                          bool require_timestamp = true);
 
   std::string ToString() const;

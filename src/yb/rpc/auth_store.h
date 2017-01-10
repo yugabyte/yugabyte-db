@@ -22,10 +22,9 @@
 #include <string>
 
 #include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class Status;
 
 namespace rpc {
 
@@ -41,13 +40,13 @@ class AuthStore {
   virtual ~AuthStore();
 
   // Add user to the auth store.
-  virtual Status Add(const string& user, const string& password);
+  virtual CHECKED_STATUS Add(const string& user, const string& password);
 
   // Validate whether user/password combination exists in auth store.
   // Returns OK if the user has valid credentials.
   // Returns NotFound if the user is not found.
   // Returns NotAuthorized if the password is incorrect.
-  virtual Status Authenticate(const string& user, const string& password) const;
+  virtual CHECKED_STATUS Authenticate(const string& user, const string& password) const;
 
  private:
   unordered_map<string, string> user_cred_map_;
@@ -62,7 +61,7 @@ class DummyAuthStore : public AuthStore {
   virtual ~DummyAuthStore();
 
   // Always returns OK
-  virtual Status Authenticate(const string& user, const string& password) const OVERRIDE;
+  virtual CHECKED_STATUS Authenticate(const string& user, const string& password) const OVERRIDE;
 };
 
 } // namespace rpc

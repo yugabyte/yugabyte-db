@@ -70,7 +70,7 @@ class YSQLScanSpec {
   DocKey upper_bound() const { return range_doc_key(false /* lower_bound */); }
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
-  Status Match(const std::unordered_map<int32_t, YSQLValue>& row, bool* match) const;
+  CHECKED_STATUS Match(const std::unordered_map<int32_t, YSQLValue>& row, bool* match) const;
 
   // Return all non-key columns referenced in the condition.
   const std::unordered_set<ColumnId>* non_key_columns() const {

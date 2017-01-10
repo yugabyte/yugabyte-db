@@ -109,13 +109,13 @@ class VoteResponsePB;
 class Peer {
  public:
   // Initializes a peer and get its status.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Signals that this peer has a new request to replicate/store.
   // 'force_if_queue_empty' indicates whether the peer should force
   // send the request even if the queue is empty. This is used for
   // status-only requests.
-  Status SignalRequest(bool force_if_queue_empty = false);
+  CHECKED_STATUS SignalRequest(bool force_if_queue_empty = false);
 
   const RaftPeerPB& peer_pb() const { return peer_pb_; }
 
@@ -136,7 +136,7 @@ class Peer {
   // log entries) are assembled on 'thread_pool'.
   // Response handling may also involve IO related to log-entry lookups and is
   // also done on 'thread_pool'.
-  static Status NewRemotePeer(const RaftPeerPB& peer_pb,
+  static CHECKED_STATUS NewRemotePeer(const RaftPeerPB& peer_pb,
                               const std::string& tablet_id,
                               const std::string& leader_uuid,
                               PeerMessageQueue* queue,
@@ -165,7 +165,7 @@ class Peer {
   //
   // Returns a bad Status if remote bootstrap is disabled, or if the
   // request cannot be generated for some reason.
-  Status SendRemoteBootstrapRequest();
+  CHECKED_STATUS SendRemoteBootstrapRequest();
 
   // Handle RPC callback from initiating remote bootstrap.
   void ProcessRemoteBootstrapResponse();
@@ -273,7 +273,7 @@ class PeerProxy {
 class PeerProxyFactory {
  public:
 
-  virtual Status NewProxy(const RaftPeerPB& peer_pb,
+  virtual CHECKED_STATUS NewProxy(const RaftPeerPB& peer_pb,
                           gscoped_ptr<PeerProxy>* proxy) = 0;
 
   virtual ~PeerProxyFactory() {}
@@ -317,7 +317,7 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
   explicit RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger);
 
-  virtual Status NewProxy(const RaftPeerPB& peer_pb,
+  virtual CHECKED_STATUS NewProxy(const RaftPeerPB& peer_pb,
                           gscoped_ptr<PeerProxy>* proxy) OVERRIDE;
 
   virtual ~RpcPeerProxyFactory();

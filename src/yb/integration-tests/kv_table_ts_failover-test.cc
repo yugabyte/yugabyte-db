@@ -63,7 +63,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
       external_mini_cluster()->tablet_server(i)->Shutdown();
       LOG(INFO) << "Re-starting tablet server #" << i;
       ASSERT_OK(external_mini_cluster()->tablet_server(i)->Restart());
-      external_mini_cluster()->WaitForTabletServerCount(3, MonoDelta::FromSeconds(20));
+      ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(3, MonoDelta::FromSeconds(20)));
     }
 
     stop_requested_flag.store(true);  // stop both reader and writer

@@ -78,7 +78,7 @@ Status StartDocWriteTransaction(rocksdb::DB *rocksdb,
   }
   DocWriteBatch doc_write_batch(rocksdb);
   for (const unique_ptr<DocOperation>& doc_op : *doc_write_ops) {
-    doc_op->Apply(&doc_write_batch);
+    RETURN_NOT_OK(doc_op->Apply(&doc_write_batch));
   }
   doc_write_batch.MoveToWriteBatchPB(dest);
   return Status::OK();
@@ -88,7 +88,7 @@ Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,
                                   const vector<unique_ptr<RedisReadOperation>>& doc_read_ops,
                                   Timestamp timestamp) {
   for (const unique_ptr<RedisReadOperation>& doc_op : doc_read_ops) {
-    doc_op->Execute(rocksdb, timestamp);
+    RETURN_NOT_OK(doc_op->Execute(rocksdb, timestamp));
   }
   return Status::OK();
 }

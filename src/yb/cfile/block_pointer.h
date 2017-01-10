@@ -56,7 +56,7 @@ class BlockPointer {
     InlinePutVarint32(s, size_);
   }
 
-  Status DecodeFrom(const uint8_t *data, const uint8_t *limit) {
+  CHECKED_STATUS DecodeFrom(const uint8_t *data, const uint8_t *limit) {
     data = GetVarint64Ptr(data, limit, &offset_);
     if (!data) {
       return STATUS(Corruption, "bad block pointer");

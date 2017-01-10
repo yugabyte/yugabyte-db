@@ -230,7 +230,7 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   explicit MaintenanceManager(const Options& options);
   ~MaintenanceManager();
 
-  Status Init();
+  CHECKED_STATUS Init();
   void Shutdown();
 
   // Register an op with the manager.

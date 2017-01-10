@@ -46,7 +46,7 @@ class IteratorBase {
   // This may be NULL if there are no predicates, etc.
   // TODO: passing NULL is just convenience for unit tests, etc.
   // Should probably simplify the API by not allowing NULL.
-  virtual Status Init(ScanSpec *spec) = 0;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) = 0;
 
   // Return true if the next call to PrepareBatch is expected to return at least
   // one row.
@@ -76,7 +76,7 @@ class RowwiseIterator : public virtual IteratorBase {
   // The iterator will resize RowBlock to a sufficiently large number of rows,
   // at most its row_capacity. The iterator will attempt to have the maximum
   // number of rows in the batch, but may have less if it is near the end of data.
-  virtual Status NextBlock(RowBlock *dst) = 0;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) = 0;
 
   // Get IteratorStats for each column in the row, including
   // (potentially) columns that are iterated over but not projected;
@@ -90,24 +90,24 @@ class ColumnwiseIterator : public virtual IteratorBase {
   // Sets *nrows back to the number of rows available to be read,
   // which may be less than the requested number in the case that the iterator
   // is at the end of the available data.
-  virtual Status PrepareBatch(size_t *nrows) = 0;
+  virtual CHECKED_STATUS PrepareBatch(size_t *nrows) = 0;
 
   // Materialize the given column into the given column block.
   // col_idx is within the projection schema, not the underlying schema.
   //
   // Any indirect data (eg strings) are copied into the destination block's
   // arena, if non-null.
-  virtual Status MaterializeColumn(size_t col_idx, ColumnBlock *dst) = 0;
+  virtual CHECKED_STATUS MaterializeColumn(size_t col_idx, ColumnBlock *dst) = 0;
 
   // Finish the current batch.
-  virtual Status FinishBatch() = 0;
+  virtual CHECKED_STATUS FinishBatch() = 0;
 
   // Initialize the given SelectionVector to indicate which rows in the currently
   // prepared batch are live vs deleted.
   //
   // The SelectionVector passed in is uninitialized -- i.e its bits are in
   // an undefined state and need to be explicitly set to 1 if the row is live.
-  virtual Status InitializeSelectionVector(SelectionVector *sel_vec) = 0;
+  virtual CHECKED_STATUS InitializeSelectionVector(SelectionVector *sel_vec) = 0;
 
   // Get IteratorStats for each column.
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const = 0;

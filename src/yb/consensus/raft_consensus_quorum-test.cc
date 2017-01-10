@@ -409,7 +409,7 @@ class RaftConsensusQuorumTest : public YBTest {
 
   void GatherLogEntries(int idx, const scoped_refptr<Log>& log, vector<LogEntryPB* >* entries) {
     ASSERT_OK(log->WaitUntilAllFlushed());
-    log->Close();
+    ASSERT_OK(log->Close());
     gscoped_ptr<LogReader> log_reader;
     ASSERT_OK(log::LogReader::Open(fs_managers_[idx],
                                    scoped_refptr<log::LogIndex>(),

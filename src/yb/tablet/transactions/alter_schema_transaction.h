@@ -114,13 +114,13 @@ class AlterSchemaTransaction : public Transaction {
   //
   // TODO: need a schema lock?
 
-  virtual Status Prepare() OVERRIDE;
+  virtual CHECKED_STATUS Prepare() OVERRIDE;
 
   // Starts the AlterSchemaTransaction by assigning it a timestamp.
   virtual void Start() OVERRIDE;
 
   // Executes an Apply for the alter schema transaction
-  virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
+  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
 
   // Actually commits the transaction.
   virtual void Finish(TransactionResult result) OVERRIDE;

@@ -62,24 +62,24 @@ class DeltaFileWriter {
   // The writer takes ownership of the block and will Close it in Finish().
   explicit DeltaFileWriter(gscoped_ptr<fs::WritableBlock> block);
 
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Closes the delta file, including the underlying writable block.
-  Status Finish();
+  CHECKED_STATUS Finish();
 
   // Closes the delta file, releasing the underlying block to 'closer'.
-  Status FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
+  CHECKED_STATUS FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
 
   // Append a given delta to the file. This must be called in ascending order
   // of (key, timestamp) for REDOS and ascending order of key, descending order
   // of timestamp for UNDOS.
   template<DeltaType Type>
-  Status AppendDelta(const DeltaKey &key, const RowChangeList &delta);
+  CHECKED_STATUS AppendDelta(const DeltaKey &key, const RowChangeList &delta);
 
-  Status WriteDeltaStats(const DeltaStats& stats);
+  CHECKED_STATUS WriteDeltaStats(const DeltaStats& stats);
 
  private:
-  Status DoAppendDelta(const DeltaKey &key, const RowChangeList &delta);
+  CHECKED_STATUS DoAppendDelta(const DeltaKey &key, const RowChangeList &delta);
 
   gscoped_ptr<cfile::CFileWriter> writer_;
 
@@ -106,7 +106,7 @@ class DeltaFileReader : public DeltaStore,
   // Fully open a delta file using a previously opened block.
   //
   // After this call, the delta reader is safe for use.
-  static Status Open(gscoped_ptr<fs::ReadableBlock> file,
+  static CHECKED_STATUS Open(gscoped_ptr<fs::ReadableBlock> file,
                      const BlockId& block_id,
                      std::shared_ptr<DeltaFileReader>* reader_out,
                      DeltaType delta_type);
@@ -116,24 +116,24 @@ class DeltaFileReader : public DeltaStore,
   // the delta file.
   //
   // Init() must be called before using the file's stats.
-  static Status OpenNoInit(gscoped_ptr<fs::ReadableBlock> file,
+  static CHECKED_STATUS OpenNoInit(gscoped_ptr<fs::ReadableBlock> file,
                            const BlockId& block_id,
                            std::shared_ptr<DeltaFileReader>* reader_out,
                            DeltaType delta_type);
 
-  virtual Status Init() OVERRIDE;
+  virtual CHECKED_STATUS Init() OVERRIDE;
 
   virtual bool Initted() OVERRIDE {
     return init_once_.initted();
   }
 
   // See DeltaStore::NewDeltaIterator(...)
-  Status NewDeltaIterator(const Schema *projection,
+  CHECKED_STATUS NewDeltaIterator(const Schema *projection,
                           const MvccSnapshot &snap,
                           DeltaIterator** iterator) const OVERRIDE;
 
   // See DeltaStore::CheckRowDeleted
-  virtual Status CheckRowDeleted(rowid_t row_idx, bool *deleted) const OVERRIDE;
+  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const OVERRIDE;
 
   virtual uint64_t EstimateSize() const OVERRIDE;
 
@@ -166,9 +166,9 @@ class DeltaFileReader : public DeltaStore,
                   DeltaType delta_type);
 
   // Callback used in 'init_once_' to initialize this delta file.
-  Status InitOnce();
+  CHECKED_STATUS InitOnce();
 
-  Status ReadDeltaStats();
+  CHECKED_STATUS ReadDeltaStats();
 
   std::shared_ptr<cfile::CFileReader> reader_;
   gscoped_ptr<DeltaStats> delta_stats_;
@@ -186,14 +186,14 @@ class DeltaFileReader : public DeltaStore,
 // See DeltaIterator for details.
 class DeltaFileIterator : public DeltaIterator {
  public:
-  Status Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
-  Status SeekToOrdinal(rowid_t idx) OVERRIDE;
-  Status PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
-  Status ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
-  Status ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
-  Status CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
-  Status FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
+  CHECKED_STATUS SeekToOrdinal(rowid_t idx) OVERRIDE;
+  CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
+  CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
+  CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
+  CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
+  CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
                                          vector<DeltaKeyAndUpdate>* out,
                                          Arena* arena) OVERRIDE;
   string ToString() const OVERRIDE;
@@ -256,20 +256,20 @@ class DeltaFileIterator : public DeltaIterator {
 
   // Determine the row index of the first update in the block currently
   // pointed to by index_iter_.
-  Status GetFirstRowIndexInCurrentBlock(rowid_t *idx);
+  CHECKED_STATUS GetFirstRowIndexInCurrentBlock(rowid_t *idx);
 
   // Determine the last updated row index contained in the given decoded block.
-  static Status GetLastRowIndexInDecodedBlock(
+  static CHECKED_STATUS GetLastRowIndexInDecodedBlock(
     const cfile::BinaryPlainBlockDecoder &dec, rowid_t *idx);
 
   // Read the current block of data from the current position in the file
   // onto the end of the delta_blocks_ queue.
-  Status ReadCurrentBlockOntoQueue();
+  CHECKED_STATUS ReadCurrentBlockOntoQueue();
 
   // Visit all mutations in the currently prepared row range with the specified
   // visitor class.
   template<class Visitor>
-  Status VisitMutations(Visitor *visitor);
+  CHECKED_STATUS VisitMutations(Visitor *visitor);
 
   // Log a FATAL error message about a bad delta.
   void FatalUnexpectedDelta(const DeltaKey &key, const Slice &deltas, const string &msg);

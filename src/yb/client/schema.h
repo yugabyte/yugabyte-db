@@ -38,6 +38,7 @@
 
 #include "yb/client/value.h"
 #include "yb/util/yb_export.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -264,7 +265,7 @@ class YB_EXPORT YBColumnSpec {
 
   explicit YBColumnSpec(const std::string& col_name);
 
-  Status ToColumnSchema(YBColumnSchema* col) const;
+  CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
 
   // Owned.
   Data* data_;
@@ -306,7 +307,7 @@ class YB_EXPORT YBSchemaBuilder {
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)
   // a bad Status will be returned.
-  Status Build(YBSchema* schema);
+  CHECKED_STATUS Build(YBSchema* schema);
 
  private:
   class YB_NO_EXPORT Data;
@@ -325,7 +326,7 @@ class YB_EXPORT YBSchema {
   void CopyFrom(const YBSchema& other);
 
   // DEPRECATED: will be removed soon.
-  Status Reset(const std::vector<YBColumnSchema>& columns, int key_columns)
+  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns)
     WARN_UNUSED_RESULT;
 
   bool Equals(const YBSchema& other) const;

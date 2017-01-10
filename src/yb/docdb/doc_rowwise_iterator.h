@@ -32,7 +32,7 @@ class DocRowwiseIterator : public RowwiseIterator {
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
   virtual ~DocRowwiseIterator();
 
-  virtual Status Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
   // This must always be called before NextBlock. The implementation actually finds the first row
   // to scan, and NextBlock expects the RocksDB iterator to already be properly positioned.
@@ -47,15 +47,15 @@ class DocRowwiseIterator : public RowwiseIterator {
 
   // This may return one row at a time in the initial implementation, even though Kudu's scanning
   // interface supports returning multiple rows at a time.
-  virtual Status NextBlock(RowBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
 
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
 
   // Init YSQL read scan
-  Status Init(const YSQLScanSpec& spec);
+  CHECKED_STATUS Init(const YSQLScanSpec& spec);
 
   // Read next row into YSQL row block
-  Status NextBlock(const YSQLScanSpec& spec, YSQLRowBlock *rowblock);
+  CHECKED_STATUS NextBlock(const YSQLScanSpec& spec, YSQLRowBlock *rowblock);
 
  private:
   DocKey KuduToDocKey(const EncodedKey &encoded_key) {
@@ -65,10 +65,10 @@ class DocRowwiseIterator : public RowwiseIterator {
   // Convert from a PrimitiveValue read from RocksDB to a Kudu value in the given column of the
   // given RowBlockRow. The destination row's schema must match that of the projection associated
   // with this iterator.
-  Status PrimitiveValueToKudu(int column_index, const PrimitiveValue& value, RowBlockRow* dest_row);
+  CHECKED_STATUS PrimitiveValueToKudu(int column_index, const PrimitiveValue& value, RowBlockRow* dest_row);
 
   // Get the non-key column values of a YSQL row.
-  Status GetValues(const Schema& projection, vector<PrimitiveValue>* values);
+  CHECKED_STATUS GetValues(const Schema& projection, vector<PrimitiveValue>* values);
 
   const Schema& projection_;
 

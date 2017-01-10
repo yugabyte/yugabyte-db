@@ -64,7 +64,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // data_root_dir and wal_root_dir dictates which disk this tablet will
   // use in the respective directories.
   // If empty string is passed in, it will be randomly chosen.
-  static Status CreateNew(FsManager* fs_manager,
+  static CHECKED_STATUS CreateNew(FsManager* fs_manager,
                           const std::string& table_id,
                           const std::string& tablet_id,
                           const std::string& table_name,
@@ -78,7 +78,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                           const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
-  static Status Load(FsManager* fs_manager,
+  static CHECKED_STATUS Load(FsManager* fs_manager,
                      const std::string& tablet_id,
                      scoped_refptr<TabletMetadata>* metadata);
 
@@ -87,7 +87,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // provided 'schema'.
   //
   // This is mostly useful for tests which instantiate tablets directly.
-  static Status LoadOrCreate(FsManager* fs_manager,
+  static CHECKED_STATUS LoadOrCreate(FsManager* fs_manager,
                              const std::string& table_id,
                              const std::string& tablet_id,
                              const std::string& table_name,
@@ -169,9 +169,9 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // or -- if Flush() had been called after a call to PinFlush() but
   // before this method was called -- Flush() will be called inside
   // this method.
-  Status UnPinFlush();
+  CHECKED_STATUS UnPinFlush();
 
-  Status Flush();
+  CHECKED_STATUS Flush();
 
   // Updates the metadata in the following ways:
   // 1. Adds rowsets from 'to_add'.
@@ -180,7 +180,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // 4. Updates the last durable MRS ID from 'last_durable_mrs_id',
   //    assuming it's not kNoMrsFlushed.
   static const int64_t kNoMrsFlushed = -1;
-  Status UpdateAndFlush(const RowSetMetadataIds& to_remove,
+  CHECKED_STATUS UpdateAndFlush(const RowSetMetadataIds& to_remove,
                         const RowSetMetadataVector& to_add,
                         int64_t last_durable_mrs_id);
 
@@ -208,7 +208,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // actually deleted from disk or not. For example, in some cases, the tablet may have been
   // already deleted (and are here on a retry) and this operation essentially ends up being a no-op;
   // in such a case, 'was_deleted' will be set to FALSE.
-  Status DeleteTabletData(TabletDataState delete_type,
+  CHECKED_STATUS DeleteTabletData(TabletDataState delete_type,
                           const boost::optional<consensus::OpId>& last_logged_opid,
                           bool* was_deleted);
 
@@ -217,12 +217,12 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // TABLET_DATA_DELETED.
   // Returns Status::InvalidArgument if the list of orphaned blocks is not empty.
   // Returns Status::IllegalState if the tablet data state is not TABLET_DATA_DELETED.
-  Status DeleteSuperBlock();
+  CHECKED_STATUS DeleteSuperBlock();
 
   // Create a new RowSetMetadata for this tablet.
   // Does not add the new rowset to the list of rowsets. Use one of the Update()
   // calls to do so.
-  Status CreateRowSet(std::shared_ptr<RowSetMetadata> *rowset, const Schema& schema);
+  CHECKED_STATUS CreateRowSet(std::shared_ptr<RowSetMetadata> *rowset, const Schema& schema);
 
   const RowSetMetadataVector& rowsets() const { return rowsets_; }
 
@@ -237,13 +237,13 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   consensus::OpId tombstone_last_logged_opid() const { return tombstone_last_logged_opid_; }
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
-  Status ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) const;
+  CHECKED_STATUS ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) const;
 
   // Sets *super_block to the serialized form of the current metadata.
-  Status ToSuperBlock(TabletSuperBlockPB* super_block) const;
+  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* super_block) const;
 
   // Fully replace a superblock (used for bootstrap).
-  Status ReplaceSuperBlock(const TabletSuperBlockPB &pb);
+  CHECKED_STATUS ReplaceSuperBlock(const TabletSuperBlockPB &pb);
 
   // ==========================================================================
   // Stuff used by the tests
@@ -280,24 +280,24 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
 
   void SetSchemaUnlocked(gscoped_ptr<Schema> schema, uint32_t version);
 
-  Status LoadFromDisk();
+  CHECKED_STATUS LoadFromDisk();
 
   // Update state of metadata to that of the given superblock PB.
-  Status LoadFromSuperBlock(const TabletSuperBlockPB& superblock);
+  CHECKED_STATUS LoadFromSuperBlock(const TabletSuperBlockPB& superblock);
 
-  Status ReadSuperBlock(TabletSuperBlockPB *pb);
+  CHECKED_STATUS ReadSuperBlock(TabletSuperBlockPB *pb);
 
   // Fully replace superblock.
   // Requires 'flush_lock_'.
-  Status ReplaceSuperBlockUnlocked(const TabletSuperBlockPB &pb);
+  CHECKED_STATUS ReplaceSuperBlockUnlocked(const TabletSuperBlockPB &pb);
 
   // Requires 'data_lock_'.
-  Status UpdateUnlocked(const RowSetMetadataIds& to_remove,
+  CHECKED_STATUS UpdateUnlocked(const RowSetMetadataIds& to_remove,
                         const RowSetMetadataVector& to_add,
                         int64_t last_durable_mrs_id);
 
   // Requires 'data_lock_'.
-  Status ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
+  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* super_block,
                               const RowSetMetadataVector& rowsets) const;
 
   // Requires 'data_lock_'.

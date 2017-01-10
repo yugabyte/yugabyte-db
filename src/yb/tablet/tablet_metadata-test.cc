@@ -59,12 +59,12 @@ TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
   // Write some data to the tablet and flush.
   gscoped_ptr<YBPartialRow> row;
   BuildPartialRow(0, 0, "foo", &row);
-  writer_->Insert(*row);
+  ASSERT_OK(writer_->Insert(*row));
   ASSERT_OK(harness_->tablet()->Flush());
 
   // Create one more rowset. Write and flush.
   BuildPartialRow(1, 1, "bar", &row);
-  writer_->Insert(*row);
+  ASSERT_OK(writer_->Insert(*row));
   ASSERT_OK(harness_->tablet()->Flush());
 
   // Shut down the tablet.

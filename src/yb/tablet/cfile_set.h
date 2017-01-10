@@ -59,22 +59,22 @@ class CFileSet : public std::enable_shared_from_this<CFileSet> {
 
   explicit CFileSet(std::shared_ptr<RowSetMetadata> rowset_metadata);
 
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Create an iterator with the given projection. 'projection' must remain valid
   // for the lifetime of the returned iterator.
   virtual Iterator *NewIterator(const Schema *projection) const;
 
-  Status CountRows(rowid_t *count) const;
+  CHECKED_STATUS CountRows(rowid_t *count) const;
 
   // See RowSet::GetBounds
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const;
 
   uint64_t EstimateOnDiskSize() const;
 
   // Determine the index of the given row key.
-  Status FindRow(const RowSetKeyProbe &probe, rowid_t *idx, ProbeStats* stats) const;
+  CHECKED_STATUS FindRow(const RowSetKeyProbe &probe, rowid_t *idx, ProbeStats* stats) const;
 
   string ToString() const {
     return string("CFile base data in ") + rowset_metadata_->ToString();
@@ -82,7 +82,7 @@ class CFileSet : public std::enable_shared_from_this<CFileSet> {
 
   // Check if the given row is present. If it is, sets *rowid to the
   // row's index.
-  Status CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
+  CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
                          rowid_t *rowid, ProbeStats* stats) const;
 
   // Return true if there exists a CFile for the given column ID.
@@ -98,13 +98,13 @@ class CFileSet : public std::enable_shared_from_this<CFileSet> {
 
   DISALLOW_COPY_AND_ASSIGN(CFileSet);
 
-  Status OpenBloomReader();
-  Status OpenAdHocIndexReader();
-  Status LoadMinMaxKeys();
+  CHECKED_STATUS OpenBloomReader();
+  CHECKED_STATUS OpenAdHocIndexReader();
+  CHECKED_STATUS LoadMinMaxKeys();
 
-  Status NewColumnIterator(ColumnId col_id, CFileReader::CacheControl cache_blocks,
+  CHECKED_STATUS NewColumnIterator(ColumnId col_id, CFileReader::CacheControl cache_blocks,
                            CFileIterator **iter) const;
-  Status NewKeyIterator(CFileIterator **iter) const;
+  CHECKED_STATUS NewKeyIterator(CFileIterator **iter) const;
 
   // Return the CFileReader responsible for reading the key index.
   // (the ad-hoc reader for composite keys, otherwise the key column reader)
@@ -138,15 +138,15 @@ class CFileSet : public std::enable_shared_from_this<CFileSet> {
 class CFileSet::Iterator : public ColumnwiseIterator {
  public:
 
-  virtual Status Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
-  virtual Status PrepareBatch(size_t *nrows) OVERRIDE;
+  virtual CHECKED_STATUS PrepareBatch(size_t *nrows) OVERRIDE;
 
-  virtual Status InitializeSelectionVector(SelectionVector *sel_vec) OVERRIDE;
+  virtual CHECKED_STATUS InitializeSelectionVector(SelectionVector *sel_vec) OVERRIDE;
 
-  virtual Status MaterializeColumn(size_t col_idx, ColumnBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS MaterializeColumn(size_t col_idx, ColumnBlock *dst) OVERRIDE;
 
-  virtual Status FinishBatch() OVERRIDE;
+  virtual CHECKED_STATUS FinishBatch() OVERRIDE;
 
   virtual bool HasNext() const OVERRIDE {
     DCHECK(initted_);
@@ -187,17 +187,17 @@ class CFileSet::Iterator : public ColumnwiseIterator {
   }
 
   // Fill in col_iters_ for each of the requested columns.
-  Status CreateColumnIterators(const ScanSpec* spec);
+  CHECKED_STATUS CreateColumnIterators(const ScanSpec* spec);
 
   // Look for a predicate which can be converted into a range scan using the key
   // column's index. If such a predicate exists, remove it from the scan spec and
   // store it in member fields.
-  Status PushdownRangeScanPredicate(ScanSpec *spec);
+  CHECKED_STATUS PushdownRangeScanPredicate(ScanSpec *spec);
 
   void Unprepare();
 
   // Prepare the given column if not already prepared.
-  Status PrepareColumn(size_t col_idx);
+  CHECKED_STATUS PrepareColumn(size_t col_idx);
 
   const std::shared_ptr<CFileSet const> base_data_;
   const Schema* projection_;

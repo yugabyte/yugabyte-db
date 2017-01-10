@@ -59,7 +59,7 @@ class GVIntBlockBuilder : public BlockBuilder {
 
   // Return the first added key.
   // key should be a uint32_t *
-  Status GetFirstKey(void *key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void *key) const OVERRIDE;
 
  private:
 
@@ -98,20 +98,20 @@ class GVIntBlockDecoder : public BlockDecoder {
  public:
   explicit GVIntBlockDecoder(Slice slice);
 
-  Status ParseHeader() OVERRIDE;
+  CHECKED_STATUS ParseHeader() OVERRIDE;
   void SeekToStart() {
     SeekToPositionInBlock(0);
   }
 
   void SeekToPositionInBlock(uint pos) OVERRIDE;
 
-  Status SeekAtOrAfterValue(const void *value, bool *exact_match) OVERRIDE;
+  CHECKED_STATUS SeekAtOrAfterValue(const void *value, bool *exact_match) OVERRIDE;
 
-  Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
+  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
 
   // Copy the integers to a temporary buffer, it is used by StringDictDecoder
   // in its CopyNextValues() method.
-  Status CopyNextValuesToArray(size_t *n, uint8_t* array);
+  CHECKED_STATUS CopyNextValuesToArray(size_t *n, uint8_t* array);
 
   size_t GetCurrentIndex() const OVERRIDE {
     DCHECK(parsed_) << "must parse header first";
@@ -134,7 +134,7 @@ class GVIntBlockDecoder : public BlockDecoder {
   friend class TestEncoding;
 
   template<class IntSink>
-  Status DoGetNextValues(size_t *n, IntSink *sink);
+  CHECKED_STATUS DoGetNextValues(size_t *n, IntSink *sink);
 
   Slice data_;
 

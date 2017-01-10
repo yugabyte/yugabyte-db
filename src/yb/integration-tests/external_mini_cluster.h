@@ -125,8 +125,8 @@ struct ExternalMiniClusterOptions {
   // Default : 10sec
   MonoDelta timeout_;
 
-  Status RemovePort(const uint16_t port);
-  Status AddPort(const uint16_t port);
+  CHECKED_STATUS RemovePort(const uint16_t port);
+  CHECKED_STATUS AddPort(const uint16_t port);
 };
 
 // A mini-cluster made up of subprocesses running each of the daemons
@@ -150,19 +150,19 @@ class ExternalMiniCluster {
   ~ExternalMiniCluster();
 
   // Start the cluster.
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
-  Status Restart();
+  CHECKED_STATUS Restart();
 
   // Like the previous method but performs initialization synchronously, i.e.
   // this will wait for all TS's to be started and initialized. Tests should
   // use this if they interact with tablets immediately after Start();
-  Status StartSync();
+  CHECKED_STATUS StartSync();
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.
-  Status AddTabletServer();
+  CHECKED_STATUS AddTabletServer();
 
   // Shuts down the whole cluster or part of it, depending on the selected
   // 'mode'.
@@ -184,10 +184,10 @@ class ExternalMiniCluster {
   //
   // NOTE: if a leader election occurs after this method is executed,
   // the last result may not be valid.
-  Status GetLeaderMasterIndex(int* idx);
+  CHECKED_STATUS GetLeaderMasterIndex(int* idx);
 
   // Return a non-leader master index
-  Status GetFirstNonLeaderMasterIndex(int* idx);
+  CHECKED_STATUS GetFirstNonLeaderMasterIndex(int* idx);
 
   // Starts a new master and returns the handle of the new master object on success.
   // Not thread safe for now. We could move this to a static function outside External Mini Cluster,
@@ -196,24 +196,24 @@ class ExternalMiniCluster {
   void StartNewMaster(ExternalMaster** new_master);
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
-  Status ChangeConfig(ExternalMaster* master,
+  CHECKED_STATUS ChangeConfig(ExternalMaster* master,
       ChangeConfigType type,
       consensus::RaftPeerPB::MemberType member_type = consensus::RaftPeerPB::PRE_VOTER);
 
   // Performs an RPC to the given master to get the number of masters it is tracking in-memory.
-  Status GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers);
+  CHECKED_STATUS GetNumMastersAsSeenBy(ExternalMaster* master, int* num_peers);
 
   // Get the last committed opid for the current leader master.
-  Status GetLastOpIdForLeader(OpId* opid);
+  CHECKED_STATUS GetLastOpIdForLeader(OpId* opid);
 
   // The leader master sometimes does not commit the config in time on first setup, causing
   // CheckHasCommittedOpInCurrentTermUnlocked check - that the current term
   // should have had at least one commit - to fail. This API waits for the leader's commit term to
   // move ahead by one.
-  Status WaitForLeaderCommitTermAdvance();
+  CHECKED_STATUS WaitForLeaderCommitTermAdvance();
 
   // This API waits for the commit indices of all the master peers to reach the target index.
-  Status WaitForMastersToCommitUpTo(int target_index);
+  CHECKED_STATUS WaitForMastersToCommitUpTo(int target_index);
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master or NULL if the master is not
@@ -284,28 +284,28 @@ class ExternalMiniCluster {
   // given count on at least one of the running masters.  Returns
   // Status::TimedOut if the desired count is not achieved with the
   // given timeout.
-  Status WaitForTabletServerCount(int count, const MonoDelta& timeout);
+  CHECKED_STATUS WaitForTabletServerCount(int count, const MonoDelta& timeout);
 
   // Runs gtest assertions that no servers have crashed.
   void AssertNoCrashes();
 
   // Wait until all tablets on the given tablet server are in 'RUNNING'
   // state.
-  Status WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
+  CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
   // Create a client configured to talk to this cluster.
   // Builder may contain override options for the client. The master address will
   // be overridden to talk to the running master.
   //
   // REQUIRES: the cluster must have already been Start()ed.
-  Status CreateClient(client::YBClientBuilder& builder,
+  CHECKED_STATUS CreateClient(client::YBClientBuilder& builder,
                       std::shared_ptr<client::YBClient>* client);
 
   // Sets the given flag on the given daemon, which must be running.
   //
   // This uses the 'force' flag on the RPC so that, even if the flag
   // is considered unsafe to change at runtime, it is changed.
-  Status SetFlag(ExternalDaemon* daemon,
+  CHECKED_STATUS SetFlag(ExternalDaemon* daemon,
                  const std::string& flag,
                  const std::string& value);
 
@@ -314,10 +314,10 @@ class ExternalMiniCluster {
   uint16_t AllocateFreePort();
 
   // Step down the master leader. error_code tracks rpc error info that can be used by the caller.
-  Status StepDownMasterLeader(tserver::TabletServerErrorPB::Code* error_code);
+  CHECKED_STATUS StepDownMasterLeader(tserver::TabletServerErrorPB::Code* error_code);
 
   // Find out if the master service considers itself ready. Return status OK() implies it is ready.
-  Status GetIsMasterLeaderServiceReady(ExternalMaster* master);
+  CHECKED_STATUS GetIsMasterLeaderServiceReady(ExternalMaster* master);
 
   // Timeout to be used for rpc operations.
   MonoDelta timeout() {
@@ -325,49 +325,49 @@ class ExternalMiniCluster {
   }
 
   // Start a leader election on this master.
-  Status StartElection(ExternalMaster* master);
+  CHECKED_STATUS StartElection(ExternalMaster* master);
 
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
-  Status StartSingleMaster();
+  CHECKED_STATUS StartSingleMaster();
 
-  Status StartDistributedMasters();
+  CHECKED_STATUS StartDistributedMasters();
 
   std::string GetBinaryPath(const std::string& binary) const;
   std::string GetDataPath(const std::string& daemon_id) const;
 
-  Status DeduceBinRoot(std::string* ret);
-  Status HandleOptions();
+  CHECKED_STATUS DeduceBinRoot(std::string* ret);
+  CHECKED_STATUS HandleOptions();
 
   // Helper function to get a leader or (random) follower index
-  Status GetPeerMasterIndex(int* idx, bool is_leader);
+  CHECKED_STATUS GetPeerMasterIndex(int* idx, bool is_leader);
 
   // API to help update the cluster state (rpc ports)
-  Status AddMaster(ExternalMaster* master);
-  Status RemoveMaster(ExternalMaster* master);
+  CHECKED_STATUS AddMaster(ExternalMaster* master);
+  CHECKED_STATUS RemoveMaster(ExternalMaster* master);
 
   // Get the index of this master in the vector of masters. This might not be the insertion
   // order as we might have removed some masters within the vector.
   int GetIndexOfMaster(ExternalMaster* master) const;
 
   // Checks that the masters_ list and opts_ match in terms of the number of elements.
-  Status CheckPortAndMasterSizes() const;
+  CHECKED_STATUS CheckPortAndMasterSizes() const;
 
   // Return the list of opid's for all master's in this cluster.
-  Status GetLastOpIdForEachMasterPeer(
+  CHECKED_STATUS GetLastOpIdForEachMasterPeer(
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
       vector<OpId>* op_ids);
 
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).
-  Status WaitForLeaderToAllowChangeConfig(
+  CHECKED_STATUS WaitForLeaderToAllowChangeConfig(
       const string& uuid,
       ConsensusServiceProxy* leader_proxy);
 
   // Step down the master leader and wait for a new leader to be elected.
-  Status StepDownMasterLeaderAndWaitForNewLeader();
+  CHECKED_STATUS StepDownMasterLeaderAndWaitForNewLeader();
 
   ExternalMiniClusterOptions opts_;
 
@@ -410,10 +410,10 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   pid_t pid() const;
 
   // Sends a SIGSTOP signal to the daemon.
-  Status Pause();
+  CHECKED_STATUS Pause();
 
   // Sends a SIGCONT signal to the daemon.
-  Status Resume();
+  CHECKED_STATUS Resume();
 
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
@@ -440,7 +440,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   //
   // 'entity_id' may be NULL, in which case the first entity of the same type
   // as 'entity_proto' will be matched.
-  Status GetInt64Metric(const MetricEntityPrototype* entity_proto,
+  CHECKED_STATUS GetInt64Metric(const MetricEntityPrototype* entity_proto,
                         const char* entity_id,
                         const MetricPrototype* metric_proto,
                         const char* value_field,
@@ -450,7 +450,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   friend class RefCountedThreadSafe<ExternalDaemon>;
   virtual ~ExternalDaemon();
 
-  Status StartProcess(const std::vector<std::string>& flags);
+  CHECKED_STATUS StartProcess(const std::vector<std::string>& flags);
 
   // In a code-coverage build, try to flush the coverage data to disk.
   // In a non-coverage build, this does nothing.
@@ -507,11 +507,11 @@ class ExternalMaster : public ExternalDaemon {
     uint16_t http_port = 0,
     const std::string& master_addrs = "");
 
-  Status Start(bool shell_mode = false);
+  CHECKED_STATUS Start(bool shell_mode = false);
 
   // Restarts the daemon.
   // Requires that it has previously been shutdown.
-  Status Restart() WARN_UNUSED_RESULT;
+  CHECKED_STATUS Restart() WARN_UNUSED_RESULT;
 
  private:
   friend class RefCountedThreadSafe<ExternalMaster>;
@@ -532,11 +532,11 @@ class ExternalTabletServer : public ExternalDaemon {
       uint16_t cql_rpc_port, uint16_t cql_http_port,
       const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags);
 
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Restarts the daemon.
   // Requires that it has previously been shutdown.
-  Status Restart() WARN_UNUSED_RESULT;
+  CHECKED_STATUS Restart() WARN_UNUSED_RESULT;
 
 
  private:

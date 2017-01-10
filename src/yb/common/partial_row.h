@@ -32,6 +32,7 @@
 
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class ColumnSchema;
@@ -63,53 +64,53 @@ class YB_EXPORT YBPartialRow {
   // Setters
   //------------------------------------------------------------
 
-  Status SetBool(const Slice& col_name, bool val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetBool(const Slice& col_name, bool val) WARN_UNUSED_RESULT;
 
-  Status SetInt8(const Slice& col_name, int8_t val) WARN_UNUSED_RESULT;
-  Status SetInt16(const Slice& col_name, int16_t val) WARN_UNUSED_RESULT;
-  Status SetInt32(const Slice& col_name, int32_t val) WARN_UNUSED_RESULT;
-  Status SetInt64(const Slice& col_name, int64_t val) WARN_UNUSED_RESULT;
-  Status SetTimestamp(const Slice& col_name, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt8(const Slice& col_name, int8_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt16(const Slice& col_name, int16_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt32(const Slice& col_name, int32_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt64(const Slice& col_name, int64_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetTimestamp(const Slice& col_name, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
 
-  Status SetFloat(const Slice& col_name, float val) WARN_UNUSED_RESULT;
-  Status SetDouble(const Slice& col_name, double val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFloat(const Slice& col_name, float val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetDouble(const Slice& col_name, double val) WARN_UNUSED_RESULT;
 
   // Same as above setters, but with numeric column indexes.
   // These are faster since they avoid a hashmap lookup, so should
   // be preferred in performance-sensitive code (eg bulk loaders).
-  Status SetBool(int col_idx, bool val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetBool(int col_idx, bool val) WARN_UNUSED_RESULT;
 
-  Status SetInt8(int col_idx, int8_t val) WARN_UNUSED_RESULT;
-  Status SetInt16(int col_idx, int16_t val) WARN_UNUSED_RESULT;
-  Status SetInt32(int col_idx, int32_t val) WARN_UNUSED_RESULT;
-  Status SetInt64(int col_idx, int64_t val) WARN_UNUSED_RESULT;
-  Status SetTimestamp(int col_idx, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt8(int col_idx, int8_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt16(int col_idx, int16_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt32(int col_idx, int32_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInt64(int col_idx, int64_t val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetTimestamp(int col_idx, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
 
-  Status SetFloat(int col_idx, float val) WARN_UNUSED_RESULT;
-  Status SetDouble(int col_idx, double val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFloat(int col_idx, float val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetDouble(int col_idx, double val) WARN_UNUSED_RESULT;
 
   // Sets the string/binary value but does not copy the value. The slice
   // must remain valid until the call to AppendToPB().
-  Status SetString(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  Status SetString(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  Status SetBinary(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  Status SetBinary(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetString(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetString(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetBinary(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetBinary(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Copies 'val' immediately.
-  Status SetStringCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  Status SetStringCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  Status SetBinaryCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  Status SetBinaryCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetStringCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetStringCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetBinaryCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetBinaryCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Set the given column to NULL. This will only succeed on nullable
   // columns. Use Unset(...) to restore a column to its default.
-  Status SetNull(const Slice& col_name) WARN_UNUSED_RESULT;
-  Status SetNull(int col_idx) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetNull(const Slice& col_name) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetNull(int col_idx) WARN_UNUSED_RESULT;
 
   // Unsets the given column. Note that this is different from setting
   // it to NULL.
-  Status Unset(const Slice& col_name) WARN_UNUSED_RESULT;
-  Status Unset(int col_idx) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Unset(const Slice& col_name) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Unset(int col_idx) WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
   // Getters
@@ -125,38 +126,38 @@ class YB_EXPORT YBPartialRow {
   bool IsNull(const Slice& col_name) const;
   bool IsNull(int col_idx) const;
 
-  Status GetBool(const Slice& col_name, bool* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBool(const Slice& col_name, bool* val) const WARN_UNUSED_RESULT;
 
-  Status GetInt8(const Slice& col_name, int8_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt16(const Slice& col_name, int16_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt32(const Slice& col_name, int32_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt64(const Slice& col_name, int64_t* val) const WARN_UNUSED_RESULT;
-  Status GetTimestamp(const Slice& col_name,
+  CHECKED_STATUS GetInt8(const Slice& col_name, int8_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt16(const Slice& col_name, int16_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt32(const Slice& col_name, int32_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt64(const Slice& col_name, int64_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimestamp(const Slice& col_name,
                       int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
-  Status GetFloat(const Slice& col_name, float* val) const WARN_UNUSED_RESULT;
-  Status GetDouble(const Slice& col_name, double* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetFloat(const Slice& col_name, float* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetDouble(const Slice& col_name, double* val) const WARN_UNUSED_RESULT;
 
   // Same as above getters, but with numeric column indexes.
   // These are faster since they avoid a hashmap lookup, so should
   // be preferred in performance-sensitive code.
-  Status GetBool(int col_idx, bool* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBool(int col_idx, bool* val) const WARN_UNUSED_RESULT;
 
-  Status GetInt8(int col_idx, int8_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
-  Status GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt8(int col_idx, int8_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
-  Status GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
-  Status GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
 
   // Gets the string/binary value but does not copy the value. Callers should
   // copy the resulting Slice if necessary.
-  Status GetString(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  Status GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  Status GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  Status GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetString(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
   // Key-encoding related functions
@@ -167,7 +168,7 @@ class YB_EXPORT YBPartialRow {
   //
   // Requires that all of the key columns must be set; otherwise, returns
   // InvalidArgument.
-  Status EncodeRowKey(std::string* encoded_key) const;
+  CHECKED_STATUS EncodeRowKey(std::string* encoded_key) const;
 
   // Convenience method which is equivalent to the above, but triggers a
   // FATAL error on failure.
@@ -200,27 +201,27 @@ class YB_EXPORT YBPartialRow {
   template<typename KeyTypeWrapper> friend struct client::IntKeysTestSetup;
 
   template<typename T>
-  Status Set(const Slice& col_name, const typename T::cpp_type& val,
+  CHECKED_STATUS Set(const Slice& col_name, const typename T::cpp_type& val,
              bool owned = false);
 
   template<typename T>
-  Status Set(int col_idx, const typename T::cpp_type& val,
+  CHECKED_STATUS Set(int col_idx, const typename T::cpp_type& val,
              bool owned = false);
 
   // Runtime version of the generic setter.
-  Status Set(int32_t column_idx, const uint8_t* val);
+  CHECKED_STATUS Set(int32_t column_idx, const uint8_t* val);
 
   template<typename T>
-  Status Get(const Slice& col_name, typename T::cpp_type* val) const;
+  CHECKED_STATUS Get(const Slice& col_name, typename T::cpp_type* val) const;
 
   template<typename T>
-  Status Get(int col_idx, typename T::cpp_type* val) const;
+  CHECKED_STATUS Get(int col_idx, typename T::cpp_type* val) const;
 
   template<typename T>
-  Status SetSliceCopy(const Slice& col_name, const Slice& val);
+  CHECKED_STATUS SetSliceCopy(const Slice& col_name, const Slice& val);
 
   template<typename T>
-  Status SetSliceCopy(int col_idx, const Slice& val);
+  CHECKED_STATUS SetSliceCopy(int col_idx, const Slice& val);
 
   // If the given column is a variable length column whose memory is owned by this instance,
   // deallocates the value.

@@ -61,28 +61,28 @@ class LocalTabletWriter {
 
   ~LocalTabletWriter() {}
 
-  Status Insert(const YBPartialRow& row) {
+  CHECKED_STATUS Insert(const YBPartialRow& row) {
     return Write(RowOperationsPB::INSERT, row);
   }
 
-  Status Delete(const YBPartialRow& row) {
+  CHECKED_STATUS Delete(const YBPartialRow& row) {
     return Write(RowOperationsPB::DELETE, row);
   }
 
-  Status Update(const YBPartialRow& row) {
+  CHECKED_STATUS Update(const YBPartialRow& row) {
     return Write(RowOperationsPB::UPDATE, row);
   }
 
   // Perform a write against the local tablet.
   // Returns a bad Status if the applied operation had a per-row error.
-  Status Write(RowOperationsPB::Type type,
+  CHECKED_STATUS Write(RowOperationsPB::Type type,
                const YBPartialRow& row) {
     vector<Op> ops;
     ops.push_back(Op(type, &row));
     return WriteBatch(ops);
   }
 
-  Status WriteBatch(const std::vector<Op>& ops) {
+  CHECKED_STATUS WriteBatch(const std::vector<Op>& ops) {
     req_.mutable_row_operations()->Clear();
     RowOperationsPBEncoder encoder(req_.mutable_row_operations());
 

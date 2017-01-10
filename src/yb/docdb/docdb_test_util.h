@@ -66,16 +66,16 @@ class DebugDocVisitor : public DocVisitor {
   DebugDocVisitor();
   virtual ~DebugDocVisitor();
 
-  Status StartDocument(const DocKey& key) override;
+  CHECKED_STATUS StartDocument(const DocKey& key) override;
 
-  Status VisitKey(const PrimitiveValue& key) override;
-  Status VisitValue(const PrimitiveValue& value) override;
+  CHECKED_STATUS VisitKey(const PrimitiveValue& key) override;
+  CHECKED_STATUS VisitValue(const PrimitiveValue& value) override;
 
-  Status EndDocument() override;
-  Status StartObject() override;
-  Status EndObject() override;
-  Status StartArray() override;
-  Status EndArray() override;
+  CHECKED_STATUS EndDocument() override;
+  CHECKED_STATUS StartObject() override;
+  CHECKED_STATUS EndObject() override;
+  CHECKED_STATUS StartArray() override;
+  CHECKED_STATUS EndArray() override;
 
   std::string ToString();
 

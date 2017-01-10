@@ -670,7 +670,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterUpdatingRemovedColumn) {
   // Check via debug dump that the data was properly compacted, including deltas.
   // We expect to see neither deltas nor base data for the deleted column.
   rows.clear();
-  tablet_peer_->tablet()->DebugDump(&rows);
+  ASSERT_OK(tablet_peer_->tablet()->DebugDump(&rows));
   ASSERT_EQ("Dumping tablet:\n"
             "---------------------------\n"
             "MRS memrowset:\n"
@@ -717,7 +717,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasIntoMissingBaseData) {
   // row, the default value materialized for the second, and a proper UNDO to undo
   // the update on the first row.
   rows.clear();
-  tablet_peer_->tablet()->DebugDump(&rows);
+  ASSERT_OK(tablet_peer_->tablet()->DebugDump(&rows));
   ASSERT_EQ("Dumping tablet:\n"
             "---------------------------\n"
             "MRS memrowset:\n"
@@ -772,7 +772,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
   // Check via debug dump that the data was properly compacted, including deltas.
   // We expect to see neither deltas nor base data for the deleted column.
   rows.clear();
-  tablet_peer_->tablet()->DebugDump(&rows);
+  ASSERT_OK(tablet_peer_->tablet()->DebugDump(&rows));
   ASSERT_EQ("Dumping tablet:\n"
             "---------------------------\n"
             "MRS memrowset:\n"

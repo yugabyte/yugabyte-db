@@ -44,12 +44,12 @@ namespace tserver {
 // TODO: Rename this interface.
 class TabletPeerLookupIf {
  public:
-  virtual Status GetTabletPeer(const std::string& tablet_id,
+  virtual CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                scoped_refptr<tablet::TabletPeer>* tablet_peer) const = 0;
 
   virtual const NodeInstancePB& NodeInstance() const = 0;
 
-  virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) = 0;
+  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) = 0;
 };
 
 } // namespace tserver

@@ -28,6 +28,7 @@
 
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Schema;
@@ -107,38 +108,38 @@ class YB_EXPORT YBScanBatch::RowPtr {
   // These getters return a bad Status if the type does not match,
   // the value is unset, or the value is NULL. Otherwise they return
   // the current set value in *val.
-  Status GetBool(const Slice& col_name, bool* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBool(const Slice& col_name, bool* val) const WARN_UNUSED_RESULT;
 
-  Status GetInt8(const Slice& col_name, int8_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt16(const Slice& col_name, int16_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt32(const Slice& col_name, int32_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt64(const Slice& col_name, int64_t* val) const WARN_UNUSED_RESULT;
-  Status GetTimestamp(const Slice& col_name, int64_t* micros_since_utc_epoch)
+  CHECKED_STATUS GetInt8(const Slice& col_name, int8_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt16(const Slice& col_name, int16_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt32(const Slice& col_name, int32_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt64(const Slice& col_name, int64_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimestamp(const Slice& col_name, int64_t* micros_since_utc_epoch)
     const WARN_UNUSED_RESULT;
 
-  Status GetFloat(const Slice& col_name, float* val) const WARN_UNUSED_RESULT;
-  Status GetDouble(const Slice& col_name, double* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetFloat(const Slice& col_name, float* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetDouble(const Slice& col_name, double* val) const WARN_UNUSED_RESULT;
 
   // Same as above getters, but with numeric column indexes.
   // These are faster since they avoid a hashmap lookup, so should
   // be preferred in performance-sensitive code.
-  Status GetBool(int col_idx, bool* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBool(int col_idx, bool* val) const WARN_UNUSED_RESULT;
 
-  Status GetInt8(int col_idx, int8_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
-  Status GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
-  Status GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt8(int col_idx, int8_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
-  Status GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
-  Status GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
 
   // Gets the string/binary value but does not copy the value. Callers should
   // copy the resulting Slice if necessary.
-  Status GetString(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  Status GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  Status GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  Status GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetString(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   // Raw cell access. Should be avoided unless absolutely necessary.
   const void* cell(int col_idx) const;
@@ -162,10 +163,10 @@ class YB_EXPORT YBScanBatch::RowPtr {
   }
 
   template<typename T>
-  Status Get(const Slice& col_name, typename T::cpp_type* val) const;
+  CHECKED_STATUS Get(const Slice& col_name, typename T::cpp_type* val) const;
 
   template<typename T>
-  Status Get(int col_idx, typename T::cpp_type* val) const;
+  CHECKED_STATUS Get(int col_idx, typename T::cpp_type* val) const;
 
   const Schema* schema_;
   const YBSchema* client_schema_;

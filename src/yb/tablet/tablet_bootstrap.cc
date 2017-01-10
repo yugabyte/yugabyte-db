@@ -469,7 +469,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
   RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
 
   // Flush the consensus metadata once at the end to persist our changes, if any.
-  cmeta_->Flush();
+  RETURN_NOT_OK(cmeta_->Flush());
 
   RETURN_NOT_OK(RemoveRecoveryDir());
   RETURN_NOT_OK(FinishBootstrap("Bootstrap complete.", rebuilt_log, rebuilt_tablet));

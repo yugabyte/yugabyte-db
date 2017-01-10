@@ -222,7 +222,7 @@ class MvccManager {
   // Returns Status::OK() if the transaction was started successfully or
   // Status::IllegalState() if the provided timestamp is already considered
   // committed, e.g. if timestamp < 'all_committed_before_'.
-  Status StartTransactionAtTimestamp(Timestamp timestamp);
+  CHECKED_STATUS StartTransactionAtTimestamp(Timestamp timestamp);
 
   // Mark that the transaction with the given timestamp is starting to apply
   // its writes to in-memory stores. This must be called before CommitTransaction().
@@ -285,7 +285,7 @@ class MvccManager {
   //
   // REQUIRES: 'timestamp' must be in the past according to the configured
   // clock.
-  Status WaitForCleanSnapshotAtTimestamp(Timestamp timestamp,
+  CHECKED_STATUS WaitForCleanSnapshotAtTimestamp(Timestamp timestamp,
                                          MvccSnapshot* snapshot,
                                          const MonoTime& deadline) const WARN_UNUSED_RESULT;
 
@@ -349,7 +349,7 @@ class MvccManager {
   bool AnyApplyingAtOrBeforeUnlocked(Timestamp ts) const;
 
   // Waits until all transactions before the given time are committed.
-  Status WaitUntil(WaitFor wait_for, Timestamp ts,
+  CHECKED_STATUS WaitUntil(WaitFor wait_for, Timestamp ts,
                    const MonoTime& deadline) const WARN_UNUSED_RESULT;
 
   // Return true if the condition that the given waiter is waiting on has

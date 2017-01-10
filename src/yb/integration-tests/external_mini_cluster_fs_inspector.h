@@ -24,11 +24,11 @@
 #include "yb/gutil/macros.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Env;
 class ExternalMiniCluster;
-class Status;
 
 namespace consensus {
 class ConsensusMetadataPB;
@@ -49,7 +49,7 @@ class ExternalMiniClusterFsInspector {
   explicit ExternalMiniClusterFsInspector(ExternalMiniCluster* cluster);
   ~ExternalMiniClusterFsInspector();
 
-  Status ListFilesInDir(const std::string& path, std::vector<std::string>* entries);
+  CHECKED_STATUS ListFilesInDir(const std::string& path, std::vector<std::string>* entries);
   int CountFilesInDir(const std::string& path);
   int CountWALSegmentsOnTS(int index);
 
@@ -68,25 +68,25 @@ class ExternalMiniClusterFsInspector {
   bool DoesConsensusMetaExistForTabletOnTS(int index, const std::string& tablet_id);
 
   int CountReplicasInMetadataDirs();
-  Status CheckNoDataOnTS(int index);
-  Status CheckNoData();
+  CHECKED_STATUS CheckNoDataOnTS(int index);
+  CHECKED_STATUS CheckNoData();
 
-  Status ReadTabletSuperBlockOnTS(int index, const std::string& tablet_id,
+  CHECKED_STATUS ReadTabletSuperBlockOnTS(int index, const std::string& tablet_id,
                                   tablet::TabletSuperBlockPB* sb);
-  Status ReadConsensusMetadataOnTS(int index, const std::string& tablet_id,
+  CHECKED_STATUS ReadConsensusMetadataOnTS(int index, const std::string& tablet_id,
                                    consensus::ConsensusMetadataPB* cmeta_pb);
-  Status CheckTabletDataStateOnTS(int index,
+  CHECKED_STATUS CheckTabletDataStateOnTS(int index,
                                   const std::string& tablet_id,
                                   tablet::TabletDataState state);
 
-  Status WaitForNoData(const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  Status WaitForNoDataOnTS(int index, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  Status WaitForMinFilesInTabletWalDirOnTS(int index,
+  CHECKED_STATUS WaitForNoData(const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+  CHECKED_STATUS WaitForNoDataOnTS(int index, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+  CHECKED_STATUS WaitForMinFilesInTabletWalDirOnTS(int index,
                                            const std::string& tablet_id,
                                            int count,
                                            const MonoDelta& timeout = MonoDelta::FromSeconds(60));
-  Status WaitForReplicaCount(int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  Status WaitForTabletDataStateOnTS(int index,
+  CHECKED_STATUS WaitForReplicaCount(int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+  CHECKED_STATUS WaitForTabletDataStateOnTS(int index,
                                     const std::string& tablet_id,
                                     tablet::TabletDataState data_state,
                                     const MonoDelta& timeout = MonoDelta::FromSeconds(30));
@@ -98,7 +98,7 @@ class ExternalMiniClusterFsInspector {
   // * For each string in 'substrings_disallowed', we find *no files* whose name
   //   contains that string, even if the file also matches a string in the
   //   'substrings_required'.
-  Status WaitForFilePatternInTabletWalDirOnTs(
+  CHECKED_STATUS WaitForFilePatternInTabletWalDirOnTs(
       int ts_index,
       const std::string& tablet_id,
       const std::vector<std::string>& substrings_required,

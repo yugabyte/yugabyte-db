@@ -312,7 +312,8 @@ YSQLRowBlock* YBSqlReadOp::GetRowBlock() const {
   }
   unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(*table_->schema().schema_, column_ids));
   Slice data(*rows_data_);
-  rowblock->Deserialize(ysql_read_request_->client(), &data);
+  // TODO: a better way to handle errors here?
+  CHECK_OK(rowblock->Deserialize(ysql_read_request_->client(), &data));
   return rowblock.release();
 }
 

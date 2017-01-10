@@ -61,52 +61,52 @@ class YBClient::Data {
   // The 'candidates' return parameter indicates tservers that are live and meet the selection
   // criteria, but are possibly filtered by the blacklist. This is useful for implementing
   // retry logic.
-  Status GetTabletServer(YBClient* client,
+  CHECKED_STATUS GetTabletServer(YBClient* client,
                          const scoped_refptr<internal::RemoteTablet>& rt,
                          ReplicaSelection selection,
                          const std::set<std::string>& blacklist,
                          std::vector<internal::RemoteTabletServer*>* candidates,
                          internal::RemoteTabletServer** ts);
 
-  Status CreateTable(YBClient* client,
+  CHECKED_STATUS CreateTable(YBClient* client,
                      const master::CreateTableRequestPB& req,
                      const YBSchema& schema,
                      const MonoTime& deadline);
 
-  Status IsCreateTableInProgress(YBClient* client,
+  CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
                                  const std::string& table_name,
                                  const MonoTime& deadline,
                                  bool *create_in_progress);
 
-  Status WaitForCreateTableToFinish(YBClient* client,
+  CHECKED_STATUS WaitForCreateTableToFinish(YBClient* client,
                                     const std::string& table_name,
                                     const MonoTime& deadline);
 
-  Status DeleteTable(YBClient* client,
+  CHECKED_STATUS DeleteTable(YBClient* client,
                      const std::string& table_name,
                      const MonoTime& deadline);
 
-  Status AlterTable(YBClient* client,
+  CHECKED_STATUS AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     const MonoTime& deadline);
 
-  Status IsAlterTableInProgress(YBClient* client,
+  CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
                                 const std::string& table_name,
                                 const MonoTime& deadline,
                                 bool *alter_in_progress);
 
-  Status WaitForAlterTableToFinish(YBClient* client,
+  CHECKED_STATUS WaitForAlterTableToFinish(YBClient* client,
                                    const std::string& alter_name,
                                    const MonoTime& deadline);
 
-  Status GetTableSchema(YBClient* client,
+  CHECKED_STATUS GetTableSchema(YBClient* client,
                         const std::string& table_name,
                         const MonoTime& deadline,
                         YBSchema* schema,
                         PartitionSchema* partition_schema,
                         std::string* table_id);
 
-  Status InitLocalHostNames();
+  CHECKED_STATUS InitLocalHostNames();
 
   bool IsLocalHostPort(const HostPort& hp) const;
 
@@ -149,7 +149,7 @@ class YBClient::Data {
   //
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
-  Status SetMasterServerProxy(YBClient* client,
+  CHECKED_STATUS SetMasterServerProxy(YBClient* client,
                               const MonoTime& deadline);
 
   std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
@@ -161,17 +161,17 @@ class YBClient::Data {
   void UpdateLatestObservedTimestamp(uint64_t timestamp);
 
   // API's to add/remove/set the master address list in the client
-  Status SetMasterAddresses(const std::string& addresses);
-  Status RemoveMasterAddress(const Sockaddr& sockaddr);
-  Status AddMasterAddress(const Sockaddr& sockaddr);
+  CHECKED_STATUS SetMasterAddresses(const std::string& addresses);
+  CHECKED_STATUS RemoveMasterAddress(const Sockaddr& sockaddr);
+  CHECKED_STATUS AddMasterAddress(const Sockaddr& sockaddr);
   // This method reads the master address from the remote endpoint or a file depending on which is
   // specified, and re-initializes the 'master_server_addrs_' variable.
-  Status ReinitializeMasterAddresses();
+  CHECKED_STATUS ReinitializeMasterAddresses();
 
   // Set replication info for the cluster data. Last argument defaults to nullptr to auto-wrap in a
   // retry. It is otherwise used in a RetryFunc to indicate if to keep retrying or not, if we get a
   // version mismatch on setting the config.
-  Status SetReplicationInfo(
+  CHECKED_STATUS SetReplicationInfo(
       YBClient* client, const master::ReplicationInfoPB& replication_info, const MonoTime& deadline,
       bool* retry = nullptr);
 
@@ -190,7 +190,7 @@ class YBClient::Data {
   // retried forever. If 'deadline' expires, 'func_name' is included in
   // the resulting Status.
   template <class ReqClass, class RespClass>
-  Status SyncLeaderMasterRpc(
+  CHECKED_STATUS SyncLeaderMasterRpc(
       const MonoTime& deadline, YBClient* client, const ReqClass& req, RespClass* resp,
       int* num_attempts, const char* func_name,
       const std::function<Status(
@@ -246,7 +246,7 @@ class YBClient::Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-// Retry helper, takes a function like: Status funcName(const MonoTime& deadline, bool *retry, ...)
+// Retry helper, takes a function like: CHECKED_STATUS funcName(const MonoTime& deadline, bool *retry, ...)
 // The function should set the retry flag (default true) if the function should
 // be retried again. On retry == false the return status of the function will be
 // returned to the caller, otherwise a Status::Timeout() will be returned.

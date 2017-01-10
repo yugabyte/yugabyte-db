@@ -65,7 +65,7 @@ class Subprocess {
   // note that if the executable path was incorrect such that
   // exec() fails, this will still return Status::OK. You must
   // use Wait() to check for failure.
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Wait for the subprocess to exit. The return value is the same as
   // that of the waitpid() syscall. Only call after starting.
@@ -73,7 +73,7 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
-  Status Wait(int* ret) { return DoWait(ret, 0); }
+  CHECKED_STATUS Wait(int* ret) { return DoWait(ret, 0); }
 
   // Like the above, but does not block. This returns Status::TimedOut
   // immediately if the child has not exited. Otherwise returns Status::OK
@@ -82,15 +82,15 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
-  Status WaitNoBlock(int* ret) { return DoWait(ret, WNOHANG); }
+  CHECKED_STATUS WaitNoBlock(int* ret) { return DoWait(ret, WNOHANG); }
 
   // Send a signal to the subprocess.
   // Note that this does not reap the process -- you must still Wait()
   // in order to reap it. Only call after starting.
-  Status Kill(int signal);
+  CHECKED_STATUS Kill(int signal);
 
   // Similar to Kill, but does not enforce that the process must be running.
-  Status KillNoCheckIfRunning(int signal);
+  CHECKED_STATUS KillNoCheckIfRunning(int signal);
 
   // Returns true if the process is running.
   bool IsRunning() const;
@@ -100,15 +100,15 @@ class Subprocess {
   // full path to the executable.
   // The returned Status will only be OK if all steps were successful and
   // the return code was 0.
-  static Status Call(const std::string& arg_str);
+  static CHECKED_STATUS Call(const std::string& arg_str);
 
   // Same as above, but accepts a vector that includes the path to the
   // executable as argv[0] and the arguments to the program in argv[1..n].
-  static Status Call(const std::vector<std::string>& argv);
+  static CHECKED_STATUS Call(const std::vector<std::string>& argv);
 
   // Same as above, but collects the output from the child process stdout into
   // 'stdout_out'.
-  static Status Call(const std::vector<std::string>& argv,
+  static CHECKED_STATUS Call(const std::vector<std::string>& argv,
                      std::string* stdout_out);
 
   // Return the pipe fd to the child's standard stream.
@@ -137,9 +137,9 @@ class Subprocess {
   void SetFdShared(int stdfd, bool share);
   int CheckAndOffer(int stdfd) const;
   int ReleaseChildFd(int stdfd);
-  Status DoWait(int* ret, int options);
+  CHECKED_STATUS DoWait(int* ret, int options);
   State state() const;
-  Status KillInternal(int signal, bool must_be_running);
+  CHECKED_STATUS KillInternal(int signal, bool must_be_running);
 
   enum StreamMode {SHARED, DISABLED, PIPED};
 

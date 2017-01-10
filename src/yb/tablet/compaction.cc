@@ -807,7 +807,8 @@ Status FlushCompactionInput(CompactionInput* input,
       out->AppendUndoDeltas(dst_row.row_index(), new_undos_head, &index_in_current_drs_);
 
       if (new_redos_head != nullptr) {
-        out->AppendRedoDeltas(dst_row.row_index(), new_redos_head, &index_in_current_drs_);
+        RETURN_NOT_OK(
+            out->AppendRedoDeltas(dst_row.row_index(), new_redos_head, &index_in_current_drs_));
       }
 
       DVLOG(2) << "Output Row: " << dst_row.schema()->DebugRow(dst_row) <<

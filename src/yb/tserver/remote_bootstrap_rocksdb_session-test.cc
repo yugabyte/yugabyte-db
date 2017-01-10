@@ -59,7 +59,7 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields) {
     auto file_path = JoinPathSegments(checkpoint_dir, rocksdb_file_name);
     ASSERT_TRUE(env_->FileExists(file_path));
     uint64 file_size_bytes;
-    env_->GetFileSize(file_path, &file_size_bytes);
+    ASSERT_OK(env_->GetFileSize(file_path, &file_size_bytes));
     ASSERT_EQ(rocksdb_file_size_bytes, file_size_bytes);
   }
 }

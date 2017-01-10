@@ -243,10 +243,11 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
   Promise<Status> promise;
   scoped_refptr<Thread> writer_thread;
 
-  Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
-                 &RemoteYsckTest::GenerateRowWritesLoop, this,
-                 &started_writing, boost::cref(continue_writing), &promise,
-                 &writer_thread);
+  CHECK_OK(
+      Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
+                     &RemoteYsckTest::GenerateRowWritesLoop, this,
+                     &started_writing, boost::cref(continue_writing), &promise,
+                     &writer_thread));
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 
   uint64_t ts = client_->GetLatestObservedTimestamp();
@@ -284,10 +285,11 @@ TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
   Promise<Status> promise;
   scoped_refptr<Thread> writer_thread;
 
-  Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
-                 &RemoteYsckTest::GenerateRowWritesLoop, this,
-                 &started_writing, boost::cref(continue_writing), &promise,
-                 &writer_thread);
+  CHECK_OK(
+      Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
+                     &RemoteYsckTest::GenerateRowWritesLoop, this,
+                     &started_writing, boost::cref(continue_writing), &promise,
+                     &writer_thread));
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());

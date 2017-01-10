@@ -82,7 +82,7 @@ class LogCache {
   // If the ops being requested are not available in the log, this will synchronously
   // read these ops from disk. Therefore, this function may take a substantial amount
   // of time and should not be called with important locks held, etc.
-  Status ReadOps(int64_t after_op_index,
+  CHECKED_STATUS ReadOps(int64_t after_op_index,
                  int max_size_bytes,
                  std::vector<ReplicateRefPtr>* messages,
                  OpId* preceding_op);
@@ -94,7 +94,7 @@ class LogCache {
   // when the callback fires.
   //
   // Returns non-OK if the Log append itself fails.
-  Status AppendOperations(const std::vector<ReplicateRefPtr>& msgs,
+  CHECKED_STATUS AppendOperations(const std::vector<ReplicateRefPtr>& msgs,
                           const StatusCallback& callback);
 
   // Return true if an operation with the given index has been written through
@@ -131,7 +131,7 @@ class LogCache {
   // Returns "Incomplete" if the op has not yet been written.
   // Returns "NotFound" if the op has been GCed.
   // Returns another bad Status if the log index fails to load (eg. due to an IO error).
-  Status LookupOpId(int64_t op_index, OpId* op_id) const;
+  CHECKED_STATUS LookupOpId(int64_t op_index, OpId* op_id) const;
 
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);

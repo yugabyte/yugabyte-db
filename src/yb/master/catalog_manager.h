@@ -307,7 +307,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   void SetCreateTableErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current CreateTable.
-  Status GetCreateTableErrorStatus() const;
+  CHECKED_STATUS GetCreateTableErrorStatus() const;
 
   void AddTask(MonitoredTask *task);
   void RemoveTask(MonitoredTask *task);
@@ -514,28 +514,28 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
-  Status Init(bool is_first_run);
+  CHECKED_STATUS Init(bool is_first_run);
 
   void Shutdown();
-  Status CheckOnline() const;
+  CHECKED_STATUS CheckOnline() const;
 
   // Create a new Table with the specified attributes
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status CreateTable(const CreateTableRequestPB* req,
+  CHECKED_STATUS CreateTable(const CreateTableRequestPB* req,
                      CreateTableResponsePB* resp,
                      rpc::RpcContext* rpc);
 
   // Get the information about an in-progress create operation
-  Status IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
+  CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                            IsCreateTableDoneResponsePB* resp);
 
   // Delete the specified table
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status DeleteTable(const DeleteTableRequestPB* req,
+  CHECKED_STATUS DeleteTable(const DeleteTableRequestPB* req,
                      DeleteTableResponsePB* resp,
                      rpc::RpcContext* rpc);
 
@@ -543,7 +543,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status AlterTable(const AlterTableRequestPB* req,
+  CHECKED_STATUS AlterTable(const AlterTableRequestPB* req,
                     AlterTableResponsePB* resp,
                     rpc::RpcContext* rpc);
 
@@ -551,19 +551,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
+  CHECKED_STATUS IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                           IsAlterTableDoneResponsePB* resp,
                           rpc::RpcContext* rpc);
 
   // Get the information about the specified table
-  Status GetTableSchema(const GetTableSchemaRequestPB* req,
+  CHECKED_STATUS GetTableSchema(const GetTableSchemaRequestPB* req,
                         GetTableSchemaResponsePB* resp);
 
   // List all the running tables
-  Status ListTables(const ListTablesRequestPB* req,
+  CHECKED_STATUS ListTables(const ListTablesRequestPB* req,
                     ListTablesResponsePB* resp);
 
-  Status GetTableLocations(const GetTableLocationsRequestPB* req,
+  CHECKED_STATUS GetTableLocations(const GetTableLocationsRequestPB* req,
                            GetTableLocationsResponsePB* resp);
 
   // Look up the locations of the given tablet. The locations
@@ -572,14 +572,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // If the tablet is not running, returns Status::ServiceUnavailable.
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
-  Status GetTabletLocations(const std::string& tablet_id,
+  CHECKED_STATUS GetTabletLocations(const std::string& tablet_id,
                             TabletLocationsPB* locs_pb);
 
   // Handle a tablet report from the given tablet server.
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status ProcessTabletReport(TSDescriptor* ts_desc,
+  CHECKED_STATUS ProcessTabletReport(TSDescriptor* ts_desc,
                              const TabletReportPB& report,
                              TabletReportUpdatesPB *report_update,
                              rpc::RpcContext* rpc);
@@ -588,7 +588,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status CreateNamespace(const CreateNamespaceRequestPB* req,
+  CHECKED_STATUS CreateNamespace(const CreateNamespaceRequestPB* req,
                          CreateNamespaceResponsePB* resp,
                          rpc::RpcContext* rpc);
 
@@ -596,12 +596,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // The RPC context is provided for logging/tracing purposes,
   // but this function does not itself respond to the RPC.
-  Status DeleteNamespace(const DeleteNamespaceRequestPB* req,
+  CHECKED_STATUS DeleteNamespace(const DeleteNamespaceRequestPB* req,
                          DeleteNamespaceResponsePB* resp,
                          rpc::RpcContext* rpc);
 
   // List all the current namespaces.
-  Status ListNamespaces(const ListNamespacesRequestPB* req,
+  CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                         ListNamespacesResponsePB* resp);
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
@@ -632,34 +632,34 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // table specified by 'tablet_id'.
   //
   // See also: TabletPeerLookupIf, ConsensusServiceImpl.
-  virtual Status GetTabletPeer(const std::string& tablet_id,
+  virtual CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                scoped_refptr<tablet::TabletPeer>* tablet_peer) const OVERRIDE;
 
   virtual const NodeInstancePB& NodeInstance() const OVERRIDE;
 
   bool IsInitialized() const;
 
-  virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
+  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
 
   // Set the current committed config.
-  Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
+  CHECKED_STATUS GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;
 
   // Return OK if this CatalogManager is a leader in a consensus configuration and if
   // the required leader state (metadata for tables and tablets) has
   // been successfully loaded into memory. CatalogManager must be
   // initialized before calling this method.
-  Status CheckIsLeaderAndReady() const;
+  CHECKED_STATUS CheckIsLeaderAndReady() const;
 
   // Returns this CatalogManager's role in a consensus configuration. CatalogManager
   // must be initialized before calling this method.
   consensus::RaftPeerPB::Role Role() const;
 
-  Status PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
+  CHECKED_STATUS PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft, bool on_disk = false);
 
   // If we get removed from an existing cluster, leader might ask us to detach ourselves from the
   // cluster. So we enter a shell mode equivalent state, with no bg tasks and no tablet peer
   // nor consensus.
-  Status GoIntoShellMode();
+  CHECKED_STATUS GoIntoShellMode();
 
   // Setters and getters for the cluster config item.
   //
@@ -669,22 +669,22 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // afterwards, without changing the version number. In case the version number does not match
   // on the server, the change will fail and the client will have to retry the get, as someone
   // must have updated the config in the meantime.
-  Status GetClusterConfig(SysClusterConfigEntryPB* config);
-  Status SetClusterConfig(
+  CHECKED_STATUS GetClusterConfig(SysClusterConfigEntryPB* config);
+  CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
 
   // Set's the percentage of tablets that have been moved off of the initial list of load on the
   // black-listed tablet servers, if there are no errors and not in transit. If in-transit when
   // using a new leader master, then the in_transit error code is set and percent is not set.
-  Status GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
+  CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
   // API to check if all the live tservers have similar tablet worklaod.
-  Status IsLoadBalanced(IsLoadBalancedResponsePB* resp);
+  CHECKED_STATUS IsLoadBalanced(IsLoadBalancedResponsePB* resp);
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
-  Status VisitSysCatalog();
+  CHECKED_STATUS VisitSysCatalog();
 
  private:
   friend class TableLoader;
@@ -696,7 +696,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // becomes the leader of a consensus configuration.
   //
   // Executes LoadSysCatalogDataTask below.
-  Status ElectedAsLeaderCb();
+  CHECKED_STATUS ElectedAsLeaderCb();
 
   // Loops and sleeps until one of the following conditions occurs:
   // 1. The current node is the leader master in the current term
@@ -708,7 +708,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // This method is intended to ensure that all operations replicated by
   // previous masters are committed and visible to the local node before
   // reading that data, to ensure consistency across failovers.
-  Status WaitUntilCaughtUpAsLeader(const MonoDelta& timeout);
+  CHECKED_STATUS WaitUntilCaughtUpAsLeader(const MonoDelta& timeout);
 
   // This method is submitted to 'leader_initialization_pool_' by
   // ElectedAsLeaderCb above. It:
@@ -722,9 +722,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // first leader election of the cluster.
   //
   // Sets the version field of the SysClusterConfigEntryPB to 0.
-  Status PrepareDefaultClusterConfig();
+  CHECKED_STATUS PrepareDefaultClusterConfig();
 
-  Status PrepareDefaultNamespace();
+  CHECKED_STATUS PrepareDefaultNamespace();
 
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_
@@ -732,7 +732,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // sys_catalog_.
   //
   // This method is thread-safe.
-  Status InitSysCatalogAsync(bool is_first_run);
+  CHECKED_STATUS InitSysCatalogAsync(bool is_first_run);
 
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
@@ -751,22 +751,22 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
   // Returns Status::ServiceUnavailable if tablet is not running.
-  Status BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
+  CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                  TabletLocationsPB* locs_pb);
 
-  Status FindTable(const TableIdentifierPB& table_identifier,
+  CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
                    scoped_refptr<TableInfo>* table_info);
 
-  Status FindNamespace(const NamespaceIdentifierPB& ns_identifier,
+  CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                        scoped_refptr<NamespaceInfo>* ns_info);
 
   // Handle one of the tablets in a tablet reported.
   // Requires that the lock is already held.
-  Status HandleReportedTablet(TSDescriptor* ts_desc,
+  CHECKED_STATUS HandleReportedTablet(TSDescriptor* ts_desc,
                               const ReportedTabletPB& report,
                               ReportedTabletUpdatesPB *report_updates);
 
-  Status ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
+  CHECKED_STATUS ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
                                                const scoped_refptr<TabletInfo>& tablet,
                                                TabletMetadataLock* tablet_lock,
                                                TableMetadataLock* table_lock);
@@ -789,7 +789,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Task that takes care of the tablet assignments/creations.
   // Loops through the "not created" tablets and sends a CreateTablet() request.
-  Status ProcessPendingAssignments(const std::vector<scoped_refptr<TabletInfo> >& tablets);
+  CHECKED_STATUS ProcessPendingAssignments(const std::vector<scoped_refptr<TabletInfo> >& tablets);
 
   // Given 'two_choices', which should be a vector of exactly two elements, select which
   // one is the better choice for a new replica.
@@ -808,7 +808,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // servers to select the N replicas, return Status::InvalidArgument.
   //
   // This method is called by "ProcessPendingAssignments()".
-  Status SelectReplicasForTablet(const TSDescriptorVector& ts_descs, TabletInfo* tablet);
+  CHECKED_STATUS SelectReplicasForTablet(const TSDescriptorVector& ts_descs, TabletInfo* tablet);
 
   // Select N Replicas from the online tablet servers that have been chosen to respect the
   // placement information provided. Populate the consensus configuration object with choices and
@@ -829,7 +829,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                   DeferredAssignmentActions* deferred,
                                   std::vector<scoped_refptr<TabletInfo> >* new_tablets);
 
-  Status HandleTabletSchemaVersionReport(TabletInfo *tablet,
+  CHECKED_STATUS HandleTabletSchemaVersionReport(TabletInfo *tablet,
                                          uint32_t version);
 
   // Send the create tablet requests to the selected peers of the consensus configurations.
@@ -900,7 +900,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Validates that the passed-in table replication information respects the overall cluster level
   // configuration. This should essentially not be more broader reaching than the cluster. As an
   // example, if the cluster is confined to AWS, you cannot have tables in GCE.
-  Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
+  CHECKED_STATUS ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info);
 
   // Report metrics.
   void ReportMetrics();
@@ -913,13 +913,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Can be used to create background_tasks_ field for this master.
   // Used on normal master startup or when master comes out of the shell mode.
-  Status EnableBgTasks();
+  CHECKED_STATUS EnableBgTasks();
 
   // Set the current list of black listed nodes, which is used to track the load movement off of
   // these blacklist nodes. Also sets the initial tablet load on these. If bootup is true, then we
   // skip setting the uuid part of BlackListInfo, they are filled on first call to get percent
   // completion to avoid having to persist this.
-  Status SetBlackList(const BlacklistPB& blacklist, bool bootup = false);
+  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist, bool bootup = false);
 
   // Given a tablet, find the leader uuid among its peers. If false is returned,
   // caller should not use the 'leader_uuid'.
@@ -1036,7 +1036,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Use the Raft config that has been bootstrapped to update the in-memory state of master options
   // and also the on-disk state of the consensus meta object.
-  Status UpdateMastersListInMemoryAndDisk();
+  CHECKED_STATUS UpdateMastersListInMemoryAndDisk();
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

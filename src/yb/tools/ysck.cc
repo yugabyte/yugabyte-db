@@ -336,7 +336,8 @@ Status Ysck::ChecksumData(const vector<string>& tables,
 
   if (options.use_snapshot && options.snapshot_timestamp == ChecksumOptions::kCurrentTimestamp) {
     // Set the snapshot timestamp to the current timestamp of an arbitrary tablet server.
-    tablet_server_queues.begin()->first->CurrentTimestamp(&options.snapshot_timestamp);
+    RETURN_NOT_OK(
+        tablet_server_queues.begin()->first->CurrentTimestamp(&options.snapshot_timestamp));
     Info() << "Using snapshot timestamp: " << options.snapshot_timestamp << endl;
   }
 

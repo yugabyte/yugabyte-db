@@ -162,7 +162,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe
   // with concurrent Append calls.
-  virtual Status AppendOperation(const ReplicateRefPtr& msg);
+  virtual CHECKED_STATUS AppendOperation(const ReplicateRefPtr& msg);
 
   // Appends a vector of messages to be replicated to the peers.
   // Returns OK unless the message could not be added to the queue for some
@@ -172,7 +172,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe
   // with concurrent Append calls.
-  virtual Status AppendOperations(const std::vector<ReplicateRefPtr>& msgs,
+  virtual CHECKED_STATUS AppendOperations(const std::vector<ReplicateRefPtr>& msgs,
                                   const StatusCallback& log_append_callback);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to
@@ -190,7 +190,7 @@ class PeerMessageQueue {
   // instance of ConsensusRequestPB to RequestForPeer(): the buffer will
   // replace the old entries with new ones without de-allocating the old
   // ones if they are still required.
-  virtual Status RequestForPeer(const std::string& uuid,
+  virtual CHECKED_STATUS RequestForPeer(const std::string& uuid,
                                 ConsensusRequestPB* request,
                                 std::vector<ReplicateRefPtr>* msg_refs,
                                 bool* needs_remote_bootstrap);
@@ -198,7 +198,7 @@ class PeerMessageQueue {
   // Fill in a StartRemoteBootstrapRequest for the specified peer.
   // If that peer should not remotely bootstrap, returns a non-OK status.
   // On success, also internally resets peer->needs_remote_bootstrap to false.
-  virtual Status GetRemoteBootstrapRequestForPeer(const std::string& uuid,
+  virtual CHECKED_STATUS GetRemoteBootstrapRequestForPeer(const std::string& uuid,
                                                   StartRemoteBootstrapRequestPB* req);
 
   // Update the last successful communication timestamp for the given peer
@@ -237,7 +237,7 @@ class PeerMessageQueue {
 
   virtual void RegisterObserver(PeerMessageQueueObserver* observer);
 
-  virtual Status UnRegisterObserver(PeerMessageQueueObserver* observer);
+  virtual CHECKED_STATUS UnRegisterObserver(PeerMessageQueueObserver* observer);
 
   struct Metrics {
     // Keeps track of the number of ops. that are completed by a majority but still need

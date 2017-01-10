@@ -254,7 +254,7 @@ TYPED_TEST(BlockManagerTest, CloseManyBlocksTest) {
     for (int i = 0; i < sizeof(data); i += sizeof(uint32_t)) {
       data[i] = rand.Next();
     }
-    written_block->Append(Slice(data, sizeof(data)));
+    ASSERT_OK(written_block->Append(Slice(data, sizeof(data))));
 
     dirty_blocks.push_back(written_block.release());
   }

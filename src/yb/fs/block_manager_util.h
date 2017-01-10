@@ -47,13 +47,13 @@ class PathInstanceMetadataFile {
   //
   // 'uuid' is this instance's UUID, and 'all_uuids' is all of the UUIDs in
   // this instance's path set.
-  Status Create(const std::string& uuid,
+  CHECKED_STATUS Create(const std::string& uuid,
                 const std::vector<std::string>& all_uuids);
 
   // Opens, reads, verifies, and closes an existing instance metadata file.
   //
   // On success, 'metadata_' is overwritten with the contents of the file.
-  Status LoadFromDisk();
+  CHECKED_STATUS LoadFromDisk();
 
   // Locks the instance metadata file, which must exist on-disk. Returns an
   // error if it's already locked. The lock is released when Unlock() is
@@ -62,10 +62,10 @@ class PathInstanceMetadataFile {
   // Note: the lock is also released if any fd of the instance metadata file
   // in this process is closed. Thus, it is an error to call Create() or
   // LoadFromDisk() on a locked file.
-  Status Lock();
+  CHECKED_STATUS Lock();
 
   // Unlocks the instance metadata file. Must have been locked to begin with.
-  Status Unlock();
+  CHECKED_STATUS Unlock();
 
   void SetMetadataForTests(gscoped_ptr<PathInstanceMetadataPB> metadata) {
     metadata_ = metadata.Pass();
@@ -75,7 +75,7 @@ class PathInstanceMetadataFile {
   PathInstanceMetadataPB* const metadata() const { return metadata_.get(); }
 
   // Check the integrity of the provided instances' path sets.
-  static Status CheckIntegrity(const std::vector<PathInstanceMetadataFile*>& instances);
+  static CHECKED_STATUS CheckIntegrity(const std::vector<PathInstanceMetadataFile*>& instances);
 
  private:
   Env* env_;

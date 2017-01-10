@@ -25,7 +25,7 @@ class CQLServer : public server::RpcAndWebServerBase {
 
   explicit CQLServer(const CQLServerOptions& opts);
 
-  Status Start();
+  CHECKED_STATUS Start();
 
  private:
   CQLServerOptions opts_;

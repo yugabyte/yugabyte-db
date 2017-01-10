@@ -45,7 +45,7 @@ class TabletServerPathHandlers {
 
   ~TabletServerPathHandlers();
 
-  Status Register(Webserver* server);
+  CHECKED_STATUS Register(Webserver* server);
 
  private:
   void HandleScansPage(const Webserver::WebRequest& req,

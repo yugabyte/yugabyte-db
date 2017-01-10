@@ -91,7 +91,7 @@ struct KeyEncoderTraits<Type,
     Encode(key, dst);
   }
 
-  static Status DecodeKeyPortion(Slice* encoded_key,
+  static CHECKED_STATUS DecodeKeyPortion(Slice* encoded_key,
                                  bool is_last,
                                  Arena* arena,
                                  uint8_t* cell_ptr) {
@@ -188,7 +188,7 @@ struct KeyEncoderTraits<BINARY, Buffer> {
     }
   }
 
-  static Status DecodeKeyPortion(Slice* encoded_key,
+  static CHECKED_STATUS DecodeKeyPortion(Slice* encoded_key,
                                  bool is_last,
                                  Arena* arena,
                                  uint8_t* cell_ptr) {
@@ -323,7 +323,7 @@ class KeyEncoder {
   // 'is_last' should be true when we expect that this component is the last (or only) component
   // of the composite key.
   // Any indirect data (eg strings) are allocated out of 'arena'.
-  Status Decode(Slice* encoded_key,
+  CHECKED_STATUS Decode(Slice* encoded_key,
                 bool is_last,
                 Arena* arena,
                 uint8_t* cell_ptr) const {

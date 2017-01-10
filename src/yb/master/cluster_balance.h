@@ -243,7 +243,7 @@ class ClusterLoadBalancer {
   const PlacementInfoPB& GetPlacementByTablet(const TabletId& tablet_id) const;
 
   // Get access to all the tablets for the given table.
-  const Status GetTabletsForTable(const TableId& table_uuid,
+  const CHECKED_STATUS GetTabletsForTable(const TableId& table_uuid,
                                   vector<scoped_refptr<TabletInfo>>* tablets) const;
 
   //

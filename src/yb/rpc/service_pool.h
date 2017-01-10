@@ -73,12 +73,12 @@ class ServicePool : public RpcService {
   virtual ~ServicePool();
 
   // Start up the thread pool.
-  virtual Status Init();
+  virtual CHECKED_STATUS Init();
 
   // Shut down the queue and the thread pool.
   virtual void Shutdown();
 
-  virtual Status QueueInboundCall(gscoped_ptr<InboundCall> call) OVERRIDE;
+  virtual CHECKED_STATUS QueueInboundCall(gscoped_ptr<InboundCall> call) OVERRIDE;
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
     return rpcs_timed_out_in_queue_.get();

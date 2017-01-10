@@ -37,19 +37,19 @@ struct WriterOptions;
 class TypeEncodingInfo {
  public:
 
-  static Status Get(const TypeInfo* typeinfo, EncodingType encoding, const TypeEncodingInfo** out);
+  static CHECKED_STATUS Get(const TypeInfo* typeinfo, EncodingType encoding, const TypeEncodingInfo** out);
 
   static const EncodingType GetDefaultEncoding(const TypeInfo* typeinfo);
 
   EncodingType encoding_type() const { return encoding_type_; }
 
-  Status CreateBlockBuilder(BlockBuilder **bb, const WriterOptions *options) const;
+  CHECKED_STATUS CreateBlockBuilder(BlockBuilder **bb, const WriterOptions *options) const;
 
   // Create a BlockDecoder. Sets *bd to the newly created decoder,
   // if successful, otherwise returns a non-OK Status.
   //
   // iter parameter will only be used when it is dictionary encoding
-  Status CreateBlockDecoder(BlockDecoder **bd, const Slice &slice,
+  CHECKED_STATUS CreateBlockDecoder(BlockDecoder **bd, const Slice &slice,
                             CFileIterator *iter) const;
  private:
 

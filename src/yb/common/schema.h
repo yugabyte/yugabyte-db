@@ -372,7 +372,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  Status Reset(const vector<ColumnSchema>& cols, int key_columns) {
+  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, int key_columns) {
     std::vector<ColumnId> ids;
     return Reset(cols, ids, key_columns);
   }
@@ -380,7 +380,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  Status Reset(const vector<ColumnSchema>& cols,
+  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols,
                const vector<ColumnId>& ids,
                int key_columns);
 
@@ -538,7 +538,7 @@ class Schema {
   //
   // 'arena' is used for allocating indirect strings, but is unused
   // for other datatypes.
-  Status DecodeRowKey(Slice encoded_key, uint8_t* buffer,
+  CHECKED_STATUS DecodeRowKey(Slice encoded_key, uint8_t* buffer,
                       Arena* arena) const WARN_UNUSED_RESULT;
 
   // Decode and stringify the given contiguous encoded row key in
@@ -599,7 +599,7 @@ class Schema {
   // Create a new schema containing only the selected columns.
   // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
-  Status CreateProjectionByNames(const std::vector<StringPiece>& col_names,
+  CHECKED_STATUS CreateProjectionByNames(const std::vector<StringPiece>& col_names,
                                  Schema* out) const;
 
   // Create a new schema containing only the selected column IDs.
@@ -608,7 +608,7 @@ class Schema {
   // result will have fewer columns than requested.
   //
   // The resulting schema will have no key columns defined.
-  Status CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
+  CHECKED_STATUS CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
                                             Schema* out) const;
 
   // Encode the key portion of the given row into a buffer
@@ -664,27 +664,27 @@ class Schema {
   // Return a non-OK status if the project is not compatible with the current schema
   // - User columns non present in the tablet are considered errors
   // - Matching columns with different types, at the moment, are considered errors
-  Status VerifyProjectionCompatibility(const Schema& projection) const;
+  CHECKED_STATUS VerifyProjectionCompatibility(const Schema& projection) const;
 
   // Returns the projection schema mapped on the current one
   // If the project is invalid, return a non-OK status.
-  Status GetMappedReadProjection(const Schema& projection,
+  CHECKED_STATUS GetMappedReadProjection(const Schema& projection,
                                  Schema *mapped_projection) const;
 
   // Loops through this schema (the projection) and calls the projector methods once for
   // each column.
   //
-  // - Status ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx)
+  // - CHECKED_STATUS ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx)
   //
   //     Called if the column in this schema matches one of the columns in 'base_schema'.
   //     The column type must match exactly.
   //
-  // - Status ProjectDefaultColumn(size_t proj_idx)
+  // - CHECKED_STATUS ProjectDefaultColumn(size_t proj_idx)
   //
   //     Called if the column in this schema does not match any column in 'base_schema',
   //     but has a default or is nullable.
   //
-  // - Status ProjectExtraColumn(size_t proj_idx, const ColumnSchema& col)
+  // - CHECKED_STATUS ProjectExtraColumn(size_t proj_idx, const ColumnSchema& col)
   //
   //     Called if the column in this schema does not match any column in 'base_schema',
   //     and does not have a default, and is not nullable.
@@ -694,7 +694,7 @@ class Schema {
   //
   // TODO(MAYBE): Pass the ColumnSchema and not only the column index?
   template <class Projector>
-  Status GetProjectionMapping(const Schema& base_schema, Projector *projector) const {
+  CHECKED_STATUS GetProjectionMapping(const Schema& base_schema, Projector *projector) const {
     const bool use_column_ids = base_schema.has_column_ids() && has_column_ids();
 
     int proj_idx = 0;
@@ -849,29 +849,29 @@ class SchemaBuilder {
   Schema Build() const { return Schema(cols_, col_ids_, num_key_columns_); }
   Schema BuildWithoutIds() const { return Schema(cols_, num_key_columns_); }
 
-  Status AddKeyColumn(const string& name, DataType type);
+  CHECKED_STATUS AddKeyColumn(const string& name, DataType type);
 
-  Status AddHashKeyColumn(const string& name, DataType type);
+  CHECKED_STATUS AddHashKeyColumn(const string& name, DataType type);
 
-  Status AddColumn(const ColumnSchema& column, bool is_key);
+  CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
-  Status AddColumn(const string& name, DataType type) {
+  CHECKED_STATUS AddColumn(const string& name, DataType type) {
     return AddColumn(name, type, false, false, NULL, NULL);
   }
 
-  Status AddNullableColumn(const string& name, DataType type) {
+  CHECKED_STATUS AddNullableColumn(const string& name, DataType type) {
     return AddColumn(name, type, true, false, NULL, NULL);
   }
 
-  Status AddColumn(const string& name,
+  CHECKED_STATUS AddColumn(const string& name,
                    DataType type,
                    bool is_nullable,
                    bool is_hash_key,
                    const void *read_default,
                    const void *write_default);
 
-  Status RemoveColumn(const string& name);
-  Status RenameColumn(const string& old_name, const string& new_name);
+  CHECKED_STATUS RemoveColumn(const string& name);
+  CHECKED_STATUS RenameColumn(const string& old_name, const string& new_name);
 
  private:
 

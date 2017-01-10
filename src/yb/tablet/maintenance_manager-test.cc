@@ -58,7 +58,7 @@ class MaintenanceManagerTest : public YBTest {
     options.history_size = kHistorySize;
     options.parent_mem_tracker = test_tracker_;
     manager_.reset(new MaintenanceManager(options));
-    manager_->Init();
+    CHECK_OK(manager_->Init());
   }
   ~MaintenanceManagerTest() {
     manager_->Shutdown();
@@ -206,7 +206,7 @@ TEST_F(MaintenanceManagerTest, TestRegisterUnregister) {
       &thread));
   op1.WaitForState(OP_FINISHED);
   manager_->UnregisterOp(&op1);
-  ThreadJoiner(thread.get()).Join();
+  CHECK_OK(ThreadJoiner(thread.get()).Join());
 }
 
 // Test that we'll run an operation that doesn't improve performance when memory
@@ -226,7 +226,7 @@ TEST_F(MaintenanceManagerTest, TestMemoryPressure) {
       std::bind(&TestMaintenanceOp::set_ram_anchored, &op, 1100), &thread));
   op.WaitForState(OP_FINISHED);
   manager_->UnregisterOp(&op);
-  ThreadJoiner(thread.get()).Join();
+  CHECK_OK(ThreadJoiner(thread.get()).Join());
 }
 
 // Test that ops are prioritized correctly when we add log retention.

@@ -77,7 +77,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
-  Status Init(const std::shared_ptr<tablet::Tablet>& tablet,
+  CHECKED_STATUS Init(const std::shared_ptr<tablet::Tablet>& tablet,
               const scoped_refptr<server::Clock>& clock,
               const std::shared_ptr<rpc::Messenger>& messenger,
               const scoped_refptr<log::Log>& log,
@@ -86,24 +86,24 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
   // in the consensus configuration.
-  Status Start(const consensus::ConsensusBootstrapInfo& info);
+  CHECKED_STATUS Start(const consensus::ConsensusBootstrapInfo& info);
 
   // Shutdown this tablet peer.
   // If a shutdown is already in progress, blocks until that shutdown is complete.
   void Shutdown();
 
   // Check that the tablet is in a RUNNING state.
-  Status CheckRunning() const;
+  CHECKED_STATUS CheckRunning() const;
 
   // Wait until the tablet is in a RUNNING state or if there's a timeout.
   // TODO have a way to wait for any state?
-  Status WaitUntilConsensusRunning(const MonoDelta& timeout);
+  CHECKED_STATUS WaitUntilConsensusRunning(const MonoDelta& timeout);
 
   // Submits a write to a tablet and executes it asynchronously.
   // The caller is expected to build and pass a WriteTransactionState that points
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
-  Status SubmitWrite(WriteTransactionState *tx_state);
+  CHECKED_STATUS SubmitWrite(WriteTransactionState *tx_state);
 
   // Called by the tablet service to start an alter schema transaction.
   //
@@ -116,12 +116,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // The AlterSchema operation is taking the tablet component lock in exclusive mode
   // meaning that no other operation on the tablet can be executed while the
   // AlterSchema is in progress.
-  Status SubmitAlterSchema(gscoped_ptr<AlterSchemaTransactionState> tx_state);
+  CHECKED_STATUS SubmitAlterSchema(gscoped_ptr<AlterSchemaTransactionState> tx_state);
 
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
   // Used by consensus to create and start a new ReplicaTransaction.
-  virtual Status StartReplicaTransaction(
+  virtual CHECKED_STATUS StartReplicaTransaction(
       const scoped_refptr<consensus::ConsensusRound>& round) OVERRIDE;
 
   consensus::Consensus* consensus() {
@@ -155,7 +155,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // If any peers in the consensus configuration lack permanent uuids, get them via an
   // RPC call and update.
   // TODO: move this to raft_consensus.h.
-  Status UpdatePermanentUuids();
+  CHECKED_STATUS UpdatePermanentUuids();
 
   TabletStatusListener* status_listener() const {
     return status_listener_.get();
@@ -177,7 +177,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   }
 
   // Returns the error that occurred, when state is FAILED.
-  Status error() const {
+  CHECKED_STATUS error() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return error_;
   }
@@ -201,12 +201,12 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // because in-memory structures have anchors in them.
   //
   // Returns a non-ok status if the tablet isn't running.
-  Status GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const;
+  CHECKED_STATUS GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const;
 
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
   // Returns a non-ok status if the tablet isn't running.
-  Status GetGCableDataSize(int64_t* retention_size) const;
+  CHECKED_STATUS GetGCableDataSize(int64_t* retention_size) const;
 
   // Return a pointer to the Log.
   // TabletPeer keeps a reference to Log after Init().
@@ -232,14 +232,14 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
     return tablet_ != nullptr ? tablet_->metadata()->fs_manager()->uuid() : "";
   }
 
-  Status NewLeaderTransactionDriver(gscoped_ptr<Transaction> transaction,
+  CHECKED_STATUS NewLeaderTransactionDriver(gscoped_ptr<Transaction> transaction,
                                     scoped_refptr<TransactionDriver>* driver);
 
-  Status NewReplicaTransactionDriver(gscoped_ptr<Transaction> transaction,
+  CHECKED_STATUS NewReplicaTransactionDriver(gscoped_ptr<Transaction> transaction,
                                      scoped_refptr<TransactionDriver>* driver);
 
   // Tells the tablet's log to garbage collect.
-  Status RunLogGC();
+  CHECKED_STATUS RunLogGC();
 
   // Register the maintenance ops associated with this peer's tablet, also invokes
   // Tablet::RegisterMaintenanceOps().
@@ -276,7 +276,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // After bootstrap is complete and consensus is setup this initiates the transactions
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
-  Status StartPendingTransactions(consensus::RaftPeerPB::Role my_role,
+  CHECKED_STATUS StartPendingTransactions(consensus::RaftPeerPB::Role my_role,
                                   const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<TransactionDriver> CreateTransactionDriver();
@@ -354,7 +354,7 @@ class FlushInflightsToLogCallback : public RefCountedThreadSafe<FlushInflightsTo
       : tablet_(tablet),
         log_(log) {}
 
-  Status WaitForInflightsAndFlushLog();
+  CHECKED_STATUS WaitForInflightsAndFlushLog();
 
  private:
   Tablet* tablet_;

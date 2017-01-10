@@ -372,18 +372,18 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
   opid_index = -1;
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, opid_index, timeout,
                                 &error_code));
-  inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_TOMBSTONED);
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_TOMBSTONED));
 
   // Now that the tablet is already tombstoned, our opid_index should be
   // ignored (because it's impossible to check it).
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, -9999, timeout,
                                 &error_code));
-  inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_TOMBSTONED);
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_TOMBSTONED));
 
   // Same with TOMBSTONED -> DELETED.
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, -9999, timeout,
                                 &error_code));
-  inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_DELETED);
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_DELETED));
 }
 
 TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
@@ -444,7 +444,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   // a replica to the dead TS.
   cluster_->master()->Shutdown();
   ASSERT_OK(cluster_->master()->Restart());
-  cluster_->WaitForTabletServerCount(2, timeout);
+  ASSERT_OK(cluster_->WaitForTabletServerCount(2, timeout));
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());
@@ -476,7 +476,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   NO_FATALS(WaitForTSToCrash(kTsIndex));
 
   // The superblock should be in TABLET_DATA_COPYING state on disk.
-  NO_FATALS(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_COPYING));
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_COPYING));
 
   // Kill the other tablet servers so the leader doesn't try to remote
   // bootstrap it again during our verification here.
@@ -511,7 +511,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   // a replica to the dead TS.
   cluster_->master()->Shutdown();
   ASSERT_OK(cluster_->master()->Restart());
-  cluster_->WaitForTabletServerCount(2, timeout);
+  ASSERT_OK(cluster_->WaitForTabletServerCount(2, timeout));
 
   // Start a workload on the cluster, and run it for a little while.
   TestWorkload workload(cluster_.get());

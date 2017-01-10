@@ -122,7 +122,7 @@ class MRSRow {
   friend class MemRowSet;
 
   template <class ArenaType>
-  Status CopyRow(const ConstContiguousRow& row, ArenaType *arena) {
+  CHECKED_STATUS CopyRow(const ConstContiguousRow& row, ArenaType *arena) {
     // the representation of the MRSRow and ConstContiguousRow is the same.
     // so, instead of using CopyRow we can just do a memcpy.
     memcpy(row_slice_.mutable_data(), row.row_data(), row_slice_.size());
@@ -194,7 +194,7 @@ class MemRowSet : public RowSet,
   // the provided memory buffer may safely be re-used or freed.
   //
   // Returns Status::OK unless allocation fails.
-  Status Insert(Timestamp timestamp,
+  CHECKED_STATUS Insert(Timestamp timestamp,
                 const ConstContiguousRow& row,
                 const consensus::OpId& op_id);
 
@@ -202,7 +202,7 @@ class MemRowSet : public RowSet,
   // Update or delete an existing row in the memrowset.
   //
   // Returns Status::NotFound if the row doesn't exist.
-  virtual Status MutateRow(Timestamp timestamp,
+  virtual CHECKED_STATUS MutateRow(Timestamp timestamp,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &delta,
                            const consensus::OpId& op_id,
@@ -217,12 +217,12 @@ class MemRowSet : public RowSet,
   }
 
   // Conform entry_count to RowSet
-  Status CountRows(rowid_t *count) const OVERRIDE {
+  CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE {
     *count = entry_count();
     return Status::OK();
   }
 
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const OVERRIDE;
 
   uint64_t EstimateOnDiskSize() const OVERRIDE {
@@ -244,7 +244,7 @@ class MemRowSet : public RowSet,
   }
 
   // TODO: unit test me
-  Status CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
+  CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
                          ProbeStats* stats) const OVERRIDE;
 
   // Return the memory footprint of this memrowset.
@@ -267,12 +267,12 @@ class MemRowSet : public RowSet,
                         const MvccSnapshot &snap) const;
 
   // Alias to conform to DiskRowSet interface
-  virtual Status NewRowIterator(const Schema* projection,
+  virtual CHECKED_STATUS NewRowIterator(const Schema* projection,
                                 const MvccSnapshot& snap,
                                 gscoped_ptr<RowwiseIterator>* out) const OVERRIDE;
 
   // Create compaction input.
-  virtual Status NewCompactionInput(const Schema* projection,
+  virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot& snap,
                                     gscoped_ptr<CompactionInput>* out) const OVERRIDE;
 
@@ -299,7 +299,7 @@ class MemRowSet : public RowSet,
   // If 'lines' is NULL, dumps to LOG(INFO).
   //
   // This dumps every row, so should only be used in tests, etc.
-  virtual Status DebugDump(vector<string> *lines = NULL) OVERRIDE;
+  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) OVERRIDE;
 
   string ToString() const OVERRIDE {
     return string("memrowset");
@@ -329,16 +329,16 @@ class MemRowSet : public RowSet,
     return 0;
   }
 
-  Status FlushDeltas() OVERRIDE { return Status::OK(); }
+  CHECKED_STATUS FlushDeltas() OVERRIDE { return Status::OK(); }
 
-  Status MinorCompactDeltaStores() OVERRIDE { return Status::OK(); }
+  CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE { return Status::OK(); }
 
  private:
   friend class Iterator;
 
   // Perform a "Reinsert" -- handle an insertion into a row which was previously
   // inserted and deleted, but still has an entry in the MemRowSet.
-  Status Reinsert(Timestamp timestamp,
+  CHECKED_STATUS Reinsert(Timestamp timestamp,
                   const ConstContiguousRow& row_data,
                   MRSRow *row);
 
@@ -387,11 +387,11 @@ class MemRowSet::Iterator : public RowwiseIterator {
 
   virtual ~Iterator();
 
-  virtual Status Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
-  Status SeekAtOrAfter(const Slice &key, bool *exact);
+  CHECKED_STATUS SeekAtOrAfter(const Slice &key, bool *exact);
 
-  virtual Status NextBlock(RowBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
 
   bool has_upper_bound() const {
     return exclusive_upper_bound_.is_initialized();
@@ -423,7 +423,7 @@ class MemRowSet::Iterator : public RowwiseIterator {
   }
 
   // Copy the current MRSRow to the 'dst_row' provided using the iterator projection schema.
-  Status GetCurrentRow(RowBlockRow* dst_row,
+  CHECKED_STATUS GetCurrentRow(RowBlockRow* dst_row,
                        Arena* row_arena,
                        const Mutation** redo_head,
                        Arena* mutation_arena,
@@ -469,8 +469,8 @@ class MemRowSet::Iterator : public RowwiseIterator {
            MvccSnapshot mvcc_snap);
 
   // Various helper functions called while getting the next RowBlock
-  Status FetchRows(RowBlock* dst, size_t* fetched);
-  Status ApplyMutationsToProjectedRow(const Mutation *mutation_head,
+  CHECKED_STATUS FetchRows(RowBlock* dst, size_t* fetched);
+  CHECKED_STATUS ApplyMutationsToProjectedRow(const Mutation *mutation_head,
                                       RowBlockRow *dst_row,
                                       Arena *dst_arena);
 

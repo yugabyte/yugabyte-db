@@ -115,7 +115,7 @@ TEST_F(ClientStressTest, TestLookupTimeouts) {
 // scan starting at random points in the key space.
 TEST_F(ClientStressTest, TestStartScans) {
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    cluster_->SetFlag(cluster_->tablet_server(i), "log_preallocate_segments", "0");
+    ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(i), "log_preallocate_segments", "0"));
   }
   TestWorkload work(cluster_.get());
   work.set_num_tablets(40);
@@ -182,19 +182,19 @@ TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
 
   work.Start();
 
-  cluster_->tablet_server(0)->Pause();
-  cluster_->tablet_server(1)->Pause();
-  cluster_->tablet_server(2)->Pause();
-  cluster_->master(0)->Pause();
-  cluster_->master(1)->Pause();
-  cluster_->master(2)->Pause();
+  ASSERT_OK(cluster_->tablet_server(0)->Pause());
+  ASSERT_OK(cluster_->tablet_server(1)->Pause());
+  ASSERT_OK(cluster_->tablet_server(2)->Pause());
+  ASSERT_OK(cluster_->master(0)->Pause());
+  ASSERT_OK(cluster_->master(1)->Pause());
+  ASSERT_OK(cluster_->master(2)->Pause());
   SleepFor(MonoDelta::FromMilliseconds(300));
-  cluster_->tablet_server(0)->Resume();
-  cluster_->tablet_server(1)->Resume();
-  cluster_->tablet_server(2)->Resume();
-  cluster_->master(0)->Resume();
-  cluster_->master(1)->Resume();
-  cluster_->master(2)->Resume();
+  ASSERT_OK(cluster_->tablet_server(0)->Resume());
+  ASSERT_OK(cluster_->tablet_server(1)->Resume());
+  ASSERT_OK(cluster_->tablet_server(2)->Resume());
+  ASSERT_OK(cluster_->master(0)->Resume());
+  ASSERT_OK(cluster_->master(1)->Resume());
+  ASSERT_OK(cluster_->master(2)->Resume());
   SleepFor(MonoDelta::FromMilliseconds(100));
 
   // Set an explicit timeout. This test has caused deadlocks in the past.

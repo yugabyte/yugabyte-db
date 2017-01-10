@@ -41,8 +41,8 @@ class CompressedBlockBuilder {
   // and valid until the class is destructed or until Compress() is called again.
   //
   // If an error was encountered, returns a non-OK status.
-  Status Compress(const Slice& data, Slice *result);
-  Status Compress(const std::vector<Slice> &data_slices, Slice *result);
+  CHECKED_STATUS Compress(const Slice& data, Slice *result);
+  CHECKED_STATUS Compress(const std::vector<Slice> &data_slices, Slice *result);
 
   // header includes a 32-bit compressed length, 32-bit uncompressed length
   static const size_t kHeaderReservedLength = (2 * sizeof(uint32_t));
@@ -63,7 +63,7 @@ class CompressedBlockDecoder {
   // It is the caller's responsibility to free the result data.
   //
   // If an error was encountered, returns a non-OK status.
-  Status Uncompress(const Slice& data, Slice *result);
+  CHECKED_STATUS Uncompress(const Slice& data, Slice *result);
 
   // Validates the header in the data block 'data'.
   // Sets '*uncompressed_size' to the uncompressed size of the data block
@@ -75,12 +75,12 @@ class CompressedBlockDecoder {
   //
   // In the case that this doesn't return OK, the output parameter may still
   // be modified.
-  Status ValidateHeader(const Slice& data, uint32_t *uncompressed_size);
+  CHECKED_STATUS ValidateHeader(const Slice& data, uint32_t *uncompressed_size);
 
   // Uncompress into the provided 'dst' buffer, which must be at least as
   // large as 'uncompressed_size'. It's assumed that this length has already
   // been determined by calling Uncompress_Validate().
-  Status UncompressIntoBuffer(const Slice& data, uint8_t* dst,
+  CHECKED_STATUS UncompressIntoBuffer(const Slice& data, uint8_t* dst,
                               uint32_t uncompressed_size);
  private:
   DISALLOW_COPY_AND_ASSIGN(CompressedBlockDecoder);

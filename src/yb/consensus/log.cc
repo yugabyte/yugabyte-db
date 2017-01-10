@@ -713,7 +713,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       std::lock_guard<percpu_rwlock> l(state_lock_);
       CHECK_EQ(kLogWriting, log_state_);
 
-      GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete);
+      RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete));
 
       if (segments_to_delete.size() == 0) {
         VLOG(1) << "No segments to delete.";

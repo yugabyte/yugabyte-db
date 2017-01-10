@@ -314,9 +314,12 @@ void FullStackInsertScanTest::DoTestScans() {
 
   gscoped_ptr<Subprocess> stat = MakePerfStat();
   gscoped_ptr<Subprocess> record = MakePerfRecord();
-  if (stat) stat->Start();
-  if (record) record->Start();
-
+  if (stat) {
+    CHECK_OK(stat->Start());
+  }
+  if (record) {
+    CHECK_OK(record->Start());
+  }
   NO_FATALS(ScanProjection(vector<string>(), "empty projection, 0 col"));
   NO_FATALS(ScanProjection({ "key" }, "key scan, 1 col"));
   NO_FATALS(ScanProjection(AllColumnNames(), "full schema scan, 10 col"));

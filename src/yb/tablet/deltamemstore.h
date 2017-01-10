@@ -66,7 +66,7 @@ class DeltaMemStore : public DeltaStore,
                 log::LogAnchorRegistry* log_anchor_registry,
                 const std::shared_ptr<MemTracker>& parent_tracker = std::shared_ptr<MemTracker>());
 
-  virtual Status Init() OVERRIDE;
+  virtual CHECKED_STATUS Init() OVERRIDE;
 
   virtual bool Initted() OVERRIDE {
     return true;
@@ -75,7 +75,7 @@ class DeltaMemStore : public DeltaStore,
   // Update the given row in the database.
   // Copies the data, as well as any referenced values into this DMS's local
   // arena.
-  Status Update(Timestamp timestamp, rowid_t row_idx,
+  CHECKED_STATUS Update(Timestamp timestamp, rowid_t row_idx,
                 const RowChangeList &update,
                 const consensus::OpId& op_id);
 
@@ -93,7 +93,7 @@ class DeltaMemStore : public DeltaStore,
 
   // Flush the DMS to the given file writer.
   // Returns statistics in *stats.
-  Status FlushToFile(DeltaFileWriter *dfw,
+  CHECKED_STATUS FlushToFile(DeltaFileWriter *dfw,
                      gscoped_ptr<DeltaStats>* stats);
 
   // Create an iterator for applying deltas from this DMS.
@@ -107,11 +107,11 @@ class DeltaMemStore : public DeltaStore,
   // Returns Status::OK and sets 'iterator' to the new DeltaIterator, or
   // returns Status::NotFound if the mutations within this delta store
   // cannot include 'snap'.
-  virtual Status NewDeltaIterator(const Schema *projection,
+  virtual CHECKED_STATUS NewDeltaIterator(const Schema *projection,
                                   const MvccSnapshot &snap,
                                   DeltaIterator** iterator) const OVERRIDE;
 
-  virtual Status CheckRowDeleted(rowid_t row_idx, bool *deleted) const OVERRIDE;
+  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const OVERRIDE;
 
   virtual uint64_t EstimateSize() const OVERRIDE {
     return memory_footprint();
@@ -184,19 +184,19 @@ class DeltaMemStore : public DeltaStore,
 // functions.
 class DMSIterator : public DeltaIterator {
  public:
-  Status Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
-  Status SeekToOrdinal(rowid_t row_idx) OVERRIDE;
+  CHECKED_STATUS SeekToOrdinal(rowid_t row_idx) OVERRIDE;
 
-  Status PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
+  CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
 
-  Status ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
+  CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
 
-  Status ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
+  CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
 
-  Status CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
+  CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
 
-  Status FilterColumnIdsAndCollectDeltas(const vector<ColumnId>& col_ids,
+  CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const vector<ColumnId>& col_ids,
                                          vector<DeltaKeyAndUpdate>* out,
                                          Arena* arena) OVERRIDE;
 

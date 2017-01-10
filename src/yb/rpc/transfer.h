@@ -72,7 +72,7 @@ class AbstractInboundTransfer {
   virtual ~AbstractInboundTransfer() {}
 
   // Read from the socket into our buffer.
-  virtual Status ReceiveBuffer(Socket& socket) = 0;  // NOLINT.
+  virtual CHECKED_STATUS ReceiveBuffer(Socket& socket) = 0;  // NOLINT.
 
   // Return true if any bytes have yet been received.
   virtual bool TransferStarted() const = 0;
@@ -98,7 +98,7 @@ class YBInboundTransfer : public AbstractInboundTransfer {
   YBInboundTransfer();
 
   // Read from the socket into our buffer.
-  Status ReceiveBuffer(Socket& socket) override;  // NOLINT.
+  CHECKED_STATUS ReceiveBuffer(Socket& socket) override;  // NOLINT.
 
   // Return true if any bytes have yet been received.
   bool TransferStarted() const override {
@@ -115,7 +115,7 @@ class YBInboundTransfer : public AbstractInboundTransfer {
   std::string StatusAsString() const override;
 
  private:
-  Status ProcessInboundHeader();
+  CHECKED_STATUS ProcessInboundHeader();
 
   int32_t total_length_ = kMsgLengthPrefixLength;
 
@@ -129,7 +129,7 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   ~RedisInboundTransfer();
 
   // Read from the socket into our buffer.
-  Status ReceiveBuffer(Socket& socket) override;
+  CHECKED_STATUS ReceiveBuffer(Socket& socket) override;
 
   bool TransferStarted() const override {
     return cur_offset_ != 0;
@@ -154,7 +154,7 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   //
   // returns Status::OK if there are no error(s) in parsing, regardless of the whole command
   // having been read. returns an appropriate non-OK status upon error.
-  Status CheckReadCompletely();
+  CHECKED_STATUS CheckReadCompletely();
 
   // To be called only for client commands in the multi format.
   // e.g:
@@ -163,7 +163,7 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   //      done_ remains false if the command has not been read completely.
   // returns Status::OK if there are no error(s) in parsing, regardless of the whole command
   // having been read. returns an appropriate non-OK status upon error.
-  Status CheckMultiBulkBuffer();
+  CHECKED_STATUS CheckMultiBulkBuffer();
 
   // To be called only for client commands in the inline format.
   // e.g:
@@ -180,14 +180,14 @@ class RedisInboundTransfer : public AbstractInboundTransfer {
   // We haven't seen a place where this is used by the redis clients. All known places seem to use
   // CheckMultiBulkBuffer(). If we find places where this is used, we can come back and make this
   // compliant. If we are sure this doesn't get used, perhaps, we can get rid of this altogether.
-  Status CheckInlineBuffer();
+  CHECKED_STATUS CheckInlineBuffer();
 
   // Returns true if the buffer has the \r\n required at the end of the token.
   bool FindEndOfLine();
 
   // Parses the number pointed to by parsing_pos_ up to the \r\n. Returns OK if successful, or
   // error.
-  Status ParseNumber(int64_t* out_number);
+  CHECKED_STATUS ParseNumber(int64_t* out_number);
 
   int64_t cur_offset_ = 0;  // index into buf_ where the next byte read from the client is stored.
   RedisClientCommand client_command_;
@@ -208,7 +208,7 @@ class CQLInboundTransfer : public AbstractInboundTransfer {
   CQLInboundTransfer();
 
   // Read from the socket into our buffer.
-  Status ReceiveBuffer(Socket& socket) override;  // NOLINT.
+  CHECKED_STATUS ReceiveBuffer(Socket& socket) override;  // NOLINT.
 
   // Return true if any bytes have yet been received.
   bool TransferStarted() const override {
@@ -265,7 +265,7 @@ class OutboundTransfer : public boost::intrusive::list_base_hook<> {
   void Abort(const Status& status);
 
   // send from our buffers into the sock
-  Status SendBuffer(Socket& socket);  // NOLINT.
+  CHECKED_STATUS SendBuffer(Socket& socket);  // NOLINT.
 
   // Return true if any bytes have yet been sent.
   bool TransferStarted() const {

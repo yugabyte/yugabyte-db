@@ -59,7 +59,7 @@ class CFileReader {
   // Fully open a cfile using a previously opened block.
   //
   // After this call, the reader is safe for use.
-  static Status Open(gscoped_ptr<fs::ReadableBlock> block,
+  static CHECKED_STATUS Open(gscoped_ptr<fs::ReadableBlock> block,
                      const ReaderOptions& options,
                      gscoped_ptr<CFileReader>* reader);
 
@@ -69,7 +69,7 @@ class CFileReader {
   //
   // Init() must be called before using most methods. Exceptions include
   // NewIterator() and file_size().
-  static Status OpenNoInit(gscoped_ptr<fs::ReadableBlock> block,
+  static CHECKED_STATUS OpenNoInit(gscoped_ptr<fs::ReadableBlock> block,
                            const ReaderOptions& options,
                            gscoped_ptr<CFileReader>* reader);
 
@@ -77,15 +77,15 @@ class CFileReader {
   // its contents.
   //
   // May be called multiple times; subsequent calls will no-op.
-  Status Init();
+  CHECKED_STATUS Init();
 
   enum CacheControl {
     CACHE_BLOCK,
     DONT_CACHE_BLOCK
   };
 
-  Status NewIterator(CFileIterator **iter, CacheControl cache_control);
-  Status NewIterator(gscoped_ptr<CFileIterator> *iter,
+  CHECKED_STATUS NewIterator(CFileIterator **iter, CacheControl cache_control);
+  CHECKED_STATUS NewIterator(gscoped_ptr<CFileIterator> *iter,
                      CacheControl cache_control) {
     CFileIterator *iter_ptr;
     RETURN_NOT_OK(NewIterator(&iter_ptr, cache_control));
@@ -95,13 +95,13 @@ class CFileReader {
 
   // TODO: make this private? should only be used
   // by the iterator and index tree readers, I think.
-  Status ReadBlock(const BlockPointer &ptr, CacheControl cache_control,
+  CHECKED_STATUS ReadBlock(const BlockPointer &ptr, CacheControl cache_control,
                    BlockHandle *ret) const;
 
   // Return the number of rows in this cfile.
   // This is assumed to be reasonably fast (i.e does not scan
   // the data)
-  Status CountRows(rowid_t *count) const;
+  CHECKED_STATUS CountRows(rowid_t *count) const;
 
   // Retrieve the given metadata entry into 'val'.
   // Returns true if the entry was found, otherwise returns false.
@@ -171,11 +171,11 @@ class CFileReader {
               gscoped_ptr<fs::ReadableBlock> block);
 
   // Callback used in 'init_once_' to initialize this cfile.
-  Status InitOnce();
+  CHECKED_STATUS InitOnce();
 
-  Status ReadMagicAndLength(uint64_t offset, uint32_t *len);
-  Status ReadAndParseHeader();
-  Status ReadAndParseFooter();
+  CHECKED_STATUS ReadMagicAndLength(uint64_t offset, uint32_t *len);
+  CHECKED_STATUS ReadAndParseHeader();
+  CHECKED_STATUS ReadAndParseFooter();
 
   // Returns the memory usage of the object including the object itself.
   size_t memory_footprint() const;
@@ -212,7 +212,7 @@ class ColumnIterator {
   // If provided seek point is past the end of the file,
   // then returns a NotFound Status.
   // TODO: do we ever want to be able to seek to the end of the file?
-  virtual Status SeekToOrdinal(rowid_t ord_idx) = 0;
+  virtual CHECKED_STATUS SeekToOrdinal(rowid_t ord_idx) = 0;
 
   // Return true if this reader is currently seeked.
   // If the iterator is not seeked, it is an error to call any functions except
@@ -236,19 +236,19 @@ class ColumnIterator {
   // If there are at least dst->size() values remaining in the underlying file,
   // this will always return *n == dst->size(). In other words, this does not
   // ever result in a "short read".
-  virtual Status PrepareBatch(size_t *n) = 0;
+  virtual CHECKED_STATUS PrepareBatch(size_t *n) = 0;
 
   // Copy values into the prepared column block.
   // Any indirected values (eg strings) are copied into the dst block's
   // arena.
   // This does _not_ advance the position in the underlying file. Multiple
   // calls to Scan() will re-read the same values.
-  virtual Status Scan(ColumnBlock *dst) = 0;
+  virtual CHECKED_STATUS Scan(ColumnBlock *dst) = 0;
 
   // Finish processing the current batch, advancing the iterators
   // such that the next call to PrepareBatch() will start where the previous
   // batch left off.
-  virtual Status FinishBatch() = 0;
+  virtual CHECKED_STATUS FinishBatch() = 0;
 
   virtual const IteratorStats& io_statistics() const = 0;
 };
@@ -266,15 +266,15 @@ class DefaultColumnValueIterator : public ColumnIterator {
     : typeinfo_(typeinfo), value_(value), ordinal_(0) {
   }
 
-  Status SeekToOrdinal(rowid_t ord_idx) OVERRIDE;
+  CHECKED_STATUS SeekToOrdinal(rowid_t ord_idx) OVERRIDE;
 
   bool seeked() const OVERRIDE { return true; }
 
   rowid_t GetCurrentOrdinal() const OVERRIDE { return ordinal_; }
 
-  Status PrepareBatch(size_t *n) OVERRIDE;
-  Status Scan(ColumnBlock *dst) OVERRIDE;
-  Status FinishBatch() OVERRIDE;
+  CHECKED_STATUS PrepareBatch(size_t *n) OVERRIDE;
+  CHECKED_STATUS Scan(ColumnBlock *dst) OVERRIDE;
+  CHECKED_STATUS FinishBatch() OVERRIDE;
 
   const IteratorStats& io_statistics() const OVERRIDE { return io_stats_; }
 
@@ -296,14 +296,14 @@ class CFileIterator : public ColumnIterator {
 
   // Seek to the first entry in the file. This works for both
   // ordinal-indexed and value-indexed files.
-  Status SeekToFirst();
+  CHECKED_STATUS SeekToFirst();
 
   // Seek to the given ordinal entry in the file.
   // Entry 0 is the first entry written to the file.
   // If provided seek point is past the end of the file,
   // then returns a NotFound Status.
   // TODO: do we ever want to be able to seek to the end of the file?
-  Status SeekToOrdinal(rowid_t ord_idx) OVERRIDE;
+  CHECKED_STATUS SeekToOrdinal(rowid_t ord_idx) OVERRIDE;
 
   // Seek the index to the given row_key, or to the index entry immediately
   // before it. Then (if the index is sparse) seek the data block to the
@@ -314,7 +314,7 @@ class CFileIterator : public ColumnIterator {
   //
   // If this iterator was constructed without no value index,
   // then this will return a NotSupported status.
-  Status SeekAtOrAfter(const EncodedKey &encoded_key,
+  CHECKED_STATUS SeekAtOrAfter(const EncodedKey &encoded_key,
                        bool *exact_match);
 
   // Return true if this reader is currently seeked.
@@ -339,25 +339,25 @@ class CFileIterator : public ColumnIterator {
   // If there are at least dst->size() values remaining in the underlying file,
   // this will always return *n == dst->size(). In other words, this does not
   // ever result in a "short read".
-  Status PrepareBatch(size_t *n) OVERRIDE;
+  CHECKED_STATUS PrepareBatch(size_t *n) OVERRIDE;
 
   // Copy values into the prepared column block.
   // Any indirected values (eg strings) are copied into the dst block's
   // arena.
   // This does _not_ advance the position in the underlying file. Multiple
   // calls to Scan() will re-read the same values.
-  Status Scan(ColumnBlock *dst) OVERRIDE;
+  CHECKED_STATUS Scan(ColumnBlock *dst) OVERRIDE;
 
   // Finish processing the current batch, advancing the iterators
   // such that the next call to PrepareBatch() will start where the previous
   // batch left off.
-  Status FinishBatch() OVERRIDE;
+  CHECKED_STATUS FinishBatch() OVERRIDE;
 
   // Return true if the next call to PrepareBatch will return at least one row.
   bool HasNext() const;
 
   // Convenience method to prepare a batch, scan it, and finish it.
-  Status CopyNextValues(size_t *n, ColumnBlock *dst);
+  CHECKED_STATUS CopyNextValues(size_t *n, ColumnBlock *dst);
 
   const IteratorStats &io_statistics() const OVERRIDE {
     return io_stats_;
@@ -418,16 +418,16 @@ class CFileIterator : public ColumnIterator {
   // into the given PreparedBlock structure.
   //
   // This does not advance the iterator.
-  Status ReadCurrentDataBlock(const IndexTreeIterator &idx_iter,
+  CHECKED_STATUS ReadCurrentDataBlock(const IndexTreeIterator &idx_iter,
                               PreparedBlock *prep_block);
 
   // Read the data block currently pointed to by idx_iter_, and enqueue
   // it onto the end of the prepared_blocks_ deque.
-  Status QueueCurrentDataBlock(const IndexTreeIterator &idx_iter);
+  CHECKED_STATUS QueueCurrentDataBlock(const IndexTreeIterator &idx_iter);
 
   // Fully initialize the underlying cfile reader if needed, and clear any
   // seek-related state.
-  Status PrepareForNewSeek();
+  CHECKED_STATUS PrepareForNewSeek();
 
   CFileReader* reader_;
 

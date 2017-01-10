@@ -46,7 +46,7 @@ TEST_F(LogicalClockTest, TestNow_ValuesIncreaseMonotonically) {
 TEST_F(LogicalClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   Timestamp initial = clock_->Now();
   Timestamp future(initial.value() + 10);
-  clock_->Update(future);
+  ASSERT_OK(clock_->Update(future));
   Timestamp now = clock_->Now();
   // now should be 1 after future
   ASSERT_EQ(initial.value() + 11, now.value());
@@ -56,7 +56,7 @@ TEST_F(LogicalClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
 TEST_F(LogicalClockTest, TestUpdate_LogicalValueDoesNotIncrease) {
   Timestamp ts(1);
   // update the clock to 1, the initial value, should do nothing
-  clock_->Update(ts);
+  ASSERT_OK(clock_->Update(ts));
   Timestamp now = clock_->Now();
   ASSERT_EQ(now.value(), 2);
 }

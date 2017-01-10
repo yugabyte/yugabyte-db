@@ -117,7 +117,7 @@ class Tablet {
 
   // Open the tablet.
   // Upon completion, the tablet enters the kBootstrapping state.
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -134,7 +134,7 @@ class Tablet {
 
   // Decode the Write (insert/mutate) operations from within a user's request.
   // Either fills in tx_state->row_ops or tx_state->kv_write_batch depending on TableType.
-  Status DecodeWriteOperations(const Schema* client_schema,
+  CHECKED_STATUS DecodeWriteOperations(const Schema* client_schema,
                                WriteTransactionState* tx_state);
 
   // Kudu-specific. To be removed with the rest of Kudu storage engine. This is a no-op for YB
@@ -146,7 +146,7 @@ class Tablet {
   // state holds _some_ of the locks. In that case, we expect that
   // the transaction will still clean them up when it is aborted (or
   // otherwise destructed).
-  Status AcquireKuduRowLocks(WriteTransactionState *tx_state);
+  CHECKED_STATUS AcquireKuduRowLocks(WriteTransactionState *tx_state);
 
   // Finish the Prepare phase of a write transaction.
   //
@@ -191,7 +191,7 @@ class Tablet {
   //
   // Acquires the row lock for the given operation, setting it in the
   // RowOp struct. This also sets the row op's RowSetKeyProbe.
-  Status AcquireLockForOp(WriteTransactionState* tx_state,
+  CHECKED_STATUS AcquireLockForOp(WriteTransactionState* tx_state,
                           RowOp* op);
 
   // Signal that the given transaction is about to Apply.
@@ -210,23 +210,23 @@ class Tablet {
                                   uint64_t raft_index,
                                   Timestamp timestamp);
 
-  Status KeyValueBatchFromRedisWriteBatch(
+  CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* redis_write_batch_pb,
       vector<string> *keys_locked,
       vector<RedisResponsePB>* responses);
 
-  Status HandleRedisReadRequest(const MvccSnapshot &snap,
+  CHECKED_STATUS HandleRedisReadRequest(const MvccSnapshot &snap,
                                 const RedisReadRequestPB& redis_read_request,
                                 RedisResponsePB* response);
 
-  Status KeyValueBatchFromYSQLWriteBatch(
+  CHECKED_STATUS KeyValueBatchFromYSQLWriteBatch(
       const tserver::WriteRequestPB& ysql_write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* ysql_write_batch_pb,
       vector<string> *keys_locked,
       vector<YSQLResponsePB>* responses);
 
-  Status HandleYSQLReadRequest(const MvccSnapshot &snap,
+  CHECKED_STATUS HandleYSQLReadRequest(const MvccSnapshot &snap,
                                const YSQLReadRequestPB& ysql_read_request,
                                YSQLResponsePB* response,
                                gscoped_ptr<faststring>* rows_data);
@@ -239,25 +239,25 @@ class Tablet {
   // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
   // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
   // committed.
-  Status KeyValueBatchFromKuduRowOps(
+  CHECKED_STATUS KeyValueBatchFromKuduRowOps(
       const tserver::WriteRequestPB &kudu_write_request_pb,
       std::unique_ptr<const tserver::WriteRequestPB> *kudu_write_batch_pb,
       std::vector<std::string> *keys_locked);
 
   // Uses primary_key:column_name for key encoding.
-  Status CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
+  CHECKED_STATUS CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> &row_ops,
                                         yb::docdb::KeyValueWriteBatchPB* write_batch_pb,
                                         std::vector<std::string>* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
   // YSQL_TABLE_TYPE.
-  Status CreateCheckpoint(const std::string& dir,
+  CHECKED_STATUS CreateCheckpoint(const std::string& dir,
                           google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
-  Status NewRowIterator(const Schema &projection,
+  CHECKED_STATUS NewRowIterator(const Schema &projection,
                         gscoped_ptr<RowwiseIterator> *iter) const;
 
   // Whether the iterator should return results in order.
@@ -267,7 +267,7 @@ class Tablet {
   };
 
   // Create a new row iterator for some historical snapshot.
-  Status NewRowIterator(const Schema &projection,
+  CHECKED_STATUS NewRowIterator(const Schema &projection,
                         const MvccSnapshot &snap,
                         const OrderMode order,
                         gscoped_ptr<RowwiseIterator> *iter) const;
@@ -277,17 +277,17 @@ class Tablet {
   //
   // This doesn't flush any DeltaMemStores for any existing RowSets.
   // To do that, call FlushBiggestDMS() for example.
-  Status Flush();
+  CHECKED_STATUS Flush();
 
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
-  Status CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
+  CHECKED_STATUS CreatePreparedAlterSchema(AlterSchemaTransactionState *tx_state,
                                    const Schema* schema);
 
   // Apply the Schema of the specified transaction.
   // This operation will trigger a flush on the current MemRowSet.
-  Status AlterSchema(AlterSchemaTransactionState* tx_state);
+  CHECKED_STATUS AlterSchema(AlterSchemaTransactionState* tx_state);
 
   // Rewind the schema to an earlier version than is written in the on-disk
   // metadata. This is done during bootstrap to roll the schema back to the
@@ -295,7 +295,7 @@ class Tablet {
   // the operations in the log with the correct schema.
   //
   // REQUIRES: state_ == kBootstrapping
-  Status RewindSchemaForBootstrap(const Schema& schema,
+  CHECKED_STATUS RewindSchemaForBootstrap(const Schema& schema,
                                   int64_t schema_version);
 
   // Prints current RowSet layout, taking a snapshot of the current RowSet interval
@@ -314,7 +314,7 @@ class Tablet {
   };
   typedef int CompactFlags;
 
-  Status Compact(CompactFlags flags);
+  CHECKED_STATUS Compact(CompactFlags flags);
 
   // Update the statistics for performing a compaction.
   void UpdateCompactionStats(MaintenanceOpStats* stats);
@@ -347,14 +347,14 @@ class Tablet {
                                 int64_t* mem_size, int64_t* retention_size) const;
 
   // Flushes the DMS with the highest retention.
-  Status FlushDMSWithHighestRetention(const MaxIdxToSegmentMap& max_idx_to_segment_size) const;
+  CHECKED_STATUS FlushDMSWithHighestRetention(const MaxIdxToSegmentMap& max_idx_to_segment_size) const;
 
   // Flush only the biggest DMS
-  Status FlushBiggestDMS();
+  CHECKED_STATUS FlushBiggestDMS();
 
   // Finds the RowSet which has the most separate delta files and
   // issues a minor delta compaction.
-  Status CompactWorstDeltas(RowSet::DeltaCompactionType type);
+  CHECKED_STATUS CompactWorstDeltas(RowSet::DeltaCompactionType type);
 
   // Get the highest performance improvement that would come from compacting the delta stores
   // of one of the rowsets. If the returned performance improvement is 0, or if 'rs' is NULL,
@@ -374,12 +374,12 @@ class Tablet {
   // Attempt to count the total number of rows in the tablet.
   // This is not super-efficient since it must iterate over the
   // memrowset in the current implementation.
-  Status CountRows(uint64_t *count) const;
+  CHECKED_STATUS CountRows(uint64_t *count) const;
 
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.
-  Status DebugDump(vector<std::string> *lines = NULL);
+  CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL);
 
   const Schema* schema() const {
     return &metadata_->schema();
@@ -411,7 +411,7 @@ class Tablet {
   // a shared_ptr API for now?)
   //
   // TODO: Handle MVCC to support MemRowSet and handle deltas in DeltaMemStore
-  Status DoMajorDeltaCompaction(const std::vector<ColumnId>& column_ids,
+  CHECKED_STATUS DoMajorDeltaCompaction(const std::vector<ColumnId>& column_ids,
                                 std::shared_ptr<RowSet> input_rowset);
 
   // Method used by tests to retrieve all rowsets of this table. This
@@ -453,7 +453,7 @@ class Tablet {
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
-  Status AcquireLocksAndPerformDocOperations(WriteTransactionState *state);
+  CHECKED_STATUS AcquireLocksAndPerformDocOperations(WriteTransactionState *state);
 
   static const char* kDMSMemTrackerId;
 
@@ -462,16 +462,16 @@ class Tablet {
   friend class TabletPeerTest;
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  Status FlushUnlocked();
+  CHECKED_STATUS FlushUnlocked();
 
   // A version of Insert that does not acquire locks and instead assumes that
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
-  Status InsertUnlocked(
+  CHECKED_STATUS InsertUnlocked(
     WriteTransactionState *tx_state,
     RowOp* insert);
 
-  Status KuduColumnarInsertUnlocked(
+  CHECKED_STATUS KuduColumnarInsertUnlocked(
     WriteTransactionState *tx_state,
     RowOp* insert,
     const TabletComponents* comps,
@@ -480,7 +480,7 @@ class Tablet {
   // A version of MutateRow that does not acquire locks and instead assumes
   // they were already acquired. Requires that handles for the relevant locks
   // and MVCC transaction are present in the transaction state.
-  Status MutateRowUnlocked(WriteTransactionState *tx_state,
+  CHECKED_STATUS MutateRowUnlocked(WriteTransactionState *tx_state,
                            RowOp* mutate);
 
   // Capture a set of iterators which, together, reflect all of the data in the tablet.
@@ -491,30 +491,30 @@ class Tablet {
   //
   // The returned iterators are not Init()ed.
   // 'projection' must remain valid and unchanged for the lifetime of the returned iterators.
-  Status CaptureConsistentIterators(const Schema *projection,
+  CHECKED_STATUS CaptureConsistentIterators(const Schema *projection,
                                     const MvccSnapshot &snap,
                                     const ScanSpec *spec,
                                     vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  Status KuduColumnarCaptureConsistentIterators(
+  CHECKED_STATUS KuduColumnarCaptureConsistentIterators(
     const Schema *projection,
     const MvccSnapshot &snap,
     const ScanSpec *spec,
     vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  Status YSQLCaptureConsistentIterators(
+  CHECKED_STATUS YSQLCaptureConsistentIterators(
       const Schema *projection,
       const MvccSnapshot &snap,
       const ScanSpec *spec,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  Status PickRowSetsToCompact(RowSetsInCompaction *picked,
+  CHECKED_STATUS PickRowSetsToCompact(RowSetsInCompaction *picked,
                               CompactFlags flags) const;
 
-  Status DoCompactionOrFlush(const RowSetsInCompaction &input,
+  CHECKED_STATUS DoCompactionOrFlush(const RowSetsInCompaction &input,
                              int64_t mrs_being_flushed);
 
-  Status FlushMetadata(const RowSetVector& to_remove,
+  CHECKED_STATUS FlushMetadata(const RowSetVector& to_remove,
                        const RowSetMetadataVector& to_add,
                        int64_t mrs_being_flushed);
 
@@ -543,27 +543,27 @@ class Tablet {
   // If the MemRowSet is not empty it will be added to the 'compaction' input
   // and the MemRowSet compaction lock will be taken to prevent the inclusion
   // in any concurrent compactions.
-  Status ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
+  CHECKED_STATUS ReplaceMemRowSetUnlocked(RowSetsInCompaction *compaction,
                                   std::shared_ptr<MemRowSet> *old_ms);
 
   // TODO: Document me.
-  Status FlushInternal(const RowSetsInCompaction& input,
+  CHECKED_STATUS FlushInternal(const RowSetsInCompaction& input,
                        const std::shared_ptr<MemRowSet>& old_ms);
 
   BloomFilterSizing bloom_sizing() const;
 
   // Convert the specified read client schema (without IDs) to a server schema (with IDs)
   // This method is used by NewRowIterator().
-  Status GetMappedReadProjection(const Schema& projection,
+  CHECKED_STATUS GetMappedReadProjection(const Schema& projection,
                                  Schema *mapped_projection) const;
 
-  Status CheckRowInTablet(const ConstContiguousRow& probe) const;
+  CHECKED_STATUS CheckRowInTablet(const ConstContiguousRow& probe) const;
 
-  Status OpenKeyValueTablet();
-  Status OpenKuduColumnarTablet();
+  CHECKED_STATUS OpenKeyValueTablet();
+  CHECKED_STATUS OpenKuduColumnarTablet();
 
-  Status KuduDebugDump(vector<std::string> *lines);
-  Status DocDBDebugDump(vector<std::string> *lines);
+  CHECKED_STATUS KuduDebugDump(vector<std::string> *lines);
+  CHECKED_STATUS DocDBDebugDump(vector<std::string> *lines);
 
   static void EmitRocksDBMetrics(std::shared_ptr<rocksdb::Statistics> rocksdb_statistics,
                                  JsonWriter* writer,
@@ -704,17 +704,17 @@ class Tablet {
 // parts of the compaction code.
 class Tablet::CompactionFaultHooks {
  public:
-  virtual Status PostSelectIterators() { return Status::OK(); }
+  virtual CHECKED_STATUS PostSelectIterators() { return Status::OK(); }
   virtual ~CompactionFaultHooks() {}
 };
 
 class Tablet::FlushCompactCommonHooks {
  public:
-  virtual Status PostTakeMvccSnapshot() { return Status::OK(); }
-  virtual Status PostWriteSnapshot() { return Status::OK(); }
-  virtual Status PostSwapInDuplicatingRowSet() { return Status::OK(); }
-  virtual Status PostReupdateMissedDeltas() { return Status::OK(); }
-  virtual Status PostSwapNewRowSet() { return Status::OK(); }
+  virtual CHECKED_STATUS PostTakeMvccSnapshot() { return Status::OK(); }
+  virtual CHECKED_STATUS PostWriteSnapshot() { return Status::OK(); }
+  virtual CHECKED_STATUS PostSwapInDuplicatingRowSet() { return Status::OK(); }
+  virtual CHECKED_STATUS PostReupdateMissedDeltas() { return Status::OK(); }
+  virtual CHECKED_STATUS PostSwapNewRowSet() { return Status::OK(); }
   virtual ~FlushCompactCommonHooks() {}
 };
 
@@ -722,7 +722,7 @@ class Tablet::FlushCompactCommonHooks {
 // parts of the Flush() code.
 class Tablet::FlushFaultHooks {
  public:
-  virtual Status PostSwapNewMemRowSet() { return Status::OK(); }
+  virtual CHECKED_STATUS PostSwapNewMemRowSet() { return Status::OK(); }
   virtual ~FlushFaultHooks() {}
 };
 
@@ -730,11 +730,11 @@ class Tablet::Iterator : public RowwiseIterator {
  public:
   virtual ~Iterator();
 
-  virtual Status Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
   virtual bool HasNext() const OVERRIDE;
 
-  virtual Status NextBlock(RowBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
 
   std::string ToString() const OVERRIDE;
 

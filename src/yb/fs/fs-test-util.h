@@ -51,15 +51,15 @@ class CountingReadableBlock : public ReadableBlock {
     return block_->id();
   }
 
-  virtual Status Close() OVERRIDE {
+  virtual CHECKED_STATUS Close() OVERRIDE {
     return block_->Close();
   }
 
-  virtual Status Size(uint64_t* sz) const OVERRIDE {
+  virtual CHECKED_STATUS Size(uint64_t* sz) const OVERRIDE {
     return block_->Size(sz);
   }
 
-  virtual Status Read(uint64_t offset, size_t length,
+  virtual CHECKED_STATUS Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const OVERRIDE {
     RETURN_NOT_OK(block_->Read(offset, length, result, scratch));
     *bytes_read_ += length;

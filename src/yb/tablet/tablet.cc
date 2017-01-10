@@ -1040,7 +1040,9 @@ Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_requ
 
   WriteRequestPB* const write_request_copy = new WriteRequestPB(kudu_write_request_pb);
   kudu_write_batch_pb->reset(write_request_copy);
-  CreateWriteBatchFromKuduRowOps(row_ops, write_request_copy->mutable_write_batch(), keys_locked);
+  RETURN_NOT_OK(
+      CreateWriteBatchFromKuduRowOps(
+          row_ops, write_request_copy->mutable_write_batch(), keys_locked));
   write_request_copy->clear_row_operations();
 
   return Status::OK();

@@ -42,7 +42,7 @@ class Sockaddr {
   // Note that this function will not handle resolving hostnames.
   //
   // Returns a bad Status if the input is malformed.
-  Status ParseString(const std::string& s, uint16_t default_port);
+  CHECKED_STATUS ParseString(const std::string& s, uint16_t default_port);
 
   Sockaddr& operator=(const struct sockaddr_in &addr);
 
@@ -68,7 +68,7 @@ class Sockaddr {
   bool IsAnyLocalAddress() const;
 
   // Does reverse DNS lookup of the address and stores it in hostname.
-  Status LookupHostname(std::string* hostname) const;
+  CHECKED_STATUS LookupHostname(std::string* hostname) const;
 
   // the default auto-generated copy constructor is fine here
  private:

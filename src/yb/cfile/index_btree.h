@@ -43,22 +43,22 @@ class IndexTreeBuilder {
   // Append the given key into the index.
   // The key is copied into the builder's internal
   // memory.
-  Status Append(const Slice &key, const BlockPointer &block);
-  Status Finish(BTreeInfoPB *info);
+  CHECKED_STATUS Append(const Slice &key, const BlockPointer &block);
+  CHECKED_STATUS Finish(BTreeInfoPB *info);
  private:
   IndexBlockBuilder *CreateBlockBuilder(bool is_leaf);
-  Status Append(const Slice &key, const BlockPointer &block_ptr,
+  CHECKED_STATUS Append(const Slice &key, const BlockPointer &block_ptr,
                 size_t level);
 
   // Finish the current block at the given index level, and then
   // propagate by inserting this block into the next higher-up
   // level index.
-  Status FinishBlockAndPropagate(size_t level);
+  CHECKED_STATUS FinishBlockAndPropagate(size_t level);
 
   // Finish the current block at the given level, writing it
   // to the file. Return the location of the written block
   // in 'written'.
-  Status FinishAndWriteBlock(size_t level, BlockPointer *written);
+  CHECKED_STATUS FinishAndWriteBlock(size_t level, BlockPointer *written);
 
   const WriterOptions *options_;
   CFileWriter *writer_;
@@ -74,10 +74,10 @@ class IndexTreeIterator {
       const CFileReader *reader,
       const BlockPointer &root_blockptr);
 
-  Status SeekToFirst();
-  Status SeekAtOrBefore(const Slice &search_key);
+  CHECKED_STATUS SeekToFirst();
+  CHECKED_STATUS SeekAtOrBefore(const Slice &search_key);
   bool HasNext();
-  Status Next();
+  CHECKED_STATUS Next();
 
   // The slice key at which the iterator
   // is currently seeked to.
@@ -93,10 +93,10 @@ class IndexTreeIterator {
   IndexBlockReader *BottomReader();
   IndexBlockIterator *seeked_iter(int depth);
   IndexBlockReader *seeked_reader(int depth);
-  Status LoadBlock(const BlockPointer &block, int dept);
-  Status SeekDownward(const Slice &search_key, const BlockPointer &in_block,
+  CHECKED_STATUS LoadBlock(const BlockPointer &block, int dept);
+  CHECKED_STATUS SeekDownward(const Slice &search_key, const BlockPointer &in_block,
                       int cur_depth);
-  Status SeekToFirstDownward(const BlockPointer &in_block, int cur_depth);
+  CHECKED_STATUS SeekToFirstDownward(const BlockPointer &in_block, int cur_depth);
 
   struct SeekedIndex {
     SeekedIndex() :

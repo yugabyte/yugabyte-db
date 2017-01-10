@@ -52,21 +52,21 @@ class LogAnchorRegistry : public RefCountedThreadSafe<LogAnchorRegistry> {
   // Before: anchor must be registered with some log index.
   // After: anchor is now registered using index 'log_index'.
   // See Register().
-  Status UpdateRegistration(int64_t log_index,
+  CHECKED_STATUS UpdateRegistration(int64_t log_index,
                             const std::string& owner,
                             LogAnchor* anchor);
 
   // Release the anchor on a log index.
   // Note: anchor must be the original pointer passed to Register().
-  Status Unregister(LogAnchor* anchor);
+  CHECKED_STATUS Unregister(LogAnchor* anchor);
 
   // Release the anchor on a log index if it is registered.
   // Otherwise, do nothing.
-  Status UnregisterIfAnchored(LogAnchor* anchor);
+  CHECKED_STATUS UnregisterIfAnchored(LogAnchor* anchor);
 
   // Query the registry to find the earliest anchored log index in the registry.
   // Returns Status::NotFound if no anchors are currently active.
-  Status GetEarliestRegisteredLogIndex(int64_t* op_id);
+  CHECKED_STATUS GetEarliestRegisteredLogIndex(int64_t* op_id);
 
   // Simply returns the number of active anchors for use in debugging / tests.
   // This is _not_ a constant-time operation.
@@ -85,7 +85,7 @@ class LogAnchorRegistry : public RefCountedThreadSafe<LogAnchorRegistry> {
   void RegisterUnlocked(int64_t log_index, const std::string& owner, LogAnchor* anchor);
 
   // Unregister an anchor after taking the lock. See Unregister().
-  Status UnregisterUnlocked(LogAnchor* anchor);
+  CHECKED_STATUS UnregisterUnlocked(LogAnchor* anchor);
 
   AnchorMultiMap anchors_;
   mutable simple_spinlock lock_;
@@ -138,7 +138,7 @@ class MinLogIndexAnchorer {
 
   // Un-anchors the earliest index (which is the only one tracked).
   // If no minimum is known (no anchor registered), returns OK.
-  Status ReleaseAnchor();
+  CHECKED_STATUS ReleaseAnchor();
 
   // Returns the first recorded log index, kInvalidOpIdIndex if there's none.
   int64_t minimum_log_index() const;

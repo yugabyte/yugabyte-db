@@ -72,17 +72,17 @@ class RowOperationsPBDecoder {
                          Arena* dst_arena);
   ~RowOperationsPBDecoder();
 
-  Status DecodeOperations(std::vector<DecodedRowOperation>* ops);
+  CHECKED_STATUS DecodeOperations(std::vector<DecodedRowOperation>* ops);
 
  private:
-  Status ReadOpType(RowOperationsPB::Type* type);
-  Status ReadIssetBitmap(const uint8_t** bitmap);
-  Status ReadNullBitmap(const uint8_t** null_bm);
-  Status GetColumnSlice(const ColumnSchema& col, Slice* slice);
-  Status ReadColumn(const ColumnSchema& col, uint8_t* dst);
+  CHECKED_STATUS ReadOpType(RowOperationsPB::Type* type);
+  CHECKED_STATUS ReadIssetBitmap(const uint8_t** bitmap);
+  CHECKED_STATUS ReadNullBitmap(const uint8_t** null_bm);
+  CHECKED_STATUS GetColumnSlice(const ColumnSchema& col, Slice* slice);
+  CHECKED_STATUS ReadColumn(const ColumnSchema& col, uint8_t* dst);
   bool HasNext() const;
 
-  Status DecodeInsert(const uint8_t* prototype_row_storage,
+  CHECKED_STATUS DecodeInsert(const uint8_t* prototype_row_storage,
                       const ClientServerMapping& mapping,
                       DecodedRowOperation* op);
   //------------------------------------------------------------
@@ -90,11 +90,11 @@ class RowOperationsPBDecoder {
   //------------------------------------------------------------
 
   // Decode the next encoded operation, which must be UPDATE or DELETE.
-  Status DecodeUpdateOrDelete(const ClientServerMapping& mapping,
+  CHECKED_STATUS DecodeUpdateOrDelete(const ClientServerMapping& mapping,
                               DecodedRowOperation* op);
 
   // Decode the next encoded operation, which must be SPLIT_KEY.
-  Status DecodeSplitRow(const ClientServerMapping& mapping,
+  CHECKED_STATUS DecodeSplitRow(const ClientServerMapping& mapping,
                         DecodedRowOperation* op);
 
   const RowOperationsPB* const pb_;

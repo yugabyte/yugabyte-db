@@ -277,7 +277,7 @@ Status RemoteYsckMaster::RetrieveTabletsList(const shared_ptr<YsckTable>& table)
   bool more_tablets = true;
   string last_key;
   while (more_tablets) {
-    GetTabletsBatch(table->name(), &last_key, tablets, &more_tablets);
+    RETURN_NOT_OK(GetTabletsBatch(table->name(), &last_key, tablets, &more_tablets));
   }
 
   table->set_tablets(tablets);

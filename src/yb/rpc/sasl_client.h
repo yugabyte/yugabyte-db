@@ -50,11 +50,11 @@ class SaslClient {
 
   // Enable ANONYMOUS authentication.
   // Call after Init().
-  Status EnableAnonymous();
+  CHECKED_STATUS EnableAnonymous();
 
   // Enable PLAIN authentication.
   // Call after Init().
-  Status EnablePlain(const string& user, const string& pass);
+  CHECKED_STATUS EnablePlain(const string& user, const string& pass);
 
   // Returns mechanism negotiated by this connection.
   // Call after Negotiate().
@@ -80,13 +80,13 @@ class SaslClient {
 
   // Initialize a new SASL client. Must be called before Negotiate().
   // Returns OK on success, otherwise RuntimeError.
-  Status Init(const string& service_type);
+  CHECKED_STATUS Init(const string& service_type);
 
   // Begin negotiation with the SASL server on the other side of the fd socket
   // that this client was constructed with.
   // Returns OK on success.
   // Otherwise, it may return NotAuthorized, NotSupported, or another non-OK status.
-  Status Negotiate();
+  CHECKED_STATUS Negotiate();
 
   // SASL callback for plugin options, supported mechanisms, etc.
   // Returns SASL_FAIL if the option is not handled, which does not fail the handshake.
@@ -101,40 +101,40 @@ class SaslClient {
 
  private:
   // Encode and send the specified SASL message to the server.
-  Status SendSaslMessage(const SaslMessagePB& msg);
+  CHECKED_STATUS SendSaslMessage(const SaslMessagePB& msg);
 
   // Validate that header does not indicate an error, parse param_buf into response.
-  Status ParseSaslMsgResponse(const ResponseHeader& header, const Slice& param_buf,
+  CHECKED_STATUS ParseSaslMsgResponse(const ResponseHeader& header, const Slice& param_buf,
       SaslMessagePB* response);
 
   // Send an NEGOTIATE message to the server.
-  Status SendNegotiateMessage();
+  CHECKED_STATUS SendNegotiateMessage();
 
   // Send an INITIATE message to the server.
-  Status SendInitiateMessage(const SaslMessagePB_SaslAuth& auth,
+  CHECKED_STATUS SendInitiateMessage(const SaslMessagePB_SaslAuth& auth,
                              const char* init_msg, unsigned init_msg_len);
 
   // Send a RESPONSE message to the server.
-  Status SendResponseMessage(const char* resp_msg, unsigned resp_msg_len);
+  CHECKED_STATUS SendResponseMessage(const char* resp_msg, unsigned resp_msg_len);
 
   // Perform a client-side step of the SASL negotiation.
   // Input is what came from the server. Output is what we will send back to the server.
   // Return code from sasl_client_step is stored in result.
   // Returns Status::OK if sasl_client_step returns SASL_OK or SASL_CONTINUE; otherwise,
   // returns Status::NotAuthorized.
-  Status DoSaslStep(const string& in, const char** out, unsigned* out_len, int* result);
+  CHECKED_STATUS DoSaslStep(const string& in, const char** out, unsigned* out_len, int* result);
 
   // Handle case when server sends NEGOTIATE response.
-  Status HandleNegotiateResponse(const SaslMessagePB& response);
+  CHECKED_STATUS HandleNegotiateResponse(const SaslMessagePB& response);
 
   // Handle case when server sends CHALLENGE response.
-  Status HandleChallengeResponse(const SaslMessagePB& response);
+  CHECKED_STATUS HandleChallengeResponse(const SaslMessagePB& response);
 
   // Handle case when server sends SUCCESS response.
-  Status HandleSuccessResponse(const SaslMessagePB& response);
+  CHECKED_STATUS HandleSuccessResponse(const SaslMessagePB& response);
 
   // Parse error status message from raw bytes of an ErrorStatusPB.
-  Status ParseError(const Slice& err_data);
+  CHECKED_STATUS ParseError(const Slice& err_data);
 
   string app_name_;
   Socket sock_;

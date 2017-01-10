@@ -51,7 +51,7 @@ class TransactionTracker {
   //
   // In the event that the tracker's memory limit is exceeded, returns a
   // ServiceUnavailable status.
-  Status Add(TransactionDriver* driver);
+  CHECKED_STATUS Add(TransactionDriver* driver);
 
   // Removes the txn from the pending list.
   // Also triggers the deletion of the Transaction object, if its refcount == 0.
@@ -64,7 +64,7 @@ class TransactionTracker {
   int GetNumPendingForTests() const;
 
   void WaitForAllToFinish() const;
-  Status WaitForAllToFinish(const MonoDelta& timeout) const;
+  CHECKED_STATUS WaitForAllToFinish(const MonoDelta& timeout) const;
 
   void StartInstrumentation(const scoped_refptr<MetricEntity>& metric_entity);
   void StartMemoryTracking(const std::shared_ptr<MemTracker>& parent_mem_tracker);

@@ -61,35 +61,35 @@ class MajorDeltaCompaction {
 
   // Executes the compaction.
   // This has no effect on the metadata of the tablet, etc.
-  Status Compact();
+  CHECKED_STATUS Compact();
 
   // After a compaction is successful, prepares a metadata update which:
   // 1) swaps out the old columns for the new ones
   // 2) removes the compacted deltas
   // 3) adds the new REDO delta which contains any uncompacted deltas
-  Status CreateMetadataUpdate(RowSetMetadataUpdate* update);
+  CHECKED_STATUS CreateMetadataUpdate(RowSetMetadataUpdate* update);
 
   // Apply the changes to the given delta tracker.
-  Status UpdateDeltaTracker(DeltaTracker* tracker);
+  CHECKED_STATUS UpdateDeltaTracker(DeltaTracker* tracker);
 
  private:
   std::string ColumnNamesToString() const;
 
   // Opens a writer for the base data.
-  Status OpenBaseDataWriter();
+  CHECKED_STATUS OpenBaseDataWriter();
 
   // Opens a writer for the REDO delta file, won't be called if we don't need to write
   // back REDO delta mutations.
-  Status OpenRedoDeltaFileWriter();
+  CHECKED_STATUS OpenRedoDeltaFileWriter();
 
   // Opens a writer for the UNDO delta file, won't be called if we don't need to write
   // back UNDO delta mutations.
-  Status OpenUndoDeltaFileWriter();
+  CHECKED_STATUS OpenUndoDeltaFileWriter();
 
   // Reads the current base data, applies the deltas, and then writes the new base data.
   // A new delta file is written if not all columns were selected for compaction and some
   // deltas need to be written back into a delta file.
-  Status FlushRowSetAndDeltas();
+  CHECKED_STATUS FlushRowSetAndDeltas();
 
   FsManager* const fs_manager_;
 

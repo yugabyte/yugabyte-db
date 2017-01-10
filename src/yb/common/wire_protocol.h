@@ -202,7 +202,7 @@ static inline void Store8(void* p, uint8_t v) {
 // is the coverter's return type. The converter's return type <data_type> is unsigned while
 // <num_type> may be signed or unsigned.
 template<typename num_type, typename data_type>
-static inline Status CQLDecodeNum(
+static inline CHECKED_STATUS CQLDecodeNum(
     size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
   if (len != sizeof(num_type)) return STATUS(NetworkError, "unexpected number byte length");
@@ -216,7 +216,7 @@ static inline Status CQLDecodeNum(
 // type. <converter> converts the number from network byte-order to machine order and <data_type>
 // is the coverter's return type. The converter's return type <data_type> is an integer type.
 template<typename float_type, typename data_type>
-static inline Status CQLDecodeFloat(
+static inline CHECKED_STATUS CQLDecodeFloat(
     size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
   // Make sure float and double are exactly sizeof uint32_t and uint64_t.
   static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
@@ -226,7 +226,7 @@ static inline Status CQLDecodeFloat(
   return Status::OK();
 }
 
-static inline Status CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
+static inline CHECKED_STATUS CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
   RETURN_NOT_ENOUGH(data, len);
   *val = std::string(util::to_char_ptr(data->data()), len);
   data->remove_prefix(len);

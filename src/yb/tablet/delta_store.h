@@ -46,7 +46,7 @@ class DeltaStore {
  public:
   // Performs any post-construction work for the DeltaStore, which may
   // include additional I/O.
-  virtual Status Init() = 0;
+  virtual CHECKED_STATUS Init() = 0;
 
   // Whether this delta store was initialized or not.
   virtual bool Initted() = 0;
@@ -62,12 +62,12 @@ class DeltaStore {
   // Returns Status::OK and sets 'iterator' to the new DeltaIterator, or
   // returns Status::NotFound if the mutations within this delta store
   // cannot include 'snap'.
-  virtual Status NewDeltaIterator(const Schema *projection,
+  virtual CHECKED_STATUS NewDeltaIterator(const Schema *projection,
                                   const MvccSnapshot &snap,
                                   DeltaIterator** iterator) const = 0;
 
   // Set *deleted to true if the latest update for the given row is a deletion.
-  virtual Status CheckRowDeleted(rowid_t row_idx, bool *deleted) const = 0;
+  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const = 0;
 
   // Get the store's estimated size in bytes.
   virtual uint64_t EstimateSize() const = 0;
@@ -115,11 +115,11 @@ class DeltaIterator {
  public:
   // Initialize the iterator. This must be called once before any other
   // call.
-  virtual Status Init(ScanSpec *spec) = 0;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) = 0;
 
   // Seek to a particular ordinal position in the delta data. This cancels any prepared
   // block, and must be called at least once prior to PrepareBatch().
-  virtual Status SeekToOrdinal(rowid_t idx) = 0;
+  virtual CHECKED_STATUS SeekToOrdinal(rowid_t idx) = 0;
 
   // Argument to PrepareBatch(). See below.
   enum PrepareFlag {
@@ -136,18 +136,18 @@ class DeltaIterator {
   //
   // Each time this is called, the iterator is advanced by the full length
   // of the previously prepared block.
-  virtual Status PrepareBatch(size_t nrows, PrepareFlag flag) = 0;
+  virtual CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) = 0;
 
   // Apply the snapshotted updates to one of the columns.
   // 'dst' must be the same length as was previously passed to PrepareBatch()
   // Must have called PrepareBatch() with flag = PREPARE_FOR_APPLY.
-  virtual Status ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) = 0;
+  virtual CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) = 0;
 
   // Apply any deletes to the given selection vector.
   // Rows which have been deleted in the associated MVCC snapshot are set to
   // 0 in the selection vector so that they don't show up in the output.
   // Must have called PrepareBatch() with flag = PREPARE_FOR_APPLY.
-  virtual Status ApplyDeletes(SelectionVector *sel_vec) = 0;
+  virtual CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) = 0;
 
   // Collect the mutations associated with each row in the current prepared batch.
   //
@@ -158,7 +158,7 @@ class DeltaIterator {
   //
   // The Mutation objects will be allocated out of the provided Arena, which must be non-NULL.
   // Must have called PrepareBatch() with flag = PREPARE_FOR_COLLECT.
-  virtual Status CollectMutations(vector<Mutation *> *dst, Arena *arena) = 0;
+  virtual CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) = 0;
 
   // Iterate through all deltas, adding deltas for columns not
   // specified in 'col_ids' to 'out'.
@@ -166,7 +166,7 @@ class DeltaIterator {
   // The delta objects will be allocated out the provided Arena which
   // must be non-NULL.
   // Must have called PrepareBatch() with flag = PREPARE_FOR_COLLECT.
-  virtual Status FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
+  virtual CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
                                                  vector<DeltaKeyAndUpdate>* out,
                                                  Arena* arena) = 0;
 

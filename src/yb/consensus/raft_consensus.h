@@ -94,7 +94,7 @@ class RaftConsensus : public Consensus,
 
   virtual ~RaftConsensus();
 
-  virtual Status Start(const ConsensusBootstrapInfo& info) OVERRIDE;
+  virtual CHECKED_STATUS Start(const ConsensusBootstrapInfo& info) OVERRIDE;
 
   virtual bool IsRunning() const OVERRIDE;
 
@@ -102,30 +102,30 @@ class RaftConsensus : public Consensus,
   // in the configuration by sending a NO_OP to other peers.
   // This is NOT safe to use in a distributed configuration with failure detection
   // enabled, as it could result in a split-brain scenario.
-  virtual Status EmulateElection() OVERRIDE;
+  virtual CHECKED_STATUS EmulateElection() OVERRIDE;
 
-  virtual Status StartElection(
+  virtual CHECKED_STATUS StartElection(
       ElectionMode mode, const bool pending_commit = false,
       const OpId& opid = OpId::default_instance()) OVERRIDE;
 
-  virtual Status StepDown(const LeaderStepDownRequestPB* req,
+  virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,
                           LeaderStepDownResponsePB* resp) OVERRIDE;
 
   // Call StartElection(), log a warning if the call fails (usually due to
   // being shut down).
   void ReportFailureDetected(const std::string& name, const Status& msg);
 
-  virtual Status Replicate(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
+  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
 
-  virtual Status CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
+  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
 
-  virtual Status Update(const ConsensusRequestPB* request,
+  virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
                         ConsensusResponsePB* response) OVERRIDE;
 
-  virtual Status RequestVote(const VoteRequestPB* request,
+  virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) OVERRIDE;
 
-  virtual Status ChangeConfig(const ChangeConfigRequestPB& req,
+  virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
                               const StatusCallback& client_cb,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
                               OVERRIDE;
@@ -166,7 +166,7 @@ class RaftConsensus : public Consensus,
                                     int64_t term,
                                     const std::string& reason) OVERRIDE;
 
-  virtual Status GetLastOpId(OpIdType type, OpId* id) OVERRIDE;
+  virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) OVERRIDE;
 
  protected:
   // Trigger that a non-Transaction ConsensusRound has finished replication.
@@ -181,11 +181,11 @@ class RaftConsensus : public Consensus,
 
   // As a leader, append a new ConsensusRond to the queue.
   // Only virtual and protected for mocking purposes.
-  virtual Status AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round);
+  virtual CHECKED_STATUS AppendNewRoundToQueueUnlocked(const scoped_refptr<ConsensusRound>& round);
 
   // As a follower, start a consensus round not associated with a Transaction.
   // Only virtual and protected for mocking purposes.
-  virtual Status StartConsensusOnlyRoundUnlocked(const ReplicateRefPtr& msg);
+  virtual CHECKED_STATUS StartConsensusOnlyRoundUnlocked(const ReplicateRefPtr& msg);
 
  private:
   friend class ReplicaState;
@@ -221,32 +221,32 @@ class RaftConsensus : public Consensus,
 
   // Replicate (as leader) a pre-validated config change. This includes
   // updating the peers and setting the new_configuration as pending.
-  Status ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
+  CHECKED_STATUS ReplicateConfigChangeUnlocked(const ReplicateRefPtr& replicate_ref,
                                        const RaftConfigPB& new_config,
                                        ChangeConfigType type,
                                        const StatusCallback& client_cb);
 
   // Update the peers and queue to be consistent with a new active configuration.
   // Should only be called by the leader.
-  Status RefreshConsensusQueueAndPeersUnlocked();
+  CHECKED_STATUS RefreshConsensusQueueAndPeersUnlocked();
 
   // Makes the peer become leader.
   // Returns OK once the change config transaction that has this peer as leader
   // has been enqueued, the transaction will complete asynchronously.
   //
   // The ReplicaState must be locked for configuration change before calling.
-  Status BecomeLeaderUnlocked();
+  CHECKED_STATUS BecomeLeaderUnlocked();
 
   // Makes the peer become a replica, i.e. a FOLLOWER or a LEARNER.
   //
   // The ReplicaState must be locked for configuration change before calling.
-  Status BecomeReplicaUnlocked();
+  CHECKED_STATUS BecomeReplicaUnlocked();
 
   // Updates the state in a replica by storing the received operations in the log
   // and triggering the required transactions. This method won't return until all
   // operations have been stored in the log and all Prepares() have been completed,
   // and a replica cannot accept any more Update() requests until this is done.
-  Status UpdateReplica(const ConsensusRequestPB* request,
+  CHECKED_STATUS UpdateReplica(const ConsensusRequestPB* request,
                        ConsensusResponsePB* response);
 
   // Deduplicates an RPC request making sure that we get only messages that we
@@ -258,7 +258,7 @@ class RaftConsensus : public Consensus,
 
   // Handles a request from a leader, refusing the request if the term is lower than
   // ours or stepping down if it's higher.
-  Status HandleLeaderRequestTermUnlocked(const ConsensusRequestPB* request,
+  CHECKED_STATUS HandleLeaderRequestTermUnlocked(const ConsensusRequestPB* request,
                                          ConsensusResponsePB* response);
 
   // Checks that the preceding op in 'req' is locally committed or pending and sets an
@@ -266,7 +266,7 @@ class RaftConsensus : public Consensus,
   // If there is term mismatch between the preceding op id in 'req' and the local log's
   // pending operations, we proactively abort those pending operations after and including
   // the preceding op in 'req' to avoid a pointless cache miss in the leader's log cache.
-  Status EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequest& req,
+  CHECKED_STATUS EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequest& req,
                                                    ConsensusResponsePB* response);
 
   // Check a request received from a leader, making sure:
@@ -277,7 +277,7 @@ class RaftConsensus : public Consensus,
   //   transactions currently on the pendings set, but different terms.
   // If this returns ok and the response has no errors, 'deduped_req' is set with only
   // the messages to add to our state machine.
-  Status CheckLeaderRequestUnlocked(const ConsensusRequestPB* request,
+  CHECKED_STATUS CheckLeaderRequestUnlocked(const ConsensusRequestPB* request,
                                     ConsensusResponsePB* response,
                                     LeaderRequest* deduped_req);
 
@@ -286,7 +286,7 @@ class RaftConsensus : public Consensus,
 
   // Begin a replica transaction. If the type of message in 'msg' is not a type
   // that uses transactions, delegates to StartConsensusOnlyRoundUnlocked().
-  Status StartReplicaTransactionUnlocked(const ReplicateRefPtr& msg);
+  CHECKED_STATUS StartReplicaTransactionUnlocked(const ReplicateRefPtr& msg);
 
   // Return header string for RequestVote log messages. The ReplicaState lock must be held.
   std::string GetRequestVoteLogPrefixUnlocked() const;
@@ -311,33 +311,33 @@ class RaftConsensus : public Consensus,
   void FillVoteResponseVoteDenied(ConsensusErrorPB::Code error_code, VoteResponsePB* response);
 
   // Respond to VoteRequest that the candidate has an old term.
-  Status RequestVoteRespondInvalidTerm(const VoteRequestPB* request, VoteResponsePB* response);
+  CHECKED_STATUS RequestVoteRespondInvalidTerm(const VoteRequestPB* request, VoteResponsePB* response);
 
   // Respond to VoteRequest that we already granted our vote to the candidate.
-  Status RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* request,
+  CHECKED_STATUS RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* request,
                                               VoteResponsePB* response);
 
   // Respond to VoteRequest that we already granted our vote to someone else.
-  Status RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB* request,
+  CHECKED_STATUS RequestVoteRespondAlreadyVotedForOther(const VoteRequestPB* request,
                                                 VoteResponsePB* response);
 
   // Respond to VoteRequest that the candidate's last-logged OpId is too old.
-  Status RequestVoteRespondLastOpIdTooOld(const OpId& local_last_opid,
+  CHECKED_STATUS RequestVoteRespondLastOpIdTooOld(const OpId& local_last_opid,
                                           const VoteRequestPB* request,
                                           VoteResponsePB* response);
 
   // Respond to VoteRequest that the vote was not granted because we believe
   // the leader to be alive.
-  Status RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
+  CHECKED_STATUS RequestVoteRespondLeaderIsAlive(const VoteRequestPB* request,
                                          VoteResponsePB* response);
 
   // Respond to VoteRequest that the replica is already in the middle of servicing
   // another vote request or an update from a valid leader.
-  Status RequestVoteRespondIsBusy(const VoteRequestPB* request,
+  CHECKED_STATUS RequestVoteRespondIsBusy(const VoteRequestPB* request,
                                   VoteResponsePB* response);
 
   // Respond to VoteRequest that the vote is granted for candidate.
-  Status RequestVoteRespondVoteGranted(const VoteRequestPB* request,
+  CHECKED_STATUS RequestVoteRespondVoteGranted(const VoteRequestPB* request,
                                        VoteResponsePB* response);
 
   void UpdateMajorityReplicatedUnlocked(const OpId& majority_replicated,
@@ -362,29 +362,29 @@ class RaftConsensus : public Consensus,
   // Start tracking the leader for failures. This typically occurs at startup
   // and when the local peer steps down as leader.
   // If the failure detector is already registered, has no effect.
-  Status EnsureFailureDetectorEnabledUnlocked();
+  CHECKED_STATUS EnsureFailureDetectorEnabledUnlocked();
 
   // Untrack the current leader from failure detector.
   // This typically happens when the local peer becomes leader.
   // If the failure detector is already unregistered, has no effect.
-  Status EnsureFailureDetectorDisabledUnlocked();
+  CHECKED_STATUS EnsureFailureDetectorDisabledUnlocked();
 
   // Set the failure detector to an "expired" state, so that the next time
   // the failure monitor runs it triggers an election.
   // This is primarily intended to be used at startup time.
-  Status ExpireFailureDetectorUnlocked();
+  CHECKED_STATUS ExpireFailureDetectorUnlocked();
 
   // "Reset" the failure detector to indicate leader activity.
   // The failure detector must currently be enabled.
   // When this is called a failure is guaranteed not to be detected
   // before 'FLAGS_leader_failure_max_missed_heartbeat_periods' *
   // 'FLAGS_raft_heartbeat_interval_ms' has elapsed.
-  Status SnoozeFailureDetectorUnlocked();
+  CHECKED_STATUS SnoozeFailureDetectorUnlocked();
 
   // Like the above but adds 'additional_delta' to the default timeout
   // period. If allow_logging is set to ALLOW_LOGGING, then this method
   // will print a log message when called.
-  Status SnoozeFailureDetectorUnlocked(const MonoDelta& additional_delta,
+  CHECKED_STATUS SnoozeFailureDetectorUnlocked(const MonoDelta& additional_delta,
                                        AllowLogging allow_logging);
 
   // Return the minimum election timeout. Due to backoff and random
@@ -400,17 +400,17 @@ class RaftConsensus : public Consensus,
 
   // Checks if the leader is ready to process a change config request (one requirement for this is
   // for it to have at least one committed op in the current term). Also checks that there are no
-  // voters in transition in the active config state. Status OK() implies leader is ready.
+  // voters in transition in the active config state. CHECKED_STATUS OK() implies leader is ready.
   // server_uuid is the uuid of the server that we are trying to remove, add, or change its
   // role.
-  Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
+  CHECKED_STATUS IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                               const std::string& server_uuid);
 
   // Increment the term to the next term, resetting the current leader, etc.
-  Status IncrementTermUnlocked();
+  CHECKED_STATUS IncrementTermUnlocked();
 
   // Handle when the term has advanced beyond the current term.
-  Status HandleTermAdvanceUnlocked(ConsensusTerm new_term);
+  CHECKED_STATUS HandleTermAdvanceUnlocked(ConsensusTerm new_term);
 
   // Notify the tablet peer that the consensus configuration
   // has changed, thus reporting it back to the master. This is performed inline.

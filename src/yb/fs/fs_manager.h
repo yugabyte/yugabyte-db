@@ -107,12 +107,12 @@ class FsManager {
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
   // the on-disk structures.
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Create the initial filesystem layout.
   //
   // Returns an error if the file system is already initialized.
-  Status CreateInitialFileSystemLayout();
+  CHECKED_STATUS CreateInitialFileSystemLayout();
 
   void DumpFileSystemTree(std::ostream& out);
 
@@ -127,12 +127,12 @@ class FsManager {
   // Creates a new anonymous block.
   //
   // Block will be synced on close.
-  Status CreateNewBlock(gscoped_ptr<fs::WritableBlock>* block);
+  CHECKED_STATUS CreateNewBlock(gscoped_ptr<fs::WritableBlock>* block);
 
-  Status OpenBlock(const BlockId& block_id,
+  CHECKED_STATUS OpenBlock(const BlockId& block_id,
                    gscoped_ptr<fs::ReadableBlock>* block);
 
-  Status DeleteBlock(const BlockId& block_id);
+  CHECKED_STATUS DeleteBlock(const BlockId& block_id);
 
   bool BlockExists(const BlockId& block_id) const;
 
@@ -158,7 +158,7 @@ class FsManager {
   std::string GetTabletMetadataPath(const std::string& tablet_id) const;
 
   // List the tablet IDs in the metadata directory.
-  Status ListTabletIds(std::vector<std::string>* tablet_ids);
+  CHECKED_STATUS ListTabletIds(std::vector<std::string>* tablet_ids);
 
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
@@ -187,11 +187,11 @@ class FsManager {
     return env_->FileExists(path);
   }
 
-  Status ListDir(const std::string& path, std::vector<std::string> *objects) const {
+  CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const {
     return env_->GetChildren(path, objects);
   }
 
-  Status CreateDirIfMissing(const std::string& path, bool* created = NULL);
+  CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);
 
   fs::BlockManager* block_manager() {
     return block_manager_.get();
@@ -202,7 +202,7 @@ class FsManager {
   friend class itest::ExternalMiniClusterFsInspector; // for access to directory names
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Select and create an instance of the appropriate block manager.
   //
@@ -214,14 +214,14 @@ class FsManager {
 
   // Save a InstanceMetadataPB to the filesystem.
   // Does not mutate the current state of the fsmanager.
-  Status WriteInstanceMetadata(const InstanceMetadataPB& metadata,
+  CHECKED_STATUS WriteInstanceMetadata(const InstanceMetadataPB& metadata,
                                const std::string& root);
 
   // Checks if 'path' is an empty directory.
   //
   // Returns an error if it's not a directory. Otherwise, sets 'is_empty'
   // accordingly.
-  Status IsDirectoryEmpty(const std::string& path, bool* is_empty);
+  CHECKED_STATUS IsDirectoryEmpty(const std::string& path, bool* is_empty);
 
   // ==========================================================================
   //  file-system helpers

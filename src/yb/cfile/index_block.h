@@ -64,7 +64,7 @@ class IndexBlockBuilder {
 
   // Return the key of the first entry in this index block.
   // The pointed-to data is only valid until the next call to this builder.
-  Status GetFirstKey(Slice *key) const;
+  CHECKED_STATUS GetFirstKey(Slice *key) const;
 
   size_t Count() const;
 
@@ -108,7 +108,7 @@ class IndexBlockReader {
   //
   // Note: this does not copy the data, so the slice must
   // remain valid for the lifetime of the reader (or until the next Parse call)
-  Status Parse(const Slice &data);
+  CHECKED_STATUS Parse(const Slice &data);
 
   size_t Count() const;
 
@@ -121,7 +121,7 @@ class IndexBlockReader {
 
   int CompareKey(int idx_in_block, const Slice &search_key) const;
 
-  Status ReadEntry(size_t idx, Slice *key, BlockPointer *block_ptr) const;
+  CHECKED_STATUS ReadEntry(size_t idx, Slice *key, BlockPointer *block_ptr) const;
 
   // Set *ptr to the beginning of the index data for the given index
   // entry.
@@ -159,13 +159,13 @@ class IndexBlockIterator {
   // If this function returns an error, then the state of this
   // iterator is undefined (i.e it may or may not have moved
   // since the previous call)
-  Status SeekAtOrBefore(const Slice &search_key);
+  CHECKED_STATUS SeekAtOrBefore(const Slice &search_key);
 
-  Status SeekToIndex(size_t idx);
+  CHECKED_STATUS SeekToIndex(size_t idx);
 
   bool HasNext() const;
 
-  Status Next();
+  CHECKED_STATUS Next();
 
   const BlockPointer &GetCurrentBlockPointer() const;
 

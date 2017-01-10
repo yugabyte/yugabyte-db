@@ -152,7 +152,7 @@ class TestRowSet : public YBRowSetTest {
   }
 
   // Delete the row with the given identifier.
-  Status DeleteRow(DiskRowSet *rs, uint32_t row_idx, OperationResultPB* result) {
+  CHECKED_STATUS DeleteRow(DiskRowSet *rs, uint32_t row_idx, OperationResultPB* result) {
     faststring update_buf;
     RowChangeListEncoder update(&update_buf);
     update.Reset();
@@ -161,7 +161,7 @@ class TestRowSet : public YBRowSetTest {
     return MutateRow(rs, row_idx, RowChangeList(update_buf), result);
   }
 
-  Status UpdateRow(DiskRowSet *rs,
+  CHECKED_STATUS UpdateRow(DiskRowSet *rs,
                    uint32_t row_idx,
                    uint32_t new_val,
                    OperationResultPB* result)  {
@@ -174,7 +174,7 @@ class TestRowSet : public YBRowSetTest {
   }
 
   // Mutate the given row.
-  Status MutateRow(DiskRowSet *rs,
+  CHECKED_STATUS MutateRow(DiskRowSet *rs,
                    uint32_t row_idx,
                    const RowChangeList &mutation,
                    OperationResultPB* result) {
@@ -190,7 +190,7 @@ class TestRowSet : public YBRowSetTest {
     return s;
   }
 
-  Status CheckRowPresent(const DiskRowSet &rs, uint32_t row_idx, bool *present) {
+  CHECKED_STATUS CheckRowPresent(const DiskRowSet &rs, uint32_t row_idx, bool *present) {
     RowBuilder rb(schema_.CreateKeyProjection());
     BuildRowKey(&rb, row_idx);
     RowSetKeyProbe probe(rb.row());
@@ -319,7 +319,7 @@ class TestRowSet : public YBRowSetTest {
     }
   }
 
-  Status OpenTestRowSet(std::shared_ptr<DiskRowSet> *rowset) {
+  CHECKED_STATUS OpenTestRowSet(std::shared_ptr<DiskRowSet> *rowset) {
     return DiskRowSet::Open(rowset_meta_, new log::LogAnchorRegistry(), rowset);
   }
 

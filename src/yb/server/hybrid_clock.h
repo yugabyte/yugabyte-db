@@ -37,7 +37,7 @@ class HybridClock : public Clock {
  public:
   HybridClock();
 
-  virtual Status Init() OVERRIDE;
+  virtual CHECKED_STATUS Init() OVERRIDE;
 
   // Obtains the timestamp corresponding to the current time.
   virtual Timestamp Now() OVERRIDE;
@@ -50,10 +50,10 @@ class HybridClock : public Clock {
   // on any machine in the cluster.
   //
   // NOTE: this is not a very tight bound.
-  virtual Status GetGlobalLatest(Timestamp* t) OVERRIDE;
+  virtual CHECKED_STATUS GetGlobalLatest(Timestamp* t) OVERRIDE;
 
   // Updates the clock with a timestamp originating on another machine.
-  virtual Status Update(const Timestamp& to_update) OVERRIDE;
+  virtual CHECKED_STATUS Update(const Timestamp& to_update) OVERRIDE;
 
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) OVERRIDE;
 
@@ -90,7 +90,7 @@ class HybridClock : public Clock {
   // This is because, by looking at the current clock, we can know how long
   // we'll have to wait, in contrast to most Wait() methods which are waiting
   // on some external condition to become true.
-  virtual Status WaitUntilAfter(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfter(const Timestamp& then,
                                 const MonoTime& deadline) OVERRIDE;
 
   // Blocks the caller thread until the local time is after 'then'.
@@ -100,7 +100,7 @@ class HybridClock : public Clock {
   // Returns Status::TimedOut() if 'deadline' will pass before the specified
   // timestamp. NOTE: unlike most "wait" methods, this may return _immediately_
   // with a timeout. See WaitUntilAfter() for details.
-  virtual Status WaitUntilAfterLocally(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfterLocally(const Timestamp& then,
                                        const MonoTime& deadline) OVERRIDE;
 
   // Return true if the given time has passed (i.e any future call

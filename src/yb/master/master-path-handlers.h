@@ -45,7 +45,7 @@ class MasterPathHandlers {
 
   ~MasterPathHandlers();
 
-  Status Register(Webserver* server);
+  CHECKED_STATUS Register(Webserver* server);
 
  private:
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,

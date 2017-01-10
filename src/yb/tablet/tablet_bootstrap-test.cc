@@ -233,7 +233,7 @@ TEST_F(BootstrapTest, TestOrphanCommit) {
     AppendCommit(opid);
     log::SegmentSequence segments;
     ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
-    fs_manager_->env()->DeleteFile(segments[0]->path());
+    ASSERT_OK(fs_manager_->env()->DeleteFile(segments[0]->path()));
   }
   {
     shared_ptr<Tablet> tablet;
@@ -272,7 +272,7 @@ TEST_F(BootstrapTest, TestNonOrphansAfterOrphanCommit) {
 
   log::SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
-  fs_manager_->env()->DeleteFile(segments[0]->path());
+  ASSERT_OK(fs_manager_->env()->DeleteFile(segments[0]->path()));
 
   current_index_ += 2;
 

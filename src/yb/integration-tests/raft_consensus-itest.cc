@@ -1833,7 +1833,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   ASSERT_TRUE(s.IsTimedOut());
 
   // Pause the leader, and restart the other servers.
-  cluster_->tablet_server_by_uuid(tservers[0]->uuid())->Pause();
+  ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[0]->uuid())->Pause());
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Restart());
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Restart());
 
@@ -1845,7 +1845,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   // Resume the original leader. Its change-config operation will now be aborted
   // since it was never replicated to the majority, and the new leader will have
   // replaced the operation.
-  cluster_->tablet_server_by_uuid(tservers[0]->uuid())->Resume();
+  ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[0]->uuid())->Resume());
 
   // Insert some data and verify that it propagates to all servers.
   NO_FATALS(InsertTestRowsRemoteThread(0, 10, 1, vector<CountDownLatch*>()));

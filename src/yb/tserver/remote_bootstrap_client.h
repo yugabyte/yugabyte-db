@@ -89,7 +89,7 @@ class RemoteBootstrapClient {
   // If the consensus metadata exists on disk for this tablet, and if
   // 'caller_term' is lower than the current term stored in that consensus
   // metadata, then this method will fail with a Status::InvalidArgument error.
-  Status SetTabletToReplace(const scoped_refptr<tablet::TabletMetadata>& meta,
+  CHECKED_STATUS SetTabletToReplace(const scoped_refptr<tablet::TabletMetadata>& meta,
                             int64_t caller_term);
 
   // Start up a remote bootstrap session to bootstrap from the specified
@@ -100,18 +100,18 @@ class RemoteBootstrapClient {
   // ts_manager pointer allows the bootstrap function to assign non-random
   // data and wal directories for the bootstrapped tablets.
   // TODO: Rename these parameters to bootstrap_source_*.
-  Status Start(const std::string& bootstrap_peer_uuid,
+  CHECKED_STATUS Start(const std::string& bootstrap_peer_uuid,
                const HostPort& bootstrap_peer_addr,
                scoped_refptr<tablet::TabletMetadata>* metadata,
                TSTabletManager* ts_manager = nullptr);
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.
-  Status FetchAll(tablet::TabletStatusListener* status_listener);
+  CHECKED_STATUS FetchAll(tablet::TabletStatusListener* status_listener);
 
   // After downloading all files successfully, write out the completed
   // replacement superblock.
-  Status Finish();
+  CHECKED_STATUS Finish();
 
  private:
   FRIEND_TEST(RemoteBootstrapKuduClientTest, TestBeginEndSession);
@@ -125,48 +125,48 @@ class RemoteBootstrapClient {
 
   // Extract the embedded Status message from the given ErrorStatusPB.
   // The given ErrorStatusPB must extend RemoteBootstrapErrorPB.
-  static Status ExtractRemoteError(const rpc::ErrorStatusPB& remote_error);
+  static CHECKED_STATUS ExtractRemoteError(const rpc::ErrorStatusPB& remote_error);
 
-  static Status UnwindRemoteError(const Status& status, const rpc::RpcController& controller);
+  static CHECKED_STATUS UnwindRemoteError(const Status& status, const rpc::RpcController& controller);
 
   // Update the bootstrap StatusListener with a message.
   // The string "RemoteBootstrap: " will be prepended to each message.
   void UpdateStatusMessage(const std::string& message);
 
   // End the remote bootstrap session.
-  Status EndRemoteSession();
+  CHECKED_STATUS EndRemoteSession();
 
   // Download all WAL files sequentially.
-  Status DownloadWALs();
+  CHECKED_STATUS DownloadWALs();
 
   // Download a single WAL file.
   // Assumes the WAL directories have already been created.
   // WAL file is opened with options so that it will fsync() on close.
-  Status DownloadWAL(uint64_t wal_segment_seqno);
+  CHECKED_STATUS DownloadWAL(uint64_t wal_segment_seqno);
 
   // Write out the Consensus Metadata file based on the ConsensusStatePB
   // downloaded as part of initiating the remote bootstrap session.
-  Status WriteConsensusMetadata();
+  CHECKED_STATUS WriteConsensusMetadata();
 
   // Download all blocks belonging to a tablet sequentially.
   //
   // Blocks are given new IDs upon creation. On success, 'new_superblock_'
   // is populated to reflect the new block IDs and should be used in lieu
   // of 'superblock_' henceforth.
-  Status DownloadBlocks();
+  CHECKED_STATUS DownloadBlocks();
 
   // Download the block specified by 'block_id'.
   //
   // On success:
   // - 'block_id' is set to the new ID of the downloaded block.
   // - 'block_count' is incremented.
-  Status DownloadAndRewriteBlock(BlockIdPB* block_id, int* block_count, int num_blocks);
+  CHECKED_STATUS DownloadAndRewriteBlock(BlockIdPB* block_id, int* block_count, int num_blocks);
 
   // Download a single block.
   // Data block is opened with options so that it will fsync() on close.
   //
   // On success, 'new_block_id' is set to the new ID of the downloaded block.
-  Status DownloadBlock(const BlockId& old_block_id, BlockId* new_block_id);
+  CHECKED_STATUS DownloadBlock(const BlockId& old_block_id, BlockId* new_block_id);
 
   // Download a single remote file. The block and WAL implementations delegate
   // to this method when downloading files.
@@ -176,11 +176,11 @@ class RemoteBootstrapClient {
   // Only used in one compilation unit, otherwise the implementation would
   // need to be in the header.
   template<class Appendable>
-  Status DownloadFile(const DataIdPB& data_id, Appendable* appendable);
+  CHECKED_STATUS DownloadFile(const DataIdPB& data_id, Appendable* appendable);
 
-  Status DownloadRocksDBFiles();
+  CHECKED_STATUS DownloadRocksDBFiles();
 
-  Status VerifyData(uint64_t offset, const DataChunkPB& resp);
+  CHECKED_STATUS VerifyData(uint64_t offset, const DataChunkPB& resp);
 
   // Return standard log prefix.
   std::string LogPrefix();

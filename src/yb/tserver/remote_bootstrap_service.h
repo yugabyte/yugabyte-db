@@ -71,12 +71,12 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   typedef std::unordered_map<std::string, MonoTime> MonoTimeMap;
 
   // Look up session in session map.
-  Status FindSessionUnlocked(const std::string& session_id,
+  CHECKED_STATUS FindSessionUnlocked(const std::string& session_id,
                              RemoteBootstrapErrorPB::Code* app_error,
                              scoped_refptr<RemoteBootstrapSession>* session) const;
 
   // Validate the data identifier in a FetchData request.
-  Status ValidateFetchRequestDataId(const DataIdPB& data_id,
+  CHECKED_STATUS ValidateFetchRequestDataId(const DataIdPB& data_id,
                                     RemoteBootstrapErrorPB::Code* app_error,
                                     const scoped_refptr<RemoteBootstrapSession>& session) const;
 
@@ -84,7 +84,7 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   void ResetSessionExpirationUnlocked(const std::string& session_id);
 
   // Destroy the specified remote bootstrap session.
-  Status DoEndRemoteBootstrapSessionUnlocked(const std::string& session_id,
+  CHECKED_STATUS DoEndRemoteBootstrapSessionUnlocked(const std::string& session_id,
                                              bool session_suceeded,
                                              RemoteBootstrapErrorPB::Code* app_error);
 

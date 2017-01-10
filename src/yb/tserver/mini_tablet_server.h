@@ -52,28 +52,28 @@ class MiniTabletServer {
   // an ephemeral port. To determine the address that the server
   // bound to, call MiniTabletServer::bound_addr().
   // The TS will be initialized asynchronously and then started.
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Waits for the tablet server to be fully initialized, including
   // having all tablets bootstrapped.
-  Status WaitStarted();
+  CHECKED_STATUS WaitStarted();
 
   void Shutdown();
 
   // Restart a tablet server on the same RPC and webserver ports.
-  Status Restart();
+  CHECKED_STATUS Restart();
 
   // Add a new tablet to the test server, use the default consensus configuration.
   //
   // Requires that the server has already been started with Start().
-  Status AddTestTablet(const std::string& table_id,
+  CHECKED_STATUS AddTestTablet(const std::string& table_id,
                        const std::string& tablet_id,
                        const Schema& schema,
                        TableType table_type);
 
   // Add a new tablet to the test server and specify the consensus configuration
   // for the tablet.
-  Status AddTestTablet(const std::string& table_id,
+  CHECKED_STATUS AddTestTablet(const std::string& table_id,
                        const std::string& tablet_id,
                        const Schema& schema,
                        const consensus::RaftConfigPB& config,

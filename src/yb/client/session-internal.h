@@ -49,7 +49,7 @@ class YBSession::Data {
   // Returns Status::IllegalState() if 'force' is false and there are still pending
   // operations. If 'force' is true batcher_ is aborted even if there are pending
   // operations.
-  Status Close(bool force);
+  CHECKED_STATUS Close(bool force);
 
   // The client that this session is associated with.
   const std::shared_ptr<YBClient> client_;

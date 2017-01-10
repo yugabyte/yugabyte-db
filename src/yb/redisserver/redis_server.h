@@ -22,7 +22,7 @@ class RedisServer : public server::RpcAndWebServerBase {
 
   explicit RedisServer(const RedisServerOptions& opts);
 
-  Status Start();
+  CHECKED_STATUS Start();
 
  private:
   RedisServerOptions opts_;

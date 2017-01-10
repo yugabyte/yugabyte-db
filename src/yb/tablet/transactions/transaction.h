@@ -87,7 +87,7 @@ class Transaction {
   // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
   // transaction type, but usually are limited to what can be done without actually changing shared
   // data structures (such as the RocksDB memtable) and without side-effects.
-  virtual Status Prepare() = 0;
+  virtual CHECKED_STATUS Prepare() = 0;
 
   // Actually starts a transaction, assigning a timestamp to the transaction.
   // LEADER replicas execute this in or right after Prepare(), while FOLLOWER/LEARNER
@@ -100,7 +100,7 @@ class Transaction {
   // Executes the Apply() phase of the transaction, the actual actions of
   // this phase depend on the transaction type, but usually this is the
   // method where data-structures are changed.
-  virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) = 0;
+  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) = 0;
 
   // Executed after Apply() but before the commit is submitted to consensus.
   // Some transactions use this to perform pre-commit actions (e.g. write

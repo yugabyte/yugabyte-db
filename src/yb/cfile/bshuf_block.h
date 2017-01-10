@@ -96,7 +96,7 @@ class BShufBlockBuilder : public BlockBuilder {
     return count_;
   }
 
-  Status GetFirstKey(void* key) const OVERRIDE {
+  CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
     if (count_ == 0) {
       return STATUS(NotFound, "no keys in data block");
     }
@@ -183,7 +183,7 @@ class BShufBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  Status ParseHeader() OVERRIDE {
+  CHECKED_STATUS ParseHeader() OVERRIDE {
     CHECK(!parsed_);
     if (data_.size() < kHeaderSize) {
       return STATUS(Corruption,
@@ -240,7 +240,7 @@ class BShufBlockDecoder : public BlockDecoder {
     cur_idx_ = pos;
   }
 
-  Status SeekAtOrAfterValue(const void* value_void, bool* exact) OVERRIDE {
+  CHECKED_STATUS SeekAtOrAfterValue(const void* value_void, bool* exact) OVERRIDE {
     CppType target = *reinterpret_cast<const CppType*>(value_void);
     int32_t left = 0;
     int32_t right = num_elems_;
@@ -267,7 +267,7 @@ class BShufBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  Status CopyNextValues(size_t* n, ColumnDataView* dst) OVERRIDE {
+  CHECKED_STATUS CopyNextValues(size_t* n, ColumnDataView* dst) OVERRIDE {
     DCHECK_EQ(dst->stride(), sizeof(CppType));
     return CopyNextValuesToArray(n, dst->data());
   }
@@ -277,7 +277,7 @@ class BShufBlockDecoder : public BlockDecoder {
   // integer codewords and then look up the strings. If we use the CopyNextValuesToArray()
   // instead of CopyNextValues(), we do not need to create ColumnDataView and ColumnBlock
   // object to wrap around the uint8_t pointer.
-  Status CopyNextValuesToArray(size_t* n, uint8_t* array) {
+  CHECKED_STATUS CopyNextValuesToArray(size_t* n, uint8_t* array) {
     DCHECK(parsed_);
     if (PREDICT_FALSE(*n == 0 || cur_idx_ >= num_elems_)) {
       *n = 0;
@@ -324,7 +324,7 @@ class BShufBlockDecoder : public BlockDecoder {
     return YB_ALIGN_UP(num_elems_, 8) - num_elems_;
   }
 
-  Status Expand() {
+  CHECKED_STATUS Expand() {
     if (num_elems_ > 0) {
       int64_t bytes;
       decoded_.resize(num_elems_after_padding_ * size_of_type);

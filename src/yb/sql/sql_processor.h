@@ -26,7 +26,7 @@ class SqlProcessor {
   virtual ~SqlProcessor();
 
   // Execute the given statement.
-  Status Run(const std::string& sql_stmt);
+  CHECKED_STATUS Run(const std::string& sql_stmt);
 
   // Send the readop back for processing. If there's an error, the read_op_ is set to nullptr.
   const std::shared_ptr<client::YBSqlReadOp>& read_op() const {

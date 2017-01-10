@@ -553,7 +553,7 @@ Status FsTool::DumpDeltaCFileBlockInternal(const Schema& schema,
     }
 
     arena.Reset();
-    cfileset_iter->PrepareBatch(&n);
+    RETURN_NOT_OK(cfileset_iter->PrepareBatch(&n));
 
     block.Resize(n);
 

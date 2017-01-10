@@ -31,10 +31,10 @@ class Value {
   const PrimitiveValue primitive_value() const { return primitive_value_; }
 
   // Consume the Ttl portion of the slice if it exists and return it
-  static Status DecodeTtl(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
+  static CHECKED_STATUS DecodeTtl(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
 
   // Decoded the endtire value
-  Status Decode(const rocksdb::Slice &rocksdb_value);
+  CHECKED_STATUS Decode(const rocksdb::Slice &rocksdb_value);
 
   std::string ToString() const;
 

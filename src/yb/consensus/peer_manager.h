@@ -61,7 +61,7 @@ class PeerManager {
   virtual ~PeerManager();
 
   // Updates 'peers_' according to the new configuration config.
-  virtual Status UpdateRaftConfig(const RaftConfigPB& config);
+  virtual CHECKED_STATUS UpdateRaftConfig(const RaftConfigPB& config);
 
   // Signals all peers of the current configuration that there is a new request pending.
   virtual void SignalRequest(bool force_if_queue_empty = false);

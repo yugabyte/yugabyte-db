@@ -304,7 +304,8 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
     }
 
     bool committed_index_changed = false;
-    state_->AdvanceCommittedIndexUnlocked(info.last_committed_id, &committed_index_changed);
+    RETURN_NOT_OK(
+        state_->AdvanceCommittedIndexUnlocked(info.last_committed_id, &committed_index_changed));
 
     queue_->Init(state_->GetLastReceivedOpIdUnlocked());
   }
@@ -390,7 +391,8 @@ Status RaftConsensus::StartElection(
                                      << state_->IsConfigChangePendingUnlocked();
       return Status::OK();
     } else if (PREDICT_FALSE(active_role == RaftPeerPB::NON_PARTICIPANT)) {
-      SnoozeFailureDetectorUnlocked(); // Avoid excessive election noise while in this state.
+      // Avoid excessive election noise while in this state.
+      RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
       return STATUS(IllegalState, "Not starting election: Node is currently "
                                   "a non-participant in the raft config",
                                   state_->GetActiveConfigUnlocked().ShortDebugString());
@@ -666,7 +668,10 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
   // Now that we're a replica, we can allow voting for other nodes.
   withhold_votes_until_ = MonoTime::Min();
 
-  queue_->UnRegisterObserver(this);
+  const Status unregister_observer_status = queue_->UnRegisterObserver(this);
+  if (!unregister_observer_status.IsNotFound()) {
+    RETURN_NOT_OK(unregister_observer_status);
+  }
   // Deregister ourselves from the queue. We don't care what get's replicated, since
   // we're stepping down.
   queue_->SetNonLeaderMode();
@@ -1277,7 +1282,8 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
 
     if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
       // TODO Temporary until the leader explicitly propagates the safe timestamp.
-      clock_->Update(Timestamp(deduped_req.messages.back()->get()->timestamp()));
+      // TODO: what if there is a failure here because the updated time is too far in the future?
+      RETURN_NOT_OK(clock_->Update(Timestamp(deduped_req.messages.back()->get()->timestamp())));
 
       // This request contains at least one message, and is likely to increase
       // our memory pressure.
@@ -1425,7 +1431,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
       // If just waiting for our log append to finish lets snooze the timer.
       // We don't want to fire leader election because we're waiting on our own log.
       if (s.IsTimedOut()) {
-        SnoozeFailureDetectorUnlocked();
+        RETURN_NOT_OK(SnoozeFailureDetectorUnlocked());
       }
     } while (s.IsTimedOut());
     RETURN_NOT_OK(s);
@@ -1441,7 +1447,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
   // StartElection will ensure the pending election will be started just once only even if
   // UpdateReplica happens in multiple threads in parallel.
   if (start_election) {
-    StartElection(consensus::Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE, true);
+    RETURN_NOT_OK(StartElection(consensus::Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE, true));
   }
 
   TRACE("UpdateReplicas() finished");

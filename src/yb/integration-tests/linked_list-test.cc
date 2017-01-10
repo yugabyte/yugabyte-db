@@ -129,7 +129,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   void RestartCluster() {
     CHECK(cluster_);
     cluster_->Shutdown(ExternalMiniCluster::TS_ONLY);
-    cluster_->Restart();
+    CHECK_OK(cluster_->Restart());
     ResetClientAndTester();
   }
 

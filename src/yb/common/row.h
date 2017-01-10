@@ -110,7 +110,7 @@ Status CopyCell(const SrcCellType &src, DstCellType* dst, ArenaType *dst_arena) 
 // If 'dst_arena' is set, then will relocate any indirect data to that arena
 // during the copy.
 template<class RowType1, class RowType2, class ArenaType>
-inline Status CopyRow(const RowType1 &src_row, RowType2 *dst_row, ArenaType *dst_arena) {
+inline CHECKED_STATUS CopyRow(const RowType1 &src_row, RowType2 *dst_row, ArenaType *dst_arena) {
   DCHECK_SCHEMA_EQ(*src_row.schema(), *dst_row->schema());
 
   for (int i = 0; i < src_row.schema()->num_columns(); i++) {
@@ -146,11 +146,11 @@ class RowProjector {
   }
 
   // Initialize the projection mapping with the specified base_schema and projection
-  Status Init() {
+  CHECKED_STATUS Init() {
     return projection_->GetProjectionMapping(*base_schema_, this);
   }
 
-  Status Reset(const Schema* base_schema, const Schema* projection) {
+  CHECKED_STATUS Reset(const Schema* base_schema, const Schema* projection) {
     base_schema_ = base_schema;
     projection_ = projection;
     base_cols_mapping_.clear();
@@ -166,7 +166,7 @@ class RowProjector {
   // Use this method only on the read-path.
   // The col_schema.read_default_value() will be used.
   template<class RowType1, class RowType2, class ArenaType>
-  Status ProjectRowForRead(const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
+  CHECKED_STATUS ProjectRowForRead(const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
     return ProjectRow<RowType1, RowType2, ArenaType, true>(src_row, dst_row, dst_arena);
   }
 
@@ -176,7 +176,7 @@ class RowProjector {
   // Use this method only on the write-path.
   // The col_schema.write_default_value() will be used.
   template<class RowType1, class RowType2, class ArenaType>
-  Status ProjectRowForWrite(const RowType1& src_row, RowType2 *dst_row,
+  CHECKED_STATUS ProjectRowForWrite(const RowType1& src_row, RowType2 *dst_row,
                             ArenaType *dst_arena) const {
     return ProjectRow<RowType1, RowType2, ArenaType, false>(src_row, dst_row, dst_arena);
   }
@@ -203,22 +203,22 @@ class RowProjector {
  private:
   friend class Schema;
 
-  Status ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx) {
+  CHECKED_STATUS ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx) {
     base_cols_mapping_.push_back(ProjectionIdxMapping(proj_col_idx, base_col_idx));
     return Status::OK();
   }
 
-  Status ProjectAdaptedColumn(size_t proj_col_idx, size_t base_col_idx) {
+  CHECKED_STATUS ProjectAdaptedColumn(size_t proj_col_idx, size_t base_col_idx) {
     adapter_cols_mapping_.push_back(ProjectionIdxMapping(proj_col_idx, base_col_idx));
     return Status::OK();
   }
 
-  Status ProjectDefaultColumn(size_t proj_col_idx) {
+  CHECKED_STATUS ProjectDefaultColumn(size_t proj_col_idx) {
     projection_defaults_.push_back(proj_col_idx);
     return Status::OK();
   }
 
-  Status ProjectExtraColumn(size_t proj_col_idx) {
+  CHECKED_STATUS ProjectExtraColumn(size_t proj_col_idx) {
     return STATUS(InvalidArgument,
       "The column '" + projection_->column(proj_col_idx).name() +
       "' does not exist in the projection, and it does not have a "
@@ -229,7 +229,7 @@ class RowProjector {
   // Project a row from one schema into another, using the projection mapping.
   // Indirected data is copied into the provided dst arena.
   template<class RowType1, class RowType2, class ArenaType, bool FOR_READ>
-  Status ProjectRow(const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
+  CHECKED_STATUS ProjectRow(const RowType1& src_row, RowType2 *dst_row, ArenaType *dst_arena) const {
     DCHECK_SCHEMA_EQ(*base_schema_, *src_row.schema());
     DCHECK_SCHEMA_EQ(*projection_, *dst_row->schema());
 
@@ -287,7 +287,7 @@ class DeltaProjector {
       is_identity_(delta_schema->Equals(*projection)) {
   }
 
-  Status Init() {
+  CHECKED_STATUS Init() {
     // TODO: doesn't look like this uses the is_identity performance
     // shortcut
     return projection_->GetProjectionMapping(*delta_schema_, this);
@@ -318,7 +318,7 @@ class DeltaProjector {
  private:
   friend class ::yb::Schema;
 
-  Status ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx) {
+  CHECKED_STATUS ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx) {
     base_cols_mapping_[proj_col_idx] = base_col_idx;
     if (delta_schema_->has_column_ids()) {
       rbase_cols_mapping_[delta_schema_->column_id(base_col_idx)] = proj_col_idx;
@@ -328,7 +328,7 @@ class DeltaProjector {
     return Status::OK();
   }
 
-  Status ProjectAdaptedColumn(size_t proj_col_idx, size_t base_col_idx) {
+  CHECKED_STATUS ProjectAdaptedColumn(size_t proj_col_idx, size_t base_col_idx) {
     adapter_cols_mapping_[proj_col_idx] = base_col_idx;
     if (delta_schema_->has_column_ids()) {
       radapter_cols_mapping_[delta_schema_->column_id(base_col_idx)] = proj_col_idx;
@@ -338,13 +338,13 @@ class DeltaProjector {
     return Status::OK();
   }
 
-  Status ProjectDefaultColumn(size_t proj_col_idx) {
+  CHECKED_STATUS ProjectDefaultColumn(size_t proj_col_idx) {
     // Not used, since deltas are update...
     // we don't have this column, so we don't have updates
     return Status::OK();
   }
 
-  Status ProjectExtraColumn(size_t proj_col_idx) {
+  CHECKED_STATUS ProjectExtraColumn(size_t proj_col_idx) {
     return STATUS(InvalidArgument,
       "The column '" + delta_schema_->column(proj_col_idx).name() +
       "' does not exist in the projection, and it does not have a "
@@ -371,7 +371,7 @@ class DeltaProjector {
 // The row itself is mutated so that the indirect data points to the relocated
 // storage.
 template <class RowType, class ArenaType>
-inline Status RelocateIndirectDataToArena(RowType *row, ArenaType *dst_arena) {
+inline CHECKED_STATUS RelocateIndirectDataToArena(RowType *row, ArenaType *dst_arena) {
   const Schema* schema = row->schema();
   // For any Slice columns, copy the sliced data into the arena
   // and update the pointers

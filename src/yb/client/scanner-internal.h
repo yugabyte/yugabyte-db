@@ -37,7 +37,7 @@ class YBScanner::Data {
   explicit Data(YBTable* table);
   ~Data();
 
-  Status CheckForErrors();
+  CHECKED_STATUS CheckForErrors();
 
   // Copies a predicate lower or upper bound from 'bound_src' into
   // 'bound_dst'.
@@ -50,7 +50,7 @@ class YBScanner::Data {
   // The number of parameters reflects the complexity of handling retries.
   // We must respect the overall scan 'deadline', as well as the 'blacklist' of servers
   // experiencing transient failures. See the implementation for more details.
-  Status CanBeRetried(const bool isNewScan,
+  CHECKED_STATUS CanBeRetried(const bool isNewScan,
                       const Status& rpc_status,
                       const Status& server_status,
                       const MonoTime& actual_deadline,
@@ -62,11 +62,11 @@ class YBScanner::Data {
   // The deadline is the time budget for this operation.
   // The blacklist is used to temporarily filter out nodes that are experiencing transient errors.
   // This blacklist may be modified by the callee.
-  Status OpenTablet(const std::string& partition_key,
+  CHECKED_STATUS OpenTablet(const std::string& partition_key,
                     const MonoTime& deadline,
                     std::set<std::string>* blacklist);
 
-  Status KeepAlive();
+  CHECKED_STATUS KeepAlive();
 
   // Returns whether there exist more tablets we should scan.
   //
@@ -173,7 +173,7 @@ class YBScanBatch::Data {
   Data();
   ~Data();
 
-  Status Reset(rpc::RpcController* controller,
+  CHECKED_STATUS Reset(rpc::RpcController* controller,
                const Schema* projection,
                const YBSchema* client_projection,
                gscoped_ptr<RowwiseRowBlockPB> resp_data);

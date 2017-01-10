@@ -76,7 +76,7 @@ TEST_F(FailureDetectorTest, TestDetectsFailure) {
   scoped_refptr<FailureDetector> detector(new TimedFailureDetector(
       MonoDelta::FromMilliseconds(kExpectedHeartbeatPeriodMillis * kMaxMissedHeartbeats)));
 
-  monitor_->MonitorFailureDetector(kTestTabletName, detector);
+  ASSERT_OK(monitor_->MonitorFailureDetector(kTestTabletName, detector));
   ASSERT_FALSE(detector->IsTracking(kNodeName));
   ASSERT_OK(detector->Track(kNodeName,
                             MonoTime::Now(MonoTime::FINE),

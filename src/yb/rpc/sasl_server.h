@@ -51,11 +51,11 @@ class SaslServer {
 
   // Enable ANONYMOUS authentication.
   // Call after Init().
-  Status EnableAnonymous();
+  CHECKED_STATUS EnableAnonymous();
 
   // Enable PLAIN authentication. TODO: Support impersonation.
   // Call after Init().
-  Status EnablePlain(gscoped_ptr<AuthStore> authstore);
+  CHECKED_STATUS EnablePlain(gscoped_ptr<AuthStore> authstore);
 
   // Returns mechanism negotiated by this connection.
   // Call after Negotiate().
@@ -85,13 +85,13 @@ class SaslServer {
 
   // Initialize a new SASL server. Must be called before Negotiate().
   // Returns OK on success, otherwise RuntimeError.
-  Status Init(const string& service_type);
+  CHECKED_STATUS Init(const string& service_type);
 
   // Begin negotiation with the SASL client on the other side of the fd socket
   // that this server was constructed with.
   // Returns OK on success.
   // Otherwise, it may return NotAuthorized, NotSupported, or another non-OK status.
-  Status Negotiate();
+  CHECKED_STATUS Negotiate();
 
   // SASL callback for plugin options, supported mechanisms, etc.
   // Returns SASL_FAIL if the option is not handled, which does not fail the handshake.
@@ -104,36 +104,36 @@ class SaslServer {
 
  private:
   // Parse and validate connection header.
-  Status ValidateConnectionHeader(faststring* recv_buf);
+  CHECKED_STATUS ValidateConnectionHeader(faststring* recv_buf);
 
   // Parse request body. If malformed, sends an error message to the client.
-  Status ParseSaslMsgRequest(const RequestHeader& header, const Slice& param_buf,
+  CHECKED_STATUS ParseSaslMsgRequest(const RequestHeader& header, const Slice& param_buf,
     SaslMessagePB* request);
 
   // Encode and send the specified SASL message to the client.
-  Status SendSaslMessage(const SaslMessagePB& msg);
+  CHECKED_STATUS SendSaslMessage(const SaslMessagePB& msg);
 
   // Encode and send the specified RPC error message to the client.
   // Calls Status.ToString() for the embedded error message.
-  Status SendSaslError(ErrorStatusPB::RpcErrorCodePB code, const Status& err);
+  CHECKED_STATUS SendSaslError(ErrorStatusPB::RpcErrorCodePB code, const Status& err);
 
   // Handle case when client sends NEGOTIATE request.
-  Status HandleNegotiateRequest(const SaslMessagePB& request);
+  CHECKED_STATUS HandleNegotiateRequest(const SaslMessagePB& request);
 
   // Send a NEGOTIATE response to the client with the list of available mechanisms.
-  Status SendNegotiateResponse(const std::set<string>& server_mechs);
+  CHECKED_STATUS SendNegotiateResponse(const std::set<string>& server_mechs);
 
   // Handle case when client sends INITIATE request.
-  Status HandleInitiateRequest(const SaslMessagePB& request);
+  CHECKED_STATUS HandleInitiateRequest(const SaslMessagePB& request);
 
   // Send a CHALLENGE response to the client with a challenge token.
-  Status SendChallengeResponse(const char* challenge, unsigned clen);
+  CHECKED_STATUS SendChallengeResponse(const char* challenge, unsigned clen);
 
   // Send a SUCCESS response to the client with an token (typically empty).
-  Status SendSuccessResponse(const char* token, unsigned tlen);
+  CHECKED_STATUS SendSuccessResponse(const char* token, unsigned tlen);
 
   // Handle case when client sends RESPONSE request.
-  Status HandleResponseRequest(const SaslMessagePB& request);
+  CHECKED_STATUS HandleResponseRequest(const SaslMessagePB& request);
 
   string app_name_;
   Socket sock_;

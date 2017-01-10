@@ -49,7 +49,7 @@ TEST(MockHybridClockTest, TestMockedSystemClock) {
   google::FlagSaver saver;
   FLAGS_use_mock_wall_clock = true;
   scoped_refptr<HybridClock> clock(new HybridClock());
-  clock->Init();
+  ASSERT_OK(clock->Init());
   Timestamp timestamp;
   uint64_t max_error_usec;
   clock->NowWithError(&timestamp, &max_error_usec);
@@ -215,7 +215,7 @@ void StresserThread(HybridClock* clock, AtomicBool* stop) {
     // Add a random bit of offset to the clock, and perform an update.
     Timestamp new_ts = HybridClock::AddPhysicalTimeToTimestamp(
         t, MonoDelta::FromMicroseconds(rng.Uniform(10000)));
-    clock->Update(new_ts);
+    CHECK_OK(clock->Update(new_ts));
   }
 }
 

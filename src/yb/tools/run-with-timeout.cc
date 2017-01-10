@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
   });
 
   int wait_ret_val = 0;
-  subprocess.Wait(&wait_ret_val);
+  CHECK_OK(subprocess.Wait(&wait_ret_val));
   {
     unique_lock<mutex> l(lock);
     finished = true;

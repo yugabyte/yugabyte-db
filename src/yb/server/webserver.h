@@ -57,14 +57,14 @@ class Webserver : public WebCallbackRegistry {
 
   // Starts a webserver on the port passed to the constructor. The webserver runs in a
   // separate thread, so this call is non-blocking.
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Stops the webserver synchronously.
   void Stop();
 
   // Return the addresses that this server has successfully
   // bound to. Requires that the server has been Start()ed.
-  Status GetBoundAddresses(std::vector<Sockaddr>* addrs) const;
+  CHECKED_STATUS GetBoundAddresses(std::vector<Sockaddr>* addrs) const;
 
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
@@ -110,7 +110,7 @@ class Webserver : public WebCallbackRegistry {
   bool static_pages_available() const;
 
   // Build the string to pass to mongoose specifying where to bind.
-  Status BuildListenSpec(std::string* spec) const;
+  CHECKED_STATUS BuildListenSpec(std::string* spec) const;
 
   // Renders a common Bootstrap-styled header
   void BootstrapPageHeader(std::stringstream* output);

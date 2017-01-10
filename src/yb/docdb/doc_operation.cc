@@ -32,9 +32,10 @@ Status RedisWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
       << "Set operations are expected have exactly one value, found " << kv.value().size();
   const MonoDelta ttl = request_.set_request().has_ttl() ?
       MonoDelta::FromMicroseconds(request_.set_request().ttl()) : Value::kMaxTtl;
-  doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()),
-      Value(PrimitiveValue(kv.value(0)), ttl), Timestamp::kMax);
+  RETURN_NOT_OK(
+      doc_write_batch->SetPrimitive(
+          DocPath::DocPathFromRedisKey(kv.key()),
+          Value(PrimitiveValue(kv.value(0)), ttl), Timestamp::kMax));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
@@ -167,11 +168,11 @@ Status YSQLWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
         for (const auto& column_value : request_.column_values()) {
           const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
           const auto value = Value(PrimitiveValue::FromYSQLValuePB(column_value.value()), ttl);
-          doc_write_batch->SetPrimitive(sub_path, value);
+          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
         }
       } else {
         const auto value = Value(PrimitiveValue(ValueType::kObject), ttl);
-        doc_write_batch->SetPrimitive(doc_path_, value);
+        RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path_, value));
       }
       break;
     }
@@ -181,10 +182,10 @@ Status YSQLWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
       if (request_.column_values_size() > 0) {
         for (const auto& column_value : request_.column_values()) {
           const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
-          doc_write_batch->DeleteSubDoc(sub_path);
+          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path));
         }
       } else {
-        doc_write_batch->DeleteSubDoc(doc_path_);
+        RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_));
       }
       break;
     }
@@ -244,8 +245,9 @@ Status YSQLReadOperation::Execute(
   }
 
   Schema projection;
-  schema.CreateProjectionByIdsIgnoreMissing(
-      vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection);
+  RETURN_NOT_OK(
+      schema.CreateProjectionByIdsIgnoreMissing(
+          vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the row.
   DocRowwiseIterator iterator(projection, schema, rocksdb, timestamp);

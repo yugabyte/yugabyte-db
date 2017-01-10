@@ -38,14 +38,14 @@ class HostPort {
 
   // Parse a "host:port" pair into this object.
   // If there is no port specified in the string, then 'default_port' is used.
-  Status ParseString(const std::string& str, uint16_t default_port);
+  CHECKED_STATUS ParseString(const std::string& str, uint16_t default_port);
 
   // Resolve any addresses corresponding to this host:port pair.
   // Note that a host may resolve to more than one IP address.
   //
   // 'addresses' may be NULL, in which case this function simply checks that
   // the host/port pair can be resolved, without returning anything.
-  Status ResolveAddresses(std::vector<Sockaddr>* addresses) const;
+  CHECKED_STATUS ResolveAddresses(std::vector<Sockaddr>* addresses) const;
 
   std::string ToString() const;
 
@@ -59,7 +59,7 @@ class HostPort {
   // HostPort objects. If no port is specified for an entry in the
   // comma separated list, 'default_port' is used for that entry's
   // pair.
-  static Status ParseStrings(const std::string& comma_sep_addrs,
+  static CHECKED_STATUS ParseStrings(const std::string& comma_sep_addrs,
                              uint16_t default_port,
                              std::vector<HostPort>* res);
 
@@ -76,7 +76,7 @@ class HostPort {
 
   // Remove a given host/port from a vector of comma separated server multiple addresses, each in
   // [host:port,]+ format and returns a final list as a remaining vector of hostports.
-  static Status RemoveAndGetHostPortList(
+  static CHECKED_STATUS RemoveAndGetHostPortList(
     const Sockaddr& remove,
     const std::vector<std::string>& multiple_server_addresses,
     uint16_t default_port,

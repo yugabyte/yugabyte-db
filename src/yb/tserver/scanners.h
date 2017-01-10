@@ -67,7 +67,7 @@ class ScannerManager {
   ~ScannerManager();
 
   // Starts the expired scanner removal thread.
-  Status StartRemovalThread();
+  CHECKED_STATUS StartRemovalThread();
 
   // Create a new scanner with a unique ID, inserting it into the map.
   void NewScanner(const scoped_refptr<tablet::TabletPeer>& tablet_peer,

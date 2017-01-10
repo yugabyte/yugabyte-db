@@ -51,9 +51,9 @@ class RemoteYsckTabletServer : public YsckTabletServer {
         ts_proxy_(new tserver::TabletServerServiceProxy(messenger, address)) {
   }
 
-  virtual Status Connect() const OVERRIDE;
+  virtual CHECKED_STATUS Connect() const OVERRIDE;
 
-  virtual Status CurrentTimestamp(uint64_t* timestamp) const OVERRIDE;
+  virtual CHECKED_STATUS CurrentTimestamp(uint64_t* timestamp) const OVERRIDE;
 
   virtual void RunTabletChecksumScanAsync(
       const std::string& tablet_id,
@@ -77,17 +77,17 @@ class RemoteYsckTabletServer : public YsckTabletServer {
 class RemoteYsckMaster : public YsckMaster {
  public:
 
-  static Status Build(const Sockaddr& address, std::shared_ptr<YsckMaster>* master);
+  static CHECKED_STATUS Build(const Sockaddr& address, std::shared_ptr<YsckMaster>* master);
 
   virtual ~RemoteYsckMaster() { }
 
-  virtual Status Connect() const OVERRIDE;
+  virtual CHECKED_STATUS Connect() const OVERRIDE;
 
-  virtual Status RetrieveTabletServers(TSMap* tablet_servers) OVERRIDE;
+  virtual CHECKED_STATUS RetrieveTabletServers(TSMap* tablet_servers) OVERRIDE;
 
-  virtual Status RetrieveTablesList(std::vector<std::shared_ptr<YsckTable> >* tables) OVERRIDE;
+  virtual CHECKED_STATUS RetrieveTablesList(std::vector<std::shared_ptr<YsckTable> >* tables) OVERRIDE;
 
-  virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) OVERRIDE;
+  virtual CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) OVERRIDE;
 
  private:
   explicit RemoteYsckMaster(
@@ -96,13 +96,13 @@ class RemoteYsckMaster : public YsckMaster {
         generic_proxy_(new server::GenericServiceProxy(messenger, address)),
         proxy_(new master::MasterServiceProxy(messenger, address)) {}
 
-  Status GetTableInfo(const std::string& table_name, Schema* schema, int* num_replicas);
+  CHECKED_STATUS GetTableInfo(const std::string& table_name, Schema* schema, int* num_replicas);
 
   // Used to get a batch of tablets from the master, passing a pointer to the
   // seen last key that will be used as the new start key. The
   // last_partition_key is updated to point at the new last key that came in
   // the batch.
-  Status GetTabletsBatch(const std::string& table_name, std::string* last_partition_key,
+  CHECKED_STATUS GetTabletsBatch(const std::string& table_name, std::string* last_partition_key,
     std::vector<std::shared_ptr<YsckTablet> >& tablets, bool* more_tablets);
 
   std::shared_ptr<rpc::Messenger> messenger_;

@@ -37,7 +37,7 @@ class YBTableAlterer::Data {
  public:
   Data(YBClient* client, std::string name);
   ~Data();
-  Status ToRequest(master::AlterTableRequestPB* req);
+  CHECKED_STATUS ToRequest(master::AlterTableRequestPB* req);
 
 
   YBClient* const client_;

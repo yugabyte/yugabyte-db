@@ -131,7 +131,7 @@ class RemoteBootstrapTest : public YBTabletTest {
 
     shared_ptr<Messenger> messenger;
     MessengerBuilder mbuilder(CURRENT_TEST_NAME());
-    mbuilder.Build(&messenger);
+    ASSERT_OK(mbuilder.Build(&messenger));
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     tablet_peer_->SetBootstrapping();

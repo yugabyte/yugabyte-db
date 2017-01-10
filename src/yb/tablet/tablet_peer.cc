@@ -536,7 +536,7 @@ Status TabletPeer::StartReplicaTransaction(const scoped_refptr<ConsensusRound>& 
   state->set_consensus_round(round);
   Timestamp ts(replicate_msg->timestamp());
   state->set_timestamp(ts);
-  clock_->Update(ts);
+  RETURN_NOT_OK(clock_->Update(ts));
 
   scoped_refptr<TransactionDriver> driver;
   RETURN_NOT_OK(NewReplicaTransactionDriver(transaction.Pass(), &driver));

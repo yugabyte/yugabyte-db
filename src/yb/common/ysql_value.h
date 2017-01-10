@@ -72,7 +72,7 @@ class YSQLValueCore {
 
   //----------------------------- serializer / deserializer ---------------------------------
   void Serialize(DataType type, bool is_null, YSQLClient client, faststring* buffer) const;
-  Status Deserialize(DataType type, YSQLClient client, Slice* data, bool* is_null);
+  CHECKED_STATUS Deserialize(DataType type, YSQLClient client, Slice* data, bool* is_null);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.

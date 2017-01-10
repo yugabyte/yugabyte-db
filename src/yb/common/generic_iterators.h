@@ -44,7 +44,7 @@ class MergeIterator : public RowwiseIterator {
                 const std::vector<std::shared_ptr<RowwiseIterator> > &iters);
 
   // The passed-in iterators should be already initialized.
-  Status Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
   virtual bool HasNext() const OVERRIDE;
 
@@ -54,12 +54,12 @@ class MergeIterator : public RowwiseIterator {
 
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
 
-  virtual Status NextBlock(RowBlock* dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock* dst) OVERRIDE;
 
  private:
   void PrepareBatch(RowBlock* dst);
-  Status MaterializeBlock(RowBlock* dst);
-  Status InitSubIterators(ScanSpec *spec);
+  CHECKED_STATUS MaterializeBlock(RowBlock* dst);
+  CHECKED_STATUS InitSubIterators(ScanSpec *spec);
 
   const Schema schema_;
 
@@ -93,7 +93,7 @@ class UnionIterator : public RowwiseIterator {
   // calling iter->Init(spec) should remove all predicates from the spec.
   explicit UnionIterator(const std::vector<std::shared_ptr<RowwiseIterator> > &iters);
 
-  Status Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
   bool HasNext() const OVERRIDE;
 
@@ -107,13 +107,13 @@ class UnionIterator : public RowwiseIterator {
 
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
 
-  virtual Status NextBlock(RowBlock* dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock* dst) OVERRIDE;
 
  private:
   void PrepareBatch();
-  Status MaterializeBlock(RowBlock* dst);
+  CHECKED_STATUS MaterializeBlock(RowBlock* dst);
   void FinishBatch();
-  Status InitSubIterators(ScanSpec *spec);
+  CHECKED_STATUS InitSubIterators(ScanSpec *spec);
 
   // Schema: initialized during Init()
   gscoped_ptr<Schema> schema_;
@@ -142,7 +142,7 @@ class MaterializingIterator : public RowwiseIterator {
   explicit MaterializingIterator(std::shared_ptr<ColumnwiseIterator> iter);
 
   // Initialize the iterator, performing predicate pushdown as described above.
-  Status Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
   bool HasNext() const OVERRIDE;
 
@@ -156,13 +156,13 @@ class MaterializingIterator : public RowwiseIterator {
     iter_->GetIteratorStats(stats);
   }
 
-  virtual Status NextBlock(RowBlock* dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock* dst) OVERRIDE;
 
  private:
   FRIEND_TEST(TestMaterializingIterator, TestPredicatePushdown);
   FRIEND_TEST(TestPredicateEvaluatingIterator, TestPredicateEvaluation);
 
-  Status MaterializeBlock(RowBlock *dst);
+  CHECKED_STATUS MaterializeBlock(RowBlock *dst);
 
   std::shared_ptr<ColumnwiseIterator> iter_;
 
@@ -188,14 +188,14 @@ class PredicateEvaluatingIterator : public RowwiseIterator {
   //
   // POSTCONDITION: spec->predicates().empty()
   // POSTCONDITION: base_iter and its wrapper are initialized
-  static Status InitAndMaybeWrap(std::shared_ptr<RowwiseIterator> *base_iter,
+  static CHECKED_STATUS InitAndMaybeWrap(std::shared_ptr<RowwiseIterator> *base_iter,
                                  ScanSpec *spec);
 
   // Initialize the iterator.
   // POSTCONDITION: spec->predicates().empty()
-  Status Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
-  virtual Status NextBlock(RowBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
 
   bool HasNext() const OVERRIDE;
 

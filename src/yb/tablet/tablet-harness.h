@@ -77,7 +77,7 @@ class TabletHarness {
   TabletHarness(const Schema& schema, Options options)
       : options_(std::move(options)), schema_(schema) {}
 
-  Status Create(bool first_time) {
+  CHECKED_STATUS Create(bool first_time) {
     std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
 
     // Build the Tablet
@@ -111,7 +111,7 @@ class TabletHarness {
     return Status::OK();
   }
 
-  Status Open() {
+  CHECKED_STATUS Open() {
     RETURN_NOT_OK(tablet_->Open());
     tablet_->MarkFinishedBootstrapping();
     return Status::OK();

@@ -1763,7 +1763,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
     // ... else we use the client provided one, but make sure it is not too far
     // in the future as to be invalid.
   } else {
-    tmp_snap_timestamp.FromUint64(scan_pb.snap_timestamp());
+    RETURN_NOT_OK(tmp_snap_timestamp.FromUint64(scan_pb.snap_timestamp()));
     Timestamp max_allowed_ts;
     Status s = server_->clock()->GetGlobalLatest(&max_allowed_ts);
     if (!s.ok()) {

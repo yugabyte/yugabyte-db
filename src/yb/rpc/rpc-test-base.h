@@ -272,7 +272,10 @@ class RpcTestBase : public YBTest {
 
   virtual void TearDown() OVERRIDE {
     if (service_pool_) {
-      server_messenger_->UnregisterService(service_name_);
+      const Status unregister_service_status = server_messenger_->UnregisterService(service_name_);
+      if (!unregister_service_status.IsServiceUnavailable()) {
+        ASSERT_OK(unregister_service_status);
+      }
       service_pool_->Shutdown();
     }
     if (server_messenger_) {
@@ -297,7 +300,7 @@ class RpcTestBase : public YBTest {
     return messenger;
   }
 
-  Status DoTestSyncCall(const Proxy &p, const char *method) {
+  CHECKED_STATUS DoTestSyncCall(const Proxy &p, const char *method) {
     AddRequestPB req;
     req.set_x(rand());
     req.set_y(rand());
@@ -374,7 +377,7 @@ class RpcTestBase : public YBTest {
 
   // Start a simple socket listening on a local port, returning the address.
   // This isn't an RPC server -- just a plain socket which can be helpful for testing.
-  Status StartFakeServer(Socket *listen_sock, Sockaddr *listen_addr) {
+  CHECKED_STATUS StartFakeServer(Socket *listen_sock, Sockaddr *listen_addr) {
     Sockaddr bind_addr;
     bind_addr.set_port(0);
     RETURN_NOT_OK(listen_sock->Init(0));
@@ -410,7 +413,7 @@ class RpcTestBase : public YBTest {
                                                        n_worker_threads_,
                                                        50 /* queue_length */),
                                     service.Pass(), metric_entity);
-    server_messenger_->RegisterService(service_name_, service_pool_);
+    ASSERT_OK(server_messenger_->RegisterService(service_name_, service_pool_));
     ASSERT_OK(service_pool_->Init());
   }
 

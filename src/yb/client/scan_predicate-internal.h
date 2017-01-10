@@ -30,7 +30,7 @@ class YBPredicate::Data {
  public:
   Data();
   virtual ~Data();
-  virtual Status AddToScanSpec(ScanSpec* spec) = 0;
+  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) = 0;
   virtual Data* Clone() const = 0;
 };
 
@@ -50,7 +50,7 @@ class ErrorPredicateData : public YBPredicate::Data {
   virtual ~ErrorPredicateData() {
   }
 
-  virtual Status AddToScanSpec(ScanSpec* spec) OVERRIDE {
+  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) OVERRIDE {
     return status_;
   }
 
@@ -72,7 +72,7 @@ class ComparisonPredicateData : public YBPredicate::Data {
                           YBValue* value);
   virtual ~ComparisonPredicateData();
 
-  virtual Status AddToScanSpec(ScanSpec* spec) OVERRIDE;
+  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) OVERRIDE;
 
   virtual ComparisonPredicateData* Clone() const OVERRIDE {
       return new ComparisonPredicateData(col_, op_, val_->Clone());

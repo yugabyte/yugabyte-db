@@ -259,7 +259,7 @@ class WriteTransaction : public Transaction {
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows. This results in adding 'RowOp' objects for each of the operations
   // into the WriteTransactionState.
-  virtual Status Prepare() OVERRIDE;
+  virtual CHECKED_STATUS Prepare() OVERRIDE;
 
   // Actually starts the Mvcc transaction and assigns a timestamp to this transaction.
   virtual void Start() OVERRIDE;
@@ -282,7 +282,7 @@ class WriteTransaction : public Transaction {
   // are placed in the queue (but not necessarily in the same order of the
   // original requests) which is already a requirement of the consensus
   // algorithm.
-  virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
+  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
 
   // Releases the row locks (Early Lock Release).
   virtual void PreCommit() OVERRIDE;

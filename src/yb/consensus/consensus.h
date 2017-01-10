@@ -121,13 +121,13 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   Consensus() {}
 
   // Starts running the consensus algorithm.
-  virtual Status Start(const ConsensusBootstrapInfo& info) = 0;
+  virtual CHECKED_STATUS Start(const ConsensusBootstrapInfo& info) = 0;
 
   // Returns true if consensus is running.
   virtual bool IsRunning() const = 0;
 
   // Emulates a leader election by simply making this peer leader.
-  virtual Status EmulateElection() = 0;
+  virtual CHECKED_STATUS EmulateElection() = 0;
 
   // Triggers a leader election. Start an election now or start a pending election. A pending
   // election will be started pending upon the opid having been committed to this peer's log.
@@ -142,12 +142,12 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     // between a leader and one of its replicas.
     ELECT_EVEN_IF_LEADER_IS_ALIVE
   };
-  virtual Status StartElection(
+  virtual CHECKED_STATUS StartElection(
       ElectionMode mode, const bool pending_commit = false,
       const OpId& opid = OpId::default_instance()) = 0;
 
   // Implement a LeaderStepDown() request.
-  virtual Status StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
+  virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
     return STATUS(NotSupported, "Not implemented.");
   }
 
@@ -190,7 +190,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   //     commit index, which tells them to apply the operation.
   //
   // This method can only be called on the leader, i.e. role() == LEADER
-  virtual Status Replicate(const scoped_refptr<ConsensusRound>& round) = 0;
+  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) = 0;
 
   // Ensures that the consensus implementation is currently acting as LEADER,
   // and thus is allowed to submit operations to be prepared before they are
@@ -198,7 +198,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // implementation also stores the current term inside the round's "bound_term"
   // member. When we eventually are about to replicate the transaction, we verify
   // that the term has not changed in the meantime.
-  virtual Status CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) {
+  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) {
     return Status::OK();
   }
 
@@ -226,16 +226,16 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // error response could not be formed, which will result in the service
   // returning an UNKNOWN_ERROR RPC error code to the caller and including the
   // stringified Status message.
-  virtual Status Update(const ConsensusRequestPB* request,
+  virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
                         ConsensusResponsePB* response) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
-  virtual Status RequestVote(const VoteRequestPB* request,
+  virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) = 0;
 
   // Implement a ChangeConfig() request.
-  virtual Status ChangeConfig(const ChangeConfigRequestPB& req,
+  virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
                               const StatusCallback& client_cb,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error) {
     return STATUS(NotSupported, "Not implemented.");
@@ -272,7 +272,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // Returns the last OpId (either received or committed, depending on the
   // 'type' argument) that the Consensus implementation knows about.
   // Primarily used for testing purposes.
-  virtual Status GetLastOpId(OpIdType type, OpId* id) {
+  virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) {
     return STATUS(NotFound, "Not implemented.");
   }
 
@@ -302,7 +302,7 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     POST_SHUTDOWN
   };
 
-  Status ExecuteHook(HookPoint point);
+  CHECKED_STATUS ExecuteHook(HookPoint point);
 
   enum State {
     kNotInitialized,
@@ -424,7 +424,7 @@ struct StateChangeContext {
 //   on a restart.
 class ReplicaTransactionFactory {
  public:
-  virtual Status StartReplicaTransaction(const scoped_refptr<ConsensusRound>& context) = 0;
+  virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& context) = 0;
 
   virtual ~ReplicaTransactionFactory() {}
 };
@@ -499,7 +499,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // preparing it. See KUDU-597 for details.
   //
   // If this round has not been bound to any term, this is a no-op.
-  Status CheckBoundTerm(int64_t current_term) const;
+  CHECKED_STATUS CheckBoundTerm(int64_t current_term) const;
 
  private:
   friend class RaftConsensusQuorumTest;
@@ -527,16 +527,16 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 
 class Consensus::ConsensusFaultHooks {
  public:
-  virtual Status PreStart() { return Status::OK(); }
-  virtual Status PostStart() { return Status::OK(); }
-  virtual Status PreConfigChange() { return Status::OK(); }
-  virtual Status PostConfigChange() { return Status::OK(); }
-  virtual Status PreReplicate() { return Status::OK(); }
-  virtual Status PostReplicate() { return Status::OK(); }
-  virtual Status PreUpdate() { return Status::OK(); }
-  virtual Status PostUpdate() { return Status::OK(); }
-  virtual Status PreShutdown() { return Status::OK(); }
-  virtual Status PostShutdown() { return Status::OK(); }
+  virtual CHECKED_STATUS PreStart() { return Status::OK(); }
+  virtual CHECKED_STATUS PostStart() { return Status::OK(); }
+  virtual CHECKED_STATUS PreConfigChange() { return Status::OK(); }
+  virtual CHECKED_STATUS PostConfigChange() { return Status::OK(); }
+  virtual CHECKED_STATUS PreReplicate() { return Status::OK(); }
+  virtual CHECKED_STATUS PostReplicate() { return Status::OK(); }
+  virtual CHECKED_STATUS PreUpdate() { return Status::OK(); }
+  virtual CHECKED_STATUS PostUpdate() { return Status::OK(); }
+  virtual CHECKED_STATUS PreShutdown() { return Status::OK(); }
+  virtual CHECKED_STATUS PostShutdown() { return Status::OK(); }
   virtual ~ConsensusFaultHooks() {}
 };
 

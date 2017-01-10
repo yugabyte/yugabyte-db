@@ -73,8 +73,9 @@ class MultiThreadTest {
     // Increment
     for (int i = 0; i < num_threads_; i++) {
       scoped_refptr<Thread> ref;
-      Thread::Create("Striped64", "Incrementer", &MultiThreadTest::IncrementerThread, this,
-                     num_operations_, &ref);
+      CHECK_OK(
+          Thread::Create("Striped64", "Incrementer", &MultiThreadTest::IncrementerThread, this,
+                         num_operations_, &ref));
       threads_.push_back(ref);
     }
     for (const scoped_refptr<Thread> &t : threads_) {
@@ -86,8 +87,9 @@ class MultiThreadTest {
     // Decrement back to zero
     for (int i = 0; i < num_threads_; i++) {
       scoped_refptr<Thread> ref;
-      Thread::Create("Striped64", "Decrementer", &MultiThreadTest::DecrementerThread, this,
-                     num_operations_, &ref);
+      CHECK_OK(
+          Thread::Create("Striped64", "Decrementer", &MultiThreadTest::DecrementerThread, this,
+                         num_operations_, &ref));
       threads_.push_back(ref);
     }
     for (const scoped_refptr<Thread> &t : threads_) {

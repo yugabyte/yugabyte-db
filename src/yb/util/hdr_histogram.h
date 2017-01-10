@@ -45,6 +45,7 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -243,7 +244,7 @@ class AbstractHistogramIterator {
   virtual bool HasNext() const;
 
   // Returns the next element in the iteration.
-  Status Next(HistogramIterationValue* value);
+  CHECKED_STATUS Next(HistogramIterationValue* value);
 
   virtual double PercentileIteratedTo() const;
   virtual double PercentileIteratedFrom() const;

@@ -351,7 +351,7 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
   }
 
-  virtual Status NewProxy(const consensus::RaftPeerPB& peer_pb,
+  virtual CHECKED_STATUS NewProxy(const consensus::RaftPeerPB& peer_pb,
                           gscoped_ptr<PeerProxy>* proxy) OVERRIDE {
     proxy->reset(new NoOpTestPeerProxy(pool_.get(), peer_pb));
     return Status::OK();
@@ -372,12 +372,12 @@ class TestPeerMapManager {
     InsertOrDie(&peers_, peer_uuid, peer);
   }
 
-  Status GetPeerByIdx(int idx, scoped_refptr<RaftConsensus>* peer_out) const {
+  CHECKED_STATUS GetPeerByIdx(int idx, scoped_refptr<RaftConsensus>* peer_out) const {
     CHECK_LT(idx, config_.peers_size());
     return GetPeerByUuid(config_.peers(idx).permanent_uuid(), peer_out);
   }
 
-  Status GetPeerByUuid(const std::string& peer_uuid,
+  CHECKED_STATUS GetPeerByUuid(const std::string& peer_uuid,
                        scoped_refptr<RaftConsensus>* peer_out) const {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (!FindCopy(peers_, peer_uuid, peer_out)) {
@@ -557,7 +557,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(3).Build(&pool_));
   }
 
-  virtual Status NewProxy(const consensus::RaftPeerPB& peer_pb,
+  virtual CHECKED_STATUS NewProxy(const consensus::RaftPeerPB& peer_pb,
                           gscoped_ptr<PeerProxy>* proxy) OVERRIDE {
     LocalTestPeerProxy* new_proxy = new LocalTestPeerProxy(peer_pb.permanent_uuid(),
                                                            pool_.get(),
@@ -636,7 +636,7 @@ class TestDriver {
 // testing RaftConsensusState. Does not actually support running transactions.
 class MockTransactionFactory : public ReplicaTransactionFactory {
  public:
-  virtual Status StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) OVERRIDE {
+  virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) OVERRIDE {
     return StartReplicaTransactionMock(round.get());
   }
   MOCK_METHOD1(StartReplicaTransactionMock, Status(ConsensusRound* round));
@@ -655,7 +655,7 @@ class TestTransactionFactory : public ReplicaTransactionFactory {
     consensus_ = consensus;
   }
 
-  Status StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) OVERRIDE {
+  CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) OVERRIDE {
     auto txn = new TestDriver(pool_.get(), log_, round);
     txn->round_->SetConsensusReplicatedCallback(Bind(&TestDriver::ReplicationFinished,
                                                      Unretained(txn)));
@@ -705,70 +705,70 @@ class CounterHooks : public Consensus::ConsensusFaultHooks {
         pre_shutdown_calls_(0),
         post_shutdown_calls_(0) {}
 
-  virtual Status PreStart() OVERRIDE {
+  virtual CHECKED_STATUS PreStart() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_start_calls_++;
     return Status::OK();
   }
 
-  virtual Status PostStart() OVERRIDE {
+  virtual CHECKED_STATUS PostStart() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_start_calls_++;
     return Status::OK();
   }
 
-  virtual Status PreConfigChange() OVERRIDE {
+  virtual CHECKED_STATUS PreConfigChange() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual Status PostConfigChange() OVERRIDE {
+  virtual CHECKED_STATUS PostConfigChange() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual Status PreReplicate() OVERRIDE {
+  virtual CHECKED_STATUS PreReplicate() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual Status PostReplicate() OVERRIDE {
+  virtual CHECKED_STATUS PostReplicate() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual Status PreUpdate() OVERRIDE {
+  virtual CHECKED_STATUS PreUpdate() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_update_calls_++;
     return Status::OK();
   }
 
-  virtual Status PostUpdate() OVERRIDE {
+  virtual CHECKED_STATUS PostUpdate() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_update_calls_++;
     return Status::OK();
   }
 
-  virtual Status PreShutdown() OVERRIDE {
+  virtual CHECKED_STATUS PreShutdown() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_shutdown_calls_++;
     return Status::OK();
   }
 
-  virtual Status PostShutdown() OVERRIDE {
+  virtual CHECKED_STATUS PostShutdown() OVERRIDE {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_shutdown_calls_++;

@@ -201,7 +201,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
                                        n_worker_threads_,
                                        kMaxConcurrency);
   ASSERT_OK(service_pool_->Init());
-  server_messenger_->RegisterService(service_name_, service_pool_);
+  ASSERT_OK(server_messenger_->RegisterService(service_name_, service_pool_));
 
   scoped_refptr<yb::Thread> threads[3];
   Status status[3];

@@ -169,7 +169,7 @@ void RpcLineItemDAO::OpenScanner(const vector<string>& columns,
                                  gscoped_ptr<Scanner>* out_scanner) {
   gscoped_ptr<Scanner> ret(new Scanner);
   ret->scanner_.reset(new YBScanner(client_table_.get()));
-  ret->scanner_->SetCacheBlocks(FLAGS_tpch_cache_blocks_when_scanning);
+  CHECK_OK(ret->scanner_->SetCacheBlocks(FLAGS_tpch_cache_blocks_when_scanning));
   CHECK_OK(ret->scanner_->SetProjectedColumns(columns));
   for (YBPredicate* pred : preds) {
     CHECK_OK(ret->scanner_->AddConjunctPredicate(pred));

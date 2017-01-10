@@ -112,11 +112,11 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
   // format and consumes a prefix of the slice.
-  Status DecodeFromKey(rocksdb::Slice* slice);
+  CHECKED_STATUS DecodeFromKey(rocksdb::Slice* slice);
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
-  Status DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
+  CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double d);
   static PrimitiveValue ArrayIndex(int64_t index);

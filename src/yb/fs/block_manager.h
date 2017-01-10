@@ -97,11 +97,11 @@ class WritableBlock : public Block {
   // Destroys the in-memory representation of the block and synchronizes
   // dirty block data and metadata with the disk. On success, guarantees
   // that the entire block is durable.
-  virtual Status Close() = 0;
+  virtual CHECKED_STATUS Close() = 0;
 
   // Like Close() but does not synchronize dirty data or metadata to disk.
   // Meaning, after a successful Abort(), the block no longer exists.
-  virtual Status Abort() = 0;
+  virtual CHECKED_STATUS Abort() = 0;
 
   // Get a pointer back to this block's manager.
   virtual BlockManager* block_manager() const = 0;
@@ -110,7 +110,7 @@ class WritableBlock : public Block {
   //
   // Does not guarantee durability of 'data'; Close() must be called for all
   // outstanding data to reach the disk.
-  virtual Status Append(const Slice& data) = 0;
+  virtual CHECKED_STATUS Append(const Slice& data) = 0;
 
   // Begins an asynchronous flush of dirty block data to disk.
   //
@@ -121,7 +121,7 @@ class WritableBlock : public Block {
   // readahead or prefetching.
   //
   // Data may not be written to the block after FlushDataAsync() is called.
-  virtual Status FlushDataAsync() = 0;
+  virtual CHECKED_STATUS FlushDataAsync() = 0;
 
   // Returns the number of bytes successfully appended via Append().
   virtual size_t BytesAppended() const = 0;
@@ -137,10 +137,10 @@ class ReadableBlock : public Block {
   virtual ~ReadableBlock() {}
 
   // Destroys the in-memory representation of the block.
-  virtual Status Close() = 0;
+  virtual CHECKED_STATUS Close() = 0;
 
   // Returns the on-disk size of a written block.
-  virtual Status Size(uint64_t* sz) const = 0;
+  virtual CHECKED_STATUS Size(uint64_t* sz) const = 0;
 
   // Reads exactly 'length' bytes beginning from 'offset' in the block,
   // returning an error if fewer bytes exist. A slice referencing the
@@ -149,7 +149,7 @@ class ReadableBlock : public Block {
   // must remain alive while 'result' is used.
   //
   // Does not modify 'result' on error (but may modify 'scratch').
-  virtual Status Read(uint64_t offset, size_t length,
+  virtual CHECKED_STATUS Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const = 0;
 
   // Returns the memory usage of this object including the object itself.
@@ -192,12 +192,12 @@ class BlockManager {
   // followed up with a call to Open() to use the block manager.
   //
   // Returns an error if one already exists or cannot be created.
-  virtual Status Create() = 0;
+  virtual CHECKED_STATUS Create() = 0;
 
   // Opens an existing on-disk representation of this block manager.
   //
   // Returns an error if one does not exist or cannot be opened.
-  virtual Status Open() = 0;
+  virtual CHECKED_STATUS Open() = 0;
 
   // Creates a new block using the provided options and opens it for
   // writing. The block's ID will be generated.
@@ -206,16 +206,16 @@ class BlockManager {
   // ensure that it reaches disk.
   //
   // Does not modify 'block' on error.
-  virtual Status CreateBlock(const CreateBlockOptions& opts,
+  virtual CHECKED_STATUS CreateBlock(const CreateBlockOptions& opts,
                                       gscoped_ptr<WritableBlock>* block) = 0;
 
   // Like the above but uses default options.
-  virtual Status CreateBlock(gscoped_ptr<WritableBlock>* block) = 0;
+  virtual CHECKED_STATUS CreateBlock(gscoped_ptr<WritableBlock>* block) = 0;
 
   // Opens an existing block for reading.
   //
   // Does not modify 'block' on error.
-  virtual Status OpenBlock(const BlockId& block_id,
+  virtual CHECKED_STATUS OpenBlock(const BlockId& block_id,
                            gscoped_ptr<ReadableBlock>* block) = 0;
 
   // Deletes an existing block, allowing its space to be reclaimed by the
@@ -224,13 +224,13 @@ class BlockManager {
   // Blocks may be deleted while they are open for reading or writing;
   // the actual deletion will take place after the last open reader or
   // writer is closed.
-  virtual Status DeleteBlock(const BlockId& block_id) = 0;
+  virtual CHECKED_STATUS DeleteBlock(const BlockId& block_id) = 0;
 
   // Closes (and fully synchronizes) the given blocks. Effectively like
   // Close() for each block but may be optimized for groups of blocks.
   //
   // On success, guarantees that outstanding data is durable.
-  virtual Status CloseBlocks(const std::vector<WritableBlock*>& blocks) = 0;
+  virtual CHECKED_STATUS CloseBlocks(const std::vector<WritableBlock*>& blocks) = 0;
 
  protected:
   static const char* kInstanceMetadataFileName;
@@ -256,7 +256,7 @@ class ScopedWritableBlockCloser {
     blocks_.push_back(block.release());
   }
 
-  Status CloseBlocks() {
+  CHECKED_STATUS CloseBlocks() {
     if (blocks_.empty()) {
       return Status::OK();
     }

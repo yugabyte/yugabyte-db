@@ -64,7 +64,7 @@ class RowSet {
   // If the row was once present in this rowset, but no longer present
   // due to a DELETE, then this should set *present = false, as if
   // it were never there.
-  virtual Status CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
+  virtual CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
                                  ProbeStats* stats) const = 0;
 
   // Update/delete a row in this rowset.
@@ -72,7 +72,7 @@ class RowSet {
   //
   // If the row does not exist in this rowset, returns
   // Status::NotFound().
-  virtual Status MutateRow(Timestamp timestamp,
+  virtual CHECKED_STATUS MutateRow(Timestamp timestamp,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &update,
                            const consensus::OpId& op_id,
@@ -84,19 +84,19 @@ class RowSet {
   // The iterator will return rows/updates which were committed as of the time of
   // 'snap'.
   // The returned iterator is not Initted.
-  virtual Status NewRowIterator(const Schema *projection,
+  virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
                                 gscoped_ptr<RowwiseIterator>* out) const = 0;
 
   // Create the input to be used for a compaction.
   // The provided 'projection' is for the compaction output. Each row
   // will be projected into this Schema.
-  virtual Status NewCompactionInput(const Schema* projection,
+  virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
                                     gscoped_ptr<CompactionInput>* out) const = 0;
 
   // Count the number of rows in this rowset.
-  virtual Status CountRows(rowid_t *count) const = 0;
+  virtual CHECKED_STATUS CountRows(rowid_t *count) const = 0;
 
   // Return the bounds for this RowSet. 'min_encoded_key' and 'max_encoded_key'
   // are set to the first and last encoded keys for this RowSet. The storage
@@ -105,7 +105,7 @@ class RowSet {
   //
   // In the case that the rowset is still mutable (eg MemRowSet), this may
   // return Status::NotImplemented.
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const = 0;
 
   // Return a displayable string for this rowset.
@@ -113,7 +113,7 @@ class RowSet {
 
   // Dump the full contents of this rowset, for debugging.
   // This is very verbose so only useful within unit tests.
-  virtual Status DebugDump(vector<string> *lines = NULL) = 0;
+  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) = 0;
 
   // Estimate the number of bytes on-disk
   virtual uint64_t EstimateOnDiskSize() const = 0;
@@ -139,10 +139,10 @@ class RowSet {
   virtual double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const = 0;
 
   // Flush the DMS if there's one
-  virtual Status FlushDeltas() = 0;
+  virtual CHECKED_STATUS FlushDeltas() = 0;
 
   // Compact delta stores if more than one.
-  virtual Status MinorCompactDeltaStores() = 0;
+  virtual CHECKED_STATUS MinorCompactDeltaStores() = 0;
 
   virtual ~RowSet() {}
 
@@ -253,34 +253,34 @@ class DuplicatingRowSet : public RowSet {
  public:
   DuplicatingRowSet(RowSetVector old_rowsets, RowSetVector new_rowsets);
 
-  virtual Status MutateRow(Timestamp timestamp,
+  virtual CHECKED_STATUS MutateRow(Timestamp timestamp,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &update,
                            const consensus::OpId& op_id,
                            ProbeStats* stats,
                            OperationResultPB* result) OVERRIDE;
 
-  Status CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
+  CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
                          ProbeStats* stats) const OVERRIDE;
 
-  virtual Status NewRowIterator(const Schema *projection,
+  virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
                                 gscoped_ptr<RowwiseIterator>* out) const OVERRIDE;
 
-  virtual Status NewCompactionInput(const Schema* projection,
+  virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
                                     gscoped_ptr<CompactionInput>* out) const OVERRIDE;
 
-  Status CountRows(rowid_t *count) const OVERRIDE;
+  CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE;
 
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const OVERRIDE;
 
   uint64_t EstimateOnDiskSize() const OVERRIDE;
 
   string ToString() const OVERRIDE;
 
-  virtual Status DebugDump(vector<string> *lines = NULL) OVERRIDE;
+  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) OVERRIDE;
 
   std::shared_ptr<RowSetMetadata> metadata() OVERRIDE;
 
@@ -306,14 +306,14 @@ class DuplicatingRowSet : public RowSet {
 
   int64_t MinUnflushedLogIndex() const OVERRIDE { return -1; }
 
-  Status FlushDeltas() OVERRIDE {
+  CHECKED_STATUS FlushDeltas() OVERRIDE {
     // It's important that DuplicatingRowSet does not FlushDeltas. This prevents
     // a bug where we might end up with out-of-order deltas. See the long
     // comment in Tablet::Flush(...)
     return Status::OK();
   }
 
-  Status MinorCompactDeltaStores() OVERRIDE { return Status::OK(); }
+  CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE { return Status::OK(); }
 
  private:
   friend class Tablet;

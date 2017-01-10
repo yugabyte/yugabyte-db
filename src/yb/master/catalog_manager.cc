@@ -2005,7 +2005,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
   if (tablet_needs_alter) {
     SendAlterTabletRequest(tablet);
   } else if (report.has_schema_version()) {
-    HandleTabletSchemaVersionReport(tablet.get(), report.schema_version());
+    RETURN_NOT_OK(HandleTabletSchemaVersionReport(tablet.get(), report.schema_version()));
   }
 
   return Status::OK();
@@ -2997,7 +2997,9 @@ class AsyncAlterTable : public RetryingTSRpcTask {
     }
 
     if (state() == kStateComplete) {
-      master_->catalog_manager()->HandleTabletSchemaVersionReport(tablet_.get(), schema_version_);
+      // TODO: proper error handling here.
+      CHECK_OK(master_->catalog_manager()->HandleTabletSchemaVersionReport(
+          tablet_.get(), schema_version_));
     } else {
       VLOG(1) << "Task is not completed";
     }
@@ -4202,7 +4204,8 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 
   if (on_disk_dump) {
     consensus::ConsensusStatePB cur_consensus_state;
-    GetCurrentConfig(&cur_consensus_state);
+    // TODO: proper error handling below.
+    CHECK_OK(GetCurrentConfig(&cur_consensus_state));
     *out << "Current raft config: " << cur_consensus_state.ShortDebugString() << "\n";
   }
 }

@@ -35,7 +35,7 @@ class YBTable::Data {
        PartitionSchema partition_schema);
   ~Data();
 
-  Status Open();
+  CHECKED_STATUS Open();
 
   std::shared_ptr<YBClient> client_;
 

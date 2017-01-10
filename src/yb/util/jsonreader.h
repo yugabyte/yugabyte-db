@@ -40,7 +40,7 @@ class JsonReader {
   explicit JsonReader(std::string text);
   ~JsonReader();
 
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Extractor methods.
   //
@@ -49,32 +49,32 @@ class JsonReader {
   // 'field' is NULL, will try to convert 'object' directly into the
   // desire type.
 
-  Status ExtractInt32(const rapidjson::Value* object,
+  CHECKED_STATUS ExtractInt32(const rapidjson::Value* object,
                       const char* field,
                       int32_t* result) const;
 
-  Status ExtractInt64(const rapidjson::Value* object,
+  CHECKED_STATUS ExtractInt64(const rapidjson::Value* object,
                       const char* field,
                       int64_t* result) const;
 
-  Status ExtractString(const rapidjson::Value* object,
+  CHECKED_STATUS ExtractString(const rapidjson::Value* object,
                        const char* field,
                        std::string* result) const;
 
   // 'result' is only valid for as long as JsonReader is alive.
-  Status ExtractObject(const rapidjson::Value* object,
+  CHECKED_STATUS ExtractObject(const rapidjson::Value* object,
                        const char* field,
                        const rapidjson::Value** result) const;
 
   // 'result' is only valid for as long as JsonReader is alive.
-  Status ExtractObjectArray(const rapidjson::Value* object,
+  CHECKED_STATUS ExtractObjectArray(const rapidjson::Value* object,
                             const char* field,
                             std::vector<const rapidjson::Value*>* result) const;
 
   const rapidjson::Value* root() const { return &document_; }
 
  private:
-  Status ExtractField(const rapidjson::Value* object,
+  CHECKED_STATUS ExtractField(const rapidjson::Value* object,
                       const char* field,
                       const rapidjson::Value** result) const;
 

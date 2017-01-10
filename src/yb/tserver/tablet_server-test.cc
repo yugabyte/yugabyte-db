@@ -323,7 +323,7 @@ TEST_F(TabletServerTest, TestInsert) {
   Timestamp now_before = mini_server_->server()->clock()->Now();
 
   rows_inserted = nullptr;
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_OK(ShutdownAndRebuildTablet());
   VerifyRows(schema_, { KeyValue(1, 1), KeyValue(2, 1), KeyValue(1234, 5678) });
 
   // get the clock's timestamp after replay

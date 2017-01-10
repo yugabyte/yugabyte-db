@@ -86,8 +86,8 @@ class ThreadPoolBuilder {
   const MonoDelta& idle_timeout() const { return idle_timeout_; }
 
   // Instantiate a new ThreadPool with the existing builder arguments.
-  Status Build(gscoped_ptr<ThreadPool>* pool) const;
-  Status Build(std::unique_ptr<ThreadPool>* pool) const;
+  CHECKED_STATUS Build(gscoped_ptr<ThreadPool>* pool) const;
+  CHECKED_STATUS Build(std::unique_ptr<ThreadPool>* pool) const;
 
  private:
   friend class ThreadPool;
@@ -131,13 +131,13 @@ class ThreadPool {
   void Shutdown();
 
   // Submit a function using the yb Closure system.
-  Status SubmitClosure(const Closure& task) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SubmitClosure(const Closure& task) WARN_UNUSED_RESULT;
 
   // Submit a function binded using std::bind(&FuncName, args...)
-  Status SubmitFunc(const std::function<void()>& func) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SubmitFunc(const std::function<void()>& func) WARN_UNUSED_RESULT;
 
   // Submit a Runnable class
-  Status Submit(const std::shared_ptr<Runnable>& task)
+  CHECKED_STATUS Submit(const std::shared_ptr<Runnable>& task)
       WARN_UNUSED_RESULT;
 
   // Wait until all the tasks are completed.
@@ -175,7 +175,7 @@ class ThreadPool {
   explicit ThreadPool(const ThreadPoolBuilder& builder);
 
   // Initialize the thread pool by starting the minimum number of threads.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Clear all entries from queue_. Requires that lock_ is held.
   void ClearQueue();
@@ -184,7 +184,7 @@ class ThreadPool {
   void DispatchThread(bool permanent);
 
   // Create new thread. Required that lock_ is held.
-  Status CreateThreadUnlocked();
+  CHECKED_STATUS CreateThreadUnlocked();
 
  private:
   FRIEND_TEST(TestThreadPool, TestThreadPoolWithNoMinimum);

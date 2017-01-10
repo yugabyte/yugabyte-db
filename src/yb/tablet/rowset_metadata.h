@@ -70,16 +70,16 @@ class RowSetMetadata {
   typedef std::map<ColumnId, BlockId> ColumnIdToBlockIdMap;
 
   // Create a new RowSetMetadata
-  static Status CreateNew(TabletMetadata* tablet_metadata,
+  static CHECKED_STATUS CreateNew(TabletMetadata* tablet_metadata,
                           int64_t id,
                           gscoped_ptr<RowSetMetadata>* metadata);
 
   // Load metadata from a protobuf which was previously read from disk.
-  static Status Load(TabletMetadata* tablet_metadata,
+  static CHECKED_STATUS Load(TabletMetadata* tablet_metadata,
                      const RowSetDataPB& pb,
                      gscoped_ptr<RowSetMetadata>* metadata);
 
-  Status Flush();
+  CHECKED_STATUS Flush();
 
   const std::string ToString() const;
 
@@ -103,9 +103,9 @@ class RowSetMetadata {
 
   void SetColumnDataBlocks(const ColumnIdToBlockIdMap& blocks_by_col_id);
 
-  Status CommitRedoDeltaDataBlock(int64_t dms_id, const BlockId& block_id);
+  CHECKED_STATUS CommitRedoDeltaDataBlock(int64_t dms_id, const BlockId& block_id);
 
-  Status CommitUndoDeltaDataBlock(const BlockId& block_id);
+  CHECKED_STATUS CommitUndoDeltaDataBlock(const BlockId& block_id);
 
   BlockId bloom_block() const {
     std::lock_guard<LockType> l(lock_);
@@ -171,7 +171,7 @@ class RowSetMetadata {
   // Atomically commit a set of changes to this object.
   //
   // On success, calls TabletMetadata::AddOrphanedBlocks() on the removed blocks.
-  Status CommitUpdate(const RowSetMetadataUpdate& update);
+  CHECKED_STATUS CommitUpdate(const RowSetMetadataUpdate& update);
 
   std::vector<BlockId> GetAllBlocks();
 
@@ -195,7 +195,7 @@ class RowSetMetadata {
       last_durable_redo_dms_id_(kNoDurableMemStore) {
   }
 
-  Status InitFromPB(const RowSetDataPB& pb);
+  CHECKED_STATUS InitFromPB(const RowSetDataPB& pb);
 
   void ToProtobuf(RowSetDataPB *pb);
 

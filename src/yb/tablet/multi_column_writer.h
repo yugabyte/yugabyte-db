@@ -50,21 +50,21 @@ class MultiColumnWriter {
   virtual ~MultiColumnWriter();
 
   // Open and start writing the columns.
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Append the given block to the output columns.
   //
   // Note that the selection vector here is ignored.
-  Status AppendBlock(const RowBlock& block);
+  CHECKED_STATUS AppendBlock(const RowBlock& block);
 
   // Close the in-progress files.
   //
   // The file's blocks may be retrieved using FlushedBlocks().
-  Status Finish();
+  CHECKED_STATUS Finish();
 
   // Close the in-progress CFiles, releasing the underlying writable blocks
   // to 'closer'.
-  Status FinishAndReleaseBlocks(fs::ScopedWritableBlockCloser* closer);
+  CHECKED_STATUS FinishAndReleaseBlocks(fs::ScopedWritableBlockCloser* closer);
 
   // Return the number of bytes written so far.
   size_t written_size() const;

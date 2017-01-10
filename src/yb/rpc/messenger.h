@@ -95,10 +95,10 @@ class MessengerBuilder {
   // Uses the given connection type to handle the incoming connections.
   MessengerBuilder &use_connection_type(ConnectionType type);
 
-  Status Build(std::shared_ptr<Messenger> *msgr);
+  CHECKED_STATUS Build(std::shared_ptr<Messenger> *msgr);
 
  private:
-  Status Build(Messenger **msgr);
+  CHECKED_STATUS Build(Messenger **msgr);
   const std::string name_;
   MonoDelta connection_keepalive_time_;
   int num_reactors_;
@@ -144,17 +144,17 @@ class Messenger {
   //
   // NOTE: the returned pool is not initially started. You must call
   // pool->Start(...) to begin accepting connections.
-  Status AddAcceptorPool(const Sockaddr &accept_addr,
+  CHECKED_STATUS AddAcceptorPool(const Sockaddr &accept_addr,
                          std::shared_ptr<AcceptorPool>* pool);
 
   // Register a new RpcService to handle inbound requests.
-  Status RegisterService(const std::string& service_name,
+  CHECKED_STATUS RegisterService(const std::string& service_name,
                          const scoped_refptr<RpcService>& service);
 
   // Unregister currently-registered RpcService.
-  Status UnregisterService(const std::string& service_name);
+  CHECKED_STATUS UnregisterService(const std::string& service_name);
 
-  Status UnregisterAllServices();
+  CHECKED_STATUS UnregisterAllServices();
 
   // Queue a call for transmission. This will pick the appropriate reactor,
   // and enqueue a task on that reactor to assign and send the call.
@@ -167,7 +167,7 @@ class Messenger {
   void RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote);
 
   // Dump the current RPCs into the given protobuf.
-  Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
+  CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);
 
   // Run 'func' on a reactor thread after 'when' time elapses.
@@ -199,7 +199,7 @@ class Messenger {
   explicit Messenger(const MessengerBuilder &bld);
 
   Reactor* RemoteToReactor(const Sockaddr &remote);
-  Status Init();
+  CHECKED_STATUS Init();
   void RunTimeoutThread();
   void UpdateCurTime();
 

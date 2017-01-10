@@ -101,13 +101,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Load all tablet metadata blocks from disk, and open their respective tablets.
   // Upon return of this method all existing tablets are registered, but
   // the bootstrap is performed asynchronously.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Waits for all the bootstraps to complete.
   // Returns Status::OK if all tablets bootstrapped successfully. If
   // the bootstrap of any tablet failed returns the failure reason for
   // the first tablet whose bootstrap failed.
-  Status WaitForAllBootstrapsToFinish();
+  CHECKED_STATUS WaitForAllBootstrapsToFinish();
 
   // Shut down all of the tablets, gracefully flushing before shutdown.
   void Shutdown();
@@ -119,7 +119,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   //
   // If another tablet already exists with this ID, logs a DFATAL
   // and returns a bad Status.
-  Status CreateNewTablet(
+  CHECKED_STATUS CreateNewTablet(
     const string &table_id,
     const string &tablet_id,
     const Partition &partition,
@@ -138,7 +138,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // raft config change op has an opid_index equal to or less than the specified
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
-  Status DeleteTablet(const std::string& tablet_id,
+  CHECKED_STATUS DeleteTablet(const std::string& tablet_id,
                       tablet::TabletDataState delete_type,
                       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                       boost::optional<TabletServerErrorPB::Code>* error_code);
@@ -152,7 +152,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   bool LookupTabletUnlocked(const std::string& tablet_id,
                             scoped_refptr<tablet::TabletPeer>* tablet_peer) const;
 
-  virtual Status GetTabletPeer(const std::string& tablet_id,
+  virtual CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                scoped_refptr<tablet::TabletPeer>* tablet_peer) const
                                OVERRIDE;
 
@@ -162,7 +162,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // See the StartRemoteBootstrap() RPC declaration in consensus.proto for details.
   // Currently this runs the entire procedure synchronously.
   // TODO: KUDU-921: Run this procedure on a background thread.
-  virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
+  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
 
   // Generate an incremental tablet report.
   //
@@ -204,7 +204,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Return the number of tablets in RUNNING or BOOTSTRAPPING state.
   int GetNumLiveTablets() const;
 
-  Status RunAllLogGC();
+  CHECKED_STATUS RunAllLogGC();
 
   // Creates and updates the map of table to the count of directories used per table per disk
   // for both data and wal directories.
@@ -247,7 +247,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
-  Status CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const;
+  CHECKED_STATUS CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const;
 
   // Registers the start of a tablet state transition by inserting the tablet
   // id and reason string into the transition_in_progress_ map.
@@ -257,12 +257,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // transition by some other operation.
   // On success, returns OK and populates 'deleter' with an object that removes
   // the map entry on destruction.
-  Status StartTabletStateTransitionUnlocked(const std::string& tablet_id,
+  CHECKED_STATUS StartTabletStateTransitionUnlocked(const std::string& tablet_id,
                                             const std::string& reason,
                                             scoped_refptr<TransitionInProgressDeleter>* deleter);
 
   // Open a tablet meta from the local file system by loading its superblock.
-  Status OpenTabletMeta(const std::string& tablet_id,
+  CHECKED_STATUS OpenTabletMeta(const std::string& tablet_id,
                         scoped_refptr<tablet::TabletMetadata>* metadata);
 
   // Open a tablet whose metadata has already been loaded/created.
@@ -316,7 +316,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Handle the case on startup where we find a tablet that is not in
   // TABLET_DATA_READY state. Generally, we tombstone the replica.
-  Status HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
+  CHECKED_STATUS HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
 
   // Adds the count of existing data and wal directory into local into
   // the table to disk assignment map/cache.

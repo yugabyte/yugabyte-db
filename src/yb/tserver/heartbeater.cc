@@ -375,7 +375,7 @@ Status Heartbeater::Thread::DoHeartbeat() {
   if (resp.has_master_config()) {
     LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
 
-    server_->UpdateMasterAddresses(resp.master_config());
+    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config()));
   }
 
   // TODO: Handle TSHeartbeatResponsePB (e.g. deleted tablets and schema changes)

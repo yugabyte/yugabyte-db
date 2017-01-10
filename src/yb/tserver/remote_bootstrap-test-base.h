@@ -102,7 +102,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
 
   // Read a block file from the file system fully into memory and return a
   // Slice pointing to it.
-  Status ReadLocalBlockFile(FsManager* fs_manager, const BlockId& block_id,
+  CHECKED_STATUS ReadLocalBlockFile(FsManager* fs_manager, const BlockId& block_id,
                             faststring* scratch, Slice* slice) {
     gscoped_ptr<fs::ReadableBlock> block;
     RETURN_NOT_OK(fs_manager->OpenBlock(block_id, &block));

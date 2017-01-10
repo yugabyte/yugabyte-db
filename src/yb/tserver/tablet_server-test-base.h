@@ -124,7 +124,7 @@ class TabletServerTestBase : public YBTest {
     ResetClientProxies();
   }
 
-  Status WaitForTabletRunning(const char *tablet_id) {
+  CHECKED_STATUS WaitForTabletRunning(const char *tablet_id) {
     scoped_refptr<tablet::TabletPeer> tablet_peer;
     RETURN_NOT_OK(mini_server_->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
     return tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10));
@@ -343,7 +343,7 @@ class TabletServerTestBase : public YBTest {
     }
   }
 
-  Status ShutdownAndRebuildTablet() {
+  CHECKED_STATUS ShutdownAndRebuildTablet() {
     ShutdownTablet();
 
     // Start server.

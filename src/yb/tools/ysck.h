@@ -161,9 +161,9 @@ class YsckTabletServer {
   virtual ~YsckTabletServer() { }
 
   // Connects to the configured Tablet Server.
-  virtual Status Connect() const = 0;
+  virtual CHECKED_STATUS Connect() const = 0;
 
-  virtual Status CurrentTimestamp(uint64_t* timestamp) const = 0;
+  virtual CHECKED_STATUS CurrentTimestamp(uint64_t* timestamp) const = 0;
 
   // Executes a checksum scan on the associated tablet, and runs the callback
   // with the result. The callback must be threadsafe and non-blocking.
@@ -194,21 +194,21 @@ class YsckMaster {
   virtual ~YsckMaster() { }
 
   // Connects to the configured Master.
-  virtual Status Connect() const = 0;
+  virtual CHECKED_STATUS Connect() const = 0;
 
   // Gets the list of Tablet Servers from the Master and stores it in the passed
   // map, which is keyed on server permanent_uuid.
   // 'tablet_servers' is only modified if this method returns OK.
-  virtual Status RetrieveTabletServers(TSMap* tablet_servers) = 0;
+  virtual CHECKED_STATUS RetrieveTabletServers(TSMap* tablet_servers) = 0;
 
   // Gets the list of tables from the Master and stores it in the passed vector.
   // tables is only modified if this method returns OK.
-  virtual Status RetrieveTablesList(
+  virtual CHECKED_STATUS RetrieveTablesList(
       std::vector<std::shared_ptr<YsckTable> >* tables) = 0;
 
   // Gets the list of tablets for the specified table and stores the list in it.
   // The table's tablet list is only modified if this method returns OK.
-  virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) = 0;
+  virtual CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) = 0;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(YsckMaster);
@@ -223,7 +223,7 @@ class YsckCluster {
 
   // Fetches list of tables, tablets, and tablet servers from the master and
   // populates the full list in cluster_->tables().
-  Status FetchTableAndTabletInfo();
+  CHECKED_STATUS FetchTableAndTabletInfo();
 
   const std::shared_ptr<YsckMaster>& master() {
     return master_;
@@ -240,13 +240,13 @@ class YsckCluster {
 
  private:
   // Gets the list of tablet servers from the Master.
-  Status RetrieveTabletServers();
+  CHECKED_STATUS RetrieveTabletServers();
 
   // Gets the list of tables from the Master.
-  Status RetrieveTablesList();
+  CHECKED_STATUS RetrieveTablesList();
 
   // Fetch the list of tablets for the given table from the Master.
-  Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table);
+  CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table);
 
   const std::shared_ptr<YsckMaster> master_;
   std::unordered_map<std::string, std::shared_ptr<YsckTabletServer> > tablet_servers_;
@@ -262,23 +262,23 @@ class Ysck {
   ~Ysck() {}
 
   // Verifies that it can connect to the Master.
-  Status CheckMasterRunning();
+  CHECKED_STATUS CheckMasterRunning();
 
   // Populates all the cluster table and tablet info from the Master.
-  Status FetchTableAndTabletInfo();
+  CHECKED_STATUS FetchTableAndTabletInfo();
 
   // Verifies that it can connect to all the Tablet Servers reported by the master.
   // Must first call FetchTableAndTabletInfo().
-  Status CheckTabletServersRunning();
+  CHECKED_STATUS CheckTabletServersRunning();
 
   // Establishes a connection with the specified Tablet Server.
   // Must first call FetchTableAndTabletInfo().
-  Status ConnectToTabletServer(const std::shared_ptr<YsckTabletServer>& ts);
+  CHECKED_STATUS ConnectToTabletServer(const std::shared_ptr<YsckTabletServer>& ts);
 
   // Verifies that all the tables have contiguous tablets and that each tablet has enough replicas
   // and a leader.
   // Must first call FetchTableAndTabletInfo().
-  Status CheckTablesConsistency();
+  CHECKED_STATUS CheckTablesConsistency();
 
   // Verifies data checksums on all tablets by doing a scan of the database on each replica.
   // If tables is not empty, checks only the named tables.
@@ -286,14 +286,14 @@ class Ysck {
   // If both are specified, takes the intersection.
   // If both are empty, all tables and tablets are checked.
   // Must first call FetchTableAndTabletInfo().
-  Status ChecksumData(const std::vector<std::string>& tables,
+  CHECKED_STATUS ChecksumData(const std::vector<std::string>& tables,
                       const std::vector<std::string>& tablets,
                       const ChecksumOptions& options);
 
   // Verifies that the assignments reported by the master are the same reported by the
   // Tablet Servers.
   // Must first call FetchTableAndTabletInfo().
-  Status CheckAssignments();
+  CHECKED_STATUS CheckAssignments();
 
  private:
   bool VerifyTable(const std::shared_ptr<YsckTable>& table);

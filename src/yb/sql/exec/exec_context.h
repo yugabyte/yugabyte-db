@@ -35,12 +35,12 @@ class ExecContext : public ProcessContext {
   }
 
   // Apply YBClient write operator.
-  Status ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op) {
+  CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op) {
     return sql_env_->ApplyWrite(yb_op);
   }
 
   // Apply YBClient read operator.
-  Status ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op) {
+  CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op) {
     return sql_env_->ApplyRead(yb_op);
   }
 

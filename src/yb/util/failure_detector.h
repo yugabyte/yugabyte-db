@@ -60,18 +60,18 @@ class FailureDetector : public RefCountedThreadSafe<FailureDetector> {
   //
   // Returns Status::AlreadyPresent() if a machine with 'name' is
   // already registered in this failure detector.
-  virtual Status Track(const std::string& name,
+  virtual CHECKED_STATUS Track(const std::string& name,
                        const MonoTime& now,
                        const FailureDetectedCallback& callback) = 0;
 
   // Stops tracking node with 'name'.
-  virtual Status UnTrack(const std::string& name) = 0;
+  virtual CHECKED_STATUS UnTrack(const std::string& name) = 0;
 
   // Return true iff the named entity is currently being tracked.
   virtual bool IsTracking(const std::string& name) = 0;
 
   // Records that a message from machine with 'name' was received at 'now'.
-  virtual Status MessageFrom(const std::string& name, const MonoTime& now) = 0;
+  virtual CHECKED_STATUS MessageFrom(const std::string& name, const MonoTime& now) = 0;
 
   // Checks the failure status of each tracked node. If the failure criteria is
   // met, the failure callback is invoked.
@@ -93,15 +93,15 @@ class TimedFailureDetector : public FailureDetector {
   explicit TimedFailureDetector(MonoDelta failure_period);
   virtual ~TimedFailureDetector();
 
-  virtual Status Track(const std::string& name,
+  virtual CHECKED_STATUS Track(const std::string& name,
                        const MonoTime& now,
                        const FailureDetectedCallback& callback) OVERRIDE;
 
-  virtual Status UnTrack(const std::string& name) OVERRIDE;
+  virtual CHECKED_STATUS UnTrack(const std::string& name) OVERRIDE;
 
   virtual bool IsTracking(const std::string& name) OVERRIDE;
 
-  virtual Status MessageFrom(const std::string& name, const MonoTime& now) OVERRIDE;
+  virtual CHECKED_STATUS MessageFrom(const std::string& name, const MonoTime& now) OVERRIDE;
 
   virtual void CheckForFailures(const MonoTime& now) OVERRIDE;
 
@@ -140,17 +140,17 @@ class RandomizedFailureMonitor {
   ~RandomizedFailureMonitor();
 
   // Starts the failure monitor.
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Stops the failure monitor.
   void Shutdown();
 
   // Adds a failure detector to be monitored.
-  Status MonitorFailureDetector(const std::string& name,
+  CHECKED_STATUS MonitorFailureDetector(const std::string& name,
                                 const scoped_refptr<FailureDetector>& fd);
 
   // Unmonitors the failure detector with the specified name.
-  Status UnmonitorFailureDetector(const std::string& name);
+  CHECKED_STATUS UnmonitorFailureDetector(const std::string& name);
 
  private:
   typedef std::unordered_map<std::string, scoped_refptr<FailureDetector> > FDMap;

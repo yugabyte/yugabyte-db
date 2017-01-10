@@ -180,7 +180,8 @@ YSQLRow& YSQLRow::operator=(YSQLRow&& other) {
 //-------------------------------------- YSQL row block --------------------------------------
 YSQLRowBlock::YSQLRowBlock(const Schema& schema, const vector<ColumnId>& column_ids)
     : schema_(new Schema()) {
-  schema.CreateProjectionByIdsIgnoreMissing(column_ids, schema_.get());
+  // TODO: is there a better way to report errors here?
+  CHECK_OK(schema.CreateProjectionByIdsIgnoreMissing(column_ids, schema_.get()));
 }
 
 YSQLRowBlock::~YSQLRowBlock() {

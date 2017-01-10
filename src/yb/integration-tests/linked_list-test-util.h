@@ -89,19 +89,19 @@ class LinkedListTester {
   }
 
   // Create the table.
-  Status CreateLinkedListTable();
+  CHECKED_STATUS CreateLinkedListTable();
 
   // Load the table with the linked list test pattern.
   //
   // Runs for the amount of time designated by 'run_for'.
   // Sets *written_count to the number of rows inserted.
-  Status LoadLinkedList(
+  CHECKED_STATUS LoadLinkedList(
       const MonoDelta& run_for,
       int num_samples,
       int64_t *written_count);
 
   // Variant of VerifyLinkedListRemote that verifies at the specified snapshot timestamp.
-  Status VerifyLinkedListAtSnapshotRemote(
+  CHECKED_STATUS VerifyLinkedListAtSnapshotRemote(
       const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
       const bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count) {
@@ -118,7 +118,7 @@ class LinkedListTester {
   }
 
   // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot timestamp.
-  Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
+  CHECKED_STATUS VerifyLinkedListNoSnapshotRemote(const int64_t expected,
                                           const bool log_errors,
                                           const bool latest_at_leader,
                                           int64_t* verified_count) {
@@ -132,19 +132,19 @@ class LinkedListTester {
 
   // Run the verify step on a table with RPCs. Calls the provided callback 'cb' once during
   // verification to test scanner fault tolerance.
-  Status VerifyLinkedListRemote(
+  CHECKED_STATUS VerifyLinkedListRemote(
       const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
       bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count);
 
   // Run the verify step on a specific tablet.
-  Status VerifyLinkedListLocal(const tablet::Tablet* tablet,
+  CHECKED_STATUS VerifyLinkedListLocal(const tablet::Tablet* tablet,
                                const int64_t expected,
                                int64_t* verified_count);
 
   // A variant of VerifyLinkedListRemote that is more robust towards ongoing
   // bootstrapping and replication.
-  Status WaitAndVerify(const int seconds_to_run,
+  CHECKED_STATUS WaitAndVerify(const int seconds_to_run,
                        const int64_t expected,
                        const bool latest_at_leader) {
     LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run
@@ -155,7 +155,7 @@ class LinkedListTester {
   }
 
   // A variant of WaitAndVerify that also takes a callback to be run once during verification.
-  Status WaitAndVerify(
+  CHECKED_STATUS WaitAndVerify(
       int seconds_to_run, int64_t expected, bool latest_at_leader,
       const std::function<Status(const std::string&)>& cb);
 
@@ -181,7 +181,7 @@ class LinkedListTester {
   SnapsAndCounts sampled_timestamps_and_counts_;
 
  private:
-  Status ReturnOk(const std::string& str) { return Status::OK(); }
+  CHECKED_STATUS ReturnOk(const std::string& str) { return Status::OK(); }
 };
 
 // Generates the linked list pattern.
@@ -207,7 +207,7 @@ class LinkedListChainGenerator {
     return (implicit_cast<uint64_t>(rand_.Next()) << 32) | rand_.Next();
   }
 
-  Status GenerateNextInsert(client::YBTable* table, client::YBSession* session) {
+  CHECKED_STATUS GenerateNextInsert(client::YBTable* table, client::YBSession* session) {
     // Encode the chain index in the lowest 8 bits so that different chains never
     // intersect.
     int64_t this_key = (Rand64() << 8) | chain_idx_;
@@ -387,7 +387,7 @@ class LinkedListVerifier {
   void RegisterResult(int64_t key, int64_t link, bool updated);
 
   // Run the common verify step once the scanned data is stored.
-  Status VerifyData(int64_t* verified_count, bool log_errors);
+  CHECKED_STATUS VerifyData(int64_t* verified_count, bool log_errors);
 
  private:
   // Print a summary of the broken links to the log.
@@ -631,7 +631,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
     // tserver. Do this only once.
     if (snapshot_timestamp != kNoSnapshot && !cb_called) {
       client::YBTabletServer* kts_ptr;
-      scanner.GetCurrentServer(&kts_ptr);
+      RETURN_NOT_OK(scanner.GetCurrentServer(&kts_ptr));
       gscoped_ptr<client::YBTabletServer> kts(kts_ptr);
       const std::string down_ts = kts->uuid();
       LOG(INFO) << "Calling callback on tserver " << down_ts;

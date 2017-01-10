@@ -90,10 +90,10 @@ class RpcServerBase {
                 const std::string& metrics_namespace);
   virtual ~RpcServerBase();
 
-  Status Init();
-  Status RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> rpc_impl);
-  Status Start();
-  Status StartRpcServer();
+  CHECKED_STATUS Init();
+  CHECKED_STATUS RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> rpc_impl);
+  CHECKED_STATUS Start();
+  CHECKED_STATUS StartRpcServer();
   void Shutdown();
 
   const std::string name_;
@@ -114,12 +114,12 @@ class RpcServerBase {
 
   ServerBaseOptions options_;
 
-  virtual Status DumpServerInfo(const std::string& path,
+  virtual CHECKED_STATUS DumpServerInfo(const std::string& path,
                         const std::string& format) const;
 
   bool initialized_;
  private:
-  Status StartMetricsLogging();
+  CHECKED_STATUS StartMetricsLogging();
   void MetricsLoggingThread();
 
 
@@ -148,15 +148,15 @@ class RpcAndWebServerBase : public RpcServerBase {
   void GetStatusPB(ServerStatusPB* status) const override;
 
   // Centralized method to get the Registration information for either the Master or Tserver.
-  Status GetRegistration(ServerRegistrationPB* reg) const;
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg) const;
 
  protected:
   RpcAndWebServerBase(std::string name, const ServerBaseOptions& options,
              const std::string& metrics_namespace);
   virtual ~RpcAndWebServerBase();
 
-  Status Init();
-  Status Start();
+  CHECKED_STATUS Init();
+  CHECKED_STATUS Start();
   void Shutdown();
 
   gscoped_ptr<FsManager> fs_manager_;

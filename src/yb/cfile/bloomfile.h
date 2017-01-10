@@ -38,14 +38,14 @@ class BloomFileWriter {
   BloomFileWriter(gscoped_ptr<fs::WritableBlock> block,
                   const BloomFilterSizing &sizing);
 
-  Status Start();
-  Status AppendKeys(const Slice *keys, size_t n_keys);
+  CHECKED_STATUS Start();
+  CHECKED_STATUS AppendKeys(const Slice *keys, size_t n_keys);
 
   // Close the bloom's CFile, closing the underlying writable block.
-  Status Finish();
+  CHECKED_STATUS Finish();
 
   // Close the bloom's CFile, releasing the underlying block to 'closer'.
-  Status FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
+  CHECKED_STATUS FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
 
   // Estimate the amount of data already written to this file.
   size_t written_size() const;
@@ -53,7 +53,7 @@ class BloomFileWriter {
  private:
   DISALLOW_COPY_AND_ASSIGN(BloomFileWriter);
 
-  Status FinishCurrentBloomBlock();
+  CHECKED_STATUS FinishCurrentBloomBlock();
 
   gscoped_ptr<cfile::CFileWriter> writer_;
 
@@ -74,7 +74,7 @@ class BloomFileReader {
   // Fully open a bloom file using a previously opened block.
   //
   // After this call, the bloom reader is safe for use.
-  static Status Open(gscoped_ptr<fs::ReadableBlock> block,
+  static CHECKED_STATUS Open(gscoped_ptr<fs::ReadableBlock> block,
                      const ReaderOptions& options,
                      gscoped_ptr<BloomFileReader> *reader);
 
@@ -83,7 +83,7 @@ class BloomFileReader {
   // the bloom file.
   //
   // Init() must be called before using CheckKeyPresent().
-  static Status OpenNoInit(gscoped_ptr<fs::ReadableBlock> block,
+  static CHECKED_STATUS OpenNoInit(gscoped_ptr<fs::ReadableBlock> block,
                            const ReaderOptions& options,
                            gscoped_ptr<BloomFileReader> *reader);
 
@@ -91,13 +91,13 @@ class BloomFileReader {
   // validating its contents.
   //
   // May be called multiple times; subsequent calls will no-op.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Check if the given key may be present in the file.
   //
   // Sets *maybe_present to false if the key is definitely not
   // present, otherwise sets it to true to indicate maybe present.
-  Status CheckKeyPresent(const BloomKeyProbe &probe,
+  CHECKED_STATUS CheckKeyPresent(const BloomKeyProbe &probe,
                          bool *maybe_present);
 
  private:
@@ -110,12 +110,12 @@ class BloomFileReader {
   // Returns the parsed header inside *hdr, and returns
   // a Slice to the true bloom filter data inside
   // *bloom_data.
-  Status ParseBlockHeader(const Slice &block,
+  CHECKED_STATUS ParseBlockHeader(const Slice &block,
                           BloomBlockHeaderPB *hdr,
                           Slice *bloom_data) const;
 
   // Callback used in 'init_once_' to initialize this bloom file.
-  Status InitOnce();
+  CHECKED_STATUS InitOnce();
 
   // Returns the memory usage of this object including the object itself but
   // excluding the CFileReader, which is tracked independently.

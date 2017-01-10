@@ -19,7 +19,7 @@ class MasterUtil {
  public:
   // Given a hostport, return the master server information protobuf.
   // Does not apply to tablet server.
-  static Status GetMasterEntryForHost(const std::shared_ptr<rpc::Messenger>& messenger,
+  static CHECKED_STATUS GetMasterEntryForHost(const std::shared_ptr<rpc::Messenger>& messenger,
                                       const HostPort& hostport,
                                       int timeout,
                                       ServerEntryPB* e);

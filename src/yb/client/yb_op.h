@@ -227,7 +227,7 @@ class YB_EXPORT YBSqlOp : public YBOperation {
   virtual ~YBSqlOp();
 
   // Set the row key in the YBPartialRow.
-  virtual Status SetKey() = 0;
+  virtual CHECKED_STATUS SetKey() = 0;
 
   // Set the hash key in the partial row of this YSQL operation.
   virtual void SetHashCode(uint16_t hash_code) = 0;
@@ -254,7 +254,7 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
   virtual bool read_only() OVERRIDE { return false; };
 
   // Set the row key from the primary key in YSQLWriteRequestPB.
-  virtual Status SetKey() OVERRIDE;
+  virtual CHECKED_STATUS SetKey() OVERRIDE;
 
   // Set the hash key in the partial row of this YSQL operation.
   virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
@@ -300,7 +300,7 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
   virtual bool read_only() OVERRIDE { return true; };
 
   // Set the row key from the primary key in YSQLReadRequestPB.
-  virtual Status SetKey() OVERRIDE;
+  virtual CHECKED_STATUS SetKey() OVERRIDE;
 
   // Set the hash key in the partial row of this YSQL operation.
   virtual void SetHashCode(uint16_t hash_code) OVERRIDE;

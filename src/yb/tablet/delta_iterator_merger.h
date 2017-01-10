@@ -38,7 +38,7 @@ class DeltaIteratorMerger : public DeltaIterator {
   //
   // If only one store is input, this will automatically return an unwrapped
   // iterator for greater efficiency.
-  static Status Create(
+  static CHECKED_STATUS Create(
       const std::vector<std::shared_ptr<DeltaStore> > &stores,
       const Schema* projection,
       const MvccSnapshot &snapshot,
@@ -47,13 +47,13 @@ class DeltaIteratorMerger : public DeltaIterator {
   ////////////////////////////////////////////////////////////
   // Implementations of DeltaIterator
   ////////////////////////////////////////////////////////////
-  virtual Status Init(ScanSpec *spec) OVERRIDE;
-  virtual Status SeekToOrdinal(rowid_t idx) OVERRIDE;
-  virtual Status PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
-  virtual Status ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
-  virtual Status ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
-  virtual Status CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
-  virtual Status FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
+  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS SeekToOrdinal(rowid_t idx) OVERRIDE;
+  virtual CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
+  virtual CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
+  virtual CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
+  virtual CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
                                                  vector<DeltaKeyAndUpdate>* out,
                                                  Arena* arena) OVERRIDE;
   virtual bool HasNext() OVERRIDE;

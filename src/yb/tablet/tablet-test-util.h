@@ -134,7 +134,7 @@ class YBRowSetTest : public YBTabletTest {
                                                        SchemaBuilder(schema_).Build()));
   }
 
-  Status FlushMetadata() {
+  CHECKED_STATUS FlushMetadata() {
     return tablet()->metadata()->Flush();
   }
 
@@ -142,7 +142,7 @@ class YBRowSetTest : public YBTabletTest {
   std::shared_ptr<RowSetMetadata> rowset_meta_;
 };
 
-static inline Status IterateToStringList(RowwiseIterator *iter,
+static inline CHECKED_STATUS IterateToStringList(RowwiseIterator *iter,
                                          vector<string> *out,
                                          int limit = INT_MAX) {
   out->clear();
@@ -217,7 +217,7 @@ static inline void VerifySnapshotsHaveSameResult(Tablet* tablet,
 // Construct a new iterator from the given rowset, and dump
 // all of its results into 'out'. The previous contents
 // of 'out' are cleared.
-static inline Status DumpRowSet(const RowSet &rs,
+static inline CHECKED_STATUS DumpRowSet(const RowSet &rs,
                                 const Schema &projection,
                                 const MvccSnapshot &snap,
                                 vector<string> *out,
@@ -240,7 +240,7 @@ static inline string InitAndDumpIterator(gscoped_ptr<RowwiseIterator> iter) {
 }
 
 // Dump all of the rows of the tablet into the given vector.
-static inline Status DumpTablet(const Tablet& tablet,
+static inline CHECKED_STATUS DumpTablet(const Tablet& tablet,
                          const Schema& projection,
                          vector<string>* out) {
   gscoped_ptr<RowwiseIterator> iter;
@@ -256,7 +256,7 @@ static inline Status DumpTablet(const Tablet& tablet,
 // Write a single row to the given RowSetWriter (which may be of the rolling
 // or non-rolling variety).
 template<class RowSetWriterClass>
-static Status WriteRow(const Slice &row_slice, RowSetWriterClass *writer) {
+static CHECKED_STATUS WriteRow(const Slice &row_slice, RowSetWriterClass *writer) {
   const Schema &schema = writer->schema();
   DCHECK_EQ(row_slice.size(), schema.byte_size());
 

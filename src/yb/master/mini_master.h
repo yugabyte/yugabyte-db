@@ -47,17 +47,17 @@ class MiniMaster {
   // Start a master running on the loopback interface and
   // an ephemeral port. To determine the address that the server
   // bound to, call MiniMaster::bound_addr()
-  Status Start();
+  CHECKED_STATUS Start();
 
-  Status StartDistributedMaster(const std::vector<uint16_t>& peer_ports);
+  CHECKED_STATUS StartDistributedMaster(const std::vector<uint16_t>& peer_ports);
 
-  Status WaitForCatalogManagerInit();
+  CHECKED_STATUS WaitForCatalogManagerInit();
 
   void Shutdown();
 
   // Restart the master on the same ports as it was previously bound.
   // Requires that the master is currently started.
-  Status Restart();
+  CHECKED_STATUS Restart();
 
   const Sockaddr bound_rpc_addr() const;
   const Sockaddr bound_http_addr() const;
@@ -77,12 +77,12 @@ class MiniMaster {
   void SetIsCreatingForFailureTesting(bool is_creating) { is_creating_ = is_creating; }
 
  private:
-  Status StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
+  CHECKED_STATUS StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
                                        const std::vector<uint16_t>& peer_ports);
 
-  Status StartOnPorts(uint16_t rpc_port, uint16_t web_port);
+  CHECKED_STATUS StartOnPorts(uint16_t rpc_port, uint16_t web_port);
 
-  Status StartOnPorts(uint16_t rpc_port, uint16_t web_port,
+  CHECKED_STATUS StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                       MasterOptions* options);
 
   bool running_;

@@ -94,7 +94,7 @@ class Proxy {
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
-  Status SyncRequest(const std::string& method,
+  CHECKED_STATUS SyncRequest(const std::string& method,
                      const google::protobuf::Message& req,
                      google::protobuf::Message* resp,
                      RpcController* controller) const;

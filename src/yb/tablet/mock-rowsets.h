@@ -32,12 +32,12 @@ namespace tablet {
 // Mock implementation of RowSet which just aborts on every call.
 class MockRowSet : public RowSet {
  public:
-  virtual Status CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
+  virtual CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
                                  ProbeStats* stats) const OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual Status MutateRow(Timestamp timestamp,
+  virtual CHECKED_STATUS MutateRow(Timestamp timestamp,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &update,
                            const consensus::OpId& op_id_,
@@ -46,19 +46,19 @@ class MockRowSet : public RowSet {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual Status NewRowIterator(const Schema *projection,
+  virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
                                 gscoped_ptr<RowwiseIterator>* out) const OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual Status NewCompactionInput(const Schema* projection,
+  virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
                                     gscoped_ptr<CompactionInput>* out) const OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual Status CountRows(rowid_t *count) const OVERRIDE {
+  virtual CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
@@ -66,11 +66,11 @@ class MockRowSet : public RowSet {
     LOG(FATAL) << "Unimplemented";
     return "";
   }
-  virtual Status DebugDump(vector<std::string> *lines = NULL) OVERRIDE {
+  virtual CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL) OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual Status Delete() {
+  virtual CHECKED_STATUS Delete() {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
@@ -109,12 +109,12 @@ class MockRowSet : public RowSet {
     return 0;
   }
 
-  virtual Status FlushDeltas() OVERRIDE {
+  virtual CHECKED_STATUS FlushDeltas() OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
 
-  virtual Status MinorCompactDeltaStores() OVERRIDE {
+  virtual CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
@@ -133,7 +133,7 @@ class MockDiskRowSet : public MockRowSet {
         last_key_(std::move(last_key)),
         size_(size) {}
 
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const OVERRIDE {
     *min_encoded_key = Slice(first_key_);
     *max_encoded_key = Slice(last_key_);
@@ -159,7 +159,7 @@ class MockDiskRowSet : public MockRowSet {
 // Mock which acts like a MemRowSet and has no known bounds.
 class MockMemRowSet : public MockRowSet {
  public:
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const OVERRIDE {
     return STATUS(NotSupported, "");
   }

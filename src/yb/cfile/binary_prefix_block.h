@@ -54,7 +54,7 @@ class BinaryPrefixBlockBuilder : public BlockBuilder {
 
   // Return the first added key.
   // key should be a Slice *
-  Status GetFirstKey(void *key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void *key) const OVERRIDE;
 
  private:
   // Return the length of the common prefix shared by the two strings.
@@ -85,11 +85,11 @@ class BinaryPrefixBlockDecoder : public BlockDecoder {
  public:
   explicit BinaryPrefixBlockDecoder(Slice slice);
 
-  virtual Status ParseHeader() OVERRIDE;
+  virtual CHECKED_STATUS ParseHeader() OVERRIDE;
   virtual void SeekToPositionInBlock(uint pos) OVERRIDE;
-  virtual Status SeekAtOrAfterValue(const void *value,
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) OVERRIDE;
-  Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
+  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
 
   virtual bool HasNext() const OVERRIDE {
     DCHECK(parsed_);
@@ -116,10 +116,10 @@ class BinaryPrefixBlockDecoder : public BlockDecoder {
   static const size_t kMinHeaderSize = 5;
 
  private:
-  Status SkipForward(int n);
-  Status CheckNextPtr();
-  Status ParseNextValue();
-  Status ParseNextIntoArena(Slice prev_val, Arena *dst, Slice *copied);
+  CHECKED_STATUS SkipForward(int n);
+  CHECKED_STATUS CheckNextPtr();
+  CHECKED_STATUS ParseNextValue();
+  CHECKED_STATUS ParseNextIntoArena(Slice prev_val, Arena *dst, Slice *copied);
 
   const uint8_t *DecodeEntryLengths(const uint8_t *ptr,
                            uint32_t *shared,

@@ -49,11 +49,11 @@ class Synchronizer {
     // its synchronizer.
     return Bind(&Synchronizer::StatusCB, Unretained(this));
   }
-  Status Wait() {
+  CHECKED_STATUS Wait() {
     l.Wait();
     return s;
   }
-  Status WaitFor(const MonoDelta& delta) {
+  CHECKED_STATUS WaitFor(const MonoDelta& delta) {
     if (PREDICT_FALSE(!l.WaitFor(delta))) {
       return STATUS(TimedOut, "Timed out while waiting for the callback to be called.");
     }

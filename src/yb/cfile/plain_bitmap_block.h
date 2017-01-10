@@ -83,7 +83,7 @@ class PlainBitMapBlockBuilder : public BlockBuilder {
   }
 
   // TODO Implement this method
-  virtual Status GetFirstKey(void* key) const OVERRIDE {
+  virtual CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
     return STATUS(NotSupported, "BOOL keys not supported");
   }
 
@@ -107,7 +107,7 @@ class PlainBitMapBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  virtual Status ParseHeader() OVERRIDE {
+  virtual CHECKED_STATUS ParseHeader() OVERRIDE {
     CHECK(!parsed_);
 
     if (data_.size() < kHeaderSize) {
@@ -152,12 +152,12 @@ class PlainBitMapBlockDecoder : public BlockDecoder {
   }
 
   // TODO : Support BOOL keys
-  virtual Status SeekAtOrAfterValue(const void *value,
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
                                     bool *exact_match) OVERRIDE {
     return STATUS(NotSupported, "BOOL keys are not supported!");
   }
 
-  virtual Status CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {
+  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {
     DCHECK(parsed_);
     DCHECK_LE(*n, dst->nrows());
     DCHECK_EQ(dst->stride(), sizeof(bool));

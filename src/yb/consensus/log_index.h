@@ -61,11 +61,11 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
   explicit LogIndex(std::string base_dir);
 
   // Record an index entry in the index.
-  Status AddEntry(const LogIndexEntry& entry);
+  CHECKED_STATUS AddEntry(const LogIndexEntry& entry);
 
   // Retrieve an existing entry from the index.
   // Returns NotFound() if the given log entry was never written.
-  Status GetEntry(int64_t index, LogIndexEntry* entry);
+  CHECKED_STATUS GetEntry(int64_t index, LogIndexEntry* entry);
 
   // Indicate that we no longer need to retain information about indexes lower than the
   // given index. Note that the implementation is conservative and _may_ choose to retain
@@ -80,12 +80,12 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
 
   // Open the on-disk chunk with the given index.
   // Note: 'chunk_idx' is the index of the index chunk, not the index of a log _entry_.
-  Status OpenChunk(int64_t chunk_idx, scoped_refptr<IndexChunk>* chunk);
+  CHECKED_STATUS OpenChunk(int64_t chunk_idx, scoped_refptr<IndexChunk>* chunk);
 
   // Return the index chunk which contains the given log index.
   // If 'create' is true, creates it on-demand. If 'create' is false, and
   // the index chunk does not exist, returns NotFound.
-  Status GetChunkForIndex(int64_t log_index, bool create,
+  CHECKED_STATUS GetChunkForIndex(int64_t log_index, bool create,
                           scoped_refptr<IndexChunk>* chunk);
 
   // Return the path of the given index chunk.

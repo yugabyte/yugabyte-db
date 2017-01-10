@@ -75,21 +75,21 @@ class FileBlockManager : public BlockManager {
 
   virtual ~FileBlockManager();
 
-  virtual Status Create() OVERRIDE;
+  virtual CHECKED_STATUS Create() OVERRIDE;
 
-  virtual Status Open() OVERRIDE;
+  virtual CHECKED_STATUS Open() OVERRIDE;
 
-  virtual Status CreateBlock(const CreateBlockOptions& opts,
+  virtual CHECKED_STATUS CreateBlock(const CreateBlockOptions& opts,
                              gscoped_ptr<WritableBlock>* block) OVERRIDE;
 
-  virtual Status CreateBlock(gscoped_ptr<WritableBlock>* block) OVERRIDE;
+  virtual CHECKED_STATUS CreateBlock(gscoped_ptr<WritableBlock>* block) OVERRIDE;
 
-  virtual Status OpenBlock(const BlockId& block_id,
+  virtual CHECKED_STATUS OpenBlock(const BlockId& block_id,
                            gscoped_ptr<ReadableBlock>* block) OVERRIDE;
 
-  virtual Status DeleteBlock(const BlockId& block_id) OVERRIDE;
+  virtual CHECKED_STATUS DeleteBlock(const BlockId& block_id) OVERRIDE;
 
-  virtual Status CloseBlocks(const std::vector<WritableBlock*>& blocks) OVERRIDE;
+  virtual CHECKED_STATUS CloseBlocks(const std::vector<WritableBlock*>& blocks) OVERRIDE;
 
  private:
   friend class internal::FileBlockLocation;
@@ -97,7 +97,7 @@ class FileBlockManager : public BlockManager {
   friend class internal::FileWritableBlock;
 
   // Synchronizes the metadata for a block with the given id.
-  Status SyncMetadata(const internal::FileBlockLocation& block_id);
+  CHECKED_STATUS SyncMetadata(const internal::FileBlockLocation& block_id);
 
   // Looks up the path of the file backing a particular block ID.
   //

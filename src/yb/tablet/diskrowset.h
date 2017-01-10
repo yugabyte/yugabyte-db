@@ -73,24 +73,24 @@ class DiskRowSetWriter {
 
   ~DiskRowSetWriter();
 
-  Status Open();
+  CHECKED_STATUS Open();
 
   // The block is written to all column writers as well as the bloom filter,
   // if configured.
   // Rows must be appended in ascending order.
-  Status AppendBlock(const RowBlock &block);
+  CHECKED_STATUS AppendBlock(const RowBlock &block);
 
   // Closes the CFiles and their underlying writable blocks.
   // If no rows were written, returns Status::Aborted().
-  Status Finish();
+  CHECKED_STATUS Finish();
 
   // Closes the CFiles, releasing the underlying blocks to 'closer'.
   // If no rows were written, returns Status::Aborted().
-  Status FinishAndReleaseBlocks(fs::ScopedWritableBlockCloser* closer);
+  CHECKED_STATUS FinishAndReleaseBlocks(fs::ScopedWritableBlockCloser* closer);
 
   // The base DiskRowSetWriter never rolls. This method is necessary for tests
   // which are templatized on the writer type.
-  Status RollIfNecessary() { return Status::OK(); }
+  CHECKED_STATUS RollIfNecessary() { return Status::OK(); }
 
   rowid_t written_count() const {
     CHECK(finished_);
@@ -107,11 +107,11 @@ class DiskRowSetWriter {
  private:
   DISALLOW_COPY_AND_ASSIGN(DiskRowSetWriter);
 
-  Status InitBloomFileWriter();
+  CHECKED_STATUS InitBloomFileWriter();
 
   // Initializes the index writer required for compound keys
   // this index is written to a new file instead of embedded in the col_* files
-  Status InitAdHocIndexWriter();
+  CHECKED_STATUS InitAdHocIndexWriter();
 
   // Return the cfile::Writer responsible for writing the key index.
   // (the ad-hoc writer for composite keys, otherwise the key column writer)
@@ -148,7 +148,7 @@ class RollingDiskRowSetWriter {
                           size_t target_rowset_size);
   ~RollingDiskRowSetWriter();
 
-  Status Open();
+  CHECKED_STATUS Open();
 
   // The block is written to all column writers as well as the bloom filter,
   // if configured.
@@ -158,13 +158,13 @@ class RollingDiskRowSetWriter {
   // you must append deltas using the APIs below *before* appending the block
   // of rows that they correspond to. This ensures that the output delta files
   // and data files are aligned.
-  Status AppendBlock(const RowBlock &block);
+  CHECKED_STATUS AppendBlock(const RowBlock &block);
 
   // Appends a sequence of REDO deltas for the same row to the current
   // redo delta file. 'row_idx_in_next_block' is the positional index after
   // the last written block. The 'row_idx_in_drs' out parameter will be set
   // with the row index from the start of the DiskRowSet currently being written.
-  Status AppendRedoDeltas(rowid_t row_idx_in_next_block,
+  CHECKED_STATUS AppendRedoDeltas(rowid_t row_idx_in_next_block,
                           Mutation* redo_deltas,
                           rowid_t* row_idx_in_drs);
 
@@ -172,7 +172,7 @@ class RollingDiskRowSetWriter {
   // undo delta file. 'row_idx_in_next_block' is the positional index after
   // the last written block. The 'row_idx_in_drs' out parameter will be set
   // with the row index from the start of the DiskRowSet currently being written.
-  Status AppendUndoDeltas(rowid_t row_idx_in_next_block,
+  CHECKED_STATUS AppendUndoDeltas(rowid_t row_idx_in_next_block,
                           Mutation* undo_deltas,
                           rowid_t* row_idx_in_drs);
 
@@ -181,9 +181,9 @@ class RollingDiskRowSetWriter {
   // of AppendBlock() doesn't call it automatically, because it doesn't know if there
   // is any more data to be appended. It is safe to call this in other circumstances --
   // it will be ignored if it is not a good time to roll.
-  Status RollIfNecessary();
+  CHECKED_STATUS RollIfNecessary();
 
-  Status Finish();
+  CHECKED_STATUS Finish();
 
   int64_t written_count() const { return written_count_; }
 
@@ -196,14 +196,14 @@ class RollingDiskRowSetWriter {
   uint64_t written_size() const { return written_size_; }
 
  private:
-  Status RollWriter();
+  CHECKED_STATUS RollWriter();
 
   // Close the current DRS and delta writers, releasing their finished blocks
   // into block_closer_.
-  Status FinishCurrentWriter();
+  CHECKED_STATUS FinishCurrentWriter();
 
   template<DeltaType Type>
-  Status AppendDeltas(rowid_t row_idx_in_block,
+  CHECKED_STATUS AppendDeltas(rowid_t row_idx_in_block,
                       Mutation* delta_head,
                       rowid_t* row_idx,
                       DeltaFileWriter* writer,
@@ -267,7 +267,7 @@ class DiskRowSet : public RowSet {
 
   // Open a rowset from disk.
   // If successful, sets *rowset to the newly open rowset
-  static Status Open(const std::shared_ptr<RowSetMetadata>& rowset_metadata,
+  static CHECKED_STATUS Open(const std::shared_ptr<RowSetMetadata>& rowset_metadata,
                      log::LogAnchorRegistry* log_anchor_registry,
                      std::shared_ptr<DiskRowSet> *rowset,
                      const std::shared_ptr<MemTracker>& parent_tracker =
@@ -278,12 +278,12 @@ class DiskRowSet : public RowSet {
   ////////////////////////////////////////////////////////////
 
   // Flush all accumulated delta data to disk.
-  Status FlushDeltas() OVERRIDE;
+  CHECKED_STATUS FlushDeltas() OVERRIDE;
 
   // Perform delta store minor compaction.
   // This compacts the delta files down to a single one.
   // If there is already only a single delta file, this does nothing.
-  Status MinorCompactDeltaStores() OVERRIDE;
+  CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE;
 
   ////////////////////////////////////////////////////////////
   // RowSet implementation
@@ -296,33 +296,33 @@ class DiskRowSet : public RowSet {
   // Update the given row.
   // 'key' should be the key portion of the row -- i.e a contiguous
   // encoding of the key columns.
-  Status MutateRow(Timestamp timestamp,
+  CHECKED_STATUS MutateRow(Timestamp timestamp,
                    const RowSetKeyProbe &probe,
                    const RowChangeList &update,
                    const consensus::OpId& op_id,
                    ProbeStats* stats,
                    OperationResultPB* result) OVERRIDE;
 
-  Status CheckRowPresent(const RowSetKeyProbe &probe,
+  CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe,
                          bool *present,
                          ProbeStats* stats) const OVERRIDE;
 
   ////////////////////
   // Read functions.
   ////////////////////
-  virtual Status NewRowIterator(const Schema *projection,
+  virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
                                 gscoped_ptr<RowwiseIterator>* out) const OVERRIDE;
 
-  virtual Status NewCompactionInput(const Schema* projection,
+  virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
                                     gscoped_ptr<CompactionInput>* out) const OVERRIDE;
 
   // Count the number of rows in this rowset.
-  Status CountRows(rowid_t *count) const OVERRIDE;
+  CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE;
 
   // See RowSet::GetBounds(...)
-  virtual Status GetBounds(Slice *min_encoded_key,
+  virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
                            Slice *max_encoded_key) const OVERRIDE;
 
   // Estimate the number of bytes on-disk for the base data.
@@ -346,7 +346,7 @@ class DiskRowSet : public RowSet {
   double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const OVERRIDE;
 
   // Major compacts all the delta files for all the columns.
-  Status MajorCompactDeltaStores();
+  CHECKED_STATUS MajorCompactDeltaStores();
 
   std::mutex *compact_flush_lock() OVERRIDE {
     return &compact_flush_lock_;
@@ -364,7 +364,7 @@ class DiskRowSet : public RowSet {
     return rowset_metadata_->ToString();
   }
 
-  virtual Status DebugDump(std::vector<std::string> *out = NULL) OVERRIDE;
+  virtual CHECKED_STATUS DebugDump(std::vector<std::string> *out = NULL) OVERRIDE;
 
  private:
   FRIEND_TEST(TestRowSet, TestRowSetUpdate);
@@ -378,14 +378,14 @@ class DiskRowSet : public RowSet {
              log::LogAnchorRegistry* log_anchor_registry,
              std::shared_ptr<MemTracker> parent_tracker);
 
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Create a new major delta compaction object to compact the specified columns.
-  Status NewMajorDeltaCompaction(const std::vector<ColumnId>& col_ids,
+  CHECKED_STATUS NewMajorDeltaCompaction(const std::vector<ColumnId>& col_ids,
                                  gscoped_ptr<MajorDeltaCompaction>* out) const;
 
   // Major compacts all the delta files for the specified columns.
-  Status MajorCompactDeltaStoresWithColumnIds(const std::vector<ColumnId>& col_ids);
+  CHECKED_STATUS MajorCompactDeltaStoresWithColumnIds(const std::vector<ColumnId>& col_ids);
 
   std::shared_ptr<RowSetMetadata> rowset_metadata_;
 

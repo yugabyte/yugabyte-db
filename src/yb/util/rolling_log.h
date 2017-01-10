@@ -60,7 +60,7 @@ class RollingLog {
   // Open the log.
   // It is optional to call this function. Append() will automatically open
   // the log as necessary if it is not open.
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Set the size limit for the current and any future log files.
   //
@@ -80,16 +80,16 @@ class RollingLog {
   // Note that this is a synchronous API and causes potentially-blocking IO on the
   // current thread. However, this does not fsync() or otherwise ensure durability
   // of the appended data.
-  Status Append(StringPiece data);
+  CHECKED_STATUS Append(StringPiece data);
 
   // Close the log.
-  Status Close();
+  CHECKED_STATUS Close();
 
  private:
   std::string GetLogFileName(int sequence) const;
 
   // Compress the given path, writing a new file '<path>.gz'.
-  Status CompressFile(const std::string& path) const;
+  CHECKED_STATUS CompressFile(const std::string& path) const;
 
   Env* const env_;
   const std::string log_dir_;

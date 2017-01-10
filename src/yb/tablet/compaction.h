@@ -44,7 +44,7 @@ class CompactionInput {
   // need to call snap.IsCommitted() on each mutation.
   //
   // TODO: can we make the above less messy?
-  static Status Create(const DiskRowSet &rowset,
+  static CHECKED_STATUS Create(const DiskRowSet &rowset,
                        const Schema* projection,
                        const MvccSnapshot &snap,
                        gscoped_ptr<CompactionInput>* out);
@@ -60,14 +60,14 @@ class CompactionInput {
   static CompactionInput *Merge(const vector<std::shared_ptr<CompactionInput> > &inputs,
                                 const Schema *schema);
 
-  virtual Status Init() = 0;
-  virtual Status PrepareBlock(vector<CompactionInputRow> *block) = 0;
+  virtual CHECKED_STATUS Init() = 0;
+  virtual CHECKED_STATUS PrepareBlock(vector<CompactionInputRow> *block) = 0;
 
   // Returns the arena for this compaction input corresponding to the last
   // prepared block. This must be called *after* PrepareBlock() as if this
   // is a MergeCompactionInput only then will the right arena be selected.
   virtual Arena*  PreparedBlockArena() = 0;
-  virtual Status FinishBlock() = 0;
+  virtual CHECKED_STATUS FinishBlock() = 0;
 
   virtual bool HasMoreBlocks() = 0;
   virtual const Schema &schema() const = 0;
@@ -91,7 +91,7 @@ class RowSetsInCompaction {
   //
   // 'schema' is the schema for the output of the compaction, and must remain valid
   // for the lifetime of the returned CompactionInput.
-  Status CreateCompactionInput(const MvccSnapshot &snap,
+  CHECKED_STATUS CreateCompactionInput(const MvccSnapshot &snap,
                                const Schema* schema,
                                std::shared_ptr<CompactionInput> *out) const;
 

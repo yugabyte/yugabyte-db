@@ -1360,7 +1360,7 @@ TEST_F(ClientTest, TestScanTimeout) {
     // scanner timeout instead.
     FLAGS_scanner_inject_latency_on_each_batch_ms = 50;
     client_->data_->default_rpc_timeout_ = MonoDelta::FromMilliseconds(1);
-    scanner.SetTimeoutMillis(5000);
+    ASSERT_OK(scanner.SetTimeoutMillis(5000));
 
     // Should successfully scan.
     ASSERT_OK(scanner.Open());
@@ -2217,7 +2217,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 namespace {
 
 void CheckCorrectness(YBScanner* scanner, int expected[], int nrows) {
-  scanner->Open();
+  ASSERT_OK(scanner->Open());
   int readrows = 0;
   YBScanBatch batch;
   if (nrows) {
@@ -2402,7 +2402,7 @@ class DLSCallback : public YBStatusCallback {
 int32_t ReadFirstRowKeyFirstCol(const shared_ptr<YBTable>& tbl) {
   YBScanner scanner(tbl.get());
 
-  scanner.Open();
+  CHECK_OK(scanner.Open());
   YBScanBatch batch;
   CHECK(scanner.HasMoreRows());
   CHECK_OK(scanner.NextBatch(&batch));
@@ -2415,7 +2415,7 @@ int32_t ReadFirstRowKeyFirstCol(const shared_ptr<YBTable>& tbl) {
 // Checks that all rows have value equal to expected, return number of rows.
 int CheckRowsEqual(const shared_ptr<YBTable>& tbl, int32_t expected) {
   YBScanner scanner(tbl.get());
-  scanner.Open();
+  CHECK_OK(scanner.Open());
   YBScanBatch batch;
   int cnt = 0;
   while (scanner.HasMoreRows()) {

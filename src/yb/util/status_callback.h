@@ -36,7 +36,7 @@ extern void DoNothingStatusCB(const Status& status);
 typedef Callback<Status(void)> StatusClosure;
 
 // To be used when setting a StatusClosure is optional.
-extern Status DoNothingStatusClosure();
+extern CHECKED_STATUS DoNothingStatusClosure();
 
 } // namespace yb
 

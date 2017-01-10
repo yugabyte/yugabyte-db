@@ -85,26 +85,26 @@ class SaslHelper {
   int GetOptionCb(const char* plugin_name, const char* option, const char** result, unsigned* len);
 
   // Enable the ANONYMOUS SASL mechanism.
-  Status EnableAnonymous();
+  CHECKED_STATUS EnableAnonymous();
 
   // Check for the ANONYMOUS SASL mechanism.
   bool IsAnonymousEnabled() const;
 
   // Enable the PLAIN SASL mechanism.
-  Status EnablePlain();
+  CHECKED_STATUS EnablePlain();
 
   // Check for the PLAIN SASL mechanism.
   bool IsPlainEnabled() const;
 
   // Sanity check that the call ID is the SASL call ID.
   // Logs DFATAL if call_id does not match.
-  Status SanityCheckSaslCallId(int32_t call_id) const;
+  CHECKED_STATUS SanityCheckSaslCallId(int32_t call_id) const;
 
   // Parse msg from the given Slice.
-  Status ParseSaslMessage(const Slice& param_buf, SaslMessagePB* msg);
+  CHECKED_STATUS ParseSaslMessage(const Slice& param_buf, SaslMessagePB* msg);
 
   // Encode and send a message over a socket, sending the connection header if necessary.
-  Status SendSaslMessage(Socket* sock, const google::protobuf::MessageLite& header,
+  CHECKED_STATUS SendSaslMessage(Socket* sock, const google::protobuf::MessageLite& header,
       const google::protobuf::MessageLite& msg, const MonoTime& deadline);
 
  private:

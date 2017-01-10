@@ -584,7 +584,7 @@ Status ExternalMiniCluster::GetNumMastersAsSeenBy(ExternalMaster* master, int* n
 
 Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
   OpId start_opid;
-  GetLastOpIdForLeader(&start_opid);
+  RETURN_NOT_OK(GetLastOpIdForLeader(&start_opid));
   LOG(INFO) << "Start OPID : " << start_opid.ShortDebugString();
 
   // Need not do any wait if it is a restart case - so the commit term will be > 0.
@@ -1388,7 +1388,7 @@ ScopedResumeExternalDaemon::ScopedResumeExternalDaemon(ExternalDaemon* daemon)
 }
 
 ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
-  daemon_->Resume();
+  CHECK_OK(daemon_->Resume());
 }
 
 //------------------------------------------------------------

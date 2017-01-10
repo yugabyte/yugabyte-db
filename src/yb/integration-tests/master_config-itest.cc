@@ -200,7 +200,7 @@ TEST_F(MasterChangeConfigTest, TestAddMaster) {
 TEST_F(MasterChangeConfigTest, TestSlowRemoteBootstrapDoesNotCrashMaster) {
   ExternalMaster* new_master = nullptr;
   cluster_->StartNewMaster(&new_master);
-  cluster_->SetFlag(new_master, "inject_latency_during_remote_bootstrap_secs", "8");
+  ASSERT_OK(cluster_->SetFlag(new_master, "inject_latency_during_remote_bootstrap_secs", "8"));
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");

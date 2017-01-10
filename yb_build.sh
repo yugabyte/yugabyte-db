@@ -381,6 +381,7 @@ if "$build_cxx"; then
     log_empty_line
   fi
 
+  # The test "client_samples-test" does not have a corresponding target to build.
   if [[ $cxx_test_name != "client_samples-test" ]]; then
     log "Running make in $PWD"
     set +u +e  # "set -u" may cause failures on empty lists

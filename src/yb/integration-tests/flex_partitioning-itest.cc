@@ -206,7 +206,7 @@ Status FlexPartitioningITest::InsertRandomRows() {
 
 void FlexPartitioningITest::CheckScanWithColumnPredicate(Slice col_name, int lower, int upper) {
   YBScanner scanner(table_.get());
-  scanner.SetTimeoutMillis(60000);
+  CHECK_OK(scanner.SetTimeoutMillis(60000));
   CHECK_OK(scanner.AddConjunctPredicate(table_->NewComparisonPredicate(
       col_name, YBPredicate::GREATER_EQUAL, YBValue::FromInt(lower))));
   CHECK_OK(scanner.AddConjunctPredicate(table_->NewComparisonPredicate(
@@ -233,7 +233,7 @@ void FlexPartitioningITest::CheckScanWithColumnPredicate(Slice col_name, int low
 
 void FlexPartitioningITest::CheckPKRangeScan(int lower, int upper) {
   YBScanner scanner(table_.get());
-  scanner.SetTimeoutMillis(60000);
+  CHECK_OK(scanner.SetTimeoutMillis(60000));
   ASSERT_OK(scanner.AddLowerBound(*inserted_rows_[lower]));
   ASSERT_OK(scanner.AddExclusiveUpperBound(*inserted_rows_[upper]));
   vector<string> rows;
@@ -266,7 +266,7 @@ void FlexPartitioningITest::CheckPartitionKeyRangeScan() {
     string partition_key_end = tablet_locations.partition().partition_key_end();
 
     YBScanner scanner(table_.get());
-    scanner.SetTimeoutMillis(60000);
+    CHECK_OK(scanner.SetTimeoutMillis(60000));
     ASSERT_OK(scanner.AddLowerBoundPartitionKeyRaw(partition_key_start));
     ASSERT_OK(scanner.AddExclusiveUpperBoundPartitionKeyRaw(partition_key_end));
     ScanToStrings(&scanner, &rows);
@@ -299,7 +299,7 @@ void FlexPartitioningITest::CheckPartitionKeyRangeScanWithPKRange(int lower, int
     string partition_key_end = tablet_locations.partition().partition_key_end();
 
     YBScanner scanner(table_.get());
-    scanner.SetTimeoutMillis(60000);
+    CHECK_OK(scanner.SetTimeoutMillis(60000));
     ASSERT_OK(scanner.AddLowerBoundPartitionKeyRaw(partition_key_start));
     ASSERT_OK(scanner.AddExclusiveUpperBoundPartitionKeyRaw(partition_key_end));
     ASSERT_OK(scanner.AddLowerBound(*inserted_rows_[lower]));

@@ -87,7 +87,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  Status Add(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Add(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending

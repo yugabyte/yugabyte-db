@@ -75,7 +75,7 @@ class InboundCall {
   // 'serialized_request_' member variables. The actual call parameter is
   // not deserialized, as this may be CPU-expensive, and this is called
   // from the reactor thread.
-  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) = 0;
+  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) = 0;
 
   // Return the serialized request parameter protobuf.
   const Slice &serialized_request() const {
@@ -117,7 +117,7 @@ class InboundCall {
                                    ErrorStatusPB* err);
 
   // See RpcContext::AddRpcSidecar()
-  Status AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
+  CHECKED_STATUS AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
 
   virtual std::string ToString() const = 0;
 
@@ -174,7 +174,7 @@ class InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  virtual Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+  virtual CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                          bool is_success) = 0;
 
   // Log a WARNING message if the RPC response was slow enough that the
@@ -221,7 +221,7 @@ class YBInboundCall : public InboundCall {
   // 'serialized_request_' member variables. The actual call parameter is
   // not deserialized, as this may be CPU-expensive, and this is called
   // from the reactor thread.
-  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
   int32_t call_id() const {
     return header_.call_id();
@@ -234,7 +234,7 @@ class YBInboundCall : public InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  virtual Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+  virtual CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                          bool is_success) override;
 
   virtual void QueueResponseToConnection() override;
@@ -269,7 +269,7 @@ class RedisInboundCall : public InboundCall {
  public:
   explicit RedisInboundCall(RedisConnection* conn);
 
-  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
@@ -278,9 +278,9 @@ class RedisInboundCall : public InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                  bool is_success) override;
-  Status SerializeResponseBuffer(const RedisResponsePB& redis_response, bool is_success);
+  CHECKED_STATUS SerializeResponseBuffer(const RedisResponsePB& redis_response, bool is_success);
 
   virtual void QueueResponseToConnection() override;
   virtual void LogTrace() const override;
@@ -304,7 +304,7 @@ class CQLInboundCall : public InboundCall {
  public:
   explicit CQLInboundCall(CQLConnection* conn);
 
-  virtual Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
@@ -313,7 +313,7 @@ class CQLInboundCall : public InboundCall {
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  Status SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                  bool is_success) override;
 
   virtual void QueueResponseToConnection() override;

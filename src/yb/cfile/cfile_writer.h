@@ -102,13 +102,13 @@ class CFileWriter {
                        gscoped_ptr<fs::WritableBlock> block);
   ~CFileWriter();
 
-  Status Start();
+  CHECKED_STATUS Start();
 
   // Close the CFile and close the underlying writable block.
-  Status Finish();
+  CHECKED_STATUS Finish();
 
   // Close the CFile and release the underlying writable block to 'closer'.
-  Status FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
+  CHECKED_STATUS FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
 
   bool finished() {
     return state_ == kWriterFinished;
@@ -127,12 +127,12 @@ class CFileWriter {
   std::string GetMetaValueOrDie(Slice key) const;
 
   // Append a set of values to the file.
-  Status AppendEntries(const void *entries, size_t count);
+  CHECKED_STATUS AppendEntries(const void *entries, size_t count);
 
   // Append a set of values to the file with the relative null bitmap.
   // "entries" is not "compact" - ie if you're appending 10 rows, and 9 are NULL,
   // 'entries' still will have 10 elements in it
-  Status AppendNullableEntries(const uint8_t *bitmap, const void *entries, size_t count);
+  CHECKED_STATUS AppendNullableEntries(const uint8_t *bitmap, const void *entries, size_t count);
 
   // Append a raw block to the file, adding it to the various indexes.
   //
@@ -140,7 +140,7 @@ class CFileWriter {
   //
   // validx_key may be NULL if this file writer has not been configured with
   // value indexing.
-  Status AppendRawBlock(const vector<Slice> &data_slices,
+  CHECKED_STATUS AppendRawBlock(const vector<Slice> &data_slices,
                         size_t ordinal_pos,
                         const void *validx_key,
                         const char *name_for_log);
@@ -153,7 +153,7 @@ class CFileWriter {
   std::string ToString() const { return block_->id().ToString(); }
 
   // Wrapper for AddBlock() to append the dictionary block to the end of a Cfile.
-  Status AppendDictBlock(const vector<Slice> &data_slices, BlockPointer *block_ptr,
+  CHECKED_STATUS AppendDictBlock(const vector<Slice> &data_slices, BlockPointer *block_ptr,
                          const char *name_for_log) {
     return AddBlock(data_slices, block_ptr, name_for_log);
   }
@@ -166,13 +166,13 @@ class CFileWriter {
   // Append the given block into the file.
   //
   // Sets *block_ptr to correspond to the newly inserted block.
-  Status AddBlock(const vector<Slice> &data_slices,
+  CHECKED_STATUS AddBlock(const vector<Slice> &data_slices,
                   BlockPointer *block_ptr,
                   const char *name_for_log);
 
-  Status WriteRawData(const Slice& data);
+  CHECKED_STATUS WriteRawData(const Slice& data);
 
-  Status FinishCurDataBlock();
+  CHECKED_STATUS FinishCurDataBlock();
 
   // Flush the current unflushed_metadata_ entries into the given protobuf
   // field, clearing the buffer.

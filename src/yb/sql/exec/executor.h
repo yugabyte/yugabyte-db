@@ -72,47 +72,47 @@ class Executor {
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.
-  Status EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result);
-  Status EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result);
-  Status EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *result);
-  Status EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *result);
-  Status EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *result);
+  CHECKED_STATUS EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result);
+  CHECKED_STATUS EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result);
+  CHECKED_STATUS EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *result);
+  CHECKED_STATUS EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *result);
+  CHECKED_STATUS EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *result);
 
-  Status ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);
-  Status ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value);
-  Status ConvertFromString(EvalValue *result, const EvalStringValue& string_value);
-  Status ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value);
+  CHECKED_STATUS ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);
+  CHECKED_STATUS ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value);
+  CHECKED_STATUS ConvertFromString(EvalValue *result, const EvalStringValue& string_value);
+  CHECKED_STATUS ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value);
 
  private:
   //------------------------------------------------------------------------------------------------
   // Convert expression to protobuf.
   template<typename PBType>
-  Status ExprToPB(const PTExpr::SharedPtr& expr,
+  CHECKED_STATUS ExprToPB(const PTExpr::SharedPtr& expr,
                   yb::DataType col_type,
                   PBType* col_pb,
                   YBPartialRow *row = nullptr,
                   int col_index = -1);
 
   // Convert column arguments to protobuf.
-  Status ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
+  CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
                                     const MCVector<ColumnArg>& column_args,
                                     YSQLWriteRequestPB *req,
                                     YBPartialRow *row);
 
   // Convert where clause to protobuf for read request.
-  Status WhereClauseToPB(YSQLReadRequestPB *req,
+  CHECKED_STATUS WhereClauseToPB(YSQLReadRequestPB *req,
                          YBPartialRow *row,
                          const MCVector<ColumnOp>& hash_where_ops,
                          const MCList<ColumnOp>& where_ops);
 
   // Convert where clause to protobuf for write request.
-  Status WhereClauseToPB(YSQLWriteRequestPB *req,
+  CHECKED_STATUS WhereClauseToPB(YSQLWriteRequestPB *req,
                          YBPartialRow *row,
                          const MCVector<ColumnOp>& hash_where_ops,
                          const MCList<ColumnOp>& where_ops);
 
   // Convert an expression op in where claluse to protobuf.
-  Status WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op);
+  CHECKED_STATUS WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op);
 
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.

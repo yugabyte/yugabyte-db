@@ -18,8 +18,8 @@ namespace docdb {
 // An in-memory single-versioned single-threaded DocDB representation for testing.
 class InMemDocDbState {
  public:
-  Status SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value);
-  Status DeleteSubDoc(const DocPath& doc_path);
+  CHECKED_STATUS SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value);
+  CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path);
 
   void SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc);
   const SubDocument* GetDocument(const KeyBytes& encoded_doc_key) const;

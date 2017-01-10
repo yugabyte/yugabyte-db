@@ -180,7 +180,7 @@ class OutboundCall {
   //
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
-  Status SetRequestParam(const google::protobuf::Message& req);
+  CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req);
 
   // Assign the call ID for this call. This is called from the reactor
   // thread once a connection has been assigned. Must only be called once.
@@ -191,7 +191,7 @@ class OutboundCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  Status SerializeTo(std::vector<Slice>* slices);
+  CHECKED_STATUS SerializeTo(std::vector<Slice>* slices);
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -266,7 +266,7 @@ class OutboundCall {
   void set_state_unlocked(State new_state);
 
   // return current status
-  Status status() const;
+  CHECKED_STATUS status() const;
 
   // Return the error protobuf, if a remote error occurred.
   // This will only be non-NULL if status().IsRemoteError().
@@ -329,7 +329,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object.
-  Status ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer);
+  CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -351,7 +351,7 @@ class CallResponse {
   }
 
   // See RpcController::GetSidecar()
-  Status GetSidecar(int idx, Slice* sidecar) const;
+  CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
 
  private:
   // True once ParseFrom() is called.

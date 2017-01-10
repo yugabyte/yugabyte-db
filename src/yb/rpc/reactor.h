@@ -134,11 +134,11 @@ class ReactorThread {
   ReactorThread(Reactor *reactor, const MessengerBuilder &bld);
 
   // This may be called from another thread.
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Add any connections on this reactor thread into the given status dump.
   // May be called from another thread.
-  Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
+  CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);
 
   // Block until the Reactor thread is shut down
@@ -174,7 +174,7 @@ class ReactorThread {
   // Begin the process of connection negotiation.
   // Must be called from the reactor thread.
   // Deadline specifies latest time negotiation may complete before timeout.
-  Status StartConnectionNegotiation(const scoped_refptr<Connection>& conn,
+  CHECKED_STATUS StartConnectionNegotiation(const scoped_refptr<Connection>& conn,
                                     const MonoTime& deadline);
 
   // Transition back from negotiating to processing requests.
@@ -184,7 +184,7 @@ class ReactorThread {
 
   // Collect metrics.
   // Must be called from the reactor thread.
-  Status GetMetrics(ReactorMetrics *metrics);
+  CHECKED_STATUS GetMetrics(ReactorMetrics *metrics);
 
  private:
   friend class AssignOutboundCallTask;
@@ -199,7 +199,7 @@ class ReactorThread {
   // May return a bad Status if the connect() call fails.
   // The resulting connection object is managed internally by the reactor thread.
   // Deadline specifies latest time allowed for initializing the connection.
-  Status FindOrStartConnection(const ConnectionId& conn_id,
+  CHECKED_STATUS FindOrStartConnection(const ConnectionId& conn_id,
                                scoped_refptr<Connection>* conn,
                                const MonoTime& deadline);
 
@@ -216,11 +216,11 @@ class ReactorThread {
   void ScanIdleConnections();
 
   // Create a new client socket (non-blocking, NODELAY)
-  static Status CreateClientSocket(Socket *sock);
+  static CHECKED_STATUS CreateClientSocket(Socket *sock);
 
   // Initiate a new connection on the given socket, setting *in_progress
   // to true if the connection is still pending upon return.
-  static Status StartConnect(Socket *sock, const Sockaddr &remote, bool *in_progress);
+  static CHECKED_STATUS StartConnect(Socket *sock, const Sockaddr &remote, bool *in_progress);
 
   // Assign a new outbound call to the appropriate connection object.
   // If this fails, the call is marked failed and completed.
@@ -277,7 +277,7 @@ class Reactor {
   Reactor(const std::shared_ptr<Messenger>& messenger,
           int index,
           const MessengerBuilder &bld);
-  Status Init();
+  CHECKED_STATUS Init();
 
   // Block until the Reactor is shut down
   void Shutdown();
@@ -287,10 +287,10 @@ class Reactor {
   const std::string &name() const;
 
   // Collect metrics about the reactor.
-  Status GetMetrics(ReactorMetrics *metrics);
+  CHECKED_STATUS GetMetrics(ReactorMetrics *metrics);
 
   // Add any connections on this reactor thread into the given status dump.
-  Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
+  CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);
 
   // Queue a new incoming connection. Takes ownership of the underlying fd from
@@ -310,7 +310,7 @@ class Reactor {
   // deleting itself after running if it is allocated on the heap.
   void ScheduleReactorTask(ReactorTask *task);
 
-  Status RunOnReactorThread(const std::function<Status()>& f);
+  CHECKED_STATUS RunOnReactorThread(const std::function<Status()>& f);
 
   // If the Reactor is closing, returns false.
   // Otherwise, drains the pending_tasks_ queue into the provided list.

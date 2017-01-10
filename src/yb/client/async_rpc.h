@@ -69,7 +69,7 @@ class AsyncRpc : public rpc::Rpc {
   // Sends the RPC, provided there was no error.
   void InitTSProxyCb(const Status& status);
 
-  virtual Status response_error_status() = 0;
+  virtual CHECKED_STATUS response_error_status() = 0;
 
   virtual void SendRpcToTserver() = 0;
 
@@ -120,7 +120,7 @@ class WriteRpc : public AsyncRpc {
  protected:
   void SendRpcToTserver() OVERRIDE;
 
-  Status response_error_status() OVERRIDE;
+  CHECKED_STATUS response_error_status() OVERRIDE;
 
   void ProcessResponseFromTserver(Status status) OVERRIDE;
 
@@ -150,7 +150,7 @@ class ReadRpc : public AsyncRpc {
 
   void ProcessResponseFromTserver(Status status) OVERRIDE;
 
-  Status response_error_status() OVERRIDE;
+  CHECKED_STATUS response_error_status() OVERRIDE;
 
   void MarkOpsAsFailed() OVERRIDE;
 

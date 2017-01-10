@@ -174,7 +174,7 @@ class YB_EXPORT YBClientBuilder {
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  Status Build(std::shared_ptr<YBClient>* client);
+  CHECKED_STATUS Build(std::shared_ptr<YBClient>* client);
  private:
   class YB_NO_EXPORT Data;
 
@@ -216,49 +216,49 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   YBTableCreator* NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress
-  Status IsCreateTableInProgress(const std::string& table_name,
+  CHECKED_STATUS IsCreateTableInProgress(const std::string& table_name,
                                  bool *create_in_progress);
 
-  Status DeleteTable(const std::string& table_name);
+  CHECKED_STATUS DeleteTable(const std::string& table_name);
 
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const std::string& table_name);
 
   // set 'alter_in_progress' to true if an AlterTable operation is in-progress
-  Status IsAlterTableInProgress(const std::string& table_name,
+  CHECKED_STATUS IsAlterTableInProgress(const std::string& table_name,
                                 bool *alter_in_progress);
 
-  Status GetTableSchema(const std::string& table_name,
+  CHECKED_STATUS GetTableSchema(const std::string& table_name,
                         YBSchema* schema);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
-  Status TabletServerCount(int *tserver_count);
+  CHECKED_STATUS TabletServerCount(int *tserver_count);
 
-  Status ListTabletServers(std::vector<YBTabletServer*>* tablet_servers);
+  CHECKED_STATUS ListTabletServers(std::vector<YBTabletServer*>* tablet_servers);
 
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
-  Status ListTables(std::vector<std::string>* tables,
+  CHECKED_STATUS ListTables(std::vector<std::string>* tables,
                     const std::string& filter = "");
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
-  Status GetTablets(const std::string& table_name,
+  CHECKED_STATUS GetTablets(const std::string& table_name,
                     const int max_tablets,
                     std::vector<std::string>* tablet_uuids,
                     std::vector<std::string>* ranges);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
-  Status ListMasters(
+  CHECKED_STATUS ListMasters(
     MonoTime deadline,
     std::vector<std::string>* master_uuids);
 
   // Check if the table given by 'table_name' exists.
   //
   // 'exists' is set only on success.
-  Status TableExists(const std::string& table_name, bool* exists);
+  CHECKED_STATUS TableExists(const std::string& table_name, bool* exists);
 
   // Open the table with the given name. If the table has not been opened before
   // in this client, this will do an RPC to ensure that the table exists and
@@ -266,7 +266,7 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   //
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
-  Status OpenTable(const std::string& table_name,
+  CHECKED_STATUS OpenTable(const std::string& table_name,
                    std::shared_ptr<YBTable>* table);
 
   // Create a new session for interacting with the cluster.
@@ -275,16 +275,16 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   std::shared_ptr<YBSession> NewSession(bool read_only = false);
 
   // Return the socket address of the master leader for this client
-  Status SetMasterLeaderSocket(Sockaddr* leader_socket);
+  CHECKED_STATUS SetMasterLeaderSocket(Sockaddr* leader_socket);
 
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
   // to reset the client state to point to new master leader.
-  Status RefreshMasterLeaderSocket(Sockaddr* leader_socket);
+  CHECKED_STATUS RefreshMasterLeaderSocket(Sockaddr* leader_socket);
 
   // Once a config change is completed to add/remove a master, update the client to add/remove it
   // from its own master address list.
-  Status AddMasterToClient(const Sockaddr& add);
-  Status RemoveMasterFromClient(const Sockaddr& remove);
+  CHECKED_STATUS AddMasterToClient(const Sockaddr& add);
+  CHECKED_STATUS RemoveMasterFromClient(const Sockaddr& remove);
 
   // Policy with which to choose amongst multiple replicas.
   enum ReplicaSelection {
@@ -323,9 +323,9 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   void SetLatestObservedTimestamp(uint64_t ht_timestamp);
 
   // Given a host and port for a master, get the uuid of that process.
-  Status GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
+  CHECKED_STATUS GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
 
-  Status SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
+  CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
   std::string client_id() const { return client_id_; }
 
@@ -454,7 +454,7 @@ class YB_EXPORT YBTableCreator {
   // The return value may indicate an error in the create table operation,
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
-  Status Create();
+  CHECKED_STATUS Create();
  private:
   class YB_NO_EXPORT Data;
 
@@ -597,7 +597,7 @@ class YB_EXPORT YBTableAlterer {
   // The return value may indicate an error in the alter operation, or a
   // misuse of the builder (e.g. add_column() with default_value=NULL); in
   // the latter case, only the last error is returned.
-  Status Alter();
+  CHECKED_STATUS Alter();
 
  private:
   class YB_NO_EXPORT Data;
@@ -742,7 +742,7 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Set the flush mode.
   // REQUIRES: there should be no pending writes -- call Flush() first to ensure.
-  Status SetFlushMode(FlushMode m) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFlushMode(FlushMode m) WARN_UNUSED_RESULT;
 
   // The possible external consistency modes on which YB operates.
   enum ExternalConsistencyMode {
@@ -778,7 +778,7 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
   };
 
   // Set the new external consistency mode for this session.
-  Status SetExternalConsistencyMode(ExternalConsistencyMode m) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetExternalConsistencyMode(ExternalConsistencyMode m) WARN_UNUSED_RESULT;
 
   // Set the amount of buffer space used by this session for outbound writes.
   // The effect of the buffer size varies based on the flush mode of the
@@ -791,12 +791,12 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
   //   is space available in the buffer.
   // MANUAL_FLUSH:
   //   if the buffer space is exhausted, then write calls will return an error.
-  Status SetMutationBufferSpace(size_t size) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetMutationBufferSpace(size_t size) WARN_UNUSED_RESULT;
 
   // Set the timeout for writes made in this session.
   void SetTimeoutMillis(int millis);
 
-  Status ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+  CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
   void ReadAsync(std::shared_ptr<YBOperation> yb_op, YBStatusCallback* cb);
 
@@ -816,7 +816,7 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
   // may be retrieved at any time.
   //
   // This is thread safe.
-  Status Apply(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
+  CHECKED_STATUS Apply(std::shared_ptr<YBOperation> yb_op) WARN_UNUSED_RESULT;
 
   // Similar to the above, except never blocks. Even in the flush modes that
   // return immediately, 'cb' is triggered with the result. The callback may be
@@ -861,12 +861,12 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
   // For FlushAsync, 'cb' must remain valid until it is invoked.
   //
   // This function is thread-safe.
-  Status Flush() WARN_UNUSED_RESULT;
+  CHECKED_STATUS Flush() WARN_UNUSED_RESULT;
   void FlushAsync(YBStatusCallback* cb);
 
   // Close the session.
   // Returns an error if there are unflushed or in-flight operations.
-  Status Close() WARN_UNUSED_RESULT;
+  CHECKED_STATUS Close() WARN_UNUSED_RESULT;
 
   // Return true if there are operations which have not yet been delivered to the
   // cluster. This may include buffered operations (i.e those that have not yet been
@@ -937,7 +937,7 @@ class YB_EXPORT YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  Status Execute(const YBPartialRow& key);
+  CHECKED_STATUS Execute(const YBPartialRow& key);
  private:
   YBTable* table_;
 
@@ -1005,15 +1005,15 @@ class YB_EXPORT YBScanner {
   // Set the projection used for this scanner by passing the column names to read.
   //
   // This overrides any previous call to SetProjectedColumns.
-  Status SetProjectedColumnNames(const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetProjectedColumnNames(const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
 
   // Set the projection used for this scanner by passing the column indexes to read.
   //
   // This overrides any previous call to SetProjectedColumns/SetProjectedColumnIndexes.
-  Status SetProjectedColumnIndexes(const std::vector<int>& col_indexes) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetProjectedColumnIndexes(const std::vector<int>& col_indexes) WARN_UNUSED_RESULT;
 
   // DEPRECATED: See SetProjectedColumnNames
-  Status SetProjectedColumns(const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetProjectedColumns(const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
 
   // Add a predicate to this scanner.
   //
@@ -1021,52 +1021,52 @@ class YB_EXPORT YBScanner {
   // a row to be returned.
   //
   // The Scanner takes ownership of 'pred', even if a bad Status is returned.
-  Status AddConjunctPredicate(YBPredicate* pred) WARN_UNUSED_RESULT;
+  CHECKED_STATUS AddConjunctPredicate(YBPredicate* pred) WARN_UNUSED_RESULT;
 
   // Add a lower bound (inclusive) primary key for the scan.
   // If any bound is already added, this bound is intersected with that one.
   //
   // The scanner does not take ownership of 'key'; the caller may free it afterward.
-  Status AddLowerBound(const YBPartialRow& key);
+  CHECKED_STATUS AddLowerBound(const YBPartialRow& key);
 
   // Like AddLowerBound(), but the encoded primary key is an opaque slice of data
   // obtained elsewhere.
   //
   // DEPRECATED: use AddLowerBound
-  Status AddLowerBoundRaw(const Slice& key);
+  CHECKED_STATUS AddLowerBoundRaw(const Slice& key);
 
   // Add an upper bound (exclusive) primary key for the scan.
   // If any bound is already added, this bound is intersected with that one.
   //
   // The scanner makes a copy of 'key'; the caller may free it afterward.
-  Status AddExclusiveUpperBound(const YBPartialRow& key);
+  CHECKED_STATUS AddExclusiveUpperBound(const YBPartialRow& key);
 
   // Like AddExclusiveUpperBound(), but the encoded primary key is an opaque slice of data
   // obtained elsewhere.
   //
   // DEPRECATED: use AddExclusiveUpperBound
-  Status AddExclusiveUpperBoundRaw(const Slice& key);
+  CHECKED_STATUS AddExclusiveUpperBoundRaw(const Slice& key);
 
   // Add a lower bound (inclusive) partition key for the scan.
   //
   // The scanner makes a copy of 'partition_key'; the caller may free it afterward.
   //
   // This method is unstable, and for internal use only.
-  Status AddLowerBoundPartitionKeyRaw(const Slice& partition_key);
+  CHECKED_STATUS AddLowerBoundPartitionKeyRaw(const Slice& partition_key);
 
   // Add an upper bound (exclusive) partition key for the scan.
   //
   // The scanner makes a copy of 'partition_key'; the caller may free it afterward.
   //
   // This method is unstable, and for internal use only.
-  Status AddExclusiveUpperBoundPartitionKeyRaw(const Slice& partition_key);
+  CHECKED_STATUS AddExclusiveUpperBoundPartitionKeyRaw(const Slice& partition_key);
 
   // Set the block caching policy for this scanner. If true, scanned data blocks will be cached
   // in memory and made available for future scans. Default is true.
-  Status SetCacheBlocks(bool cache_blocks);
+  CHECKED_STATUS SetCacheBlocks(bool cache_blocks);
 
   // Begin scanning.
-  Status Open();
+  CHECKED_STATUS Open();
 
   // Keeps the current remote scanner alive on the Tablet server for an additional
   // time-to-live (set by a configuration flag on the tablet server).
@@ -1079,7 +1079,7 @@ class YB_EXPORT YBScanner {
   // NOTE: A non-OK status returned by this method should not be taken as indication that
   // the scan has failed. Subsequent calls to NextBatch() might still be successful,
   // particularly if SetFaultTolerant() was called.
-  Status KeepAlive();
+  CHECKED_STATUS KeepAlive();
 
   // Close the scanner.
   // This releases resources on the server.
@@ -1105,35 +1105,35 @@ class YB_EXPORT YBScanner {
   // now be pointing to garbage memory.
   //
   // DEPRECATED: Use NextBatch(YBScanBatch*) instead.
-  Status NextBatch(std::vector<YBRowResult>* rows);
+  CHECKED_STATUS NextBatch(std::vector<YBRowResult>* rows);
 
   // Fetches the next batch of results for this scanner.
   //
   // A single YBScanBatch instance may be reused. Each subsequent call replaces the data
   // from the previous call, and invalidates any YBScanBatch::RowPtr objects previously
   // obtained from the batch.
-  Status NextBatch(YBScanBatch* batch);
+  CHECKED_STATUS NextBatch(YBScanBatch* batch);
 
   // Get the YBTabletServer that is currently handling the scan.
   // More concretely, this is the server that handled the most recent Open or NextBatch
   // RPC made by the server.
-  Status GetCurrentServer(YBTabletServer** server);
+  CHECKED_STATUS GetCurrentServer(YBTabletServer** server);
 
   // Set the hint for the size of the next batch in bytes.
   // If setting to 0 before calling Open(), it means that the first call
   // to the tablet server won't return data.
-  Status SetBatchSizeBytes(uint32_t batch_size);
+  CHECKED_STATUS SetBatchSizeBytes(uint32_t batch_size);
 
   // Sets the replica selection policy while scanning.
   //
   // TODO: kill this in favor of a consistency-level-based API
-  Status SetSelection(YBClient::ReplicaSelection selection) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetSelection(YBClient::ReplicaSelection selection) WARN_UNUSED_RESULT;
 
   // Sets the ReadMode. Default is READ_LATEST.
-  Status SetReadMode(ReadMode read_mode) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetReadMode(ReadMode read_mode) WARN_UNUSED_RESULT;
 
   // DEPRECATED: use SetFaultTolerant.
-  Status SetOrderMode(OrderMode order_mode) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetOrderMode(OrderMode order_mode) WARN_UNUSED_RESULT;
 
   // Scans are by default non fault-tolerant, and scans will fail if scanning an
   // individual tablet fails (for example, if a tablet server crashes in the
@@ -1145,18 +1145,18 @@ class YB_EXPORT YBScanner {
   // Fault tolerant scans typically have lower throughput than non
   // fault-tolerant scans. Fault tolerant scans use READ_AT_SNAPSHOT mode,
   // if no snapshot timestamp is provided, the server will pick one.
-  Status SetFaultTolerant() WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetFaultTolerant() WARN_UNUSED_RESULT;
 
   // Sets the snapshot timestamp, in microseconds since the epoch, for scans in
   // READ_AT_SNAPSHOT mode.
-  Status SetSnapshotMicros(uint64_t snapshot_timestamp_micros) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetSnapshotMicros(uint64_t snapshot_timestamp_micros) WARN_UNUSED_RESULT;
 
   // Sets the snapshot timestamp in raw encoded form (i.e. as returned by a
   // previous call to a server), for scans in READ_AT_SNAPSHOT mode.
-  Status SetSnapshotRaw(uint64_t snapshot_timestamp) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetSnapshotRaw(uint64_t snapshot_timestamp) WARN_UNUSED_RESULT;
 
   // Sets the maximum time that Open() and NextBatch() are allowed to take.
-  Status SetTimeoutMillis(int millis);
+  CHECKED_STATUS SetTimeoutMillis(int millis);
 
   // Returns the schema of the projection being scanned.
   YBSchema GetProjectionSchema() const;

@@ -72,7 +72,7 @@ class BinaryDictBlockBuilder : public BlockBuilder {
 
   // Append the dictionary block for the current cfile to the end of the cfile and set the footer
   // accordingly.
-  Status AppendExtraInfo(CFileWriter* c_writer, CFileFooterPB* footer) OVERRIDE;
+  CHECKED_STATUS AppendExtraInfo(CFileWriter* c_writer, CFileFooterPB* footer) OVERRIDE;
 
   int Add(const uint8_t* vals, size_t count) OVERRIDE;
 
@@ -82,7 +82,7 @@ class BinaryDictBlockBuilder : public BlockBuilder {
 
   size_t Count() const OVERRIDE;
 
-  Status GetFirstKey(void* key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE;
 
   static const size_t kMaxHeaderSize = sizeof(uint32_t) * 1;
 
@@ -121,10 +121,10 @@ class BinaryDictBlockDecoder : public BlockDecoder {
  public:
   explicit BinaryDictBlockDecoder(Slice slice, CFileIterator* iter);
 
-  virtual Status ParseHeader() OVERRIDE;
+  virtual CHECKED_STATUS ParseHeader() OVERRIDE;
   virtual void SeekToPositionInBlock(uint pos) OVERRIDE;
-  virtual Status SeekAtOrAfterValue(const void* value, bool* exact_match) OVERRIDE;
-  Status CopyNextValues(size_t* n, ColumnDataView* dst) OVERRIDE;
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void* value, bool* exact_match) OVERRIDE;
+  CHECKED_STATUS CopyNextValues(size_t* n, ColumnDataView* dst) OVERRIDE;
 
   virtual bool HasNext() const OVERRIDE {
     return data_decoder_->HasNext();
@@ -145,7 +145,7 @@ class BinaryDictBlockDecoder : public BlockDecoder {
   static const size_t kMinHeaderSize = sizeof(uint32_t) * 1;
 
  private:
-  Status CopyNextDecodeStrings(size_t* n, ColumnDataView* dst);
+  CHECKED_STATUS CopyNextDecodeStrings(size_t* n, ColumnDataView* dst);
 
   Slice data_;
   bool parsed_;

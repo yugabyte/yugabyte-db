@@ -62,16 +62,16 @@ class Master : public server::RpcAndWebServerBase {
   explicit Master(const MasterOptions& opts);
   ~Master();
 
-  Status Init();
-  Status Start();
+  CHECKED_STATUS Init();
+  CHECKED_STATUS Start();
 
-  Status StartAsync();
-  Status WaitForCatalogManagerInit();
+  CHECKED_STATUS StartAsync();
+  CHECKED_STATUS WaitForCatalogManagerInit();
 
   // Wait until this Master's catalog manager instance is the leader and is ready.
   // This method is intended for use by unit tests.
   // If 'timeout' time is exceeded, returns Status::TimedOut.
-  Status WaitUntilCatalogManagerIsLeaderAndReadyForTests(
+  CHECKED_STATUS WaitUntilCatalogManagerIsLeaderAndReadyForTests(
     const MonoDelta& timeout = MonoDelta::FromSeconds(10))
       WARN_UNUSED_RESULT;
 
@@ -92,7 +92,7 @@ class Master : public server::RpcAndWebServerBase {
   const MasterOptions& opts() { return opts_; }
 
   // Get the RPC and HTTP addresses for this master instance.
-  Status GetMasterRegistration(ServerRegistrationPB* registration) const;
+  CHECKED_STATUS GetMasterRegistration(ServerRegistrationPB* registration) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
   // masters from the in-memory options used at master startup.
@@ -100,13 +100,13 @@ class Master : public server::RpcAndWebServerBase {
   // client; cache this information with a TTL (possibly in another
   // SysTable), so that we don't have to perform an RPC call on every
   // request.
-  Status ListMasters(std::vector<ServerEntryPB>* masters) const;
+  CHECKED_STATUS ListMasters(std::vector<ServerEntryPB>* masters) const;
 
   // Get node instance, Raft role, RPC and HTTP addresses for all
   // masters from the Raft config
-  Status ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
+  CHECKED_STATUS ListRaftConfigMasters(std::vector<consensus::RaftPeerPB>* masters) const;
 
-  Status InformRemovedMaster(const HostPortPB& hp_pb);
+  CHECKED_STATUS InformRemovedMaster(const HostPortPB& hp_pb);
 
   bool IsShutdown() const {
     return state_ == kStopped;
@@ -117,7 +117,7 @@ class Master : public server::RpcAndWebServerBase {
   }
 
   // Recreates the master list based on the new config peers
-  Status ResetMemoryState(const RaftConfigPB& new_config);
+  CHECKED_STATUS ResetMemoryState(const RaftConfigPB& new_config);
 
   void DumpMasterOptionsInfo(std::ostream* out);
 
@@ -127,17 +127,17 @@ class Master : public server::RpcAndWebServerBase {
 
   // Not a full shutdown, but makes this master go into a dormant mode (state_ is still kRunning).
   // Called currently by cluster master leader which is removing this master from the quorum.
-  Status GoIntoShellMode();
+  CHECKED_STATUS GoIntoShellMode();
 
  private:
   friend class MasterTest;
 
   void InitCatalogManagerTask();
-  Status InitCatalogManager();
+  CHECKED_STATUS InitCatalogManager();
 
   // Initialize registration_.
   // Requires that the web server and RPC server have been started.
-  Status InitMasterRegistration();
+  CHECKED_STATUS InitMasterRegistration();
 
   enum MasterState {
     kStopped,

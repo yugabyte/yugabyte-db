@@ -167,13 +167,13 @@ Status MiniCluster::RestartSync() {
 
   LOG(INFO) << "Restart tablet server(s)...";
   for (auto& tablet_server : mini_tablet_servers_) {
-    tablet_server->Restart();
-    tablet_server->WaitStarted();
+    CHECK_OK(tablet_server->Restart());
+    CHECK_OK(tablet_server->WaitStarted());
   }
   LOG(INFO) << "Restart master server(s)...";
   for (auto& master_server : mini_masters_) {
-    master_server->Restart();
-    master_server->WaitForCatalogManagerInit();
+    CHECK_OK(master_server->Restart());
+    CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
   return Status::OK();
 }

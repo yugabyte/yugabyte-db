@@ -169,7 +169,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
   switch (col_type) {
     case INT8: {
       EvalIntValue int_value;
-      EvalExpr(expr, &int_value);
+      RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int8_t actual_value = static_cast<int8_t>(int_value.value_);
@@ -182,7 +182,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case INT16: {
       EvalIntValue int_value;
-      EvalExpr(expr, &int_value);
+      RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int16_t actual_value = static_cast<int16_t>(int_value.value_);
@@ -195,7 +195,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case INT32: {
       EvalIntValue int_value;
-      EvalExpr(expr, &int_value);
+      RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int32_t actual_value = static_cast<int32_t>(int_value.value_);
@@ -208,7 +208,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case INT64: {
       EvalIntValue int_value;
-      EvalExpr(expr, &int_value);
+      RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int64_t actual_value = int_value.value_;
@@ -221,7 +221,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case STRING: {
       EvalStringValue string_value;
-      EvalExpr(expr, &string_value);
+      RETURN_NOT_OK(EvalExpr(expr, &string_value));
 
       col_pb->mutable_value()->set_string_value(string_value.value_->data(),
                                                 string_value.value_->size());
@@ -234,7 +234,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case FLOAT: {
       EvalDoubleValue double_value;
-      EvalExpr(expr, &double_value);
+      RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
       LOG(FATAL) << "Floating point datatypes are not yet supported";
       float actual_value = double_value.value_;
@@ -247,7 +247,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case DOUBLE: {
       EvalDoubleValue double_value;
-      EvalExpr(expr, &double_value);
+      RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
       LOG(FATAL) << "Floating point datatypes are not yet supported";
       double actual_value = double_value.value_;
@@ -260,7 +260,7 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
     case BOOL: {
       EvalBoolValue bool_value;
-      EvalExpr(expr, &bool_value);
+      RETURN_NOT_OK(EvalExpr(expr, &bool_value));
 
       LOG(FATAL) << "BOOL type is not yet supported";
       col_pb->mutable_value()->set_bool_value(bool_value.value_);
@@ -426,7 +426,9 @@ ErrorCode Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
     // Where clause - Hash, range, and regular columns.
     YBPartialRow *row = select_op->mutable_row();
-    WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops());
+
+    // TODO: a better way to handle errors here?
+    CHECK_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
 
     // Specify selected columns.
     for (const ColumnDesc *col_desc : tnode->selected_columns()) {
@@ -436,7 +438,7 @@ ErrorCode Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   // Apply the operator always even when select_op is "null" so that the last read_op saved in
   // exec_context is always cleared.
-  exec_context_->ApplyRead(select_op);
+  CHECK_OK(exec_context_->ApplyRead(select_op));
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
 
@@ -478,10 +480,10 @@ ErrorCode Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
-  WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops());
+  CHECK_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
 
   // Apply the operator.
-  exec_context_->ApplyWrite(delete_op);
+  CHECK_OK(exec_context_->ApplyWrite(delete_op));
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
 
@@ -496,7 +498,7 @@ ErrorCode Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = update_op->mutable_row();
-  WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops());
+  CHECK_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
 
   // Setup the columns' new values.
   Status s = ColumnArgsToWriteRequestPB(table,
@@ -505,7 +507,7 @@ ErrorCode Executor::ExecPTNode(const PTUpdateStmt *tnode) {
                                         update_op->mutable_row());
 
   // Apply the operator.
-  exec_context_->ApplyWrite(update_op);
+  CHECK_OK(exec_context_->ApplyWrite(update_op));
   return ErrorCode::SUCCESSFUL_COMPLETION;
 }
 

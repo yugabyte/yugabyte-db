@@ -42,10 +42,10 @@ class PstackWatcher {
 
   // Static method to collect and write stack dump output to stdout of the current
   // process.
-  static Status DumpStacks(int flags = NO_FLAGS);
+  static CHECKED_STATUS DumpStacks(int flags = NO_FLAGS);
 
   // Like the above but for any process, not just the current one.
-  static Status DumpPidStacks(pid_t pid, int flags = NO_FLAGS);
+  static CHECKED_STATUS DumpPidStacks(pid_t pid, int flags = NO_FLAGS);
 
   // Instantiate a watcher that writes a pstack to stdout after the given
   // timeout expires.
@@ -67,16 +67,16 @@ class PstackWatcher {
 
  private:
   // Test for the existence of the given program in the system path.
-  static Status HasProgram(const char* progname);
+  static CHECKED_STATUS HasProgram(const char* progname);
 
   // Get a stack dump using GDB directly.
-  static Status RunGdbStackDump(pid_t pid, int flags);
+  static CHECKED_STATUS RunGdbStackDump(pid_t pid, int flags);
 
   // Get a stack dump using the pstack or gstack program.
-  static Status RunPstack(const std::string& progname, pid_t pid);
+  static CHECKED_STATUS RunPstack(const std::string& progname, pid_t pid);
 
   // Invoke and wait for the stack dump program.
-  static Status RunStackDump(const std::string& prog, const std::vector<std::string>& argv);
+  static CHECKED_STATUS RunStackDump(const std::string& prog, const std::vector<std::string>& argv);
 
   // Run the thread that waits for the specified duration before logging a
   // pstack.

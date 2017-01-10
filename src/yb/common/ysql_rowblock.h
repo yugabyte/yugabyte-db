@@ -101,7 +101,7 @@ class YSQLRow {
   // Note: YSQLRow's serialize / deserialize methods are private because we expect YSQL rows
   // to be serialized / deserialized as part of a row block. See YSQLRowBlock.
   void Serialize(YSQLClient client, faststring* buffer) const;
-  Status Deserialize(YSQLClient client, Slice* data);
+  CHECKED_STATUS Deserialize(YSQLClient client, Slice* data);
 
   std::shared_ptr<const Schema> schema_;
   YSQLValueCore* values_;
@@ -138,7 +138,7 @@ class YSQLRowBlock {
 
   //----------------------------- serializer / deserializer ---------------------------------
   void Serialize(YSQLClient client, faststring* buffer) const;
-  Status Deserialize(YSQLClient client, Slice* data);
+  CHECKED_STATUS Deserialize(YSQLClient client, Slice* data);
 
 
  private:

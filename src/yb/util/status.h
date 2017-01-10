@@ -462,6 +462,11 @@ inline void Status::operator=(Status&& s) {
 #define SCHECK_LT(var1, var2, type, msg) SCHECK_OP(var1, <, var2, type, msg)  // NOLINT.
 #define SCHECK_LE(var1, var2, type, msg) SCHECK_OP(var1, <=, var2, type, msg)
 
+#ifdef YB_HEADERS_NO_STUBS
 #define CHECKED_STATUS MUST_USE_RESULT yb::Status
+#else
+// Only for the build using client headers. MUST_USE_RESULT is undefined in that case.
+#define CHECKED_STATUS yb::Status
+#endif
 
 #endif  // YB_UTIL_STATUS_H_

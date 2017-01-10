@@ -463,7 +463,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   const std::string& id() const { return id_; }
 
   // See MetricRegistry::WriteAsJson()
-  Status WriteAsJson(JsonWriter* writer,
+  CHECKED_STATUS WriteAsJson(JsonWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
@@ -534,7 +534,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 class Metric : public RefCountedThreadSafe<Metric> {
  public:
   // All metrics must be able to render themselves as JSON.
-  virtual Status WriteAsJson(JsonWriter* writer,
+  virtual CHECKED_STATUS WriteAsJson(JsonWriter* writer,
                              const MetricJsonOptions& opts) const = 0;
 
   const MetricPrototype* prototype() const { return prototype_; }
@@ -579,7 +579,7 @@ class MetricRegistry {
   //
   // See the MetricJsonOptions struct definition above for options changing the
   // output of this function.
-  Status WriteAsJson(JsonWriter* writer,
+  CHECKED_STATUS WriteAsJson(JsonWriter* writer,
                      const std::vector<std::string>& requested_metrics,
                      const MetricJsonOptions& opts) const;
 
@@ -740,7 +740,7 @@ class Gauge : public Metric {
     : Metric(prototype) {
   }
   virtual ~Gauge() {}
-  virtual Status WriteAsJson(JsonWriter* w,
+  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const OVERRIDE;
  protected:
   virtual void WriteValue(JsonWriter* writer) const = 0;
@@ -945,7 +945,7 @@ class Counter : public Metric {
   int64_t value() const;
   void Increment();
   void IncrementBy(int64_t amount);
-  virtual Status WriteAsJson(JsonWriter* w,
+  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const OVERRIDE;
 
  private:
@@ -989,11 +989,11 @@ class Histogram : public Metric {
   // or IncrementBy()).
   uint64_t TotalCount() const;
 
-  virtual Status WriteAsJson(JsonWriter* w,
+  virtual CHECKED_STATUS WriteAsJson(JsonWriter* w,
                              const MetricJsonOptions& opts) const OVERRIDE;
 
   // Returns a snapshot of this histogram including the bucketed values and counts.
-  Status GetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
+  CHECKED_STATUS GetHistogramSnapshotPB(HistogramSnapshotPB* snapshot,
                                 const MetricJsonOptions& opts) const;
 
   uint64_t CountInBucketForValueForTests(uint64_t value) const;
