@@ -42,7 +42,7 @@ public class NodeDetails {
     ToBeDecommissioned,
     // Set just before sending the request to the IaaS provider to terminate this node.
     BeingDecommissioned,
-    // Set after the node has been decomissioned.
+    // Set after the node has been decommissioned.
     Destroyed
   }
 
@@ -65,7 +65,8 @@ public class NodeDetails {
     sb.append("name: ").append(nodeName).append(".")
       .append(cloudInfo.toString())
       .append(", isMaster: ").append(isMaster)
-      .append(", isTserver: ").append(isTserver);
+      .append(", isTserver: ").append(isTserver)
+      .append(", state: ").append(state);
     return sb.toString();
   }
 
