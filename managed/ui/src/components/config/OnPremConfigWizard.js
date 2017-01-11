@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { withRouter } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { YBButton , YBInputField, YBSelect} from '../common/forms/fields';
 import './stylesheets/OnPremiseProviderConfiguration.scss';
@@ -87,7 +86,7 @@ class YBDataCell extends Component {
       }
 
     return (
-      <div className={activeClass}>
+      <div className={activeClass} onClick={this.setActiveDataCell}>
         {dataCellItem}
       </div>
     )
@@ -100,6 +99,12 @@ class YBHostDataList extends Component {
     this.addHostData = this.addHostData.bind(this);
     this.deleteHostData = this.deleteHostData.bind(this);
     this.state = {currentSelectedHost: 0, currentEditingHost: 0};
+  }
+  componentWillMount() {
+    const {fields} = this.props;
+    if (fields.length === 0) {
+      fields.push({});
+    }
   }
   addHostData() {
     const {fields} = this.props;
@@ -162,6 +167,15 @@ class YBZoneDataList extends Component {
     this.state = {currentSelectedHost: 0,  currentEditingHost: 0};
   }
 
+  componentWillMount() {
+    const {fields} = this.props;
+    if (fields.length > 0) {
+      this.setState({currentSelectedHost: fields.length - 1, currentEditingHost: -1});
+    } else {
+      fields.push({});
+    }
+  }
+
   addZoneData() {
     const {fields} = this.props;
     fields.push({});
@@ -203,7 +217,7 @@ class YBZoneDataList extends Component {
           <span key={idx}>
             <YBDataCell item={zoneItem} editing={editing} fields={fields} idx={idx} saveItem={self.selectZoneData}
                         editItem={self.editZoneData} selectItem={self.setZoneActive} deleteItem={self.deleteZoneData}
-                        activeClass={zoneDisplayClass}/>
+                        activeClass={zoneDisplayClass} />
             <FieldArray name={`${zoneItem}.hosts`} component={YBHostDataList} displayClass={hostDisplayClass}/>
           </span>
         )
@@ -225,7 +239,6 @@ class YBZoneDataList extends Component {
 class YBRegionDataList extends Component {
   constructor(props) {
     super(props);
-    this.props.fields.push({});
     this.addRegionData = this.addRegionData.bind(this);
     this.selectRegionData = this.selectRegionData.bind(this);
     this.editRegionData = this.editRegionData.bind(this);
@@ -233,14 +246,24 @@ class YBRegionDataList extends Component {
     this.state = {currentSelectedZone: 0, currentEditingZone: 0};
     this.setRegionActive = this.setRegionActive.bind(this);
   }
+
+  componentWillMount() {
+    const {fields} = this.props;
+    if (fields.length > 0) {
+      this.setState({currentSelectedZone: fields.length - 1, currentEditingZone: -1});
+    } else {
+      fields.push({});
+    }
+  }
+
   addRegionData() {
     const {fields} = this.props;
     fields.push({});
     var fieldLen = fields.length;
-
     this.setState({currentSelectedZone: fieldLen});
     this.setState({currentEditingZone: fieldLen});
   }
+
   selectRegionData(idx) {
     this.setState({currentEditingZone: -1});
   }
@@ -273,12 +296,12 @@ class YBRegionDataList extends Component {
         }
         return (
           <div key={idx}>
-            <YBDataCell item={regionItem} editing={editing} fields={fields} idx={idx} saveItem={self.selectRegionData}
-                        editItem={self.editRegionData} selectItem={self.setRegionActive} deleteItem={self.deleteRegionData}
-                        activeClass={regionDisplayClass}/>
+            <YBDataCell item={regionItem} editing={editing} fields={fields}
+                        idx={idx} saveItem={self.selectRegionData}
+                        editItem={self.editRegionData} selectItem={self.setRegionActive}
+                        deleteItem={self.deleteRegionData} activeClass={regionDisplayClass}/>
             <FieldArray name={`${regionItem}.zones`} component={YBZoneDataList}
-                        zoneDisplayClass={zoneDisplayClass} saveItem={self.selectRegionData}
-                        />
+                        zoneDisplayClass={zoneDisplayClass} saveItem={self.selectRegionData}/>
           </div>
         )
       })
@@ -297,31 +320,23 @@ class YBRegionDataList extends Component {
   }
 }
 
-class OnPremProviderConfiguration extends Component {
-  constructor(props) {
-    super(props);
-    this.submitConfigForm = this.submitConfigForm.bind(this);
+export default class OnPremConfigWizard extends Component {
+  componentWillMount() {
+    this.props.initialize(this.props.config.onPremJsonFormData);
   }
-  submitConfigForm(vals) {
-    // Submit Form Data
+  componentWillUnmount() {
+    this.props.setOnPremJsonData({regions: this.props.formValues});
   }
-
-  render(){
-    const {handleSubmit} = this.props;
+  render() {
+    const {onFormSubmit} = this.props;
     return (
-      <div className="on-prem-provider-container">
-        <form name="OnPremProviderConfigForm" onSubmit={handleSubmit(this.submitConfigForm)}>
-          <Row className="form-data-container">
-            <FieldArray name={"regions"} component={YBRegionDataList}
-                        addRegionData={this.addRegionData}/>
-          </Row>
-          <Row className="form-action-button-container">
-            <YBButton btnText="Submit" btnType={"submit"}/>
-          </Row>
-        </form>
-      </div>
+      <form name="OnPremProviderConfigForm" onSubmit={onFormSubmit}>
+        <Row className="form-data-container">
+          <FieldArray name={"regions"} component={YBRegionDataList}
+                      addRegionData={self.addRegionData} />
+        </Row>
+      </form>
     )
   }
 }
 
-export default withRouter(OnPremProviderConfiguration);

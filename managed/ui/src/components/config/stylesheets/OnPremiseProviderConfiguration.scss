@@ -61,26 +61,26 @@
 
 .on-prem-provider-container .form-action-button-container{
  position: absolute;
- margin-top: 40%;
+ margin-top: 45%;
 
 }
 .region-list-container {
   position: absolute;
-  width: 300px;
+  width: 25%;
   top: 30px;
 }
 
 .zone-list-container {
   position: absolute;
-  width: 300px;
-  margin-left: 340px;
+  width:100%;
+  margin-left: 120%;
   top: 0;
 }
 
 .host-list-container {
   position: absolute;
-  width: 300px;
-  margin-left: 340px;
+  width: 100%;
+  margin-left: 120%;
   top: 0;
 }
 
@@ -137,4 +137,15 @@
 .data-item-active {
   background-color: $YB_ORANGE;
   color: white;
+}
+
+.color-light-grey {
+  margin-top: 16px;
+}
+.sample-config-item-label {
+  margin-top:14px;
+}
+
+.sample-config-item .json {
+  height: 60%;
 }
