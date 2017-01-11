@@ -1,30 +1,34 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import OnPremProviderConfiguration from '../../components/config/OnPremProviderConfiguration';
+import {OnPremConfigWizard} from '../../components/config';
 import { reduxForm, formValueSelector  } from 'redux-form';
+import {setOnPremConfigData} from '../../actions/config';
 
 const mapStateToProps = (state) => {
   const selector = formValueSelector('OnPremProviderConfigForm');
   return {
     cloud: state.cloud,
+    config: state.config,
     formValues: selector(state, 'regions')
   };
 }
-
 var form = 'OnPremProviderConfigForm';
-var fields = ['Regions[][]'];
-
 const mapDispatchToProps = (dispatch) => {
   return {
-
+    setOnPremJsonData: (formData) => {
+      dispatch(setOnPremConfigData(formData))
+    }
   }
 }
 
 var onPremConfigForm = reduxForm({
   form: form,
-  fields: fields
-})
+  fields: [
+    'regions[].name',
+    'regions[].zones[].name',
+    'regions[].zones[].hosts[].name'
+  ]
+});
 
-
-export default connect(mapStateToProps, mapDispatchToProps)(onPremConfigForm(OnPremProviderConfiguration));
+export default connect(mapStateToProps, mapDispatchToProps)(onPremConfigForm(OnPremConfigWizard));
