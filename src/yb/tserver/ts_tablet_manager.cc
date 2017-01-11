@@ -1013,6 +1013,7 @@ void TSTabletManager::GetDataWalDirAndUpdateAssignmentMap(FsManager* fs_manager,
     return;
   }
   MutexLock l(dir_assignment_lock_);
+  LOG(INFO) << "Get and update data/wal directory assignment map for table: " << table_id;
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -1072,6 +1073,8 @@ void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
     return;
   }
   MutexLock l(dir_assignment_lock_);
+  LOG(INFO) << "Update data/wal directory assignment map for table: " << table_id;
+  // Initialize the map if the directory mapping does not exist.
   // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
@@ -1119,6 +1122,7 @@ void TSTabletManager::UnregisterDataWalDirFromAssignmentMap(const string& table_
     return;
   }
   MutexLock l(dir_assignment_lock_);
+  LOG(INFO) << "Unregister data/wal directory assignment map for table: " << table_id;
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   DCHECK(table_data_assignment_iter != table_data_assignment_map_.end())
       << "Need to initialize table first";
@@ -1155,6 +1159,7 @@ void TSTabletManager::UnregisterDataWalDirFromAssignmentMap(const string& table_
 
 void TSTabletManager::RegisterDataAndWalDirAccounting(FsManager* fs_manager,
                                                       const scoped_refptr<TabletMetadata>& meta) {
+  LOG(INFO) << "Register data/wal directory assignment map for table: " << table_id;
   UpdateAssignmentMap(fs_manager, meta->table_id(),
                       meta->table_type(), meta->data_root_dir(),
                       meta->wal_root_dir());
