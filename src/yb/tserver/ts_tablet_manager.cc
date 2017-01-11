@@ -1075,7 +1075,6 @@ void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
   MutexLock l(dir_assignment_lock_);
   LOG(INFO) << "Update data/wal directory assignment map for table: " << table_id;
   // Initialize the map if the directory mapping does not exist.
-  // Initialize the map if the directory mapping does not exist.
   auto data_root_dirs = fs_manager->GetDataRootDirs();
   CHECK(!data_root_dirs.empty()) << "No data root directories found";
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
