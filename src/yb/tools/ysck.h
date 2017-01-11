@@ -17,8 +17,8 @@
 //
 // Ysck, a tool to run a YB System Check.
 
-#ifndef YB_TOOLS_KSCK_H
-#define YB_TOOLS_KSCK_H
+#ifndef YB_TOOLS_YSCK_H
+#define YB_TOOLS_YSCK_H
 
 #include <memory>
 #include <string>
@@ -116,8 +116,9 @@ class YsckTablet {
 // Representation of a table. Composed of tablets.
 class YsckTable {
  public:
-  YsckTable(std::string name, const Schema& schema, int num_replicas)
-      : name_(std::move(name)), schema_(schema), num_replicas_(num_replicas) {}
+  YsckTable(std::string name, const Schema& schema, int num_replicas, TableType table_type)
+      : name_(std::move(name)), schema_(schema), num_replicas_(num_replicas),
+      table_type_(table_type) {}
 
   const std::string& name() const {
     return name_;
@@ -129,6 +130,10 @@ class YsckTable {
 
   int num_replicas() const {
     return num_replicas_;
+  }
+
+  const TableType table_type() const {
+    return table_type_;
   }
 
   void set_tablets(std::vector<std::shared_ptr<YsckTablet>>& tablets) {
@@ -143,6 +148,7 @@ class YsckTable {
   const std::string name_;
   const Schema schema_;
   const int num_replicas_;
+  const TableType table_type_;
   std::vector<std::shared_ptr<YsckTablet>> tablets_;
   DISALLOW_COPY_AND_ASSIGN(YsckTable);
 };
@@ -308,4 +314,4 @@ class Ysck {
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_KSCK_H
+#endif // YB_TOOLS_YSCK_H

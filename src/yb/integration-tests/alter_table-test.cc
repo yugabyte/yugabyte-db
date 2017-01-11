@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/assign.hpp>
-#include <gflags/gflags.h>
-#include <gtest/gtest.h>
 #include <map>
 #include <string>
 #include <utility>
+#include <boost/assign.hpp>
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
@@ -31,6 +31,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
@@ -79,7 +80,7 @@ using std::vector;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class AlterTableTest : public YBTest {
+class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   AlterTableTest()
     : stop_threads_(false),
@@ -102,7 +103,7 @@ class AlterTableTest : public YBTest {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
@@ -128,7 +129,7 @@ class AlterTableTest : public YBTest {
     LOG(INFO) << "Tablet successfully located";
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     tablet_peer_.reset();
     cluster_->Shutdown();
   }
@@ -236,7 +237,6 @@ class AlterTableTest : public YBTest {
 
   static const char *kTableName;
 
-  gscoped_ptr<MiniCluster> cluster_;
   shared_ptr<YBClient> client_;
 
   YBSchema schema_;
@@ -358,6 +358,7 @@ TEST_F(AlterTableTest, TestAlterOnTSRestart) {
 
 // Verify that nothing is left behind on cluster shutdown with pending async tasks
 TEST_F(AlterTableTest, TestShutdownWithPendingTasks) {
+  DontVerifyClusterBeforeNextTearDown();
   ASSERT_EQ(0, tablet_peer_->tablet()->metadata()->schema_version());
 
   ShutdownTS();

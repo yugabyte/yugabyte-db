@@ -1143,9 +1143,9 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   // We don't know exactly how many rows got inserted, since the writer
   // probably saw many errors which left inserts in indeterminate state.
   // But, we should have at least as many as we got confirmation for.
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
 }
 
@@ -1210,9 +1210,9 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
   // We don't know exactly how many rows got inserted, since the writer
   // probably saw many errors which left inserts in indeterminate state.
   // But, we should have at least as many as we got confirmation for.
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
   NO_FATALS(AssertNoTabletServersCrashed());
 }
@@ -2589,9 +2589,9 @@ TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   // remotely bootstrapped.
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 2));
 
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(kTableId, ClusterVerifier::AT_LEAST, 1));
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(kTableId, ClusterVerifier::AT_LEAST, 1));
 }
 
 // Test that a ChangeConfig() request is rejected unless the leader has

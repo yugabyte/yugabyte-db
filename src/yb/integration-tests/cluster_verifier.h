@@ -28,13 +28,13 @@ namespace yb {
 
 using tools::ChecksumOptions;
 
-class ExternalMiniCluster;
+class MiniClusterBase;
 class MonoDelta;
 
 // Utility class for integration tests to verify that the cluster is in a good state.
 class ClusterVerifier {
  public:
-  explicit ClusterVerifier(ExternalMiniCluster* cluster);
+  explicit ClusterVerifier(MiniClusterBase* cluster);
   ~ClusterVerifier();
 
   // Set the amount of time which we'll retry trying to verify the cluster
@@ -86,7 +86,7 @@ class ClusterVerifier {
                          int expected_row_count);
 
 
-  ExternalMiniCluster* cluster_;
+  MiniClusterBase* cluster_;
 
   ChecksumOptions checksum_options_;
 

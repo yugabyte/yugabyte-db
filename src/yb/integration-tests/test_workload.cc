@@ -163,7 +163,7 @@ void TestWorkload::WriteThread() {
 }
 
 void TestWorkload::Setup(YBTableType table_type) {
-  CHECK_OK(cluster_->CreateClient(client_builder_, &client_));
+  CHECK_OK(cluster_->CreateClient(&client_builder_, &client_));
 
   bool table_exists;
 
@@ -239,7 +239,7 @@ void TestWorkload::StopAndJoin() {
   should_run_.Store(false);
   start_latch_.Reset(0);
   for (scoped_refptr<yb::Thread> thr : threads_) {
-   CHECK_OK(ThreadJoiner(thr.get()).Join());
+    CHECK_OK(ThreadJoiner(thr.get()).Join());
   }
   threads_.clear();
 }

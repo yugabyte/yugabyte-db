@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <memory>
+#include <thread>
 #include <boost/bind.hpp>
 #include <boost/thread/thread.hpp>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
-#include <memory>
-#include <thread>
 
 #include "yb/client/client.h"
 #include "yb/common/schema.h"
@@ -28,6 +28,7 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
@@ -65,7 +66,7 @@ namespace yb {
 
 const char* kTableName = "test_table";
 
-class CreateTableStressTest : public YBTest {
+class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   CreateTableStressTest() {
     YBSchemaBuilder b;
@@ -91,7 +92,7 @@ class CreateTableStressTest : public YBTest {
     // down tablets, they'll get resuscitated by their existing leaders.
     FLAGS_enable_remote_bootstrap = false;
 
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
     cluster_.reset(new MiniCluster(env_.get(), opts));
@@ -110,7 +111,7 @@ class CreateTableStressTest : public YBTest {
     ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), messenger_, &ts_map_));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     cluster_->Shutdown();
     STLDeleteValues(&ts_map_);
   }
@@ -119,7 +120,6 @@ class CreateTableStressTest : public YBTest {
 
  protected:
   std::shared_ptr<YBClient> client_;
-  gscoped_ptr<MiniCluster> cluster_;
   YBSchema schema_;
   std::shared_ptr<Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
@@ -146,6 +146,7 @@ void CreateTableStressTest::CreateBigTable(const string& table_name, int num_tab
 }
 
 TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {
+  DontVerifyClusterBeforeNextTearDown();
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping slow test";
     return;
@@ -182,6 +183,7 @@ TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {
 TEST_F(CreateTableStressTest, RestartMasterDuringCreation) {
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping slow test";
+    DontVerifyClusterBeforeNextTearDown();
     return;
   }
 
@@ -207,6 +209,7 @@ TEST_F(CreateTableStressTest, RestartMasterDuringCreation) {
 }
 
 TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
+  DontVerifyClusterBeforeNextTearDown();
   if (!AllowSlowTests()) {
     LOG(INFO) << "Skipping slow test";
     return;

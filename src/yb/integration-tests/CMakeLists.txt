@@ -26,6 +26,7 @@ set(INTEGRATION_TESTS_SRCS
   test_workload.cc
   load_generator.cc
   yb_table_test_base.cc
+  yb_mini_cluster_test_base.cc
   redis_table_test_base.cc
 )
 

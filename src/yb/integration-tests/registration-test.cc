@@ -15,16 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gflags/gflags.h>
-#include <gtest/gtest.h>
 #include <memory>
 #include <string>
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
@@ -50,7 +51,7 @@ using tserver::MiniTabletServer;
 
 // Tests for the Tablet Server registering with the Master,
 // and the master maintaining the tablet descriptor.
-class RegistrationTest : public YBTest {
+class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   RegistrationTest()
     : schema_({ ColumnSchema("c1", UINT32) }, 1) {
@@ -60,13 +61,13 @@ class RegistrationTest : public YBTest {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
 
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     cluster_->Shutdown();
   }
 
@@ -84,11 +85,11 @@ class RegistrationTest : public YBTest {
   }
 
  protected:
-  gscoped_ptr<MiniCluster> cluster_;
   Schema schema_;
 };
 
 TEST_F(RegistrationTest, TestTSRegisters) {
+  DontVerifyClusterBeforeNextTearDown();
   // Wait for the TS to register.
   vector<shared_ptr<TSDescriptor> > descs;
   ASSERT_OK(cluster_->WaitForTabletServerCount(1, &descs));
@@ -118,6 +119,7 @@ TEST_F(RegistrationTest, TestTSRegisters) {
 
 // Test starting multiple tablet servers and ensuring they both register with the master.
 TEST_F(RegistrationTest, TestMultipleTS) {
+  DontVerifyClusterBeforeNextTearDown();
   ASSERT_OK(cluster_->WaitForTabletServerCount(1));
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(2));

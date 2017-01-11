@@ -27,6 +27,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
@@ -39,13 +40,13 @@ using std::string;
 using std::vector;
 using namespace std::placeholders;
 
-class RpcLineItemDAOTest : public YBTest {
+class RpcLineItemDAOTest : public YBMiniClusterTestBase<MiniCluster> {
 
  public:
   RpcLineItemDAOTest() {}
 
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
 
     // Start minicluster
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
@@ -59,13 +60,12 @@ class RpcLineItemDAOTest : public YBTest {
     dao_->Init();
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     cluster_->Shutdown();
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
  protected:
-  gscoped_ptr<MiniCluster> cluster_;
   gscoped_ptr<RpcLineItemDAO> dao_;
 
   // Builds a test row to be inserted into the lineitem table.

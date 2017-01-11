@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
 #include <string>
 #include <vector>
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -90,7 +90,7 @@ class MasterFailoverTest : public YBTest {
     cluster_.reset(new ExternalMiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
     YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(builder, &client_));
+    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
   }
 
   Status CreateTable(const std::string& table_name, CreateTableMode mode) {

@@ -131,7 +131,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
                                           cluster_->messenger(),
                                           &ts_map_));
   YBClientBuilder builder;
-  ASSERT_OK(cluster_->CreateClient(builder, &client_));
+  ASSERT_OK(cluster_->CreateClient(&builder, &client_));
 }
 
 // If a rogue (a.k.a. zombie) leader tries to remote bootstrap a tombstoned
@@ -256,6 +256,11 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
     ASSERT_EQ(TABLET_DATA_TOMBSTONED, tablets[0].tablet_status().tablet_data_state());
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+      workload.rows_inserted()));
 }
 
 // Start remote bootstrap session and delete the tablet in the middle.
@@ -318,6 +323,11 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   rb_client.reset();
   SleepFor(MonoDelta::FromMilliseconds(500));  // Give a little time for a crash (KUDU-1009).
   ASSERT_TRUE(cluster_->tablet_server(kTsIndex)->IsProcessAlive());
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+      workload.rows_inserted()));
 }
 
 // This test ensures that a leader can remote-bootstrap a tombstoned replica
@@ -402,6 +412,11 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
 
   // Wait for the follower to come back up.
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+      workload.rows_inserted()));
 }
 
 // Test that multiple concurrent remote bootstraps do not cause problems.
@@ -503,9 +518,9 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
     ASSERT_OK(itest::WaitUntilTabletRunning(target_ts, tablet_id, timeout));
   }
 
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
 }
 
@@ -594,9 +609,9 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
     ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
   }
 
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
 }
 

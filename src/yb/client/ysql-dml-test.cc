@@ -12,6 +12,7 @@
 #include "yb/common/ysql_protocol.pb.h"
 #include "yb/common/ysql_rowblock.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
@@ -26,13 +27,16 @@ using std::unique_ptr;
 
 static const char kTableName[] = "ysql_client_test_table";
 
-class YsqlDmlTest : public YBTest {
+class YsqlDmlTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   YsqlDmlTest() {
   }
 
   virtual void SetUp() override {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
+    // TODO - remove DontVerifyClusterBeforeNextTearDown once hashed keys support is implemented
+    // in DocRowwiseIterator::NextBlock.
+    DontVerifyClusterBeforeNextTearDown();
 
     // Start minicluster and wait for tablet servers to connect to master.
     MiniClusterOptions opts;
@@ -73,7 +77,7 @@ class YsqlDmlTest : public YBTest {
     }
   }
 
-  virtual void TearDown() override {
+  virtual void DoTearDown() override {
     // This DeleteTable clean up seems to cause a crash because the delete may not succeed
     // immediately and is retried after the master is restarted (see ENG-663). So disable it for
     // now.
@@ -85,7 +89,7 @@ class YsqlDmlTest : public YBTest {
       cluster_->Shutdown();
       cluster_.reset();
     }
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   shared_ptr<YBSqlWriteOp> NewWriteOp(YSQLWriteRequestPB::YSQLStmtType type) {
@@ -179,7 +183,6 @@ class YsqlDmlTest : public YBTest {
   }
 
  protected:
-  shared_ptr<MiniCluster> cluster_;
   shared_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
   unordered_map<string, int32_t> column_ids_;

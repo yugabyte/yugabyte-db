@@ -39,6 +39,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.proxy.h"
@@ -97,7 +98,7 @@ using std::shared_ptr;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class ClientTest : public YBTest {
+class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   ClientTest() {
     YBSchemaBuilder b;
@@ -112,7 +113,7 @@ class ClientTest : public YBTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
 
     // Reduce the TS<->Master heartbeat interval
     FLAGS_heartbeat_interval_ms = 10;
@@ -141,12 +142,12 @@ class ClientTest : public YBTest {
     return rows;
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
     }
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   // Count the rows of a table, checking that the operation succeeds.
@@ -488,6 +489,7 @@ TEST_F(ClientTest, TestBadTable) {
 // Test that, if the master is down, we experience a network error talking
 // to it (no "find the new leader master" since there's only one master).
 TEST_F(ClientTest, TestMasterDown) {
+  DontVerifyClusterBeforeNextTearDown();
   cluster_->mini_master()->Shutdown();
   shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
@@ -1604,6 +1606,7 @@ TEST_F(ClientTest, TestEmptyBatch) {
 }
 
 void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
+  DontVerifyClusterBeforeNextTearDown();
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(1000);
   ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));

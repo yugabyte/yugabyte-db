@@ -15,15 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <vector>
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
-
-#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -51,7 +52,7 @@ const int kNumTabletServerReplicas = 3;
 
 DECLARE_bool(create_cluster);
 
-class MasterReplicationTest : public YBTest {
+class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   MasterReplicationTest() {
     opts_.master_rpc_ports = { 0, 0, 0 };
@@ -60,18 +61,18 @@ class MasterReplicationTest : public YBTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
     cluster_.reset(new MiniCluster(env_.get(), opts_));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
     }
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   // This method is meant to be run in a separate thread.
@@ -146,10 +147,10 @@ class MasterReplicationTest : public YBTest {
  protected:
   int num_masters_;
   MiniClusterOptions opts_;
-  gscoped_ptr<MiniCluster> cluster_;
 };
 
 TEST_F(MasterReplicationTest, TestMasterClusterCreate) {
+  DontVerifyClusterBeforeNextTearDown();
   // We want to confirm that the cluster starts properly and fails if you restart it with the
   // create_cluster flag on.
   VerifyMasterRestart();
@@ -231,6 +232,7 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   EXPECT_OK(builder.Build(&client));
 
   ASSERT_OK(ThreadJoiner(start_thread.get()).Join());
+  DontVerifyClusterBeforeNextTearDown();
 }
 
 }  // namespace master

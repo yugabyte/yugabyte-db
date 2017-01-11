@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "yb/client/client-test-util.h"
+#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/util/metrics.h"
@@ -84,6 +85,11 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     ASSERT_GE(writer.num_writes(), writer_threads * 50);
     // Assuming reads are at least as fast as writes.
     ASSERT_GE(reader.num_reads(), writer.num_writes());
+
+    ClusterVerifier cluster_verifier(external_mini_cluster());
+    NO_FATALS(cluster_verifier.CheckCluster());
+    NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY,
+        writer.num_writes()));
   }
 }
 

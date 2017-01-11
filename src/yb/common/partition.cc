@@ -233,7 +233,12 @@ Status PartitionSchema::CreatePartitions(int32_t num_tablets, vector<Partition> 
   for (int partition_index = 0; partition_index < num_tablets; partition_index++) {
     pstart = pend;
     pend = (partition_index + 1) * partition_interval;
-    (*partitions)[partition_index].partition_key_start_ = EncodeMultiColumnHashValue(pstart);
+
+    // For the first tablet, start key is open-ended:
+    if (partition_index != 0) {
+      (*partitions)[partition_index].partition_key_start_ = EncodeMultiColumnHashValue(pstart);
+    }
+
     if (partition_index < num_tablets - 1) {
       (*partitions)[partition_index].partition_key_end_ = EncodeMultiColumnHashValue(pend);
     }
@@ -476,13 +481,22 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
   string s;
 
   if (use_multi_column_hash_schema_) {
-    uint16_t hash_start = DecodeMultiColumnHashValue(partition.partition_key_start());
+    const string& pstart = partition.partition_key_start();
+    uint16_t hash_start = !pstart.empty() ? DecodeMultiColumnHashValue(pstart) : 0;
     const string& pend = partition.partition_key_end();
     if (!pend.empty()) {
       uint16 hash_end = DecodeMultiColumnHashValue(pend);
-      s.append(Substitute("hash_split: [$0, $1)", hash_start, hash_end));
+      if (pstart.empty()) {
+        s.append(Substitute("hash_split: [<start>, $1)", hash_start, hash_end));
+      } else {
+        s.append(Substitute("hash_split: [$0, $1)", hash_start, hash_end));
+      }
     } else {
-      s.append(Substitute("hash_split: [$0, NaN)", hash_start));
+      if (pstart.empty()) {
+        s.append(Substitute("hash_split: [<start>, <end>)"));
+      } else {
+        s.append(Substitute("hash_split: [$0, <end>)", hash_start));
+      }
     }
     return s;
   }

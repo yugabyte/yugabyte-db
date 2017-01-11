@@ -138,9 +138,9 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   int rows_inserted = workload.rows_inserted();
   LOG(INFO) << "Number of rows inserted: " << rows_inserted;
 
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(kTableId, ClusterVerifier::AT_LEAST, rows_inserted));
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(kTableId, ClusterVerifier::AT_LEAST, rows_inserted));
 
   // Now remove the server once again.
   LOG(INFO) << "Removing tserver with uuid " << new_node->uuid() << " from the config...";

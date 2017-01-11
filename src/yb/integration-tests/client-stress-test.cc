@@ -15,16 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
-#include "yb/client/client.h"
-
 #include <memory>
 #include <vector>
 
+#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
@@ -45,10 +44,10 @@ using client::YBClientBuilder;
 using client::YBScanner;
 using client::YBTable;
 
-class ClientStressTest : public YBTest {
+class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
  public:
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts = default_opts();
     if (multi_master()) {
@@ -60,10 +59,10 @@ class ClientStressTest : public YBTest {
     ASSERT_OK(cluster_->Start());
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     alarm(0);
     cluster_->Shutdown();
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
  protected:
@@ -88,8 +87,6 @@ class ClientStressTest : public YBTest {
   virtual ExternalMiniClusterOptions default_opts() const {
     return ExternalMiniClusterOptions();
   }
-
-  gscoped_ptr<ExternalMiniCluster> cluster_;
 };
 
 // Stress test a case where most of the operations are expected to time out.
@@ -129,7 +126,7 @@ TEST_F(ClientStressTest, TestStartScans) {
     LOG(INFO) << "Starting run " << run;
     YBClientBuilder builder;
     std::shared_ptr<YBClient> client;
-    CHECK_OK(cluster_->CreateClient(builder, &client));
+    CHECK_OK(cluster_->CreateClient(&builder, &client));
 
     CountDownLatch go_latch(1);
     vector<scoped_refptr<Thread> > threads;
@@ -226,6 +223,10 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 // TODO(mbautin): switch this test to YSQL (RocksDB-backed) after we implement proper memory
 // tracking for RocksDB (https://yugabyte.atlassian.net/browse/ENG-442).
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
+  // TODO (tyusupov): remove DontVerifyClusterBeforeNextTearDown check once this test is switched
+  // to YSQL. Cluster check is disabled, because checksum checking is failing for Kudu tables here.
+  DontVerifyClusterBeforeNextTearDown();
+
 #ifdef THREAD_SANITIZER
   // TSAN tests run much slower, so we don't want to wait for as many
   // rejections before declaring the test to be passed.

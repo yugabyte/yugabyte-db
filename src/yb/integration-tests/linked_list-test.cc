@@ -118,7 +118,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
 
   void ResetClientAndTester() {
     YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(builder, &client_));
+    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
     tester_.reset(new LinkedListTester(client_, kTableId,
                                        FLAGS_num_chains,
                                        FLAGS_num_tablets,
@@ -259,6 +259,8 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
   ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
 
+  ASSERT_ALL_REPLICAS_AGREE(written);
+
   // Dump the performance info at the very end, so it's easy to read. On a failed
   // test, we don't care about this stuff anyway.
   tester_->DumpInsertHistogram(true);
@@ -304,6 +306,8 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
                             tablet_servers_,
                             tablet_id,
                             written / FLAGS_num_chains));
+
+  ASSERT_ALL_REPLICAS_AGREE(written);
 
   cluster_->tablet_server(1)->Shutdown();
   cluster_->tablet_server(2)->Shutdown();

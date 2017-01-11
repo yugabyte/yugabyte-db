@@ -15,14 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <signal.h>
 #include <cmath>
 #include <cstdlib>
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <memory>
-#include <signal.h>
 #include <string>
 #include <vector>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
@@ -35,6 +35,7 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
@@ -93,7 +94,7 @@ using client::YBTableType;
 using strings::Split;
 using strings::Substitute;
 
-class FullStackInsertScanTest : public YBTest {
+class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   FullStackInsertScanTest()
     : // Set the default value depending on whether slow tests are allowed
@@ -125,7 +126,7 @@ class FullStackInsertScanTest : public YBTest {
   const int kNumRows;
 
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
   }
 
   void CreateTable() {
@@ -141,11 +142,11 @@ class FullStackInsertScanTest : public YBTest {
     ASSERT_OK(client_->OpenTable(kTableName, &reader_table_));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   void DoConcurrentClientInserts();
@@ -211,7 +212,6 @@ class FullStackInsertScanTest : public YBTest {
   Random random_;
 
   YBSchema schema_;
-  shared_ptr<MiniCluster> cluster_;
   std::shared_ptr<YBClient> client_;
   std::shared_ptr<YBTable> reader_table_;
   // Concurrent client insertion test variables

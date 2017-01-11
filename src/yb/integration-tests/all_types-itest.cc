@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <vector>
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/client/row_result.h"
@@ -41,9 +41,9 @@ template<typename KeyTypeWrapper>
 struct SliceKeysTestSetup {
 
   SliceKeysTestSetup()
-   : max_rows_(MathLimits<int>::kMax),
-     rows_per_tablet_(std::min(max_rows_/ kNumTablets, FLAGS_num_rows_per_tablet)),
-     increment_(static_cast<int>(MathLimits<int>::kMax / kNumTablets)) {
+    : max_rows_(MathLimits<int>::kMax),
+      rows_per_tablet_(std::min(max_rows_/ kNumTablets, FLAGS_num_rows_per_tablet)),
+      increment_(static_cast<int>(MathLimits<int>::kMax / kNumTablets)) {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
@@ -120,10 +120,10 @@ struct IntKeysTestSetup {
   IntKeysTestSetup()
      // If CppType is actually bigger than int (e.g. int64_t) casting the max to int
      // returns -1, so we make sure in that case we get max from int directly.
-   : max_rows_(static_cast<int>(MathLimits<CppType>::kMax) != -1 ?
-       static_cast<int>(MathLimits<CppType>::kMax) : MathLimits<int>::kMax),
-     increment_(max_rows_ / kNumTablets),
-     rows_per_tablet_(std::min(increment_, FLAGS_num_rows_per_tablet)) {
+    : max_rows_(static_cast<int>(MathLimits<CppType>::kMax) != -1 ?
+      static_cast<int>(MathLimits<CppType>::kMax) : MathLimits<int>::kMax),
+      increment_(max_rows_ / kNumTablets),
+      rows_per_tablet_(std::min(increment_, FLAGS_num_rows_per_tablet)) {
     DCHECK(base::is_integral<CppType>::value);
   }
 
@@ -228,7 +228,7 @@ class AllTypesItest : public YBTest {
     cluster_.reset(new ExternalMiniCluster(opts));
     RETURN_NOT_OK(cluster_->Start());
     YBClientBuilder builder;
-    return cluster_->CreateClient(builder, &client_);
+    return cluster_->CreateClient(&builder, &client_);
   }
 
   Status CreateTable() {

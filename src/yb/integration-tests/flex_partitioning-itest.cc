@@ -19,15 +19,16 @@
 // of PK subsets, etc).
 
 #include <algorithm>
-#include <glog/stl_logging.h>
 #include <map>
 #include <memory>
 #include <vector>
+#include <glog/stl_logging.h>
 
 #include "yb/client/client-test-util.h"
 #include "yb/common/partial_row.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -60,13 +61,13 @@ using strings::Substitute;
 static const char* const kTableName = "test-table";
 static const int kNumRows = 1000;
 
-class FlexPartitioningITest : public YBTest {
+class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> {
  public:
   FlexPartitioningITest()
     : random_(GetRandomSeed32()) {
   }
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts;
     opts.num_tablet_servers = 1;
@@ -75,16 +76,16 @@ class FlexPartitioningITest : public YBTest {
     ASSERT_OK(cluster_->Start());
 
     YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(builder, &client_));
+    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
 
     ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
                                            cluster_->messenger(),
                                            &ts_map_));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     cluster_->Shutdown();
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
     STLDeleteValues(&ts_map_);
     STLDeleteElements(&inserted_rows_);
   }
@@ -176,7 +177,6 @@ class FlexPartitioningITest : public YBTest {
 
   Random random_;
 
-  gscoped_ptr<ExternalMiniCluster> cluster_;
   unordered_map<string, TServerDetails*> ts_map_;
 
   shared_ptr<YBClient> client_;

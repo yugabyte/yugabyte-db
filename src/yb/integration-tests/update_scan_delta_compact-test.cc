@@ -24,6 +24,7 @@
 #include "yb/client/row_result.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/countdown_latch.h"
@@ -66,7 +67,7 @@ using std::shared_ptr;
 // one that continuously updates all the rows sequentially and one that scans them all, until
 // it's been running for 'seconds_to_run'. It doesn't test for correctness, unless something
 // FATALs.
-class UpdateScanDeltaCompactionTest : public YBTest {
+class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   UpdateScanDeltaCompactionTest() {
     YBSchemaBuilder b;
@@ -77,7 +78,7 @@ class UpdateScanDeltaCompactionTest : public YBTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    YBTest::SetUp();
+    YBMiniClusterTestBase::SetUp();
   }
 
   void CreateTable() {
@@ -90,11 +91,11 @@ class UpdateScanDeltaCompactionTest : public YBTest {
     ASSERT_OK(client_->OpenTable(kTableName, &table_));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void DoTearDown() OVERRIDE {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    YBTest::TearDown();
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   // Inserts row_count rows sequentially.
@@ -150,7 +151,6 @@ class UpdateScanDeltaCompactionTest : public YBTest {
                                   shared_ptr<YBSession> session);
 
   YBSchema schema_;
-  std::shared_ptr<MiniCluster> cluster_;
   shared_ptr<YBTable> table_;
   shared_ptr<YBClient> client_;
 };

@@ -1014,14 +1014,18 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
       new MasterServiceProxy(messenger_, CHECK_NOTNULL(master(idx))->bound_rpc_addr()));
 }
 
-Status ExternalMiniCluster::CreateClient(client::YBClientBuilder& builder,
-                                         std::shared_ptr<client::YBClient>* client) {
+Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
+                                           std::shared_ptr<client::YBClient>* client) {
   CHECK(!masters_.empty());
-  builder.clear_master_server_addrs();
+  builder->clear_master_server_addrs();
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
-    builder.add_master_server_addr(master->bound_rpc_hostport().ToString());
+    builder->add_master_server_addr(master->bound_rpc_hostport().ToString());
   }
-  return builder.Build(client);
+  return builder->Build(client);
+}
+
+Sockaddr ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+  return GetLeaderMaster()->bound_rpc_addr();
 }
 
 Status ExternalMiniCluster::SetFlag(ExternalDaemon* daemon,

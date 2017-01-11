@@ -15,16 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
+#include "yb/integration-tests/cluster_verifier.h"
+
 #include <string>
 #include <memory>
 #include <vector>
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/row_result.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/cluster_verifier.h"
-#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/tools/ysck_remote.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
@@ -40,7 +41,7 @@ using tools::YsckCluster;
 using tools::YsckMaster;
 using tools::RemoteYsckMaster;
 
-ClusterVerifier::ClusterVerifier(ExternalMiniCluster* cluster)
+ClusterVerifier::ClusterVerifier(MiniClusterBase* cluster)
   : cluster_(cluster),
     checksum_options_(ChecksumOptions()) {
   checksum_options_.use_snapshot = false;
@@ -78,7 +79,7 @@ void ClusterVerifier::CheckCluster() {
 }
 
 Status ClusterVerifier::DoYsck() {
-  Sockaddr addr = cluster_->GetLeaderMaster()->bound_rpc_addr();
+  Sockaddr addr = cluster_->GetLeaderMasterBoundRpcAddr();
 
   std::shared_ptr<YsckMaster> master;
   RETURN_NOT_OK(RemoteYsckMaster::Build(addr, &master));
@@ -108,7 +109,7 @@ Status ClusterVerifier::DoCheckRowCount(const std::string& table_name,
                                         int expected_row_count) {
   std::shared_ptr<client::YBClient> client;
   client::YBClientBuilder builder;
-  RETURN_NOT_OK_PREPEND(cluster_->CreateClient(builder,
+  RETURN_NOT_OK_PREPEND(cluster_->CreateClient(&builder,
                                                &client),
                         "Unable to connect to cluster");
   std::shared_ptr<client::YBTable> table;

@@ -70,7 +70,7 @@ class AlterTableRandomized : public YBTest {
     ASSERT_OK(cluster_->Start());
 
     YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(builder, &client_));
+    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
   }
 
   virtual void TearDown() OVERRIDE {
@@ -441,8 +441,8 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
 
   // Not only should the data returned by a scanner match what we expect,
   // we also expect all of the replicas to agree with each other.
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
 }
 
 }  // namespace yb

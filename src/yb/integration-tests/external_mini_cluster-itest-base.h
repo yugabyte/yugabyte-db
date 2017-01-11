@@ -18,10 +18,10 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
 
-#include <gtest/gtest.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/gutil/stl_util.h"
@@ -85,7 +85,7 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
                                          cluster_->messenger(),
                                          &ts_map_));
   client::YBClientBuilder builder;
-  ASSERT_OK(cluster_->CreateClient(builder, &client_));
+  ASSERT_OK(cluster_->CreateClient(&builder, &client_));
 }
 
 }  // namespace yb

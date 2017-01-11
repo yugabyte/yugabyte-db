@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/env.h"
 
@@ -69,7 +70,7 @@ struct MiniClusterOptions {
 
 // An in-process cluster with a MiniMaster and a configurable
 // number of MiniTabletServers for use in tests.
-class MiniCluster {
+class MiniCluster : public MiniClusterBase {
  public:
   MiniCluster(Env* env, const MiniClusterOptions& options);
   ~MiniCluster();
@@ -147,20 +148,22 @@ class MiniCluster {
   CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
 
+  // Allocates a free port and stores a file lock guarding access to that port into an internal
+  // array of file locks.
+  uint16_t AllocateFreePort();
+
+ private:
   // Create a client configured to talk to this cluster. Builder may contain
   // override options for the client. The master address will be overridden to
   // talk to the running master. If 'builder' is NULL, default options will be
   // used.
   //
   // REQUIRES: the cluster must have already been Start()ed.
-  CHECKED_STATUS CreateClient(client::YBClientBuilder* builder,
-                      std::shared_ptr<client::YBClient>* client);
+  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
+      std::shared_ptr<client::YBClient>* client);
 
-  // Allocates a free port and stores a file lock guarding access to that port into an internal
-  // array of file locks.
-  uint16_t AllocateFreePort();
+  virtual Sockaddr DoGetLeaderMasterBoundRpcAddr();
 
- private:
   enum {
     kTabletReportWaitTimeSeconds = 5,
     kRegistrationWaitTimeSeconds = 30,
@@ -185,4 +188,4 @@ class MiniCluster {
 
 }  // namespace yb
 
-#endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H */
+#endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

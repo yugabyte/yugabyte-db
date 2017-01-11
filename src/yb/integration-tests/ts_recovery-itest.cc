@@ -85,11 +85,12 @@ TEST_F(TsRecoveryITest, TestRestartWithOrphanedReplicates) {
   // allow reading while those are being replayed, which means we
   // can "go back in time" briefly. So, we have some retries here.
   // When KUDU-796 is fixed, remove the retries.
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckRowCountWithRetries(work.table_name(),
-                                       ClusterVerifier::AT_LEAST,
-                                       work.rows_inserted(),
-                                       MonoDelta::FromSeconds(20)));
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCountWithRetries(work.table_name(),
+      ClusterVerifier::AT_LEAST,
+      work.rows_inserted(),
+      MonoDelta::FromSeconds(20)));
 }
 
 // Test that we replay from the recovery directory, if it exists.
@@ -130,8 +131,9 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
   cluster_->tablet_server(0)->mutable_flags()->clear();
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckRowCountWithRetries(work.table_name(),
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCountWithRetries(work.table_name(),
                                        ClusterVerifier::AT_LEAST,
                                        work.rows_inserted(),
                                        MonoDelta::FromSeconds(30)));

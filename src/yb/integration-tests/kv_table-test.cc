@@ -20,6 +20,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
@@ -88,6 +89,9 @@ class KVTableTest : public YBTableTestBase {
 TEST_F(KVTableTest, SimpleKVTableTest) {
   NO_FATALS(PutSampleKeysValues());
   NO_FATALS(CheckSampleKeysValues());
+  ClusterVerifier cluster_verifier(mini_cluster());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
 }
 
 TEST_F(KVTableTest, PointQuery) {
@@ -108,12 +112,15 @@ TEST_F(KVTableTest, PointQuery) {
 }
 
 TEST_F(KVTableTest, Eng135MetricsTest) {
+  ClusterVerifier cluster_verifier(mini_cluster());
   for (int idx = 0; idx < 10; ++idx) {
     NO_FATALS(PutSampleKeysValues());
     NO_FATALS(CheckSampleKeysValues());
     NO_FATALS(DeleteTable());
     NO_FATALS(CreateTable());
     NO_FATALS(OpenTable());
+    NO_FATALS(cluster_verifier.CheckCluster());
+    NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 0));
   }
 }
 
@@ -152,6 +159,10 @@ TEST_F(KVTableTest, LoadTest) {
   ASSERT_EQ(0, reader.num_read_errors());
   ASSERT_GE(writer.num_writes(), rows);
   ASSERT_GE(reader.num_reads(), rows);  // assuming reads are at least as fast as writes
+
+  ClusterVerifier cluster_verifier(mini_cluster());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, rows));
 }
 
 TEST_F(KVTableTest, Restart) {
@@ -162,9 +173,16 @@ TEST_F(KVTableTest, Restart) {
 
   LOG(INFO) << "Checking entries written before the cluster restart";
   NO_FATALS(CheckSampleKeysValues());
+  ClusterVerifier cluster_verifier(mini_cluster());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
+
   LOG(INFO) << "Issuing additional write operations";
   NO_FATALS(PutSampleKeysValues());
   NO_FATALS(CheckSampleKeysValues());
+
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
 }
 
 }  // namespace integration_tests

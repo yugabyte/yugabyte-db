@@ -30,6 +30,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -135,7 +136,7 @@ struct ExternalMiniClusterOptions {
 // cluster participants, which isn't feasible in the normal MiniCluster.
 // On the other hand, there is little access to inspect the internal state
 // of the daemons.
-class ExternalMiniCluster {
+class ExternalMiniCluster : public MiniClusterBase {
  public:
   // Mode to which node types a certain action (like Shutdown()) should apply.
   enum NodeSelectionMode {
@@ -293,14 +294,6 @@ class ExternalMiniCluster {
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
-  // Create a client configured to talk to this cluster.
-  // Builder may contain override options for the client. The master address will
-  // be overridden to talk to the running master.
-  //
-  // REQUIRES: the cluster must have already been Start()ed.
-  CHECKED_STATUS CreateClient(client::YBClientBuilder& builder,
-                      std::shared_ptr<client::YBClient>* client);
-
   // Sets the given flag on the given daemon, which must be running.
   //
   // This uses the 'force' flag on the RPC so that, even if the flag
@@ -329,6 +322,16 @@ class ExternalMiniCluster {
 
  private:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
+
+  // Create a client configured to talk to this cluster.
+  // Builder may contain override options for the client. The master address will
+  // be overridden to talk to the running master.
+  //
+  // REQUIRES: the cluster must have already been Start()ed.
+  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
+      std::shared_ptr<client::YBClient>* client);
+
+  virtual Sockaddr DoGetLeaderMasterBoundRpcAddr();
 
   CHECKED_STATUS StartSingleMaster();
 

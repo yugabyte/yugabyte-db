@@ -265,7 +265,8 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
     Schema schema;
     int num_replicas;
     RETURN_NOT_OK(GetTableInfo(info.name(), &schema, &num_replicas));
-    shared_ptr<YsckTable> table(new YsckTable(info.name(), schema, num_replicas));
+    shared_ptr<YsckTable> table(new YsckTable(info.name(), schema, num_replicas,
+        info.table_type()));
     tables_temp.push_back(table);
   }
   tables->assign(tables_temp.begin(), tables_temp.end());

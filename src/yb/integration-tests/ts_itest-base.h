@@ -14,13 +14,13 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_INTEGRATION_TESTS_ITEST_UTIL_H_
-#define YB_INTEGRATION_TESTS_ITEST_UTIL_H_
+#ifndef YB_INTEGRATION_TESTS_TS_ITEST_BASE_H
+#define YB_INTEGRATION_TESTS_TS_ITEST_BASE_H
 
-#include <glog/stl_logging.h>
 #include <string>
 #include <utility>
 #include <vector>
+#include <glog/stl_logging.h>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
@@ -196,7 +196,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     pair<TabletReplicaMap::iterator, TabletReplicaMap::iterator> range =
         tablet_replicas_.equal_range(tablet_id);
     std::vector<TServerDetails*> replicas_copy;
-    for (;range.first != range.second; ++range.first) {
+    for (; range.first != range.second; ++range.first) {
       replicas_copy.push_back((*range.first).second);
     }
 
@@ -225,7 +225,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return STATUS(NotFound, "Leader replica not found");
   }
 
-  CHECKED_STATUS GetTabletLeaderUUIDFromMaster(const std::string& tablet_id, std::string* leader_uuid) {
+  CHECKED_STATUS GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
+                                               std::string* leader_uuid) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
     RpcController controller;
@@ -250,7 +251,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
                                            const std::string& uuid) {
     pair<TabletReplicaMap::iterator, TabletReplicaMap::iterator> range =
         tablet_replicas_.equal_range(tablet_id);
-    for (;range.first != range.second; ++range.first) {
+    for (; range.first != range.second; ++range.first) {
       if ((*range.first).second->instance_id.permanent_uuid() == uuid) {
         return (*range.first).second;
       }
@@ -306,7 +307,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     std::vector<TServerDetails*> replicas;
     pair<TabletReplicaMap::iterator, TabletReplicaMap::iterator> range =
         tablet_replicas_.equal_range(tablet_id);
-    for (;range.first != range.second; ++range.first) {
+    for (; range.first != range.second; ++range.first) {
       replicas.push_back((*range.first).second);
     }
 
@@ -440,9 +441,10 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   void AssertAllReplicasAgree(int expected_result_count) {
-    ClusterVerifier v(cluster_.get());
-    NO_FATALS(v.CheckCluster());
-    NO_FATALS(v.CheckRowCount(kTableId, ClusterVerifier::EXACTLY, expected_result_count));
+    ClusterVerifier cluster_verifier(cluster_.get());
+    NO_FATALS(cluster_verifier.CheckCluster());
+    NO_FATALS(cluster_verifier.CheckRowCount(kTableId, ClusterVerifier::EXACTLY,
+        expected_result_count));
   }
 
  protected:
@@ -464,4 +466,4 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 }  // namespace tserver
 }  // namespace yb
 
-#endif /* YB_INTEGRATION_TESTS_ITEST_UTIL_H_ */
+#endif /* YB_INTEGRATION_TESTS_TS_ITEST_BASE_H */

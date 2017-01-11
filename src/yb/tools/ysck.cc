@@ -17,10 +17,10 @@
 
 #include "yb/tools/ysck.h"
 
-#include <glog/logging.h>
 #include <iostream>
 #include <mutex>
 #include <unordered_set>
+#include <glog/logging.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
@@ -293,6 +293,8 @@ Status Ysck::ChecksumData(const vector<string>& tables,
   for (const shared_ptr<YsckTable>& table : cluster_->tables()) {
     VLOG(1) << "Table: " << table->name();
     if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name())) continue;
+    // TODO: remove once we have scan implemented for Redis.
+    if (table->table_type() == REDIS_TABLE_TYPE) continue;
     for (const shared_ptr<YsckTablet>& tablet : table->tablets()) {
       VLOG(1) << "Tablet: " << tablet->id();
       if (!tablets_filter.empty() && !ContainsKey(tablets_filter, tablet->id())) continue;

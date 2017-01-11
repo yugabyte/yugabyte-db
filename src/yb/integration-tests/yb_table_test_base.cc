@@ -106,7 +106,7 @@ void YBTableTestBase::CreateClient() {
   YBClientBuilder builder;
   builder.default_rpc_timeout(MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
   if (use_external_mini_cluster()) {
-    ASSERT_OK(external_mini_cluster_->CreateClient(builder, &client_));
+    ASSERT_OK(external_mini_cluster_->CreateClient(&builder, &client_));
   } else {
     ASSERT_OK(mini_cluster_->CreateClient(&builder, &client_));
   }

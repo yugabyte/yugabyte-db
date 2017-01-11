@@ -7,6 +7,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/master/master.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog.h"

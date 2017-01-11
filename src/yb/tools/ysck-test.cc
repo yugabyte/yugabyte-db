@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/lexical_cast.hpp>
-#include <gtest/gtest.h>
 #include <memory>
 #include <unordered_map>
+#include <boost/lexical_cast.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -160,7 +160,8 @@ class YsckTest : public YBTest {
 
   void CreateAndAddTable(vector<shared_ptr<YsckTablet>> tablets,
                          const string& name, int num_replicas) {
-    shared_ptr<YsckTable> table(new YsckTable(name, Schema(), num_replicas));
+    shared_ptr<YsckTable> table(new YsckTable(name, Schema(), num_replicas,
+        TableType::YSQL_TABLE_TYPE));
     table->set_tablets(tablets);
 
     vector<shared_ptr<YsckTable>> tables = { table };

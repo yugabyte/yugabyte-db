@@ -302,9 +302,9 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
                              boost::none, timeout));
   ASSERT_OK(itest::WaitUntilTabletRunning(ts_to_remove, tablet_id, timeout));
 
-  ClusterVerifier v(cluster_.get());
-  NO_FATALS(v.CheckCluster());
-  NO_FATALS(v.CheckRowCount(workload.table_name(),
+  ClusterVerifier cluster_verifier(cluster_.get());
+  NO_FATALS(cluster_verifier.CheckCluster());
+  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
                             ClusterVerifier::EXACTLY, 2));
 
   latch.Wait(); // Avoid use-after-free on the response from the delayed RPC callback.
