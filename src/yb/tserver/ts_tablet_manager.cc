@@ -1158,7 +1158,7 @@ void TSTabletManager::UnregisterDataWalDirFromAssignmentMap(const string& table_
 
 void TSTabletManager::RegisterDataAndWalDirAccounting(FsManager* fs_manager,
                                                       const scoped_refptr<TabletMetadata>& meta) {
-  LOG(INFO) << "Register data/wal directory assignment map for table: " << table_id;
+  LOG(INFO) << "Register data/wal directory assignment map for table: " << meta->table_id();
   UpdateAssignmentMap(fs_manager, meta->table_id(),
                       meta->table_type(), meta->data_root_dir(),
                       meta->wal_root_dir());
