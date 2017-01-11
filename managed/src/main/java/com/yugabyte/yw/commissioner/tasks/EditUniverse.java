@@ -54,28 +54,30 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       LOG.info("Configure numNodes={}, numMasters={}",
                taskParams().userIntent.numNodes, taskParams().userIntent.replicationFactor);
 
-      Collection<NodeDetails> blacklistNodes =
-          PlacementInfoUtil.getTserversToBeRemoved(taskParams().nodeDetailsSet);
+      Collection<NodeDetails> nodesToBeRemoved =
+          PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
 
       Collection<NodeDetails> nodesToProvision =
-              PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
+          PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
 
       // Set the old nodes' state to to-be-decommissioned.
-      if (!blacklistNodes.isEmpty()) {
-        createSetNodeStateTasks(blacklistNodes, NodeDetails.NodeState.ToBeDecommissioned)
+      if (!nodesToBeRemoved.isEmpty()) {
+        createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.ToBeDecommissioned)
             .setUserSubTask(SubTaskType.Provisioning);
       }
 
-      // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
+      if (!nodesToProvision.isEmpty()) {
+        // Create the required number of nodes in the appropriate locations.
+        createSetupServerTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
 
-      // Get all information about the nodes of the cluster. This includes the public ip address,
-      // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
+        // Get all information about the nodes of the cluster. This includes the public ip address,
+        // the private ip address (in the case of AWS), etc.
+        createServerInfoTasks(nodesToProvision).setUserSubTask(SubTaskType.Provisioning);
 
-      // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(nodesToProvision, true /* isShell */)
-          .setUserSubTask(SubTaskType.InstallingSoftware);
+        // Configures and deploys software on all the nodes (masters and tservers).
+        createConfigureServerTasks(nodesToProvision, true /* isShell */)
+            .setUserSubTask(SubTaskType.InstallingSoftware);
+      }
 
       newMasters = PlacementInfoUtil.getMastersToProvision(taskParams().nodeDetailsSet);
 
@@ -101,9 +103,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             newTservers, ServerType.TSERVER).setUserSubTask(SubTaskType.ConfigureUniverse);
       }
 
-      // Set the new nodes' state to running.
-      createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Running)
-          .setUserSubTask(SubTaskType.ConfigureUniverse);
+      if (!nodesToProvision.isEmpty()) {
+        // Set the new nodes' state to running.
+        createSetNodeStateTasks(nodesToProvision, NodeDetails.NodeState.Running)
+            .setUserSubTask(SubTaskType.ConfigureUniverse);
+      }
 
       if (!newMasters.isEmpty()) {
         // Now finalize the cluster configuration change tasks.
@@ -111,21 +115,32 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
 
       SubTaskType lastSubTaskType;
-      if (!blacklistNodes.isEmpty()) {
+      Collection<NodeDetails> tserversToBeRemoved =
+              PlacementInfoUtil.getTserversToBeRemoved(taskParams().nodeDetailsSet);
+      if (!nodesToBeRemoved.isEmpty()) {
+        // Add any nodes to be removed to tserver removal to be considered for blacklisting.
+        tserversToBeRemoved.addAll(nodesToBeRemoved);
+
         // Persist the placement info and blacklisted node info into the YB master.
         // This is done after master config change jobs, so that the new master leader can perform
         // the auto load-balancing, and all tablet servers are heart beating to new set of masters.
-        createPlacementInfoTask(blacklistNodes).setUserSubTask(SubTaskType.WaitForDataMigration);
+        createPlacementInfoTask(tserversToBeRemoved)
+            .setUserSubTask(SubTaskType.WaitForDataMigration);
 
         // Wait for %age completion of the tablet move from master.
         createWaitForDataMoveTask().setUserSubTask(SubTaskType.WaitForDataMigration);
 
         // Send destroy old set of nodes to ansible and remove them from this universe.
-        createDestroyServerTasks(blacklistNodes).setUserSubTask(SubTaskType.RemovingUnusedServers);
+        createDestroyServerTasks(nodesToBeRemoved).setUserSubTask(SubTaskType.RemovingUnusedServers);
         lastSubTaskType = SubTaskType.RemovingUnusedServers;
         // Clearing the blacklist on the yb cluster master is handled on the server side.
       } else {
-        // If only tservers are added or removed, wait for load to balance across all tservers.
+  	    if (!tserversToBeRemoved.isEmpty()) {
+  	      String errMsg = "Universe shrink should have been handled using node decommision.";
+          LOG.error(errMsg);
+  	      throw new IllegalStateException(errMsg);
+  	    }
+  	    // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setUserSubTask(SubTaskType.WaitForDataMigration);
         lastSubTaskType = SubTaskType.WaitForDataMigration;
       }
