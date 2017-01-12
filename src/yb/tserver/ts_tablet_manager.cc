@@ -141,6 +141,7 @@ using master::TabletReportPB;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::unordered_set;
 using strings::Substitute;
 using tablet::Tablet;
 using tablet::TABLET_DATA_COPYING;
@@ -222,10 +223,17 @@ Status TSTabletManager::Init() {
                           "Failed to open tablet metadata for tablet: " + tablet_id);
     if (PREDICT_FALSE(meta->tablet_data_state() != TABLET_DATA_READY)) {
       RETURN_NOT_OK(HandleNonReadyTabletOnStartup(meta));
+      if (meta->tablet_data_state() == TABLET_DATA_TOMBSTONED) {
+        RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->tablet_id(),
+                      meta->table_type(), meta->data_root_dir(),
+                      meta->wal_root_dir());
+      }
       continue;
     }
+    RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->tablet_id(),
+                      meta->table_type(), meta->data_root_dir(),
+                      meta->wal_root_dir());
     metas.push_back(meta);
-    RegisterDataAndWalDirAccounting(fs_manager_, meta);
   }
 
   // Now submit the "Open" task for each.
@@ -321,8 +329,8 @@ Status TSTabletManager::CreateNewTablet(
   scoped_refptr<TabletMetadata> meta;
   string data_root_dir;
   string wal_root_dir;
-  GetDataWalDirAndUpdateAssignmentMap(fs_manager_, table_id, table_type,
-                                      &data_root_dir, &wal_root_dir);
+  GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, table_type,
+                              &data_root_dir, &wal_root_dir);
   Status create_status = TabletMetadata::CreateNew(fs_manager_,
                                                    table_id,
                                                    tablet_id,
@@ -336,7 +344,7 @@ Status TSTabletManager::CreateNewTablet(
                                                    data_root_dir,
                                                    wal_root_dir);
   if (!create_status.ok()) {
-    UnregisterDataWalDirFromAssignmentMap(table_id, table_type, data_root_dir, wal_root_dir);
+    UnregisterDataWalDir(table_id, tablet_id, table_type, data_root_dir, wal_root_dir);
   }
   RETURN_NOT_OK_PREPEND(create_status, "Couldn't create tablet metadata")
   LOG(INFO) << "Created tablet metadata for table: " << table_id << ", tablet: " << tablet_id;
@@ -583,6 +591,7 @@ Status TSTabletManager::DeleteTablet(
     }
   }
 
+  scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
   tablet_peer->Shutdown();
 
   boost::optional<OpId> opt_last_logged_opid;
@@ -592,7 +601,7 @@ Status TSTabletManager::DeleteTablet(
     opt_last_logged_opid = last_logged_opid;
   }
 
-  Status s = DeleteTabletData(tablet_peer->tablet_metadata(),
+  Status s = DeleteTabletData(meta,
                               delete_type,
                               fs_manager_->uuid(),
                               opt_last_logged_opid,
@@ -612,7 +621,12 @@ Status TSTabletManager::DeleteTablet(
     std::lock_guard<rw_spinlock> lock(lock_);
     RETURN_NOT_OK(CheckRunningUnlocked(error_code));
     CHECK_EQ(1, tablet_map_.erase(tablet_id)) << tablet_id;
-  }
+    UnregisterDataWalDir(meta->table_id(),
+                         tablet_id,
+                         meta->table_type(),
+                         meta->data_root_dir(),
+                         meta->wal_root_dir());
+}
 
   return Status::OK();
 }
@@ -774,6 +788,8 @@ void TSTabletManager::Shutdown() {
     CHECK_EQ(tablet_map_.size(), peers_to_shutdown.size())
       << "Map contents changed during shutdown!";
     tablet_map_.clear();
+    table_data_assignment_map_.clear();
+    table_wal_assignment_map_.clear();
 
     state_ = MANAGER_SHUTDOWN;
   }
@@ -788,6 +804,7 @@ void TSTabletManager::RegisterTablet(const std::string& tablet_id,
     LOG(FATAL) << "Unable to remove previous tablet peer " << tablet_id << ": not registered!";
   }
   if (!InsertIfNotPresent(&tablet_map_, tablet_id, tablet_peer)) {
+    scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
     LOG(FATAL) << "Unable to register tablet peer " << tablet_id << ": already registered!";
   }
 
@@ -1003,11 +1020,12 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
   return Status::OK();
 }
 
-void TSTabletManager::GetDataWalDirAndUpdateAssignmentMap(FsManager* fs_manager,
-                                                          const string& table_id,
-                                                          const TableType table_type,
-                                                          string* data_root_dir,
-                                                          string* wal_root_dir) {
+void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
+                                                  const string& table_id,
+                                                  const string& tablet_id,
+                                                  const TableType table_type,
+                                                  string* data_root_dir,
+                                                  string* wal_root_dir) {
   // Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return;
@@ -1020,54 +1038,57 @@ void TSTabletManager::GetDataWalDirAndUpdateAssignmentMap(FsManager* fs_manager,
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   if (table_data_assignment_iter == table_data_assignment_map_.end()) {
     for (string data_root_iter : data_root_dirs) {
-      table_data_assignment_map_[table_id][data_root_iter] = 0;
+      unordered_set<string> tablet_id_set;
+      table_data_assignment_map_[table_id][data_root_iter] = tablet_id_set;
     }
   }
   // Find the data directory with the least count of tablets for this table.
   table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   auto data_assignment_value_map = table_data_assignment_iter->second;
   string min_dir;
-  uint32_t min_dir_count = kuint32max;
+  uint64_t min_dir_count = kuint64max;
   for (auto it = data_assignment_value_map.begin(); it != data_assignment_value_map.end(); ++it) {
-    if (min_dir_count > it->second) {
+    if (min_dir_count > it->second.size()) {
       min_dir = it->first;
-      min_dir_count = it->second;
+      min_dir_count = it->second.size();
     }
   }
   *data_root_dir = min_dir;
   // Increment the count for min_dir.
   auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(min_dir);
-  data_assignment_value_iter->second = data_assignment_value_iter->second + 1;
+  data_assignment_value_iter->second.insert(tablet_id);
 
   // Find the wal directory with the least count of tablets for this table.
   min_dir = "";
-  min_dir_count = kuint32max;
+  min_dir_count = kuint64max;
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
   if (table_wal_assignment_iter == table_wal_assignment_map_.end()) {
     for (string wal_root_iter : wal_root_dirs) {
-      table_wal_assignment_map_[table_id][wal_root_iter] = 0;
+      unordered_set<string> tablet_id_set;
+      table_wal_assignment_map_[table_id][wal_root_iter] = tablet_id_set;
     }
   }
   table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
   auto wal_assignment_value_map = table_wal_assignment_iter->second;
   for (auto it = wal_assignment_value_map.begin(); it != wal_assignment_value_map.end(); ++it) {
-    if (min_dir_count > it->second) {
+    if (min_dir_count > it->second.size()) {
       min_dir = it->first;
-      min_dir_count = it->second;
+      min_dir_count = it->second.size();
     }
   }
   *wal_root_dir = min_dir;
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(min_dir);
-  wal_assignment_value_iter->second = wal_assignment_value_iter->second + 1;
+  wal_assignment_value_iter->second.insert(tablet_id);
 }
 
-void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
-                                          const string& table_id,
-                                          const TableType table_type,
-                                          const string& data_root_dir,
-                                          const string& wal_root_dir) {
+void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
+                                            const string& table_id,
+                                            const string& tablet_id,
+                                            const TableType table_type,
+                                            const string& data_root_dir,
+                                            const string& wal_root_dir) {
   // Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return;
@@ -1080,7 +1101,8 @@ void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
   auto table_data_assignment_iter = table_data_assignment_map_.find(table_id);
   if (table_data_assignment_iter == table_data_assignment_map_.end()) {
     for (string data_root_iter : data_root_dirs) {
-      table_data_assignment_map_[table_id][data_root_iter] = 0;
+      unordered_set<string> tablet_id_set;
+      table_data_assignment_map_[table_id][data_root_iter] = tablet_id_set;
     }
   }
   // Increment the count for data_root_dir.
@@ -1088,9 +1110,11 @@ void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
   auto data_assignment_value_map = table_data_assignment_iter->second;
   auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(data_root_dir);
   if (data_assignment_value_iter == table_data_assignment_map_[table_id].end()) {
-    table_data_assignment_map_[table_id][data_root_dir] = 1;
+    unordered_set<string> tablet_id_set;
+    tablet_id_set.insert(tablet_id);
+    table_data_assignment_map_[table_id][data_root_dir] = tablet_id_set;
   } else {
-    data_assignment_value_iter->second = data_assignment_value_iter->second + 1;
+    data_assignment_value_iter->second.insert(tablet_id);
   }
 
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
@@ -1098,7 +1122,8 @@ void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
   if (table_wal_assignment_iter == table_wal_assignment_map_.end()) {
     for (string wal_root_iter : wal_root_dirs) {
-      table_wal_assignment_map_[table_id][wal_root_iter] = 0;
+      unordered_set<string> tablet_id_set;
+      table_wal_assignment_map_[table_id][wal_root_iter] = tablet_id_set;
     }
   }
   // Increment the count for wal_root_dir.
@@ -1106,17 +1131,20 @@ void TSTabletManager::UpdateAssignmentMap(FsManager* fs_manager,
   auto wal_assignment_value_map = table_wal_assignment_iter->second;
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(wal_root_dir);
   if (wal_assignment_value_iter == table_wal_assignment_map_[table_id].end()) {
-    table_wal_assignment_map_[table_id][wal_root_dir] = 1;
+    unordered_set<string> tablet_id_set;
+    tablet_id_set.insert(tablet_id);
+    table_wal_assignment_map_[table_id][wal_root_dir] = tablet_id_set;
   } else {
-    wal_assignment_value_iter->second = wal_assignment_value_iter->second + 1;
+    wal_assignment_value_iter->second.insert(tablet_id);
   }
 }
 
-void TSTabletManager::UnregisterDataWalDirFromAssignmentMap(const string& table_id,
-                                                            const TableType table_type,
-                                                            const string& data_root_dir,
-                                                            const string& wal_root_dir) {
-  // Skip sys catalog table and kudu table from modifying the map.
+void TSTabletManager::UnregisterDataWalDir(const string& table_id,
+                                           const string& tablet_id,
+                                           const TableType table_type,
+                                           const string& data_root_dir,
+                                           const string& wal_root_dir) {
+// Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId || table_type == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     return;
   }
@@ -1129,13 +1157,11 @@ void TSTabletManager::UnregisterDataWalDirFromAssignmentMap(const string& table_
     auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(data_root_dir);
     DCHECK(data_assignment_value_iter != table_data_assignment_map_[table_id].end())
       << "No data directory index found for table: " << table_id;
-    DCHECK_GT(data_assignment_value_iter->second, 0);
-    if (data_assignment_value_iter != table_data_assignment_map_[table_id].end() &&
-        data_assignment_value_iter->second > 0) {
-      data_assignment_value_iter->second = data_assignment_value_iter->second - 1;
+    if (data_assignment_value_iter != table_data_assignment_map_[table_id].end()) {
+      data_assignment_value_iter->second.erase(tablet_id);
     } else {
-      LOG(WARNING) << "Count for data directory " << data_root_dir << "for table " << table_id  <<
-                      " already at zero";
+      LOG(WARNING) << "Tablet " << tablet_id << " not in the set for data directory "
+                   << data_root_dir << "for table " << table_id;
     }
   }
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
@@ -1145,23 +1171,13 @@ void TSTabletManager::UnregisterDataWalDirFromAssignmentMap(const string& table_
     auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(wal_root_dir);
     DCHECK(wal_assignment_value_iter != table_wal_assignment_map_[table_id].end())
       << "No wal directory index found for table: " << table_id;
-    DCHECK_GT(wal_assignment_value_iter->second, 0);
-    if (wal_assignment_value_iter != table_wal_assignment_map_[table_id].end() &&
-        wal_assignment_value_iter->second > 0) {
-      wal_assignment_value_iter->second = wal_assignment_value_iter->second - 1;
+    if (wal_assignment_value_iter != table_wal_assignment_map_[table_id].end()) {
+      wal_assignment_value_iter->second.erase(tablet_id);
     } else {
-      LOG(WARNING) << "Count for wal directory " << wal_root_dir << "for table " << table_id  <<
-                      " already at zero";
+      LOG(WARNING) << "Tablet " << tablet_id << " not in the set for wal directory "
+                   << wal_root_dir << "for table " << table_id;
     }
   }
-}
-
-void TSTabletManager::RegisterDataAndWalDirAccounting(FsManager* fs_manager,
-                                                      const scoped_refptr<TabletMetadata>& meta) {
-  LOG(INFO) << "Register data/wal directory assignment map for table: " << meta->table_id();
-  UpdateAssignmentMap(fs_manager, meta->table_id(),
-                      meta->table_type(), meta->data_root_dir(),
-                      meta->wal_root_dir());
 }
 
 Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
@@ -1180,14 +1196,7 @@ Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
 
   // Note: Passing an unset 'last_logged_opid' will retain the last_logged_opid
   // that was previously in the metadata.
-  bool was_deleted = false;
-  RETURN_NOT_OK(meta->DeleteTabletData(data_state, last_logged_opid, &was_deleted));
-  if (ts_manager != nullptr && was_deleted) {
-    ts_manager->UnregisterDataWalDirFromAssignmentMap(meta->table_id(),
-                                                      meta->table_type(),
-                                                      meta->data_root_dir(),
-                                                      meta->wal_root_dir());
-  }
+  RETURN_NOT_OK(meta->DeleteTabletData(data_state, last_logged_opid));
   LOG(INFO) << kLogPrefix << "Tablet deleted. Last logged OpId: "
             << meta->tombstone_last_logged_opid();
   MAYBE_FAULT(FLAGS_fault_crash_after_blocks_deleted);

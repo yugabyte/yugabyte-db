@@ -209,8 +209,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // already deleted (and are here on a retry) and this operation essentially ends up being a no-op;
   // in such a case, 'was_deleted' will be set to FALSE.
   CHECKED_STATUS DeleteTabletData(TabletDataState delete_type,
-                          const boost::optional<consensus::OpId>& last_logged_opid,
-                          bool* was_deleted);
+                          const boost::optional<consensus::OpId>& last_logged_opid);
 
   // Permanently deletes the superblock from the disk.
   // DeleteTabletData() must first be called and the tablet data state must be

@@ -195,9 +195,7 @@ void TabletMetadata::CollectBlockIdPBs(const TabletSuperBlockPB& superblock,
 }
 
 Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
-                                        const boost::optional<OpId>& last_logged_opid,
-                                        bool* was_deleted) {
-  *was_deleted = false;
+                                        const boost::optional<OpId>& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
         delete_type == TABLET_DATA_TOMBSTONED)
       << "DeleteTabletData() called with unsupported delete_type on tablet "
@@ -234,7 +232,6 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
                  << status.ToString();
     } else {
       LOG(INFO) << "Successfully destroyed RocksDB at: " << rocksdb_dir_;
-      *was_deleted = true;
     }
   }
 

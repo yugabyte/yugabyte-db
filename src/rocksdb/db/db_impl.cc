@@ -5711,7 +5711,7 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
     // Delete archival files.
     for (size_t i = 0; i < archiveFiles.size(); ++i) {
       if (ParseFileName(archiveFiles[i], &number, &type) &&
-          type == kLogFile) {
+        type == kLogFile) {
         Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
         if (result.ok() && !del.ok()) {
           result = del;

@@ -206,26 +206,29 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS RunAllLogGC();
 
-  // Creates and updates the map of table to the count of directories used per table per disk
+  // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
-  void GetDataWalDirAndUpdateAssignmentMap(FsManager* fs_manager,
-                                           const std::string& table_id,
-                                           const TableType table_type,
-                                           std::string* data_root_dir,
-                                           std::string* wal_root_dir);
-  // Updates the map of table to the count of directories used per table per disk
+  void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
+                                   const std::string& table_id,
+                                   const std::string& tablet_id,
+                                   const TableType table_type,
+                                   std::string* data_root_dir,
+                                   std::string* wal_root_dir);
+  // Updates the map of table to the set of tablets assigned per table per disk
   // for both of the given data and wal directories.
-  void UpdateAssignmentMap(FsManager* fs_manager,
-                           const std::string& table_id,
-                           const TableType table_type,
-                           const std::string& data_root_dir,
-                           const std::string& wal_root_dir);
-  // Decrements the directory used count for the table for both the data and WAL directory
+  void RegisterDataAndWalDir(FsManager* fs_manager,
+                            const std::string& table_id,
+                            const std::string& tablet_id,
+                            const TableType table_type,
+                            const std::string& data_root_dir,
+                            const std::string& wal_root_dir);
+  // Removes the tablet id assigned to the table and disk pair for both the data and WAL directory
   // as pointed by the data and wal directory map.
-  void UnregisterDataWalDirFromAssignmentMap(const std::string& table_id,
-                                             const TableType table_type,
-                                             const std::string& data_root_dir,
-                                             const std::string& wal_root_dir);
+  void UnregisterDataWalDir(const std::string& table_id,
+                            const std::string& tablet_id,
+                            const TableType table_type,
+                            const std::string& data_root_dir,
+                            const std::string& wal_root_dir);
 
 
  private:
@@ -318,11 +321,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // TABLET_DATA_READY state. Generally, we tombstone the replica.
   CHECKED_STATUS HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
 
-  // Adds the count of existing data and wal directory into local into
-  // the table to disk assignment map/cache.
-  void RegisterDataAndWalDirAccounting(FsManager* fs_manager,
-                                       const scoped_refptr<tablet::TabletMetadata>& meta);
-
   TSTabletManagerStatePB state() const {
     boost::shared_lock<rw_spinlock> lock(lock_);
     return state_;
@@ -342,8 +340,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   typedef std::unordered_map<std::string, scoped_refptr<tablet::TabletPeer>> TabletMap;
   // This is a map that takes a table id and maps it to a map of directory and
-  // its children directory counts.
-  typedef std::unordered_map<std::string, std::unordered_map<std::string, uint32_t>>
+  // set of tablets using that directory.
+  typedef std::unordered_map<std::string,
+                             std::unordered_map<std::string, std::unordered_set<std::string>>>
     TableDiskAssignmentMap;
 
   // Lock protecting tablet_map_, dirty_tablets_, state_, and

@@ -248,11 +248,12 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     data_root_dir = meta_->data_root_dir();
     wal_root_dir = meta_->wal_root_dir();
     if (ts_manager != nullptr) {
-      ts_manager->UpdateAssignmentMap(fs_manager_,
-                                      table_id,
-                                      meta_->table_type(),
-                                      data_root_dir,
-                                      wal_root_dir);
+      ts_manager->RegisterDataAndWalDir(fs_manager_,
+                                        table_id,
+                                        meta_->tablet_id(),
+                                        meta_->table_type(),
+                                        data_root_dir,
+                                        wal_root_dir);
     }
   } else {
     Partition partition;
@@ -262,11 +263,12 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                           schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
-      ts_manager->GetDataWalDirAndUpdateAssignmentMap(fs_manager_,
-                                                      table_id,
-                                                      superblock_->table_type(),
-                                                      &data_root_dir,
-                                                      &wal_root_dir);
+      ts_manager->GetAndRegisterDataAndWalDir(fs_manager_,
+                                              table_id,
+                                              tablet_id_,
+                                              superblock_->table_type(),
+                                              &data_root_dir,
+                                              &wal_root_dir);
     }
     Status create_status = TabletMetadata::CreateNew(fs_manager_,
                                                      table_id,
@@ -281,10 +283,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                                      data_root_dir,
                                                      wal_root_dir);
     if (ts_manager != nullptr && !create_status.ok()) {
-      ts_manager->UnregisterDataWalDirFromAssignmentMap(table_id,
-                                                        superblock_->table_type(),
-                                                        data_root_dir,
-                                                        wal_root_dir);
+      ts_manager->UnregisterDataWalDir(table_id,
+                                       tablet_id_,
+                                       superblock_->table_type(),
+                                       data_root_dir,
+                                       wal_root_dir);
     }
     RETURN_NOT_OK(create_status);
 
