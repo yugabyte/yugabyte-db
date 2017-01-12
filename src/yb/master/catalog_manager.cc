@@ -221,7 +221,7 @@ class TableLoader : public TableVisitor {
  public:
   explicit TableLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const TableId& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
     CHECK(!ContainsKey(catalog_manager_->table_ids_map_, table_id))
           << "Table already exists: " << table_id;
 
@@ -230,10 +230,10 @@ class TableLoader : public TableVisitor {
     TableMetadataLock l(table, TableMetadataLock::WRITE);
     l.mutable_data()->pb.CopyFrom(metadata);
 
-    // Add the tablet to the IDs map and to the name map (if the table is not deleted)
+    // Add the table to the IDs map and to the name map (if the table is not deleted)
     catalog_manager_->table_ids_map_[table->id()] = table;
     if (!l.data().is_deleted()) {
-      catalog_manager_->table_names_map_[l.data().name()] = table;
+      catalog_manager_->table_names_map_[{l.data().namespace_id(), l.data().name()}] = table;
     }
 
     LOG(INFO) << "Loaded metadata for table " << table->ToString();
@@ -256,9 +256,9 @@ class TabletLoader : public TabletVisitor {
  public:
   explicit TabletLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
     // Lookup the table
-    const string& table_id = metadata.table_id();
+    const TableId& table_id = metadata.table_id();
     scoped_refptr<TableInfo> table(FindPtrOrNull(
                                      catalog_manager_->table_ids_map_, table_id));
 
@@ -275,13 +275,13 @@ class TabletLoader : public TabletVisitor {
       // may mean that the table was not created (maybe due to a failed write
       // for the sys-tablets). The cleaner will remove
       if (l.data().pb.state() == SysTabletsEntryPB::PREPARING) {
-        LOG(WARNING) << "Missing Table " << table_id << " required by tablet " << tablet_id
+        LOG(WARNING) << "Missing table " << table_id << " required by tablet " << tablet_id
                      << " (probably a failed table creation: the tablet was not assigned)";
         return Status::OK();
       }
 
       // if the tablet is not in a "preparing" state, something is wrong...
-      LOG(ERROR) << "Missing Table " << table_id << " required by tablet " << tablet_id;
+      LOG(ERROR) << "Missing table " << table_id << " required by tablet " << tablet_id;
       LOG(ERROR) << "Metadata: " << metadata.DebugString();
       return STATUS(Corruption, "Missing table for tablet: ", tablet_id);
     }
@@ -318,7 +318,7 @@ class NamespaceLoader : public NamespaceVisitor {
  public:
   explicit NamespaceLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const NamespaceId& ns_id, const SysNamespaceEntryPB& metadata) OVERRIDE {
     CHECK(!ContainsKey(catalog_manager_->namespace_ids_map_, ns_id))
       << "Namespace already exists: " << ns_id;
 
@@ -871,8 +871,10 @@ Status CatalogManager::CheckOnline() const {
 
 void CatalogManager::AbortTableCreation(TableInfo* table,
                                         const vector<TabletInfo*>& tablets) {
-  string table_id = table->id();
-  string table_name = table->mutable_metadata()->mutable_dirty()->pb.name();
+  const TableId table_id = table->id();
+  const TableName table_name = table->mutable_metadata()->mutable_dirty()->pb.name();
+  const NamespaceId table_namespace_id =
+      table->mutable_metadata()->mutable_dirty()->pb.namespace_id();
   vector<string> tablet_ids_to_erase;
   for (TabletInfo* tablet : tablets) {
     tablet_ids_to_erase.push_back(tablet->tablet_id());
@@ -889,17 +891,17 @@ void CatalogManager::AbortTableCreation(TableInfo* table,
 
   std::lock_guard<LockType> l(lock_);
 
-  // Call AbortMutation() manually, as otherwise the lock won't be
-  // released.
+  // Call AbortMutation() manually, as otherwise the lock won't be released.
   for (TabletInfo* tablet : tablets) {
     tablet->mutable_metadata()->AbortMutation();
   }
   table->mutable_metadata()->AbortMutation();
-  for (const string& tablet_id_to_erase : tablet_ids_to_erase) {
+  for (const TabletId& tablet_id_to_erase : tablet_ids_to_erase) {
     CHECK_EQ(tablet_map_.erase(tablet_id_to_erase), 1)
         << "Unable to erase tablet " << tablet_id_to_erase << " from tablet map.";
   }
-  CHECK_EQ(table_names_map_.erase(table_name), 1)
+
+  CHECK_EQ(table_names_map_.erase({table_namespace_id, table_name}), 1)
       << "Unable to erase table named " << table_name << " from table names map.";
   CHECK_EQ(table_ids_map_.erase(table_id), 1)
       << "Unable to erase tablet with id " << table_id << " from tablet ids map.";
@@ -934,8 +936,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   LOG(INFO) << "CreateTable from " << RequestorString(rpc)
             << ":\n" << req.DebugString();
 
-  // a. Validate the user request.
-  std::string namespace_id = kDefaultNamespaceId;
+  // Validate the user request.
+  NamespaceId namespace_id = kDefaultNamespaceId;
 
   // Validate namespace.
   if (req.has_namespace_()) {
@@ -945,8 +947,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     TRACE("Looking up namespace");
     RETURN_NOT_OK(FindNamespace(req.namespace_(), &ns));
     if (ns == nullptr) {
-      Status s = STATUS(InvalidArgument,
-          "Invalid Namespace ID or Namespace Name", req.DebugString());
+      s = STATUS(InvalidArgument,
+          "Invalid namespace id or namespace name", req.DebugString());
       SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       return s;
     }
@@ -1102,20 +1104,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     std::lock_guard<LockType> l(lock_);
     TRACE("Acquired catalog manager lock");
 
-    // b. Verify that the table does not exist.
-    table = FindPtrOrNull(table_names_map_, req.name());
+    // Verify that the table does not exist.
+    table = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
+
     if (table != nullptr) {
       s = STATUS(AlreadyPresent, "Table already exists", table->id());
       SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
       return s;
     }
 
-    // c. Add the new table in "preparing" state.
+    // Add the new table in "preparing" state.
     table = CreateTableInfo(req, schema, partition_schema, namespace_id);
     table_ids_map_[table->id()] = table;
-    table_names_map_[req.name()] = table;
+    table_names_map_[{namespace_id, req.name()}] = table;
 
-    // d. Create the TabletInfo objects in state PREPARING.
+    // Create the TabletInfo objects in state PREPARING.
     for (const Partition& partition : partitions) {
       PartitionPB partition_pb;
       partition.ToPB(&partition_pb);
@@ -1140,7 +1143,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
   }
 
-  // e. Write Tablets to sys-tablets (in "preparing" state)
+  // Write Tablets to sys-tablets (in "preparing" state)
   s = sys_catalog_->AddTablets(tablets);
   if (!s.ok()) {
     s = s.CloneAndPrepend(Substitute("An error occurred while inserting to sys-tablets: $0",
@@ -1152,7 +1155,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   TRACE("Wrote tablets to system table");
 
-  // f. Update the on-disk table state to "running".
+  // Update the on-disk table state to "running".
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   s = sys_catalog_->AddTable(table.get());
   if (!s.ok()) {
@@ -1165,7 +1168,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
   TRACE("Wrote table to system table");
 
-  // g. Commit the in-memory state.
+  // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
 
   for (TabletInfo *tablet : tablets) {
@@ -1215,7 +1218,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
-                                           const std::string& namespace_id) {
+                                           const NamespaceId& namespace_id) {
   DCHECK(schema.has_column_ids());
   TableInfo* table = new TableInfo(GenerateId());
   table->mutable_metadata()->StartMutation();
@@ -1252,9 +1255,30 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
   if (table_identifier.has_table_id()) {
     *table_info = FindPtrOrNull(table_ids_map_, table_identifier.table_id());
   } else if (table_identifier.has_table_name()) {
-    *table_info = FindPtrOrNull(table_names_map_, table_identifier.table_name());
+    NamespaceId namespace_id = kDefaultNamespaceId;
+
+    if (table_identifier.has_namespace_()) {
+      if (table_identifier.namespace_().has_id()) {
+        namespace_id = table_identifier.namespace_().id();
+      } else if (table_identifier.namespace_().has_name()) {
+        // Find namespace by its name.
+        scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_names_map_,
+            table_identifier.namespace_().name());
+
+        if (ns == nullptr) {
+          return STATUS(InvalidArgument,
+              Substitute("Namespace $0 does not exist", table_identifier.namespace_().name()));
+        }
+
+        namespace_id = ns->id();
+      } else {
+        return STATUS(InvalidArgument, "Neither namespace id or namespace name are specified");
+      }
+    }
+
+    *table_info = FindPtrOrNull(table_names_map_, {namespace_id, table_identifier.table_name()});
   } else {
-    return STATUS(InvalidArgument, "Missing Table ID or Table Name");
+    return STATUS(InvalidArgument, "Neither table id or table name are specified");
   }
   return Status::OK();
 }
@@ -1268,7 +1292,7 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
   } else if (ns_identifier.has_name()) {
     *ns_info = FindPtrOrNull(namespace_names_map_, ns_identifier.name());
   } else {
-    return STATUS(InvalidArgument, "Missing Namespace ID or Namespace Name");
+    return STATUS(InvalidArgument, "Neither namespace id or namespace name are specified");
   }
   return Status::OK();
 }
@@ -1289,7 +1313,7 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
 
   scoped_refptr<TableInfo> table;
 
-  // 1. Lookup the table and verify if it exists
+  // Lookup the table and verify if it exists
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
@@ -1307,11 +1331,11 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
   }
 
   TRACE("Updating metadata on disk");
-  // 2. Update the metadata for the on-disk state
+  // Update the metadata for the on-disk state
   l.mutable_data()->set_state(SysTablesEntryPB::REMOVED,
                               Substitute("Deleted at $0", LocalTimeAsString()));
 
-  // 3. Update sys-catalog with the removed table state.
+  // Update sys-catalog with the removed table state.
   Status s = sys_catalog_->UpdateTable(table.get());
   if (!s.ok()) {
     // The mutation will be aborted when 'l' exits the scope on early return.
@@ -1322,11 +1346,11 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     return s;
   }
 
-  // 4. Remove it from the maps
+  // Remove it from the maps
   {
     TRACE("Removing from by-name map");
     std::lock_guard<LockType> l_map(lock_);
-    if (table_names_map_.erase(l.data().name()) != 1) {
+    if (table_names_map_.erase({l.data().namespace_id(), l.data().name()}) != 1) {
       PANIC_RPC(rpc, "Could not remove table from map, name=" + l.data().name());
     }
     TRACE("Removing from by-ids map");
@@ -1337,7 +1361,7 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
 
   table->AbortTasks();
 
-  // 5. Update the in-memory state
+  // Update the in-memory state
   TRACE("Committing in-memory state");
   l.Commit();
 
@@ -1374,8 +1398,8 @@ static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
         // type
         ColumnSchemaPB new_col_pb = step.add_column().schema();
         if (new_col_pb.has_id()) {
-          return STATUS(InvalidArgument, "column $0: client should not specify column ID",
-                                         new_col_pb.ShortDebugString());
+          return STATUS(InvalidArgument, Substitute(
+              "column $0: client should not specify column id", new_col_pb.ShortDebugString()));
         }
         ColumnSchema new_col = ColumnSchemaFromPB(new_col_pb);
         const TypeEncodingInfo *dummy;
@@ -1445,7 +1469,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   scoped_refptr<TableInfo> table;
 
-  // Lookup the table and verify if it exists
+  // Lookup the table and verify if it exists.
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
@@ -1454,18 +1478,21 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return s;
   }
 
-  scoped_refptr<NamespaceInfo> ns;
+  NamespaceId new_namespace_id = kDefaultNamespaceId;
 
   if (req->has_new_namespace()) {
     // Lookup the new namespace and verify if it exists.
     TRACE("Looking up new namespace");
+    scoped_refptr<NamespaceInfo> ns;
     RETURN_NOT_OK(FindNamespace(req->new_namespace(), &ns));
     if (ns == nullptr) {
       Status s = STATUS(InvalidArgument,
-          "Invalid Namespace ID or Namespace Name", req->DebugString());
+          "Invalid namespace id or namespace name", req->DebugString());
       SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
       return s;
     }
+
+    new_namespace_id = ns->id();
   }
 
   TRACE("Locking table");
@@ -1477,16 +1504,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   }
 
   bool has_changes = false;
-  string table_name = l.data().name();
+  const TableName table_name = l.data().name();
+  const NamespaceId namespace_id = l.data().namespace_id();
+  const TableName new_table_name = req->has_new_table_name() ? req->new_table_name() : table_name;
 
-  // Try to set the new namespace
-  if (req->has_new_namespace()) {
-    NamespaceMetadataLock ns_lock(CHECK_NOTNULL(ns.get()), NamespaceMetadataLock::READ);
-    l.mutable_data()->pb.set_namespace_id(ns->id());
-    has_changes = true;
-  }
-
-  // Calculate new schema for the on-disk state, not persisted yet
+  // Calculate new schema for the on-disk state, not persisted yet.
   Schema new_schema;
   ColumnId next_col_id = ColumnId(l.data().pb.next_column_id());
   if (req->alter_schema_steps_size()) {
@@ -1502,14 +1524,15 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
-  // Try to acquire the new table name
-  if (req->has_new_table_name()) {
+  // Try to acquire the new table name.
+  if (req->has_new_namespace() || req->has_new_table_name()) {
     std::lock_guard<LockType> catalog_lock(lock_);
 
     TRACE("Acquired catalog manager lock");
 
     // Verify that the table does not exist
-    scoped_refptr<TableInfo> other_table = FindPtrOrNull(table_names_map_, req->new_table_name());
+    scoped_refptr<TableInfo> other_table = FindPtrOrNull(
+        table_names_map_, {new_namespace_id, new_table_name});
     if (other_table != nullptr) {
       Status s = STATUS(AlreadyPresent, "Table already exists", other_table->id());
       SetupError(resp->mutable_error(), MasterErrorPB::TABLE_ALREADY_PRESENT, s);
@@ -1517,8 +1540,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
 
     // Acquire the new table name (now we have 2 name for the same table)
-    table_names_map_[req->new_table_name()] = table;
-    l.mutable_data()->pb.set_name(req->new_table_name());
+    table_names_map_[{new_namespace_id, new_table_name}] = table;
+    l.mutable_data()->pb.set_namespace_id(new_namespace_id);
+    l.mutable_data()->pb.set_name(new_table_name);
 
     has_changes = true;
   }
@@ -1528,7 +1552,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return Status::OK();
   }
 
-  // Serialize the schema Increment the version number
+  // Serialize the schema Increment the version number.
   if (new_schema.initialized()) {
     if (!l.data().pb.has_fully_applied_schema()) {
       l.mutable_data()->pb.mutable_fully_applied_schema()->CopyFrom(l.data().pb.schema());
@@ -1538,7 +1562,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
   l.mutable_data()->pb.set_next_column_id(next_col_id);
   l.mutable_data()->set_state(SysTablesEntryPB::ALTERING,
-                              Substitute("Alter Table version=$0 ts=$1",
+                              Substitute("Alter table version=$0 ts=$1",
                                          l.mutable_data()->pb.version(),
                                          LocalTimeAsString()));
 
@@ -1550,9 +1574,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         Substitute("An error occurred while updating sys-catalog tables entry: $0",
                    s.ToString()));
     LOG(WARNING) << s.ToString();
-    if (req->has_new_table_name()) {
+    if (req->has_new_namespace() || req->has_new_table_name()) {
       std::lock_guard<LockType> catalog_lock(lock_);
-      CHECK_EQ(table_names_map_.erase(req->new_table_name()), 1);
+      CHECK_EQ(table_names_map_.erase({new_namespace_id, new_table_name}), 1);
     }
     CheckIfNoLongerLeaderAndSetupError(s, resp);
     // TableMetadaLock follows RAII paradigm: when it leaves scope,
@@ -1560,11 +1584,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     return s;
   }
 
-  // Remove the old name
-  if (req->has_new_table_name()) {
-    TRACE("Removing old-name $0 from by-name map", table_name);
+  // Remove the old name.
+  if (req->has_new_namespace() || req->has_new_table_name()) {
+    TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
+        namespace_id, table_name);
     std::lock_guard<LockType> l_map(lock_);
-    if (table_names_map_.erase(table_name) != 1) {
+    if (table_names_map_.erase({namespace_id, table_name}) != 1) {
       PANIC_RPC(rpc, "Could not remove table from map, name=" + l.data().name());
     }
   }
@@ -1657,11 +1682,33 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                                   ListTablesResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
 
+  NamespaceId namespace_id;
+
+  // Validate namespace.
+  if (req->has_namespace_()) {
+    scoped_refptr<NamespaceInfo> ns;
+
+    // Lookup the namespace and verify if it exists.
+    RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
+    if (ns == nullptr) {
+      Status s = STATUS(InvalidArgument,
+          "Invalid namespace id or namespace name", req->DebugString());
+      SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+      return s;
+    }
+
+    namespace_id = ns->id();
+  }
+
   boost::shared_lock<LockType> l(lock_);
 
-  for (const TableInfoMap::value_type& entry : table_names_map_) {
+  for (const TableInfoByNameMap::value_type& entry : table_names_map_) {
     TableMetadataLock ltm(entry.second.get(), TableMetadataLock::READ);
     if (!ltm.data().is_running()) continue;
+
+    if (!namespace_id.empty() && namespace_id != entry.first.first) {
+        continue; // Skip tables from other namespaces
+    }
 
     if (req->has_name_filter()) {
       size_t found = ltm.data().name().find(req->name_filter());
@@ -1687,12 +1734,12 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
-scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const string& table_id) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   boost::shared_lock<LockType> l(lock_);
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
-scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const string& table_id) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
@@ -1704,13 +1751,14 @@ void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables
   }
 }
 
-bool CatalogManager::TableNameExists(const string& table_name) {
+bool CatalogManager::TableNameExists(const NamespaceId& namespace_id,
+                                     const TableName& table_name) const {
   boost::shared_lock<LockType> l(lock_);
-  return table_names_map_.find(table_name) != table_names_map_.end();
+  return table_names_map_.find({namespace_id, table_name}) != table_names_map_.end();
 }
 
 void CatalogManager::NotifyTabletDeleteFinished(const string& tserver_uuid,
-                                                const string& tablet_id) {
+                                                const TabletId& tablet_id) {
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
@@ -2040,7 +2088,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // b. Add the new namespace.
 
     // Create unique id for this new namespace.
-    std::string new_id;
+    NamespaceId new_id;
     do {
       new_id = GenerateId();
     } while (nullptr != FindPtrOrNull(namespace_ids_map_, new_id));
@@ -2100,7 +2148,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
   if (ns == nullptr) {
     Status s = STATUS(InvalidArgument,
-        "Invalid Namespace ID or Namespace Name", req->DebugString());
+        "Invalid namespace id or namespace name", req->DebugString());
     SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
     return s;
   }
@@ -2113,7 +2161,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   {
     boost::shared_lock<LockType> catalog_lock(lock_);
 
-    for (const TableInfoMap::value_type& entry : table_names_map_) {
+    for (const TableInfoMap::value_type& entry : table_ids_map_) {
       TableMetadataLock ltm(entry.second.get(), TableMetadataLock::READ);
 
       if (ltm.data().namespace_id() == ns->id()) {
@@ -2246,7 +2294,7 @@ void CatalogManager::NewReplica(TSDescriptor* ts_desc,
   replica->ts_desc = ts_desc;
 }
 
-Status CatalogManager::GetTabletPeer(const string& tablet_id,
+Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
                                      scoped_refptr<TabletPeer>* ret_tablet_peer) const {
   // Note: CatalogManager has only one table, 'sys_catalog', with only
   // one tablet.
@@ -2312,7 +2360,7 @@ Status CatalogManager::EnableBgTasks() {
 }
 
 Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
-  const string& tablet_id = req.tablet_id();
+  const TabletId& tablet_id = req.tablet_id();
   std::unique_lock<std::mutex> l(remote_bootstrap_mtx_, std::try_to_lock);
   if (!l.owns_lock()) {
     return STATUS(IllegalState,
@@ -2440,7 +2488,7 @@ class PickSpecificUUID : public TSPicker {
   virtual Status PickReplica(TSDescriptor** ts_desc) OVERRIDE {
     shared_ptr<TSDescriptor> ts;
     if (!master_->ts_manager()->LookupTSByUUID(ts_uuid_, &ts)) {
-      return STATUS(NotFound, "unknown tablet server ID", ts_uuid_);
+      return STATUS(NotFound, "unknown tablet server id", ts_uuid_);
     }
     *ts_desc = ts.get();
     return Status::OK();
@@ -2841,7 +2889,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   }
 
  private:
-  const string tablet_id_;
+  const TabletId tablet_id_;
   tserver::CreateTabletRequestPB req_;
   tserver::CreateTabletResponsePB resp_;
 };
@@ -2851,7 +2899,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
  public:
   AsyncDeleteReplica(
       Master* master, ThreadPool* callback_pool, const string& permanent_uuid,
-      const scoped_refptr<TableInfo>& table, std::string tablet_id,
+      const scoped_refptr<TableInfo>& table, TabletId tablet_id,
       TabletDataState delete_type,
       boost::optional<int64_t> cas_config_opid_index_less_or_equal,
       string reason)
@@ -2937,7 +2985,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
     return true;
   }
 
-  const std::string tablet_id_;
+  const TabletId tablet_id_;
   const TabletDataState delete_type_;
   const boost::optional<int64_t> cas_config_opid_index_less_or_equal_;
   const std::string reason_;
@@ -3382,7 +3430,7 @@ void CatalogManager::DeleteTabletsAndSendRequests(const scoped_refptr<TableInfo>
 }
 
 void CatalogManager::SendDeleteTabletRequest(
-    const std::string& tablet_id,
+    const TabletId& tablet_id,
     TabletDataState delete_type,
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
     const scoped_refptr<TableInfo>& table,
@@ -3567,7 +3615,7 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
   deferred->needs_create_rpc.push_back(replacement);
   VLOG(1) << "Replaced tablet " << tablet->tablet_id()
           << " with " << replacement->tablet_id()
-          << " (Table " << tablet->table()->ToString() << ")";
+          << " (table " << tablet->table()->ToString() << ")";
 
   new_tablets->push_back(replacement);
 }
@@ -3735,7 +3783,7 @@ Status CatalogManager::ProcessPendingAssignments(
     std::lock_guard<LockType> l(lock_);
     unlocker_out.Abort();
     unlocker_in.Abort();
-    for (const string& tablet_id_to_remove : tablet_ids_to_remove) {
+    for (const TabletId& tablet_id_to_remove : tablet_ids_to_remove) {
       CHECK_EQ(tablet_map_.erase(tablet_id_to_remove), 1)
           << "Unable to erase " << tablet_id_to_remove << " from tablet map.";
     }
@@ -4062,7 +4110,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   return Status::OK();
 }
 
-Status CatalogManager::GetTabletLocations(const std::string& tablet_id,
+Status CatalogManager::GetTabletLocations(const TabletId& tablet_id,
                                           TabletLocationsPB* locs_pb) {
   RETURN_NOT_OK(CheckOnline());
 
@@ -4145,30 +4193,53 @@ Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const 
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
-  TableInfoMap ids_copy, names_copy;
+  NamespaceInfoMap namespace_ids_copy;
+  TableInfoMap ids_copy;
+  TableInfoByNameMap names_copy;
   TabletInfoMap tablets_copy;
 
   // Copy the internal state so that, if the output stream blocks,
   // we don't end up holding the lock for a long time.
   {
     boost::shared_lock<LockType> l(lock_);
+    namespace_ids_copy = namespace_ids_map_;
     ids_copy = table_ids_map_;
     names_copy = table_names_map_;
     tablets_copy = tablet_map_;
   }
 
-  *out << "Dumping Current state of master.\nTables:\n";
+  *out << "Dumping Current state of master.\nNamespaces:\n";
+  for (const NamespaceInfoMap::value_type& e : namespace_ids_copy) {
+    NamespaceInfo* t = e.second.get();
+    NamespaceMetadataLock l(t, NamespaceMetadataLock::READ);
+    const NamespaceName& name = l.data().name();
+
+    *out << t->id() << ":\n";
+    *out << "  name: \"" << strings::CHexEscape(name) << "\"\n";
+    *out << "  metadata: " << l.data().pb.ShortDebugString() << "\n";
+  }
+
+  *out << "Tables:\n";
   for (const TableInfoMap::value_type& e : ids_copy) {
     TableInfo* t = e.second.get();
     TableMetadataLock l(t, TableMetadataLock::READ);
-    const string& name = l.data().name();
+    const TableName& name = l.data().name();
+    const NamespaceId& namespace_id = l.data().namespace_id();
+    // Find namespace by its ID.
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_copy, namespace_id);
 
     *out << t->id() << ":\n";
+    *out << "  namespace id: \"" << strings::CHexEscape(namespace_id) << "\"\n";
+
+    if (ns != nullptr) {
+      *out << "  namespace name: \"" << strings::CHexEscape(ns->name()) << "\"\n";
+    }
+
     *out << "  name: \"" << strings::CHexEscape(name) << "\"\n";
     // Erase from the map, so later we can check that we don't have
     // any orphaned tables in the by-name map that aren't in the
     // by-id map.
-    if (names_copy.erase(name) != 1) {
+    if (names_copy.erase({namespace_id, name}) != 1) {
       *out << "  [not present in by-name map]\n";
     }
     *out << "  metadata: " << l.data().pb.ShortDebugString() << "\n";
@@ -4200,9 +4271,10 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
 
   if (!names_copy.empty()) {
     *out << "Orphaned tables (in by-name map, but not id map):\n";
-    for (const TableInfoMap::value_type& e : names_copy) {
+    for (const TableInfoByNameMap::value_type& e : names_copy) {
       *out << e.second->id() << ":\n";
-      *out << "  name: \"" << CHexEscape(e.first) << "\"\n";
+      *out << "  namespace id: \"" << strings::CHexEscape(e.first.first) << "\"\n";
+      *out << "  name: \"" << CHexEscape(e.first.second) << "\"\n";
     }
   }
 
@@ -4604,7 +4676,7 @@ INITTED_AND_LEADER_OR_RESPOND(IsLoadBalancedResponsePB);
 ////////////////////////////////////////////////////////////
 
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table,
-                       std::string tablet_id)
+                       TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now(MonoTime::FINE)),
@@ -4667,7 +4739,7 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 ////////////////////////////////////////////////////////////
 
-TableInfo::TableInfo(std::string table_id) : table_id_(std::move(table_id)) {}
+TableInfo::TableInfo(TableId table_id) : table_id_(std::move(table_id)) {}
 
 TableInfo::~TableInfo() {
 }
@@ -4675,6 +4747,11 @@ TableInfo::~TableInfo() {
 std::string TableInfo::ToString() const {
   TableMetadataLock l(this, TableMetadataLock::READ);
   return Substitute("$0 [id=$1]", l.data().pb.name(), table_id_);
+}
+
+const NamespaceId& TableInfo::namespace_id() const {
+  TableMetadataLock l(this, TableMetadataLock::READ);
+  return l.data().namespace_id();
 }
 
 bool TableInfo::RemoveTablet(const std::string& partition_key_start) {
@@ -4841,9 +4918,9 @@ void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string&
 // NamespaceInfo
 ////////////////////////////////////////////////////////////
 
-NamespaceInfo::NamespaceInfo(std::string ns_id) : namespace_id_(std::move(ns_id)) {}
+NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
 
-const std::string& NamespaceInfo::name() const {
+const NamespaceName& NamespaceInfo::name() const {
   NamespaceMetadataLock l(this, NamespaceMetadataLock::READ);
   return l.data().pb.name();
 }

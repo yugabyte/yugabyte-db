@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <boost/optional/optional_fwd.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "yb/common/partition.h"
 #include "yb/consensus/consensus.pb.h"
@@ -73,9 +74,12 @@ static const char* const kDefaultNamespaceName = "default";
 static const char* const kDefaultNamespaceId = "11111111111111111111111111111111";
 
 using TableId = std::string;
+using TableName = std::string;
 using TabletId = std::string;
 using TabletServerId = std::string;
 using PlacementId = std::string;
+using NamespaceId = std::string;
+using NamespaceName = std::string;
 
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
@@ -180,10 +184,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
  public:
   typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
 
-  TabletInfo(const scoped_refptr<TableInfo>& table, std::string tablet_id);
+  TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
   virtual const std::string& id() const OVERRIDE { return tablet_id_; }
 
-  const std::string& tablet_id() const { return tablet_id_; }
+  const TabletId& tablet_id() const { return tablet_id_; }
   const scoped_refptr<TableInfo>& table() const { return table_; }
 
   // Accessors for the latest known tablet replica locations.
@@ -211,7 +215,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   friend class RefCountedThreadSafe<TabletInfo>;
   ~TabletInfo();
 
-  const std::string tablet_id_;
+  const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
 
   // Lock protecting the below mutable fields.
@@ -248,7 +252,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   }
 
   // Return the table's name.
-  const std::string& name() const {
+  const TableName& name() const {
     return pb.name();
   }
 
@@ -258,7 +262,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   }
 
   // Return the table's namespace id.
-  const std::string& namespace_id() const {
+  const NamespaceName& namespace_id() const {
     return pb.namespace_id();
   }
 
@@ -275,9 +279,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 // spin-lock.
 class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<PersistentTableInfo> {
  public:
-  explicit TableInfo(std::string table_id);
+  explicit TableInfo(TableId table_id);
 
   std::string ToString() const;
+
+  const NamespaceId& namespace_id() const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const OVERRIDE { return table_id_; }
@@ -323,7 +329,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
 
   void AddTabletUnlocked(TabletInfo* tablet);
 
-  const std::string table_id_;
+  const TableId table_id_;
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
@@ -350,7 +356,7 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
   static int type() { return SysRowEntry::NAMESPACE; }
 
   // Get the namespace name
-  const std::string& name() const {
+  const NamespaceName& name() const {
     return pb.name();
   }
 };
@@ -365,11 +371,11 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
 class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
                       public MemoryState<PersistentNamespaceInfo> {
  public:
-  explicit NamespaceInfo(std::string ns_id);
+  explicit NamespaceInfo(NamespaceId ns_id);
 
   virtual const std::string& id() const OVERRIDE { return namespace_id_; };
 
-  const std::string& name() const;
+  const NamespaceName& name() const;
 
   std::string ToString() const;
 
@@ -378,7 +384,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   ~NamespaceInfo() = default;
 
   // The ID field is used in the sys_catalog table.
-  const std::string namespace_id_;
+  const NamespaceId namespace_id_;
 
   DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
 };
@@ -416,6 +422,9 @@ typedef MetadataLock<ClusterConfigInfo> ClusterConfigMetadataLock;
 
 typedef std::unordered_map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
 typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
+typedef std::pair<NamespaceId, TableName> TableNameKey;
+typedef std::unordered_map<
+    TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
 
 // Info per black listed tablet server.
 struct BlackListInfo {
@@ -572,7 +581,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // If the tablet is not running, returns Status::ServiceUnavailable.
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
-  CHECKED_STATUS GetTabletLocations(const std::string& tablet_id,
+  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
                             TabletLocationsPB* locs_pb);
 
   // Handle a tablet report from the given tablet server.
@@ -613,8 +622,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void SetLoadBalancerEnabled(bool is_enabled);
 
   // Return the table info for the table with the specified UUID, if it exists.
-  scoped_refptr<TableInfo> GetTableInfo(const std::string& table_id);
-  scoped_refptr<TableInfo> GetTableInfoUnlocked(const std::string& table_id);
+  scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id);
+  scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id);
 
   // Return all the available TableInfo, which also may include not running tables
   // NOTE: This should only be used by tests or web-ui
@@ -622,17 +631,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Return true if the specified table name exists
   // NOTE: This should only be used by tests
-  bool TableNameExists(const std::string& table_name);
+  bool TableNameExists(const NamespaceId& namespace_id, const TableName& table_name) const;
+
+  bool TableNameExists(const TableName& table_name) const
+      { return TableNameExists(kDefaultNamespaceId, table_name); }
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
-  void NotifyTabletDeleteFinished(const std::string& tserver_uuid, const std::string& table_id);
+  void NotifyTabletDeleteFinished(const std::string& tserver_uuid, const TableId& table_id);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
   //
   // See also: TabletPeerLookupIf, ConsensusServiceImpl.
-  virtual CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
+  virtual CHECKED_STATUS GetTabletPeer(const TabletId& tablet_id,
                                scoped_refptr<tablet::TabletPeer>* tablet_peer) const OVERRIDE;
 
   virtual const NodeInstancePB& NodeInstance() const OVERRIDE;
@@ -742,7 +754,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TableInfo* CreateTableInfo(const CreateTableRequestPB& req,
                              const Schema& schema,
                              const PartitionSchema& partition_schema,
-                             const std::string& namespace_id);
+                             const NamespaceId& namespace_id);
 
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
@@ -862,7 +874,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
-  void SendDeleteTabletRequest(const std::string& tablet_id,
+  void SendDeleteTabletRequest(const TabletId& tablet_id,
                                tablet::TabletDataState delete_type,
                                const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
                                const scoped_refptr<TableInfo>& table,
@@ -941,15 +953,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef rw_spinlock LockType;
   mutable LockType lock_;
 
-  // Table maps: table-id -> TableInfo and table-name -> TableInfo
-  TableInfoMap table_ids_map_;
-  TableInfoMap table_names_map_;
+  TableInfoMap table_ids_map_;         // Table map: table-id -> TableInfo
+  TableInfoByNameMap table_names_map_; // Table map: [namespace-id, table-name] -> TableInfo
 
   // Tablet maps: tablet-id -> TabletInfo
   TabletInfoMap tablet_map_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
-  typedef std::unordered_map<std::string, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
+  typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
   NamespaceInfoMap namespace_ids_map_;
   NamespaceInfoMap namespace_names_map_;
 

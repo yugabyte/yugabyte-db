@@ -43,7 +43,6 @@ using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using std::make_shared;
 using std::shared_ptr;
-using std::string;
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
@@ -83,26 +82,27 @@ class MasterTest : public YBTest {
   }
 
   void DoListTables(const ListTablesRequestPB& req, ListTablesResponsePB* resp);
-  void DoListAllTables(ListTablesResponsePB* resp);
+  void DoListAllTables(ListTablesResponsePB* resp, const NamespaceName& namespace_name = "");
 
-  Status CreateTable(const string& table_name,
+  Status CreateTable(const TableName& table_name,
                      const Schema& schema,
-                     const std::string& namespace_name = "");
+                     const NamespaceName& namespace_name = "");
 
-  Status CreateTableWithSplits(const string& table_name,
+  Status CreateTableWithSplits(const TableName& table_name,
                                const Schema& schema,
                                const vector<YBPartialRow>& split_rows,
-                               const std::string& namespace_name = "");
+                               const NamespaceName& namespace_name = "");
 
-  Status DoCreateTable(const string& table_name,
+  Status DoCreateTable(const TableName& table_name,
                        const Schema& schema,
                        CreateTableRequestPB* request,
-                       const std::string& namespace_name = "");
+                       const NamespaceName& namespace_name = "");
 
-  Status DeleteTable(const string& table_name);
+  Status DeleteTable(const TableName& table_name,
+                     const NamespaceName& namespace_name = "");
 
   void DoListAllNamespaces(ListNamespacesResponsePB* resp);
-  Status CreateNamespace(const string& ns_name, CreateNamespaceResponsePB* resp);
+  Status CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp);
 
   RpcController* ResetAndGetController() {
     controller_->Reset();
@@ -126,7 +126,7 @@ TEST_F(MasterTest, TestPingServer) {
   ASSERT_OK(generic_proxy->Ping(req, &resp, ResetAndGetController()));
 }
 
-static void MakeHostPortPB(const string& host, uint32_t port, HostPortPB* pb) {
+static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* pb) {
   pb->set_host(host);
   pb->set_port(port);
 }
@@ -237,9 +237,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   }
 }
 
-Status MasterTest::CreateTable(const string& table_name,
+Status MasterTest::CreateTable(const TableName& table_name,
                                const Schema& schema,
-                               const std::string& namespace_name /* = "" */) {
+                               const NamespaceName& namespace_name /* = "" */) {
   YBPartialRow split1(&schema);
   RETURN_NOT_OK(split1.SetInt32("key", 10));
 
@@ -249,10 +249,10 @@ Status MasterTest::CreateTable(const string& table_name,
   return CreateTableWithSplits(table_name, schema, { split1, split2 }, namespace_name);
 }
 
-Status MasterTest::CreateTableWithSplits(const string& table_name,
+Status MasterTest::CreateTableWithSplits(const TableName& table_name,
                                          const Schema& schema,
                                          const vector<YBPartialRow>& split_rows,
-                                         const std::string& namespace_name /* = "" */) {
+                                         const NamespaceName& namespace_name /* = "" */) {
   CreateTableRequestPB req;
   RowOperationsPBEncoder encoder(req.mutable_split_rows());
   for (const YBPartialRow& row : split_rows) {
@@ -261,10 +261,10 @@ Status MasterTest::CreateTableWithSplits(const string& table_name,
   return DoCreateTable(table_name, schema, &req, namespace_name);
 }
 
-Status MasterTest::DoCreateTable(const string& table_name,
+Status MasterTest::DoCreateTable(const TableName& table_name,
                                  const Schema& schema,
                                  CreateTableRequestPB* request,
-                                 const std::string& namespace_name /* = "" */) {
+                                 const NamespaceName& namespace_name /* = "" */) {
   CreateTableResponsePB resp;
 
   request->set_name(table_name);
@@ -289,15 +289,26 @@ void MasterTest::DoListTables(const ListTablesRequestPB& req, ListTablesResponse
   ASSERT_FALSE(resp->has_error());
 }
 
-void MasterTest::DoListAllTables(ListTablesResponsePB* resp) {
+void MasterTest::DoListAllTables(ListTablesResponsePB* resp,
+                                 const NamespaceName& namespace_name /*= ""*/) {
   ListTablesRequestPB req;
+
+  if (!namespace_name.empty()) {
+    req.mutable_namespace_()->set_name(namespace_name);
+  }
+
   DoListTables(req, resp);
 }
 
-Status MasterTest::DeleteTable(const string& table_name) {
+Status MasterTest::DeleteTable(const TableName& table_name,
+                               const NamespaceName& namespace_name /* = "" */) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
+
+  if (!namespace_name.empty()) {
+    req.mutable_table()->mutable_namespace_()->set_name(namespace_name);
+  }
 
   RETURN_NOT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
@@ -474,7 +485,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
 // Regression test for KUDU-253/KUDU-592: crash if the GetTableLocations RPC call is
 // invalid.
 TEST_F(MasterTest, TestInvalidGetTableLocations) {
-  const string kTableName = "test";
+  const TableName kTableName = "test";
   Schema schema({ ColumnSchema("key", INT32) }, 1);
   ASSERT_OK(CreateTable(kTableName, schema));
   {
@@ -494,7 +505,7 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 }
 
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
-  const string kTableName = "test";
+  const TableName kTableName = "test";
   Schema schema({ColumnSchema("key", INT32)}, 1);
   CreateTableRequestPB req;
   req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(5);
@@ -532,7 +543,7 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
     ASSERT_TRUE(is_create_resp.has_done());
     ASSERT_FALSE(is_create_resp.done());
     if (is_create_resp.has_error()) {
-      ASSERT_TRUE(is_create_resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+      ASSERT_EQ(is_create_resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     }
 
     --num_retries;
@@ -547,7 +558,7 @@ void MasterTest::DoListAllNamespaces(ListNamespacesResponsePB* resp) {
   ASSERT_FALSE(resp->has_error());
 }
 
-Status MasterTest::CreateNamespace(const string& ns_name, CreateNamespaceResponsePB* resp) {
+Status MasterTest::CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp) {
   CreateNamespaceRequestPB req;
   req.set_name(ns_name);
 
@@ -570,8 +581,8 @@ TEST_F(MasterTest, TestNamespaces) {
   }
 
   // Create a new namespace.
-  const std::string other_ns_name = "testns";
-  std::string other_ns_id;
+  const NamespaceName other_ns_name = "testns";
+  NamespaceId other_ns_id;
   {
     CreateNamespaceResponsePB resp;
     ASSERT_OK(CreateNamespace(other_ns_name, &resp));
@@ -686,8 +697,8 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
         "Cannot delete default namespace");
   }
@@ -707,8 +718,8 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::CANNOT_DELETE_DEFAULT_NAMESPACE);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
         "Cannot delete default namespace");
   }
@@ -728,10 +739,10 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Invalid Namespace ID or Namespace Name");
+        "Invalid namespace id or namespace name");
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
@@ -745,8 +756,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   ListNamespacesResponsePB namespaces;
 
   // Create a new namespace.
-  const std::string other_ns_name = "testns";
-  std::string other_ns_id;
+  const NamespaceName other_ns_name = "testns";
+  NamespaceId other_ns_id;
 
   {
     CreateNamespaceResponsePB resp;
@@ -767,7 +778,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   }
 
   // Create a table.
-  const std::string kTableName = "testtb";
+  const TableName kTableName = "testtb";
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
 
   ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name));
@@ -788,8 +799,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
         "Cannot delete namespace which has a table: " + kTableName);
   }
@@ -815,8 +826,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
         "Cannot delete namespace which has a table: " + kTableName);
   }
@@ -834,7 +845,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   }
 
   // Delete the table.
-  ASSERT_OK(DeleteTable(kTableName));
+  ASSERT_OK(DeleteTable(kTableName, other_ns_name));
 
   // List tables, should show no table.
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
@@ -858,7 +869,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
 }
 
 TEST_F(MasterTest, TestTablesWithNamespace) {
-  const std::string kTableName = "testtb";
+  const TableName kTableName = "testtb";
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
   ListTablesResponsePB tables;
 
@@ -888,27 +899,27 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(kDefaultNamespaceId, tables.tables(0).namespace_().id());
 
   // Delete the table.
-  ASSERT_OK(DeleteTable(kTableName));
+  ASSERT_OK(DeleteTable(kTableName, kDefaultNamespaceName));
 
   // List tables, should show no table.
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
   ASSERT_EQ(0, tables.tables_size());
 
-  const std::string other_ns_name = "testns";
-
   // Try to create a table with an unknown namespace.
   {
     Status s = CreateTable(kTableName, kTableSchema, "nonexistingns");
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(), "Invalid Namespace ID or Namespace Name");
+    ASSERT_STR_CONTAINS(s.ToString(), "Invalid namespace id or namespace name");
   }
 
   // List tables, should show no table.
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
   ASSERT_EQ(0, tables.tables_size());
 
+  const NamespaceName other_ns_name = "testns";
+
   // Create a new namespace.
-  std::string other_ns_id;
+  NamespaceId other_ns_id;
   ListNamespacesResponsePB namespaces;
   {
     CreateNamespaceResponsePB resp;
@@ -942,14 +953,15 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     AlterTableRequestPB req;
     AlterTableResponsePB resp;
     req.mutable_table()->set_table_name(kTableName);
+    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_name("nonexistingns");
     ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-      "Invalid Namespace ID or Namespace Name");
+        "Invalid namespace id or namespace name");
   }
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
   ASSERT_EQ(1, tables.tables_size());
@@ -963,14 +975,15 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     AlterTableRequestPB req;
     AlterTableResponsePB resp;
     req.mutable_table()->set_table_name(kTableName);
+    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_id("deadbeafdeadbeafdeadbeafdeadbeaf");
     ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
-    ASSERT_TRUE(resp.error().code() == MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_TRUE(resp.error().status().code() == AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-      "Invalid Namespace ID or Namespace Name");
+        "Invalid namespace id or namespace name");
   }
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
   ASSERT_EQ(1, tables.tables_size());
@@ -984,6 +997,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     AlterTableRequestPB req;
     AlterTableResponsePB resp;
     req.mutable_table()->set_table_name(kTableName);
+    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
     req.mutable_new_namespace()->set_name(kDefaultNamespaceName);
     ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
     SCOPED_TRACE(resp.DebugString());
@@ -997,7 +1011,145 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_EQ(kDefaultNamespaceId, tables.tables(0).namespace_().id());
 
   // Delete the table.
-  ASSERT_OK(DeleteTable(kTableName));
+  ASSERT_OK(DeleteTable(kTableName, kDefaultNamespaceName));
+
+  // List tables, should show no table.
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_EQ(0, tables.tables_size());
+
+  // Delete the namespace (by NAME).
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_()->set_name(other_ns_name);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+  }
+  {
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+  }
+}
+
+TEST_F(MasterTest, TestFullTableName) {
+  const TableName kTableName = "testtb";
+  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  ListTablesResponsePB tables;
+
+  // Create a table with the defined (default in fact) namespace.
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, kDefaultNamespaceName));
+
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_EQ(1, tables.tables_size());
+  ASSERT_EQ(kTableName, tables.tables(0).name());
+  ASSERT_EQ(kDefaultNamespaceName, tables.tables(0).namespace_().name());
+  ASSERT_EQ(kDefaultNamespaceId, tables.tables(0).namespace_().id());
+
+  const NamespaceName other_ns_name = "testns";
+
+  // Create a new namespace.
+  NamespaceId other_ns_id;
+  ListNamespacesResponsePB namespaces;
+  {
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(other_ns_name, &resp));
+    other_ns_id = resp.id();
+  }
+  {
+    // Order is not important. It's defined by the internal implementation.
+    // So, the default namespace can be first (index == 0) or last (index=1).
+    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(2, namespaces.namespaces_size());
+
+    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
+    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
+
+    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
+    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+  }
+
+  // Create a table with the defined new namespace.
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name));
+
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_EQ(2, tables.tables_size());
+  ASSERT_EQ(kTableName, tables.tables(0).name());
+  ASSERT_EQ(other_ns_name, tables.tables(0).namespace_().name());
+  ASSERT_EQ(other_ns_id, tables.tables(0).namespace_().id());
+  ASSERT_EQ(kTableName, tables.tables(1).name());
+  ASSERT_EQ(kDefaultNamespaceName, tables.tables(1).namespace_().name());
+  ASSERT_EQ(kDefaultNamespaceId, tables.tables(1).namespace_().id());
+
+  // Test ListTables() for one particular namespace.
+  // There are 2 tables now: 'default::testtb' and 'testns::testtb'.
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables, kDefaultNamespaceName));
+  ASSERT_EQ(1, tables.tables_size());
+  ASSERT_EQ(kTableName, tables.tables(0).name());
+  ASSERT_EQ(kDefaultNamespaceName, tables.tables(0).namespace_().name());
+  ASSERT_EQ(kDefaultNamespaceId, tables.tables(0).namespace_().id());
+
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables, other_ns_name));
+  ASSERT_EQ(1, tables.tables_size());
+  ASSERT_EQ(kTableName, tables.tables(0).name());
+  ASSERT_EQ(other_ns_name, tables.tables(0).namespace_().name());
+  ASSERT_EQ(other_ns_id, tables.tables(0).namespace_().id());
+
+  // Try to alter table: change namespace name into the default one.
+  // Try to change 'testns::testtb' into 'default::testtb', but the target table exists,
+  // so it must fail.
+  {
+    AlterTableRequestPB req;
+    AlterTableResponsePB resp;
+    req.mutable_table()->set_table_name(kTableName);
+    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
+    req.mutable_new_namespace()->set_name(kDefaultNamespaceName);
+    ASSERT_OK(proxy_->AlterTable(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::TABLE_ALREADY_PRESENT);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::ALREADY_PRESENT);
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
+        "Table already exists");
+  }
+  // Check that nothing's changed (still have 2 tables).
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_EQ(2, tables.tables_size());
+  ASSERT_EQ(kTableName, tables.tables(0).name());
+  ASSERT_EQ(other_ns_name, tables.tables(0).namespace_().name());
+  ASSERT_EQ(other_ns_id, tables.tables(0).namespace_().id());
+  ASSERT_EQ(kTableName, tables.tables(1).name());
+  ASSERT_EQ(kDefaultNamespaceName, tables.tables(1).namespace_().name());
+  ASSERT_EQ(kDefaultNamespaceId, tables.tables(1).namespace_().id());
+
+  // Delete the table in the namespace 'testns'.
+  ASSERT_OK(DeleteTable(kTableName, other_ns_name));
+
+  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_EQ(1, tables.tables_size());
+  ASSERT_EQ(kTableName, tables.tables(0).name());
+  ASSERT_EQ(kDefaultNamespaceName, tables.tables(0).namespace_().name());
+  ASSERT_EQ(kDefaultNamespaceId, tables.tables(0).namespace_().id());
+
+  // Try to delete the table from wrong namespace (table 'default::testtbl').
+  {
+    DeleteTableRequestPB req;
+    DeleteTableResponsePB resp;
+    req.mutable_table()->set_table_name(kTableName);
+    req.mutable_table()->mutable_namespace_()->set_name(other_ns_name);
+    ASSERT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::TABLE_NOT_FOUND);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
+        "The table does not exist");
+  }
+
+  // Delete the table.
+  ASSERT_OK(DeleteTable(kTableName, kDefaultNamespaceName));
 
   // List tables, should show no table.
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));

@@ -93,20 +93,23 @@ message TSToMasterCommonPB {
   required NodeInstancePB ts_instance = 1;
 }
 
-message TableIdentifierPB {
-  // The table ID to fetch info.
-  optional bytes table_id = 1;
-
-  // The table name to fetch info.
-  optional string table_name = 2;
-}
-
 message NamespaceIdentifierPB {
   // The namespace ID to fetch info.
   optional bytes id = 1;
 
   // The namespace name to fetch info.
   optional string name = 2;
+}
+
+message TableIdentifierPB {
+  // The table ID to fetch info.
+  optional bytes table_id = 1;
+
+  // The table name to fetch info.
+  optional string table_name = 2;
+
+  // The table namespace (if empty - using default namespace).
+  optional NamespaceIdentifierPB namespace = 3;
 }
 
 // This reprensents one instance of a placement constraint for a table. It is
@@ -487,6 +490,9 @@ message DeleteTableResponsePB {
 message ListTablesRequestPB {
   // When used, only returns tables that satisfy a substring match on name_filter.
   optional string name_filter = 1;
+
+  // Can be used to list tables for this one particular namespace.
+  optional NamespaceIdentifierPB namespace = 2;
 }
 
 message ListTablesResponsePB {
