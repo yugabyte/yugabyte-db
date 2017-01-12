@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+if [[ -z "$DEVOPS_HOME" ]]; then
+  echo "DEVOPS_HOME not set" >&2
+  exit 1
+fi
+
+. "$DEVOPS_HOME/bin/"/common.sh
+activate_virtualenv
+"$( dirname "${BASH_SOURCE[0]}" )"/src/itest/itest.py "$@"
+

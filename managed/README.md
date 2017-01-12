@@ -4,7 +4,14 @@
 
 ## Building and running Yugaware locally
 
-### Pre-requisites - install sbt, node and postgres:
+### Pre-requisites
+
+#### General Pre-requisites
+
+* Install JDK8
+* Need to have vault_password, yugabyte dev pem file (AWS) inside of ~/.yugabyte
+* And also ansible.env file with AWS credentials inside of ~/.yugabyte
+
 #### On a mac, run the following:
 * Install SBT and Node
 ```
@@ -80,6 +87,14 @@ yugaware=> \q
 * To run the unit tests:
 ```
   $ sbt test
+```
+
+* To run integration tests:
+```
+# Basic example to update devops and yugaware packages and run integration test and notify
+$ ./run_itest --update_packages devops yugaware --notify
+# To run with additional options
+$ ./run_itest --help
 ```
 
 * To fix any unresolved symbols or compilation errors
