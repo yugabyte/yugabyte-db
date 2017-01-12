@@ -46,7 +46,8 @@ void RedisTableTestBase::PutKeyValue(string key, string value, int64_t ttl) {
   ASSERT_OK(session_->Flush());
 }
 
-void RedisTableTestBase::GetKeyValue(const string& key, const string& value, bool expect_not_found) {
+void RedisTableTestBase::GetKeyValue(const string& key, const string& value,
+    bool expect_not_found) {
   shared_ptr<YBRedisReadOp> read_op = RedisReadOpForGetKey(table_.get(), key);
   ASSERT_OK(session_->ReadSync(read_op));
   if (expect_not_found) {
@@ -74,8 +75,8 @@ void RedisTableTestBase::RedisSimpleGetCommands() {
 
 void RedisTableTestBase::RedisTtlSetCommands() {
   session_ = NewSession(/* read_only = */ false);
-  PutKeyValue("key456", "value456", 500000);
-  PutKeyValue("key567", "value567", 1500000);
+  PutKeyValue("key456", "value456", 500);
+  PutKeyValue("key567", "value567", 1500);
   PutKeyValue("key678", "value678");
 }
 

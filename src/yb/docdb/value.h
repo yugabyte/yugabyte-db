@@ -31,7 +31,7 @@ class Value {
   const PrimitiveValue primitive_value() const { return primitive_value_; }
 
   // Consume the Ttl portion of the slice if it exists and return it
-  static CHECKED_STATUS DecodeTtl(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
+  static CHECKED_STATUS DecodeTTL(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
 
   // Decoded the endtire value
   CHECKED_STATUS Decode(const rocksdb::Slice &rocksdb_value);
@@ -44,7 +44,7 @@ class Value {
   PrimitiveValue primitive_value_;
   // The ttl of the Value. kMaxTtl is the default value. TTL is not included in encoded
   // form if it is equal to kMax.
-  // The unit is Microseconds, same as physical part of the hybrid TS.
+  // The unit is milliseconds.
   MonoDelta ttl_;
 };
 

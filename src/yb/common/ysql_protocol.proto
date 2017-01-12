@@ -134,8 +134,8 @@ message YSQLWriteRequestPB {
   // - delete: EXISTS
   optional YSQLIf if = 9;
 
-  // TTL: a 32-bit int (max value = 20 years in secs per org/apache/cassandra/cql3/Attributes.java)
-  optional uint32 ttl = 10;
+  // Time to live in millisecondss.
+  optional uint64 ttl = 10;
 }
 
 //-------------------------------------- Read request ----------------------------------------

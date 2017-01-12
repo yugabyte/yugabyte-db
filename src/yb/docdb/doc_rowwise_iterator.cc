@@ -200,13 +200,14 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
     if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
       Value value;
       RETURN_NOT_OK(value.Decode(db_iter_->value()));
-      if (value.has_ttl()) {
-        return STATUS_SUBSTITUTE(IllegalState,
-            "TTL in YSQL tables currently not supported, found $0",
-            value.ttl().ToString());
-      }
+
+      // Check for TTL.
+      bool hasExpired;
+      RETURN_NOT_OK(hasExpiredTTL(db_iter_->key(), value.ttl(), timestamp_, &hasExpired));
+
       if (value.primitive_value().value_type() != ValueType::kNull &&
-          value.primitive_value().value_type() != ValueType::kTombstone) {
+          value.primitive_value().value_type() != ValueType::kTombstone &&
+          !hasExpired) {
         DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
         values->emplace_back(value.primitive_value());
         is_null = false;

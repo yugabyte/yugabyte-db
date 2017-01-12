@@ -16,7 +16,7 @@ class YBRedisReadOp;
 constexpr int64_t kNoneTtl = -1;
 
 std::shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(
-    YBTable* table, const std::string& key, const std::string& value, int64_t ttl_usec = kNoneTtl);
+    YBTable* table, const std::string& key, const std::string& value, int64_t ttl_msec = kNoneTtl);
 std::shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(YBTable* table, const std::vector<Slice> args);
 std::shared_ptr<YBRedisReadOp> RedisReadOpForGetKey(YBTable* table, const std::string& key);
 

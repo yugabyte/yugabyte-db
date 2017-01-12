@@ -14,7 +14,7 @@ using strings::Substitute;
 
 const MonoDelta Value::kMaxTtl(MonoDelta::FromNanoseconds(MathLimits<int64_t>::kMax));
 
-Status Value::DecodeTtl(rocksdb::Slice* slice, MonoDelta* ttl) {
+Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
 
   const ValueType value_type = DecodeValueType(*slice);
 
@@ -30,7 +30,7 @@ Status Value::DecodeTtl(rocksdb::Slice* slice, MonoDelta* ttl) {
         "Failed to decode TTL from value, size too small: $0, need $1",
         slice->size(), kBytesPerTtl));
   }
-  *ttl = MonoDelta::FromMicroseconds(BigEndian::Load64(slice->data()));
+  *ttl = MonoDelta::FromMilliseconds(BigEndian::Load64(slice->data()));
   slice->remove_prefix(kBytesPerTtl);
   return Status::OK();
 }
@@ -42,7 +42,7 @@ Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
 
   rocksdb::Slice slice = rocksdb_value;
 
-  RETURN_NOT_OK(DecodeTtl(&slice, &ttl_));
+  RETURN_NOT_OK(DecodeTTL(&slice, &ttl_));
   return primitive_value_.DecodeFromValue(slice);
 }
 
@@ -57,7 +57,7 @@ string Value::Encode() const {
   string result;
   if (!ttl_.Equals(kMaxTtl)) {
     result.push_back(static_cast<char>(ValueType::kTtl));
-    AppendBigEndianUInt64(ttl_.ToMicroseconds(), &result);
+    AppendBigEndianUInt64(ttl_.ToMilliseconds(), &result);
   }
   result += primitive_value_.ToValue();
   return result;

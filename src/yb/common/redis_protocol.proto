@@ -111,7 +111,7 @@ message RedisKeyValuePB {
 // SET, SETNX, SETXX, HSET, HSETNX, LSET, MSET, HMSET, MSETNX
 message RedisSetRequestPB {
   optional RedisKeyValuePB key_value = 1;
-  optional int64 ttl = 2;                  // Expiry time in microseconds.
+  optional int64 ttl = 2;                  // Expiry time in milliseconds.
   optional RedisWriteMode mode = 3 [ default = REDIS_WRITEMODE_UPSERT ];
 }
 

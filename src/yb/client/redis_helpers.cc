@@ -22,7 +22,7 @@ const char* RedisConstants::kRedisTableName = ".redis";
 const char* RedisConstants::kRedisKeyColumnName = "key";
 
 shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(
-    YBTable* table, const string& key, const string& value, int64_t ttl_usec) {
+    YBTable* table, const string& key, const string& value, int64_t ttl_msec) {
   shared_ptr<YBRedisWriteOp> redis_write_to_yb(table->NewRedisWrite());
 
   CHECK_OK(redis_write_to_yb->mutable_row()->SetBinaryCopy(RedisConstants::kRedisKeyColumnName,
@@ -34,9 +34,9 @@ shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(
   auto mutable_key_value = write_request_pb->mutable_set_request()->mutable_key_value();
   mutable_key_value->set_key(key);
   mutable_key_value->add_value(value);
-  if (ttl_usec != kNoneTtl) {
-    CHECK_GT(ttl_usec, 0);
-    write_request_pb->mutable_set_request()->set_ttl(ttl_usec);
+  if (ttl_msec != kNoneTtl) {
+    CHECK_GT(ttl_msec, 0);
+    write_request_pb->mutable_set_request()->set_ttl(ttl_msec);
   }
   return redis_write_to_yb;
 }
@@ -48,8 +48,8 @@ shared_ptr<YBRedisWriteOp> RedisWriteOpForSetKV(YBTable* table, const vector<Sli
   // Assuming that redisservice already checks arguments when calling.
   DCHECK_EQ(args.size(), 5);
   DCHECK_EQ(args[3].ToString(), "EX");
-  const int64_t ttl_usec = std::stoll(args[4].ToString()) * 1000000; // Seconds to microseconds.
-  return RedisWriteOpForSetKV(table, args[1].ToString(), args[2].ToString(), ttl_usec);
+  const int64_t ttl_msec = std::stoll(args[4].ToString()) * 1000; // Seconds to milliseconds.
+  return RedisWriteOpForSetKV(table, args[1].ToString(), args[2].ToString(), ttl_msec);
 }
 
 shared_ptr<YBRedisReadOp> RedisReadOpForGetKey(YBTable* table, const string& key) {

@@ -1,17 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/docdb/doc_kv_util.h"
+#include "yb/server/hybrid_clock.h"
 
-#include <string>
-
-#include "rocksdb/slice.h"
-
-#include "yb/common/timestamp.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/status.h"
+#include "yb/docdb/value.h"
+#include "yb/docdb/doc_key.h"
 
 using std::string;
 
@@ -124,6 +121,19 @@ string DecodeZeroEncodedStr(string encoded_str) {
 
 std::string ToShortDebugStr(rocksdb::Slice slice) {
   return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
+}
+
+Status hasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
+    const Timestamp &timestamp, bool *hasExpired) {
+  *hasExpired = false;
+  if (!ttl.Equals(Value::kMaxTtl)) {
+    SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key));
+    const Timestamp expiry =
+        server::HybridClock::AddPhysicalTimeToTimestamp(sub_doc_key.timestamp(), ttl);
+    *hasExpired = (timestamp.CompareTo(expiry) > 0);
+  }
+  return Status::OK();
 }
 
 }  // namespace docdb

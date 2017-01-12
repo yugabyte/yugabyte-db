@@ -6,6 +6,7 @@
 #define YB_DOCDB_DOC_KV_UTIL_H_
 
 #include <string>
+#include "yb/util/monotime.h"
 
 #include "rocksdb/slice.h"
 
@@ -122,6 +123,9 @@ std::string ToShortDebugStr(rocksdb::Slice slice);
 inline std::string ToShortDebugStr(const std::string& raw_str) {
   return ToShortDebugStr(rocksdb::Slice(raw_str));
 }
+
+CHECKED_STATUS hasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
+    const Timestamp &timestamp, bool *hasExpired);
 
 }  // namespace docdb
 }  // namespace yb

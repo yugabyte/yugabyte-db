@@ -31,7 +31,7 @@ Status RedisWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
   CHECK_EQ(kv.value().size(), 1)
       << "Set operations are expected have exactly one value, found " << kv.value().size();
   const MonoDelta ttl = request_.set_request().has_ttl() ?
-      MonoDelta::FromMicroseconds(request_.set_request().ttl()) : Value::kMaxTtl;
+      MonoDelta::FromMilliseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   RETURN_NOT_OK(
       doc_write_batch->SetPrimitive(
           DocPath::DocPathFromRedisKey(kv.key()),
@@ -63,20 +63,18 @@ Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const Timestamp& timest
     response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
     return Status::OK();
   }
-  MonoDelta ttl;
-  RETURN_NOT_OK(Value::DecodeTtl(&value, &ttl));
-  if (!ttl.Equals(Value::kMaxTtl)) {
-    SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key));
-    const Timestamp expiry =
-        server::HybridClock::AddPhysicalTimeToTimestamp(sub_doc_key.timestamp(), ttl);
-    if (timestamp.CompareTo(expiry) > 0) {
-      response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
-      return Status::OK();
-    }
-  }
+
   Value val;
   RETURN_NOT_OK(val.Decode(value));
+
+  // Check for TTL.
+  bool hasExpired;
+  RETURN_NOT_OK(hasExpiredTTL(key, val.ttl(), timestamp, &hasExpired));
+  if (hasExpired) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    return Status::OK();
+  }
+
   if (val.primitive_value().value_type() == ValueType::kTombstone) {
     response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
     return Status::OK();
@@ -155,7 +153,7 @@ Status YSQLWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
   }
 
   const MonoDelta ttl = request_.has_ttl() ?
-      MonoDelta::FromMicroseconds(request_.ttl()) : Value::kMaxTtl;
+      MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
 
   switch (request_.type()) {
     // YSQL insert == update (upsert) to be consistent with Cassandra's semantics. In either INSERT

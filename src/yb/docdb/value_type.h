@@ -39,7 +39,7 @@ enum class ValueType : char {
   // We allow putting a 32-bit hash in front of the document key. This hash is computed based on
   // the "hashed" components of the document key that precede "range" components.
 
-  // TTL value in microseconds, optionally present at the start of a value.
+  // TTL value in milliseconds, optionally present at the start of a value.
   kTtl = 't', // ASCII code 116
 
   kObject = '{',  // ASCII code 123
