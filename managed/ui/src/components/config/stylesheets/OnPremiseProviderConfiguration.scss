@@ -14,13 +14,6 @@
   display: inline;
 }
 
-.on-prem-provider-container  .form-data-container {
-  position: absolute;
-  height: 100%;
-  width: 100%;
-  background-color: white;
-}
-
 .on-prem-provider-container .form-control {
   display: inline;
   float: left;
@@ -60,12 +53,11 @@
 }
 
 .on-prem-provider-container .form-action-button-container{
- position: absolute;
- margin-top: 45%;
-
+ position: relative;
+  margin-top: 10%;
 }
 .region-list-container {
-  position: absolute;
+  position: relative;
   width: 25%;
   top: 30px;
 }
@@ -96,6 +88,7 @@
   border: 1px solid #d3d3d3;
   height: 350px;
   overflow-y: scroll;
+  overflow-x: hidden;
 }
 
 .host-list-container .list-column {
@@ -105,6 +98,18 @@
 .add-list-item-label {
   font-weight: 500;
   font-size: 16px;
+}
+
+.add-list-action {
+  color: $YB_ORANGE;
+  float: right;
+  cursor: pointer;
+}
+
+.add-host-list-action {
+  color: $YB_ORANGE;
+  margin-top: 10px;
+  cursor: pointer;
 }
 
 .host-list-label {
@@ -148,4 +153,16 @@
 
 .sample-config-item .json {
   height: 60%;
+}
+
+.add-host-item-label {
+  padding-top: 10px;
+}
+
+.add-host-item-label span {
+  color: $YB_ORANGE;
+}
+
+.add-host-ip-label {
+  margin-left: 25%;
 }
