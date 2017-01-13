@@ -128,13 +128,6 @@
                         <reuseForks>false</reuseForks>
                         <redirectTestOutputToFile>true</redirectTestOutputToFile>
                         <argLine>${testArgLine}</argLine>
-                        <systemPropertyVariables>
-                          <!-- Explicitly specify the binary directory since yb-cql tests use
-                               TestUtils in yb-client in a JAR so it cannot derive the dir
-                               from the class's location.
-                          -->
-                          <binDir>${project.basedir}/../../build/latest/bin</binDir>
-                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
                 <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->

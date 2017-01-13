@@ -21,6 +21,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.yb.ColumnSchema;
 import org.yb.ColumnSchema.ColumnSchemaBuilder;
@@ -78,6 +79,7 @@ public class TestKeyEncoding {
   }
 
   @Test
+  @Ignore
   public void testPrimaryKeys() {
     Schema schemaOneString =
         buildSchema(new ColumnSchema.ColumnSchemaBuilder("key", Type.STRING).key(true));
@@ -142,6 +144,7 @@ public class TestKeyEncoding {
   }
 
   @Test
+  @Ignore
   public void testPrimaryKeyEncoding() {
     Schema schema = buildSchema(
         new ColumnSchemaBuilder("int8", Type.INT8).key(true),

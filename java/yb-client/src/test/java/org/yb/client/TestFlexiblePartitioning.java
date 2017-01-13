@@ -22,6 +22,7 @@ import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
@@ -198,6 +199,7 @@ public class TestFlexiblePartitioning extends BaseYBTest {
   }
 
   @Test
+  @Ignore
   public void testHashBucketedTable() throws Exception {
     CreateTableOptions tableBuilder = new CreateTableOptions();
     tableBuilder.addHashPartitions(ImmutableList.of("a"), 3);
@@ -225,6 +227,7 @@ public class TestFlexiblePartitioning extends BaseYBTest {
   }
 
   @Test
+  @Ignore
   public void testHashBucketedAndRangePartitionedTable() throws Exception {
     Schema schema = createSchema();
     CreateTableOptions tableBuilder = new CreateTableOptions();

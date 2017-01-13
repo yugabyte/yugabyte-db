@@ -337,8 +337,10 @@ if [[ $BUILD_JAVA == "1" ]]; then
     VALIDATE_CSD_FLAG="-PvalidateCSD"
   fi
   if ! build_yb_java_code_with_retries \
-      -DskipTests $MVN_FLAGS -PbuildCSD \
+      $MVN_FLAGS -PbuildCSD \
       $VALIDATE_CSD_FLAG \
+      --fail-never \
+      -DbinDir="$BUILD_ROOT"/bin \
       -Dsurefire.rerunFailingTestsCount=3 \
       -Dfailsafe.rerunFailingTestsCount=3 \
       clean verify 2>&1
