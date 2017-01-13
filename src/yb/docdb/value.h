@@ -15,7 +15,7 @@ class Value {
   Value() : primitive_value_(), ttl_(kMaxTtl) {
   }
 
-  Value(PrimitiveValue primitive_value, MonoDelta ttl = kMaxTtl)
+  explicit Value(PrimitiveValue primitive_value, MonoDelta ttl = kMaxTtl)
       : primitive_value_(primitive_value), ttl_(ttl) {
   }
 

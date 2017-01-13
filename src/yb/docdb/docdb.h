@@ -71,6 +71,11 @@ class DocWriteBatch {
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path, const PrimitiveValue& value, Timestamp timestamp = Timestamp::kMax) {
+    return SetPrimitive(doc_path, Value(value), timestamp);
+  }
+
+  CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path, const Value& value, Timestamp timestamp = Timestamp::kMax);
   CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp = Timestamp::kMax);
 
