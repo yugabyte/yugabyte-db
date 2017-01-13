@@ -23,23 +23,20 @@ PTRef::PTRef(MemoryContext *memctx,
 PTRef::~PTRef() {
 }
 
-ErrorCode PTRef::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTRef::Analyze(SemContext *sem_context) {
   // Check if this refers to the whole table (SELECT *).
   if (name_ == nullptr) {
-    return err;
+    return Status::OK();
   }
 
   // Look for a column descriptor from symbol table.
-  name_->Analyze(sem_context);
+  RETURN_NOT_OK(name_->Analyze(sem_context));
   desc_ = sem_context->GetColumnDesc(name_->last_name());
   if (desc_ == nullptr) {
-    sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
-    return ErrorCode::UNDEFINED_COLUMN;
+    return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
-  return err;
+  return Status::OK();
 }
 
 void PTRef::PrintSemanticAnalysisResult(SemContext *sem_context) {

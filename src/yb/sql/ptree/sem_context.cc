@@ -26,27 +26,30 @@ SemContext::~SemContext() {
 
 //--------------------------------------------------------------------------------------------------
 
-void SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
+CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTColumnDefinition *entry) {
   if (symtab_[name].column_ != nullptr) {
-    Error(entry->loc(), ErrorCode::DUPLICATE_COLUMN);
+    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_COLUMN));
   }
   symtab_[name].column_ = entry;
+  return Status::OK();
 }
 
-void SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
+CHECKED_STATUS SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
   if (symtab_[name].table_ != nullptr) {
-    Error(entry->loc(), ErrorCode::DUPLICATE_TABLE);
+    RETURN_NOT_OK(Error(entry->loc(), ErrorCode::DUPLICATE_TABLE));
   }
   symtab_[name].table_ = entry;
+  return Status::OK();
 }
 
-void SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
+CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
   if (symtab_[name].column_desc_ != nullptr) {
     LOG(FATAL) << "Entries of the same symbol are inserted"
                << ", Existing entry = " << symtab_[name].column_desc_
                << ", New entry = " << entry;
   }
   symtab_[name].column_desc_ = entry;
+  return Status::OK();
 }
 
 const SymbolEntry *SemContext::SeekSymbol(const MCString& name) const {

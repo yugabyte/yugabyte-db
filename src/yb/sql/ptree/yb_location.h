@@ -41,6 +41,28 @@ class YBLocation : public MCBase {
   // Line and column at the ending character of a token.
   virtual int EndLine() const = 0;
   virtual int EndColumn() const = 0;
+
+  // Convert to string for printing messages.
+  template<typename StringType>
+  void ToString(StringType *msg) const {
+    // In general, we only need to record the starting location of a token where error occurs.
+    constexpr bool kRecordStartingLocationOnly = true;
+
+    char temp[4096];
+    if (kRecordStartingLocationOnly) {
+      snprintf(temp, sizeof(temp), "%d.%d", BeginLine(), BeginColumn());
+    } else if (BeginLine() == EndLine()) {
+      if (BeginColumn() == EndColumn()) {
+        snprintf(temp, sizeof(temp), "%d.%d", BeginLine(), BeginColumn());
+      } else {
+        snprintf(temp, sizeof(temp), "%d.%d-%d", BeginLine(), BeginColumn(), EndColumn());
+      }
+    } else {
+      snprintf(temp, sizeof(temp), "%d.%d-%d.%d",
+               BeginLine(), BeginColumn(), EndLine(), EndColumn());
+    }
+    *msg += temp;
+  }
 };
 
 //--------------------------------------------------------------------------------------------------

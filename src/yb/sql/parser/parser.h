@@ -32,7 +32,7 @@ class Parser {
   // Returns 0 if Bison successfully parses SQL statements, and the compiler can continue on to
   // semantic analysis. Otherwise, it returns one of the errcodes that are defined in file
   // "yb/sql/errcodes.h", and the caller (YbSql API) should stop the compiling process.
-  ErrorCode Parse(const std::string& sql_stmt);
+  CHECKED_STATUS Parse(const std::string& sql_stmt);
 
   // Returns the generated parse tree.
   ParseTree::UniPtr Done();
@@ -68,11 +68,15 @@ class Parser {
 
   // Raise parsing error.
   void Error(const location& l, ErrorCode error_code) {
-    parse_context_->Error(l, error_code);
+    // Bison parser will raise exception, so we don't return Status::Error here.
+    Status s = parse_context_->Error(l, error_code);
+    VLOG(3) << s.ToString();
   }
 
-  void Error(const location& l, const std::string& m, ErrorCode error_code) {
-    parse_context_->Error(l, m, error_code);
+  void Error(const location& l, const char *m, ErrorCode error_code) {
+    // Bison parser will raise exception, so we don't return Status::Error here.
+    Status s = parse_context_->Error(l, m, error_code);
+    VLOG(3) << s.ToString();
   }
 
  private:

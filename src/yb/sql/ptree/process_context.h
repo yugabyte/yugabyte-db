@@ -39,13 +39,12 @@ class ProcessContext {
   void Warn(const YBLocation& l, const std::string& m, ErrorCode error_code);
 
   // Handling parsing error.
-  void Error(const YBLocation& l,
-             const std::string& m,
-             ErrorCode error_code,
-             const char* token = nullptr);
-  void Error(const YBLocation& l, const std::string& m, const char* token = nullptr);
-  void Error(const YBLocation& l, ErrorCode error_code, const char* token = nullptr);
-  void Error(const std::string& m);
+  CHECKED_STATUS Error(const YBLocation& l,
+                       const char *m,
+                       ErrorCode error_code,
+                       const char* token = nullptr);
+  CHECKED_STATUS Error(const YBLocation& l, const char *m, const char* token = nullptr);
+  CHECKED_STATUS Error(const YBLocation& l, ErrorCode error_code, const char* token = nullptr);
 
   // Returns the token at YBLocation 'l' of the input SQL statement stmt_.
   const pair<const char *, const size_t> ReadToken(const YBLocation& l);
@@ -87,6 +86,9 @@ class ProcessContext {
     error_code_ = error_code;
   }
 
+  // Return status of a process.
+  CHECKED_STATUS GetStatus();
+
  protected:
   //------------------------------------------------------------------------------------------------
   // SQL statement to be scanned.
@@ -104,6 +106,9 @@ class ProcessContext {
 
   // Latest parsing or scanning error code.
   ErrorCode error_code_;
+
+  // Error messages. All reported error messages will be concatenated to the end.
+  MCString error_msgs_;
 };
 
 }  // namespace sql

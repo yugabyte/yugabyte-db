@@ -36,7 +36,7 @@ class YbSql {
   virtual ~YbSql();
 
   // Process a SQL statement and return error codes.
-  ErrorCode Process(SqlEnv *sql_env, const std::string& sql_stmt);
+  CHECKED_STATUS Process(SqlEnv *sql_env, const std::string& sql_stmt);
 
  private:
   //------------------------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ class YbSql {
 
   //------------------------------------------------------------------------------------------------
   // Parse SQL statements.
-  ErrorCode TestParser(const std::string& sql_stmt);
+  CHECKED_STATUS TestParser(const std::string& sql_stmt);
 
   //------------------------------------------------------------------------------------------------
   // Parsing processor.

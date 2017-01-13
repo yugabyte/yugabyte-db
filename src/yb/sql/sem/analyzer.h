@@ -28,13 +28,18 @@ class Analyzer {
 
   // Run semantics analysis on the given parse tree and decorate it with semantics information such
   // as datatype or object-type of a database object.
-  ErrorCode Analyze(const std::string& sql_stmt,
-                    ParseTree::UniPtr ptree,
-                    SqlEnv *sql_env,
-                    int retry_count);
+  CHECKED_STATUS Analyze(const std::string& sql_stmt,
+                         ParseTree::UniPtr ptree,
+                         SqlEnv *sql_env,
+                         int retry_count);
 
   // Returns decorated parse tree from the semantic analysis.
   ParseTree::UniPtr Done();
+
+  // Access to error code.
+  ErrorCode error_code() {
+    return sem_context_->error_code();
+  }
 
  private:
   SemContext::UniPtr sem_context_;

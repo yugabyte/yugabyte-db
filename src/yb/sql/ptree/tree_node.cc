@@ -22,10 +22,9 @@ TreeNode::~TreeNode() {
 }
 
 // Run semantics analysis on this node.
-ErrorCode TreeNode::Analyze(SemContext *sem_context) {
+CHECKED_STATUS TreeNode::Analyze(SemContext *sem_context) {
   // Raise unsupported error when a treenode does not implement this method.
-  sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
-  return ErrorCode::FEATURE_NOT_SUPPORTED;
+  return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
 }
 
 }  // namespace sql

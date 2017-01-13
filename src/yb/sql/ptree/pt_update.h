@@ -39,7 +39,7 @@ class PTAssign : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Node type.
@@ -91,9 +91,9 @@ class PTUpdateStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
-  ErrorCode AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
+  CHECKED_STATUS AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
 
   // Access for column_args.
   const MCVector<ColumnArg>& column_args() const {

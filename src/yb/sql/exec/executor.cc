@@ -27,28 +27,34 @@ Executor::Executor() {
 }
 
 Executor::~Executor() {
-  exec_context_ = nullptr;
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::Execute(const string& sql_stmt,
-                            ParseTree::UniPtr parse_tree,
-                            SqlEnv *sql_env) {
+CHECKED_STATUS Executor::Execute(const string& sql_stmt,
+                                 ParseTree::UniPtr parse_tree,
+                                 SqlEnv *sql_env) {
+  // Prepare execution context.
   ParseTree *ptree = parse_tree.get();
   exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
                                                       sql_stmt.length(),
                                                       move(parse_tree),
                                                       sql_env));
-  if (ExecPTree(ptree) == ErrorCode::SUCCESSFUL_COMPLETION) {
-    VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
-  } else {
+
+  // Execute the parse tree.
+  if (!ExecPTree(ptree).ok()) {
+    // Before leaving the execution step, collect all errors and place them in return status.
     VLOG(3) << "Failed to execute parse-tree <" << ptree << ">";
+    return exec_context_->GetStatus();
   }
-  return exec_context_->error_code();
+
+  VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
+  return Status::OK();
 }
 
 ParseTree::UniPtr Executor::Done() {
+  // When releasing the parse tree, we must free the context because it has references to the tree
+  // which doesn't belong to this context any longer.
   ParseTree::UniPtr ptree = exec_context_->AcquireParseTree();
   exec_context_ = nullptr;
   return ptree;
@@ -56,11 +62,11 @@ ParseTree::UniPtr Executor::Done() {
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTree(const ParseTree *ptree) {
+CHECKED_STATUS Executor::ExecPTree(const ParseTree *ptree) {
   return ExecTreeNode(ptree->root().get());
 }
 
-ErrorCode Executor::ExecTreeNode(const TreeNode *tnode) {
+CHECKED_STATUS Executor::ExecTreeNode(const TreeNode *tnode) {
   switch (tnode->opcode()) {
     case TreeNodeOpcode::kPTListNode:
       return ExecPTNode(static_cast<const PTListNode*>(tnode));
@@ -87,28 +93,22 @@ ErrorCode Executor::ExecTreeNode(const TreeNode *tnode) {
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const TreeNode *tnode) {
-  exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
-  return ErrorCode::FEATURE_NOT_SUPPORTED;
+CHECKED_STATUS Executor::ExecPTNode(const TreeNode *tnode) {
+  return exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const PTListNode *lnode) {
-  ErrorCode errcode = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS Executor::ExecPTNode(const PTListNode *lnode) {
   for (TreeNode::SharedPtr nodeptr : lnode->node_list()) {
-    errcode = ExecTreeNode(nodeptr.get());
-    if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
-      break;
-    }
+    RETURN_NOT_OK(ExecTreeNode(nodeptr.get()));
   }
-  return errcode;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const PTCreateTable *tnode) {
+CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   const char *table_name = tnode->yb_table_name();
 
   // Setting up columns.
@@ -135,9 +135,9 @@ ErrorCode Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
   exec_status = b.Build(&schema);
   if (!exec_status.ok()) {
-    exec_context_->Error(tnode->columns_loc(), ErrorCode::INVALID_TABLE_DEFINITION);
-    WARN_NOT_OK(exec_status, "SQL EXEC");
-    return ErrorCode::INVALID_TABLE_DEFINITION;
+    return exec_context_->Error(tnode->columns_loc(),
+                                exec_status.ToString().c_str(),
+                                ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   // Create table.
@@ -149,21 +149,21 @@ ErrorCode Executor::ExecPTNode(const PTCreateTable *tnode) {
                                                      .num_replicas(1)
                                                      .Create();
   if (!exec_status.ok()) {
-    exec_context_->Error(tnode->name_loc(), ErrorCode::INVALID_TABLE_DEFINITION);
-    WARN_NOT_OK(exec_status, "SQL EXEC");
-    return ErrorCode::INVALID_TABLE_DEFINITION;
+    return exec_context_->Error(tnode->name_loc(),
+                                exec_status.ToString().c_str(),
+                                ErrorCode::INVALID_TABLE_DEFINITION);
   }
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
 template<typename PBType>
-Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
-                          yb::DataType col_type,
-                          PBType* col_pb,
-                          YBPartialRow *row,
-                          int col_index) {
+CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
+                                  yb::DataType col_type,
+                                  PBType* col_pb,
+                                  YBPartialRow *row,
+                                  int col_index) {
 
   col_pb->mutable_value()->set_datatype(col_type);
   switch (col_type) {
@@ -291,10 +291,10 @@ Status Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
-                                            const MCVector<ColumnArg>& column_args,
-                                            YSQLWriteRequestPB *req,
-                                            YBPartialRow *row) {
+CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
+                                                    const MCVector<ColumnArg>& column_args,
+                                                    YSQLWriteRequestPB *req,
+                                                    YBPartialRow *row) {
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
       // This column is not assigned a value, ignore it. We don't support default value yet.
@@ -327,10 +327,10 @@ Status Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& t
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
-                                 YBPartialRow *row,
-                                 const MCVector<ColumnOp>& hash_where_ops,
-                                 const MCList<ColumnOp>& where_ops) {
+CHECKED_STATUS Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
+                                         YBPartialRow *row,
+                                         const MCVector<ColumnOp>& hash_where_ops,
+                                         const MCList<ColumnOp>& where_ops) {
   // Setup the hash key columns.
   for (const auto& op : hash_where_ops) {
     const ColumnDesc *col_desc = op.desc();
@@ -356,10 +356,10 @@ Status Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
   return Status::OK();
 }
 
-Status Executor::WhereClauseToPB(YSQLReadRequestPB *req,
-                                 YBPartialRow *row,
-                                 const MCVector<ColumnOp>& hash_where_ops,
-                                 const MCList<ColumnOp>& where_ops) {
+CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
+                                         YBPartialRow *row,
+                                         const MCVector<ColumnOp>& hash_where_ops,
+                                         const MCList<ColumnOp>& where_ops) {
   // Setup the hash key columns.
   for (const auto& op : hash_where_ops) {
     const ColumnDesc *col_desc = op.desc();
@@ -398,7 +398,7 @@ Status Executor::WhereClauseToPB(YSQLReadRequestPB *req,
   return Status::OK();
 }
 
-Status Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op) {
+CHECKED_STATUS Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
@@ -414,7 +414,7 @@ Status Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op)
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const PTSelectStmt *tnode) {
+CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   shared_ptr<YBSqlReadOp> select_op;
 
   if (!tnode->is_system()) {
@@ -427,8 +427,7 @@ ErrorCode Executor::ExecPTNode(const PTSelectStmt *tnode) {
     // Where clause - Hash, range, and regular columns.
     YBPartialRow *row = select_op->mutable_row();
 
-    // TODO: a better way to handle errors here?
-    CHECK_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
+    RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
 
     // Specify selected columns.
     for (const ColumnDesc *col_desc : tnode->selected_columns()) {
@@ -438,13 +437,13 @@ ErrorCode Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   // Apply the operator always even when select_op is "null" so that the last read_op saved in
   // exec_context is always cleared.
-  CHECK_OK(exec_context_->ApplyRead(select_op));
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  RETURN_NOT_OK(exec_context_->ApplyRead(select_op, tnode));
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const PTInsertStmt *tnode) {
+CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBSqlWriteOp> insert_op(table->NewYSQLInsert());
@@ -455,23 +454,17 @@ ErrorCode Executor::ExecPTNode(const PTInsertStmt *tnode) {
                                         insert_op->mutable_request(),
                                         insert_op->mutable_row());
   if (!s.ok()) {
-    exec_context_->Error(tnode->loc(), s.ToString(), ErrorCode::INVALID_ARGUMENTS);
-    return ErrorCode::INVALID_ARGUMENTS;
+    return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
   }
 
   // Apply the operator.
-  s = exec_context_->ApplyWrite(insert_op);
-  if (!s.ok()) {
-    exec_context_->Error(tnode->loc(), s.ToString(), ErrorCode::SQL_STATEMENT_INVALID);
-    return ErrorCode::SQL_STATEMENT_INVALID;
-  }
-
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  RETURN_NOT_OK(exec_context_->ApplyWrite(insert_op, tnode));
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const PTDeleteStmt *tnode) {
+CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBSqlWriteOp> delete_op(table->NewYSQLDelete());
@@ -480,16 +473,16 @@ ErrorCode Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
-  CHECK_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
+  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
 
   // Apply the operator.
-  CHECK_OK(exec_context_->ApplyWrite(delete_op));
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  RETURN_NOT_OK(exec_context_->ApplyWrite(delete_op, tnode));
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Executor::ExecPTNode(const PTUpdateStmt *tnode) {
+CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBSqlWriteOp> update_op(table->NewYSQLUpdate());
@@ -498,17 +491,17 @@ ErrorCode Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = update_op->mutable_row();
-  CHECK_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
+  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
 
   // Setup the columns' new values.
-  Status s = ColumnArgsToWriteRequestPB(table,
-                                        tnode->column_args(),
-                                        update_op->mutable_request(),
-                                        update_op->mutable_row());
+  RETURN_NOT_OK(ColumnArgsToWriteRequestPB(table,
+                                           tnode->column_args(),
+                                           update_op->mutable_request(),
+                                           update_op->mutable_row()));
 
   // Apply the operator.
-  CHECK_OK(exec_context_->ApplyWrite(update_op));
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  RETURN_NOT_OK(exec_context_->ApplyWrite(update_op, tnode));
+  return Status::OK();
 }
 
 }  // namespace sql

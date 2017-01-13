@@ -32,8 +32,13 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
                             "r1 int, r2 varchar, "
                             "v1 int, v2 varchar, "
                             "primary key((h1, h2), r1, r2));";
-  Status s = processor->Run(create_stmt);
-  CHECK(s.ok());
+  CHECK_VALID_STMT(create_stmt);
+
+  // Test NOTFOUND. Select from empty table.
+  CHECK_INVALID_STMT("SELECT * FROM test_table");
+  CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = ''");
+  std::shared_ptr<YSQLRowBlock> empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
 
   // Insert 100 rows into the table.
   static const int kNumRows = 100;
@@ -42,16 +47,13 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
                              "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
                              idx, idx, idx+100, idx+100, idx+1000, idx+1000);
-    s = processor->Run(stmt);
-    CHECK(s.ok()) << "Execution failed. Command = '" << stmt << "'. Status = " << s.ToString();
+    CHECK_VALID_STMT(stmt);
   }
   LOG(INFO) << kNumRows << " rows inserted";
 
   // Test simple query and result.
-  const char *select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                            "WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;";
-  s = processor->Run(select_stmt);
-  CHECK(s.ok());
+  CHECK_VALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;");
 
   std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
@@ -69,8 +71,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     string stmt = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
                              "WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
                              idx, idx, idx+100, idx+100);
-    s = processor->Run(stmt.c_str());
-    CHECK(s.ok()) << "Execution failed. Command = '" << stmt << "'. Status = " << s.ToString();
+    CHECK_VALID_STMT(stmt);
 
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
@@ -93,16 +94,14 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
                              "VALUES($0, '$1', $2, 'r$3', $4, 'v$5');",
                              h1_shared, h2_shared, idx+100, idx+100, idx+1000, idx+1000);
-    s = processor->Run(stmt.c_str());
-    CHECK(s.ok());
+    CHECK_VALID_STMT(stmt);
   }
 
   // Select all 20 rows and check the values.
   const string multi_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
                                          "WHERE h1 = $0 AND h2 = '$1';",
                                          h1_shared, h2_shared);
-  s = processor->Run(multi_select.c_str());
-  CHECK(s.ok());
+  CHECK_VALID_STMT(multi_select);
   row_block = processor->row_block();
 
   // Check the result set.

@@ -56,6 +56,7 @@ message AppStatusPB {
     INCOMPLETE = 17;
     END_OF_FILE = 18;
     INVALID_COMMAND = 19;
+    SQL_ERROR = 20;
   }
 
   required ErrorCode code = 1;

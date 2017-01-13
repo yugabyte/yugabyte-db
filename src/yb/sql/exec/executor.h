@@ -33,42 +33,47 @@ class Executor {
   virtual ~Executor();
 
   // Execute the given parse tree.
-  ErrorCode Execute(const std::string& sql_stmt,
-                    ParseTree::UniPtr ptree,
-                    SqlEnv *sql_env);
+  CHECKED_STATUS Execute(const std::string& sql_stmt,
+                         ParseTree::UniPtr ptree,
+                         SqlEnv *sql_env);
 
   // Complete execution and release the parse tree from the process.
   ParseTree::UniPtr Done();
 
+  // Access to error code.
+  ErrorCode error_code() const {
+    return exec_context_->error_code();
+  }
+
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
-  ErrorCode ExecPTree(const ParseTree *ptree);
+  CHECKED_STATUS ExecPTree(const ParseTree *ptree);
 
   // Execute any TreeNode. This function determines how to execute a node.
-  ErrorCode ExecTreeNode(const TreeNode *tnode);
+  CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
 
   // Returns unsupported error for generic tree node execution. We only get to this overloaded
   // function if the execution of a specific treenode is not yet supported or defined.
-  ErrorCode ExecPTNode(const TreeNode *tnode);
+  CHECKED_STATUS ExecPTNode(const TreeNode *tnode);
 
   // Runs the execution on all of the entries in the list node.
-  ErrorCode ExecPTNode(const PTListNode *tnode);
+  CHECKED_STATUS ExecPTNode(const PTListNode *tnode);
 
   // Creates table.
-  ErrorCode ExecPTNode(const PTCreateTable *tnode);
+  CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
 
   // Select statement.
-  ErrorCode ExecPTNode(const PTSelectStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);
 
   // Insert statement.
-  ErrorCode ExecPTNode(const PTInsertStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTInsertStmt *tnode);
 
   // Delete statement.
-  ErrorCode ExecPTNode(const PTDeleteStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTDeleteStmt *tnode);
 
   // Update statement.
-  ErrorCode ExecPTNode(const PTUpdateStmt *tnode);
+  CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode);
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.

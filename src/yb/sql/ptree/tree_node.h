@@ -14,6 +14,7 @@
 #include "yb/sql/ptree/pt_option.h"
 #include "yb/sql/util/base_types.h"
 #include "yb/sql/util/errcodes.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace sql {
@@ -43,9 +44,6 @@ class TreeNode : public MCBase {
   typedef MCSharedPtr<TreeNode> SharedPtr;
   typedef MCSharedPtr<const TreeNode> SharedPtrConst;
 
-  // Execute function.
-  using ExecOperator = std::function<ErrorCode(TreeNode*)>;
-
   //------------------------------------------------------------------------------------------------
   // Public functions.
   explicit TreeNode(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr);
@@ -63,7 +61,7 @@ class TreeNode : public MCBase {
   }
 
   // Run semantics analysis on this node.
-  virtual ErrorCode Analyze(SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 
   // Access function to this node location.
   const YBLocation& loc() const {

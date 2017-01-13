@@ -24,6 +24,7 @@ using std::make_shared;
 using std::string;
 
 using yb::sql::YbSql;
+using yb::Status;
 
 DECLARE_bool(logtostderr);
 int main(int argc, char** argv) {
@@ -60,7 +61,8 @@ int main(int argc, char** argv) {
 
     // Execute.
     cout << "\033[1;34mExecute statement: " << sql_stmt << "\033[0m" << endl;
-    ybsql.Process(nullptr, sql_stmt);
+    Status s = ybsql.Process(nullptr, sql_stmt);
+    cout << s.ToString(false);
   }
 
 exit_ybsql:

@@ -33,8 +33,8 @@ class PTName : public TreeNode {
     return MCMakeShared<PTName>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  ErrorCode SetupPrimaryKey(SemContext *sem_context);
-  ErrorCode SetupHashAndPrimaryKey(SemContext *sem_context);
+  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context);
+  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context);
 
   const MCString& name() const {
     return *name_;
@@ -93,7 +93,7 @@ class PTQualifiedName : public PTName {
   void Prepend(const PTName::SharedPtr& ptname);
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
   const MCString& last_name() const {
     return ptnames_.back()->name();

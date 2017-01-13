@@ -8376,8 +8376,10 @@ opt_hold:
 namespace yb {
 namespace sql {
 
-void GramProcessor::error(const location_type& l, const std::string& m) {
-  parser_->parse_context()->Error(l, m);
+void GramProcessor::error(const location_type& l, const string& m) {
+  // Bison parser will raise exception, so we don't return Status::Error here.
+  Status s = parser_->parse_context()->Error(l, m.c_str());
+  VLOG(3) << s.ToString();
 }
 
 }  // namespace sql

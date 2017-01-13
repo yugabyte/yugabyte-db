@@ -44,7 +44,7 @@ class PTInsertStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Node type.

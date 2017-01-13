@@ -45,7 +45,7 @@ class PTValues : public PTCollection {
   void Prepend(const PTExprListNode::SharedPtr& tnode);
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Access function for tuples_.
@@ -118,7 +118,7 @@ class PTTableRef : public TreeNode {
     return MCMakeShared<PTTableRef>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
   // Returns last component in qualified name because we don't yet supported namespace.
   const MCString& table_name() {
@@ -165,8 +165,8 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
-  ErrorCode AnalyzeTarget(TreeNode *target, SemContext *sem_context);
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Execution opcode.

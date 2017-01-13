@@ -159,8 +159,8 @@ class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
   }
 
   // Nothing to do.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE {
-    return ErrorCode::SUCCESSFUL_COMPLETION;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    return Status::OK();
   }
 
   // Evaluate this expression and its operand.
@@ -390,7 +390,7 @@ class PTRef : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Access function for descriptor.

@@ -61,9 +61,9 @@ class SemContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Symbol table support.
-  void MapSymbol(const MCString& name, PTColumnDefinition *entry);
-  void MapSymbol(const MCString& name, PTCreateTable *entry);
-  void MapSymbol(const MCString& name, ColumnDesc *entry);
+  CHECKED_STATUS MapSymbol(const MCString& name, PTColumnDefinition *entry);
+  CHECKED_STATUS MapSymbol(const MCString& name, PTCreateTable *entry);
+  CHECKED_STATUS MapSymbol(const MCString& name, ColumnDesc *entry);
 
   // Access functions to current processing symbol.
   SymbolEntry *current_processing_id() {

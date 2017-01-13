@@ -18,6 +18,42 @@
 namespace yb {
 namespace sql {
 
+#define PARSE_VALID_STMT(sql_stmt)             \
+do {                                           \
+  Status s = TestParser(sql_stmt);             \
+  EXPECT_TRUE(s.ok());                         \
+} while (false)
+
+#define PARSE_INVALID_STMT(sql_stmt)           \
+do {                                           \
+  Status s = TestParser(sql_stmt);             \
+  EXPECT_FALSE(s.ok());                        \
+} while (false)
+
+#define EXEC_VALID_STMT(sql_stmt)              \
+do {                                           \
+  Status s = processor->Run(sql_stmt);         \
+  EXPECT_TRUE(s.ok());                         \
+} while (false)
+
+#define EXEC_INVALID_STMT(sql_stmt)            \
+do {                                           \
+  Status s = processor->Run(sql_stmt);         \
+  EXPECT_FALSE(s.ok());                        \
+} while (false)
+
+#define CHECK_VALID_STMT(sql_stmt)              \
+do {                                            \
+  Status s = processor->Run(sql_stmt);          \
+  CHECK(s.ok()) << "Failure: " << s.ToString(); \
+} while (false)
+
+#define CHECK_INVALID_STMT(sql_stmt)            \
+do {                                            \
+  Status s = processor->Run(sql_stmt);          \
+  CHECK(!s.ok()) << "Expect failure";           \
+} while (false)
+
 // Base class for all SQL test cases.
 class YbSqlTestBase : public YBTest {
  public:
@@ -40,7 +76,7 @@ class YbSqlTestBase : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
-  ErrorCode TestParser(const std::string& sql_stmt) {
+  CHECKED_STATUS TestParser(const std::string& sql_stmt) {
     return ybsql_->TestParser(sql_stmt);
   }
 

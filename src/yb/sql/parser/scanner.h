@@ -141,7 +141,8 @@ class LexProcessor : public yyFlexLexer {
   void CountNewlineInToken(const std::string& token);
 
   // Reports error.
-  void ScanError(const char *message);
+  void ScanError(const char *token);
+  void ScanError(const char *message, ErrorCode errcode);
 
   // Read literal value during a scan and convert it to MCString.
   MCString::SharedPtr ScanLiteral();

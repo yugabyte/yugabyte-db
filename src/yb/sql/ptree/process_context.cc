@@ -24,7 +24,8 @@ ProcessContext::ProcessContext(const char *stmt,
       stmt_len_(stmt_len),
       parse_tree_(move(parse_tree)),
       ptemp_mem_(new MemoryContext()),
-      error_code_(ErrorCode::SUCCESSFUL_COMPLETION) {
+      error_code_(ErrorCode::SUCCESS),
+      error_msgs_(ptemp_mem_.get()) {
 
   if (parse_tree_ == nullptr) {
     parse_tree_ = ParseTree::UniPtr(new ParseTree());
@@ -43,6 +44,16 @@ void ProcessContext::SaveGeneratedParseTree(TreeNode::SharedPtr generated_parse_
 
 //--------------------------------------------------------------------------------------------------
 
+CHECKED_STATUS ProcessContext::GetStatus() {
+  // Erroneous index is negative while successful index is non-negative.
+  if (error_code_ < ErrorCode::SUCCESS) {
+    return STATUS(SqlError, error_msgs_.c_str());
+  }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 void ProcessContext::Warn(const YBLocation& l, const string& m, ErrorCode error_code) {
   error_code_ = error_code;
   LOG(WARNING) << kErrorFontStart << "SQL Warning (" << l << "): " << m << kErrorFontEnd << endl;
@@ -50,39 +61,56 @@ void ProcessContext::Warn(const YBLocation& l, const string& m, ErrorCode error_
 
 //--------------------------------------------------------------------------------------------------
 
-void ProcessContext::Error(const YBLocation& l,
-                           const string& m,
-                           ErrorCode error_code,
-                           const char* token) {
+CHECKED_STATUS ProcessContext::Error(const YBLocation& l,
+                                     const char *m,
+                                     ErrorCode error_code,
+                                     const char* token) {
   error_code_ = error_code;
+
+  // Form an error message.
+  MCString msg(PTempMem());
+
+  // Start with location.
+  msg += "SQL Error (";
+  l.ToString<MCString>(&msg);
+  msg += "): ";
+
+  // Concatenate error code.
+  msg += ErrorText(error_code);
+  msg += " - ";
+
+  // Concatenate error message.
+  msg += m;
+
+  // Concantenate token.
+  msg += "\n\t";
   if (token == nullptr) {
-    string token;
     const pair<const char *, const size_t> token_bounds = ReadToken(l);
     if (token_bounds.first != nullptr) {
-      token.assign(token_bounds.first, token_bounds.second);
+      msg += token_bounds.first;
+      msg += "\n\t";
+
+      // Concantenate pointer to erroneous token.
+      msg.append(token_bounds.second, '^');
     }
-    LOG(ERROR) << kErrorFontStart << "SQL Error (" << l << "): "
-               << ErrorText(error_code) << " - " << m << kErrorFontEnd << endl
-               << "\t" << kErrorFontStart << token << kErrorFontEnd
-               << token_bounds.first + token_bounds.second << endl;
   } else {
-    LOG(ERROR) << kErrorFontStart << "SQL Error (" << l << "): "
-               << ErrorText(error_code) << " - " << m << kErrorFontEnd << endl
-               << "\t<< " << kErrorFontStart << token << kErrorFontEnd << " >>" << endl;
+    msg += token;
   }
+  msg += "\n";
+
+  // Append this error message to the context.
+  error_msgs_.append(msg);
+
+  LOG(INFO) << msg;
+  return STATUS(SqlError, msg.c_str());
 }
 
-void ProcessContext::Error(const YBLocation& l, const string& m, const char* token) {
-  Error(l, m, ErrorCode::SQL_STATEMENT_INVALID, token);
+CHECKED_STATUS ProcessContext::Error(const YBLocation& l, const char *m, const char* token) {
+  return Error(l, m, ErrorCode::SQL_STATEMENT_INVALID, token);
 }
 
-void ProcessContext::Error(const YBLocation& l, ErrorCode error_code, const char* token) {
-  Error(l, "", error_code, token);
-}
-
-void ProcessContext::Error(const string& m) {
-  error_code_ = ErrorCode::SYNTAX_ERROR;
-  LOG(ERROR) << kErrorFontStart << "SQL Error: " << m << kErrorFontEnd << endl;
+CHECKED_STATUS ProcessContext::Error(const YBLocation& l, ErrorCode error_code, const char* token) {
+  return Error(l, "", error_code, token);
 }
 
 //--------------------------------------------------------------------------------------------------

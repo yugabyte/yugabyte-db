@@ -67,7 +67,7 @@ class PTPrimaryKey : public PTConstraint {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
  private:
   PTListNode::SharedPtr columns_;
@@ -99,7 +99,7 @@ class PTColumnDefinition : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
   // Access function for is_primary_key_.
   bool is_primary_key() const {
@@ -173,7 +173,7 @@ class PTCreateTable : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // column lists.

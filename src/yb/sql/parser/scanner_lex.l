@@ -489,11 +489,10 @@ other                     .
 {xusstart} {
   SET_YYLLOC();
   if (!standard_conforming_strings_) {
-    parse_context_->Error(token_loc_,
-                          "Unsafe use of string constant with Unicode escapes. String constants "
-                          "with Unicode escapes cannot be used when standard_conforming_strings_ "
-                          "is off",
-                          ErrorCode::FEATURE_NOT_SUPPORTED);
+    ScanError("Unsafe use of string constant with Unicode escapes. String constants "
+              "with Unicode escapes cannot be used when standard_conforming_strings_ "
+              "is off",
+              ErrorCode::FEATURE_NOT_SUPPORTED);
   }
   BEGIN(xus);
   startlit();
@@ -597,19 +596,17 @@ other                     .
 <xeu><<EOF>>  { yyerror("invalid Unicode surrogate pair"); }
 
 <xe,xeu>{xeunicodefail} {
-  parse_context_->Error(token_loc_,
-                        "Invalid Unicode escape. Unicode escapes must be \\uXXXX or \\UXXXXXXXX",
-                        ErrorCode::INVALID_ESCAPE_SEQUENCE);
+  ScanError("Invalid Unicode escape. Unicode escapes must be \\uXXXX or \\UXXXXXXXX",
+             ErrorCode::INVALID_ESCAPE_SEQUENCE);
 }
 
 <xe>{xeescape} {
   if (yytext[1] == '\'') {
     if (backslash_quote_ == BackslashQuoteType::OFF ||
         (backslash_quote_ == BackslashQuoteType::SAFE_ENCODING)) {
-      parse_context_->Error(token_loc_,
-                            "Unsafe use of \\' in a string literal. Use '' to write quotes in "
-                            "strings. \\' is insecure in client-only encodings",
-                            ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER);
+      ScanError("Unsafe use of \\' in a string literal. Use '' to write quotes in "
+                 "strings. \\' is insecure in client-only encodings",
+                 ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER);
     }
   }
   check_string_escape_warning(yytext[1]);

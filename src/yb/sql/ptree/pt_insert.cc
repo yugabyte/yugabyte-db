@@ -34,34 +34,27 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
 PTInsertStmt::~PTInsertStmt() {
 }
 
-ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
+CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // Clear column_args_ as this call might be a reentrance due to metadata mismatch.
   column_args_.clear();
 
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
   // Get table descriptor.
-  err = relation_->Analyze(sem_context);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
+  RETURN_NOT_OK(relation_->Analyze(sem_context));
 
-  LookupTable(sem_context);
+  RETURN_NOT_OK(LookupTable(sem_context));
   const int num_cols = num_columns();
 
   // Check the selected columns. Cassandra only supports inserting one tuple / row at a time.
   PTValues *value_clause = static_cast<PTValues *>(value_clause_.get());
   if (value_clause->TupleCount() == 0) {
-    err = ErrorCode::TOO_FEW_ARGUMENTS;
-    sem_context->Error(value_clause_->loc(), err);
-    return err;
+    return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
   }
   const MCList<PTExpr::SharedPtr>& exprs = value_clause->Tuple(0)->node_list();
   for (const auto& const_expr : exprs) {
     if (const_expr->expr_op() != ExprOperator::kConst) {
-      err = ErrorCode::CQL_STATEMENT_INVALID;
-      sem_context->Error(loc(), "Only literal values are allowed in this context", err);
-      sem_context->Error(const_expr->loc(), err);
+      return sem_context->Error(const_expr->loc(),
+                                "Only literal values are allowed in this context",
+                                ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
 
@@ -72,12 +65,10 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
     const MCList<PTQualifiedName::SharedPtr>& names = columns_->node_list();
     if (names.size() != exprs.size()) {
       if (names.size() > exprs.size()) {
-        err = ErrorCode::TOO_FEW_ARGUMENTS;
+        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
       } else {
-        err = ErrorCode::TOO_MANY_ARGUMENTS;
+        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_MANY_ARGUMENTS);
       }
-      sem_context->Error(value_clause_->loc(), err);
-      return err;
     }
 
     // Mismatch between arguments and columns.
@@ -87,24 +78,18 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
 
       // Check that the column exists.
       if (col_desc == nullptr) {
-        err = ErrorCode::UNDEFINED_COLUMN;
-        sem_context->Error(name->loc(), err);
-        return err;
+        return sem_context->Error(name->loc(), ErrorCode::UNDEFINED_COLUMN);
       }
 
       // Check that the datatypes are compatible.
       if (!sem_context->IsCompatible(col_desc->sql_type(), (*iter)->sql_type())) {
-        err = ErrorCode::DATATYPE_MISMATCH;
-        sem_context->Error((*iter)->loc(), err);
-        return err;
+        return sem_context->Error((*iter)->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
       // Check that the given column is not a duplicate and initialize the argument entry.
       idx = col_desc->index();
       if (column_args_[idx].IsInitialized()) {
-        err = ErrorCode::DUPLICATE_COLUMN;
-        sem_context->Error((*iter)->loc(), err);
-        return err;
+        return sem_context->Error((*iter)->loc(), ErrorCode::DUPLICATE_COLUMN);
       }
       column_args_[idx].Init(col_desc, *iter);
       iter++;
@@ -113,12 +98,10 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
     // Check number of arguments.
     if (exprs.size() != num_cols) {
       if (exprs.size() > num_cols) {
-        err = ErrorCode::TOO_MANY_ARGUMENTS;
+        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_MANY_ARGUMENTS);
       } else {
-        err = ErrorCode::TOO_FEW_ARGUMENTS;
+        return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
       }
-      sem_context->Error(value_clause_->loc(), err);
-      return err;
     }
 
     // Check that the argument datatypes are compatible with all columns.
@@ -126,9 +109,7 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
     for (const auto& expr : exprs) {
       ColumnDesc *col_desc = &table_columns_[idx];
       if (!sem_context->IsCompatible(col_desc->sql_type(), expr->sql_type())) {
-        err = ErrorCode::DATATYPE_MISMATCH;
-        sem_context->Error(expr->loc(), err);
-        return err;
+        return sem_context->Error(expr->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
       // Initialize the argument entry.
@@ -142,13 +123,11 @@ ErrorCode PTInsertStmt::Analyze(SemContext *sem_context) {
   int num_keys = num_key_columns();
   for (idx = 0; idx < num_keys; idx++) {
     if (!column_args_[idx].IsInitialized()) {
-      err = ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY;
-      sem_context->Error(value_clause_->loc(), err);
-      return err;
+      return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
 
-  return err;
+  return Status::OK();
 }
 
 void PTInsertStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {

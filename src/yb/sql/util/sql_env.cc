@@ -31,7 +31,7 @@ YBTableCreator *SqlEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-Status SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
+CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
   // Clear the previous result.
   read_op_ = nullptr;
 
@@ -42,12 +42,11 @@ Status SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
   return Status::OK();
 }
 
-Status SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
+CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
   // Clear the previous result.
   read_op_ = nullptr;
 
   if (yb_op.get() != nullptr) {
-
     // Execute the read.
     RETURN_NOT_OK(read_session_->Apply(yb_op));
     RETURN_NOT_OK(read_session_->Flush());
@@ -64,8 +63,11 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const char *table_name, bool refresh_me
   // to decide whether or not the cached version should be used.
   // At the moment, we read the table descriptor every time we need it.
   shared_ptr<YBTable> yb_table;
-  // TODO: a better way to handle errors here?
-  CHECK_OK(client_->OpenTable(table_name, &yb_table));
+  Status s = client_->OpenTable(table_name, &yb_table);
+  if (s.IsNotFound()) {
+    return nullptr;
+  }
+  CHECK(s.ok()) << "Server returns unexpected error. " << s.ToString();
   return yb_table;
 }
 

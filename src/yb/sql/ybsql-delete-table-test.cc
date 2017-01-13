@@ -30,8 +30,7 @@ TEST_F(YbSqlDeleteTable, TestSqlDeleteTableSimple) {
                             "r1 int, r2 varchar, "
                             "v1 int, v2 varchar, "
                             "primary key((h1, h2), r1, r2));";
-  Status s = processor->Run(create_stmt);
-  CHECK(s.ok());
+  CHECK_VALID_STMT(create_stmt);
 
   // Insert 100 rows into the table.
   static const int kNumRows = 100;
@@ -40,8 +39,7 @@ TEST_F(YbSqlDeleteTable, TestSqlDeleteTableSimple) {
     string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
                              "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
                              idx, idx, idx+100, idx+100, idx+1000, idx+1000);
-    s = processor->Run(stmt.c_str());
-    CHECK(s.ok());
+    CHECK_VALID_STMT(stmt.c_str());
   }
 
 #if 0

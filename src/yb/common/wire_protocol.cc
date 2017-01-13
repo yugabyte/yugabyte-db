@@ -82,6 +82,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_code(AppStatusPB::END_OF_FILE);
   } else if (status.IsInvalidCommand()) {
     pb->set_code(AppStatusPB::INVALID_COMMAND);
+  } else if (status.IsSqlError()) {
+    pb->set_code(AppStatusPB::SQL_ERROR);
   } else {
     LOG(WARNING) << "Unknown error code translation from internal error "
                  << status.ToString() << ": sending UNKNOWN_ERROR";
@@ -147,6 +149,8 @@ Status StatusFromPB(const AppStatusPB& pb) {
       return STATUS(EndOfFile, pb.message(), "", posix_code);
     case AppStatusPB::INVALID_COMMAND:
       return STATUS(InvalidCommand, pb.message(), "", posix_code);
+    case AppStatusPB::SQL_ERROR:
+      return STATUS(SqlError, pb.message(), "", posix_code);
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();

@@ -172,8 +172,19 @@ void LexProcessor::CountNewlineInToken(const string& token) {
 
 //--------------------------------------------------------------------------------------------------
 
-void LexProcessor::ScanError(const char *message) {
-  parse_context_->ScanError(token_loc_, message);
+void LexProcessor::ScanError(const char *token) {
+  // Flex scanner will raise exception by itself, so we don't return Status::Error here.
+  Status s = parse_context_->Error(token_loc_,
+                                   "Lexical error at or near ",
+                                   ErrorCode::LEXICAL_ERROR,
+                                   token);
+  VLOG(3) << s.ToString();
+}
+
+void LexProcessor::ScanError(const char *message, ErrorCode errcode) {
+  // Flex scanner will raise exception by itself, so we don't return Status::Error here.
+  Status s = parse_context_->Error(token_loc_, message, errcode);
+  VLOG(3) << s.ToString();
 }
 
 //--------------------------------------------------------------------------------------------------

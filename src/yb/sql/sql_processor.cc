@@ -30,12 +30,8 @@ SqlProcessor::SqlProcessor(shared_ptr<YBClient> client)
 SqlProcessor::~SqlProcessor() {
 }
 
-Status SqlProcessor::Run(const string& sql_stmt) {
-  ErrorCode errcode = ybsql_->Process(sql_env_.get(), sql_stmt);
-  if (errcode != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return STATUS(InvalidCommand, sql_stmt);
-  }
-  return Status::OK();
+CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt) {
+  return ybsql_->Process(sql_env_.get(), sql_stmt);
 }
 
 }  // namespace sql

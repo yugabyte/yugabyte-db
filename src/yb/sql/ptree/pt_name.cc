@@ -22,12 +22,11 @@ PTName::PTName(MemoryContext *memctx,
 PTName::~PTName() {
 }
 
-ErrorCode PTName::SetupPrimaryKey(SemContext *sem_context) {
+CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
   PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     LOG(INFO) << "Column \"" << *name_ << "\" doesn't exist";
-    sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
-    return ErrorCode::UNDEFINED_COLUMN;
+    return sem_context->Error(loc(), "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
   column->set_is_primary_key();
 
@@ -35,15 +34,14 @@ ErrorCode PTName::SetupPrimaryKey(SemContext *sem_context) {
   PTCreateTable *table = sem_context->current_table();
   table->AppendPrimaryColumn(column);
 
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  return Status::OK();
 }
 
-ErrorCode PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
+CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
   PTColumnDefinition *column = sem_context->GetColumnDefinition(*name_);
   if (column == nullptr) {
     LOG(INFO) << "Column \"" << *name_ << "\" doesn't exist";
-    sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
-    return ErrorCode::UNDEFINED_COLUMN;
+    return sem_context->Error(loc(), "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
   }
   column->set_is_hash_key();
 
@@ -51,7 +49,7 @@ ErrorCode PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
   PTCreateTable *table = sem_context->current_table();
   table->AppendHashColumn(column);
 
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -94,18 +92,17 @@ void PTQualifiedName::Prepend(const PTName::SharedPtr& ptname) {
   ptnames_.push_front(ptname);
 }
 
-ErrorCode PTQualifiedName::Analyze(SemContext *sem_context) {
+CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
   // We don't support qualified name yet except for "system" namespace.
   if (ptnames_.size() > 1) {
     const MCString& first_name = ptnames_.front()->name();
     if (first_name == "system") {
       is_system_ = true;
     } else {
-      sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
-      return ErrorCode::FEATURE_NOT_SUPPORTED;
+      return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
     }
   }
-  return ErrorCode::SUCCESSFUL_COMPLETION;
+  return Status::OK();
 }
 
 }  // namespace sql

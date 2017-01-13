@@ -30,26 +30,23 @@ class ParseContext : public ProcessContext {
   // provided buffer 'buf'. Scanner will call this function when looking for next token.
   size_t Read(char* buf, size_t max_size);
 
-  // Handling scanning error.
-  void ScanError(const location& l, const std::string& token);
-
   // Handling parsing warning.
-  void Warn(const location& l, const std::string& m, ErrorCode error_code) {
+  void Warn(const location& l, const char *m, ErrorCode error_code) {
     ProcessContext::Warn(Location(l), m, error_code);
   }
 
   // Handling parsing error.
-  void Error(const location& l,
-             const std::string& m,
-             ErrorCode error_code,
-             const char* token = nullptr) {
-    ProcessContext::Error(Location(l), m, error_code, token);
+  CHECKED_STATUS Error(const location& l,
+                       const char *m,
+                       ErrorCode error_code,
+                       const char* token = nullptr) {
+    return ProcessContext::Error(Location(l), m, error_code, token);
   }
-  void Error(const location& l, const std::string& m, const char* token = nullptr) {
-    ProcessContext::Error(Location(l), m, token);
+  CHECKED_STATUS Error(const location& l, const char *m, const char* token = nullptr) {
+    return ProcessContext::Error(Location(l), m, token);
   }
-  void Error(const location& l, ErrorCode error_code, const char* token = nullptr) {
-    ProcessContext::Error(Location(l), error_code, token);
+  CHECKED_STATUS Error(const location& l, ErrorCode error_code, const char* token = nullptr) {
+    return ProcessContext::Error(Location(l), error_code, token);
   }
 
   // Access function for sql_file_.

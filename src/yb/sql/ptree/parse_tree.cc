@@ -26,11 +26,11 @@ ParseTree::~ParseTree() {
   ptree_mem_ = nullptr;
 }
 
-ErrorCode ParseTree::Analyze(SemContext *sem_context) {
+CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
   if (root_ == nullptr) {
-    return ErrorCode::SUCCESSFUL_COMPLETION;
+    LOG(INFO) << "Parse tree is NULL";
+    return Status::OK();
   }
-
   return root_->Analyze(sem_context);
 }
 

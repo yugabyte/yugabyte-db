@@ -39,9 +39,8 @@ void PTValues::Prepend(const PTExprListNode::SharedPtr& tuple) {
   tuples_.Prepend(tuple);
 }
 
-ErrorCode PTValues::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-  return err;
+CHECKED_STATUS PTValues::Analyze(SemContext *sem_context) {
+  return Status::OK();
 }
 
 void PTValues::PrintSemanticAnalysisResult(SemContext *sem_context) {
@@ -78,21 +77,19 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
 PTSelectStmt::~PTSelectStmt() {
 }
 
-ErrorCode PTSelectStmt::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Get the table descriptor.
   if (from_clause_->size() > 1) {
-    err = ErrorCode::CQL_STATEMENT_INVALID;
-    sem_context->Error(from_clause_->loc(), "Only one selected table is allowed", err);
+    return sem_context->Error(from_clause_->loc(), "Only one selected table is allowed",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
-  from_clause_->Analyze(sem_context);
+  RETURN_NOT_OK(from_clause_->Analyze(sem_context));
   if (is_system()) {
-    return err;
+    return Status::OK();
   }
 
   // Collect table's schema for semantic analysis.
-  LookupTable(sem_context);
+  RETURN_NOT_OK(LookupTable(sem_context));
 
   // Run error checking on the select list 'target_'.
   // Check that all targets are valid references to table columns.
@@ -101,43 +98,32 @@ ErrorCode PTSelectStmt::Analyze(SemContext *sem_context) {
                                                       this,
                                                       std::placeholders::_1,
                                                       std::placeholders::_2);
-  err = target_->Analyze(sem_context, analyze);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
+  RETURN_NOT_OK(target_->Analyze(sem_context, analyze));
 
   // Run error checking on the WHERE conditions.
-  err = AnalyzeWhereClause(sem_context, where_clause_);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
-  return err;
+  RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
+
+  return Status::OK();
 }
 
-ErrorCode PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
+CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
   if (target->opcode() != TreeNodeOpcode::kPTRef) {
-    err = ErrorCode::CQL_STATEMENT_INVALID;
-    sem_context->Error(target->loc(), "Selecting expression is not allowed in CQL", err);
-    return err;
+    return sem_context->Error(target->loc(), "Selecting expression is not allowed in CQL",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   PTRef *ref = static_cast<PTRef *>(target);
-  err = ref->Analyze(sem_context);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
+  RETURN_NOT_OK(ref->Analyze(sem_context));
 
   // Add the column descriptor to select_list_.
   const ColumnDesc *col_desc = ref->desc();
   if (col_desc == nullptr) {
     // This ref is pointing to the whole table (SELECT *).
     if (target_->size() != 1) {
-      err = ErrorCode::CQL_STATEMENT_INVALID;
-      sem_context->Error(target->loc(), "Selecting '*' is not allowed in this context", err);
-      return err;
+      return sem_context->Error(target->loc(), "Selecting '*' is not allowed in this context",
+                                ErrorCode::CQL_STATEMENT_INVALID);
     }
     int num_cols = num_columns();
     for (int idx = 0; idx < num_cols; idx++) {
@@ -147,7 +133,7 @@ ErrorCode PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context)
     selected_columns_.push_back(col_desc);
   }
 
-  return err;
+  return Status::OK();
 }
 
 void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
@@ -184,11 +170,9 @@ PTTableRef::PTTableRef(MemoryContext *memctx,
 PTTableRef::~PTTableRef() {
 }
 
-ErrorCode PTTableRef::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
   if (alias_ != nullptr) {
-    err = ErrorCode::CQL_STATEMENT_INVALID;
-    sem_context->Error(loc(), "Alias is not allowed", err);
+    return sem_context->Error(loc(), "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
   }
   return name_->Analyze(sem_context);
 }

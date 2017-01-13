@@ -23,18 +23,17 @@ Parser::Parser()
 }
 
 Parser::~Parser() {
-  // TODO(neil) Complete this prototype.
 }
 
 //--------------------------------------------------------------------------------------------------
 
-ErrorCode Parser::Parse(const string& sql_stmt) {
+CHECKED_STATUS Parser::Parse(const string& sql_stmt) {
   parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt.c_str(), sql_stmt.length()));
   lex_processor_.ScanInit(parse_context());
   gram_processor_.set_debug_level(parse_context_->trace_parsing());
 
   if (gram_processor_.parse() == 0 &&
-      parse_context_->error_code() == ErrorCode::SUCCESSFUL_COMPLETION) {
+      parse_context_->error_code() == ErrorCode::SUCCESS) {
     VLOG(3) << "Successfully parsed statement \"" << parse_context_->stmt()
             << "\". Result = <" << parse_context_->parse_tree() << ">" << endl;
   } else {
@@ -42,12 +41,14 @@ ErrorCode Parser::Parse(const string& sql_stmt) {
             << kErrorFontEnd << endl;
   }
 
-  return parse_context_->error_code();
+  return parse_context_->GetStatus();
 }
 
 //--------------------------------------------------------------------------------------------------
 
 ParseTree::UniPtr Parser::Done() {
+  // When releasing the parse tree, we must free the context because it has references to the tree
+  // which doesn't belong to this context any longer.
   ParseTree::UniPtr ptree = parse_context_->AcquireParseTree();
   parse_context_ = nullptr;
   return ptree;

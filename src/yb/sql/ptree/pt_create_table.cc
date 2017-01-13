@@ -29,26 +29,21 @@ PTCreateTable::PTCreateTable(MemoryContext *memctx,
 PTCreateTable::~PTCreateTable() {
 }
 
-ErrorCode PTCreateTable::Analyze(SemContext *sem_context) {
+CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   // DDL statement is not allowed to be retry.
   if (sem_context->retry_count() > 0) {
-    return ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED;
+    return sem_context->Error(loc(), ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED);
   }
 
-  ErrorCode err;
-  err = relation_->Analyze(sem_context);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
+  // Processing table name.
+  RETURN_NOT_OK(relation_->Analyze(sem_context));
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_table(this);
 
-  err = elements_->Analyze(sem_context);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
+  // Processing table elements.
+  RETURN_NOT_OK(elements_->Analyze(sem_context));
 
   // Move the all partition and primary columns from columns list to appropriate list.
   int32_t order = 0;
@@ -86,7 +81,7 @@ ErrorCode PTCreateTable::Analyze(SemContext *sem_context) {
     PrintSemanticAnalysisResult(sem_context);
   }
 
-  return err;
+  return Status::OK();
 }
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
@@ -136,17 +131,15 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
 PTColumnDefinition::~PTColumnDefinition() {
 }
 
-ErrorCode PTColumnDefinition::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTColumnDefinition::Analyze(SemContext *sem_context) {
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_column(this);
 
   // Analyze column constraint.
-  sem_context->MapSymbol(*name_, this);
+  RETURN_NOT_OK(sem_context->MapSymbol(*name_, this));
   if (constraints_ != nullptr) {
-    constraints_->Analyze(sem_context);
+    RETURN_NOT_OK(constraints_->Analyze(sem_context));
   }
 
   // Add the analyzed column to table.
@@ -155,7 +148,7 @@ ErrorCode PTColumnDefinition::Analyze(SemContext *sem_context) {
 
   // Restore the context value as we are done with this colummn.
   sem_context->set_current_processing_id(cached_entry);
-  return err;
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -170,14 +163,11 @@ PTPrimaryKey::PTPrimaryKey(MemoryContext *memctx,
 PTPrimaryKey::~PTPrimaryKey() {
 }
 
-ErrorCode PTPrimaryKey::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
   // Check if primary key is defined more than one time.
   PTCreateTable *table = sem_context->current_table();
   if (table->primary_columns().size() > 0 || table->hash_columns().size() > 0) {
-    sem_context->Error(loc(), "Too many primary key", ErrorCode::INVALID_TABLE_DEFINITION);
-    return ErrorCode::INVALID_TABLE_DEFINITION;
+    return sem_context->Error(loc(), "Too many primary key", ErrorCode::INVALID_TABLE_DEFINITION);
   }
 
   if (columns_ == nullptr) {
@@ -185,13 +175,14 @@ ErrorCode PTPrimaryKey::Analyze(SemContext *sem_context) {
     PTColumnDefinition *column = sem_context->current_column();
     column->set_is_hash_key();
     table->AppendHashColumn(column);
+
   } else {
     // Decorate all name node of this key as this is a table constraint.
     TreeNodeOperator<SemContext, PTName> func = &PTName::SetupPrimaryKey;
     TreeNodeOperator<SemContext, PTName> nested_func = &PTName::SetupHashAndPrimaryKey;
-    columns_->Apply<SemContext, PTName>(sem_context, func, 1, 1, nested_func);
+    RETURN_NOT_OK((columns_->Apply<SemContext, PTName>(sem_context, func, 1, 1, nested_func)));
   }
-  return err;
+  return Status::OK();
 }
 
 }  // namespace sql

@@ -29,7 +29,7 @@ class ParseTree {
   ~ParseTree();
 
   // Run semantics analysis.
-  ErrorCode Analyze(SemContext *sem_context);
+  CHECKED_STATUS Analyze(SemContext *sem_context);
 
   // Access functions to root_.
   void set_root(const TreeNode::SharedPtr& root) {

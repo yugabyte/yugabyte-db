@@ -60,10 +60,10 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Lookup table from the metadata database.
-  ErrorCode LookupTable(SemContext *sem_context);
+  CHECKED_STATUS LookupTable(SemContext *sem_context);
 
   // Semantic-analyzing the where clause.
-  ErrorCode AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
+  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
 
   // Table name.
   virtual const char *table_name() const = 0;
@@ -108,13 +108,13 @@ class PTDmlStmt : public PTCollection {
   };
 
   // Protected functions.
-  ErrorCode AnalyzeWhereExpr(SemContext *sem_context,
-                             PTExpr *expr,
-                             MCVector<WhereSemanticStats> *col_stats);
-  ErrorCode AnalyzeWhereCompareExpr(SemContext *sem_context,
-                                    PTExpr *expr,
-                                    const ColumnDesc **col_desc,
-                                    PTExpr::SharedPtr *value);
+  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context,
+                                  PTExpr *expr,
+                                  MCVector<WhereSemanticStats> *col_stats);
+  CHECKED_STATUS AnalyzeWhereCompareExpr(SemContext *sem_context,
+                                         PTExpr *expr,
+                                         const ColumnDesc **col_desc,
+                                         PTExpr::SharedPtr *value);
 
   // DML statement options.
   PTOptionExist option_exists_;

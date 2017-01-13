@@ -50,11 +50,5 @@ size_t ParseContext::Read(char* buf, size_t max_size) {
   return 0;
 }
 
-//--------------------------------------------------------------------------------------------------
-
-void ParseContext::ScanError(const location& l, const std::string& token) {
-  Error(l, "Lexical error at or near ", ErrorCode::SYNTAX_ERROR, token.c_str());
-}
-
 }  // namespace sql
 }  // namespace yb

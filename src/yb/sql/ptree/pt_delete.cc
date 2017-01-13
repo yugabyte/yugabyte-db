@@ -27,18 +27,14 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
 PTDeleteStmt::~PTDeleteStmt() {
 }
 
-ErrorCode PTDeleteStmt::Analyze(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   // Collect table's schema for semantic analysis.
-  LookupTable(sem_context);
+  RETURN_NOT_OK(LookupTable(sem_context));
 
   // Run error checking on the WHERE conditions.
-  err = AnalyzeWhereClause(sem_context, where_clause_);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
-  return err;
+  RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
+
+  return Status::OK();
 }
 
 void PTDeleteStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {

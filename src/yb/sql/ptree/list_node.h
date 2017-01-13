@@ -16,10 +16,10 @@ namespace sql {
 
 // Operations that apply to each treenode of this list.
 template<typename ContextType, typename NodeType = TreeNode>
-using TreeNodeOperator = std::function<ErrorCode(NodeType&, ContextType*)>;
+using TreeNodeOperator = std::function<Status(NodeType&, ContextType*)>;
 
 template<typename ContextType, typename NodeType = TreeNode>
-using TreeNodePtrOperator = std::function<ErrorCode(NodeType*, ContextType*)>;
+using TreeNodePtrOperator = std::function<Status(NodeType*, ContextType*)>;
 
 // TreeNode base class.
 template<typename NodeType = TreeNode, TreeNodeOpcode op = TreeNodeOpcode::kPTListNode>
@@ -67,38 +67,29 @@ class TreeListNode : public TreeNode {
   }
 
   // Run semantics analysis on this node.
-  virtual ErrorCode Analyze(SemContext *sem_context) OVERRIDE {
-    ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
     for (auto tnode : node_list_) {
-      err = tnode->Analyze(sem_context);
-      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-        return err;
-      }
+      RETURN_NOT_OK(tnode->Analyze(sem_context));
     }
-    return err;
+    return Status::OK();
   }
 
-  virtual ErrorCode Analyze(SemContext *sem_context,
-                            TreeNodePtrOperator<SemContext, NodeType> node_op) {
-    ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context,
+                                 TreeNodePtrOperator<SemContext, NodeType> node_op) {
     for (auto tnode : node_list_) {
-      err = node_op(tnode.get(), sem_context);
-      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-        return err;
-      }
+      RETURN_NOT_OK(node_op(tnode.get(), sem_context));
     }
-    return err;
+    return Status::OK();
   }
 
   // Apply an operator on each node in the list.
   template<typename ContextType, typename DerivedType = NodeType>
-  ErrorCode Apply(ContextType *context,
-                  TreeNodeOperator<ContextType, DerivedType> node_op,
-                  int max_nested_level = 0,
-                  int max_nested_count = 0,
-                  TreeNodeOperator<ContextType, DerivedType> nested_node_op = nullptr) {
+  CHECKED_STATUS Apply(ContextType *context,
+                       TreeNodeOperator<ContextType, DerivedType> node_op,
+                       int max_nested_level = 0,
+                       int max_nested_count = 0,
+                       TreeNodeOperator<ContextType, DerivedType> nested_node_op = nullptr) {
 
-    ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
     int nested_level = 0;
     int nested_count = 0;
 
@@ -107,38 +98,32 @@ class TreeListNode : public TreeNode {
         // Cast the node from (TreeNode*) to the given template type.
         DerivedType *node = static_cast<DerivedType*>(tnode.get());
         // Call the given node operation on the node.
-        err = node_op(*node, context);
+        RETURN_NOT_OK(node_op(*node, context));
 
       } else {
         if (++nested_count > max_nested_count) {
-          err = ErrorCode::SYNTAX_ERROR;
-          LOG(ERROR) << "Number of nested lists exceeds allowable limit";
-          break;
+          return context->Error(loc(), "Number of nested lists exceeds allowable limit",
+                                ErrorCode::SYNTAX_ERROR);
         }
 
         if (++nested_level > max_nested_level) {
-          err = ErrorCode::SYNTAX_ERROR;
-          LOG(ERROR) << "Nested level of parenthesis exceeds allowable limit";
-          break;
+          return context->Error(loc(), "Nested level of parenthesis exceeds allowable limit",
+                                ErrorCode::SYNTAX_ERROR);
         }
 
         // Cast the node from (TreeNode*) to the given template type.
         TreeListNode *node = static_cast<TreeListNode*>(tnode.get());
         // Apply the operation to a nested list.
-        err = node->Apply<ContextType, DerivedType>(context,
-                                                 nested_node_op,
-                                                 max_nested_level - 1,
-                                                 max_nested_count,
-                                                 nested_node_op);
+        RETURN_NOT_OK((node->Apply<ContextType, DerivedType>(context,
+                                                             nested_node_op,
+                                                             max_nested_level - 1,
+                                                             max_nested_count,
+                                                             nested_node_op)));
         nested_level--;
-      }
-
-      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-        return err;
       }
     }
 
-    return err;
+    return Status::OK();
   }
 
   // List count.

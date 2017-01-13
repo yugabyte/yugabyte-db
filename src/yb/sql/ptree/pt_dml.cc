@@ -30,16 +30,12 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, YBLocation::SharedPtr loc, PTOptionE
 PTDmlStmt::~PTDmlStmt() {
 }
 
-ErrorCode PTDmlStmt::LookupTable(SemContext *sem_context) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
   const char *name = table_name();
   VLOG(3) << "Loading table descriptor for " << name;
   table_ = sem_context->GetTableDesc(name);
   if (table_ == nullptr) {
-    err = ErrorCode::FDW_TABLE_NOT_FOUND;
-    sem_context->Error(table_loc(), err);
-    return err;
+    return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
   }
 
   const YBSchema& schema = table_->schema();
@@ -60,44 +56,43 @@ ErrorCode PTDmlStmt::LookupTable(SemContext *sem_context) {
 
     // Insert the column descriptor to symbol table.
     MCString col_name(sem_context->PTreeMem(), col.name().c_str(), col.name().size());
-    sem_context->MapSymbol(col_name, &table_columns_[idx]);
+    RETURN_NOT_OK(sem_context->MapSymbol(col_name, &table_columns_[idx]));
   }
 
-  return err;
+  return Status::OK();
 }
 
-ErrorCode PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
-                                        const PTExpr::SharedPtr& where_clause) {
+CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
+                                             const PTExpr::SharedPtr& where_clause) {
+  if (where_clause == nullptr) {
+    return sem_context->Error(loc(), "Missing partition key",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
 
   MCVector<WhereSemanticStats> col_stats(sem_context->PTempMem());
   col_stats.resize(num_columns());
 
   // Analyze where expression.
   hash_where_ops_.resize(num_hash_key_columns_);
-  ErrorCode err = AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
+  RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
 
   // Make sure that all hash entries are referenced in where expression.
   for (int idx = 0; idx < num_hash_key_columns_; idx++) {
     if (!col_stats[idx].has_eq_) {
-      err = ErrorCode::CQL_STATEMENT_INVALID;
-      sem_context->Error(where_clause->loc(), "Missing partition key", err);
-      break;
+      return sem_context->Error(where_clause->loc(), "Missing partition key",
+                                ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
 
-  return err;
+  return Status::OK();
 }
 
-ErrorCode PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
-                                      PTExpr *expr,
-                                      MCVector<WhereSemanticStats> *col_stats) {
+CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
+                                           PTExpr *expr,
+                                           MCVector<WhereSemanticStats> *col_stats) {
 
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
   if (expr == nullptr) {
-    return err;
+    return Status::OK();
   }
 
   PTPredicate2 *bool_expr = nullptr;
@@ -106,21 +101,18 @@ ErrorCode PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
   switch (expr->expr_op()) {
     case ExprOperator::kAND:
       bool_expr = static_cast<PTPredicate2*>(expr);
-      err = AnalyzeWhereExpr(sem_context, bool_expr->op1().get(), col_stats);
-      err = AnalyzeWhereExpr(sem_context, bool_expr->op2().get(), col_stats);
+      RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, bool_expr->op1().get(), col_stats));
+      RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, bool_expr->op2().get(), col_stats));
       break;
 
     case ExprOperator::kEQ: {
-      err = AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value);
-      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-        break;
-      }
+      RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
+
       if ((*col_stats)[col_desc->index()].has_eq_ ||
           (*col_stats)[col_desc->index()].has_lt_ ||
           (*col_stats)[col_desc->index()].has_gt_) {
-        err = ErrorCode::CQL_STATEMENT_INVALID;
-        sem_context->Error(expr->loc(), "Partition key is specified more than one time", err);
-        break;
+        return sem_context->Error(expr->loc(), "Partition key is specified more than one time",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       (*col_stats)[col_desc->index()].has_eq_ = true;
 
@@ -136,19 +128,15 @@ ErrorCode PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
     }
 
     case ExprOperator::kLT: {
-      err = AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value);
-      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-        break;
-      }
+      RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
+
       if (col_desc->is_hash()) {
-        err = ErrorCode::CQL_STATEMENT_INVALID;
-        sem_context->Error(expr->loc(), "Partition column cannot be used in this context", err);
-        break;
+        return sem_context->Error(expr->loc(), "Partition column cannot be used in this context",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       if ((*col_stats)[col_desc->index()].has_eq_ || (*col_stats)[col_desc->index()].has_lt_) {
-        err = ErrorCode::CQL_STATEMENT_INVALID;
-        sem_context->Error(expr->loc(), "Illogical range condition", err);
-        break;
+        return sem_context->Error(expr->loc(), "Illogical range condition",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       (*col_stats)[col_desc->index()].has_lt_ = true;
 
@@ -159,19 +147,15 @@ ErrorCode PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
     }
 
     case ExprOperator::kGT: {
-      err = AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value);
-      if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-        break;
-      }
+      RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
+
       if (col_desc->is_hash()) {
-        err = ErrorCode::CQL_STATEMENT_INVALID;
-        sem_context->Error(expr->loc(), "Partition column cannot be used in this context", err);
-        break;
+        return sem_context->Error(expr->loc(), "Partition column cannot be used in this context",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       if ((*col_stats)[col_desc->index()].has_eq_ || (*col_stats)[col_desc->index()].has_gt_) {
-        err = ErrorCode::CQL_STATEMENT_INVALID;
-        sem_context->Error(expr->loc(), "Illogical range condition", err);
-        break;
+        return sem_context->Error(expr->loc(), "Illogical range condition",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       (*col_stats)[col_desc->index()].has_gt_ = true;
 
@@ -187,37 +171,30 @@ ErrorCode PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
   }
 
   // Check that if where clause is present, it must follow CQL rules.
-  return err;
+  return Status::OK();
 }
 
-ErrorCode PTDmlStmt::AnalyzeWhereCompareExpr(SemContext *sem_context,
-                                             PTExpr *expr,
-                                             const ColumnDesc **col_desc,
-                                             PTExpr::SharedPtr *value) {
-  ErrorCode err = ErrorCode::SUCCESSFUL_COMPLETION;
-
+CHECKED_STATUS PTDmlStmt::AnalyzeWhereCompareExpr(SemContext *sem_context,
+                                                  PTExpr *expr,
+                                                  const ColumnDesc **col_desc,
+                                                  PTExpr::SharedPtr *value) {
   PTPredicate2 *bool_expr = static_cast<PTPredicate2*>(expr);
   expr = bool_expr->op1().get();
   if (expr->expr_op() != ExprOperator::kRef) {
-    err = ErrorCode::CQL_STATEMENT_INVALID;
-    sem_context->Error(expr->loc(), "Only column reference is allowed here", err);
-    return err;
+    return sem_context->Error(expr->loc(), "Only column reference is allowed here",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
-  err = expr->Analyze(sem_context);
-  if (err != ErrorCode::SUCCESSFUL_COMPLETION) {
-    return err;
-  }
-  *col_desc = static_cast<PTRef*>(expr)->desc();
+  RETURN_NOT_OK(expr->Analyze(sem_context));
 
+  *col_desc = static_cast<PTRef*>(expr)->desc();
   expr = bool_expr->op2().get();
   if (expr->expr_op() != ExprOperator::kConst) {
-    err = ErrorCode::CQL_STATEMENT_INVALID;
-    sem_context->Error(expr->loc(), "Only literal value is allowed here", err);
-    return err;
+    return sem_context->Error(expr->loc(), "Only literal value is allowed here",
+                              ErrorCode::CQL_STATEMENT_INVALID);
   }
   *value = bool_expr->op2();
 
-  return err;
+  return Status::OK();
 }
 
 } // namespace sql
