@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { Row } from 'react-bootstrap';
 import { YBButton , YBInputField, YBSelect} from '../common/forms/fields';
 import './stylesheets/OnPremiseProviderConfiguration.scss';
 import {Field, FieldArray} from 'redux-form';
@@ -33,6 +33,21 @@ class YBHostDataCell extends Component {
     )
   }
 }
+
+class YBDataLabel extends Component {
+  render() {
+    const {label, action} = this.props;
+    return (
+      <div className={"add-list-item-label"}>
+        <span>{label}</span>
+        <span className={"add-list-action"} onClick={action}>
+          Add {label}<i className="fa fa-plus"></i>
+        </span>
+      </div>
+    )
+  }
+}
+
 class YBDataCell extends Component {
 
   constructor(props) {
@@ -70,7 +85,8 @@ class YBDataCell extends Component {
             <div className="cell-button-group">
               <YBButton onClick={this.addDataCell} btnIcon="fa fa-check fa-fw"
                         btnClass="btn btn-default config-action-btn"/>
-              <YBButton btnIcon="fa fa-close fa-fw" onClick={this.deleteDataCell} btnClass="btn btn-default config-action-btn"/>
+              <YBButton btnIcon="fa fa-close fa-fw" onClick={this.deleteDataCell}
+                        btnClass="btn btn-default config-action-btn"/>
             </div>
           </Row>
       } else {
@@ -80,7 +96,8 @@ class YBDataCell extends Component {
             <div className="cell-button-group">
               <YBButton onClick={this.editDataCell} btnIcon="fa fa-pencil fa-fw"
                         btnClass="btn btn-default config-action-btn"/>
-              <YBButton onClick={this.deleteDataCell} btnIcon="fa fa-close fa-fw" btnClass="btn btn-default config-action-btn"/>
+              <YBButton onClick={this.deleteDataCell} btnIcon="fa fa-close fa-fw"
+                        btnClass="btn btn-default config-action-btn"/>
             </div>
           </Row>
       }
@@ -136,22 +153,17 @@ class YBHostDataList extends Component {
       });
     }
     return (
-      <div className={`host-list-container ${displayClass}`}>
-        <Row className={"host-list-label"}>
-          <Col lg={5}>
-            Machine Type
-          </Col>
-          <Col lg={6} >
-            IP Address
-          </Col>
-        </Row>
-        <div className="list-column">
+      <div className={`zone-list-container ${displayClass}`}>
+        <YBDataLabel label={"Host"} action={this.addHostData}/>
+        <div className={"add-host-item-label"}>
+          <span>Machine Type</span>
+          <span className={"add-host-ip-label"}>IP Address</span>
+        </div>
+        <div className="host-list-column">
           {hostDataList}
         </div>
-        <div onClick={this.addHostData} className={"add-list-item-label"}>
-          Add Host<i className="fa fa-plus"></i>
-        </div>
       </div>
+
     )
   }
 }
@@ -225,9 +237,7 @@ class YBZoneDataList extends Component {
     }
     return (
       <div className={`zone-list-container ${zoneDisplayClass}`}>
-        <div onClick={this.addZoneData} className={"add-list-item-label"}>
-          Add Zone<i className="fa fa-plus"></i>
-        </div>
+        <YBDataLabel label={"Zone"} action={this.addZoneData}/>
         <div className="list-column">
           {zoneDataList}
         </div>
@@ -309,9 +319,7 @@ class YBRegionDataList extends Component {
 
     return (
       <div className={`region-list-container ${currentRegionItem}`}>
-        <div onClick={this.addRegionData} className={"add-list-item-label"}>
-          Add Region<i className="fa fa-plus"></i>
-        </div>
+        <YBDataLabel label={"Region"} action={this.addRegionData}/>
         <div className="list-column">
           {regionListData}
         </div>

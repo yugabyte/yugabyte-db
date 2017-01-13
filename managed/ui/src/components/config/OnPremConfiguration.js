@@ -18,7 +18,6 @@ export default class OnPremConfiguration extends Component {
   }
 
   render(){
-    var self = this;
     var ConfigurationDataForm = <OnPremConfigWizardContainer />;
     var btnText = this.state.isJsonEntry ? "Switch To Wizard View" : "Switch To JSON View";
     if (this.state.isJsonEntry) {
