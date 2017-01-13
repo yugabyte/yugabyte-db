@@ -46,7 +46,7 @@ struct TwoLevelIteratorState {
 // need_free_iter_and_state: free `state` and `first_level_iter` if
 //                           true. Otherwise, just call destructor.
 extern InternalIterator* NewTwoLevelIterator(
-    TwoLevelIteratorState* state, InternalIterator* first_level_iter,
-    Arena* arena = nullptr, bool need_free_iter_and_state = true);
+    TwoLevelIteratorState* state, InternalIterator* first_level_iter, Arena* arena = nullptr,
+    bool need_free_iter_and_state = true);
 
 }  // namespace rocksdb

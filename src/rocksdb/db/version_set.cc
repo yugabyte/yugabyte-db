@@ -807,8 +807,7 @@ void Version::AddIterators(const ReadOptions& read_options,
       mem = arena->AllocateAligned(sizeof(LevelFileNumIterator));
       auto* first_level_iter = new (mem) LevelFileNumIterator(
           cfd_->internal_comparator(), &storage_info_.LevelFilesBrief(level));
-      merge_iter_builder->AddIterator(
-          NewTwoLevelIterator(state, first_level_iter, arena, false));
+      merge_iter_builder->AddIterator(NewTwoLevelIterator(state, first_level_iter, arena, false));
     }
   }
 }

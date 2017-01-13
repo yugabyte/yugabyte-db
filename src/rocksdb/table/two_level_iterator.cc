@@ -202,13 +202,11 @@ void TwoLevelIterator::InitDataBlock() {
 
 }  // namespace
 
-InternalIterator* NewTwoLevelIterator(TwoLevelIteratorState* state,
-                                      InternalIterator* first_level_iter,
-                                      Arena* arena,
-                                      bool need_free_iter_and_state) {
+InternalIterator* NewTwoLevelIterator(
+    TwoLevelIteratorState* state, InternalIterator* first_level_iter, Arena* arena,
+    bool need_free_iter_and_state) {
   if (arena == nullptr) {
-    return new TwoLevelIterator(state, first_level_iter,
-                                need_free_iter_and_state);
+    return new TwoLevelIterator(state, first_level_iter, need_free_iter_and_state);
   } else {
     auto mem = arena->AllocateAligned(sizeof(TwoLevelIterator));
     return new (mem)

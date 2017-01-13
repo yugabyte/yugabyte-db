@@ -464,22 +464,24 @@ class BloomFilterAwareIterator : public ForwardingIterator {
  public:
   BloomFilterAwareIterator(
       BlockBasedTable* table, const ReadOptions& ro, bool skip_filters,
-      InternalIterator* internal_iter)
-      : ForwardingIterator(internal_iter),
+      InternalIterator* internal_iter, bool need_free_iter)
+      : ForwardingIterator(internal_iter, need_free_iter),
         table_(table),
         read_options_(ro),
         skip_filters_(skip_filters) {}
 
+  virtual ~BloomFilterAwareIterator() {}
+
   virtual void Seek(const Slice& target) override {
     if (skip_filters_) {
-      internal_iter_->Seek(target);
+      internal_iter_.Seek(target);
     } else {
       auto filter_entry = table_->GetFilter(read_options_.read_tier == kBlockCacheTier /* no_io */);
       FilterBlockReader* filter = filter_entry.value;
 
       if (table_->FullFilterKeyMayMatch(filter, target)) {
         // If bloom filter was not useful, then take this file into account.
-        internal_iter_->Seek(target);
+        internal_iter_.Seek(target);
       } else {
         // Else, record that the bloom filter was useful.
         RecordTick(table_->rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
@@ -1255,9 +1257,15 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
 InternalIterator* BlockBasedTable::NewIterator(const ReadOptions& read_options,
                                                Arena* arena,
                                                bool skip_filters) {
+  BlockEntryIteratorState* state = new BlockEntryIteratorState(this, read_options, skip_filters);
+
+  // TODO: unify the semantics across NewIterator callsites, so that we can pass an arena across
+  // them, and decide the free / no free based on that. This callsite, for example, allows us to
+  // put the top level iterator on the arena and potentially even the State object, however, not
+  // the IndexIterator, as that does not expose arena allocation semantics...
+  const bool need_free_iter = arena == nullptr;
   unique_ptr<InternalIterator> internal_iterator(NewTwoLevelIterator(
-      new BlockEntryIteratorState(this, read_options, skip_filters),
-      NewIndexIterator(read_options)));
+      state, NewIndexIterator(read_options), arena, true /* need_free_iter_and_state */));
 
   if (!read_options.use_bloom_on_scan) {
     return internal_iterator.release();
@@ -1265,11 +1273,11 @@ InternalIterator* BlockBasedTable::NewIterator(const ReadOptions& read_options,
 
   if (arena == nullptr) {
     return new BloomFilterAwareIterator(
-        this, read_options, skip_filters, internal_iterator.release());
+        this, read_options, skip_filters, internal_iterator.release(), need_free_iter);
   } else {
     auto mem = arena->AllocateAligned(sizeof(BloomFilterAwareIterator));
-    return new (mem)
-        BloomFilterAwareIterator(this, read_options, skip_filters, internal_iterator.release());
+    return new (mem) BloomFilterAwareIterator(
+        this, read_options, skip_filters, internal_iterator.release(), need_free_iter);
   }
 }
 
