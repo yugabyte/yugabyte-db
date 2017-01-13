@@ -2,19 +2,31 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.List;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.YBClient;
+import org.yb.master.Master.ListTablesResponsePB.TableInfo;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 
-import org.yb.client.ListTablesResponse;
 import play.libs.Json;
-import play.mvc.*;
-
-import java.util.UUID;
+import play.mvc.Result;
 
 public class TablesController extends AuthenticatedController {
-  private final YBClientService ybService;
+  public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
+
+  // The YB client to use.
+  public YBClientService ybService;
 
   @Inject
   public TablesController(YBClientService service) { this.ybService = service; }
@@ -40,18 +52,29 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result universeList(UUID customerUUID, UUID universeUUID) {
-    ArrayNode resultNode = Json.newArray();
-    ObjectNode node1 = Json.newObject();
-    node1.put("tableType", "cassandra");
-    node1.put("tableName", "table1");
-    node1.put("tableUUID", "1");
-    ObjectNode node2 = Json.newObject();
-    node2.put("tableType", "redis");
-    node2.put("tableName", "table2");
-    node2.put("tableUUID", "2");
-    resultNode.add(node1);
-    resultNode.add(node2);
-    return ok(resultNode);
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    try {
+      Universe universe = Universe.get(universeUUID);
+      YBClient client = ybService.getClient(universe.getMasterAddresses());
+      ListTablesResponse response = client.getTablesList();
+      List<TableInfo> tableInfoList = response.getTableInfoList();
+      ArrayNode resultNode = Json.newArray();
+      for (TableInfo table : tableInfoList) {
+        ObjectNode node = Json.newObject();
+        node.put("tableType", table.getTableType().toString());
+        node.put("tableName", table.getName());
+        node.put("tableUUID", table.getId().toStringUtf8());
+        resultNode.add(node);
+      }
+      return ok(resultNode);
+    } catch (Exception e) {
+      LOG.error("Failed to get list of tables in universe " + universeUUID, e);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 
   public Result index(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
