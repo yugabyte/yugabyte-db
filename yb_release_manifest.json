@@ -3,13 +3,13 @@
   "lib": ["build/latest/lib/*.so*",
           "build/latest/lib/deps/*.so.*",
           "build/latest/rocksdb-build/*.so.*",
-          "thirdparty/installed/lib/curl*.so.*",
-          "thirdparty/installed/lib/libev*.so.*",
-          "thirdparty/installed/lib/libunwind*.so.*",
-          "thirdparty/installed/lib/libvmem*.so.*",
-          "thirdparty/installed/lib/libz*.so.*",
-          "thirdparty/installed-deps/lib/libgmock*.so",
-          "thirdparty/installed-deps/lib/*.so.*",
+          "thirdparty/installed/common/lib/curl*.so.*",
+          "thirdparty/installed/common/lib/libev*.so.*",
+          "thirdparty/installed/common/lib/libunwind*.so.*",
+          "thirdparty/installed/common/lib/libvmem*.so.*",
+          "thirdparty/installed/common/lib/libz*.so.*",
+          "thirdparty/installed/uninstrumented/lib/libgmock*.so",
+          "thirdparty/installed/uninstrumented/lib/*.so.*",
           "/lib64/libboost_atomic-mt.so.1.53.0",
           "/lib64/libboost_chrono-mt.so.1.53.0",
           "/lib64/libboost_date_time-mt.so.1.53.0",
@@ -49,5 +49,5 @@
           "build/latest/bin/yb-cqlserver",
           "build/latest/bin/log-dump",
           "build/latest/bin/yb_load_test_tool",
-          "thirdparty/installed-deps/bin/*"]
+          "thirdparty/installed/uninstrumented/bin/*"]
 }
