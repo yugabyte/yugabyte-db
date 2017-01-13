@@ -90,12 +90,12 @@ public class CassandraTimeseries extends Workload {
   }
 
   @Override
-  public boolean doRead() {
+  public long doRead() {
     // Pick a ransom data source.
     DataSource dataSource = dataSources.get(random.nextInt(dataSources.size()));
     // Make sure it has emitted data, otherwise there is nothing to read.
     if (!dataSource.getHasEmittedData()) {
-      return false;
+      return 0;
     }
     long startTs = dataSource.getStartTs();
     long endTs = dataSource.getEndTs();
@@ -116,19 +116,16 @@ public class CassandraTimeseries extends Workload {
     LOG.debug("Read " + rows.size() + " data points, expected rows: " +
              dataSource.getExpectedNumDataPoints(startTs, endTs) +
              ", query [" + select_stmt + "]");
-    // Slow down the reads.
-    try {
-      Thread.sleep(4000);
-    } catch (InterruptedException e) {}
-    return true;
+    return 1;
   }
 
   @Override
-  public boolean doWrite() {
+  public long doWrite() {
     // Pick a ransom data source.
     DataSource dataSource = dataSources.get(random.nextInt(dataSources.size()));
     // Enter as many data points as are needed.
     long ts = dataSource.getDataEmitTs();
+    long numKeysWritten = 0;
     while (ts > -1) {
       String value = String.format("value-%s", ts);
       for (String node : dataSource.getNodes()) {
@@ -138,12 +135,13 @@ public class CassandraTimeseries extends Workload {
                           metricsTable, dataSource.getControllerId(), dataSource.getMetric(),
                           node, ts, value);
         ResultSet resultSet = getCassandraClient().execute(insert_stmt);
+        numKeysWritten++;
         LOG.debug("Executed query: " + insert_stmt);
       }
       dataSource.setLastEmittedTs(ts);
       ts = dataSource.getDataEmitTs();
     }
-    return true;
+    return numKeysWritten;
   }
 
   /**

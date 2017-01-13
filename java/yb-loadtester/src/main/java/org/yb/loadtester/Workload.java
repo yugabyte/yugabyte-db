@@ -7,6 +7,8 @@ import java.util.List;
 import org.apache.log4j.Logger;
 import org.yb.loadtester.common.Configuration;
 import org.yb.loadtester.common.Configuration.Node;
+import org.yb.loadtester.metrics.MetricsTracker;
+import org.yb.loadtester.metrics.MetricsTracker.MetricName;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
@@ -23,6 +25,8 @@ public abstract class Workload {
   protected int numKeysWritten = 0;
   // The number of keys that have been read so far.
   protected int numKeysRead = 0;
+  // Object to track read and write metrics.
+  private static MetricsTracker metricsTracker = new MetricsTracker();
   // State variable to track if this workload has finished.
   protected boolean hasFinished = false;
   // The Cassandra client variables.
@@ -39,6 +43,9 @@ public abstract class Workload {
   public void workloadInit(Configuration configuration) {
     this.configuration = configuration;
     initialize(null);
+    metricsTracker.createMetric(MetricName.Read);
+    metricsTracker.createMetric(MetricName.Write);
+    metricsTracker.start();
   }
 
   /**
@@ -79,8 +86,12 @@ public abstract class Workload {
       return;
     }
     // Perform the write and track the number of successfully written keys.
-    if (doWrite()) {
-      numKeysWritten++;
+    long startTs = System.currentTimeMillis();
+    long count = doWrite();
+    long endTs = System.currentTimeMillis();
+    if (count > 0) {
+      numKeysWritten += count;
+      metricsTracker.getMetric(MetricName.Write).accumulate(count, endTs - startTs);
     }
   }
 
@@ -94,8 +105,12 @@ public abstract class Workload {
       return;
     }
     // Perform the read and track the number of successfully read keys.
-    if (doRead()) {
-      numKeysRead++;
+    long startTs = System.currentTimeMillis();
+    long count = doRead();
+    long endTs = System.currentTimeMillis();
+    if (count > 0) {
+      numKeysRead += count;
+      metricsTracker.getMetric(MetricName.Read).accumulate(count, endTs - startTs);
     }
   }
 
@@ -111,15 +126,15 @@ public abstract class Workload {
 
   /**
    * As a part of this call, the plugin should perform a single read operation.
-   * @return true if the read succeeded, false on failure.
+   * @return Number of reads done, a value <= 0 indicates no ops were done.
    */
-  public abstract boolean doRead();
+  public abstract long doRead();
 
   /**
    * As a part of this call, the plugin should perform a single write operation.
-   * @return true if the write succeeded, false on failure.
+   * @return Number of writes done, a value <= 0 indicates no ops were done.
    */
-  public abstract boolean doWrite();
+  public abstract long doWrite();
 
   /**
    * Terminate the workload (tear down connections if needed, etc).

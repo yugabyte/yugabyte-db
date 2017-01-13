@@ -82,8 +82,9 @@ public class Configuration {
     return numWriterThreads;
   }
 
-  public void initializeThreadCount(String numThreadsStr) {
+  public void initializeThreadCount(CommandLine cmd) {
     // Check if there are a fixed number of threads or variable.
+    String numThreadsStr = cmd.getOptionValue("num_threads");
     if (Workload.workloadConfig.readIOPSPercentage == -1) {
       numReaderThreads = Workload.workloadConfig.numReaderThreads;
       numWriterThreads = Workload.workloadConfig.numWriterThreads;
@@ -100,6 +101,14 @@ public class Configuration {
       numWriterThreads = numThreads - numReaderThreads;
     }
 
+    // If number of read and write threads are specified on the command line, that overrides all
+    // the other values.
+    if (cmd.hasOption("num_threads_read")) {
+      numReaderThreads = Integer.parseInt(cmd.getOptionValue("num_threads_read"));
+    }
+    if (cmd.hasOption("num_threads_write")) {
+      numWriterThreads = Integer.parseInt(cmd.getOptionValue("num_threads_write"));
+    }
     LOG.info("Num reader threads: " + numReaderThreads +
              ", num writer threads: " + numWriterThreads);
   }
@@ -126,6 +135,18 @@ public class Configuration {
     numThreads.setLongOpt("num_threads");
     numThreads.setArgs(1);
 
+    Option numReadThreads = OptionBuilder.create("num_threads_read");
+    numReadThreads.setDescription("The total number of threads that perform reads.");
+    numReadThreads.setRequired(false);
+    numReadThreads.setLongOpt("num_threads_read");
+    numReadThreads.setArgs(1);
+
+    Option numWriteThreads = OptionBuilder.create("num_threads_write");
+    numWriteThreads.setDescription("The total number of threads that perform writes.");
+    numWriteThreads.setRequired(false);
+    numWriteThreads.setLongOpt("num_threads_write");
+    numWriteThreads.setArgs(1);
+
     Option logtostderr = OptionBuilder.create("logtostderr");
     logtostderr.setDescription("Log to console.");
     logtostderr.setRequired(false);
@@ -135,6 +156,8 @@ public class Configuration {
     options.addOption(appType);
     options.addOption(proxyAddrs);
     options.addOption(numThreads);
+    options.addOption(numReadThreads);
+    options.addOption(numWriteThreads);
     options.addOption(logtostderr);
 
     CommandLineParser parser = new BasicParser();
@@ -170,7 +193,7 @@ public class Configuration {
     // Create the configuration.
     Configuration configuration = new Configuration(workloadType, hostPortList);
     // Set the number of threads.
-    configuration.initializeThreadCount(cmd.getOptionValue("num_threads"));
+    configuration.initializeThreadCount(cmd);
 
     return configuration;
   }

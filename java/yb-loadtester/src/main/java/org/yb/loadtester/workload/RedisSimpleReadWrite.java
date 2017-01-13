@@ -38,25 +38,25 @@ public class RedisSimpleReadWrite extends Workload {
   }
 
   @Override
-  public boolean doRead() {
+  public long doRead() {
     Key key = loadGenerator.getKeyToRead();
     if (key == null) {
       // There are no keys to read yet.
-      return false;
+      return 0;
     }
     String value = getRedisClient().get(key.asString());
     key.verify(value);
     LOG.info("Read key: " + key.toString());
-    return true;
+    return 1;
   }
 
   @Override
-  public boolean doWrite() {
+  public long doWrite() {
     Key key = loadGenerator.getKeyToWrite();
     String retVal = getRedisClient().set(key.asString(), key.getValueStr());
     LOG.info("Wrote key: " + key.toString() + ", return code: " + retVal);
     loadGenerator.recordWriteSuccess(key);
-    return true;
+    return 1;
   }
 
 }

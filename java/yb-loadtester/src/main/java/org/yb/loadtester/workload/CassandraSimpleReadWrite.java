@@ -49,11 +49,11 @@ public class CassandraSimpleReadWrite extends Workload {
   }
 
   @Override
-  public boolean doRead() {
+  public long doRead() {
     Key key = loadGenerator.getKeyToRead();
     if (key == null) {
       // There are no keys to read yet.
-      return false;
+      return 0;
     }
     // Do the read from Cassandra.
     String select_stmt = String.format("SELECT k, v FROM %s WHERE k = '%s';",
@@ -66,11 +66,11 @@ public class CassandraSimpleReadWrite extends Workload {
     String value = rows.get(0).getString(1);
     key.verify(value);
     LOG.info("Read key: " + key.toString());
-    return true;
+    return 1;
   }
 
   @Override
-  public boolean doWrite() {
+  public long doWrite() {
     Key key = loadGenerator.getKeyToWrite();
     // Do the write to Cassandra.
     String insert_stmt = String.format("INSERT INTO %s (k, v) VALUES ('%s', '%s');",
@@ -78,6 +78,6 @@ public class CassandraSimpleReadWrite extends Workload {
     ResultSet resultSet = getCassandraClient().execute(insert_stmt);
     LOG.info("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
     loadGenerator.recordWriteSuccess(key);
-    return true;
+    return 1;
   }
 }
