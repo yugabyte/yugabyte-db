@@ -19,9 +19,9 @@ namespace docdb {
 
 namespace {
 
-Status ExpectValueType(ValueType expected_value_type,
-                       const ColumnSchema& column,
-                       const PrimitiveValue& actual_value) {
+CHECKED_STATUS ExpectValueType(ValueType expected_value_type,
+                               const ColumnSchema& column,
+                               const PrimitiveValue& actual_value) {
   if (expected_value_type == actual_value.value_type()) {
     return Status::OK();
   } else {
@@ -228,11 +228,15 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
   return Status::OK();
 }
 
-Status DocRowwiseIterator::PrimitiveValueToKudu(
-    int column_index,
-    const PrimitiveValue& value,
-    RowBlockRow* dest_row) {
-  const ColumnSchema& col_schema = projection_.column(column_index);
+namespace {
+
+// Convert from a PrimitiveValue read from RocksDB to a Kudu value in the given column of the
+// given RowBlockRow. The destination row's schema must match that of the projection.
+CHECKED_STATUS PrimitiveValueToKudu(const Schema& projection,
+                                    const int column_index,
+                                    const PrimitiveValue& value,
+                                    RowBlockRow* dest_row) {
+  const ColumnSchema& col_schema = projection.column(column_index);
   const DataType data_type = col_schema.type_info()->physical_type();
   void* const dest_ptr = dest_row->cell(column_index).mutable_ptr();
   Arena* const arena = dest_row->row_block()->arena();
@@ -283,6 +287,58 @@ Status DocRowwiseIterator::PrimitiveValueToKudu(
   return Status::OK();
 }
 
+// Set primary key column values (hashed or range columns) in a Kudu row. The destination row's
+// schema must match that of the projection.
+CHECKED_STATUS SetKuduPrimaryKeyColumnValues(const Schema& projection,
+                                             const size_t begin_index,
+                                             const size_t column_count,
+                                             const char* column_type,
+                                             const vector<PrimitiveValue>& values,
+                                             RowBlockRow* dst_row) {
+  if (values.size() != column_count) {
+    return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
+                             values.size(), column_type, column_count);
+  }
+  if (begin_index + column_count > projection.num_columns()) {
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "$0 primary key columns between positions $1 and $2 go beyond selected columns $3",
+        column_type, begin_index, begin_index + column_count - 1, projection.num_columns());
+  }
+  for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
+    RETURN_NOT_OK(PrimitiveValueToKudu(projection, j, values[i], dst_row));
+  }
+  return Status::OK();
+}
+
+// Set primary key column values (hashed or range columns) in a YSQL row value map.
+CHECKED_STATUS SetYSQLPrimaryKeyColumnValues(const Schema& schema,
+                                             const size_t begin_index,
+                                             const size_t column_count,
+                                             const char* column_type,
+                                             const vector<PrimitiveValue>& values,
+                                             unordered_map<int32_t, YSQLValue>* value_map) {
+  if (values.size() != column_count) {
+    return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
+                             values.size(), column_type, column_count);
+  }
+  if (begin_index + column_count > schema.num_columns()) {
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "$0 primary key columns between positions $1 and $2 go beyond table columns $3",
+        column_type, begin_index, begin_index + column_count - 1, schema.num_columns());
+  }
+  for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
+    const auto column_id = schema.column_id(j);
+    const auto data_type = schema.column(j).type_info()->type();
+    const auto& elem = value_map->emplace(column_id, YSQLValue(data_type));
+    values[i].ToYSQLValue(&elem.first->second);
+  }
+  return Status::OK();
+}
+
+} // namespace
+
 Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   // Verify the basic compatibility of the schema assumed by the row block provided to us to the
   // projection schema we already have.
@@ -306,21 +362,24 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   dst->selection_vector()->SetAllTrue();
   RowBlockRow dst_row(dst->row(0));
 
-  // Currently we are assuming that we are not using hashed keys, and all keys are stored in the
-  // "range group" of the DocKey.
-  const auto& range_group = subdoc_key_.doc_key().range_group();
-  if (range_group.size() < projection_.num_key_columns()) {
-    return STATUS_SUBSTITUTE(Corruption,
-                             "Document key has $0 range keys, but at least $1 are expected.",
-                             range_group.size(), projection_.num_key_columns());
+  // Populate the key column values from the doc key. We require that when a projection selects
+  // either hash or range columns, all hash or range columns are selected.
+  if (projection_.num_hash_key_columns() > 0) {
+    CHECK_EQ(projection_.num_hash_key_columns(), schema_.num_hash_key_columns())
+        << "projection's hash column count does not match schema's";
+    RETURN_NOT_OK(SetKuduPrimaryKeyColumnValues(
+        projection_, 0, projection_.num_hash_key_columns(),
+        "hash", subdoc_key_.doc_key().hashed_group(), &dst_row));
+  }
+  if (projection_.num_range_key_columns() > 0) {
+    CHECK_EQ(projection_.num_range_key_columns(), schema_.num_range_key_columns())
+        << "projection's range column count does not match schema's";
+    RETURN_NOT_OK(SetKuduPrimaryKeyColumnValues(
+        projection_, projection_.num_hash_key_columns(), projection_.num_range_key_columns(),
+        "range", subdoc_key_.doc_key().range_group(), &dst_row));
   }
 
-  // Key columns come from the key.
-  for (size_t i = 0; i < projection_.num_key_columns(); i++) {
-    RETURN_NOT_OK(PrimitiveValueToKudu(i, range_group[i], &dst_row));
-  }
-
-  // Get the non-key column values of a YSQL row.
+  // Get the non-key column values of a row.
   vector<PrimitiveValue> values;
   RETURN_NOT_OK(GetValues(projection_, &values));
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
@@ -328,7 +387,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     const bool is_null = (value.value_type() == ValueType::kNull);
     const bool is_nullable = dst->column_block(i).is_nullable();
     if (!is_null) {
-      RETURN_NOT_OK(PrimitiveValueToKudu(i, value, &dst_row));
+      RETURN_NOT_OK(PrimitiveValueToKudu(projection_, i, value, &dst_row));
     }
     if (is_null && !is_nullable) {
       return STATUS_SUBSTITUTE(IllegalState,
@@ -355,37 +414,12 @@ Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* row
   // Populate the key column values from the doc key. The key column values in doc key were
   // written in the same order as in the table schema (see DocKeyFromYSQLKey).
   unordered_map<int32_t, YSQLValue> value_map;
-  auto hashed_component = subdoc_key_.doc_key().hashed_group().begin();
-  auto range_component = subdoc_key_.doc_key().range_group().begin();
-  const auto hashed_end = subdoc_key_.doc_key().hashed_group().end();
-  const auto range_end = subdoc_key_.doc_key().range_group().end();
-  for (size_t i = 0; i < schema_.num_key_columns(); i++) {
-    const auto column_id = schema_.column_id(i);
-    const auto data_type = schema_.column(i).type_info()->type();
-    const auto& elem = value_map.emplace(column_id, YSQLValue(data_type));
-
-    if (schema_.column(i).is_hash_key()) {
-      if (hashed_component == hashed_end) {
-        return STATUS_SUBSTITUTE(
-            Corruption, "Hashed column value missing for column id $0", column_id);
-      }
-      hashed_component->ToYSQLValue(&elem.first->second);
-      hashed_component++;
-    } else {
-      if (range_component == range_end) {
-        return STATUS_SUBSTITUTE(
-            Corruption, "Range column value missing for column id $0", column_id);
-      }
-      range_component->ToYSQLValue(&elem.first->second);
-      range_component++;
-    }
-  }
-  if (hashed_component != hashed_end) {
-    return STATUS(Corruption, "The row key in docdb contains too many hashed column values");
-  }
-  if (range_component != range_end) {
-    return STATUS(Corruption, "The row key in docdb contains too many range column values");
-  }
+  RETURN_NOT_OK(SetYSQLPrimaryKeyColumnValues(
+      schema_, 0, schema_.num_hash_key_columns(),
+      "hash", subdoc_key_.doc_key().hashed_group(), &value_map));
+  RETURN_NOT_OK(SetYSQLPrimaryKeyColumnValues(
+      schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
+      "range", subdoc_key_.doc_key().range_group(), &value_map));
 
   // Get the non-key column values of a YSQL row.
   vector<PrimitiveValue> values;

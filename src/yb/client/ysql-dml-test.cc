@@ -34,9 +34,6 @@ class YsqlDmlTest : public YBMiniClusterTestBase<MiniCluster> {
 
   virtual void SetUp() override {
     YBMiniClusterTestBase::SetUp();
-    // TODO - remove DontVerifyClusterBeforeNextTearDown once hashed keys support is implemented
-    // in DocRowwiseIterator::NextBlock.
-    DontVerifyClusterBeforeNextTearDown();
 
     // Start minicluster and wait for tablet servers to connect to master.
     MiniClusterOptions opts;

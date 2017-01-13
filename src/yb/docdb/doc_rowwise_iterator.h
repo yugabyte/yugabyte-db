@@ -62,11 +62,6 @@ class DocRowwiseIterator : public RowwiseIterator {
     return DocKey::FromKuduEncodedKey(encoded_key, schema_);
   }
 
-  // Convert from a PrimitiveValue read from RocksDB to a Kudu value in the given column of the
-  // given RowBlockRow. The destination row's schema must match that of the projection associated
-  // with this iterator.
-  CHECKED_STATUS PrimitiveValueToKudu(int column_index, const PrimitiveValue& value, RowBlockRow* dest_row);
-
   // Get the non-key column values of a YSQL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<PrimitiveValue>* values);
 
