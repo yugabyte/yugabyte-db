@@ -184,7 +184,12 @@ static bool hypo_entry_remove(Oid indexid);
 static void hypo_entry_pfree(hypoEntry *entry);
 
 static void
-hypo_utility_hook(Node *parsetree,
+hypo_utility_hook(
+#if PG_VERSION_NUM >= 100000
+				  PlannedStmt *pstmt,
+#else
+				  Node *parsetree,
+#endif
 				  const char *queryString,
 #if PG_VERSION_NUM >= 90300
 				  ProcessUtilityContext context,
@@ -970,7 +975,12 @@ hypo_entry_pfree(hypoEntry *entry)
  * If this flag is setup, we can add hypothetical indexes.
  */
 void
-hypo_utility_hook(Node *parsetree,
+hypo_utility_hook(
+#if PG_VERSION_NUM >= 100000
+				  PlannedStmt *pstmt,
+#else
+				  Node *parsetree,
+#endif
 				  const char *queryString,
 #if PG_VERSION_NUM >= 90300
 				  ProcessUtilityContext context,
@@ -982,11 +992,23 @@ hypo_utility_hook(Node *parsetree,
 				  DestReceiver *dest,
 				  char *completionTag)
 {
-	isExplain = query_or_expression_tree_walker(parsetree, hypo_query_walker,
+	isExplain = query_or_expression_tree_walker(
+#if PG_VERSION_NUM >= 100000
+												(Node *) pstmt,
+#else
+												parsetree,
+#endif
+												hypo_query_walker,
 												NULL, 0);
 
 	if (prev_utility_hook)
-		prev_utility_hook(parsetree, queryString,
+		prev_utility_hook(
+#if PG_VERSION_NUM >= 100000
+						  pstmt,
+#else
+						  parsetree,
+#endif
+						  queryString,
 #if PG_VERSION_NUM >= 90300
 						  context,
 #endif
@@ -996,7 +1018,13 @@ hypo_utility_hook(Node *parsetree,
 #endif
 						  dest, completionTag);
 	else
-		standard_ProcessUtility(parsetree, queryString,
+		standard_ProcessUtility(
+#if PG_VERSION_NUM >= 100000
+								pstmt,
+#else
+								parsetree,
+#endif
+								queryString,
 #if PG_VERSION_NUM >= 90300
 								context,
 #endif
@@ -1017,6 +1045,11 @@ hypo_query_walker(Node *parsetree)
 	if (parsetree == NULL)
 		return false;
 
+#if PG_VERSION_NUM >= 100000
+	parsetree = ((PlannedStmt *) parsetree)->utilityStmt;
+	if (parsetree == NULL)
+		return false;
+#endif
 	switch (nodeTag(parsetree))
 	{
 		case T_ExplainStmt:
@@ -1447,6 +1480,9 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
+#if PG_VERSION_NUM >= 100000
+		parsetree = ((RawStmt *) parsetree)->stmt;
+#endif
 		if (nodeTag(parsetree) != T_IndexStmt)
 		{
 			elog(WARNING,
