@@ -279,6 +279,7 @@ using namespace yb::sql;
                           for_locking_strength defacl_privilege_target import_qualification_type
                           opt_lock lock_type cast_context vacuum_option_list vacuum_option_elem
                           opt_nowait_or_skip TriggerActionTime add_drop opt_asc_desc opt_nulls_order
+                          using_ttl_clause
 
 %type <PType>             GenericType ConstTypename
                           ConstDatetime ConstInterval
@@ -508,7 +509,7 @@ using namespace yb::sql;
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
                           THEN TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM TREAT TRIGGER
-                          TRIM TRUE_P TRUNCATE TRUSTED TYPE_P TYPES_P
+                          TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USER USING
@@ -1771,7 +1772,17 @@ InsertStmt:
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8);
   }
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
+  using_ttl_clause
+  {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
+  }
+  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
   IF_P NOT EXISTS
+  {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
+  }
+  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
+  IF_P NOT EXISTS using_ttl_clause
   {
     $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
   }
@@ -1838,6 +1849,12 @@ opt_on_conflict:
   }
   | ON CONFLICT opt_conf_expr DO NOTHING {
     PARSER_UNSUPPORTED(@1);
+  }
+;
+
+using_ttl_clause:
+  USING TTL Iconst {
+    $$ = $3;
   }
 ;
 

@@ -27,6 +27,30 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   // INSERT: Valid statement with column list.
   EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100);");
 
+  // INSERT: Valid statement with column list and ttl.
+  EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
+      "USING TTL 1000;");
+
+  // INSERT: Invalid statement with float ttl.
+  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
+      "USING TTL 1000.1;");
+
+  // INSERT: Invalid statement with negative ttl.
+  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
+      "USING TTL -1;");
+
+  // INSERT: Invalid statement with hex ttl.
+  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
+      "USING TTL 0x100;");
+
+  // INSERT: Statement with invalid TTL syntax.
+  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
+      "TTL 1000;");
+
+  // INSERT: Statement with invalid TTL value.
+  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
+      "TTL abcxyz;");
+
   // INSERT: Invalid CQL statement though it's a valid SQL statement without column list.
   EXEC_INVALID_STMT("INSERT INTO human_resource VALUES(2, 'Scott Tiger', 100);");
 
