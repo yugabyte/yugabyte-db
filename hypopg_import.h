@@ -22,4 +22,7 @@ extern Oid GetIndexOpClass(List *opclass, Oid attrType,
 
 extern void CheckPredicate(Expr *predicate);
 extern bool CheckMutability(Expr *expr);
+#if PG_VERSION_NUM < 90500
+extern char *get_am_name(Oid amOid);
+#endif
 extern void get_opclass_name(Oid opclass, Oid actual_datatype, StringInfo buf);

@@ -18,6 +18,9 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_opclass.h"
 #include "commands/defrem.h"
+#if PG_VERSION_NUM < 90500
+#include "lib/stringinfo.h"
+#endif
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/planner.h"
@@ -30,7 +33,7 @@
 #include "hypopg_import.h"
 
 
-/* Copied from backend/optimizer/util/plancat.c, not exported.
+/* Copied from src/backend/optimizer/util/plancat.c, not exported.
  *
  * Build a targetlist representing the columns of the specified index.
  * Each column is represented by a Var for the corresponding base-relation
@@ -265,8 +268,33 @@ CheckMutability(Expr *expr)
 	return contain_mutable_functions((Node *) expr);
 }
 
+#if PG_VERSION_NUM < 90500
 /*
- * Copied from /git/postgresql/src/backend/utils/adt/ruleutils.c, not exported.
+ * Copied from src/backend/commands/amcmds.c
+ *
+ * get_am_name - given an access method OID name and type, look up its name.
+ */
+char *
+get_am_name(Oid amOid)
+{
+	HeapTuple	tup;
+	char	   *result = NULL;
+
+	tup = SearchSysCache1(AMOID, ObjectIdGetDatum(amOid));
+	if (HeapTupleIsValid(tup))
+	{
+		Form_pg_am	amform = (Form_pg_am) GETSTRUCT(tup);
+
+		result = pstrdup(NameStr(amform->amname));
+		ReleaseSysCache(tup);
+	}
+	return result;
+}
+#endif
+
+
+/*
+ * Copied from src/backend/utils/adt/ruleutils.c, not exported.
  *
  * get_opclass_name			- fetch name of an index operator class
  *

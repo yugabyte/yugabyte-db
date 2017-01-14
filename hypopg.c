@@ -59,7 +59,9 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#if PG_VERSION_NUM >= 90500
 #include "utils/ruleutils.h"
+#endif
 #include "utils/syscache.h"
 
 #include "hypopg_import.h"
