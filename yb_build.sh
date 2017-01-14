@@ -339,6 +339,9 @@ if "$clean_before_build"; then
 fi
 
 mkdir_safe "$BUILD_ROOT"
+mkdir_safe "thirdparty/installed/uninstrumented/include"
+mkdir_safe "thirdparty/installed-deps/include"
+
 cd "$BUILD_ROOT"
 
 if "$clean_thirdparty"; then
