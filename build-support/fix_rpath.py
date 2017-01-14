@@ -22,12 +22,9 @@ import sys
 
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 
-# We have to update paths to Linuxbrew libraries dependent on the home directory.  In addition to
-# ~/.linuxbrew, we are also allowding ~/.linuxbrew-..., e.g. ~/.linuxbrew-yb-build, so that we can
-# use multiple different Linuxbrew installations on the same machine, one with dependencies needed
-# to build YugaByte, and another for more software that might be useful during development but
-# should not be added to the build's include/library path.
-LINUXBREW_PATH_RE = re.compile(r'/home/[^/]+/([.]linuxbrew(?:-.*)?/.*)$')
+# We have to update paths to Linuxbrew libraries dependent on the home directory. We are using a
+# special location for a Linuxbrew installation used for building the YB codebase.
+LINUXBREW_PATH_RE = re.compile(r'/home/[^/]+/([.]linuxbrew-yb-build/.*)$')
 
 HOME_DIR = os.path.expanduser('~')
 

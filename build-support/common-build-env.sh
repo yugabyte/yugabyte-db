@@ -1,4 +1,5 @@
 #@IgnoreInspection BashAddShebang
+
 # Copyright (c) YugaByte, Inc.
 
 # This is common between build and test scripts.
@@ -668,8 +669,7 @@ remove_ccache_dir_from_path() {
 # Given a compiler type, e.g. gcc or clang, find the actual compiler executable (not a wrapper
 # provided by ccache).  Takes into account YB_GCC_PREFIX and YB_CLANG_PREFIX variables that allow to
 # use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
-# used both in compiler-wrapper.sh for YB build, as well as in build-thirdparty.sh for third-party
-# dependencies build.
+# used in compiler-wrapper.sh.
 find_compiler_by_type() {
   compiler_type=$1
   validate_compiler_type "$1"
@@ -684,6 +684,9 @@ find_compiler_by_type() {
         fi
         cc_executable=$YB_GCC_PREFIX/bin/gcc
         cxx_executable=$YB_GCC_PREFIX/bin/g++
+      elif using_linuxbrew; then
+        cc_executable=$YB_LINUXBREW_DIR/bin/gcc
+        cxx_executable=$YB_LINUXBREW_DIR/bin/g++
       else
         cc_executable=gcc
         cxx_executable=g++
@@ -766,27 +769,36 @@ popd () {
 }
 
 detect_linuxbrew() {
-  USING_LINUXBREW=false
-  LINUXBREW_DIR=/tmp/not_using_linuxbrew
+  YB_USING_LINUXBREW=false
+  unset YB_LINUXBREW_DIR
+  unset YB_LINUXBREW_LIB_DIR
   if ! is_linux; then
     return
   fi
-  local d
-  for d in ~/.linuxbrew-yb-build ~/.linuxbrew; do
-    if [[ -d "$d" && -d "$d/lib" && -d "$d/include" ]]; then
-      LINUXBREW_DIR=$d
-      USING_LINUXBREW=true
-      break
-    fi
-  done
-  LINUXBREW_LIB_DIR=$LINUXBREW_DIR/lib
+  local d=$HOME/.linuxbrew-yb-build
+  if [[ -d "$d" &&
+        -d "$d/bin" &&
+        -d "$d/lib" &&
+        -d "$d/include" ]]; then
+    export YB_LINUXBREW_DIR=$d
+    YB_USING_LINUXBREW=true
+    YB_LINUXBREW_LIB_DIR=$YB_LINUXBREW_DIR/lib
+  fi
 }
 
 using_linuxbrew() {
-  if [[ $USING_LINUXBREW == true ]]; then
+  if [[ $YB_USING_LINUXBREW == true ]]; then
     return 0
   else
     return 1
+  fi
+}
+
+set_build_env_vars() {
+  if using_linuxbrew; then
+    # We need to add Linuxbrew's bin directory to PATH so that we can find the right compiler and
+    # linker.
+    export PATH=$YB_LINUXBREW_DIR/bin:$PATH
   fi
 }
 
@@ -822,11 +834,12 @@ if [[ ! -d $YB_SRC_ROOT/build-support ]]; then
 fi
 
 readonly YB_THIRDPARTY_DIR=$YB_SRC_ROOT/thirdparty
+readonly YB_COMPILER_WRAPPER_CC=$YB_SRC_ROOT/build-support/compiler-wrappers/cc
+readonly YB_COMPILER_WRAPPER_CXX=$YB_SRC_ROOT/build-support/compiler-wrappers/c++
 
 readonly YB_DEFAULT_CMAKE_OPTS=(
-  "-DCMAKE_C_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/cc"
-  "-DCMAKE_CXX_COMPILER=$YB_SRC_ROOT/build-support/compiler-wrappers/c++"
+  "-DCMAKE_C_COMPILER=$YB_COMPILER_WRAPPER_CC"
+  "-DCMAKE_CXX_COMPILER=$YB_COMPILER_WRAPPER_CXX"
 )
-
 
 detect_linuxbrew

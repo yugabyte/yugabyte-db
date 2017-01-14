@@ -88,10 +88,11 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
 endfunction()
 
 function(DETECT_LINUXBREW)
-  # Detect Linuxbrew.
+  # Detect Linuxbrew. The logic needs to be consistent with the detect_linuxbrew function in
+  # common-build-env.sh.
   set(USING_LINUXBREW FALSE)
   if(NOT APPLE)
-    set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew")
+    set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
     if(EXISTS "${LINUXBREW_DIR}/bin" AND
        EXISTS "${LINUXBREW_DIR}/lib")
       message("Linuxbrew found at ${LINUXBREW_DIR}")
@@ -103,6 +104,23 @@ function(DETECT_LINUXBREW)
   endif()
   if(NOT USING_LINUXBREW)
     set(LINUXBREW_DIR "/tmp/not-using-linuxbrew")
+  endif()
+
+  # A sanity check to make sure we are consistent with the YB_LINUXBREW_DIR environment variable
+  # passed down from common-build-env.sh. It is OK if that variable is not set, e.g. that would be
+  # the case when the build is invoked from CLion. But if it is set, it has to match the directory
+  # we've detected here.
+  if (NOT "$ENV{YB_LINUXBREW_DIR}" STREQUAL "")
+    if (NOT USING_LINUXBREW)
+      message(FATAL_ERROR
+              "The YB_LINUXBREW_DIR environment variable is set to '$ENV{YB_LINUXBREW_DIR}' "
+              "but we could not find a Linuxbrew installation here.")
+    endif()
+    if (NOT "$ENV{YB_LINUXBREW_DIR}" STREQUAL "${LINUXBREW_DIR}")
+      message(FATAL_ERROR
+              "The YB_LINUXBREW_DIR environment variable is set to '$ENV{YB_LINUXBREW_DIR}' "
+              "but we found Linuxbrew in '${LINUXBREW_DIR}' in our CMake build.")
+    endif()
   endif()
 
   set(USING_LINUXBREW "${USING_LINUXBREW}" PARENT_SCOPE)
@@ -393,11 +411,6 @@ if(IS_CLANG AND NOT APPLE)
     ADD_CXX_GLOBAL_COMMON_FLAGS("-Wno-expansion-to-defined")
   endif()
 endif()
-
-# TODO: we should not need this (fails in a linuxbrew math.h when building under clang). We need
-# to make sure that headers specified using -isystem take precedence over libstdc++ (?) headers
-# in ~/.linuxbrew/include in the TSAN build.
-ADD_CXX_GLOBAL_COMMON_FLAGS("-Wno-gnu-designator")
 
 DETECT_LINUXBREW()
 if(USING_LINUXBREW AND IS_CLANG)

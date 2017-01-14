@@ -130,10 +130,10 @@ set_compiler() {
   fi
 
   local compiler_type=$1
-  YB_COMPILER_TYPE=$compiler_type
+  export YB_COMPILER_TYPE=$compiler_type
   find_compiler_by_type "$compiler_type"
-  export CC=$cc_executable
-  export CXX=$cxx_executable
+  export CC=$YB_COMPILER_WRAPPER_CC
+  export CXX=$YB_COMPILER_WRAPPER_CXX
 }
 
 add_cxx_ld_flags() {
@@ -199,8 +199,8 @@ prepend_lib_dir_and_rpath() {
 
 add_linuxbrew_flags() {
   if using_linuxbrew; then
-    EXTRA_LDFLAGS+=" -Wl,-dynamic-linker=$LINUXBREW_LIB_DIR/ld.so"
-    add_lib_dir_and_rpath "$LINUXBREW_LIB_DIR"
+    EXTRA_LDFLAGS+=" -Wl,-dynamic-linker=$YB_LINUXBREW_LIB_DIR/ld.so"
+    add_lib_dir_and_rpath "$YB_LINUXBREW_LIB_DIR"
   fi
 }
 
@@ -230,7 +230,7 @@ set_tsan_build_flags() {
   prepend_lib_dir_and_rpath "$CXX_STDLIB_PREFIX/lib"
   add_linuxbrew_flags
   if using_linuxbrew; then
-    add_c_cxx_flags "--gcc-toolchain=$LINUXBREW_DIR"
+    add_c_cxx_flags "--gcc-toolchain=$YB_LINUXBREW_DIR"
   fi
 }
 
@@ -352,6 +352,10 @@ fi
 # -------------------------------------------------------------------------------------------------
 # Now we will actually build third-party dependencies.
 # -------------------------------------------------------------------------------------------------
+
+# We need this to avoid catching an extra set of errors (interpreting certain warnings as errors) in
+# compiler-wrapper.sh while building third-party dependencies.
+export YB_IS_THIRDPARTY_BUILD=1
 
 $TP_DIR/download-thirdparty.sh
 

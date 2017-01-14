@@ -79,6 +79,7 @@ generate_build_debug_script() {
     )__$$_$RANDOM$RANDOM.sh"
     (
       echo "#!/usr/bin/env bash"
+      echo "export PATH='$PATH'"
       # Make the script pass-through its arguments to the command it runs.
       echo "$* \"\$@\""
     ) >"$script_name"
@@ -246,6 +247,15 @@ exit_handler() {
   exit "$exit_code"
 }
 
+set_build_env_vars
+
+if [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
+  # This is the third-party build. Don't do any extra error checking/reporting, just pass through to
+  # the compiler (which is potentially fronted with ccache).
+  "${cmd[@]}"
+  exit
+fi
+
 trap exit_handler EXIT
 
 set +e
@@ -284,7 +294,8 @@ fi
 
 if [[ $compiler_exit_code -ne 0 ]]; then
   if egrep 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
-     "$stderr_path"; then
+       "$stderr_path" || \
+     egrep 'error: ld returned' "$stderr_path"; then
     generate_build_debug_script rerun_failed_link_step "$( determine_compiler_cmdline ) -v"
   fi
 

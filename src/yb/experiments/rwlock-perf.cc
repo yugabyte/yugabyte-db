@@ -15,6 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <unistd.h>
+
+#include <stdio.h>
+
 #include <mutex>
 
 #include <boost/ptr_container/ptr_vector.hpp>
@@ -22,23 +26,28 @@
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/thread/thread.hpp>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <stdio.h>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/errno.h"
 #include "yb/util/locks.h"
-#include <unistd.h>
 
 DEFINE_int32(num_threads, 8, "Number of threads to test");
 
 class my_spinlock : public boost::detail::spinlock {
  public:
   my_spinlock() {
+    // TODO: this might not be the exact Boost version at which the type of this variable changed.
+#if BOOST_VERSION >= 106300
+    atomic_flag_clear(&v_);
+#else
     v_ = 0;
+#endif
   }
 
  private:

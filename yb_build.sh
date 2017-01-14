@@ -362,6 +362,8 @@ fi
 
 detect_num_cpus
 
+set_build_env_vars
+
 if "$build_cxx"; then
   if ( "$force_run_cmake" || [[ ! -f Makefile ]] ) && \
      ! "$force_no_run_cmake"; then

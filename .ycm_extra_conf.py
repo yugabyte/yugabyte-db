@@ -26,7 +26,7 @@
 # This is a configuration file for YouCompleteMe (YCM), a Vim extension for
 # navigation and code completion with C++ and other languages.
 #
-# To make YCM work with Kudu, add your Kudu source directory to the
+# To make YCM work with YB, add your YB source directory to the
 # g:ycm_extra_conf_globlist variable in your .vimrc file. For details on how to
 # install and configure YouCompleteMe, see
 # https://github.com/Valloric/YouCompleteMe
@@ -40,37 +40,35 @@ import ycm_core
 # compilation database set (by default, one is not set).
 # CHANGE THIS LIST OF FLAGS. YES, THIS IS THE DROID YOU HAVE BEEN LOOKING FOR.
 flags = [
-'-x',
-'c++',
-'-DYB_HEADERS_NO_STUBS=1',
-'-DYB_HEADERS_USE_RICH_SLICE=1',
-'-DYB_HEADERS_USE_SHORT_STATUS_MACROS=1',
-'-DYB_STATIC_DEFINE',
-'-Dintegration_tests_EXPORTS',
-'-D_GLIBCXX_USE_CXX11_ABI=0',
-'-D__STDC_FORMAT_MACROS',
-'-fno-strict-aliasing',
-'-msse4.2',
-'-Wall',
-'-Wno-sign-compare',
-'-Wno-deprecated',
-'-pthread',
-'-ggdb',
-'-Qunused-arguments',
-'-Wno-ambiguous-member-template',
-'-std=c++11',
-'-g',
-'-fPIC',
-'-I',
-'src',
-'-I',
-'src/rocksdb/include',
-'-I',
-'build/latest/src',
-'-isystem',
-'thirdparty/installed/include',
-'-isystem',
-'thirdparty/installed-deps/include',
+    '-x',
+    'c++',
+    '-DYB_HEADERS_NO_STUBS=1',
+    '-DYB_HEADERS_USE_RICH_SLICE=1',
+    '-DYB_HEADERS_USE_SHORT_STATUS_MACROS=1',
+    '-DYB_STATIC_DEFINE',
+    '-Dintegration_tests_EXPORTS',
+    '-D_GLIBCXX_USE_CXX11_ABI=0',
+    '-D__STDC_FORMAT_MACROS',
+    '-fno-strict-aliasing',
+    '-msse4.2',
+    '-Wall',
+    '-Wno-sign-compare',
+    '-Wno-deprecated',
+    '-pthread',
+    '-ggdb',
+    '-Qunused-arguments',
+    '-Wno-ambiguous-member-template',
+    '-std=c++11',
+    '-g',
+    '-fPIC',
+    '-I',
+    'src',
+    '-I',
+    'src/rocksdb/include',
+    '-I',
+    'build/latest/src',
+    '-isystem', 'thirdparty/installed/common/include',
+    '-isystem', 'thirdparty/installed/uninstrumented/include',
 ]
 
 # Set this to the absolute path to the folder (NOT the file!) containing the

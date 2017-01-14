@@ -207,21 +207,24 @@ build_llvm() {
          $PREFIX/lib/clang/ \
          $PREFIX/lib/cmake/{llvm,clang}
 
-  cmake \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=$PREFIX \
-    -DLLVM_INCLUDE_DOCS=OFF \
-    -DLLVM_INCLUDE_EXAMPLES=OFF \
-    -DLLVM_INCLUDE_TESTS=OFF \
-    -DLLVM_INCLUDE_UTILS=OFF \
-    -DLLVM_TARGETS_TO_BUILD=X86 \
-    -DLLVM_ENABLE_RTTI=ON \
-    -DCMAKE_CXX_FLAGS="$EXTRA_CXXFLAGS $EXTRA_LDFLAGS" \
-    -DPYTHON_EXECUTABLE=$PYTHON_EXECUTABLE \
-    $TOOLS_ARGS \
-    "$LLVM_SOURCE"
+  (
+    set_build_env_vars
+    cmake \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=$PREFIX \
+      -DLLVM_INCLUDE_DOCS=OFF \
+      -DLLVM_INCLUDE_EXAMPLES=OFF \
+      -DLLVM_INCLUDE_TESTS=OFF \
+      -DLLVM_INCLUDE_UTILS=OFF \
+      -DLLVM_TARGETS_TO_BUILD=X86 \
+      -DLLVM_ENABLE_RTTI=ON \
+      -DCMAKE_CXX_FLAGS="$EXTRA_CXXFLAGS $EXTRA_LDFLAGS" \
+      -DPYTHON_EXECUTABLE=$PYTHON_EXECUTABLE \
+      $TOOLS_ARGS \
+      "$LLVM_SOURCE"
 
-  run_make install
+    run_make install
+  )
 
   if [[ $LLVM_BUILD_TYPE == normal ]]; then
     # Create a link from Clang to thirdparty/clang-toolchain. This path is used
@@ -245,6 +248,7 @@ build_libstdcxx() {
   create_build_dir_and_prepare "$GCC_DIR"
 
   (
+    set_build_env_vars
     set -x
     CFLAGS=$EXTRA_CFLAGS \
       CXXFLAGS=$EXTRA_CXXFLAGS \
@@ -257,19 +261,23 @@ build_libstdcxx() {
 
 build_gflags() {
   create_build_dir_and_prepare "$GFLAGS_DIR"
-  CXXFLAGS="$EXTRA_CFLAGS $EXTRA_CXXFLAGS $EXTRA_LDFLAGS $EXTRA_LIBS" \
-    cmake \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=On \
-    -DCMAKE_INSTALL_PREFIX=$PREFIX \
-    -DBUILD_SHARED_LIBS=On \
-    -DBUILD_STATIC_LIBS=On
-  run_make install
+  (
+    set_build_env_vars
+    CXXFLAGS="$EXTRA_CFLAGS $EXTRA_CXXFLAGS $EXTRA_LDFLAGS $EXTRA_LIBS" \
+      cmake \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_POSITION_INDEPENDENT_CODE=On \
+      -DCMAKE_INSTALL_PREFIX=$PREFIX \
+      -DBUILD_SHARED_LIBS=On \
+      -DBUILD_STATIC_LIBS=On
+    run_make install
+  )
 }
 
 build_libunwind() {
   create_build_dir_and_prepare "$LIBUNWIND_DIR"
   (
+    set_build_env_vars
     set -x
     # Disable minidebuginfo, which depends on liblzma, until/unless we decide to
     # add liblzma to thirdparty.
@@ -281,6 +289,7 @@ build_libunwind() {
 build_glog() {
   create_build_dir_and_prepare "$GLOG_DIR"
   (
+    set_build_env_vars
     set -x
     autoreconf --force --install
     CXXFLAGS="$EXTRA_CXXFLAGS" \
@@ -294,6 +303,7 @@ build_glog() {
 build_gperftools() {
   create_build_dir_and_prepare "$GPERFTOOLS_DIR"
   (
+    set_build_env_vars
     set -x
     CFLAGS="$EXTRA_CFLAGS" \
       CXXFLAGS="$EXTRA_CXXFLAGS" \
@@ -310,6 +320,7 @@ build_gmock() {
   for SHARED in OFF ON; do
     remove_cmake_cache
     (
+      set_build_env_vars
       set -x
       CXXFLAGS="$EXTRA_CXXFLAGS $EXTRA_LDFLAGS $EXTRA_LIBS" \
         cmake \
@@ -321,6 +332,7 @@ build_gmock() {
   done
   log Installing gmock...
   (
+    set_build_env_vars
     set -x
     cp -a libgmock.$DYLIB_SUFFIX libgmock.a $PREFIX/lib/
     rsync -av include/ $PREFIX/include/
@@ -331,6 +343,7 @@ build_gmock() {
 build_protobuf() {
   create_build_dir_and_prepare "$PROTOBUF_DIR"
   (
+    set_build_env_vars
     set -x
     # We build protobuf in both instrumented and non-instrumented modes.
     # If we don't clean in between, we may end up mixing modes.
@@ -352,6 +365,7 @@ build_protobuf() {
 build_snappy() {
   create_build_dir_and_prepare "$SNAPPY_DIR"
   (
+    set_build_env_vars
     set -x
     CFLAGS="$EXTRA_CFLAGS" \
       CXXFLAGS="$EXTRA_CXXFLAGS" \
@@ -370,6 +384,7 @@ build_snappy() {
 build_zlib() {
   create_build_dir_and_prepare "$ZLIB_DIR"
   (
+    set_build_env_vars
     set -x
     CFLAGS="$EXTRA_CFLAGS -fPIC" ./configure --prefix=$PREFIX
     run_make install
@@ -379,6 +394,7 @@ build_zlib() {
 build_lz4() {
   create_build_dir_and_prepare "$LZ4_DIR"
   (
+    set_build_env_vars
     set -x
     CFLAGS="$EXTRA_CFLAGS" cmake -DCMAKE_BUILD_TYPE=release \
       -DBUILD_TOOLS=0 -DCMAKE_INSTALL_PREFIX:PATH=$PREFIX cmake_unofficial/
@@ -389,6 +405,7 @@ build_lz4() {
 build_bitshuffle() {
   create_build_dir_and_prepare "$BITSHUFFLE_DIR"
   (
+    set_build_env_vars
     set -x
     # bitshuffle depends on lz4, therefore set the flag I$PREFIX/include
     ${CC:-gcc} $EXTRA_CFLAGS -std=c99 -I$PREFIX/include -O3 -DNDEBUG -fPIC -c \
@@ -403,6 +420,7 @@ build_bitshuffle() {
 build_libev() {
   create_build_dir_and_prepare "$LIBEV_DIR"
   (
+    set_build_env_vars
     set -x
     CFLAGS="$EXTRA_CFLAGS" \
       CXXFLAGS="$EXTRA_CXXFLAGS" \
@@ -414,6 +432,7 @@ build_libev() {
 build_rapidjson() {
   # just installing it into our prefix
   (
+    set_build_env_vars
     set -x
     rsync -av --delete "$RAPIDJSON_DIR/include/rapidjson/" "$PREFIX/include/rapidjson/"
   )
@@ -424,6 +443,7 @@ build_squeasel() {
   # a static lib
   create_build_dir_and_prepare "$SQUEASEL_DIR"
   (
+    set_build_env_vars
     set -x
     ${CC:-gcc} $EXTRA_CFLAGS -std=c99 -O3 -DNDEBUG -fPIC -c squeasel.c
     ar rs libsqueasel.a squeasel.o
@@ -437,6 +457,7 @@ build_curl() {
   # use this for testing our own HTTP endpoints at this point in time.
   create_build_dir_and_prepare "$CURL_DIR"
   (
+    set_build_env_vars
     set -x
     ./configure --prefix=$PREFIX \
       --disable-ftp \
@@ -462,6 +483,7 @@ build_curl() {
 build_crcutil() {
   create_build_dir_and_prepare "$CRCUTIL_DIR"
   (
+    set_build_env_vars
     set -x
     ./autogen.sh
     CFLAGS="$EXTRA_CFLAGS" \
@@ -479,6 +501,7 @@ build_boost_uuid() {
   # boost (eg the one on el6). So, we check it in and put it in our own include
   # directory.
   (
+    set_build_env_vars
     set -x
     rsync -a "$TP_DIR"/boost_uuid/boost/ "$PREFIX"/include/boost/
   )
@@ -486,6 +509,8 @@ build_boost_uuid() {
 
 build_cpplint() {
   (
+    set_build_env_vars
+
     # Copy cpplint tool into bin directory
     set -x
     cp -f "$GSG_DIR"/cpplint/cpplint.py "$PREFIX"/bin/cpplint.py
@@ -494,6 +519,7 @@ build_cpplint() {
 
 build_gcovr() {
   (
+    set_build_env_vars
     set -x
     # Copy gcovr tool into bin directory
     cp -a $GCOVR_DIR/scripts/gcovr $PREFIX/bin/gcovr
@@ -503,6 +529,7 @@ build_gcovr() {
 build_trace_viewer() {
   log "Installing trace-viewer into the www directory"
   (
+    set_build_env_vars
     set -x
     cp -a $TRACE_VIEWER_DIR/* $TP_DIR/../www/
   )
@@ -518,6 +545,7 @@ build_nvml() {
   fi
 
   (
+    set_build_env_vars
     set -x
     EXTRA_CFLAGS="$EXTRA_CFLAGS" run_make libvmem DEBUG=0
     # NVML doesn't allow configuring PREFIX -- it always installs into
