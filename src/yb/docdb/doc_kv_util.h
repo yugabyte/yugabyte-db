@@ -6,12 +6,12 @@
 #define YB_DOCDB_DOC_KV_UTIL_H_
 
 #include <string>
-#include "yb/util/monotime.h"
 
 #include "rocksdb/slice.h"
 
 #include "yb/common/timestamp.h"
 #include "yb/gutil/endian.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
 namespace yb {

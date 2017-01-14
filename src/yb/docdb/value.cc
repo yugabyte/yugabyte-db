@@ -48,7 +48,7 @@ Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
 
 string Value::ToString() const {
   if (!ttl_.Equals(kMaxTtl)) {
-    return "; ttl:" + primitive_value_.ToString();
+    return primitive_value_.ToString() + "; ttl: " + ttl_.ToString();
   }
   return primitive_value_.ToString();
 }

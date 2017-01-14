@@ -130,9 +130,16 @@ class DocDBRocksDBFixture {
   std::string DebugWalkDocument(const KeyBytes& encoded_doc_key);
 
   void SetPrimitive(const DocPath& doc_path,
+      const Value& value,
+      Timestamp timestamp,
+      DocWriteBatch* doc_write_batch = nullptr);
+
+  void SetPrimitive(const DocPath& doc_path,
                     const PrimitiveValue& value,
                     Timestamp timestamp,
-                    DocWriteBatch* doc_write_batch = nullptr);
+                    DocWriteBatch* doc_write_batch = nullptr) {
+    SetPrimitive(doc_path, Value(value), timestamp, doc_write_batch);
+  }
 
   void DocDBDebugDumpToConsole();
 

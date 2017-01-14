@@ -346,7 +346,7 @@ string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
 }
 
 void DocDBRocksDBFixture::SetPrimitive(const DocPath& doc_path,
-                                       const PrimitiveValue& value,
+                                       const Value& value,
                                        const Timestamp timestamp,
                                        DocWriteBatch* doc_write_batch) {
   DocWriteBatch local_doc_write_batch(rocksdb_.get());

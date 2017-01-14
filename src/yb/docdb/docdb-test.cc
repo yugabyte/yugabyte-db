@@ -18,6 +18,7 @@
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/path_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
@@ -219,6 +220,41 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; TS(1000)]) -> "value1"
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(4000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [TS(1000)]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; TS(3000)]) -> "value3"
+      )#");
+}
+
+TEST_F(DocDBTest, ExpiredValueCompactionTest) {
+  const DocKey doc_key(PrimitiveValues("k1"));
+  const MonoDelta one_ms = MonoDelta::FromMilliseconds(1);
+  const MonoDelta two_ms = MonoDelta::FromMilliseconds(2);
+  const Timestamp t0 = Timestamp(1000);
+  Timestamp t1 = server::HybridClock::AddPhysicalTimeToTimestamp(t0, two_ms);
+  Timestamp t2 = server::HybridClock::AddPhysicalTimeToTimestamp(t1, two_ms);
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+      Value(PrimitiveValue("v11"), one_ms), t0));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+      PrimitiveValue("v14"), t2));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
+      Value(PrimitiveValue("v21"), MonoDelta::FromMilliseconds(3)), t0));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
+      PrimitiveValue("v24"), t2));
+  // Note: TS(1000) + 4ms = TS(16385000)
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [TS(1000)]) -> {}
+SubDocKey(DocKey([], ["k1"]), ["s1"; TS(16385000)]) -> "v14"
+SubDocKey(DocKey([], ["k1"]), ["s1"; TS(1000)]) -> "v11"; ttl: 0.001s
+SubDocKey(DocKey([], ["k1"]), ["s2"; TS(16385000)]) -> "v24"
+SubDocKey(DocKey([], ["k1"]), ["s2"; TS(1000)]) -> "v21"; ttl: 0.003s
+      )#");
+  CompactHistoryBefore(t1);
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [TS(1000)]) -> {}
+SubDocKey(DocKey([], ["k1"]), ["s1"; TS(16385000)]) -> "v14"
+SubDocKey(DocKey([], ["k1"]), ["s2"; TS(16385000)]) -> "v24"
+SubDocKey(DocKey([], ["k1"]), ["s2"; TS(1000)]) -> "v21"; ttl: 0.003s
       )#");
 }
 
@@ -560,10 +596,12 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(30000), Timestamp(3000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e"), Timestamp(2000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50),
+      PrimitiveValue("row2_e"), Timestamp(2000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e_prime"), Timestamp(4000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50),
+      PrimitiveValue("row2_e_prime"), Timestamp(4000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   ASSERT_OK(WriteToRocksDB(dwb));
@@ -668,12 +706,20 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
   DocWriteBatch dwb(rocksdb());
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"), Timestamp(1000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000), Timestamp(1000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"), Timestamp(1000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(20000), Timestamp(2000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30),
+                             PrimitiveValue("row1_c"),
+                             Timestamp(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40),
+                             PrimitiveValue(10000),
+                             Timestamp(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50),
+                             PrimitiveValue("row1_e"),
+                             Timestamp(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40),
+                             PrimitiveValue(20000),
+                             Timestamp(2000)));
 
-  // Delete entire row1 document to test that iterator can successfully jump to next document
+  // Delete entire row1 documekillnt to test that iterator can successfully jump to next document
   // when it finds deleted document.
   ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1), Timestamp(2500)));
 

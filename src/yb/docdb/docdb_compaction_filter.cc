@@ -11,6 +11,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/value.h"
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -138,12 +139,34 @@ bool DocDBCompactionFilter::Filter(int level,
   CHECK_EQ(new_stack_size, overwrite_ts_.size());
   prev_subdoc_key_ = std::move(subdoc_key);
 
+  const ValueType value_type = DecodeValueType(existing_value);
+  MonoDelta ttl;
+
+  // If the value expires by the time of history cutoff, it is treated as deleted and filtered out.
+  CHECK_OK(Value::DecodeTTL(existing_value, &ttl));
+
+  bool has_expired = false;
+
+  CHECK_OK(HasExpiredTTL(key, ttl, history_cutoff_, &has_expired));
+
+  // We don't support TTLs in object markers yet.
+  if (value_type != ValueType::kObject && has_expired) {
+    // This is consistent with the condition we're testing for deletes at the bottom of the function
+    // because ts <= history_cutoff_ is implied by has_expired.
+    if (is_full_compaction_) {
+      return true;
+    }
+    // During minor compactions, expired values are written back as tombstones because removing the
+    // record might expose earlier values which would be incorrect.
+    *value_changed = true;
+    *new_value = Value(PrimitiveValue(ValueType::kTombstone)).Encode();
+  }
+
   // Deletes at or below the history cutoff timestamp can always be cleaned up on full (major)
   // compactions. However, we do need to update the overwrite timestamp stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier timestamps.
-  return DecodeValueType(existing_value) == ValueType::kTombstone &&
-         ts <= history_cutoff_ && is_full_compaction_;
+  return value_type == ValueType::kTombstone && ts <= history_cutoff_ && is_full_compaction_;
 }
 
 const char* DocDBCompactionFilter::Name() const {

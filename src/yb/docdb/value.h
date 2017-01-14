@@ -30,8 +30,14 @@ class Value {
 
   const PrimitiveValue primitive_value() const { return primitive_value_; }
 
-  // Consume the Ttl portion of the slice if it exists and return it
+  // Consume the Ttl portion of the slice if it exists and return it.
   static CHECKED_STATUS DecodeTTL(rocksdb::Slice* rocksdb_value, MonoDelta* ttl);
+
+  // A version that doesn't mutate the slice.
+  static CHECKED_STATUS DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
+    rocksdb::Slice value_copy = rocksdb_value;
+    return DecodeTTL(&value_copy, ttl);
+  }
 
   // Decoded the endtire value
   CHECKED_STATUS Decode(const rocksdb::Slice &rocksdb_value);
