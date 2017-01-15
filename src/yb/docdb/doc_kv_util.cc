@@ -123,15 +123,15 @@ std::string ToShortDebugStr(rocksdb::Slice slice) {
   return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
 }
 
-Status hasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
-    const Timestamp &timestamp, bool *hasExpired) {
-  *hasExpired = false;
+Status HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
+    const Timestamp &timestamp, bool *has_expired) {
+  *has_expired = false;
   if (!ttl.Equals(Value::kMaxTtl)) {
     SubDocKey sub_doc_key;
     RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key));
     const Timestamp expiry =
         server::HybridClock::AddPhysicalTimeToTimestamp(sub_doc_key.timestamp(), ttl);
-    *hasExpired = (timestamp.CompareTo(expiry) > 0);
+    *has_expired = (timestamp.CompareTo(expiry) > 0);
   }
   return Status::OK();
 }

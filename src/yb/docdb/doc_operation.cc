@@ -68,9 +68,9 @@ Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const Timestamp& timest
   RETURN_NOT_OK(val.Decode(value));
 
   // Check for TTL.
-  bool hasExpired;
-  RETURN_NOT_OK(hasExpiredTTL(key, val.ttl(), timestamp, &hasExpired));
-  if (hasExpired) {
+  bool has_expired = false;
+  RETURN_NOT_OK(HasExpiredTTL(key, val.ttl(), timestamp, &has_expired));
+  if (has_expired) {
     response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
     return Status::OK();
   }

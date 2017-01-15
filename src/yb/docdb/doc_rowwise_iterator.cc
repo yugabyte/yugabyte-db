@@ -202,12 +202,12 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
       RETURN_NOT_OK(value.Decode(db_iter_->value()));
 
       // Check for TTL.
-      bool hasExpired;
-      RETURN_NOT_OK(hasExpiredTTL(db_iter_->key(), value.ttl(), timestamp_, &hasExpired));
+      bool has_expired = false;
+      RETURN_NOT_OK(HasExpiredTTL(db_iter_->key(), value.ttl(), timestamp_, &has_expired));
 
       if (value.primitive_value().value_type() != ValueType::kNull &&
           value.primitive_value().value_type() != ValueType::kTombstone &&
-          !hasExpired) {
+          !has_expired) {
         DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
         values->emplace_back(value.primitive_value());
         is_null = false;

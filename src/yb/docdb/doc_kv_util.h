@@ -124,8 +124,8 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
   return ToShortDebugStr(rocksdb::Slice(raw_str));
 }
 
-CHECKED_STATUS hasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
-    const Timestamp &timestamp, bool *hasExpired);
+CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
+    const Timestamp &timestamp, bool *has_expired);
 
 }  // namespace docdb
 }  // namespace yb
