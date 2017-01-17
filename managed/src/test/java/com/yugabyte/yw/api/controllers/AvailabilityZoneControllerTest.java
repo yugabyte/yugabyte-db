@@ -9,15 +9,17 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
 
 import java.util.UUID;
 
+import com.yugabyte.yw.common.FakeApiHelper;
 import org.hamcrest.CoreMatchers;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -25,22 +27,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
 
 public class AvailabilityZoneControllerTest extends FakeDBApplication {
-  Customer customer;
   Provider defaultProvider;
   Region defaultRegion;
 
   @Before
   public void setUp() {
-    customer = Customer.create("Valid Customer", "foo@bar.com", "password");
     defaultProvider = Provider.create("aws", "Amazon");
     defaultRegion = Region.create(defaultProvider,
                                   "default-region",
@@ -102,16 +100,11 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testCreateAvailabilityZoneWithInValidParams() {
     ObjectNode azRequestJson = Json.newObject();
 
-    String authToken = customer.createAuthToken();
     String uri =
         "/api/providers/" + defaultProvider.uuid + "/regions/" + defaultRegion.uuid + "/zones";
-    Http.RequestBuilder fr = play.test.Helpers.fakeRequest("POST",uri)
-                             .header("X-AUTH-TOKEN", authToken)
-                             .bodyJson(azRequestJson);
-
-    Result result = route(fr);
+    Result result = FakeApiHelper.requestWithAuthToken("POST", uri, azRequestJson);
     assertEquals(BAD_REQUEST, result.status());
-     assertThat(contentAsString(result),
+    assertThat(contentAsString(result),
                 CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
     assertThat(contentAsString(result),
                CoreMatchers.containsString("\"name\":[\"This field is required\"]"));
@@ -119,12 +112,38 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
                CoreMatchers.containsString("\"subnet\":[\"This field is required\"]"));
   }
 
+  @Test
+  public void testDeleteAvailabilityZoneWithInValidParams() {
+    UUID randomUUID = UUID.randomUUID();
+    Result result =
+            FakeApiHelper.requestWithAuthToken("DELETE", "/api/providers/" + defaultProvider.uuid +
+                    "/regions/" + defaultRegion.uuid + "/zones/" + randomUUID);
+
+    assertEquals(BAD_REQUEST, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    Assert.assertThat(json.get("error").toString(),
+            CoreMatchers.containsString("Invalid Region/AZ UUID:" + randomUUID));
+  }
+
+  @Test
+  public void testDeleteAvailabilityZoneWithValidParams() {
+    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
+
+    Result result =
+            FakeApiHelper.requestWithAuthToken("DELETE", "/api/providers/" + defaultProvider.uuid +
+                    "/regions/" + defaultRegion.uuid + "/zones/" + az.uuid);
+
+    assertEquals(OK, result.status());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    az = AvailabilityZone.find.byId(az.uuid);
+    assertTrue(json.get("success").asBoolean());
+    assertFalse(az.active);
+  }
+
   private JsonNode doListAZAndVerifyResult(UUID cloudProvider, UUID region, int expectedStatus) {
-    String authToken = customer.createAuthToken();
     String uri = "/api/providers/" + cloudProvider + "/regions/" + region + "/zones";
-    Http.RequestBuilder fr =
-        play.test.Helpers.fakeRequest("GET", uri).header("X-AUTH-TOKEN", authToken);
-    Result result = route(fr);
+    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }
@@ -133,14 +152,15 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
                                              UUID region,
                                              ObjectNode azRequestJson,
                                              int expectedStatus) {
-    String authToken = customer.createAuthToken();
-    Http.RequestBuilder fr = play.test.Helpers.fakeRequest(
-        "POST", "/api/providers/" + cloudProvider + "/regions/" + region + "/zones")
-        .header("X-AUTH-TOKEN", authToken);
+
+    String uri = "/api/providers/" + cloudProvider + "/regions/" + region + "/zones";
+
+    Result result;
     if (azRequestJson != null) {
-      fr.bodyJson(azRequestJson);
+      result = FakeApiHelper.requestWithAuthToken("POST", uri, azRequestJson);
+    } else {
+      result = FakeApiHelper.requestWithAuthToken("POST", uri);
     }
-    Result result = route(fr);
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }

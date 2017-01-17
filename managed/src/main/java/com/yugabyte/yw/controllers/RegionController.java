@@ -5,7 +5,12 @@ package com.yugabyte.yw.controllers;
 import java.util.List;
 import java.util.UUID;
 
+import com.avaje.ebean.Ebean;
+import com.avaje.ebean.SqlUpdate;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +24,10 @@ import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
+
+import static com.avaje.ebean.Ebean.beginTransaction;
+import static com.avaje.ebean.Ebean.commitTransaction;
+import static com.avaje.ebean.Ebean.endTransaction;
 
 public class RegionController extends AuthenticatedController {
   @Inject
@@ -98,5 +107,30 @@ public class RegionController extends AuthenticatedController {
       responseJson.put("error", e.getMessage());
       return internalServerError(responseJson);
     }
+  }
+
+  /**
+   * DELETE endpoint for deleting a existing Region.
+   * @param providerUUID Provider UUID
+   * @param regionUUID Region UUID
+   * @return JSON response on whether or not delete region was sucessful or not.
+     */
+  public Result delete(UUID providerUUID, UUID regionUUID) {
+    Region region = Region.find.where()
+            .idEq(regionUUID).eq("provider_uuid", providerUUID).findUnique();
+
+    if (region == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID:" + regionUUID);
+    }
+
+    try {
+      region.disableRegionAndZones();
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to flag Region UUID as deleted: " + regionUUID);
+    }
+
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("success", true);
+    return ApiResponse.success(responseJson);
   }
 }
