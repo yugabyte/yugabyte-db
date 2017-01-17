@@ -34,7 +34,8 @@ class PTInsertStmt : public PTDmlStmt {
                PTQualifiedName::SharedPtr relation,
                PTQualifiedNameListNode::SharedPtr columns,
                PTCollection::SharedPtr value_clause,
-               PTOptionExist option_exists = PTOptionExist::DEFAULT);
+               PTOptionExist option_exists = PTOptionExist::DEFAULT,
+               int64_t ttl_msec = PTDmlStmt::kNoTTL);
   virtual ~PTInsertStmt();
 
   template<typename... TypeArgs>
@@ -62,19 +63,11 @@ class PTInsertStmt : public PTDmlStmt {
     return relation_->loc();
   }
 
-  // Access to column_args_.
-  const MCVector<ColumnArg>& column_args() const {
-    return column_args_;
-  }
-
  private:
   // The parser will constructs the following tree nodes.
   PTQualifiedName::SharedPtr relation_;
   PTQualifiedNameListNode::SharedPtr columns_;
   PTCollection::SharedPtr value_clause_;
-
-  // The sematic analyzer will decorate this node with the following information.
-  MCVector<ColumnArg> column_args_;
 };
 
 }  // namespace sql

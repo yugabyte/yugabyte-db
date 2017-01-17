@@ -23,12 +23,12 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
                            PTQualifiedName::SharedPtr relation,
                            PTQualifiedNameListNode::SharedPtr columns,
                            PTCollection::SharedPtr value_clause,
-                           PTOptionExist option_exists)
-    : PTDmlStmt(memctx, loc, false, option_exists),
+                           PTOptionExist option_exists,
+                           int64_t ttl_msec)
+    : PTDmlStmt(memctx, loc, false, option_exists, ttl_msec),
       relation_(relation),
       columns_(columns),
-      value_clause_(value_clause),
-      column_args_(memctx) {
+      value_clause_(value_clause) {
 }
 
 PTInsertStmt::~PTInsertStmt() {

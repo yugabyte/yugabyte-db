@@ -2,6 +2,8 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include<thread>
+
 #include "yb/sql/ybsql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -17,6 +19,16 @@ class YbSqlQuery : public YbSqlTestBase {
  public:
   YbSqlQuery() : YbSqlTestBase() {
   }
+
+  std::shared_ptr<YSQLRowBlock> ExecSelect(SqlProcessor *processor) {
+    auto select = "SELECT c1, c2, c3 FROM test_table WHERE c1 = 1";
+    Status s = processor->Run(select);
+    CHECK(s.ok());
+    auto row_block = processor->row_block();
+    EXPECT_EQ(1, row_block->row_count());
+    return row_block;
+  }
+
 };
 
 TEST_F(YbSqlQuery, TestSqlQuerySimple) {
@@ -138,6 +150,46 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     CHECK_EQ(row.column(4).int32_value(), idx + 1000);
     CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
   }
+}
+
+TEST_F(YbSqlQuery, TestInsertWithTTL) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  // Create the table.
+  const char *create_stmt =
+      "CREATE TABLE test_table(c1 int, c2 int, c3 int, "
+          "primary key(c1));";
+  Status s = processor->Run(create_stmt);
+  CHECK(s.ok());
+
+  // Insert row with ttl.
+  auto insert_stmt = "INSERT INTO test_table(c1, c2, c3) VALUES(1, 2, 3) "
+      "USING TTL 1000;";
+  s = processor->Run(insert_stmt);
+  CHECK_OK(s);
+
+  // Verify row is present.
+  auto row_block = ExecSelect(processor);
+  YSQLRow& row = row_block->row(0);
+
+  EXPECT_EQ(1, row.column(0).int32_value());
+  EXPECT_EQ(2, row.column(1).int32_value());
+  EXPECT_EQ(3, row.column(2).int32_value());
+
+  // Sleep for 1.1 seconds and verify ttl has expired.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+  auto row_block_expired = ExecSelect(processor);
+  row = row_block_expired->row(0);
+  // TODO: need to revisit this since cassandra semantics might be a little different when all
+  // non primary key columns are null.
+  EXPECT_EQ(1, row.column(0).int32_value());
+  EXPECT_TRUE(row.column(1).IsNull());
+  EXPECT_TRUE(row.column(2).IsNull());
 }
 
 } // namespace sql

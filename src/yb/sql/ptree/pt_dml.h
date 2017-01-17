@@ -47,12 +47,14 @@ class PTCollection : public TreeNode {
 
 class PTDmlStmt : public PTCollection {
  public:
+  static const int64_t kNoTTL = -1;
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTOptionExist option_exists = PTOptionExist::DEFAULT);
+                     PTOptionExist option_exists = PTOptionExist::DEFAULT,
+                     int64_t ttl_msec = kNoTTL);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -97,6 +99,15 @@ class PTDmlStmt : public PTCollection {
     return where_ops_;
   }
 
+  int64_t ttl_msec() const {
+    return ttl_msec_;
+  }
+
+  // Access for column_args.
+  const MCVector<ColumnArg>& column_args() const {
+    return column_args_;
+  }
+
  protected:
   // Data types.
   struct WhereSemanticStats {
@@ -139,6 +150,10 @@ class PTDmlStmt : public PTCollection {
 
   // Predicate for write operator (UPDATE & DELETE).
   bool write_only_;
+  int64_t ttl_msec_;
+
+  // Semantic phase will decorate the following field.
+  MCVector<ColumnArg> column_args_;
 };
 
 }  // namespace sql

@@ -1774,7 +1774,7 @@ InsertStmt:
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
   using_ttl_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::DEFAULT, $9);
   }
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
   IF_P NOT EXISTS
@@ -1784,7 +1784,7 @@ InsertStmt:
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
   IF_P NOT EXISTS using_ttl_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS, $12);
   }
   | opt_with_clause INSERT INTO insert_target DEFAULT VALUES
   opt_on_conflict returning_clause {

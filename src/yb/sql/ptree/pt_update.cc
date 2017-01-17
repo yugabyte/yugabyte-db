@@ -61,8 +61,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
     : PTDmlStmt(memctx, loc, true, option_exists),
       relation_(relation),
       set_clause_(set_clause),
-      where_clause_(where_clause),
-      column_args_(memctx) {
+      where_clause_(where_clause) {
 }
 
 PTUpdateStmt::~PTUpdateStmt() {

@@ -95,11 +95,6 @@ class PTUpdateStmt : public PTDmlStmt {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
   CHECKED_STATUS AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
 
-  // Access for column_args.
-  const MCVector<ColumnArg>& column_args() const {
-    return column_args_;
-  }
-
   // Table name.
   const char *table_name() const OVERRIDE {
     return relation_->table_name().c_str();
@@ -119,9 +114,6 @@ class PTUpdateStmt : public PTDmlStmt {
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;
   PTExpr::SharedPtr where_clause_;
-
-  // Semantic phase will decorate the following field.
-  MCVector<ColumnArg> column_args_;
 };
 
 }  // namespace sql

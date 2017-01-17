@@ -20,7 +20,8 @@ using client::YBColumnSchema;
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTOptionExist option_exists)
+                     PTOptionExist option_exists,
+                     int64_t ttl_msec)
   : PTCollection(memctx, loc),
     option_exists_(option_exists),
     table_columns_(memctx),
@@ -28,7 +29,9 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     num_hash_key_columns_(0),
     key_where_ops_(memctx),
     where_ops_(memctx),
-    write_only_(write_only) {
+    write_only_(write_only),
+    ttl_msec_(ttl_msec),
+    column_args_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {

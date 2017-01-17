@@ -304,9 +304,14 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
-                                                    const MCVector<ColumnArg>& column_args,
+                                                    const PTDmlStmt *tnode,
                                                     YSQLWriteRequestPB *req,
                                                     YBPartialRow *row) {
+  const MCVector<ColumnArg>& column_args = tnode->column_args();
+  // Set the ttl.
+  if (tnode->ttl_msec() != PTDmlStmt::kNoTTL) {
+    req->set_ttl(tnode->ttl_msec());
+  }
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
       // This column is not assigned a value, ignore it. We don't support default value yet.
@@ -479,7 +484,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
 
   // Set the values for columns.
   Status s = ColumnArgsToWriteRequestPB(table,
-                                        tnode->column_args(),
+                                        tnode,
                                         insert_op->mutable_request(),
                                         insert_op->mutable_row());
   if (!s.ok()) {
@@ -524,7 +529,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
 
   // Setup the columns' new values.
   RETURN_NOT_OK(ColumnArgsToWriteRequestPB(table,
-                                           tnode->column_args(),
+                                           tnode,
                                            update_op->mutable_request(),
                                            update_op->mutable_row()));
 

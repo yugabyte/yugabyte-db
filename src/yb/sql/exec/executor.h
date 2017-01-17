@@ -100,7 +100,7 @@ class Executor {
 
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
-                                            const MCVector<ColumnArg>& column_args,
+                                            const PTDmlStmt *tnode,
                                             YSQLWriteRequestPB *req,
                                             YBPartialRow *row);
 
