@@ -10,7 +10,6 @@ import { isValidArray, isValidObject, sortByLengthOfArrayProperty } from '../../
 import React, { Component } from 'react';
 import './stylesheets/MarkerClusterLayer.scss'
 import ReactDOMServer from 'react-dom/server';
-import {DescriptionList} from '../common/descriptors';
 
 class MarkerDetail extends Component {
   render() {
@@ -58,6 +57,9 @@ class MarkerDetail extends Component {
 }
 
 export default class MarkerClusterLayer extends MapLayer {
+  createLeafletElement(props) {
+    // Needed to react-leaflet^1.1.1 when extending Base Map Classes
+  }
   componentWillMount() {
     super.componentWillMount();
     this.leafletElement = Leaflet.markerClusterGroup({
