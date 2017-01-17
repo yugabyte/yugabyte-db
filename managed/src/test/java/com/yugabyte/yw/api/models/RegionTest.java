@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.api.models;
 
-import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -11,6 +11,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Set;
 
+import com.yugabyte.yw.models.AvailabilityZone;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -91,5 +92,23 @@ public class RegionTest extends FakeDBApplication {
   public void testSettingInvalidLatLong() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     r.setLatLon(-90, 200);
+  }
+
+  @Test
+  public void testDisableRegionZones() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "AZ - 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "AZ - 2", "subnet-2");
+
+    assertTrue(r.isActive());
+    for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
+      assertTrue(zone.isActive());
+    }
+
+    r.disableRegionAndZones();
+    assertFalse(r.isActive());
+    for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
+      assertFalse(zone.isActive());
+    }
   }
 }

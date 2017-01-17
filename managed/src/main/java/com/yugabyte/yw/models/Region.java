@@ -11,14 +11,15 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 
-import com.avaje.ebean.Ebean;
-import com.avaje.ebean.Model;
-import com.avaje.ebean.Query;
-import com.avaje.ebean.RawSql;
-import com.avaje.ebean.RawSqlBuilder;
+import com.avaje.ebean.*;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 
+import com.yugabyte.yw.common.ApiResponse;
 import play.data.validation.Constraints;
+
+import static com.avaje.ebean.Ebean.beginTransaction;
+import static com.avaje.ebean.Ebean.commitTransaction;
+import static com.avaje.ebean.Ebean.endTransaction;
 
 @Entity
 public class Region extends Model {
@@ -118,5 +119,23 @@ public class Region extends Model {
     query.setRawSql(rawSql);
     query.setParameter("provider_uuid", providerUUID);
     return query.findList();
+  }
+
+  public void disableRegionAndZones() {
+    beginTransaction();
+    try {
+      setActiveFlag(false);
+      update();
+      String s = "UPDATE availability_zone set active = :active_flag where region_uuid = :region_uuid";
+      SqlUpdate updateStmt = Ebean.createSqlUpdate(s);
+      updateStmt.setParameter("active_flag", false);
+      updateStmt.setParameter("region_uuid", uuid);
+      Ebean.execute(updateStmt);
+      commitTransaction();
+    } catch (Exception e) {
+      throw new RuntimeException("Unable to flag Region UUID as deleted: " + uuid);
+    } finally {
+      endTransaction();
+    }
   }
 }
