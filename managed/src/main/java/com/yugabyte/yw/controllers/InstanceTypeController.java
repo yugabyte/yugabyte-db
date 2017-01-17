@@ -83,4 +83,53 @@ public class InstanceTypeController extends AuthenticatedController {
       return internalServerError(responseJson);
     }
   }
+
+  /**
+   * DELETE endpoint for deleting instance types.
+   * @param providerUUID, UUID of provider
+   * @param instanceTypeCode, Instance Type code.
+   * @return JSON response to denote if the delete was successful or not.
+   */
+  public Result delete(UUID providerUUID, String instanceTypeCode) {
+    Provider provider = Provider.find.byId(providerUUID);
+
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+
+    try {
+      InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
+      if (instanceType == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid InstanceType Code: " + instanceTypeCode);
+      }
+
+      instanceType.setActive(false);
+      instanceType.save();
+      ObjectNode responseJson = Json.newObject();
+      responseJson.put("success", true);
+      return ApiResponse.success(responseJson);
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete InstanceType: " + instanceTypeCode);
+    }
+  }
+
+  /**
+   * Info endpoint for getting instance type information.
+   * @param providerUUID, UUID of provider.
+   * @param instanceTypeCode, Instance type code.
+   * @return JSON response with instance type information.
+   */
+  public Result index(UUID providerUUID, String instanceTypeCode) {
+    Provider provider = Provider.find.byId(providerUUID);
+
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+
+    InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
+    if (instanceType == null) {
+      return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
+    }
+    return ApiResponse.success(instanceType);
+  }
 }
