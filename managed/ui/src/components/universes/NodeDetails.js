@@ -4,7 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../panels';
-import { isValidObject, isValidArray } from '../../utils/ObjectUtils'
+import { isValidObject, isValidArray, removeNullProperties } from '../../utils/ObjectUtils'
 
 export default class NodeDetails extends Component {
   static propTypes = {
@@ -22,18 +22,20 @@ export default class NodeDetails extends Component {
     if (!isValidArray(nodeDetails)) {
       return <span />;
     }
-    const nodeDetailRows = nodeDetails.map(function(nodeDetail) {
-      var privateIP = nodeDetail.cloudInfo.private_ip;
-      return {
-        name: nodeDetail.nodeName,
-        regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
-        isMaster: nodeDetail.isMaster ? "Yes" : "No",
-        masterPort: nodeDetail.masterHttpPort,
-        tserverPort: nodeDetail.tserverHttpPort,
-        isTServer: nodeDetail.isTserver ? "Yes" : "No",
-        privateIP: privateIP,
-        nodeStatus: nodeDetail.state,
-      };
+    const nodeDetailRows = nodeDetails.filter(function(nodeDetail){
+        return nodeDetail.state !== "Destroyed"
+      }).map(function(nodeDetail){
+        var privateIP = nodeDetail.cloudInfo.private_ip;
+        return {
+          name: nodeDetail.nodeName,
+          regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
+          isMaster: nodeDetail.isMaster ? "Yes" : "No",
+          masterPort: nodeDetail.masterHttpPort,
+          tserverPort: nodeDetail.tserverHttpPort,
+          isTServer: nodeDetail.isTserver ? "Yes" : "No",
+          privateIP: privateIP,
+          nodeStatus: nodeDetail.state,
+      }
     });
 
     var formatIpPort = function(cell, row, type) {
