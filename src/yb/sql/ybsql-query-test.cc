@@ -29,6 +29,43 @@ class YbSqlQuery : public YbSqlTestBase {
     return row_block;
   }
 
+  void VerifyExpiry(SqlProcessor *processor) {
+    auto row_block_expired = ExecSelect(processor);
+    YSQLRow& row = row_block_expired->row(0);
+    // TODO: need to revisit this since cassandra semantics might be a little different when all
+    // non primary key columns are null.
+    EXPECT_EQ(1, row.column(0).int32_value());
+    EXPECT_TRUE(row.column(1).IsNull());
+    EXPECT_TRUE(row.column(2).IsNull());
+  }
+
+  void CreateTableAndInsertRow(SqlProcessor *processor, bool with_ttl = true) {
+    // Create the table.
+    const char *create_stmt =
+        "CREATE TABLE test_table(c1 int, c2 int, c3 int, "
+            "primary key(c1));";
+    Status s = processor->Run(create_stmt);
+    CHECK(s.ok());
+
+    std::string insert_stmt("INSERT INTO test_table(c1, c2, c3) VALUES(1, 2, 3)");
+    if (with_ttl) {
+      // Insert row with ttl.
+      insert_stmt += " USING TTL 1000;";
+    } else {
+      insert_stmt += ";";
+    }
+    s = processor->Run(insert_stmt);
+    CHECK_OK(s);
+
+    // Verify row is present.
+    auto row_block = ExecSelect(processor);
+    YSQLRow& row = row_block->row(0);
+
+    EXPECT_EQ(1, row.column(0).int32_value());
+    EXPECT_EQ(2, row.column(1).int32_value());
+    EXPECT_EQ(3, row.column(2).int32_value());
+  }
+
 };
 
 TEST_F(YbSqlQuery, TestSqlQuerySimple) {
@@ -159,37 +196,38 @@ TEST_F(YbSqlQuery, TestInsertWithTTL) {
   // Get a processor.
   SqlProcessor *processor = GetSqlProcessor();
 
-  // Create the table.
-  const char *create_stmt =
-      "CREATE TABLE test_table(c1 int, c2 int, c3 int, "
-          "primary key(c1));";
-  Status s = processor->Run(create_stmt);
-  CHECK(s.ok());
-
-  // Insert row with ttl.
-  auto insert_stmt = "INSERT INTO test_table(c1, c2, c3) VALUES(1, 2, 3) "
-      "USING TTL 1000;";
-  s = processor->Run(insert_stmt);
-  CHECK_OK(s);
-
-  // Verify row is present.
-  auto row_block = ExecSelect(processor);
-  YSQLRow& row = row_block->row(0);
-
-  EXPECT_EQ(1, row.column(0).int32_value());
-  EXPECT_EQ(2, row.column(1).int32_value());
-  EXPECT_EQ(3, row.column(2).int32_value());
+  CreateTableAndInsertRow(processor);
 
   // Sleep for 1.1 seconds and verify ttl has expired.
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
-  auto row_block_expired = ExecSelect(processor);
-  row = row_block_expired->row(0);
-  // TODO: need to revisit this since cassandra semantics might be a little different when all
-  // non primary key columns are null.
-  EXPECT_EQ(1, row.column(0).int32_value());
-  EXPECT_TRUE(row.column(1).IsNull());
-  EXPECT_TRUE(row.column(2).IsNull());
+  VerifyExpiry(processor);
+}
+
+TEST_F(YbSqlQuery, TestUpdateWithTTL) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  CreateTableAndInsertRow(processor, false);
+
+  // Now update the row with a TTL.
+  std::string update_stmt("UPDATE test_table USING TTL 1000 SET c2 = 4, c3 = 5 WHERE c1 = 1;");
+  Status s = processor->Run(update_stmt);
+  CHECK(s.ok());
+
+  // Sleep for 1.1 seconds and verify ttl has expired.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+  VerifyExpiry(processor);
+
+  // Try an update by setting the primary key, which should fail since set clause can't have
+  // primary keys.
+  std::string invalid_update_stmt("UPDATE test_table USING TTL 1000 SET c1 = 4 WHERE c1 = 1;");
+  s = processor->Run(invalid_update_stmt);
+  CHECK(!s.ok());
 }
 
 } // namespace sql

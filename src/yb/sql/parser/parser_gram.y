@@ -279,7 +279,7 @@ using namespace yb::sql;
                           for_locking_strength defacl_privilege_target import_qualification_type
                           opt_lock lock_type cast_context vacuum_option_list vacuum_option_elem
                           opt_nowait_or_skip TriggerActionTime add_drop opt_asc_desc opt_nulls_order
-                          using_ttl_clause
+                          using_ttl_clause opt_using_ttl_clause
 
 %type <PType>             GenericType ConstTypename
                           ConstDatetime ConstInterval
@@ -1852,6 +1852,15 @@ opt_on_conflict:
   }
 ;
 
+opt_using_ttl_clause:
+  /*EMPTY*/ {
+    $$ = PTDmlStmt::kNoTTL;
+  }
+  | using_ttl_clause {
+    $$ = $1;
+  }
+;
+
 using_ttl_clause:
   USING TTL Iconst {
     $$ = $3;
@@ -1909,17 +1918,17 @@ using_clause:
 //--------------------------------------------------------------------------------------------------
 
 UpdateStmt:
-  opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
+  opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
   opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $6);
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, PTOptionExist::DEFAULT, $4);
   }
-  | opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
+  | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
   opt_where_or_current_clause IF_P EXISTS {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $6, PTOptionExist::IF_EXISTS);
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, PTOptionExist::IF_EXISTS, $4);
   }
-  | opt_with_clause UPDATE relation_expr_opt_alias SET set_clause_list
+  | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
   opt_where_or_current_clause IF_P NOT EXISTS {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $5, $6, PTOptionExist::IF_NOT_EXISTS);
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, PTOptionExist::IF_NOT_EXISTS, $4);
   }
 ;
 

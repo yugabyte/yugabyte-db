@@ -81,7 +81,8 @@ class PTUpdateStmt : public PTDmlStmt {
                PTTableRef::SharedPtr relation,
                PTAssignListNode::SharedPtr set_clause,
                PTExpr::SharedPtr where_clause,
-               PTOptionExist option_exists = PTOptionExist::DEFAULT);
+               PTOptionExist option_exists = PTOptionExist::DEFAULT,
+               int64_t ttl_msec = PTDmlStmt::kNoTTL);
   virtual ~PTUpdateStmt();
 
   template<typename... TypeArgs>
