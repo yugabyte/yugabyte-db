@@ -202,7 +202,7 @@ fi
 # library (which the bindings depend on) is missing ASAN/TSAN symbols.
 
 cd "$BUILD_ROOT"
-cmake_cmd_line="$THIRDPARTY_BIN/cmake ${cmake_opts[@]}"
+cmake_cmd_line="cmake ${cmake_opts[@]}"
 if [ "$BUILD_TYPE" = "asan" ]; then
   log "Starting ASAN build"
   time $cmake_cmd_line "$YB_SRC_ROOT"
@@ -297,7 +297,7 @@ if [[ $BUILD_CPP == "1" ]]; then
   set +e
   time (
     set -x
-    time $THIRDPARTY_BIN/ctest -j$NUM_PARALLEL_TESTS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
+    time ctest -j$NUM_PARALLEL_TESTS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
       tee "$CTEST_OUTPUT_PATH"
   )
   if [ $? -ne 0 ]; then

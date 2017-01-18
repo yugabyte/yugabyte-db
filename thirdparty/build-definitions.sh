@@ -229,7 +229,8 @@ build_llvm() {
     # the prefix directory, since this confuses CMake into believing the
     # thirdparty prefix directory is the system-wide prefix, and it omits the
     # thirdparty prefix directory from the rpath of built binaries.
-    ln -sfn "$LLVM_BUILD_DIR" "$TP_DIR/clang-toolchain"
+    local relative_llvm_path=${LLVM_BUILD_DIR#$TP_DIR/}
+    ln -sfn "$relative_llvm_path" "$TP_DIR/clang-toolchain"
   fi
   popd
 }
@@ -358,6 +359,11 @@ build_snappy() {
       LIBS="$EXTRA_LIBS" \
       ./configure --with-pic --prefix=$PREFIX
     run_make install
+   mkdir -p "include" "lib"
+   # Copy over all the headers into a generic include/ directory.
+   ls | egrep "snappy.*.h" | xargs -I{} rsync -av "{}" "include/"
+   # Copy over all the libraries into a generic lib/ directory.
+   ls ".libs/" | xargs -I{} rsync -av ".libs/{}" "lib/"
   )
 }
 

@@ -227,10 +227,14 @@ if [ ! -d "$CMAKE_DIR" ]; then
   fetch_and_expand cmake-${CMAKE_VERSION}.tar.gz
 fi
 
+SNAPPY_PATCHLEVEL=1
+delete_if_wrong_patchlevel "$SNAPPY_DIR" "$SNAPPY_PATCHLEVEL"
 if [ ! -d "$SNAPPY_DIR" ]; then
   fetch_and_expand snappy-${SNAPPY_VERSION}.tar.gz
   if [ "$DOWNLOAD_ONLY" == "0" ]; then
     pushd "$SNAPPY_DIR"
+    patch -p1 < "$TP_DIR"/patches/snappy-define-guard-macro.patch
+    touch patchlevel-"$SNAPPY_PATCHLEVEL"
     run_autoreconf -fvi
     popd
   fi

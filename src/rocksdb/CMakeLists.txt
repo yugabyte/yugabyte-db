@@ -66,11 +66,19 @@ endif()
 set(GFLAGS_BUILD_DIR
     "${YB_SRC_DIR}/thirdparty/build/${THIRDPARTY_INSTRUMENTATION_TYPE}/gflags-2.1.2")
 
+set(SNAPPY_BUILD_DIR
+    "${YB_SRC_DIR}/thirdparty/build/${THIRDPARTY_INSTRUMENTATION_TYPE}/snappy-1.1.0")
+
+# Make it possible to work with packaged third-party dependencies built before the layout
+#  changed as Linuxbrew compatibility was added in https://phabricator.dev.yugabyte.com/D982.
 if (NOT EXISTS "${GFLAGS_BUILD_DIR}")
-  # Make it possible to work with packaged third-party dependencies built before the layout changed
-  # as Linuxbrew compatibility was added in https://phabricator.dev.yugabyte.com/D982.
   message("gflags build directory not found at ${GFLAGS_BUILD_DIR}, using old location")
   set(GFLAGS_BUILD_DIR "${YB_SRC_DIR}/thirdparty/gflags-2.1.2")
+endif()
+
+if (NOT EXISTS "${SNAPPY_BUILD_DIR}")
+  message("snappy build directory not found at ${SNAPPY_BUILD_DIR}, using old location")
+  set(SNAPPY_BUILD_DIR "${YB_SRC_DIR}/thirdparty/snappy-1.1.0")
 endif()
 
 message("COMMON_LINKER_FLAGS to be specified as --ld-flags to build-rocksdb.sh:"
@@ -86,8 +94,10 @@ set(BUILD_ROCKSDB_ARGS
   --cxx-compiler "${CMAKE_CXX_COMPILER}"
   --c-compiler "${CMAKE_C_COMPILER}"
   --extra-include-dir "${GFLAGS_BUILD_DIR}/include"
+  --extra-include-dir "${SNAPPY_BUILD_DIR}/include"
   --extra-include-dir "${YB_SRC_DIR}/src"
   --extra-lib-dir "${GFLAGS_BUILD_DIR}/lib"
+  --extra-lib-dir "${SNAPPY_BUILD_DIR}/lib"
   ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
   ${ROCKSDB_BUILD_VERBOSE_ARG}
   --make-opts "${ROCKSDB_MAKE_OPTS}"

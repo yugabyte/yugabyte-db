@@ -32,3 +32,4 @@ gcc-*
 prebuilt_downloads/
 src/
 download/
+!/patches/*

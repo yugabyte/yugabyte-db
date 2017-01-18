@@ -1,0 +1,17 @@
+diff --git a/snappy-stubs-public.h b/snappy-stubs-public.h
+index 96d8865..ad2c7b7 100644
+--- a/snappy-stubs-public.h
++++ b/snappy-stubs-public.h
+@@ -76,9 +76,11 @@ typedef unsigned long long uint64;
+
+ typedef std::string string;
+
++#ifndef DISALLOW_COPY_AND_ASSIGN
+ #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
+-  TypeName(const TypeName&);               \
+-  void operator=(const TypeName&)
++  TypeName(const TypeName&) = delete;      \
++  void operator=(const TypeName&) = delete
++#endif
+
+ }  // namespace snappy

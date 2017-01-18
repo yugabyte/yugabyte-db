@@ -15,15 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
+#include "yb/cfile/compression_codec.h"
+
+#include <lz4.h>
 #include <snappy-sinksource.h>
 #include <snappy.h>
 #include <zlib.h>
-#include <lz4.h>
+
 #include <string>
 #include <vector>
 
-#include "yb/cfile/compression_codec.h"
+#include <glog/logging.h>
+
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/stringprintf.h"
 

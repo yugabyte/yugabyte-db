@@ -73,14 +73,22 @@ if ! git diff --quiet .; then
   fatal "There are local changes in the thirdparty directory! Refusing to proceed."
 fi
 
-# Apart from the build directories, we also need to package the gflags directory separately
-# (we use it to build RocksDB).
+# Apart from the build directories, we also need to package the gflags and snappy directories
+# separately, as we use them to build RocksDB.
 installed_dirs=(
   "$PREFIX_COMMON"
   "$PREFIX_DEPS"
   "$PREFIX_DEPS_TSAN"
-  "$GFLAGS_DIR/lib"
-  "$GFLAGS_DIR/include"
+  "$TP_DIR/build/common"
+  "$TP_DIR/build/tsan/${GFLAGS_DIR##*/}/lib"
+  "$TP_DIR/build/tsan/${GFLAGS_DIR##*/}/include"
+  "$TP_DIR/build/uninstrumented/${GFLAGS_DIR##*/}/lib"
+  "$TP_DIR/build/uninstrumented/${GFLAGS_DIR##*/}/include"
+  "$TP_DIR/build/tsan/${SNAPPY_DIR##*/}/lib"
+  "$TP_DIR/build/tsan/${SNAPPY_DIR##*/}/include"
+  "$TP_DIR/build/uninstrumented/${SNAPPY_DIR##*/}/lib"
+  "$TP_DIR/build/uninstrumented/${SNAPPY_DIR##*/}/include"
+  "$TP_DIR/clang-toolchain"
 )
 
 check_build_output_dirs_exist "${installed_dirs[@]}"
@@ -144,6 +152,8 @@ if ! diff --ignore-space-change \
 fi
 
 log "$dest_tarball_path contains the right top-level directories"
+dest_tarball_path=$(replace_default_hash "$dest_tarball_path" )
+log "Saving hash into archive name at $dest_tarball_path"
 
 if "$upload"; then
   log "Uploading to S3"

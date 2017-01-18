@@ -8,7 +8,29 @@ fi
 
 PREBUILT_THIRDPARTY_S3_URL=s3://binaries.yugabyte.com/prebuilt_thirdparty
 PREBUILT_THIRDPARTY_S3_CONFIG_PATH=$HOME/.s3cfg-jenkins-slave
+DEFAULT_HASH="DEFAULT_MD5"
 
+
+compute_md5_hash() {
+  local filename=$1
+  md5sum "$filename" | awk '{print $1}'
+}
+
+get_hash_component() {
+  local filename=$1
+  echo "$filename" | sed 's/.*HASH_\([^_]*\)_.*/\1/g'
+}
+
+replace_default_hash() {
+  local filename=$1
+  local new_filename
+
+  hash=$(compute_md5_hash "$filename")
+  new_filename=${filename//HASH_$DEFAULT_HASH/HASH_$hash}
+  mv "$filename" "$new_filename"
+
+  echo $new_filename
+}
 
 # We identify systems that we can share library builds between using a "system configuration
 # string" of the following form:
@@ -19,12 +41,16 @@ get_system_conf_str() {
   local cpu_arch=$( uname -m )
   local os_name
   local os_version
+  local hash=$DEFAULT_HASH
 
   case "$( uname )" in
     Linux)
       os_name="Linux"
       if [[ -f "/etc/centos-release" ]]; then
-        os_version=$( cat /etc/centos-release | sed 's/[()]/ /g' )
+        os_version=$(
+          cat /etc/centos-release | \
+            sed 's/[()]/ /g; s/release 7[.][0-9][0-9]*[.][0-9][0-9]* /release 7/g;'
+        )
       else
         # os_version will be something like "Ubuntu_15.10"
         os_version=$( cat /etc/issue | sed 's/\\[nl]/ /g' )
@@ -47,7 +73,7 @@ get_system_conf_str() {
   fi
   local os_version=$( echo "$os_version" | sed 's/ /_/g' )
 
-  echo "${os_name}_${os_version}_${cpu_arch}"
+  echo "${os_name}_${os_version}_${cpu_arch}_HASH_${hash}"
 }
 
 get_prebuilt_thirdparty_name_prefix() {
@@ -88,21 +114,23 @@ download_prebuilt_thirdparty_deps() {
   if [ -z "$name_prefix" ]; then
     fatal "Unable to compute name prefix for pre-built third-party dependencies package"
   fi
+  # Replace default hash with * to be s3cmd friendly, as we do not know the hash upfront.
+  name_prefix=$( echo "$name_prefix" | sed "s/HASH_${DEFAULT_HASH}__/HASH_/g" )
   local s3cmd_cmd_line_prefix=( s3cmd -c "$PREBUILT_THIRDPARTY_S3_CONFIG_PATH" )
   local s3cmd_ls_cmd_line=( "${s3cmd_cmd_line_prefix[@]}" )
   s3cmd_ls_cmd_line+=( --list-md5 ls "$PREBUILT_THIRDPARTY_S3_URL/$name_prefix*" )
   echo "Listing pre-built third-party dependency packages: ${s3cmd_ls_cmd_line[@]}"
   local s3cmd_ls_output=( $( "${s3cmd_ls_cmd_line[@]}" | sort | tail -1 ) )
   echo "s3cmd ls output: ${s3cmd_ls_output[@]}"
-  local remote_md5_sum="${s3cmd_ls_output[3]}"
-  if [[ ! "$remote_md5_sum" =~ ^[0-9a-f]{32}$ ]]; then
-    echo "Expected to see an MD5 sum, found '$remote_md5_sum' in ${FUNCNAME[0]}" >&2
-    return 1
-  fi
   local package_s3_url=${s3cmd_ls_output[4]}
   if [[ ! "$package_s3_url" =~ ^s3://.*[.]tar[.]gz$ ]]; then
-    echo "Expected the pre-built third-party dependency package URL obtained via 's3cmd ls'" \
-      "to start with s3:// and end with .tar.gz, found: '$package_s3_url'" >&2
+    log "Expected the pre-built third-party dependency package URL obtained via 's3cmd ls'" \
+      "to start with s3:// and end with .tar.gz, found: '$package_s3_url'"
+    return 1
+  fi
+  local remote_md5_sum=$(get_hash_component "$package_s3_url" )
+  if [[ ! "$remote_md5_sum" =~ ^[0-9a-f]{32}$ ]]; then
+    log "Expected to see an MD5 sum, found '$remote_md5_sum' in '$remote_md5_sum'"
     return 1
   fi
   local package_name=${package_s3_url##*/}
@@ -111,7 +139,7 @@ download_prebuilt_thirdparty_deps() {
   local need_to_download=true
   local dest_path=$download_dir/$package_name
   if [ -f "$dest_path" ]; then
-    local_md5_sum=$( md5sum "$dest_path" | awk '{print $1}' )
+    local_md5_sum=$( get_hash_component "$dest_path" )
     if [ "$local_md5_sum" == "$remote_md5_sum" ]; then
       echo "Local file $dest_path matches the remote package's MD5 sum, not downloading"
       need_to_download=false
