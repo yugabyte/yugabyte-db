@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {OnPremConfigWizardContainer, OnPremConfigJSONContainer} from '../../containers/config';
+import {OnPremConfigWizardContainer, OnPremConfigJSONContainer, AddHostDataFormContainer} from '../../containers/config';
 import { Row } from 'react-bootstrap';
 import { YBButton } from '../common/forms/fields';
 
@@ -9,12 +9,17 @@ export default class OnPremConfiguration extends Component {
 
   constructor(props) {
     super(props);
-    this.state = {'isJsonEntry': false};
+    this.state = {'isJsonEntry': false, isAdditionalHostOptionsOpen: false};
     this.toggleJsonEntry = this.toggleJsonEntry.bind(this);
+    this.toggleAdditionalOptionsModal = this.toggleAdditionalOptionsModal.bind(this);
   }
 
   toggleJsonEntry() {
     this.setState({'isJsonEntry': !this.state.isJsonEntry})
+  }
+
+  toggleAdditionalOptionsModal() {
+    this.setState({isAdditionalHostOptionsOpen: !this.state.isAdditionalHostOptionsOpen});
   }
 
   render(){
@@ -23,11 +28,15 @@ export default class OnPremConfiguration extends Component {
     if (this.state.isJsonEntry) {
       ConfigurationDataForm = <OnPremConfigJSONContainer />
     }
+    var hostDataForm = <AddHostDataFormContainer visible={this.state.isAdditionalHostOptionsOpen}
+                                                 onHide={this.toggleAdditionalOptionsModal}/>;
     return (
       <div className="on-prem-provider-container">
+        {hostDataForm}
         {ConfigurationDataForm}
         <Row className="form-action-button-container">
           <YBButton btnText={btnText} btnClass={"btn btn-default"} onClick={this.toggleJsonEntry}/>
+          <YBButton btnText={"Additional Host Options"} onClick={this.toggleAdditionalOptionsModal}/>
           <YBButton btnText={"Submit"} btnType={"submit"}/>
         </Row>
       </div>

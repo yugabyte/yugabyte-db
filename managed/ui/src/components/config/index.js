@@ -8,3 +8,4 @@ export { default as AWSProviderConfiguration } from './AWSProviderConfiguration'
 export { default as OnPremConfigWizard } from './OnPremConfigWizard';
 export { default as OnPremConfigJSON } from './OnPremConfigJSON';
 export { default as OnPremConfiguration } from './OnPremConfiguration';
+export { default as AddHostDataForm } from './AddHostDataForm';

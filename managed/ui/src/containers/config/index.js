@@ -7,3 +7,4 @@ export { default as DockerProviderConfigurationContainer } from './DockerProvide
 export { default as AWSProviderConfigurationContainer } from './AWSProviderConfigurationContainer';
 export { default as OnPremConfigWizardContainer } from './OnPremConfigWizardContainer';
 export { default as OnPremConfigJSONContainer } from './OnPremConfigJSONContainer';
+export { default as AddHostDataFormContainer } from './AddHostDataFormContainer';
