@@ -29,7 +29,7 @@ public class OnPremFormData {
 
   static public class CloudData {
     public List<RegionData> regions;
-    public List<InstanceTypeData> instance_types;
+    public List<InstanceTypeData> instanceTypes;
   }
 
   static public class RegionData {
@@ -44,7 +44,7 @@ public class OnPremFormData {
 
   static public class NodeData {
     public String ip;
-    public String instance_type_code;
+    public String instanceTypeCode;
   }
 
   static public class InstanceTypeData {

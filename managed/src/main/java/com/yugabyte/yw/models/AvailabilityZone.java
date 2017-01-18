@@ -63,4 +63,8 @@ public class AvailabilityZone extends Model {
   public static AvailabilityZone getByCode(String code) {
     return find.where().eq("code", code).findUnique();
   }
+
+  public static AvailabilityZone get(UUID zoneUuid) {
+    return find.byId(zoneUuid);
+  }
 }

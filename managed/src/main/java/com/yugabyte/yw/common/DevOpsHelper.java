@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
 import play.libs.Json;
@@ -49,6 +50,10 @@ public class DevOpsHelper {
       command += " --network " + networkName;
     }
 
+    if (nodeTaskParam.cloud == Common.CloudType.onprem) {
+      NodeInstance node = NodeInstance.getByName(nodeTaskParam.nodeName);
+      command += " --node_metadata " + node.getDetailsJson();
+    }
     return command;
   }
 
@@ -113,10 +118,12 @@ public class DevOpsHelper {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
-        command += " --cloud_subnet " + taskParam.subnetId +
-          " --machine_image " + taskParam.getRegion().ybImage +
-          " --instance_type " + taskParam.instanceType +
-          " --assign_public_ip";
+        command += " --instance_type " + taskParam.instanceType;
+        if (nodeTaskParam.cloud != Common.CloudType.onprem) {
+          command += " --cloud_subnet " + taskParam.subnetId +
+            " --machine_image " + taskParam.getRegion().ybImage +
+            " --assign_public_ip";
+        }
         break;
       }
       case Configure:
