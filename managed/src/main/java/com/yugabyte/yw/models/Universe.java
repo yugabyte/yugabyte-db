@@ -2,13 +2,16 @@
 
 package com.yugabyte.yw.models;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 import javax.persistence.Column;
@@ -295,8 +298,15 @@ public class Universe extends Model {
     return getServers(ServerType.REDISSERVER);
   }
 
+  private class NodeDetailsPrivateIpComparator implements Comparator<NodeDetails> {
+    @Override
+    public int compare(NodeDetails n1, NodeDetails n2) {
+      return n1.cloudInfo.private_ip.compareTo(n2.cloudInfo.private_ip);
+    }
+  }
+
   public List<NodeDetails> getServers(ServerType type) {
-    List<NodeDetails> servers = new LinkedList<NodeDetails>();
+    List<NodeDetails> servers = new ArrayList<NodeDetails>();
     UniverseDefinitionTaskParams details = getUniverseDetails();
     for (NodeDetails nodeDetails : details.nodeDetailsSet) {
       switch(type) {
@@ -312,6 +322,8 @@ public class Universe extends Model {
         throw new IllegalArgumentException("Unexpected server type " + type);
       }
     }
+    // Sort by private IP for deterministic behaviour.
+    Collections.sort(servers, new NodeDetailsPrivateIpComparator());
     return servers;
   }
 

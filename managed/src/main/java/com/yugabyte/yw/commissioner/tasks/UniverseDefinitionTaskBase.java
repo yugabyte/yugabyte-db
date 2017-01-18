@@ -2,13 +2,20 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -19,6 +26,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -96,7 +105,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
     };
-    Universe.saveDetails(taskParams().universeUUID, updater);
+    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Updated {} nodes in universe {}.",
               taskParams().nodeDetailsSet.size(), taskParams().universeUUID);
 
@@ -104,6 +113,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String newName = taskParams().nodePrefix + "-n" + node.nodeIdx;
       LOG.info("Changing in-memory node name from " + node.nodeName + " to " + newName);
       node.nodeName = newName;
+    }
+
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (universeDetails.cloud == CloudType.onprem) {
+      Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
+      for (NodeDetails node : universeDetails.nodeDetailsSet) {
+        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
+        nodeNames.add(node.nodeName);
+        onpremAzToNodes.put(node.azUuid, nodeNames);
+      }
+      // Update in-memory map.
+      Map<String, NodeInstance> nodeMap =
+        NodeInstance.pickNodes(onpremAzToNodes, universeDetails.userIntent.instanceType);
+      for (NodeDetails node : taskParams().nodeDetailsSet) {
+        // TODO: use the UUID to select the node, but this requires a refactor of the tasks/params
+        // to more easily trickle down this uuid into all locations.
+        node.nodeUuid = nodeMap.get(node.nodeName).nodeUuid;
+      }
     }
   }
 

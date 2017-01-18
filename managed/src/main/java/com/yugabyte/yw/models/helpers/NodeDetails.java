@@ -14,6 +14,9 @@ public class NodeDetails {
   public int nodeIdx = -1;
   // Name of the node.
   public String nodeName;
+  // The UUID of the node we are using.
+  // TODO: only used for onprem at the moment.
+  public UUID nodeUuid;
 
   // Information about the node that is returned by the cloud provider.
   public CloudSpecificInfo cloudInfo;

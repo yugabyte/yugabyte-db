@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -391,7 +392,7 @@ public class PlacementInfoUtil {
         // Set the cloud.
         PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
         nodeDetails.cloudInfo = new CloudSpecificInfo();
-        nodeDetails.cloudInfo.cloud = placementCloud.name;
+        nodeDetails.cloudInfo.cloud = placementCloud.code;
         // Set the region.
         PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
         nodeDetails.cloudInfo.region = placementRegion.code;
@@ -410,8 +411,8 @@ public class PlacementInfoUtil {
         // Add the node to the set of nodes.
         deltaNodesSet.add(nodeDetails);
         if (numMastersToChoose > 0) deltaNodesMap.put(nodeDetails.nodeName, nodeDetails);
-        LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}.",
-                  nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx);
+          LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}.",
+                    nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx);
       }
       taskParams.nodeDetailsSet.addAll(deltaNodesSet);
     }
@@ -593,7 +594,7 @@ public class PlacementInfoUtil {
       LOG.debug("Adding cloud: " + cloud.name);
       placementCloud = new PlacementCloud();
       placementCloud.uuid = cloud.uuid;
-      placementCloud.name = cloud.code;
+      placementCloud.code = cloud.code;
       placementInfo.cloudList.add(placementCloud);
     }
 
@@ -625,7 +626,7 @@ public class PlacementInfoUtil {
       }
     }
     if (placementAZ == null) {
-      LOG.debug("Adding region: " + az.name);
+      LOG.debug("Adding zone: " + az.name);
       placementAZ = new PlacementAZ();
       placementAZ.uuid = az.uuid;
       placementAZ.name = az.name;

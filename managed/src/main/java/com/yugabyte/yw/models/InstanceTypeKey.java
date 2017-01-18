@@ -17,7 +17,7 @@ public class InstanceTypeKey implements Serializable {
   public boolean equals(Object object) {
     if(object instanceof InstanceTypeKey) {
       InstanceTypeKey key = (InstanceTypeKey) object;
-      if(this.providerCode == key.providerCode && this.instanceTypeCode == key.instanceTypeCode) {
+      if (this.providerCode.equals(key.providerCode) && this.instanceTypeCode.equals(key.instanceTypeCode)) {
         return true;
       }
     }

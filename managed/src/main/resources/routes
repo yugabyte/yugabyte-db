@@ -17,7 +17,8 @@ POST    /api/register                                 com.yugabyte.yw.controller
 # Cloud provider API
 GET     /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.list()
 POST    /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.create()
-POST    /api/providers/onprem                         com.yugabyte.yw.controllers.CloudProviderController.setupOnPrem()
+# TODO: need to revamp all provider calls to take a customerUuid parameter!
+POST    /api/customers/:cUUID/providers/onprem        com.yugabyte.yw.controllers.CloudProviderController.setupOnPrem(cUUID: java.util.UUID)
 GET     /api/regions                                  com.yugabyte.yw.controllers.RegionController.listAllRegions()
 GET     /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(pUUID: java.util.UUID)
 POST    /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(pUUID: java.util.UUID)
@@ -71,6 +72,11 @@ DELETE  /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte
 GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
 GET    /api/customers/:cUUID/tasks/:tUUID             com.yugabyte.yw.controllers.CustomerTaskController.status(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /api/customers/:cUUID/universes/:uniUUID/tasks com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+# Node Management API
+GET    /api/customers/:cUUID/nodes/:nodeUUID/list                      com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)
+GET    /api/customers/:cUUID/zones/:azUUID/nodes/list                  com.yugabyte.yw.controllers.NodeInstanceController.listByZone(cUUID: java.util.UUID, azUUID: java.util.UUID)
+POST   /api/customers/:cUUID/zones/:azUUID/nodes                       com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID)
 
 # Initialize cloud information.
 GET    /clouds/aws/initialize                         com.yugabyte.yw.cloud.AWSInitializer.run()
