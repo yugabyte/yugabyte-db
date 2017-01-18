@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import { AlertsList } from '../../components/tasks';
+import { TasksList } from '../../components/tasks';
 import { fetchUniverseTasks, fetchUniverseTasksSuccess,
   fetchUniverseTasksFailure, resetUniverseTasks
 } from '../../actions/universe';
@@ -31,4 +31,4 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(AlertsList);
+export default connect(mapStateToProps, mapDispatchToProps)(TasksList);

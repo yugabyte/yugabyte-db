@@ -8,7 +8,7 @@ import { YBPanelItem } from '../panels';
 import './stylesheets/AlertsList.css'
 import {YBFormattedNumber} from '../common/descriptors';
 
-export default class AlertsList extends Component {
+export default class TasksList extends Component {
 
   componentWillMount() {
     this.props.fetchUniverseTasks();
