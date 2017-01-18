@@ -135,4 +135,8 @@ public class Provider extends Model {
     }
     return providerList.get(0);
   }
+
+  public static Provider get(UUID providerUuid) {
+    return find.byId(providerUuid);
+  }
 }

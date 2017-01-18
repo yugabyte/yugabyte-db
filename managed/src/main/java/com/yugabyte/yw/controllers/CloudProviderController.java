@@ -9,11 +9,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.forms.OnPremFormData;
+import com.yugabyte.yw.forms.NodeInstanceFormData;
 
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -76,9 +78,10 @@ public class CloudProviderController extends AuthenticatedController {
 
   /**
    * POST endpoint for setting up an on-prem deployment
+   * @param customerUuid the UUID of the customer performing the request
    * @return JSON response of newly created provider
    */
-  public Result setupOnPrem() {
+  public Result setupOnPrem(UUID customerUuid) {
     Form<OnPremFormData> formData = formFactory.form(OnPremFormData.class).bindFromRequest();
     ObjectNode responseJson = Json.newObject();
 
@@ -105,7 +108,6 @@ public class CloudProviderController extends AuthenticatedController {
       p = Provider.get(customer.uuid, identification.name);
       if (p == null) {
         p = Provider.create(customer.uuid, identification.type, identification.name);
-        LOG.info("Created provider " + p);
       }
     } else {
       p = Provider.find.byId(identification.uuid);
@@ -113,8 +115,8 @@ public class CloudProviderController extends AuthenticatedController {
 
     OnPremFormData.CloudData description = formData.get().description;
     if (description != null) {
-      if (description.instance_types != null) {
-        for (OnPremFormData.InstanceTypeData i : description.instance_types) {
+      if (description.instanceTypes != null) {
+        for (OnPremFormData.InstanceTypeData i : description.instanceTypes) {
           InstanceType it = InstanceType.get(p.code, i.code);
           if (it == null) {
             // TODO: instance type metadata?
@@ -159,7 +161,32 @@ public class CloudProviderController extends AuthenticatedController {
               }
               if (z.nodes != null) {
                 for (OnPremFormData.NodeData n : z.nodes) {
-                  // TODO: placeholder for node processing
+                  if (n.ip == null) {
+                    responseJson.put("error", "Node required a valid IP field.");
+                    return badRequest(responseJson);
+                  }
+                  // TODO: pass UUIDs once we revamp the Region and Zone paths above as well!
+                  NodeInstance node = null;
+                  if (node == null) {
+                    InstanceType it = null;
+                    if (n.instanceTypeCode != null) {
+                      it = InstanceType.get(p.code, n.instanceTypeCode);
+                    }
+                    if (it == null) {
+                      responseJson.put(
+                          "error", "Invalid instance type code: " + n.instanceTypeCode);
+                      return badRequest(responseJson);
+                    }
+
+                    NodeInstanceFormData details = new NodeInstanceFormData();
+                    details.ip = n.ip;
+                    details.region = region.code;
+                    details.zone = zone.code;
+                    details.instanceType = it.getInstanceTypeCode();
+
+                    // TODO: use this in the response anywhere?
+                    node = NodeInstance.create(zone.uuid, details);
+                  }
                 }
               }
             }

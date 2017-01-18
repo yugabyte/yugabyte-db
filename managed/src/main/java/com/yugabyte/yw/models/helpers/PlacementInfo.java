@@ -17,8 +17,8 @@ public class PlacementInfo {
   public static class PlacementCloud {
     // The cloud provider id.
     public UUID uuid;
-    // The cloud provider name.
-    public String name;
+    // The cloud provider code.
+    public String code;
     // The list of region in this cloud we want to place data in.
     public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
   }

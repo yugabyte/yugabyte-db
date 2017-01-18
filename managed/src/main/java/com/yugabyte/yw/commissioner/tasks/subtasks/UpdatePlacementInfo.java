@@ -123,8 +123,7 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
             AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
             // Create the cloud info object.
             WireProtocol.CloudInfoPB.Builder ccb = WireProtocol.CloudInfoPB.newBuilder();
-            // TODO: change placementCloud.name to cloud.code once code is added to cloud.
-            ccb.setPlacementCloud(placementCloud.name)
+            ccb.setPlacementCloud(placementCloud.code)
                .setPlacementRegion(region.code)
                .setPlacementZone(az.code);
 

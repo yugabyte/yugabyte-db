@@ -16,5 +16,6 @@ public class Common {
     gcp,
     azu,
     docker,
+    onprem,
   }
 }

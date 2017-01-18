@@ -17,6 +17,10 @@ public class NodeTaskParams extends UniverseTaskParams {
   // The node about which we need to fetch details.
   public String nodeName;
 
+  // The UUID of the node that we have selected.
+  // TODO: currently only used for onprem cloud.
+  public UUID nodeUuid;
+
   public AvailabilityZone getAZ() {
     return AvailabilityZone.find.byId(azUuid);
   }
