@@ -1,8 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -17,6 +20,8 @@ import org.yb.client.MiniYBCluster;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.SyntaxError;
+
+import java.util.Iterator;
 
 public class TestBase {
   protected static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
@@ -80,15 +85,19 @@ public class TestBase {
   @Rule
   public ExpectedException thrown = ExpectedException.none();
 
-  public void SetupTable(String test_table, int num_rows) throws Exception {
+  protected void CreateTable(String test_table) throws Exception {
     LOG.info("CREATE TABLE " + test_table);
     String create_stmt = String.format("CREATE TABLE %s " +
-                                       " (h1 int, h2 varchar, " +
-                                       " r1 int, r2 varchar, " +
-                                       " v1 int, v2 varchar, " +
-                                       " primary key((h1, h2), r1, r2));",
-                                       test_table);
+                    " (h1 int, h2 varchar, " +
+                    " r1 int, r2 varchar, " +
+                    " v1 int, v2 varchar, " +
+                    " primary key((h1, h2), r1, r2));",
+            test_table);
     session.execute(create_stmt);
+  }
+
+  public void SetupTable(String test_table, int num_rows) throws Exception {
+    CreateTable(test_table);
 
     LOG.info("INSERT INTO TABLE " + test_table);
     for (int idx = 0; idx < num_rows; idx++) {
@@ -98,5 +107,12 @@ public class TestBase {
         test_table, idx, idx, idx+100, idx+100, idx+1000, idx+1000);
       session.execute(insert_stmt);
     }
+  }
+
+  protected Iterator<Row> RunSelect(String tableName, String select_stmt) {
+    ResultSet rs = session.execute(select_stmt);
+    Iterator<Row> iter = rs.iterator();
+    assertTrue(iter.hasNext());
+    return iter;
   }
 }

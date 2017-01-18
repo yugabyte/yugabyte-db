@@ -3,15 +3,10 @@ package org.yb.cql;
 
 import java.util.Iterator;
 
-import org.yb.cql.TestBase;
-
 import org.junit.Test;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.exceptions.SyntaxError;
 
 import static org.junit.Assert.assertEquals;
 
