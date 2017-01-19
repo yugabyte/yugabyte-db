@@ -51,6 +51,7 @@ class PTDmlStmt : public PTCollection {
   // Constructor and destructor.
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
+                     bool write_only,
                      PTOptionExist option_exists = PTOptionExist::DEFAULT);
   virtual ~PTDmlStmt();
 
@@ -88,8 +89,8 @@ class PTDmlStmt : public PTCollection {
     return num_hash_key_columns_;
   }
 
-  const MCVector<ColumnOp>& hash_where_ops() const {
-    return hash_where_ops_;
+  const MCVector<ColumnOp>& key_where_ops() const {
+    return key_where_ops_;
   }
 
   const MCList<ColumnOp>& where_ops() const {
@@ -128,8 +129,16 @@ class PTDmlStmt : public PTCollection {
   int num_hash_key_columns_;
 
   // Where operator list.
-  MCVector<ColumnOp> hash_where_ops_;
+  // - When reading (SELECT), key_where_ops_ has only HASH (partition) columns.
+  // - When writing (UPDATE & DELETE), key_where_ops_ has both has (partition) & range columns.
+  // This is just a workaround for UPDATE and DELETE. Backend supports only single row. It also
+  // requires that conditions on columns are ordered the same way as they were defined in
+  // CREATE TABLE statement.
+  MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
+
+  // Predicate for write operator (UPDATE & DELETE).
+  bool write_only_;
 };
 
 }  // namespace sql

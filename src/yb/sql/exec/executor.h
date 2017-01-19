@@ -93,28 +93,28 @@ class Executor {
   // Convert expression to protobuf.
   template<typename PBType>
   CHECKED_STATUS ExprToPB(const PTExpr::SharedPtr& expr,
-                  yb::DataType col_type,
-                  PBType* col_pb,
-                  YBPartialRow *row = nullptr,
-                  int col_index = -1);
+                          yb::DataType col_type,
+                          PBType* col_pb,
+                          YBPartialRow *row = nullptr,
+                          int col_index = -1);
 
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
-                                    const MCVector<ColumnArg>& column_args,
-                                    YSQLWriteRequestPB *req,
-                                    YBPartialRow *row);
+                                            const MCVector<ColumnArg>& column_args,
+                                            YSQLWriteRequestPB *req,
+                                            YBPartialRow *row);
 
   // Convert where clause to protobuf for read request.
   CHECKED_STATUS WhereClauseToPB(YSQLReadRequestPB *req,
-                         YBPartialRow *row,
-                         const MCVector<ColumnOp>& hash_where_ops,
-                         const MCList<ColumnOp>& where_ops);
+                                 YBPartialRow *row,
+                                 const MCVector<ColumnOp>& key_where_ops,
+                                 const MCList<ColumnOp>& where_ops);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(YSQLWriteRequestPB *req,
-                         YBPartialRow *row,
-                         const MCVector<ColumnOp>& hash_where_ops,
-                         const MCList<ColumnOp>& where_ops);
+                                 YBPartialRow *row,
+                                 const MCVector<ColumnOp>& key_where_ops,
+                                 const MCList<ColumnOp>& where_ops);
 
   // Convert an expression op in where claluse to protobuf.
   CHECKED_STATUS WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op);

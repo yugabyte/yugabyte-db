@@ -24,7 +24,8 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
   // Get a processor.
   SqlProcessor *processor = GetSqlProcessor();
 
-  // Create the table 1.
+  // -----------------------------------------------------------------------------------------------
+  // Create the table.
   const char *create_stmt =
     "CREATE TABLE test_table(h1 int, h2 varchar, "
                             "r1 int, r2 varchar, "
@@ -32,6 +33,17 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
                             "primary key((h1, h2), r1, r2));";
   CHECK_VALID_STMT(create_stmt);
 
+  // -----------------------------------------------------------------------------------------------
+  // Unknown table.
+  CHECK_INVALID_STMT("UPDATE test_table_unknown SET v1 = 77 WHERE h1 = 0 AND h2 = 'zero';");
+
+  // Missing hash key.
+  CHECK_INVALID_STMT("UPDATE test_table SET v1 = 77 WHERE h1 = 0;");
+
+  // Wrong operator on hash key.
+  CHECK_INVALID_STMT("UPDATE test_table SET v1 = 77 WHERE h1 > 0 AND h2 = 'zero';");
+
+  // -----------------------------------------------------------------------------------------------
   // Insert 100 rows into the table.
   static const int kNumRows = 100;
   for (int idx = 0; idx < kNumRows; idx++) {
@@ -39,13 +51,38 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
     string stmt = Substitute("INSERT INTO test_table(h1, h2, r1, r2, v1, v2) "
                              "VALUES($0, 'h$1', $2, 'r$3', $4, 'v$5');",
                              idx, idx, idx+100, idx+100, idx+1000, idx+1000);
-    CHECK_VALID_STMT(stmt.c_str());
+    CHECK_VALID_STMT(stmt);
   }
 
-#if 0
-  // Start testing UPDATE.
-  const char *update_stmt = nullptr;
-#endif
+  // Testing UPDATE one row.
+  string select_stmt;
+  std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+  for (int idx = 0; idx < kNumRows; idx++) {
+    // SELECT an entry to make sure it's there.
+    select_stmt = Substitute("SELECT * FROM test_table"
+                             "  WHERE h1 = $0 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$3';",
+                             idx, idx, idx+100, idx+100);
+    CHECK_VALID_STMT(select_stmt);
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+
+    // UPDATE the entry.
+    CHECK_VALID_STMT(Substitute("UPDATE test_table SET v1 = $0, v2 = 'v$0'"
+                                "  WHERE h1 = $1 AND h2 = 'h$1' AND r1 = $2 AND r2 = 'r$2';",
+                                idx + 2000, idx, idx+100));
+
+    // SELECT the same entry to make sure it's no longer there.
+    CHECK_VALID_STMT(select_stmt);
+    row_block = processor->row_block();
+    CHECK_EQ(row_block->row_count(), 1);
+    const YSQLRow& row = row_block->row(0);
+    CHECK_EQ(row.column(0).int32_value(), idx);
+    CHECK_EQ(row.column(1).string_value(), Substitute("h$0", idx));
+    CHECK_EQ(row.column(2).int32_value(), idx + 100);
+    CHECK_EQ(row.column(3).string_value(), Substitute("r$0", idx + 100));
+    CHECK_EQ(row.column(4).int32_value(), idx + 2000);
+    CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 2000));
+  }
 }
 
 } // namespace sql

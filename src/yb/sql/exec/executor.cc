@@ -180,6 +180,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int8_t actual_value = static_cast<int8_t>(int_value.value_);
+      VLOG(3) << "Expr actual value = " << actual_value;
       col_pb->mutable_value()->set_int8_value(actual_value);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetInt8(col_index, actual_value));
@@ -193,6 +194,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int16_t actual_value = static_cast<int16_t>(int_value.value_);
+      VLOG(3) << "Expr actual value = " << actual_value;
       col_pb->mutable_value()->set_int16_value(actual_value);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetInt16(col_index, actual_value));
@@ -206,6 +208,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int32_t actual_value = static_cast<int32_t>(int_value.value_);
+      VLOG(3) << "Expr actual value = " << actual_value;
       col_pb->mutable_value()->set_int32_value(actual_value);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetInt32(col_index, actual_value));
@@ -219,6 +222,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
       int64_t actual_value = int_value.value_;
+      VLOG(3) << "Expr actual value = " << actual_value;
       col_pb->mutable_value()->set_int64_value(actual_value);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetInt64(col_index, actual_value));
@@ -232,6 +236,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
       col_pb->mutable_value()->set_string_value(string_value.value_->data(),
                                                 string_value.value_->size());
+      VLOG(3) << "Expr actual value = " << string_value.value_->c_str();
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetString(
             col_index, Slice(string_value.value_->data(), string_value.value_->size())));
@@ -244,6 +249,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
       float actual_value = double_value.value_;
+      VLOG(3) << "Expr actual value = " << actual_value;
       col_pb->mutable_value()->set_float_value(actual_value);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetFloat(col_index, actual_value));
@@ -256,6 +262,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
       double actual_value = double_value.value_;
+      VLOG(3) << "Expr actual value = " << actual_value;
       col_pb->mutable_value()->set_double_value(actual_value);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetDouble(col_index, actual_value));
@@ -268,6 +275,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &bool_value));
 
       col_pb->mutable_value()->set_bool_value(bool_value.value_);
+      VLOG(3) << "Expr actual value = " << bool_value.value_;
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));
       }
@@ -316,6 +324,7 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
       col_pb = req->add_column_values();
     }
 
+    VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     if (col_desc->is_hash()) {
       RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(
@@ -333,18 +342,27 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
 
 CHECKED_STATUS Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
                                          YBPartialRow *row,
-                                         const MCVector<ColumnOp>& hash_where_ops,
+                                         const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops) {
-  // Setup the hash key columns.
-  for (const auto& op : hash_where_ops) {
+  // Setup the key columns.
+  for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    YSQLColumnValuePB *col_pb = req->add_hashed_column_values();
+    YSQLColumnValuePB *col_pb;
+    if (col_desc->is_hash()) {
+      col_pb = req->add_hashed_column_values();
+    } else if (col_desc->is_primary()) {
+      col_pb = req->add_range_column_values();
+    } else {
+      LOG(FATAL) << "Unexpected non primary key column in this context";
+    }
+    VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(
       ExprToPB<YSQLColumnValuePB>(op.expr(), col_desc->type_id(), col_pb, row, col_desc->index()));
   }
 
   // Setup the rest of the columns.
+  CHECK(where_ops.empty()) << "Server doesn't support range operation yet";
   for (const auto& op : where_ops) {
     const ColumnDesc *col_desc = op.desc();
     YSQLColumnValuePB *col_pb;
@@ -362,12 +380,18 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
 
 CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
                                          YBPartialRow *row,
-                                         const MCVector<ColumnOp>& hash_where_ops,
+                                         const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops) {
   // Setup the hash key columns.
-  for (const auto& op : hash_where_ops) {
+  for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    YSQLColumnValuePB *col_pb = req->add_hashed_column_values();
+    YSQLColumnValuePB *col_pb;
+    if (col_desc->is_hash()) {
+      col_pb = req->add_hashed_column_values();
+    } else {
+      LOG(FATAL) << "Unexpected non partition column in this context";
+    }
+    VLOG(3) << "READ request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(op.expr(),
                                               col_desc->type_id(),
@@ -409,6 +433,7 @@ CHECKED_STATUS Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp&
   // Operand 1: The column.
   const ColumnDesc *col_desc = col_op.desc();
   YSQLExpressionPB *op = condition->add_operands();
+  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   op->set_column_id(col_desc->id());
 
   // Operand 2: The expression.
@@ -431,7 +456,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
     // Where clause - Hash, range, and regular columns.
     YBPartialRow *row = select_op->mutable_row();
 
-    RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
+    RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
 
     // Specify selected columns.
     for (const ColumnDesc *col_desc : tnode->selected_columns()) {
@@ -477,7 +502,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
-  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
+  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
 
   // Apply the operator.
   RETURN_NOT_OK(exec_context_->ApplyWrite(delete_op, tnode));
@@ -495,7 +520,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = update_op->mutable_row();
-  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->hash_where_ops(), tnode->where_ops()));
+  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
 
   // Setup the columns' new values.
   RETURN_NOT_OK(ColumnArgsToWriteRequestPB(table,

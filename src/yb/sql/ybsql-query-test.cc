@@ -51,19 +51,42 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   }
   LOG(INFO) << kNumRows << " rows inserted";
 
+  //------------------------------------------------------------------------------------------------
+  // Basic negative cases.
+  // Test simple query and result.
+  CHECK_INVALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                     "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 1007;");
+  CHECK_INVALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                     "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 100;");
+
+  //------------------------------------------------------------------------------------------------
   // Test simple query and result.
   CHECK_VALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
                    "  WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;");
 
   std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const YSQLRow& row = row_block->row(0);
-  CHECK_EQ(row.column(0).int32_value(), 7);
-  CHECK_EQ(row.column(1).string_value(), "h7");
-  CHECK_EQ(row.column(2).int32_value(), 107);
-  CHECK_EQ(row.column(3).string_value(), "r107");
-  CHECK_EQ(row.column(4).int32_value(), 1007);
-  CHECK_EQ(row.column(5).string_value(), "v1007");
+  const YSQLRow& ordered_row = row_block->row(0);
+  CHECK_EQ(ordered_row.column(0).int32_value(), 7);
+  CHECK_EQ(ordered_row.column(1).string_value(), "h7");
+  CHECK_EQ(ordered_row.column(2).int32_value(), 107);
+  CHECK_EQ(ordered_row.column(3).string_value(), "r107");
+  CHECK_EQ(ordered_row.column(4).int32_value(), 1007);
+  CHECK_EQ(ordered_row.column(5).string_value(), "v1007");
+
+  // Test simple query and result with different order.
+  CHECK_VALID_STMT("SELECT v1, v2, h1, h2, r1, r2 FROM test_table "
+                   "  WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;");
+
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YSQLRow& unordered_row = row_block->row(0);
+  CHECK_EQ(unordered_row.column(0).int32_value(), 1007);
+  CHECK_EQ(unordered_row.column(1).string_value(), "v1007");
+  CHECK_EQ(unordered_row.column(2).int32_value(), 7);
+  CHECK_EQ(unordered_row.column(3).string_value(), "h7");
+  CHECK_EQ(unordered_row.column(4).int32_value(), 107);
+  CHECK_EQ(unordered_row.column(5).string_value(), "r107");
 
   // Test single row query for the whole table.
   for (int idx = 0; idx < kNumRows; idx++) {

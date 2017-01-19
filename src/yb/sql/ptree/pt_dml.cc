@@ -17,14 +17,18 @@ using client::YBTable;
 using client::YBTableType;
 using client::YBColumnSchema;
 
-PTDmlStmt::PTDmlStmt(MemoryContext *memctx, YBLocation::SharedPtr loc, PTOptionExist option_exists)
+PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
+                     YBLocation::SharedPtr loc,
+                     bool write_only,
+                     PTOptionExist option_exists)
   : PTCollection(memctx, loc),
     option_exists_(option_exists),
     table_columns_(memctx),
     num_key_columns_(0),
     num_hash_key_columns_(0),
-    hash_where_ops_(memctx),
-    where_ops_(memctx) {
+    key_where_ops_(memctx),
+    where_ops_(memctx),
+    write_only_(write_only) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -73,13 +77,15 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
   col_stats.resize(num_columns());
 
   // Analyze where expression.
-  hash_where_ops_.resize(num_hash_key_columns_);
+  const int key_count = write_only_ ? num_key_columns_ : num_hash_key_columns_;
+  key_where_ops_.resize(key_count);
   RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
 
   // Make sure that all hash entries are referenced in where expression.
-  for (int idx = 0; idx < num_hash_key_columns_; idx++) {
+  for (int idx = 0; idx < key_count; idx++) {
     if (!col_stats[idx].has_eq_) {
-      return sem_context->Error(where_clause->loc(), "Missing partition key",
+      return sem_context->Error(where_clause->loc(),
+                                "Missing condition on key columns in WHERE clause",
                                 ErrorCode::CQL_STATEMENT_INVALID);
     }
   }
@@ -111,18 +117,28 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       if ((*col_stats)[col_desc->index()].has_eq_ ||
           (*col_stats)[col_desc->index()].has_lt_ ||
           (*col_stats)[col_desc->index()].has_gt_) {
-        return sem_context->Error(expr->loc(), "Partition key is specified more than one time",
+        // A column in CQL WHERE shouldn't have "==" operator toghether in combination with others.
+        // Invalid conditions: (col = x && col = y), (col = x && col < y)
+        return sem_context->Error(expr->loc(), "Illogical condition for where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
       (*col_stats)[col_desc->index()].has_eq_ = true;
 
       // The condition to "where" operator list.
       if (col_desc->is_hash()) {
-        hash_where_ops_[col_desc->index()].Init(
+        key_where_ops_[col_desc->index()].Init(
           col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
+      } else if (col_desc->is_primary()) {
+        if (write_only_) {
+          key_where_ops_[col_desc->index()].Init(
+            col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
+        } else {
+          ColumnOp col_op(col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
+          where_ops_.push_back(col_op);
+        }
       } else {
-        ColumnOp col_op(col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
-        where_ops_.push_back(col_op);
+        return sem_context->Error(expr->loc(), "Non primary key cannot be used in where clause",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
       }
       break;
     }
@@ -131,11 +147,19 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
 
       if (col_desc->is_hash()) {
-        return sem_context->Error(expr->loc(), "Partition column cannot be used in this context",
+        return sem_context->Error(expr->loc(), "Partition column cannot be used in this expression",
                                   ErrorCode::CQL_STATEMENT_INVALID);
-      }
-      if ((*col_stats)[col_desc->index()].has_eq_ || (*col_stats)[col_desc->index()].has_lt_) {
-        return sem_context->Error(expr->loc(), "Illogical range condition",
+      } else if (col_desc->is_primary()) {
+        if (write_only_) {
+          return sem_context->Error(expr->loc(), "Range expression is not yet supported",
+                                    ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        } else if ((*col_stats)[col_desc->index()].has_eq_ ||
+                   (*col_stats)[col_desc->index()].has_lt_) {
+          return sem_context->Error(expr->loc(), "Illogical range condition",
+                                    ErrorCode::CQL_STATEMENT_INVALID);
+        }
+      } else {
+        return sem_context->Error(expr->loc(), "Non primary key cannot be used in where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
       (*col_stats)[col_desc->index()].has_lt_ = true;
@@ -150,11 +174,19 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
 
       if (col_desc->is_hash()) {
-        return sem_context->Error(expr->loc(), "Partition column cannot be used in this context",
+        return sem_context->Error(expr->loc(), "Partition column cannot be used in this expression",
                                   ErrorCode::CQL_STATEMENT_INVALID);
-      }
-      if ((*col_stats)[col_desc->index()].has_eq_ || (*col_stats)[col_desc->index()].has_gt_) {
-        return sem_context->Error(expr->loc(), "Illogical range condition",
+      } else if (col_desc->is_primary()) {
+        if (write_only_) {
+          return sem_context->Error(expr->loc(), "Range expression is not yet supported",
+                                    ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+        } else if ((*col_stats)[col_desc->index()].has_eq_ ||
+                   (*col_stats)[col_desc->index()].has_gt_) {
+          return sem_context->Error(expr->loc(), "Illogical range condition",
+                                    ErrorCode::CQL_STATEMENT_INVALID);
+        }
+      } else {
+        return sem_context->Error(expr->loc(), "Non primary key cannot be used in where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
       (*col_stats)[col_desc->index()].has_gt_ = true;

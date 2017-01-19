@@ -58,7 +58,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTAssignListNode::SharedPtr set_clause,
                            PTExpr::SharedPtr where_clause,
                            PTOptionExist option_exists)
-    : PTDmlStmt(memctx, loc, option_exists),
+    : PTDmlStmt(memctx, loc, true, option_exists),
       relation_(relation),
       set_clause_(set_clause),
       where_clause_(where_clause),
@@ -79,12 +79,6 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
                                                                 std::placeholders::_1,
                                                                 std::placeholders::_2);
   RETURN_NOT_OK(set_clause_->Analyze(sem_context, analyze));
-  int num_keys = num_key_columns();
-  for (int idx = 0; idx < num_keys; idx++) {
-    if (!column_args_[idx].IsInitialized()) {
-      return sem_context->Error(set_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
-    }
-  }
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));

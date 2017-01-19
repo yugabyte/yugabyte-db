@@ -63,7 +63,7 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTListNode::SharedPtr having_clause,
                            PTListNode::SharedPtr order_by_clause,
                            PTExpr::SharedPtr limit_clause)
-    : PTDmlStmt(memctx, loc),
+    : PTDmlStmt(memctx, loc, false),
       target_(target),
       from_clause_(from_clause),
       where_clause_(where_clause),

@@ -19,7 +19,7 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            TreeNode::SharedPtr using_clause,
                            PTExpr::SharedPtr where_clause,
                            PTOptionExist option_exists)
-    : PTDmlStmt(memctx, loc, option_exists),
+    : PTDmlStmt(memctx, loc, true, option_exists),
       relation_(relation),
       where_clause_(where_clause) {
 }
