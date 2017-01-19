@@ -1,5 +1,6 @@
 name := """yugaware"""
 import com.typesafe.sbt.packager.MappingsHelper._
+import com.typesafe.sbt.packager.docker._
 
 version := "1.0-SNAPSHOT"
 
@@ -38,3 +39,8 @@ topLevelDirectory := None
 
 dockerExposedPorts := Seq(9000)
 dockerRepository := Some("registry.replicated.com/yugaware_apple")
+
+dockerCommands ++= Seq(
+  Cmd("ADD", "packages/devops*.tar.gz" + " /opt/yugabyte/devops"),
+  Cmd("COPY", "packages/yb-server*.tar.gz" + " /opt/yugabyte/")
+)
