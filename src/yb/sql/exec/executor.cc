@@ -236,7 +236,6 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
-      LOG(FATAL) << "Floating point datatypes are not yet supported";
       float actual_value = double_value.value_;
       col_pb->mutable_value()->set_float_value(actual_value);
       if (row != nullptr) {
@@ -249,7 +248,6 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
-      LOG(FATAL) << "Floating point datatypes are not yet supported";
       double actual_value = double_value.value_;
       col_pb->mutable_value()->set_double_value(actual_value);
       if (row != nullptr) {
@@ -262,7 +260,6 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalBoolValue bool_value;
       RETURN_NOT_OK(EvalExpr(expr, &bool_value));
 
-      LOG(FATAL) << "BOOL type is not yet supported";
       col_pb->mutable_value()->set_bool_value(bool_value.value_);
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));

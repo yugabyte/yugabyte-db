@@ -3540,7 +3540,7 @@ Numeric:
     $$ = MAKE_NODE(@1, PTFloat, $2);
   }
   | DOUBLE_P PRECISION {
-    PARSER_UNSUPPORTED(@1);
+    $$ = MAKE_NODE(@1, PTDouble);
   }
   | DECIMAL_P opt_type_modifiers {
     PARSER_UNSUPPORTED(@1);
