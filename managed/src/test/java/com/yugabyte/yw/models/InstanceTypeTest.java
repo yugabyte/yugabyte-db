@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-package com.yugabyte.yw.api.models;
+package com.yugabyte.yw.models;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.api.models;
+package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.models.Universe;
 import org.junit.Before;

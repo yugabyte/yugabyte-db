@@ -1,6 +1,6 @@
 // Copyright (c) Yugabyte, Inc.
 
-package com.yugabyte.yw.api.models;
+package com.yugabyte.yw.models;
 
 import org.junit.Test;
 

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.api.controllers;
+package com.yugabyte.yw.controllers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -31,7 +31,6 @@ import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.controllers.TablesController;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 
