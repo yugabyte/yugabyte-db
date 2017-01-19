@@ -139,7 +139,7 @@ download_prebuilt_thirdparty_deps() {
   local need_to_download=true
   local dest_path=$download_dir/$package_name
   if [ -f "$dest_path" ]; then
-    local_md5_sum=$( get_hash_component "$dest_path" )
+    local_md5_sum=$( compute_md5_hash "$dest_path" )
     if [ "$local_md5_sum" == "$remote_md5_sum" ]; then
       echo "Local file $dest_path matches the remote package's MD5 sum, not downloading"
       need_to_download=false
