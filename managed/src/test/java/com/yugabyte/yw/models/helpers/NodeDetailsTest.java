@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-package com.yugabyte.yw.api.models.helpers;
+package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;

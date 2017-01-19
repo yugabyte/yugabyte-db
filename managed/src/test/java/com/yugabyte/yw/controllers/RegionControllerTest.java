@@ -1,5 +1,5 @@
 // Copyright (c) Yugabyte, Inc.
-package com.yugabyte.yw.api.controllers;
+package com.yugabyte.yw.controllers;
 
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;

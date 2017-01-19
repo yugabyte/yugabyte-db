@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.api.controllers;
+package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;

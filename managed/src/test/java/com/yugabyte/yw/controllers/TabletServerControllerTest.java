@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.api.controllers;
+package com.yugabyte.yw.controllers;
 
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
@@ -9,7 +9,6 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.controllers.TabletServerController;
 
 import java.lang.String;
 import java.util.ArrayList;

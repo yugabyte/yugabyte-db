@@ -1,6 +1,6 @@
 // Copyright (c) Yugabyte, Inc.
 
-package com.yugabyte.yw.api.models;
+package com.yugabyte.yw.models;
 
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
