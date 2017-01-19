@@ -115,6 +115,13 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   Status exec_status;
   YBSchema schema;
   YBSchemaBuilder b;
+
+  // tnode->table_already_exists() will only be true when we are processing a 'CREATE IF NOT EXISTS'
+  // statement.
+  if (tnode->table_already_exists()) {
+    return Status::OK();
+  }
+
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
     b.AddColumn(column->yb_name())->Type(column->sql_type())

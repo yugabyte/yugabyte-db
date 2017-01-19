@@ -699,11 +699,11 @@ schema_stmt:
 CreateStmt:
   CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
   OptInherit OptWith OnCommitOption OptTableSpace {
-    $$ = MAKE_NODE(@1, PTCreateTable, $4, $6);
+    $$ = MAKE_NODE(@1, PTCreateTable, $4, $6, false);
   }
   | CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '(' OptTableElementList ')'
   OptInherit OptWith OnCommitOption OptTableSpace {
-    $$ = MAKE_NODE(@1, PTCreateTable, $7, $9);
+    $$ = MAKE_NODE(@1, PTCreateTable, $7, $9, true);
   }
   | CREATE OptTemp TABLE qualified_name OF any_name
   OptTypedTableElementList OptWith OnCommitOption OptTableSpace {

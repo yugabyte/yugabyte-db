@@ -114,6 +114,9 @@ std::string Status::CodeAsString() const {
     case kInvalidCommand:
       type = "Invalid command";
       break;
+    case kSqlError:
+      type = "SQL error";
+      break;
     default:
       return "Incorrect status code " + std::to_string(status_code);
   }

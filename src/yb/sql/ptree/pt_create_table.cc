@@ -17,13 +17,16 @@ using std::to_string;
 PTCreateTable::PTCreateTable(MemoryContext *memctx,
                              YBLocation::SharedPtr loc,
                              const PTQualifiedName::SharedPtr& name,
-                             const PTListNode::SharedPtr& elements)
+                             const PTListNode::SharedPtr& elements,
+                             bool create_if_not_exists)
     : TreeNode(memctx, loc),
       relation_(name),
       elements_(elements),
       columns_(memctx),
       primary_columns_(memctx),
-      hash_columns_(memctx) {
+      hash_columns_(memctx),
+      create_if_not_exists_(create_if_not_exists),
+      table_already_exists_(false) {
 }
 
 PTCreateTable::~PTCreateTable() {
@@ -79,6 +82,18 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   sem_context->set_current_processing_id(cached_entry);
   if (VLOG_IS_ON(3)) {
     PrintSemanticAnalysisResult(sem_context);
+  }
+
+  std::shared_ptr<client::YBTable> table =
+      sem_context->GetTableDesc(relation_->last_name().c_str(), true);
+  if (table != nullptr) {
+    if (!create_if_not_exists_) {
+      return sem_context->Error(relation_->loc(), "Cannot create a table that already exists",
+                                ErrorCode::DUPLICATE_TABLE);
+    } else {
+      table_already_exists_ = true;
+      return Status::OK();
+    }
   }
 
   return Status::OK();
