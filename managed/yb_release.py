@@ -8,7 +8,8 @@ import sys
 import argparse
 
 from subprocess import check_output, CalledProcessError
-from ybops.utils import init_env, log_message, get_release_file, publish_release, generate_checksum
+from ybops.utils import init_env, log_message, get_release_file, publish_release, \
+    generate_checksum, latest_release, download_release
 from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
@@ -48,12 +49,29 @@ try:
     check_output(["sbt", "clean"])
 
     if args.type == "docker":
+        # TODO, make these params, so we can specify which version of devops
+        # and yugabyte software we want to be bundled, also be able to specify
+        # local builds
+        log_message(logging.INFO, "Download latest devops and yugabyte packages")
+        devops_release = latest_release("snapshots.yugabyte.com", "devops")
+        yugabyte_release = latest_release("snapshots.yugabyte.com", "yugabyte")
+        packages_folder = os.path.join(script_dir, "target", "docker", "stage", "packages")
+        if not os.path.exists(packages_folder):
+            os.makedirs(packages_folder)
+
+        download_release("snapshots.yugabyte.com", "devops", devops_release, packages_folder)
+        download_release("snapshots.yugabyte.com", "yugabyte", yugabyte_release, packages_folder)
+
         if args.publish:
             log_message(logging.INFO, "Package and publish docker image to replicated")
             check_output(["sbt", "docker:publish"])
         else:
             log_message(logging.INFO, "Package and publish docker image locally")
             check_output(["sbt", "docker:publishLocal"])
+
+        log_message(logging.INFO, "Cleanup the packages folder")
+        shutil.rmtree(packages_folder)
+
     else:
         log_message(logging.INFO, "Kick off SBT universal packaging")
         check_output(["sbt", "universal:packageZipTarball"])
