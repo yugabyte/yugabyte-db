@@ -75,4 +75,13 @@ public class NodeDetails {
              state == NodeState.BeingDecommissioned ||
              state == NodeState.Destroyed);
   }
+
+  @JsonIgnore
+  public boolean isQueryable() {
+    return (state == NodeState.UpgradeSoftware ||
+            state == NodeState.UpdateGFlags ||
+            state == NodeState.Running ||
+            state == NodeState.ToBeDecommissioned ||
+            state == NodeState.BeingDecommissioned);
+  }
 }

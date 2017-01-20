@@ -12,14 +12,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 public class UniverseTest extends FakeDBApplication {
   private Provider defaultProvider;
@@ -138,6 +138,43 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testVerifyIsTrue() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    List<NodeDetails> masters = new LinkedList<>();
+    NodeDetails mockNode1 = mock(NodeDetails.class);
+    masters.add(mockNode1);
+    NodeDetails mockNode2 = mock(NodeDetails.class);
+    masters.add(mockNode2);
+    when(mockNode1.isQueryable()).thenReturn(true);
+    when(mockNode2.isQueryable()).thenReturn(true);
+    assertTrue(u.verifyMastersAreQueryable(masters));
+  }
+
+  @Test
+  public void testMastersListEmptyVerifyIsFalse() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    assertFalse(u.verifyMastersAreQueryable(null));
+    List<NodeDetails> masters = new LinkedList<>();
+    assertFalse(u.verifyMastersAreQueryable(masters));
+  }
+
+  @Test
+  public void testMastersInBadStateVerifyIsFalse() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    List<NodeDetails> masters = new LinkedList<>();
+    NodeDetails mockNode1 = mock(NodeDetails.class);
+    masters.add(mockNode1);
+    NodeDetails mockNode2 = mock(NodeDetails.class);
+    masters.add(mockNode2);
+    when(mockNode1.isQueryable()).thenReturn(false);
+    when(mockNode2.isQueryable()).thenReturn(true);
+    assertFalse(u.verifyMastersAreQueryable(masters));
+    when(mockNode1.isQueryable()).thenReturn(true);
+    when(mockNode2.isQueryable()).thenReturn(false);
+    assertFalse(u.verifyMastersAreQueryable(masters));
+  }
+
+  @Test
   public void testGetMasterAddresses() {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
 
@@ -160,6 +197,7 @@ public class UniverseTest extends FakeDBApplication {
           node.cloudInfo.region = "test-region";
           node.cloudInfo.subnet_id = "subnet-" + idx;
           node.cloudInfo.private_ip = "host-n" + idx;
+          node.state = NodeDetails.NodeState.Running;
           node.isTserver = true;
           if (idx <= 3) {
             node.isMaster = true;
@@ -176,6 +214,13 @@ public class UniverseTest extends FakeDBApplication {
     for (int idx = 1; idx <= 3; idx++) {
       assertThat(masterAddrs, containsString("host-n" + idx));
     }
+  }
+
+  @Test
+  public void testGetMasterAddressesFails() {
+    Universe u = spy(Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId()));
+    when(u.verifyMastersAreQueryable(anyList())).thenReturn(false);
+    assertEquals("", u.getMasterAddresses());
   }
 
   @Test

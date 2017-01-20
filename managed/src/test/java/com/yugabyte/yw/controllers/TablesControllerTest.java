@@ -18,6 +18,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -87,8 +91,10 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
     Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
+
     LOG.info("Created customer " + customer.uuid + " with universe " + u1.universeUUID);
     Result r = tablesController.universeList(customer.uuid, u1.universeUUID);
     JsonNode json = Json.parse(contentAsString(r));
@@ -120,5 +126,18 @@ public class TablesControllerTest extends FakeDBApplication {
     Result r = tablesController.list();
     assertEquals(500, r.status());
     assertEquals("Error: Unknown Error", contentAsString(r));
+  }
+
+  @Test
+  public void testUniverseListMastersNotQueryable() {
+
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.save();
+
+    Result r = tablesController.universeList(customer.uuid, u1.universeUUID);
+    assertEquals(500, r.status());
+    assertEquals("{\"error\":\"Masters are not currently queryable.\"}", contentAsString(r));
   }
 }
