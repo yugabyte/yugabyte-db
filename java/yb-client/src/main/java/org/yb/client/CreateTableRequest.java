@@ -43,7 +43,11 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     this.schema = schema;
     this.name = name;
     this.tableType = tableOptions.getTableType();
-    this.builder = tableOptions.getBuilder();
+    Master.CreateTableRequestPB.Builder pbBuilder = tableOptions.getBuilder();
+    if (this.schema.getNumHashKeyColumns() > 0) {
+      pbBuilder.getPartitionSchemaBuilder().setUseMultiColumnHashSchema(true);
+    }
+    this.builder = pbBuilder;
   }
 
   @Override
@@ -52,9 +56,6 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     this.builder.setName(this.name);
     this.builder.setSchema(ProtobufHelper.schemaToPb(this.schema));
     this.builder.setTableType(this.tableType);
-    if (this.schema.getNumHashKeyColumns() > 0) {
-      this.builder.getPartitionSchemaBuilder().setUseMultiColumnHashSchema(true);
-    }
     return toChannelBuffer(header, this.builder.build());
   }
 
