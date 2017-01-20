@@ -4,7 +4,6 @@ import React, { Component } from 'react';
 import { FormattedDate } from 'react-intl';
 import { DescriptionList } from '../common/descriptors';
 import { ROOT_URL } from '../../config';
-import { YBPanelItem } from '.';
 import './stylesheets/connectStringPanel.css'
 
 export default class connectStringPanel extends Component {
@@ -29,9 +28,7 @@ export default class connectStringPanel extends Component {
       {name: "Load Test", data: connect_string, dataClass: "yb-code-snippet well well-sm"}
     ];
     return (
-      <YBPanelItem name="Basic Details">
-        <DescriptionList listItems={connectStringPanelItems} />
-      </YBPanelItem>
+      <DescriptionList listItems={connectStringPanelItems} />
     );
   }
 }

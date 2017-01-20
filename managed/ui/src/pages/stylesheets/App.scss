@@ -27,7 +27,7 @@ body {
 }
 
 .leaflet-container {
-    height: 300px;
+    height: 400px;
     width: 500px;
 }
 
@@ -67,7 +67,6 @@ ul {
 
 .header-row .btn-group div {
     display: inline-block;
-    margin-right: 10px;
     float: right;
 }
 
@@ -107,8 +106,6 @@ ul {
     font-size: small;
 }
 
-
-
 .header-row .btn-group div {
     float: left ;
 }
@@ -118,8 +115,7 @@ ul {
 }
 
 .container-body {
-    margin-left: 90px;
-    margin-top: 40px;
+    margin: 70px 15px 0 105px;
     padding-top: 25px;
     overflow-x: hidden;
 }
@@ -161,6 +157,21 @@ ul {
     white-space: normal;
 }
 
+.react-bs-table,
+.react-bs-table table th,
+.react-bs-table table td {
+  border: none !important;
+}
+.react-bs-table {
+  margin: 0 !important;
+}
+.react-bs-table table th {
+  border-bottom: 1px solid #ccc !important;
+}
+.react-bs-table table td {
+  border-bottom: 1px solid #ddd !important;
+}
+
 .dashboard-title-text {
     font-weight: 600;
     font-size: 25px;
@@ -174,8 +185,6 @@ ul {
 .x_panel {
   position: relative;
   width: 100%;
-  margin-bottom: 10px;
-  padding: 10px 17px;
   display: inline-block;
   -webkit-column-break-inside: avoid;
   -moz-column-break-inside: avoid;
@@ -266,10 +275,51 @@ a, a:visited, a:focus, a:active, :visited, :focus, :active, .btn:focus, .btn:act
 }
 
 h2 {
-  font-size: 18px;
-  font-weight: 400;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+h3 {
+  font-size: 21px;
+}
+
+h2, h3, h4 {
+  margin-top: 0;
 }
 
 .float-right {
   float: right;
+}
+
+.tab-content {
+  margin: 0;
+  padding: 20px;
+  padding-top: 15px;
+  border: 1px solid #ddd;
+  border-top: none;
+  background-color: #fdfdfc;
+  min-height: 600px;
+}
+
+.page-action-buttons {
+  padding-top: 20px;
+  text-align: right;
+
+  .btn-group {
+    text-align: right;
+  }
+
+  .fa {
+    margin: 0 4px;
+  }
+}
+
+.btn {
+  &.bg-orange {
+    font-weight: 600;
+  }
+
+  .fa {
+    margin-right: 8px;
+  }
 }

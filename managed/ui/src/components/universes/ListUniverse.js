@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
-import { YBPanelItem } from '../panels';
 import { YBButton } from '../common/forms/fields';
 import { UniverseFormContainer } from '../../containers/common/forms';
 import { UniverseTableContainer } from '../../containers/universes';
@@ -18,7 +17,7 @@ export default class ListUniverse extends Component {
       <div id="page-wrapper">
         <Row className="header-row">
           <Col lg={10} className="universe-table-header">
-            <h3>Universes<small> Status and details</small></h3>
+            <h2>Universes</h2>
           </Col>
           <Col lg={1} className="universe-table-header-action">
             <YBButton btnClass="universe-button btn btn-default btn-lg bg-orange"
@@ -29,11 +28,11 @@ export default class ListUniverse extends Component {
                                    onHide={this.props.closeUniverseModal} title="Create Universe" />
           </Col>
         </Row>
-        <div>
-          <YBPanelItem name="Universe List">
+        <Row>
+          <Col lg={12}>
             <UniverseTableContainer />
-          </YBPanelItem>
-        </div>
+          </Col>
+        </Row>
       </div>
     )
   }

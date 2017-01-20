@@ -3,7 +3,6 @@
 import React, { Component, PropTypes } from 'react';
 
 import { DescriptionList } from '../common/descriptors';
-import { YBPanelItem } from '.';
 
 export default class UniverseInfoPanel extends Component {
   static propTypes = {
@@ -33,9 +32,7 @@ export default class UniverseInfoPanel extends Component {
     ];
 
     return (
-      <YBPanelItem name="Universe Configuration">
-        <DescriptionList listItems={universeInfoItems} />
-      </YBPanelItem>
+      <DescriptionList listItems={universeInfoItems} />
     );
   }
 }
