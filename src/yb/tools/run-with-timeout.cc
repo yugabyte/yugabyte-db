@@ -135,14 +135,18 @@ int main(int argc, char** argv) {
   }
 
   reaper_thread.join();
-  int exit_code = wait_ret_val >> 8;
+  int exit_code = WIFEXITED(wait_ret_val) ? WEXITSTATUS(wait_ret_val) : 0;
+  int term_sig = WIFSIGNALED(wait_ret_val) ? WTERMSIG(wait_ret_val) : 0;
   LOG(INFO) << "Child process returned exit code " << exit_code;
-
   if (exit_code == 0 && timed_out) {
-    exit_code = EXIT_FAILURE;
-    LOG(ERROR) << "Child process timed out and we had to kill it, returning exit code "
-               << exit_code;
+    LOG(ERROR) << "Child process timed out and we had to kill it";
   }
+  if (exit_code == 0 && term_sig != 0) {
+    exit_code = EXIT_FAILURE;
+    LOG(ERROR) << "Child process terminated due to signal " << term_sig
+               << ", returning exit code " << exit_code;
+  }
+
   auto duration_ms = duration_cast<milliseconds>(steady_clock::now() - start_time).count();
   LOG(INFO) << "Total time taken: " << StringPrintf("%.3f", duration_ms / 1000.0) << " sec";
   return exit_code;

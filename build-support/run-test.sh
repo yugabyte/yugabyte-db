@@ -28,6 +28,8 @@
 
 set -euo pipefail
 
+. "${0%/*}/common-build-env.sh"
+
 TEST_PATH=${1:-}
 if [[ -z $TEST_PATH ]]; then
   fatal "Test path must be specified as the first argument"

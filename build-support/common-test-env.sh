@@ -1,6 +1,5 @@
-# Copyright (c) YugaByte, Inc.
-
 #@IgnoreInspection BashAddShebang
+# Copyright (c) YugaByte, Inc.
 
 # Common bash code for test scripts/
 
@@ -15,6 +14,7 @@ NON_GTEST_TESTS_RE=$( regex_from_list "
   client_samples-test
   client_symbol-test
   merge-test
+  non_gtest_failures-test
 ")
 
 NON_GTEST_ROCKSDB_TESTS_RE=$( regex_from_list "
@@ -270,7 +270,7 @@ collect_gtest_tests() {
   rm -f "$gtest_list_stderr_path"
 
   if [ "$gtest_list_tests_exit_code" -ne 0 ]; then
-    echo "'$test_binary' does not seem to be a gtest test (--gtest_list_tests failed)" >&2
+    echo "'$rel_test_binary' does not seem to be a gtest test (--gtest_list_tests failed)" >&2
     echo "Please add this test to the appropriate blacklist in common-test-env.sh" >&2
     exit 1
   fi
@@ -328,6 +328,10 @@ collect_gtest_tests() {
 #     Relative path of the test binary
 #   test_name
 #     Test name within the test binary, to be passed to --gtest_filter=...
+#   junit_test_case_id
+#     Test ID for JUnit report in format: <Test suite name>.<Test case name>, used to generate
+#     XML in case it is not possible to parse test case info from test log file (non-gtest binary,
+#     crashed to early).
 #   run_at_once
 #     Whether we need to run all tests in this binary at once ("true" or "false")
 #   what_test_str
@@ -376,12 +380,14 @@ prepare_for_running_test() {
     test_name=${test_descriptor#*:::}
     run_at_once=false
     what_test_str="test $test_name"
+    junit_test_case_id=$test_name
   else
     # Run all test cases in the given test binary
     rel_test_binary=$test_descriptor
     test_name=""
     run_at_once=true
     what_test_str="all tests"
+    junit_test_case_id="${rel_test_binary##*/}.all"
   fi
 
   local test_binary_sanitized=$( sanitize_for_path "$rel_test_binary" )
@@ -599,7 +605,8 @@ handle_xml_output() {
     test_log_path \
     xml_output_file
 
-  if [[ ! -f "$xml_output_file" ]]; then
+  if [[ ! -f "$xml_output_file" || ! -s "$xml_output_file" ]]; then
+    # XML does not exist or empty (most probably due to test crash during XML generation)
     if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
       echo "$rel_test_binary is a known non-gtest binary, OK that it did not produce XML" \
            "output" >&2
@@ -607,24 +614,33 @@ handle_xml_output() {
       echo "$rel_test_binary failed to produce an XML output file at $xml_output_file" >&2
       test_failed=true
     fi
-    if [[ -f "$test_log_path" ]]; then
-      echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
-      "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x <"$test_log_path" >"$xml_output_file"
-    else
-      echo "Test log path '$test_log_path' does not exist, cannot generate missing XML output" \
-           "file '$xml_output_file'" >&2
+    if [[ ! -f "$test_log_path" ]]; then
+      echo "Test log path '$test_log_path' does not exist"
       test_failed=true
+      # parse_test_failure will also generate XML file in this case.
     fi
+    echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
+    "$YB_SRC_ROOT"/build-support/parse_test_failure.py -x \
+        "$junit_test_case_id" "$test_log_path" >"$xml_output_file"
   fi
 
-  if [[ -n ${BUILD_URL:-} ]]; then
-    if "$test_failed"; then
-      echo "Updating $xml_output_file with a link to test log" >&2
-    fi
-    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
-      --result-xml "$xml_output_file" \
-      --log-url "$test_log_url"
+  if [[ -z ${test_log_url:-} ]]; then
+    # Even if there is no test log URL available we need it, because we use
+    # update_test_result_xml.py to mark test as failed in XML in case test produced XML without
+    # errors, but just returned non-zero exit code (for example under Address/Thread Sanitizer).
+
+    # Converting path to local file URL (may be useful for local debugging purposes).
+    test_log_url=`python -c "import six; print six.moves.urllib_parse.urljoin(\"file://\", \
+      six.moves.urllib.request.pathname2url('$test_log_path'))"`
   fi
+
+  if "$test_failed"; then
+    echo "Updating $xml_output_file with a link to test log" >&2
+  fi
+  "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
+    --result-xml "$xml_output_file" \
+    --log-url "$test_log_url" \
+    --mark-as-failed "$test_failed"
 }
 
 postprocess_test_log() {

@@ -24,6 +24,7 @@ from xml.sax.saxutils import quoteattr
 import argparse
 import re
 import sys
+import os.path
 
 # Read at most 100MB of a test log.
 # Rarely would this be exceeded, but we don't want to end up
@@ -43,6 +44,7 @@ IGNORED_STACKTRACE_ELEM_RE = re.compile(
     r'(google::logging|google::LogMessage|\(unknown\)| testing::)')
 TEST_FAILURE_RE = re.compile(r'.*\d+: Failure$')
 GLOG_LINE_RE = re.compile(r'^[WIEF]\d\d\d\d \d\d:\d\d:\d\d')
+UNRECOGNIZED_ERROR = "Unrecognized error type. Please see the error log for more information."
 
 
 def consume_rest(line_iter):
@@ -148,8 +150,7 @@ def extract_failures(log_text):
     # Sometimes we see crashes that the script doesn't know how to parse.
     # When that happens, we leave a generic message to be picked up by Jenkins.
     if cur_test_case and cur_test_case not in errors_by_test:
-        record_error(errors_by_test, cur_test_case,
-                     "Unrecognized error type. Please see the error log for more information.")
+        record_error(errors_by_test, cur_test_case, UNRECOGNIZED_ERROR)
 
     return (tests_seen_in_order, errors_by_test)
 
@@ -203,9 +204,6 @@ def print_failure_summary(tests, errors_by_test, is_xml):
 
         found_test_suites = False
         for test_name in tests:
-            if test_name not in errors_by_test:
-                continue
-
             (test_suite, test_case) = test_name.split(".")
 
             # Test suite initialization or name change.
@@ -218,13 +216,14 @@ def print_failure_summary(tests, errors_by_test, is_xml):
 
             # Print each test case.
             print '    <testcase name="%s" classname="%s">' % (test_case, cur_test_suite)
-            errors = "\n\n".join(errors_by_test[test_name])
-            first_line = re.sub("\n.*", '', errors)
-            print '      <error message=%s>' % quoteattr(first_line)
-            print '<![CDATA['
-            print errors
-            print ']]>'
-            print '      </error>'
+            if errors_by_test.get(test_name):
+                errors = "\n\n".join(errors_by_test[test_name])
+                first_line = re.sub("\n.*", '', errors)
+                print '      <error message=%s>' % quoteattr(first_line)
+                print '<![CDATA['
+                print errors
+                print ']]>'
+                print '      </error>'
             print '    </testcase>'
 
         if found_test_suites:
@@ -234,18 +233,40 @@ def print_failure_summary(tests, errors_by_test, is_xml):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-x", "--xml",
-                        help="Print output in JUnit report XML format (default: plain text)",
-                        action="store_true")
-    parser.add_argument("path", nargs="?", help="File to parse. If not provided, parses stdin")
+    parser.add_argument(
+        "-x", "--xml",
+        help="Print output in JUnit report XML format (default: plain text)",
+        action="store_true")
+    parser.add_argument(
+        "junit_test_case_id",
+        nargs="?",
+        help="Test case ID in <Test suite>.<test case> format to be used for report in case it "
+             "couldn't be parsed from log")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        help="File to parse. If not provided, parses stdin")
     args = parser.parse_args()
 
+    test_case_id = args.junit_test_case_id
+
     if args.path:
-        in_file = file(args.path)
+        in_file = file(args.path) if os.path.isfile(args.path) else None
     else:
         in_file = sys.stdin
-    log_text = in_file.read(MAX_MEMORY)
-    (tests, errors_by_test) = extract_failures(log_text)
+
+    if in_file:
+        log_text = in_file.read(MAX_MEMORY)
+        (tests, errors_by_test) = extract_failures(log_text)
+    else:
+        tests = [test_case_id]
+        errors_by_test = {test_case_id: ['Log file not found, check global build log']}
+
+    # For non-gtest test we need to generate XML without errors.
+    # Errors will be added by update_test_result_xml.py if needed.
+    if len(tests) == 0:
+        tests.append(test_case_id)
+        errors_by_test[test_case_id] = []
     print_failure_summary(tests, errors_by_test, args.xml)
 
 

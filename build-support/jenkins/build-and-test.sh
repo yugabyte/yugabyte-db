@@ -29,6 +29,10 @@
 #   Default: 1
 #     Build and test C++ code if this is set to 1.
 #
+#   SKIP_CPP_MAKE
+#   Default: 0
+#     Skip building C++ code, only run tests if this is set to 1 (useful for debugging).
+#
 #   BUILD_JAVA
 #   Default: 1
 #     Build and test java code if this is set to 1.
@@ -41,6 +45,10 @@
 #   BUILD_PYTHON
 #   Default: 1
 #     Build and test the Python wrapper of the client API.
+#
+#   DONT_DELETE_BUILD_ROOT
+#   Default: 0
+#     Skip deleting BUILD_ROOT (useful for debugging).
 #
 #   MVN_FLAGS
 #   Default: ""
@@ -103,9 +111,12 @@ set_build_root --no-readonly
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
 BUILD_PYTHON=${BUILD_PYTHON:-1}
+DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-0}
+SKIP_CPP_MAKE=${SKIP_CPP_MAKE:-0}
 
 LATEST_BUILD_LINK="$YB_SRC_ROOT/build/latest"
 CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
+CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
 
 # Remove testing artifacts from the previous run before we do anything
 # else. Otherwise, if we fail during the "build" step, Jenkins will
@@ -125,10 +136,18 @@ if [[ -h $BUILD_ROOT ]]; then
   fi
 fi
 
-log "Deleting BUILD_ROOT ('$BUILD_ROOT')."
-rm -rf "$BUILD_ROOT"
+if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
+  log "Deleting BUILD_ROOT ('$BUILD_ROOT')."
+  rm -rf "$BUILD_ROOT"
+else
+  YB_TEST_LOGS="$BUILD_ROOT/yb-test-logs"
+  echo "Skip deleting BUILD_ROOT ('$BUILD_ROOT'), only deleting $YB_TEST_LOGS."
+  rm -rf "$YB_TEST_LOGS"
+fi
 
-create_dir_on_ephemeral_drive "$BUILD_ROOT" "build/${BUILD_ROOT##*/}"
+if [[ $DONT_DELETE_BUILD_ROOT == "0" || ! -d $BUILD_ROOT ]]; then
+  create_dir_on_ephemeral_drive "$BUILD_ROOT" "build/${BUILD_ROOT##*/}"
+fi
 
 if [[ -h $BUILD_ROOT ]]; then
   # If we ended up creating BUILD_ROOT as a symlink to an ephemeral drive, now make BUILD_ROOT
@@ -236,7 +255,7 @@ elif [ "$BUILD_TYPE" = "lint" ]; then
   set -e
   log "Lint build finished (see timing information above)"
   exit $exit_code
-else
+elif [[ $SKIP_CPP_MAKE == "0" ]]; then
   log "Running CMake with CMAKE_BUILD_TYPE set to $cmake_build_type"
   time $cmake_cmd_line "$YB_SRC_ROOT"
   log "Finished running CMake with build type $BUILD_TYPE (see timing information above)"
@@ -271,14 +290,18 @@ if [[ $BUILD_CPP == "1" ]]; then
   echo
   echo Building C++ code.
   echo ------------------------------------------------------------
-  time make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | filter_boring_cpp_build_output
-  if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-    log "C++ build failed!"
-    # TODO: perhaps we shouldn't even try to run C++ tests in this case?
-    EXIT_STATUS=1
-  fi
+  if [[ $SKIP_CPP_MAKE == "0" ]]; then
+    time make -j$NUM_PROCS $EXTRA_MAKE_ARGS 2>&1 | filter_boring_cpp_build_output
+    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+      log "C++ build failed!"
+      # TODO: perhaps we shouldn't even try to run C++ tests in this case?
+      EXIT_STATUS=1
+    fi
 
-  log "Finished building C++ code (see timing information above)"
+    log "Finished building C++ code (see timing information above)"
+  else
+    log "Skipped building C++ code, only running tests"
+  fi
 
   if [[ -h $LATEST_BUILD_LINK ]]; then
     # This helps prevent Jenkins from showing every test twice in test results.
@@ -297,8 +320,8 @@ if [[ $BUILD_CPP == "1" ]]; then
   set +e
   time (
     set -x
-    time ctest -j$NUM_PARALLEL_TESTS $EXTRA_TEST_FLAGS --output-on-failure 2>&1 | \
-      tee "$CTEST_OUTPUT_PATH"
+    time ctest -j$NUM_PARALLEL_TESTS $EXTRA_TEST_FLAGS --output-log "$CTEST_FULL_OUTPUT_PATH" \
+      --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
   )
   if [ $? -ne 0 ]; then
     EXIT_STATUS=1

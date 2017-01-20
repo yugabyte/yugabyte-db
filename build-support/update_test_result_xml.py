@@ -39,6 +39,13 @@ def main():
         metavar="LOG_URL",
         required=True)
 
+    parser.add_argument(
+        "--mark-as-failed",
+        help="Mark test as failed if it isn't",
+        choices=['true', 'false'],
+        default='false',
+        dest="mark_as_failed")
+
     args = parser.parse_args()
 
     # Basic JUnit XML format description:
@@ -68,6 +75,29 @@ def main():
     xml_dom = minidom.parse(args.result_xml)
 
     log_url_with_prefix = "Log: %s\n\n" % args.log_url
+
+    # It might happen that test case passed and produced XML with passed results, but after that
+    # fails due to additional instrumented checks (ThreadSanitizer, AddressSanitizer, etc)
+    # with non-zero exit code. In this case we need to mark test case as failed by adding <error>
+    # node to be recognized as failed by Jenkins. We also updating counter attributes if they
+    # present and contain integer values.
+    if args.mark_as_failed == 'true':
+        for testcase_node in xml_dom.getElementsByTagName('testcase'):
+            if (testcase_node.getElementsByTagName('error').length +
+                    testcase_node.getElementsByTagName('failure').length == 0):
+                error_node = xml_dom.createElement('error')
+                testcase_node.appendChild(error_node)
+                container_node = testcase_node.parentNode
+                # Outermost elements have Document as a parent and Document has no parent.
+                while container_node.parentNode:
+                    errors_attr = container_node.getAttribute('errors')
+                    if errors_attr:
+                        try:
+                            container_node.setAttribute('errors', str(int(errors_attr) + 1))
+                        except ValueError:
+                            # just skip
+                            pass
+                    container_node = container_node.parentNode
 
     # I am assuming that there may be some distinction between "failure" and "error" nodes. E.g. in
     # some xUnit test frameworks "failures" are assertion failures and "errors" are test program

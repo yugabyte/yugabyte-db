@@ -54,6 +54,10 @@ ADD_YB_TEST(client_failover-itest)
 ADD_YB_TEST(client-stress-test
   RESOURCE_LOCK "master-rpc-ports"
   RUN_SERIAL true)
+# Tests which fail on purpose for checking Jenkins test failures reporting, disabled
+# (commented out) by default:
+# ADD_YB_TEST(test_failures-test)
+# ADD_YB_TEST(non_gtest_failures-test.sh)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports" RUN_SERIAL true)
