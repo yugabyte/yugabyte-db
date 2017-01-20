@@ -142,7 +142,7 @@ export default class GraphPanelHeader extends Component {
       <Grid className="x_panel graph-panel">
         <Row className="x_title">
           <Col md={6}>
-            <h3>Metrics</h3>
+            <h2>Metrics</h2>
           </Col>
           <Col md={6}>
             <form name="GraphPanelFilterForm">

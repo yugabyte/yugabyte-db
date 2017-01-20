@@ -1,5 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
+.map-legend-container,
 .region-map-legend-container {
   position: absolute;
   bottom: 0;
@@ -8,10 +9,6 @@
   margin: 1px;
   z-index: 1000;
   background: rgba(255, 255, 255, 0.55);
-}
-
-.region-map-legend-container h4 {
-  margin-bottom: 0;
 }
 
 .region-map-legend-container span {
@@ -33,9 +30,32 @@
   border: none;
 }
 
+.map-legend-container {
+  margin: 2px 1px;
+  padding: 15px;
+  padding-bottom: 0;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.map-legend-container h2 {
+  margin: 0 0 15px 0 !important;
+}
+
+.map-legend-container h5 {
+  margin: 4px 0;
+}
+
+.map-legend-container .map-legend-item {
+  padding-left: 32px;
+}
+
+.map-legend-container .list-group {
+  margin: 0 0 15px 0;
+}
+
 .map-legend-container .list-group-item {
   padding: 0;
-  background-color: #545454;
-  margin-bottom: 2px;
-  color: white;
+  margin: 0;
+  background-color: transparent;
+  border: none;
 }

@@ -27,7 +27,7 @@ export default class DescriptionList extends Component {
       }
       return (
         <span key={idx}>
-          <dt className={item.nameClass}>{item.name}</dt>
+          <dt className={item.nameClass}>{item.name}:</dt>
           <dd className={item.dataClass}>{itemData}</dd>
         </span>);
     });

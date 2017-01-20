@@ -81,7 +81,7 @@ export default class UniverseDisplayPanel extends Component {
      var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
     return (
       <div className="universe-display-panel-container">
-        <h3>Universes</h3>
+        <h2>Universes</h2>
         {universeDisplayList}
         {createUniverseButton}
         <UniverseFormContainer type="Create"

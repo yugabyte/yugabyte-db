@@ -10,13 +10,14 @@
         float: left;
         overflow: hidden;
         clear: left;
+        width: 120px;
         text-align: right;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
     .dl-normal dd {
-        margin-left: 120px;
+        margin-left: 130px;
         line-height: 20px;
     }
 
