@@ -19,14 +19,16 @@ PTCreateTable::PTCreateTable(MemoryContext *memctx,
                              YBLocation::SharedPtr loc,
                              const PTQualifiedName::SharedPtr& name,
                              const PTListNode::SharedPtr& elements,
-                             bool create_if_not_exists)
+                             bool create_if_not_exists,
+                             const PTTablePropertyListNode::SharedPtr& table_properties)
     : TreeNode(memctx, loc),
       relation_(name),
       elements_(elements),
       columns_(memctx),
       primary_columns_(memctx),
       hash_columns_(memctx),
-      create_if_not_exists_(create_if_not_exists) {
+      create_if_not_exists_(create_if_not_exists),
+      table_properties_(table_properties) {
 }
 
 PTCreateTable::~PTCreateTable() {
@@ -47,6 +49,11 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
 
   // Processing table elements.
   RETURN_NOT_OK(elements_->Analyze(sem_context));
+
+  if (table_properties_ != nullptr) {
+    // Process table properties.
+    RETURN_NOT_OK(table_properties_->Analyze(sem_context));
+  }
 
   // Move the all partition and primary columns from columns list to appropriate list.
   int32_t order = 0;

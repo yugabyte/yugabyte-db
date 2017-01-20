@@ -99,6 +99,8 @@ typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
 typedef PTAssign::SharedPtr            PAssign;
+typedef PTTableProperty::SharedPtr     PTableProperty;
+typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
 typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
 typedef PTName::SharedPtr              PName;
@@ -231,6 +233,8 @@ using namespace yb::sql;
 %type <PAssignListNode>   set_clause_list
 
 %type <objtype>           drop_type cql_drop_type sql_drop_type
+%type <PTableProperty>           table_property
+%type <PTablePropertyListNode>   opt_table_options table_properties
 
 // Name nodes.
 %type <PName>             indirection_el columnElem
@@ -269,7 +273,7 @@ using namespace yb::sql;
                           Sconst comment_text notify_payload ColLabel var_name
                           type_function_name param_name NonReservedWord NonReservedWord_or_Sconst
                           ExistingIndex OptTableSpace OptConsTableSpace opt_provider
-                          security_label opt_existing_window_name
+                          security_label opt_existing_window_name property_name
 
 %type <PBool>             opt_if_not_exists xml_whitespace_option constraints_set_mode opt_varying
                           opt_timezone opt_no_inherit opt_ordinality opt_instead opt_unique
@@ -409,7 +413,7 @@ using namespace yb::sql;
                           grantee_list privileges privilege_list function_with_argtypes_list
                           OptInherit definition
                           OptTypedTableElementList TypedTableElementList reloptions opt_reloptions
-                          OptWith opt_definition func_args
+                          opt_definition func_args
                           func_args_list func_args_with_defaults func_args_with_defaults_list
                           aggr_args aggr_args_list func_as createfunc_opt_list alterfunc_opt_list
                           old_aggr_definition old_aggr_list oper_argtypes RuleActionList
@@ -461,9 +465,9 @@ using namespace yb::sql;
                           CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
                           DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
-                          DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
-                          DESC DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
-                          DOUBLE_P DROP
+                          DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P
+                          DELIMITER DELIMITERS DESC DICTIONARY DISABLE_P DISCARD DISTINCT DO
+                          DOCUMENT_P DOMAIN_P DOUBLE_P DROP
 
                           EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT
                           EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTENSION
@@ -710,20 +714,20 @@ schema_stmt:
 
 CreateStmt:
   CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-  OptInherit OptWith OnCommitOption OptTableSpace {
-    $$ = MAKE_NODE(@1, PTCreateTable, $4, $6, false);
+  OptInherit opt_table_options OnCommitOption OptTableSpace {
+    $$ = MAKE_NODE(@1, PTCreateTable, $4, $6, false, $9);
   }
   | CREATE OptTemp TABLE IF_P NOT_LA EXISTS qualified_name '(' OptTableElementList ')'
-  OptInherit OptWith OnCommitOption OptTableSpace {
-    $$ = MAKE_NODE(@1, PTCreateTable, $7, $9, true);
+  OptInherit opt_table_options OnCommitOption OptTableSpace {
+    $$ = MAKE_NODE(@1, PTCreateTable, $7, $9, true, $12);
   }
   | CREATE OptTemp TABLE qualified_name OF any_name
-  OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
+  OptTypedTableElementList opt_table_options OnCommitOption OptTableSpace {
     PARSER_UNSUPPORTED(@5);
     $$ = nullptr;
   }
   | CREATE OptTemp TABLE IF_P NOT_LA EXISTS qualified_name OF any_name
-  OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
+  OptTypedTableElementList opt_table_options OnCommitOption OptTableSpace {
     PARSER_UNSUPPORTED(@8);
     $$ = nullptr;
   }
@@ -1067,9 +1071,12 @@ OptInherit:
   }
 ;
 
-// WITH (options) is preferred, WITH OIDS and WITHOUT OIDS are legacy forms.
-OptWith:
+opt_table_options:
   /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | WITH table_properties {
+    $$ = $2;
   }
   | WITH reloptions {
     PARSER_UNSUPPORTED(@1);
@@ -1079,6 +1086,23 @@ OptWith:
   }
   | WITHOUT OIDS {
     PARSER_UNSUPPORTED(@1);
+  }
+;
+
+table_properties:
+  table_property {
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, $1);
+  }
+  | table_properties AND table_property {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+table_property:
+  property_name '=' Iconst {
+    PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constint);
   }
 ;
 
@@ -3435,6 +3459,8 @@ index_name:    ColId            { $$ = $1; };
 
 file_name:     Sconst           { $$ = $1; };
 
+property_name: name             { $$ = $1; };
+
 // The production for a qualified func_name has to exactly match the
 // production for a qualified columnref, because we cannot tell which we
 // are parsing until we see what comes after it ('(' or Sconst for a func_name,
@@ -5353,7 +5379,7 @@ CreateAsStmt:
 ;
 
 create_as_target:
-  qualified_name opt_column_list OptWith OnCommitOption OptTableSpace {
+  qualified_name opt_column_list opt_table_options OnCommitOption OptTableSpace {
   }
 ;
 

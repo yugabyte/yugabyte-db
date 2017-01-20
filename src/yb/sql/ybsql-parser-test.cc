@@ -63,6 +63,40 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
 
   // Valid statement: SELECT.
   PARSE_VALID_STMT("SELECT id, name FROM human_resource;");
+
+  // Valid statement: CREATE with table properties.
+  PARSE_VALID_STMT("CREATE TABLE human_resource"
+      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
+      "default_time_to_live = 1000;");
+
+  // Valid statement: CREATE with multiple table properties.
+  // Note this is valid for the parser, but not the analyzer since duplicate properties are not
+  // allowed. Once we support more than one property for the table, we can update this test.
+  PARSE_VALID_STMT("CREATE TABLE human_resource"
+      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
+      "default_time_to_live = 1000 AND default_time_to_live = 1000;");
+
+  // Valid statement: CREATE with random property. This is an invalid statement, although the
+  // parser doesn't fail on this, but the semantic phase catches this issue.
+  PARSE_VALID_STMT("CREATE TABLE human_resource"
+      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
+      "random_prop = 1000;");
+
+  // Invalid statement: CREATE with invalid prop value.
+  PARSE_INVALID_STMT("CREATE TABLE human_resource"
+      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
+      "default_time_to_live = (1000 + 1000);");
+
+  // Invalid statement: CREATE with table property value as string.
+  PARSE_INVALID_STMT("CREATE TABLE human_resource"
+      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
+      "default_time_to_live = 'abc';");
+
+  // Invalid statement: CREATE with table property value as double.
+  PARSE_INVALID_STMT("CREATE TABLE human_resource"
+      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
+      "default_time_to_live = 1000.1;");
+
 }
 
 }  // namespace sql

@@ -48,6 +48,15 @@ class YbSql {
   CHECKED_STATUS TestParser(const std::string& sql_stmt);
 
   //------------------------------------------------------------------------------------------------
+  // Analyze SQL statements.
+  CHECKED_STATUS TestAnalyzer(SqlEnv *sql_env, const std::string& sql_stmt,
+                              ParseTree::UniPtr *parse_tree);
+
+  // Generate parse tree.
+  CHECKED_STATUS GenerateParseTree(const std::string& sql_stmt,
+                                   ParseTree::UniPtr *parse_tree);
+
+  //------------------------------------------------------------------------------------------------
   // Parsing processor.
   Parser::UniPtr parser_;
 

@@ -53,6 +53,8 @@ enum class ErrorCode : int64_t {
   MISSING_ARGUMENT_FOR_PRIMARY_KEY = -207,
   NULL_ARGUMENT_FOR_PRIMARY_KEY = -208,
   INCOMPARABLE_DATATYPES = -209,
+  INVALID_TABLE_PROPERTY = -210,
+  DUPLICATE_TABLE_PROPERTY = -211,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

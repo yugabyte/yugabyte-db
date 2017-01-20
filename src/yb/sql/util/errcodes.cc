@@ -55,6 +55,8 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY),
       "Null Argument for Primary Key" },
   { static_cast<int64_t>(ErrorCode::INCOMPARABLE_DATATYPES), "Incomparable Datatypes" },
+  { static_cast<int64_t>(ErrorCode::INVALID_TABLE_PROPERTY), "Invalid Table Property" },
+  { static_cast<int64_t>(ErrorCode::DUPLICATE_TABLE_PROPERTY), "Duplicate Table Property" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

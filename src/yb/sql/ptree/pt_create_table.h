@@ -7,10 +7,13 @@
 #ifndef YB_SQL_PTREE_PT_CREATE_TABLE_H_
 #define YB_SQL_PTREE_PT_CREATE_TABLE_H_
 
+#include "yb/master/master.pb.h"
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/pt_table_property.h"
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
+#include "yb/sql/ptree/pt_update.h"
 
 namespace yb {
 namespace sql {
@@ -163,7 +166,8 @@ class PTCreateTable : public TreeNode {
                 YBLocation::SharedPtr loc,
                 const PTQualifiedName::SharedPtr& name,
                 const PTListNode::SharedPtr& elements,
-                bool create_if_not_exists);
+                bool create_if_not_exists,
+                const PTTablePropertyListNode::SharedPtr& table_properties);
   virtual ~PTCreateTable();
 
   // Node type.
@@ -221,6 +225,10 @@ class PTCreateTable : public TreeNode {
     return elements_->loc();
   }
 
+  PTTablePropertyListNode::SharedPtr table_properties() const {
+    return table_properties_;
+  }
+
  private:
   PTQualifiedName::SharedPtr relation_;
   PTListNode::SharedPtr elements_;
@@ -230,6 +238,7 @@ class PTCreateTable : public TreeNode {
   MCList<PTColumnDefinition *> hash_columns_;
 
   bool create_if_not_exists_;
+  const PTTablePropertyListNode::SharedPtr table_properties_;
 };
 
 }  // namespace sql

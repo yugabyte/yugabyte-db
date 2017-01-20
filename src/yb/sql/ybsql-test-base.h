@@ -18,6 +18,18 @@
 namespace yb {
 namespace sql {
 
+#define ANALYZE_VALID_STMT(sql_env, sql_stmt, parse_tree)             \
+do {                                                                  \
+  Status s = TestAnalyzer(sql_env, sql_stmt, parse_tree);             \
+  EXPECT_TRUE(s.ok());                                                \
+} while (false)
+
+#define ANALYZE_INVALID_STMT(sql_env, sql_stmt, parse_tree)           \
+do {                                                                  \
+  Status s = TestAnalyzer(sql_env, sql_stmt, parse_tree);             \
+  EXPECT_FALSE(s.ok());                                               \
+} while (false)
+
 #define PARSE_VALID_STMT(sql_stmt)             \
 do {                                           \
   Status s = TestParser(sql_stmt);             \
@@ -78,6 +90,12 @@ class YbSqlTestBase : public YBTest {
   // Test only the parser.
   CHECKED_STATUS TestParser(const std::string& sql_stmt) {
     return ybsql_->TestParser(sql_stmt);
+  }
+
+  // Tests parser and analyzer
+  CHECKED_STATUS TestAnalyzer(SqlEnv *sql_env, const string& sql_stmt,
+                              ParseTree::UniPtr *parse_tree) {
+    return ybsql_->TestAnalyzer(sql_env, sql_stmt, parse_tree);
   }
 
   //------------------------------------------------------------------------------------------------

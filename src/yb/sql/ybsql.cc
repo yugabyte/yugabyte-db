@@ -83,13 +83,29 @@ CHECKED_STATUS YbSql::Process(SqlEnv *sql_env, const string& sql_stmt) {
   return s;
 }
 
-CHECKED_STATUS YbSql::TestParser(const string& sql_stmt) {
+CHECKED_STATUS YbSql::GenerateParseTree(const std::string& sql_stmt,
+                                        ParseTree::UniPtr *parse_tree) {
   // Parse the statement and get the generated parse tree.
   RETURN_NOT_OK(parser_->Parse(sql_stmt));
-  ParseTree::UniPtr parse_tree = parser_->Done();
-  DCHECK(parse_tree.get() != nullptr) << "Parse tree is null";
+  *parse_tree = parser_->Done();
+  DCHECK((*parse_tree).get() != nullptr) << "Parse tree is null";
 
-  // Return status.
+  return Status::OK();
+}
+
+CHECKED_STATUS YbSql::TestParser(const string& sql_stmt) {
+  ParseTree::UniPtr parse_tree;
+  return GenerateParseTree(sql_stmt, &parse_tree);
+}
+
+CHECKED_STATUS YbSql::TestAnalyzer(SqlEnv *sql_env, const string& sql_stmt,
+                                   ParseTree::UniPtr *parse_tree) {
+  RETURN_NOT_OK(GenerateParseTree(sql_stmt, parse_tree));
+
+  RETURN_NOT_OK(analyzer_->Analyze(sql_stmt, move(*parse_tree), sql_env, 0));
+
+  *parse_tree = analyzer_->Done();
+
   return Status::OK();
 }
 
