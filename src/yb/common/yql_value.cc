@@ -9,6 +9,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/util/date_time.h"
 #include "yb/util/bytes_formatter.h"
 
 // The list of unsupported datypes to use in switch statements
@@ -107,9 +108,13 @@ void YQLValueCore::Serialize(
     case BOOL:
       CQLEncodeNum(Store8, static_cast<uint8>(bool_value_ ? 1 : 0), buffer);
       return;
-    case TIMESTAMP:
-      CQLEncodeNum(NetworkByteOrder::Store64, timestamp_value_, buffer);
+    case TIMESTAMP: {
+      int64_t val = DateTime::AdjustPrecision(timestamp_value_.ToInt64(),
+          DateTime::internal_precision,
+          DateTime::CqlDateTimeInputFormat.input_precision());
+      CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
       return;
+    }
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -154,7 +159,11 @@ Status YQLValueCore::Deserialize(
       return Status::OK();;
     }
     case TIMESTAMP: {
-      return CQLDecodeNum(len, NetworkByteOrder::Load64, data, &timestamp_value_);
+      int64_t value = 0;
+      RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
+      value = DateTime::AdjustPrecision(value,
+          DateTime::CqlDateTimeInputFormat.input_precision(), DateTime::internal_precision);
+      return timestamp_value_.FromInt64(value);
     }
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
@@ -181,8 +190,8 @@ string YQLValueCore::ToString(const DataType type, const bool is_null) const {
     case FLOAT: return s + to_string(float_value_);
     case DOUBLE: return s + to_string(double_value_);
     case STRING: return s + FormatBytesAsStr(string_value_);
+    case TIMESTAMP: return s + timestamp_value_.ToFormattedString();
     case BOOL: return s + (bool_value_ ? "true" : "false");
-    case TIMESTAMP: return s + to_string(timestamp_value_);
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -226,7 +235,7 @@ int YQLValue::CompareTo(const YQLValue& v) const {
       LOG(FATAL) << "Internal error: bool type not comparable";
       return 0;
     case TIMESTAMP:
-      return GenericCompare(timestamp_value_, v.timestamp_value_);
+      return GenericCompare(timestamp_value_.ToInt64(), v.timestamp_value_.ToInt64());
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -284,7 +293,7 @@ YQLValue YQLValue::FromYQLValuePB(const YQLValuePB& vpb) {
       return v;
     case TIMESTAMP:
       if (vpb.has_timestamp_value()) {
-        v.set_timestamp_value(vpb.timestamp_value());
+        v.set_timestamp_value(Timestamp(vpb.timestamp_value()));
       }
       return v;
 

@@ -63,6 +63,14 @@ struct EvalBoolValue : public EvalValue {
   bool value_;
 };
 
+struct EvalTimestampValue : public EvalValue {
+  yb::DataType datatype() {
+    return yb::DataType::TIMESTAMP;
+  }
+
+  int64_t value_;
+};
+
 }  // namespace sql
 }  // namespace yb
 

@@ -378,12 +378,21 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
+    case TIMESTAMP: {
+      EvalTimestampValue timestamp_value;
+      RETURN_NOT_OK(EvalExpr(expr, &timestamp_value));
+
+      int64_t actual_value = timestamp_value.value_;
+      VLOG(3) << "Expr actual value = " << actual_value;
+      col_pb->mutable_value()->set_timestamp_value(actual_value);
+      if (row != nullptr) {
+        RETURN_NOT_OK(row->SetTimestamp(col_index, actual_value));
+      }
+      break;
+    }
+
     case BINARY:
       LOG(FATAL) << "BINARY type is not yet supported";
-      break;
-
-    case TIMESTAMP:
-      LOG(FATAL) << "TIMESTAMP type is not yet supported";
       break;
 
     case UINT8: FALLTHROUGH_INTENDED;
@@ -698,7 +707,10 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
 
-  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
+  if (!st.ok()) {
+    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Specify selected columns.
   for (const ColumnDesc *col_desc : tnode->selected_columns()) {
@@ -751,7 +763,10 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
-  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
+  if (!st.ok()) {
+    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
@@ -778,13 +793,19 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = update_op->mutable_row();
-  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
+  if (!st.ok()) {
+    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Setup the columns' new values.
-  RETURN_NOT_OK(ColumnArgsToWriteRequestPB(table,
-                                           tnode,
-                                           update_op->mutable_request(),
-                                           update_op->mutable_row()));
+  st = ColumnArgsToWriteRequestPB(table,
+                                  tnode,
+                                  update_op->mutable_request(),
+                                  update_op->mutable_row());
+  if (!st.ok()) {
+    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+  }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {

@@ -59,6 +59,8 @@ string PrimitiveValue::ToString() const {
       }
       return s;
     }
+    case ValueType::kTimestamp:
+      return timestamp_val_.ToString();
     case ValueType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
     case ValueType::kHybridTime:
@@ -98,6 +100,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kDouble:
       LOG(FATAL) << "Double cannot be used as a key";
+      return;
+
+    case ValueType::kTimestamp:
+      key_bytes->AppendInt64(timestamp_val_.ToInt64());
       return;
 
     case ValueType::kArrayIndex:
@@ -145,6 +151,10 @@ string PrimitiveValue::ToValue() const {
                     "Expected double to be the same size as uint64_t");
       // TODO: make sure this is a safe and reasonable representation for doubles.
       AppendBigEndianUInt64(int64_val_, &result);
+      return result;
+
+    case ValueType::kTimestamp:
+      AppendBigEndianUInt64(timestamp_val_.ToInt64(), &result);
       return result;
 
     case ValueType::kHybridTime:
@@ -219,6 +229,17 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       type_ = value_type;
       return Status::OK();
 
+    case ValueType::kTimestamp:
+      if (slice->size() < sizeof(Timestamp)) {
+        return STATUS(Corruption,
+            Substitute("Not enough bytes to decode a Timestamp: $0, need $1",
+                slice->size(), sizeof(Timestamp)));
+      }
+      timestamp_val_ = Timestamp(BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask);
+      slice->remove_prefix(sizeof(Timestamp));
+      type_ = value_type;
+      return Status::OK();
+
     case ValueType::kHybridTime:
       if (slice->size() < kBytesPerHybridTime) {
         return STATUS(Corruption,
@@ -282,6 +303,16 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int64_val_ = BigEndian::Load64(slice.data());
       return Status::OK();
 
+    case ValueType::kTimestamp:
+      if (slice.size() != sizeof(Timestamp)) {
+        return STATUS(Corruption,
+            Substitute("Invalid number of bytes for a $0: $1",
+                ValueTypeToStr(value_type), slice.size()));
+      }
+      type_ = value_type;
+      timestamp_val_ = Timestamp(BigEndian::Load64(slice.data()));
+      return Status::OK();
+
     case ValueType::kArray:
       return STATUS(IllegalState, "Arrays are currently not supported");
 
@@ -339,6 +370,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kDouble: return double_val_ == other.double_val_;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
+    case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
     case ValueType::kHybridTime: return hybrid_time_val_.CompareTo(other.hybrid_time_val_) == 0;
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
@@ -363,6 +395,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return GenericCompare(double_val_, other.double_val_);
     case ValueType::kUInt16Hash:
       return GenericCompare(uint16_val_, other.uint16_val_);
+    case ValueType::kTimestamp:
+      return GenericCompare(timestamp_val_, other.timestamp_val_);
     case ValueType::kHybridTime:
       // HybridTimes are sorted in reverse order.
       return -GenericCompare(hybrid_time_val_.value(), other.hybrid_time_val_.value());
@@ -429,12 +463,9 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value) {
       return value.has_bool_value() ?
           PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse) :
           PrimitiveValue(ValueType::kNull);
-    case TIMESTAMP: FALLTHROUGH_INTENDED;
-      // TODO(mihnea)  Should convert to new Timestamp primitive value (not HybridTime) once that's
-      // added. Disabled until then.
-      // return value.has_timestamp_value() ?
-      //    PrimitiveValue(Timestamp(value.timestamp_value())) : PrimitiveValue(ValueType::kNull);
-
+    case TIMESTAMP:
+      return value.has_timestamp_value() ?
+          PrimitiveValue(Timestamp(value.timestamp_value())) : PrimitiveValue(ValueType::kNull);
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
@@ -471,11 +502,8 @@ PrimitiveValue PrimitiveValue::FromYQLValue(const YQLValue& value) {
       return PrimitiveValue(value.string_value());
     case BOOL:
       return PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse);
-    case TIMESTAMP: FALLTHROUGH_INTENDED;
-      // TODO(mihnea) Should convert to new Timestamp primitive value (not HybridTime) once that's
-      // added. Disabled until then.
-      // return PrimitiveValue(Timestamp(value.timestamp_value()));
-
+    case TIMESTAMP:
+      return PrimitiveValue(Timestamp(value.timestamp_value()));
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
@@ -518,11 +546,9 @@ void PrimitiveValue::ToYQLValue(YQLValue* v) const {
     case BOOL:
       v->set_bool_value((value_type() == ValueType::kTrue));
       return;
-    case TIMESTAMP: FALLTHROUGH_INTENDED;
-      // TODO(mihnea) Should convert from new Timestamp primitive value (not HybridTime) once
-      // that's added. Disabled until then.
-      // v->set_timestamp_value(timestamp());
-      // return;
+    case TIMESTAMP:
+      v->set_timestamp_value(GetTimestamp());
+      return;
     case STRING:
       v->set_string_value(GetString());
       return;

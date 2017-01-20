@@ -14,6 +14,7 @@
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/util/timestamp.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/common/yql_rowblock.h"
@@ -75,6 +76,10 @@ class PrimitiveValue {
     // Avoid using an initializer for a union field (got surprising and unexpected results with
     // that approach). Use a direct assignment instead.
     int64_val_ = v;
+  }
+
+  explicit PrimitiveValue(const Timestamp& timestamp) : type_(ValueType::kTimestamp) {
+    timestamp_val_ = timestamp;
   }
 
   explicit PrimitiveValue(const HybridTime& hybrid_time) : type_(ValueType::kHybridTime) {
@@ -166,6 +171,11 @@ class PrimitiveValue {
     return double_val_;
   }
 
+  Timestamp GetTimestamp() const {
+    DCHECK_EQ(ValueType::kTimestamp, type_);
+    return timestamp_val_;
+  }
+
   bool operator <(const PrimitiveValue& other) const {
     return CompareTo(other) < 0;
   }
@@ -189,6 +199,7 @@ class PrimitiveValue {
     HybridTime hybrid_time_val_;
     std::string str_val_;
     double double_val_;
+    Timestamp timestamp_val_;
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
   };

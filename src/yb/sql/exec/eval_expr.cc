@@ -6,6 +6,7 @@
 #include "yb/sql/exec/executor.h"
 #include "yb/util/logging.h"
 #include "yb/client/callbacks.h"
+#include "yb/util/date_time.h"
 
 namespace yb {
 namespace sql {
@@ -130,6 +131,13 @@ Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value
       static_cast<EvalDoubleValue *>(result)->value_ = int_value.value_;
       break;
 
+    case DataType::TIMESTAMP: {
+      int64_t val = int_value.value_;
+      int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
+      static_cast<EvalTimestampValue *>(result)->value_ = ts;
+      break;
+    }
+
     default:
       LOG(FATAL) << "Illegal datatype conversion";
   }
@@ -153,6 +161,14 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
     case DataType::STRING:
       static_cast<EvalStringValue *>(result)->value_ = string_value.value_;
       break;
+
+    case DataType::TIMESTAMP: {
+      std::string s = string_value.value_.get()->c_str();
+      Timestamp ts;
+      RETURN_NOT_OK(DateTime::TimestampFromString(s, &ts));
+      static_cast<EvalTimestampValue *>(result)->value_ = ts.ToInt64();
+      break;
+    }
 
     default:
       LOG(FATAL) << "Illegal datatype conversion";

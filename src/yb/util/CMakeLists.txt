@@ -98,6 +98,8 @@ set(UTIL_SRCS
   condition_variable.cc
   crc.cc
   curl_util.cc
+  date_time.cc
+  timestamp.cc
   debug-util.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc

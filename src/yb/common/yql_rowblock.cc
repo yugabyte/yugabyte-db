@@ -106,7 +106,7 @@ bool YQLRow::bool_value(const size_t col_idx) const {
   return value(col_idx, BOOL, values_[col_idx].bool_value_);
 }
 
-int64_t YQLRow::timestamp_value(const size_t col_idx) const {
+Timestamp YQLRow::timestamp_value(const size_t col_idx) const {
   return value(col_idx, TIMESTAMP, values_[col_idx].timestamp_value_);
 }
 
@@ -142,7 +142,7 @@ void YQLRow::set_bool_value(const size_t col_idx, const bool v) {
   set_value(col_idx, BOOL, v, &values_[col_idx].bool_value_);
 }
 
-void YQLRow::set_timestamp_value(const size_t col_idx, const int64_t& v) {
+void YQLRow::set_timestamp_value(const size_t col_idx, const Timestamp& v) {
   set_value(col_idx, TIMESTAMP, v, &values_[col_idx].timestamp_value_);
 }
 

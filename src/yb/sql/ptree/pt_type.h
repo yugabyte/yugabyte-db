@@ -183,6 +183,26 @@ class PTVarchar : public PTCharBaseType {
   }
 };
 
+//--------------------------------------------------------------------------------------------------
+// Datetime types.
+
+class PTTimestamp : public PTPrimitiveType<yb::DataType::TIMESTAMP,
+    client::YBColumnSchema::TIMESTAMP> {
+ public:
+  typedef MCSharedPtr<PTTimestamp> SharedPtr;
+  typedef MCSharedPtr<const PTTimestamp> SharedPtrConst;
+
+  explicit PTTimestamp(MemoryContext *memctx = nullptr,
+                       YBLocation::SharedPtr loc = nullptr);
+
+  virtual ~PTTimestamp();
+
+  template<typename... TypeArgs>
+  inline static PTTimestamp::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTTimestamp>(memctx, std::forward<TypeArgs>(args)...);
+  }
+};
+
 }  // namespace sql
 }  // namespace yb
 

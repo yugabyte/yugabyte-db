@@ -3687,10 +3687,10 @@ SimpleTypename:
   | Character {
     $$ = $1;
   }
-  | Bit {
-    PARSER_UNSUPPORTED(@1);
-  }
   | ConstDatetime {
+    $$ = $1;
+  }
+  | Bit {
     PARSER_UNSUPPORTED(@1);
   }
   | ConstInterval opt_interval {
@@ -3928,13 +3928,17 @@ opt_charset:
 
 // SQL date/time types.
 ConstDatetime:
-  TIMESTAMP '(' Iconst ')' opt_timezone {
+  TIMESTAMP opt_timezone {
+    $$ = MAKE_NODE(@1, PTTimestamp); // TODO ignoring timezone option for now
   }
-  | TIMESTAMP opt_timezone {
+  | TIMESTAMP '(' Iconst ')' opt_timezone {
+    PARSER_UNSUPPORTED(@1);
   }
   | TIME '(' Iconst ')' opt_timezone {
+    PARSER_UNSUPPORTED(@1);
   }
   | TIME opt_timezone {
+    PARSER_UNSUPPORTED(@1);
   }
   ;
 

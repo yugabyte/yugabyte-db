@@ -53,5 +53,12 @@ PTVarchar::PTVarchar(MemoryContext *memctx, YBLocation::SharedPtr loc, int32_t m
 PTVarchar::~PTVarchar() {
 }
 
+PTTimestamp::PTTimestamp(MemoryContext *memctx, YBLocation::SharedPtr loc)
+    : PTPrimitiveType<yb::DataType::TIMESTAMP, client::YBColumnSchema::TIMESTAMP>(memctx, loc) {
+}
+
+PTTimestamp::~PTTimestamp() {
+}
+
 }  // namespace sql
 }  // namespace yb

@@ -90,13 +90,13 @@ ConversionMode SemContext::GetConversionMode(client::YBColumnSchema::DataType lh
     { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int8
     { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int16
     { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int32
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int64
-    { kNA,  kNA,  kNA,  kNA,  kIM,  kNA,   kNA,  kNA,  kNA,  kNA,  kIM },            // string
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kEX,  kIM },            // int64
+    { kNA,  kNA,  kNA,  kNA,  kIM,  kNA,   kNA,  kNA,  kNA,  kEX,  kIM },            // string
     { kNA,  kNA,  kNA,  kNA,  kNA,  kIM,   kNA,  kNA,  kNA,  kNA,  kIM },            // bool
     { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kIM,  kNA,  kNA,  kNA,  kIM },            // float
     { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kNA,  kIM,  kNA,  kNA,  kIM },            // double
     { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kIM,  kNA,  kIM },            // bin
-    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kIM,  kIM },            // timestamp
+    { kNA,  kNA,  kNA,  kIM,  kIM,  kNA,   kNA,  kNA,  kNA,  kIM,  kIM },            // timestamp
     { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kNA,  kNA },            // null
   };
 
@@ -120,7 +120,7 @@ bool SemContext::IsComparable(client::YBColumnSchema::DataType lhs_type,
     { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kYS,  kNO,  kNO,  kNO,  kNO },            // float
     { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kYS,  kNO,  kNO,  kNO },            // double
     { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kYS,  kNO,  kNO },            // bin
-    { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kNO,  kYS,  kNO },            // timestamp
+    { kNO,  kNO,  kNO,  kYS,  kYS,  kNO,   kNO,  kNO,  kNO,  kYS,  kNO },            // timestamp
     { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // null
   };
 

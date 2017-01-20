@@ -66,7 +66,7 @@ class YQLRow {
   double double_value(size_t col_idx) const;
   std::string string_value(size_t col_idx) const;
   bool bool_value(size_t col_idx) const;
-  int64_t timestamp_value(size_t col_idx) const;
+  Timestamp timestamp_value(size_t col_idx) const;
 
   //----------------------------------- set value methods -----------------------------------
   // Set the row column value. CHECK failure will result if the value stored is not of the
@@ -86,7 +86,7 @@ class YQLRow {
   void set_double_value(size_t col_idx, double v);
   void set_string_value(size_t col_idx, const std::string& v);
   void set_bool_value(size_t col_idx, bool v);
-  void set_timestamp_value(size_t col_idx, const int64_t& v);
+  void set_timestamp_value(size_t col_idx, const Timestamp& v);
 
   YQLRow& operator=(const YQLRow& other);
   YQLRow& operator=(YQLRow&& other);
