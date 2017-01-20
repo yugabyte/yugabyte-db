@@ -8,14 +8,7 @@
 #include <iostream>
 #include <cstddef>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-
-#include "yb/sql/ybsql.h"
-#include "yb/sql/util/sql_env.h"
-#include "yb/util/flags.h"
-#include "yb/util/init.h"
-#include "yb/util/logging.h"
+#include "yb/sql/ybsql-test-base.h"
 
 using std::cout;
 using std::cin;
@@ -23,18 +16,30 @@ using std::endl;
 using std::make_shared;
 using std::string;
 
-using yb::sql::YbSql;
-using yb::Status;
+// using yb::Status;
+DEFINE_bool(ybsql_run, false, "Not to run this test unless instructed");
 
-DECLARE_bool(logtostderr);
-int main(int argc, char** argv) {
-  FLAGS_logtostderr = true;
-  yb::ParseCommandLineFlags(&argc, &argv, true);
-  yb::InitGoogleLoggingSafe(argv[0]);
+namespace yb {
+namespace sql {
 
-  YbSql ybsql;
+class YbSqlCmd : public YbSqlTestBase {
+ public:
+  YbSqlCmd() : YbSqlTestBase() {
+  }
+};
+
+TEST_F(YbSqlCmd, TestSqlCmd) {
+  if (!FLAGS_ybsql_run) {
+    return;
+  }
+
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
   const string exit_cmd = "exit";
-
   while (1) {
     // Read the statement.
     string sql_stmt;
@@ -47,7 +52,7 @@ int main(int argc, char** argv) {
 
       if (sql_stmt.substr(0, 4) == exit_cmd &&
           (sql_stmt[4] == '\0' || isspace(sql_stmt[4]) || sql_stmt[4] == ';')) {
-        goto exit_ybsql;
+        return;
       }
 
       if (sub_stmt.find_first_of(";") != string::npos) {
@@ -61,10 +66,20 @@ int main(int argc, char** argv) {
 
     // Execute.
     cout << "\033[1;34mExecute statement: " << sql_stmt << "\033[0m" << endl;
-    Status s = ybsql.Process(nullptr, sql_stmt);
-    cout << s.ToString(false);
+    Status s = processor->Run(sql_stmt);
+    if (!s.ok()) {
+      cout << s.ToString(false);
+    } else {
+      // Check rowblock.
+      std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+      if (row_block == nullptr) {
+        cout << s.ToString(false);
+      } else {
+        cout << row_block->ToString();
+      }
+    }
   }
-
-exit_ybsql:
-  return 0;
 }
+
+} // namespace sql
+} // namespace yb
