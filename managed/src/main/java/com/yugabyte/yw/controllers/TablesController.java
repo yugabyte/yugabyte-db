@@ -58,8 +58,11 @@ public class TablesController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
     try {
-      Universe universe = Universe.get(universeUUID);
-      YBClient client = ybService.getClient(universe.getMasterAddresses());
+      final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
+      if (masterAddresses.isEmpty()) {
+        throw new Exception("Masters are not currently queryable.");
+      }
+      YBClient client = ybService.getClient(masterAddresses);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();

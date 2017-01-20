@@ -290,13 +290,36 @@ public class Universe extends Model {
   }
 
   /**
+   * Verifies that the provided list of masters is not empty and that each master is in a queryable
+   * state. If so, returns true. Otherwise, returns false.
+   *
+   * @param masters
+   * @return true if all masters are queryable, false otherwise.
+   */
+  public boolean verifyMastersAreQueryable(List<NodeDetails> masters) {
+    if (masters == null || masters.isEmpty()) {
+      return false;
+    }
+    for (NodeDetails details : masters) {
+      if (!details.isQueryable()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Returns a comma separated list of <privateIp:masterRpcPort> for all nodes that have the
    * isMaster flag set to true in this cluster.
    *
-   * @return a comma separated string of master 'host:port'
+   * @return a comma separated string of master 'host:port' or, if masters are not queryable, an
+   * empty string.
    */
   public String getMasterAddresses() {
     List<NodeDetails> masters = getMasters();
+    if (!verifyMastersAreQueryable(masters)) {
+      return "";
+    }
     StringBuilder masterAddresses = new StringBuilder();
     for (NodeDetails nodeDetails : masters) {
       if (nodeDetails.cloudInfo.private_ip != null) {
