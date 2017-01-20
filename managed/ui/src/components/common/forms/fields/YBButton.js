@@ -9,7 +9,7 @@ export default class YBButton extends Component {
     return (
       <Button bsClass={btnClass} type={btnType}
               onClick={this.props.onClick} bsSize={btnSize} bsStyle={btnStyle} disabled={disabled}>
-        <i className={btnIcon}></i> &nbsp;
+        <i className={btnIcon}></i>
         {btnText}
       </Button>
     )

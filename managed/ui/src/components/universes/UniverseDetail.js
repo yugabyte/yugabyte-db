@@ -2,8 +2,7 @@
 
 import React, { Component } from 'react';
 import { Link } from 'react-router';
-import { Grid, Row, Col, ButtonGroup, Image,
-  DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { UniverseInfoPanel, ConnectStringPanel } from '../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../containers/metrics';
 import { TaskProgressContainer } from '../../containers/tasks';
@@ -12,11 +11,11 @@ import { RollingUpgradeFormContainer,
 import { DeleteUniverseContainer } from '../../containers/universes';
 import { YBButton } from '../common/forms/fields';
 import { YBLabelWithIcon } from '../common/descriptors';
-import { YBTabsPanel, YBPanelItem } from '../panels';
+import { YBTabsPanel } from '../panels';
 import { YBMapLegendItem, RegionMap } from '../maps';
 import { NodeDetails } from '.';
 import { ListTablesContainer } from '../../containers/tables';
-import universelogo from './images/universe_icon.png';
+import UniverseStatus from './UniverseStatus';
 
 class YBMapLegend extends Component {
   render() {
@@ -26,6 +25,7 @@ class YBMapLegend extends Component {
     var cacheRegions = [{"name": "No Caches Added."}];
     return (
       <div className="map-legend-container">
+        {this.props.title && <h4>{this.props.title}</h4>}
         <YBMapLegendItem regions={rootRegions} title={"Root Data"} type="Root"/>
         <YBMapLegendItem regions={asyncRegions} title={"Async Replica"} type="Async"/>
         <YBMapLegendItem regions={cacheRegions} title={"Remote Cache"} type="Cache"/>
@@ -69,22 +69,22 @@ export default class UniverseDetail extends Component {
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
-        <Col lg={4} style={{padding: 0}}>
-          <UniverseInfoPanel universeInfo={currentUniverse} />
-        </Col>
-        <Col lg={8}>
-          <ConnectStringPanel universeId={currentUniverse.universeUUID}
-                              customerId={localStorage.getItem("customer_id")}
-                              universeInfo={currentUniverse} />
-        </Col>
-        <YBPanelItem name={"Placement Policy"}>
+        <Row>
           <Col lg={4}>
-            <YBMapLegend regions={currentUniverse.regions}/>
+            <UniverseInfoPanel universeInfo={currentUniverse} />
           </Col>
           <Col lg={8}>
-            <RegionMap regions={currentUniverse.regions} type={"Root"} />
+            <ConnectStringPanel universeId={currentUniverse.universeUUID}
+                                customerId={localStorage.getItem("customer_id")}
+                                universeInfo={currentUniverse} />
           </Col>
-        </YBPanelItem>
+        </Row>
+        <Row>
+          <Col lg={12}>
+            <RegionMap regions={currentUniverse.regions} type={"Root"} />
+            <YBMapLegend title="Placement Policy" regions={currentUniverse.regions}/>
+          </Col>
+        </Row>
       </Tab>,
       <Tab eventKey={"tables"} title="Tables" key="tables-tab">
         <ListTablesContainer/>
@@ -118,31 +118,35 @@ export default class UniverseDetail extends Component {
               </Link>
             </div>
             <div>
-              <h2><Image src={universelogo}/> Universe { currentUniverse.name }</h2>
+              <h2>
+                { currentUniverse.name }
+                <UniverseStatus universe={currentUniverse} showLabelText={true} />
+              </h2>
             </div>
           </Col>
-          <Col lg={2}>
-            <div className="detail-label-small">
-              Test And Verify
-            </div>
+          <Col lg={2} className="page-action-buttons">
             <ButtonGroup className="universe-detail-btn-group">
-              <YBButton btnClass=" btn btn-default btn-sm bg-orange"
+              <YBButton btnClass=" btn btn-default bg-orange"
                         btnText="Edit" btnIcon="fa fa-database" onClick={this.props.showUniverseModal} />
 
-              <DropdownButton className="btn btn-default btn-sm" title="More" id="bg-nested-dropdown" >
+              <DropdownButton className="btn btn-default" title="More" id="bg-nested-dropdown" pullRight>
                 <MenuItem eventKey="1" onClick={this.props.showSoftwareUpgradesModal}>
 
                   <YBLabelWithIcon icon="fa fa-refresh fa-fw">
-                    s/w Upgrades
+                    Upgrade Software
                   </YBLabelWithIcon>
                 </MenuItem>
                 <MenuItem eventKey="2" onClick={this.props.showGFlagsModal} >
                   <YBLabelWithIcon icon="fa fa-flag fa-fw">
-                    GFlags
+                    Show GFlags
+                  </YBLabelWithIcon>
+                </MenuItem>
+                <MenuItem eventKey="2" onClick={this.props.showGFlagsModal} >
+                  <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                    Delete Universe
                   </YBLabelWithIcon>
                 </MenuItem>
               </DropdownButton>
-              <YBButton btnIcon="fa fa-trash-o" btnClass="btn btn-default btn-sm" onClick={this.props.showDeleteUniverseModal}/>
             </ButtonGroup>
           </Col>
           <UniverseFormContainer type="Edit"

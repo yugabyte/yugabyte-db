@@ -11,16 +11,12 @@ export default class YBPanelItem extends Component {
     var headerTextClass = "";
     return (
       <div>
-        <div className="row">
-          <div className="col-md-12">
-            <div className="x_panel">
-              <div className="x_title">
-                <h2 className={headerTextClass}>{name}</h2>
-                <div className="clearfix"></div>
-              </div>
-              {children}
-            </div>
+        <div className="x_panel">
+          <div className="x_title">
+            <h3 className={headerTextClass}>{name}</h3>
+            <div className="clearfix"></div>
           </div>
+          {children}
         </div>
       </div>
     );
