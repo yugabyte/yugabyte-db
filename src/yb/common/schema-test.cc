@@ -87,18 +87,24 @@ TEST(TestSchema, TestSchema) {
 }
 
 TEST(TestSchema, TestSwap) {
+  TableProperties properties1;
+  properties1.SetDefaultTimeToLive(1000);
   Schema schema1({ ColumnSchema("col1", STRING),
                    ColumnSchema("col2", STRING),
                    ColumnSchema("col3", UINT32) },
-                 2);
+                 2, properties1);
+  TableProperties properties2;
+  properties2.SetDefaultTimeToLive(2000);
   Schema schema2({ ColumnSchema("col3", UINT32),
                    ColumnSchema("col2", STRING) },
-                 1);
+                 1, properties2);
   schema1.swap(schema2);
   ASSERT_EQ(2, schema1.num_columns());
   ASSERT_EQ(1, schema1.num_key_columns());
   ASSERT_EQ(3, schema2.num_columns());
   ASSERT_EQ(2, schema2.num_key_columns());
+  ASSERT_EQ(2000, schema1.table_properties().DefaultTimeToLive());
+  ASSERT_EQ(1000, schema2.table_properties().DefaultTimeToLive());
 }
 
 TEST(TestSchema, TestReset) {
@@ -399,6 +405,62 @@ TEST(TestSchema, TestCreateProjection) {
                        schema_with_ids.column_id(1),
                        schema_with_ids.column_id(3)),
             partial_schema.ToString());
+}
+
+TEST(TestSchema, TestCopyFrom) {
+  TableProperties properties;
+  properties.SetDefaultTimeToLive(1000);
+  Schema schema1({ ColumnSchema("col1", STRING),
+                     ColumnSchema("col2", STRING),
+                     ColumnSchema("col3", UINT32) },
+                 2, properties);
+  Schema schema2;
+  schema2.CopyFrom(schema1);
+  ASSERT_EQ(3, schema2.num_columns());
+  ASSERT_EQ(2, schema2.num_key_columns());
+  ASSERT_EQ(1000, schema2.table_properties().DefaultTimeToLive());
+}
+
+TEST(TestSchema, TestSchemaBuilder) {
+  TableProperties properties;
+  properties.SetDefaultTimeToLive(1000);
+  Schema schema1({ ColumnSchema("col1", STRING),
+                     ColumnSchema("col2", STRING),
+                     ColumnSchema("col3", UINT32) },
+                 2, properties);
+  SchemaBuilder builder(schema1);
+  Schema schema2 = builder.Build();
+  ASSERT_TRUE(schema1.Equals(schema2));
+}
+
+TEST(TestSchema, TestTableProperties) {
+  TableProperties properties;
+  ASSERT_FALSE(properties.HasDefaultTimeToLive());
+
+  properties.SetDefaultTimeToLive(1000);
+  ASSERT_TRUE(properties.HasDefaultTimeToLive());
+  ASSERT_EQ(1000, properties.DefaultTimeToLive());
+
+  TableProperties properties1;
+  properties1.SetDefaultTimeToLive(1000);
+  ASSERT_EQ(properties, properties1);
+
+  TablePropertiesPB pb;
+  properties.ToTablePropertyPB(&pb);
+  ASSERT_TRUE(pb.has_default_time_to_live());
+  ASSERT_EQ(1000, pb.default_time_to_live());
+
+  auto properties2 = TableProperties::FromTablePropertiesPB(pb);
+  ASSERT_TRUE(properties2.HasDefaultTimeToLive());
+  ASSERT_EQ(1000, properties2.DefaultTimeToLive());
+
+  properties.Reset();
+  pb.Clear();
+  ASSERT_FALSE(properties.HasDefaultTimeToLive());
+  properties.ToTablePropertyPB(&pb);
+  ASSERT_FALSE(pb.has_default_time_to_live());
+  auto properties3 = TableProperties::FromTablePropertiesPB(pb);
+  ASSERT_FALSE(properties3.HasDefaultTimeToLive());
 }
 
 #ifdef NDEBUG

@@ -300,6 +300,59 @@ class ColumnSchema {
 
 class ContiguousRow;
 
+class TableProperties {
+ public:
+  TableProperties() : default_time_to_live_(kNoDefaultTtl) {
+  }
+
+  TableProperties(const TableProperties& other) {
+    default_time_to_live_ = other.default_time_to_live_;
+  }
+
+  bool operator==(const TableProperties& other) const {
+    return default_time_to_live_ == other.default_time_to_live_;
+  }
+
+  bool operator!=(const TableProperties& other) const {
+    return !(*this == other);
+  }
+
+  bool HasDefaultTimeToLive() const {
+    return (default_time_to_live_ != kNoDefaultTtl);
+  }
+
+  void SetDefaultTimeToLive(uint64_t default_time_to_live) {
+    default_time_to_live_ = default_time_to_live;
+  }
+
+  int64_t DefaultTimeToLive() const {
+    return default_time_to_live_;
+  }
+
+  void ToTablePropertyPB(TablePropertiesPB *pb) const {
+    if (HasDefaultTimeToLive()) {
+      pb->set_default_time_to_live(default_time_to_live_);
+    }
+  }
+
+  static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb) {
+    TableProperties table_properties;
+    if (pb.has_default_time_to_live()) {
+      table_properties.SetDefaultTimeToLive(pb.default_time_to_live());
+    }
+    return table_properties;
+  }
+
+  void Reset() {
+    default_time_to_live_ = kNoDefaultTtl;
+  }
+
+ private:
+  static const int kNoDefaultTtl = -1;
+  int64_t default_time_to_live_;
+};
+
+
 // The schema for a set of rows.
 //
 // A Schema is simply a set of columns, along with information about
@@ -341,14 +394,15 @@ class Schema {
   // caught. If an invalid schema is passed to this constructor, an
   // assertion will be fired!
   Schema(const vector<ColumnSchema>& cols,
-         int key_columns)
+         int key_columns,
+         const TableProperties& table_properties = TableProperties())
     : name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, key_columns));
+    CHECK_OK(Reset(cols, key_columns, table_properties));
   }
 
   // Construct a schema with the given information.
@@ -359,30 +413,33 @@ class Schema {
   // assertion will be fired!
   Schema(const vector<ColumnSchema>& cols,
          const vector<ColumnId>& ids,
-         int key_columns)
+         int key_columns,
+         const TableProperties& table_properties = TableProperties())
     : name_to_index_bytes_(0),
       // TODO: C++11 provides a single-arg constructor
       name_to_index_(10,
                      NameToIndexMap::hasher(),
                      NameToIndexMap::key_equal(),
                      NameToIndexMapAllocator(&name_to_index_bytes_)) {
-    CHECK_OK(Reset(cols, ids, key_columns));
+    CHECK_OK(Reset(cols, ids, key_columns, table_properties));
   }
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, int key_columns) {
+  CHECKED_STATUS Reset(const vector<ColumnSchema>& cols, int key_columns,
+                       const TableProperties& table_properties = TableProperties()) {
     std::vector<ColumnId> ids;
-    return Reset(cols, ids, key_columns);
+    return Reset(cols, ids, key_columns, table_properties);
   }
 
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
   CHECKED_STATUS Reset(const vector<ColumnSchema>& cols,
-               const vector<ColumnId>& ids,
-               int key_columns);
+                       const vector<ColumnId>& ids,
+                       int key_columns,
+                       const TableProperties& table_properties = TableProperties());
 
   // Return the number of bytes needed to represent a single row of this schema.
   //
@@ -452,6 +509,10 @@ class Schema {
 
   const std::vector<ColumnSchema>& columns() const {
     return cols_;
+  }
+
+  const TableProperties& table_properties() const {
+    return table_properties_;
   }
 
   // Return the column index corresponding to the given column,
@@ -676,6 +737,7 @@ class Schema {
   bool Equals(const Schema &other) const {
     if (this == &other) return true;
     if (this->num_key_columns_ != other.num_key_columns_) return false;
+    if (this->table_properties_ != other.table_properties_) return false;
     if (this->cols_.size() != other.cols_.size()) return false;
 
     const bool have_column_ids = other.has_column_ids() && has_column_ids();
@@ -842,6 +904,8 @@ class Schema {
   // Cached indicator whether any columns are nullable.
   bool has_nullables_;
 
+  TableProperties table_properties_;
+
   // NOTE: if you add more members, make sure to add the appropriate
   // code to swap() and CopyFrom() as well to prevent subtle bugs.
 };
@@ -881,8 +945,8 @@ class SchemaBuilder {
     return next_id_;
   }
 
-  Schema Build() const { return Schema(cols_, col_ids_, num_key_columns_); }
-  Schema BuildWithoutIds() const { return Schema(cols_, num_key_columns_); }
+  Schema Build() const { return Schema(cols_, col_ids_, num_key_columns_, table_properties_); }
+  Schema BuildWithoutIds() const { return Schema(cols_, num_key_columns_, table_properties_); }
 
   CHECKED_STATUS AddKeyColumn(const string& name, DataType type);
 
@@ -915,10 +979,10 @@ class SchemaBuilder {
   vector<ColumnSchema> cols_;
   unordered_set<string> col_names_;
   size_t num_key_columns_;
+  TableProperties table_properties_;
 
   DISALLOW_COPY_AND_ASSIGN(SchemaBuilder);
 };
-
 } // namespace yb
 
 // Specialize std::hash for ColumnId

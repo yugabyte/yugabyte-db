@@ -186,7 +186,9 @@ Status AddHostPortPBs(const vector<Sockaddr>& addrs,
 
 Status SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   pb->Clear();
-  return SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
+  RETURN_NOT_OK(SchemaToColumnPBs(schema, pb->mutable_columns(), flags));
+  schema.table_properties().ToTablePropertyPB(pb->mutable_table_properties());
+  return Status::OK();
 }
 
 Status SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
@@ -195,7 +197,15 @@ Status SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
 }
 
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
-  return ColumnPBsToSchema(pb.columns(), schema);
+  // Conver the columns.
+  vector<ColumnSchema> columns;
+  vector<ColumnId> column_ids;
+  int num_key_columns = 0;
+  RETURN_NOT_OK(ColumnPBsToColumnTuple(pb.columns(), &columns, &column_ids, &num_key_columns));
+
+  // Convert the table properties.
+  TableProperties table_properties = TableProperties::FromTablePropertiesPB(pb.table_properties());
+  return schema->Reset(columns, column_ids, num_key_columns, table_properties);
 }
 
 void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int flags) {
@@ -275,31 +285,38 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
                       read_default_ptr, write_default_ptr, attributes);
 }
 
+CHECKED_STATUS ColumnPBsToColumnTuple(
+    const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
+    vector<ColumnSchema>* columns , vector<ColumnId>* column_ids, int* num_key_columns) {
+  columns->reserve(column_pbs.size());
+  bool is_handling_key = true;
+  for (const ColumnSchemaPB& pb : column_pbs) {
+    columns->push_back(ColumnSchemaFromPB(pb));
+    if (pb.is_key()) {
+      if (!is_handling_key) {
+        return STATUS(InvalidArgument,
+                      "Got out-of-order key column", pb.ShortDebugString());
+      }
+      (*num_key_columns)++;
+    } else {
+      is_handling_key = false;
+    }
+    if (pb.has_id()) {
+      column_ids->push_back(ColumnId(pb.id()));
+    }
+  }
+
+  DCHECK_LE((*num_key_columns), columns->size());
+  return Status::OK();
+}
+
 Status ColumnPBsToSchema(const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
                          Schema* schema) {
 
   vector<ColumnSchema> columns;
   vector<ColumnId> column_ids;
-  columns.reserve(column_pbs.size());
   int num_key_columns = 0;
-  bool is_handling_key = true;
-  for (const ColumnSchemaPB& pb : column_pbs) {
-    columns.push_back(ColumnSchemaFromPB(pb));
-    if (pb.is_key()) {
-      if (!is_handling_key) {
-        return STATUS(InvalidArgument,
-          "Got out-of-order key column", pb.ShortDebugString());
-      }
-      num_key_columns++;
-    } else {
-      is_handling_key = false;
-    }
-    if (pb.has_id()) {
-      column_ids.push_back(ColumnId(pb.id()));
-    }
-  }
-
-  DCHECK_LE(num_key_columns, columns.size());
+  RETURN_NOT_OK(ColumnPBsToColumnTuple(column_pbs, &columns, &column_ids, &num_key_columns));
 
   // TODO(perf): could make the following faster by adding a
   // Reset() variant which actually takes ownership of the column

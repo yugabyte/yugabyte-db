@@ -3,6 +3,9 @@
 #ifndef YB_SQL_PTREE_PT_TABLE_PROPERTY_H_
 #define YB_SQL_PTREE_PT_TABLE_PROPERTY_H_
 
+#include "yb/common/schema.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master.pb.h"
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/pt_expr.h"
 #include "yb/sql/ptree/tree_node.h"
@@ -42,6 +45,17 @@ class PTTableProperty : public TreeNode {
 
   PTExpr::SharedPtr rhs() const {
     return rhs_;
+  }
+
+  CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const {
+    if (strcmp(lhs_->c_str(), kDefaultTimeToLive) == 0) {
+      table_property->SetDefaultTimeToLive(std::static_pointer_cast<PTConstInt>(rhs_)->Eval());
+    } else {
+      return STATUS(InvalidArgument,
+                    strings::Substitute("$0 is not a valid table property",
+                               lhs_->c_str()));
+    }
+    return Status::OK();
   }
 
  private:

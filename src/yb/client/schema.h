@@ -37,6 +37,8 @@
 #include <vector>
 
 #include "yb/client/value.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/status.h"
 
@@ -303,6 +305,8 @@ class YB_EXPORT YBSchemaBuilder {
   YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names,
                                  int key_hash_col_count = 0);
 
+  YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
+
   // Resets 'schema' to the result of this builder.
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)
@@ -326,8 +330,8 @@ class YB_EXPORT YBSchema {
   void CopyFrom(const YBSchema& other);
 
   // DEPRECATED: will be removed soon.
-  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns)
-    WARN_UNUSED_RESULT;
+  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns,
+                       const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   bool Equals(const YBSchema& other) const;
   YBColumnSchema Column(size_t idx) const;

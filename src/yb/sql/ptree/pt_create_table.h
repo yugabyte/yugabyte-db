@@ -7,6 +7,7 @@
 #ifndef YB_SQL_PTREE_PT_CREATE_TABLE_H_
 #define YB_SQL_PTREE_PT_CREATE_TABLE_H_
 
+#include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/tree_node.h"
@@ -14,6 +15,7 @@
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
 #include "yb/sql/ptree/pt_update.h"
+
 
 namespace yb {
 namespace sql {
@@ -228,6 +230,8 @@ class PTCreateTable : public TreeNode {
   PTTablePropertyListNode::SharedPtr table_properties() const {
     return table_properties_;
   }
+
+  CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
 
  private:
   PTQualifiedName::SharedPtr relation_;

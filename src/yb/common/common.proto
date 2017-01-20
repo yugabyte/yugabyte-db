@@ -120,8 +120,13 @@ message ColumnSchemaPB {
   optional int32 cfile_block_size = 10 [default=0];
 }
 
+message TablePropertiesPB {
+  optional uint64 default_time_to_live = 1;
+}
+
 message SchemaPB {
   repeated ColumnSchemaPB columns = 1;
+  optional TablePropertiesPB table_properties = 2;
 }
 
 message HostPortPB {

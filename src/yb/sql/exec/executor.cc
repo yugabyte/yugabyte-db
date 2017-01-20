@@ -137,6 +137,16 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
                                   ->Nullable()
                                   ->Order(column->order());
   }
+
+  TableProperties table_properties;
+  if(!tnode->ToTableProperties(&table_properties).ok()) {
+    return exec_context_->Error(tnode->columns_loc(),
+                                exec_status.ToString().c_str(),
+                                ErrorCode::INVALID_TABLE_DEFINITION);
+  }
+
+  b.SetTableProperties(table_properties);
+
   exec_status = b.Build(&schema);
   if (!exec_status.ok()) {
     return exec_context_->Error(tnode->columns_loc(),

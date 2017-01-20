@@ -155,6 +155,15 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
 }
 
+CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_properties) const {
+  if (table_properties_ != nullptr) {
+    for (PTTableProperty::SharedPtr table_property : table_properties_->node_list()) {
+      RETURN_NOT_OK(table_property->SetTableProperty(table_properties));
+    }
+  }
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,

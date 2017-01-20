@@ -2,9 +2,15 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/sql/test/ybsql-test-base.h"
 
 namespace yb {
+namespace master {
+class CatalogManager;
+class Master;
+}
 namespace sql {
 
 #define EXEC_DUPLICATE_TABLE_CREATE_STMT(sql_stmt)                                                 \
@@ -118,6 +124,34 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
 
   const string drop_stmt = "DROP TABLE human_resource1;";
   EXEC_VALID_STMT(drop_stmt);
+}
+
+TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  // Create the table 1.
+  const string table1 = "human_resource100(id int, name varchar, PRIMARY KEY(id));";
+  EXEC_VALID_STMT(CreateStmt(table1));
+
+  EXEC_VALID_STMT("CREATE TABLE table_with_ttl (c1 int, c2 int, c3 int, PRIMARY KEY(c1)) WITH "
+                      "default_time_to_live = 1000;");
+
+  // Query the table schema.
+  master::Master *master = cluster_->mini_master()->master();
+  master::CatalogManager *catalog_manager = master->catalog_manager();
+  master::GetTableSchemaRequestPB request_pb;
+  master::GetTableSchemaResponsePB response_pb;
+  request_pb.mutable_table()->set_table_name("table_with_ttl");
+
+  // Verify ttl was stored in syscatalog table.
+  CHECK_OK(catalog_manager->GetTableSchema(&request_pb, &response_pb));
+  const TablePropertiesPB& properties_pb = response_pb.schema().table_properties();
+  EXPECT_TRUE(properties_pb.has_default_time_to_live());
+  EXPECT_EQ(1000, properties_pb.default_time_to_live());
 }
 
 } // namespace sql

@@ -111,6 +111,7 @@ void Schema::CopyFrom(const Schema& other) {
   }
 
   has_nullables_ = other.has_nullables_;
+  table_properties_ = other.table_properties_;
 }
 
 void Schema::swap(Schema& other) {
@@ -122,14 +123,17 @@ void Schema::swap(Schema& other) {
   name_to_index_.swap(other.name_to_index_);
   id_to_index_.swap(other.id_to_index_);
   std::swap(has_nullables_, other.has_nullables_);
+  std::swap(table_properties_, other.table_properties_);
 }
 
 Status Schema::Reset(const vector<ColumnSchema>& cols,
                      const vector<ColumnId>& ids,
-                     int key_columns) {
+                     int key_columns,
+                     const TableProperties& table_properties) {
   cols_ = cols;
   num_key_columns_ = key_columns;
   num_hash_key_columns_ = 0;
+  table_properties_ = table_properties;
 
   // Determine whether any column is nullable and count number of hash columns.
   has_nullables_ = false;
@@ -241,12 +245,12 @@ Schema Schema::CopyWithColumnIds() const {
   for (int32_t i = 0; i < num_columns(); i++) {
     ids.push_back(ColumnId(kFirstColumnId + i));
   }
-  return Schema(cols_, ids, num_key_columns_);
+  return Schema(cols_, ids, num_key_columns_, table_properties_);
 }
 
 Schema Schema::CopyWithoutColumnIds() const {
   CHECK(has_column_ids());
-  return Schema(cols_, num_key_columns_);
+  return Schema(cols_, num_key_columns_, table_properties_);
 }
 
 Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
@@ -392,6 +396,7 @@ void SchemaBuilder::Reset() {
   col_names_.clear();
   num_key_columns_ = 0;
   next_id_ = kFirstColumnId;
+  table_properties_.Reset();
 }
 
 void SchemaBuilder::Reset(const Schema& schema) {
@@ -412,6 +417,7 @@ void SchemaBuilder::Reset(const Schema& schema) {
   } else {
     next_id_ = *std::max_element(col_ids_.begin(), col_ids_.end()) + 1;
   }
+  table_properties_ = schema.table_properties_;
 }
 
 Status SchemaBuilder::AddKeyColumn(const string& name, DataType type) {

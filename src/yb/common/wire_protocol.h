@@ -21,6 +21,7 @@
 
 #include <vector>
 
+#include "yb/client/schema.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/endian.h"
 #include "yb/util/cast.h"
@@ -87,6 +88,11 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb);
 Status ColumnPBsToSchema(
   const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
   Schema* schema);
+
+// Returns the required information from column pbs to build the column part of SchemaPB.
+CHECKED_STATUS ColumnPBsToColumnTuple(
+    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
+    vector<ColumnSchema>* columns , vector<ColumnId>* column_ids, int* num_key_columns);
 
 // Extract the columns of the given Schema into protobuf objects.
 //

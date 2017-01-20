@@ -291,6 +291,7 @@ class YB_NO_EXPORT YBSchemaBuilder::Data {
   int key_hash_col_count;
 
   vector<YBColumnSpec*> specs;
+  TableProperties table_properties;
 };
 
 YBSchemaBuilder::YBSchemaBuilder()
@@ -319,6 +320,11 @@ YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
   data_->has_key_col_names = true;
   data_->key_col_names = key_col_names;
   data_->key_hash_col_count = key_hash_col_count;
+  return this;
+}
+
+YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& table_properties) {
+  data_->table_properties = table_properties;
   return this;
 }
 
@@ -420,7 +426,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     num_key_cols = key_col_indexes.size();
   }
 
-  RETURN_NOT_OK(schema->Reset(cols, num_key_cols));
+  RETURN_NOT_OK(schema->Reset(cols, num_key_cols, data_->table_properties));
 
   return Status::OK();
 }
@@ -531,13 +537,14 @@ void YBSchema::CopyFrom(const YBSchema& other) {
   schema_ = new Schema(*other.schema_);
 }
 
-Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns) {
+Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns,
+                       const TableProperties& table_properties) {
   vector<ColumnSchema> cols_private;
   for (const YBColumnSchema& col : columns) {
     cols_private.push_back(*col.col_);
   }
   gscoped_ptr<Schema> new_schema(new Schema());
-  RETURN_NOT_OK(new_schema->Reset(cols_private, key_columns));
+  RETURN_NOT_OK(new_schema->Reset(cols_private, key_columns, table_properties));
 
   delete schema_;
   schema_ = new_schema.release();
