@@ -10,6 +10,7 @@
 #include "rocksdb/slice.h"
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
 #include "yb/gutil/endian.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -130,8 +131,20 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
   return ToShortDebugStr(rocksdb::Slice(raw_str));
 }
 
+// Determines whether or not the TTL for a key has expired, given the ttl for the key and the
+// hybrid_time of the key. The result is stored in has_expired.
 CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
     const HybridTime &hybrid_time, bool *has_expired);
+
+// Computes the table level TTL, given a schema.
+const MonoDelta TableTTL(const Schema& schema);
+
+// Computes the effective TTL for a given value and schema by combining the column level TTL with
+// the table level TTL.
+const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema);
+
+// Cassandra considers a TTL of zero as resetting the TTL.
+static const uint64_t kResetTTL = 0;
 
 }  // namespace docdb
 }  // namespace yb

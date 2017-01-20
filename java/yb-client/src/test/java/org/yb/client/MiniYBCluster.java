@@ -186,6 +186,7 @@ public class MiniYBCluster implements AutoCloseable {
           "--redis_proxy_bind_address=" + localhost + ":" + redis_port,
           "--redis_proxy_webserver_port=" + redis_web_port,
           "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
+          "--logtostderr",
           "--cql_proxy_webserver_port=" + cql_web_port};
       tserverProcesses.put(rpc_port, configureAndStartProcess(tsCmdLine));
       cqlContactPoints.add(new InetSocketAddress(localhost, cql_port));
@@ -224,6 +225,7 @@ public class MiniYBCluster implements AutoCloseable {
             "--webserver_interface=" + localhost,
             "--local_ip_for_outbound_sockets=" + localhost,
             "--rpc_bind_addresses=" + localhost + ":" + rpcPort,
+            "--logtostderr",
             "--webserver_port=" + webPort);
     masterProcesses.put(
         rpcPort,
@@ -290,6 +292,7 @@ public class MiniYBCluster implements AutoCloseable {
           "--webserver_interface=" + localhost,
           "--local_ip_for_outbound_sockets=" + localhost,
           "--rpc_bind_addresses=" + localhost + ":" + masterRpcPorts.get(i),
+          "--logtostderr",
           "--webserver_port=" + masterWebPorts.get(i));
       if (numMasters > 1) {
         masterCmdLine.add("--master_addresses=" + masterAddresses);

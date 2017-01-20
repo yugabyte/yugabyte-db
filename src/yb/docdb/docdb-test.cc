@@ -258,6 +258,63 @@ SubDocKey(DocKey([], ["k1"]), ["s2"; HT(1000)]) -> "v21"; ttl: 0.003s
       )#");
 }
 
+TEST_F(DocDBTest, TableTTLCompactionTest) {
+  const DocKey doc_key(PrimitiveValues("k1"));
+  const MonoDelta one_ms = MonoDelta::FromMilliseconds(1);
+  const HybridTime t0 = HybridTime(1000);
+  HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, one_ms);
+  HybridTime t2 = server::HybridClock::AddPhysicalTimeToHybridTime(t1, one_ms);
+  HybridTime t3 = server::HybridClock::AddPhysicalTimeToHybridTime(t2, one_ms);
+  HybridTime t4 = server::HybridClock::AddPhysicalTimeToHybridTime(t3, one_ms);
+  KeyBytes encoded_doc_key(doc_key.Encode());
+      NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
+                             Value(PrimitiveValue("v1"), MonoDelta::FromMilliseconds(1)), t0));
+      NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
+                             Value(PrimitiveValue("v2"), Value::kMaxTtl), t0));
+      NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s3")),
+                             Value(PrimitiveValue("v3"), MonoDelta::FromMilliseconds(0)), t1));
+      NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s4")),
+                             Value(PrimitiveValue("v4"), MonoDelta::FromMilliseconds(3)), t0));
+  // Note: HT(1000) + 2ms = HT(8193000)
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [HT(1000)]) -> {}
+SubDocKey(DocKey([], ["k1"]), ["s1"; HT(1000)]) -> "v1"; ttl: 0.001s
+SubDocKey(DocKey([], ["k1"]), ["s2"; HT(1000)]) -> "v2"
+SubDocKey(DocKey([], ["k1"]), ["s3"; HT(4097000)]) -> "v3"; ttl: 0.000s
+SubDocKey(DocKey([], ["k1"]), ["s4"; HT(1000)]) -> "v4"; ttl: 0.003s
+      )#");
+  SetTableTTL(2);
+  CompactHistoryBefore(t2);
+
+  // v1 compacted due to column level ttl.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [HT(1000)]) -> {}
+SubDocKey(DocKey([], ["k1"]), ["s2"; HT(1000)]) -> "v2"
+SubDocKey(DocKey([], ["k1"]), ["s3"; HT(4097000)]) -> "v3"; ttl: 0.000s
+SubDocKey(DocKey([], ["k1"]), ["s4"; HT(1000)]) -> "v4"; ttl: 0.003s
+      )#");
+
+  CompactHistoryBefore(t3);
+  // v2 compacted due to table level ttl.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [HT(1000)]) -> {}
+SubDocKey(DocKey([], ["k1"]), ["s3"; HT(4097000)]) -> "v3"; ttl: 0.000s
+SubDocKey(DocKey([], ["k1"]), ["s4"; HT(1000)]) -> "v4"; ttl: 0.003s
+      )#");
+
+  CompactHistoryBefore(t4);
+  // v4 compacted due to column level ttl.
+  // v3 stays forever due to ttl being set to 0.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [HT(1000)]) -> {}
+SubDocKey(DocKey([], ["k1"]), ["s3"; HT(4097000)]) -> "v3"; ttl: 0.000s
+      )#");
+}
+
 TEST_F(DocDBTest, BasicTest) {
   // A few points to make it easier to understand the expected binary representations here:
   // - Initial bytes such as '$' (kString), 'I' (kInt64) correspond to members of the enum

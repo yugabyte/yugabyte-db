@@ -187,7 +187,7 @@ Status AddHostPortPBs(const vector<Sockaddr>& addrs,
 Status SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   pb->Clear();
   RETURN_NOT_OK(SchemaToColumnPBs(schema, pb->mutable_columns(), flags));
-  schema.table_properties().ToTablePropertyPB(pb->mutable_table_properties());
+  schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
   return Status::OK();
 }
 

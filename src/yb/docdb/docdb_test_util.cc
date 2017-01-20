@@ -276,7 +276,7 @@ DocDBRocksDBFixture::DocDBRocksDBFixture()
   InitRocksDBOptions(&rocksdb_options_, "mytablet", rocksdb::CreateDBStatistics(), nullptr);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
-      make_shared<DocDBCompactionFilterFactory>(retention_policy_);
+      make_shared<DocDBCompactionFilterFactory>(retention_policy_, schema_);
 
   string test_dir;
   CHECK_OK(Env::Default()->GetTestDirectory(&test_dir));
@@ -321,6 +321,10 @@ rocksdb::Status DocDBRocksDBFixture::WriteToRocksDB(const DocWriteBatch& doc_wri
 void DocDBRocksDBFixture::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
   down_cast<FixedHybridTimeRetentionPolicy*>(
       retention_policy_.get())->SetHistoryCutoff(history_cutoff);
+}
+
+void DocDBRocksDBFixture::SetTableTTL(uint64_t ttl_msec) {
+  schema_.SetDefaultTimeToLive(ttl_msec);
 }
 
 void DocDBRocksDBFixture::CompactHistoryBefore(HybridTime history_cutoff) {

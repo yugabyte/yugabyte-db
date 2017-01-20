@@ -6,7 +6,6 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/value.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 
@@ -207,7 +206,8 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
 
       // Check for TTL.
       bool has_expired = false;
-      RETURN_NOT_OK(HasExpiredTTL(db_iter_->key(), value.ttl(), hybrid_time_, &has_expired));
+      RETURN_NOT_OK(HasExpiredTTL(db_iter_->key(), ComputeTTL(value.ttl(), schema_), hybrid_time_,
+                                  &has_expired));
 
       if (value.primitive_value().value_type() != ValueType::kNull &&
           value.primitive_value().value_type() != ValueType::kTombstone &&

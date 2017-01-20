@@ -82,7 +82,7 @@ class PTUpdateStmt : public PTDmlStmt {
                PTAssignListNode::SharedPtr set_clause,
                PTExpr::SharedPtr where_clause,
                PTExpr::SharedPtr if_clause = nullptr,
-               int64_t ttl_msec = PTDmlStmt::kNoTTL);
+               int64_t ttl_msec = TreeNode::kNoTTL);
   virtual ~PTUpdateStmt();
 
   template<typename... TypeArgs>

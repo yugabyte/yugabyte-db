@@ -17,7 +17,7 @@ namespace docdb {
 
 class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  public:
-  DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction);
+  DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction, const Schema& schema);
 
   ~DocDBCompactionFilter() override;
   bool Filter(int level,
@@ -80,6 +80,9 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // We use this to only log a message that the filter is being used once on the first call to
   // the Filter function.
   mutable bool filter_usage_logged_;
+
+  // Reference to tablet's metadata schema.
+  const Schema& schema_;
 };
 
 // A strategy for deciding the history cutoff. We may implement this differently in production and
@@ -107,7 +110,8 @@ class FixedHybridTimeRetentionPolicy : public HistoryRetentionPolicy {
 
 class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit DocDBCompactionFilterFactory(std::shared_ptr<HistoryRetentionPolicy> retention_policy);
+  explicit DocDBCompactionFilterFactory(std::shared_ptr<HistoryRetentionPolicy> retention_policy,
+                                        const Schema& schema);
   ~DocDBCompactionFilterFactory() override;
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context& context) override;
@@ -115,6 +119,8 @@ class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
 
  private:
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
+  // Reference to tablet's metadata schema.
+  const Schema& schema_;
 };
 
 }  // namespace docdb

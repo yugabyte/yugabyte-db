@@ -446,7 +446,7 @@ TEST(TestSchema, TestTableProperties) {
   ASSERT_EQ(properties, properties1);
 
   TablePropertiesPB pb;
-  properties.ToTablePropertyPB(&pb);
+  properties.ToTablePropertiesPB(&pb);
   ASSERT_TRUE(pb.has_default_time_to_live());
   ASSERT_EQ(1000, pb.default_time_to_live());
 
@@ -457,7 +457,7 @@ TEST(TestSchema, TestTableProperties) {
   properties.Reset();
   pb.Clear();
   ASSERT_FALSE(properties.HasDefaultTimeToLive());
-  properties.ToTablePropertyPB(&pb);
+  properties.ToTablePropertiesPB(&pb);
   ASSERT_FALSE(pb.has_default_time_to_live());
   auto properties3 = TableProperties::FromTablePropertiesPB(pb);
   ASSERT_FALSE(properties3.HasDefaultTimeToLive());

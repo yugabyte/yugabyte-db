@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "yb/docdb/value.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/bytes_formatter.h"
@@ -94,6 +95,27 @@ TEST(DocKVUtilTest, ZeroEncodingAndDecoding) {
     string decoded_str = DecodeZeroEncodedStr(encoded_str);
     ASSERT_EQ(s, decoded_str);
   }
+}
+
+TEST(DocKVUtilTest, TableTTL) {
+  Schema schema;
+  EXPECT_TRUE(TableTTL(schema).Equals(Value::kMaxTtl));
+
+  schema.SetDefaultTimeToLive(1000);
+  EXPECT_TRUE(MonoDelta::FromMilliseconds(1000).Equals(TableTTL(schema)));
+}
+
+TEST(DocKVUtilTest, ComputeTTL) {
+  Schema schema;
+  schema.SetDefaultTimeToLive(1000);
+
+  MonoDelta value_ttl = MonoDelta::FromMilliseconds(2000);
+
+  EXPECT_TRUE(MonoDelta::FromMilliseconds(2000).Equals(ComputeTTL(value_ttl, schema)));
+  EXPECT_TRUE(MonoDelta::FromMilliseconds(1000).Equals(ComputeTTL(Value::kMaxTtl, schema)));
+
+  MonoDelta reset_ttl = MonoDelta::FromMilliseconds(0);
+  EXPECT_TRUE(ComputeTTL(reset_ttl, schema).Equals(Value::kMaxTtl));
 }
 
 }  // namespace docdb

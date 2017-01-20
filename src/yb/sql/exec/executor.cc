@@ -387,7 +387,7 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
                                                     YBPartialRow *row) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
   // Set the ttl.
-  if (tnode->ttl_msec() != PTDmlStmt::kNoTTL) {
+  if (tnode->ttl_msec() != TreeNode::kNoTTL) {
     req->set_ttl(tnode->ttl_msec());
   }
   for (const ColumnArg& col : column_args) {

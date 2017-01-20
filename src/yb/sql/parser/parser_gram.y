@@ -142,6 +142,9 @@ using namespace yb::sql;
 #define PTREE_MEM parser_->PTreeMem()
 #define PTREE_LOC(loc) Location::MakeShared(PTREE_MEM, loc)
 #define MAKE_NODE(loc, node, ...) node::MakeShared(PTREE_MEM, PTREE_LOC(loc), ##__VA_ARGS__)
+// This allows nested MAKE_NODE macros since it doesn't have ##__VA_ARGS__ and requires atleast
+// one variable argument.
+#define NESTED_MAKE_NODE(loc, node, ...)  MAKE_NODE(loc, node, __VA_ARGS__)
 
 #define PARSER_ERROR(loc, code) parser_->Error(loc, ErrorCode:##:code)
 #define PARSER_ERROR_MSG(loc, code, msg) parser_->Error(loc, msg, ErrorCode:##:code)
@@ -266,6 +269,7 @@ using namespace yb::sql;
 
 %type <KeywordType>       iso_level opt_encoding opt_boolean_or_string row_security_cmd
                           RowSecurityDefaultForCmd explain_option_name all_Op MathOp extract_arg
+
 
 %type <PChar>             enable_trigger
 
@@ -2050,7 +2054,7 @@ opt_on_conflict:
 
 opt_using_ttl_clause:
   /*EMPTY*/ {
-    $$ = PTDmlStmt::kNoTTL;
+    $$ = TreeNode::kNoTTL;
   }
   | using_ttl_clause {
     $$ = $1;

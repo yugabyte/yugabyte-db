@@ -145,9 +145,12 @@ class DocDBRocksDBFixture {
 
   void FlushRocksDB();
 
+  void SetTableTTL(uint64_t ttl_msec);
+
  private:
   std::unique_ptr<rocksdb::DB> rocksdb_;
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
+  Schema schema_;
   rocksdb::Options rocksdb_options_;
   rocksdb::WriteOptions write_options_;
   string rocksdb_dir_;

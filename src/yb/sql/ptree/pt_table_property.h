@@ -51,9 +51,8 @@ class PTTableProperty : public TreeNode {
     if (strcmp(lhs_->c_str(), kDefaultTimeToLive) == 0) {
       table_property->SetDefaultTimeToLive(std::static_pointer_cast<PTConstInt>(rhs_)->Eval());
     } else {
-      return STATUS(InvalidArgument,
-                    strings::Substitute("$0 is not a valid table property",
-                               lhs_->c_str()));
+      return STATUS(InvalidArgument, strings::Substitute("$0 is not a valid table property",
+                    lhs_->c_str()));
     }
     return Status::OK();
   }

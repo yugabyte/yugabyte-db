@@ -36,11 +36,13 @@ enum class TreeNodeOpcode {
   kPTExpr,
   kPTRef,
   kPTAssign,
+  kPTTableProperty,
 };
 
 // TreeNode base class.
 class TreeNode : public MCBase {
  public:
+  static const int64_t kNoTTL = -1;
   //------------------------------------------------------------------------------------------------
   // Public types.
   typedef MCSharedPtr<TreeNode> SharedPtr;

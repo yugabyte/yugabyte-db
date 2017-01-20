@@ -137,5 +137,25 @@ Status HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
   return Status::OK();
 }
 
+const MonoDelta TableTTL(const Schema& schema) {
+  MonoDelta ttl = Value::kMaxTtl;
+  if (schema.table_properties().HasDefaultTimeToLive()) {
+    uint64_t table_ttl = schema.table_properties().DefaultTimeToLive();
+    return table_ttl == kResetTTL ? Value::kMaxTtl : MonoDelta::FromMilliseconds(table_ttl);
+  }
+  return ttl;
+}
+
+const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema) {
+  MonoDelta ttl;
+  if (!value_ttl.Equals(Value::kMaxTtl)) {
+    ttl = value_ttl.ToMilliseconds() == kResetTTL ? Value::kMaxTtl : value_ttl;
+  } else {
+    // This is the default.
+    ttl = TableTTL(schema);
+  }
+  return ttl;
+}
+
 }  // namespace docdb
 }  // namespace yb

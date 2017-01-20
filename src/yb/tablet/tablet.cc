@@ -313,7 +313,7 @@ Status Tablet::OpenKeyValueTablet() {
 
   // Install the history cleanup handler.
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
-      make_shared<TabletRetentionPolicy>(clock_));
+      make_shared<TabletRetentionPolicy>(clock_), metadata_->schema());
 
   rocksdb_options.listeners.emplace_back(largest_flushed_seqno_collector_);
 

@@ -23,11 +23,13 @@ namespace docdb {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction)
+DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction,
+                                             const Schema& schema)
     : history_cutoff_(history_cutoff),
       is_full_compaction_(is_full_compaction),
       is_first_key_value_(true),
-      filter_usage_logged_(false) {
+      filter_usage_logged_(false),
+      schema_(schema) {
 }
 
 DocDBCompactionFilter::~DocDBCompactionFilter() {
@@ -147,7 +149,7 @@ bool DocDBCompactionFilter::Filter(int level,
 
   bool has_expired = false;
 
-  CHECK_OK(HasExpiredTTL(key, ttl, history_cutoff_, &has_expired));
+  CHECK_OK(HasExpiredTTL(key, ComputeTTL(ttl, schema_), history_cutoff_, &has_expired));
 
   // We don't support TTLs in object markers yet.
   if (value_type != ValueType::kObject && has_expired) {
@@ -176,8 +178,11 @@ const char* DocDBCompactionFilter::Name() const {
 // ------------------------------------------------------------------------------------------------
 
 DocDBCompactionFilterFactory::DocDBCompactionFilterFactory(
-    shared_ptr<HistoryRetentionPolicy> retention_policy)
-    : retention_policy_(retention_policy) {
+    shared_ptr<HistoryRetentionPolicy> retention_policy,
+    const Schema& schema)
+    :
+    retention_policy_(retention_policy),
+    schema_(schema) {
 }
 
 DocDBCompactionFilterFactory::~DocDBCompactionFilterFactory() {
@@ -187,7 +192,7 @@ unique_ptr<CompactionFilter> DocDBCompactionFilterFactory::CreateCompactionFilte
     const CompactionFilter::Context& context) {
   return unique_ptr<DocDBCompactionFilter>(
       new DocDBCompactionFilter(retention_policy_->GetHistoryCutoff(),
-                                context.is_full_compaction));
+                                context.is_full_compaction, schema_));
 }
 
 const char* DocDBCompactionFilterFactory::Name() const {

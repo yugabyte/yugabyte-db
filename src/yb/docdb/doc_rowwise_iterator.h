@@ -14,6 +14,7 @@
 #include "yb/common/scan_spec.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/yql_scanspec.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"

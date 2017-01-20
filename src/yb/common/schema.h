@@ -329,7 +329,7 @@ class TableProperties {
     return default_time_to_live_;
   }
 
-  void ToTablePropertyPB(TablePropertiesPB *pb) const {
+  void ToTablePropertiesPB(TablePropertiesPB *pb) const {
     if (HasDefaultTimeToLive()) {
       pb->set_default_time_to_live(default_time_to_live_);
     }
@@ -513,6 +513,10 @@ class Schema {
 
   const TableProperties& table_properties() const {
     return table_properties_;
+  }
+
+  void SetDefaultTimeToLive(const uint64_t& ttl_msec) {
+    table_properties_.SetDefaultTimeToLive(ttl_msec);
   }
 
   // Return the column index corresponding to the given column,
